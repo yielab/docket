@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **An external verification gate (Phase 42, P42-2, ADR 0025).** A pipeline step can carry
+  `gate: {type: external, command: CMD, exitMap: ..., timeout: ...}` (short form
+  `gate: {external: CMD}`). After the hop, docket runs CMD in the pod's envelope and maps the
+  process's own exit status to `pass`, `fail`, `needs_human` or `error` (default map 0/1/2;
+  an unmapped code, a timeout, a refusal or a missing command is `error`). Each label routes
+  through the step's `on:` map; an unrouted `fail`, `needs_human` or `error` fails the task as
+  `gate_failed`, `gate_needs_human` or `gate_error`. The verifier may write reasons to
+  `$DOCKET_GATE_REASONS_FILE` (JSON, at most 64 KiB); they are screened as untrusted, redacted,
+  recorded on the hop and shown to the retried Implementer under `GATE FAILED`, including after
+  a human answers an `input` step the gate routed to. docket never names a verifier and reads no
+  verdict beyond the exit status.
+
 ### Changed
 
 - **A gate that sends a task back says why (Phase 42, P42-1).** A backward `on:` route out of a
@@ -21,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Reviewer and Tester are told in the same task. A file added by the task is not read until it
   is merged. Without a task worktree nothing changes. The turn result carries the path and
   sha256 of each file served (`TurnResult.repo_files`).
+
+### Fixed
+
+- **A short-form `input` step keeps an unquoted `on:` map.** YAML reads a bare `on:` as the
+  boolean `True`; the input short form dropped it, so `- ask: {input: ..., on: ...}` loaded with
+  no routes.
 
 ## [0.2.0-beta.5] - 2026-10-13
 

@@ -175,3 +175,98 @@ One card, alone, because it owns the `core/dispatch.py` and `core/pipeline.py` h
   the Implementer's message carries the reasons under `GATE FAILED`. If the resume path loses
   the reasons, that is this card's defect to fix.
 - **Unchanged:** a pipeline without an external gate is byte-identical (goldens untouched).
+
+## Wave 106: Phase 42 sub-wave C (base: the Wave 105 rollup on `develop`)
+
+There are two cards, scheduled in parallel. Their ownership is set at function level, because
+both cards touch `core/dispatch.py`:
+- **P42-4** owns one call site in `dispatch_task`, before `_run_pipeline`, where it raises the
+  existing `DispatchError`. Look at how a `DispatchError` folds into `failure_kind
+  "dispatch_refused"`: it is resumable after the operator fixes the cause. P42-4 also owns the
+  new `core/profile.py`, `PodSettings.profile`, the fleet security record's profile field, the
+  `setup profile` CLI, and the doctor and status lines.
+- **P42-5** owns `HopResult` and its two persistence functions (`_hop_record`,
+  `_hop_from_record`), the line where dispatch builds a `HopResult` from the driver's
+  `TurnResult` (copy `repo_files`), `core/evidence.py`, and the evidence schema generator.
+- Neither card edits a function the other owns. Merge order: P42-5, then P42-4.
+
+### P42-4: the `lights-out` profile
+
+- **Worktree / branch:** `../rack-cli-wt/p42-4`, `phase-42/p42-4`.
+- **Decision:** ADR 0025 D2 as amended (the final table) and the card in `TODO.md`.
+- **One amendment found at the Wave 105 close:** MCP servers are stdio only
+  (`core/mcp_tools.py::McpServerConfig`, "stdio transport only, today"), and a stdio server
+  runs in the jail. Drop the "no HTTP MCP server" check entirely, and say so in the spec.
+- **Shape:**
+  - `core/profile.py` holds the decision as a pure function over a small facts dataclass:
+    `lights_out_violations(facts) -> list[Violation]`, where each violation carries its
+    requirement and its fix.
+  - A separate gatherer builds the facts from the live readers. Reuse what exists:
+    - isolation state from `core/fleet.py::get_isolation_enabled` and backend usability, the
+      same way `edges/adapters/docket_runtime.py::_resolve_sandbox` decides it;
+    - network from `core/pod.py::effective_network`, plus whether the jail will enforce it;
+    - the loaded pipeline's steps (an `ExternalGate` on every step whose role is an
+      Implementer);
+    - pod-injected environment names compared with secret-store names (find where a pod
+      injects variables: ADR 0020 decision 8, `rg -n "inject" src/docket`).
+  - Do not duplicate any of those decisions; call them.
+- **Recording:**
+  - Global: `FleetSecurity` gains the profile next to isolation and network, written by
+    `docket setup profile lights-out|attended`. Add it to `cli/_setup.py`'s group; look at how
+    `cli/_setup_sandbox.py` registers a verb. The write is audited.
+  - Per pod: `PodSettings.profile`, written by `pod set profile`. A pod may only move toward
+    stricter: `attended` under a global `lights-out` is refused at write time.
+  - No record means `attended`. A fresh install changes in nothing (goldens unchanged except
+    the deliberate new surface: `setup` help gains one verb, explained line by line).
+- **Enforcement:** one check in `dispatch_task` before `_run_pipeline`. On a violation, audit
+  `profile.refused` (naming the pod, the task and the requirement), then raise `DispatchError`
+  with the requirement and its fix. Nothing runs. `doctor` and `status` show the effective
+  profile and its violations, computed by the same function.
+- **Spec:**
+  - `specs/functional/security-gates.spec.md`: a new "Profiles" section.
+  - `specs/api/cli-interface.spec.md`: `setup profile`, `pod set profile`.
+  - The doctor and status lines: `specs/functional/operator-loop.spec.md`, or wherever
+    `status` lines are specified (`rg -n "sandbox posture" specs`).
+- **RED:**
+  - One integration row per requirement (profile on, that requirement unmet): refused,
+    `profile.refused` audited, no driver call.
+  - One positive row: every requirement met (fake the backend probe the way neighbouring
+    sandbox tests do), and the task runs.
+  - A row for the per-pod stricter-only rule.
+  - The suite must also pass under `scripts/maint/pytest-without-sandbox.sh -q`.
+
+### P42-5: evidence 1.1.0, `gate` and `directives`
+
+- **Worktree / branch:** `../rack-cli-wt/p42-5`, `phase-42/p42-5`.
+- **Decision:** ADR 0025 D4 as amended. Only `gate` per hop and `directives` per task are
+  added; no ids and no digests.
+- **Input from Wave 104 and 105:**
+  - `TurnResult.repo_files` (`core/runtime_driver.py`) maps repository-relative path to sha256
+    for the files a turn composed from the base commit. Dispatch does not copy it yet: persist
+    it on the hop as `repoFiles`.
+  - `hop.verify` on an external-gated hop carries `label`, `exitCode`, `reasonsInvalid` and
+    optionally `reasons`.
+- **Shape:**
+  - `HopEvidence.gate = {label, exitCode, reasonsInvalid}`, present only when the hop's
+    `verify` has a `label`.
+  - `TaskEvidence.directives = [{path, sha256}]`, the distinct pairs over the task's hops in
+    first-seen order. Absent when empty.
+  - `v` is `1.1.0`.
+- **The harness result keeps `1.0.0`.** `cli/_harness_recipe.py::_task_evidence` embeds
+  evidence in the published harness result. A version bump there changes the bytes of every
+  `exec --recipe` run under a contract that must not change. So `task_evidence` takes the
+  version, `1.0.0` produces exactly today's document, and only `docket task show --json` and
+  serve's evidence route ask for `1.1.0`. Prove it: the harness fixtures under
+  `tests/fixtures/harness-contract/` must stay unchanged.
+- **Schema:** `docs/contracts/evidence-v1.1/`, generated by `scripts/gen_evidence_schema.py`
+  (extend it, keep `v1` byte-identical, keep its `--check` green).
+- **Spec:** `specs/functional/pod-dispatch.spec.md` "Evidence v1" (amend it to cover 1.1.0)
+  and `specs/data/cli-json-shapes.spec.md`.
+- **Before you finish:** check whether Tack parses evidence. Run
+  `rg -n "evidence" ~/Sites/objetivosMios/crates --type rust -l` read-only; never edit there.
+  Report whether its parser would reject `v: "1.1.0"` or the new fields.
+- **RED:**
+  - A fixture task with an external-gated hop and a hop carrying `repoFiles` produces both
+    fields under 1.1.0 and validates against the new schema.
+  - A task with neither carries neither.
+  - `task_evidence(..., "1.0.0")` is byte-identical to today's output for the same task.

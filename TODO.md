@@ -337,6 +337,15 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 > label or exit code, one owner `_is_gate_failure_carryover`). Known gap for P42-2: an `input`
 > step's answer resumes behind a synthetic operator hop with no `verify`, so the reasons must be
 > carried across it.
+>
+> **Wave 105 closed sub-wave B (2026-10-13).** Integration findings: the gate read its command's
+> exit code from a file under the pod cache dir, writable inside the jail, so an agent-written
+> test could plant a read-only `0` and pass a failing verifier (reproduced; now
+> `system.run_command` returns the process's own status and the file is gone). A short-form
+> `input` step dropped an unquoted `on:` (YAML's `True` key), the exact shape of the
+> `needs_human` pattern (fixed through `_get_on`). Found for sub-wave C: MCP servers are stdio
+> only, so the profile's "no HTTP MCP server" check is dropped; evidence embedded in the harness
+> result stays `1.0.0` (a published contract), `1.1.0` is for `task show` and serve.
 
 ### P42-1 — a backward route carries the gate's output into the rework hop
 
@@ -397,7 +406,7 @@ composed prompt.
 
 ### P42-2 — the external gate
 
-**Status:** IN PROGRESS (Wave 105) · **Size:** M · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Gates", "Outcome routing"), pod-dispatch.spec.md (gate evaluation, "Hop evidence")
+**Status:** DONE (2026-10-13, merge `563c6508`, Wave 105) · **Size:** M · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Gates", "Outcome routing"), pod-dispatch.spec.md (gate evaluation, "Hop evidence")
 
 **Trigger:** ADR 0025 D1 as amended.
 
