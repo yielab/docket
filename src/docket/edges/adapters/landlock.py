@@ -10,7 +10,6 @@ import os
 import platform
 import struct
 import sys
-import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -121,7 +120,7 @@ def plan_ruleset(
         grant(path, READ_RIGHTS)
     for path in DEFAULT_RO_FILES:
         grant(path, READ_RIGHTS)
-    for path in (*rw, tempfile.gettempdir()):
+    for path in rw:
         grant(path, handled)
     for path in DEFAULT_RW_FILES:
         grant(path, handled)

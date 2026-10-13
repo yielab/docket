@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import hashlib
 import os
 import re
 import shutil
@@ -508,11 +509,8 @@ def _sbpl(path: str) -> str:
 
 def seatbelt_profile(roots: tuple[Path, ...], network: bool = True) -> str:
     """The fixed Seatbelt profile: deny by default, system paths and ``sys.prefix`` readable, the
-    roots (with their repository dirs) and ``$TMPDIR`` read-write, guarded git paths not writable."""
+    roots (with their repository dirs) read-write, guarded git paths not writable."""
     rw, ro = _mount_dirs(roots)
-    real = os.path.realpath(tempfile.gettempdir())
-    if real not in rw:
-        rw.append(real)
     read = [*_SEATBELT_READ, os.path.realpath(sys.prefix)]
     lines = [
         "(version 1)",
@@ -826,6 +824,27 @@ class JailPolicy:
     cache_dir: Path | None = None
 
 
+_TMP_ENV_VARS = ("TMPDIR", "TMP", "TEMP")
+
+
+def jail_tmp_dir(roots: tuple[Path, ...], cache_dir: Path | None) -> Path:
+    """The launch's private temp dir (0700): ``<cache_dir>/tmp``, else ``JAIL_TMP_DIR``
+    keyed by the first root. Reused across runs like the cache."""
+    if cache_dir is not None:
+        path = cache_dir / "tmp"
+    else:
+        key = hashlib.sha256(str(roots[0].resolve()).encode()).hexdigest()[:12]
+        path = _cfg.JAIL_TMP_DIR / key
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(0o700)
+    return path.resolve()
+
+
+def tmp_environment(tmp: Path) -> dict[str, str]:
+    """The variables that point a tool's temp files at *tmp*."""
+    return {name: str(tmp) for name in _TMP_ENV_VARS}
+
+
 def jailed_env(env: dict[str, str] | None) -> dict[str, str]:
     """PATH plus the explicit overlay: never the host environment, so a jailed command cannot
     inherit a credential the unjailed path would."""
@@ -856,10 +875,12 @@ def jail_launch(
     if backend == "docker":
         name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
         return JailLaunch(docker_run_argv(name, all_roots, command, merged, network), None, name)
-    if backend == "landlock":
-        return JailLaunch(landlock_argv(all_roots, command, network), jailed_env(merged))
-    if backend == "seatbelt":
-        return JailLaunch(seatbelt_argv(all_roots, command, network), jailed_env(merged))
+    if backend in ("landlock", "seatbelt"):
+        tmp = jail_tmp_dir(roots, cache_dir)
+        all_roots = (*all_roots, tmp)
+        merged = {**tmp_environment(tmp), **merged}
+        build = landlock_argv if backend == "landlock" else seatbelt_argv
+        return JailLaunch(build(all_roots, command, network), jailed_env(merged))
     raise ValueError(f"no sandbox backend to launch under: {backend}")
 
 

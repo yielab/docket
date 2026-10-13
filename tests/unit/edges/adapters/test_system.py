@@ -323,10 +323,12 @@ class TestJailLaunch:
         )
         assert launch.argv[:3] == [_sys.sys.executable, "-m", "docket.jail"]
         rw = [launch.argv[i + 1] for i, a in enumerate(launch.argv) if a == "--rw"]
-        assert rw == [str(tmp_path.resolve()), str(cache.resolve())]
+        assert rw[:2] == [str(tmp_path.resolve()), str(cache.resolve())]
         assert launch.argv[launch.argv.index("--net") + 1] == "none"
         assert launch.argv[-3:] == ["/bin/sh", "-c", "echo hi"]
-        assert launch.env == {"PATH": "/usr/bin", "A": "1"}
+        assert launch.env is not None and "SOME_SECRET" not in launch.env
+        assert launch.env["PATH"] == "/usr/bin" and launch.env["A"] == "1"
+        assert launch.env["TMPDIR"] == rw[2]
 
     def test_cache_dir_is_a_rw_root_and_sets_home_under_the_overlay(self, tmp_path: Path) -> None:
         cache = tmp_path / "cache"
@@ -334,7 +336,7 @@ class TestJailLaunch:
             (tmp_path,), "true", "landlock", env={"HOME": "/kept"}, cache_dir=cache
         )
         rw = [launch.argv[i + 1] for i, a in enumerate(launch.argv) if a == "--rw"]
-        assert rw == [str(tmp_path.resolve()), str(cache.resolve())]
+        assert rw[:2] == [str(tmp_path.resolve()), str(cache.resolve())]
         assert launch.env is not None
         assert launch.env["HOME"] == "/kept"
         assert launch.env["UV_CACHE_DIR"] == str(cache)
@@ -392,7 +394,6 @@ def _pin_profile_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_sys.sys, "prefix", "/opt/py")
     monkeypatch.setattr(_sys.os.path, "realpath", lambda p: str(p))
     monkeypatch.setattr(_sys, "_mount_dirs", lambda roots: ([str(r) for r in roots], []))
-    monkeypatch.setattr(_sys.tempfile, "gettempdir", lambda: "/var/tmp/x")
 
 
 _PROFILE_HEAD = (
@@ -418,7 +419,6 @@ class TestSeatbeltBackend:
         body = (
             '(allow file-read* file-write* (subpath "/w/a"))\n'
             '(allow file-read* file-write* (subpath "/w/b"))\n'
-            '(allow file-read* file-write* (subpath "/var/tmp/x"))\n'
         )
         assert _sys.seatbelt_profile(roots, False) == (_PROFILE_HEAD + body + "(deny network*)\n")
         assert _sys.seatbelt_profile(roots, True) == (_PROFILE_HEAD + body + "(allow network*)\n")
@@ -427,7 +427,6 @@ class TestSeatbeltBackend:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_profile_env(monkeypatch)
-        monkeypatch.setattr(_sys.tempfile, "gettempdir", lambda: '/w/a"b\\c')
         profile = _sys.seatbelt_profile((Path('/w/a"b\\c'),), True)
         assert '(subpath "/w/a\\"b\\\\c"))\n(allow network*)\n' in profile
 
@@ -435,7 +434,6 @@ class TestSeatbeltBackend:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_profile_env(monkeypatch)
-        monkeypatch.setattr(_sys.tempfile, "gettempdir", lambda: "/w/a")
         monkeypatch.setattr(_sys, "_mount_dirs", lambda roots: (["/w/a"], ["/w/a/.git/hooks"]))
         profile = _sys.seatbelt_profile((Path("/w/a"),), False)
         assert profile.endswith(
@@ -662,3 +660,39 @@ def test_a_registered_credential_name_is_stripped_from_task_environments(
     monkeypatch.setenv("SETUP_ONLY_API_KEY", "value-the-child-must-not-see")
     _sys.register_credential_name("SETUP_ONLY_API_KEY")
     assert "SETUP_ONLY_API_KEY" not in _sys.task_environment()
+
+
+class TestPrivateJailTmp:
+    def test_the_dir_lives_under_the_cache_dir_and_is_private(self, tmp_path: Path) -> None:
+        tmp = _sys.jail_tmp_dir((tmp_path / "w",), tmp_path / "cache")
+        assert tmp == tmp_path / "cache" / "tmp"
+        assert tmp.stat().st_mode & 0o777 == 0o700
+
+    def test_without_a_cache_dir_it_lives_under_docket_home_keyed_by_the_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_sys._cfg, "JAIL_TMP_DIR", tmp_path / "home" / "jail-tmp")
+        a = _sys.jail_tmp_dir((tmp_path / "a",), None)
+        b = _sys.jail_tmp_dir((tmp_path / "b",), None)
+        assert a != b and a.parent == tmp_path / "home" / "jail-tmp"
+        assert a.stat().st_mode & 0o777 == 0o700
+        assert _sys.jail_tmp_dir((tmp_path / "a",), None) == a
+
+    @pytest.mark.parametrize("backend", ["landlock", "seatbelt"])
+    def test_launch_exports_and_grants_the_private_dir(
+        self, backend: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = tmp_path / "w"
+        root.mkdir()
+        launch = _sys.jail_launch((root,), "true", backend)  # type: ignore[arg-type]
+        assert launch.env is not None
+        tmp = launch.env["TMPDIR"]
+        assert launch.env["TMP"] == launch.env["TEMP"] == tmp
+        assert Path(tmp).is_dir() and Path(tmp).stat().st_mode & 0o777 == 0o700
+        assert any(tmp in part for part in launch.argv)
+
+    def test_docker_keeps_the_container_tmp(self, tmp_path: Path) -> None:
+        root = tmp_path / "w"
+        root.mkdir()
+        launch = _sys.jail_launch((root,), "true", "docker")
+        assert "TMPDIR" not in " ".join(launch.argv)
