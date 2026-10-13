@@ -253,7 +253,7 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
         return True, None
     detail = (
         f"agent={agent_id} role={role or '?'} "
-        f"docker={availability.docker} bwrap={availability.bwrap}"
+        f"landlock={availability.landlock} docker={availability.docker} bwrap={availability.bwrap}"
     )
     audit_log("isolation.refused", detail)
     return False, (

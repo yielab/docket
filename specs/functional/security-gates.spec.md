@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.43.0
+**Version**: 0.44.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -818,8 +818,12 @@ gate, never a replacement for it, and additive to `resolve_within`, never a repl
 either.
 
 1. **Backend detection is real, not assumed.** `edges.adapters.system.sandbox_availability()`
-   probes, on every call, which of two backends the host actually has *right now*, in descending
+   probes, on every call, which backend the host actually has *right now*, in descending
    strength:
+   - **`landlock`** — the Linux kernel's own sandbox (`python -m docket.jail`, requirement 10).
+     Requires a real ABI probe (`landlock_available`: `landlock_create_ruleset` with the VERSION
+     flag returns >= 1); a kernel without Landlock, or one whose seccomp policy blocks the
+     syscall, is `false`, never assumed.
    - **`docker`** — a container. Requires not just the binary (`docker_available`) but a reachable
      daemon (`docker_daemon_reachable`, a real `docker info` probe) — a binary with no running or
      reachable daemon is common enough (rootless setups, a freshly installed package whose service
@@ -832,7 +836,7 @@ either.
    - **`none`** — neither is usable. The command still runs (subject to the gate above and to
      `ToolContext.sandbox` — see below); it is just not jailed, and this **MUST** be visible to the
      caller (requirement 4).
-   - `DOCKET_SANDBOX_BACKEND` (`docker`|`bwrap`|`none`) **MUST** override the automatic choice —
+   - `DOCKET_SANDBOX_BACKEND` (`landlock`|`docker`|`bwrap`|`none`) **MUST** override the automatic choice —
      for tests and for an operator who wants to force or disable a backend regardless of what is installed.
 2. **Opt-in, default off — a narrower default than the gate itself, deliberately.**
    `core/tools.py`'s `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the `bash` tool
@@ -954,6 +958,26 @@ either.
      what this section adds is layered underneath the `pre_tool_call`/command-classifier gate
      above — a second, independent layer on top of calls that already cleared that gate, exactly
      as requirement 3 states.
+
+10. **The Landlock jail (`docket.jail`, `edges/adapters/landlock.py`).** `landlock_argv(roots,
+    command, network)` returns `[sys.executable, "-m", "docket.jail", "--rw", <root>..., "--net",
+    none|open, "--", "/bin/sh", "-c", command]`; the first root is the cwd. The entry sets
+    `PR_SET_NO_NEW_PRIVS`, then a Landlock ruleset that handles every filesystem right the probed
+    ABI knows: read-write (read, write, make-*, remove, plus refer/truncate/ioctl-dev where the
+    ABI has them) on the roots and `$TMPDIR`; read and execute only on `/usr`, `/lib`, `/lib64`,
+    `/bin`, `/sbin`, `/etc`, `/opt`, `sys.prefix` and `/dev/zero|urandom`, read-write on
+    `/dev/null|tty`. Nothing else is granted, so the operator's home and `DOCKET_HOME` are denied
+    for read as well as write. A listed path that does not exist is skipped. Under `--net none` the
+    entry handles Landlock TCP bind/connect with no rule when ABI >= 4, and installs a seccomp
+    filter (via `prctl`, no libseccomp) that returns `EPERM` for `socket(AF_INET|AF_INET6)`,
+    for `io_uring_setup`, for any x32 syscall number, and for any architecture other than x86_64
+    and aarch64. `--net open` installs no filter and handles no network right. The entry fails
+    closed: if the ruleset cannot be enforced, or `--net none` can be enforced by neither layer, it
+    exits 125 naming the reason and runs nothing. It does not hide `/proc`. A Landlock rule cannot
+    take a right away from a sub-path of a granted root, so a root's `.git/hooks` and `config` are
+    writable inside this jail (the bwrap read-only overlays have no Landlock equivalent). Pinned by
+    unit tests over the ruleset plan, the argv and the BPF program (no syscall) and by
+    `tests/integration/test_jail_landlock.py` on a real kernel.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1632,6 +1656,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.44.0 (2026-10-12)
+
+- Exec sandbox item 1 and new item 10: a `landlock` backend (`python -m docket.jail`, Landlock
+  filesystem rules, Landlock TCP rules at ABI >= 4, a seccomp socket filter under `--net none`),
+  probed first, accepted by `DOCKET_SANDBOX_BACKEND`. bwrap and docker remain.
 
 ### Version 0.43.0 (2026-10-12)
 

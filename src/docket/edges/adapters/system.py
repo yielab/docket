@@ -132,7 +132,7 @@ def docker_available() -> bool:
 # module never decides, only detects and constructs, matching the existing
 # split with `core.security`'s classifier.
 
-SandboxBackend = Literal["docker", "bwrap", "none"]
+SandboxBackend = Literal["landlock", "docker", "bwrap", "none"]
 
 # Detection probes must be fast (they run on every "auto" call) and must
 # never hang a tool call over a jail that turns out to be unusable.
@@ -154,6 +154,13 @@ def docker_daemon_reachable() -> bool:
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
+
+
+def landlock_available() -> bool:
+    """True on Linux when the kernel reports a Landlock ABI of at least 1 (a probe that restricts nothing)."""
+    from docket.edges.adapters import landlock
+
+    return landlock.abi_version() >= 1
 
 
 def bwrap_available() -> bool:
@@ -191,25 +198,31 @@ class SandboxAvailability:
     backend: SandboxBackend
     docker: bool
     bwrap: bool
+    landlock: bool = False
 
 
 def sandbox_availability() -> SandboxAvailability:
-    """Probe both backends once; report the first usable one: bwrap (smoke test passes)
-    beats docker (daemon reachable) beats none.
+    """Probe the backends once; report the first usable one: landlock (kernel ABI probe)
+    beats bwrap (smoke test passes) beats docker (daemon reachable) beats none.
     `DOCKET_SANDBOX_BACKEND` overrides this for tests or an operator."""
+    landlock_ok = landlock_available()
     docker_ok = docker_daemon_reachable()
     bwrap_ok = bwrap_available()
     override = os.environ.get("DOCKET_SANDBOX_BACKEND")
     backend: SandboxBackend
-    if override in ("docker", "bwrap", "none"):
+    if override in ("landlock", "docker", "bwrap", "none"):
         backend = override  # type: ignore[assignment]
+    elif landlock_ok:
+        backend = "landlock"
     elif bwrap_ok:
         backend = "bwrap"
     elif docker_ok:
         backend = "docker"
     else:
         backend = "none"
-    return SandboxAvailability(backend=backend, docker=docker_ok, bwrap=bwrap_ok)
+    return SandboxAvailability(
+        backend=backend, docker=docker_ok, bwrap=bwrap_ok, landlock=landlock_ok
+    )
 
 
 def git_dirs(root: Path) -> list[Path]:
@@ -351,6 +364,27 @@ def bwrap_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> l
     Network stays shared unless *network* is False, which leaves the fresh network namespace
     ``--unshare-all`` made empty -- see ``specs/functional/security-gates.spec.md``."""
     return [*_bwrap_prefix(roots, network), "/bin/sh", "-c", command]
+
+
+def landlock_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
+    """The argv running *command* under ``python -m docket.jail``: the roots (and their repository
+    dirs) read-write, nothing else of the host writable, the home unreadable. The first root is the cwd."""
+    return [*_landlock_prefix(roots, network), "/bin/sh", "-c", command]
+
+
+def landlock_command_argv(
+    roots: tuple[Path, ...], argv: list[str], network: bool = True
+) -> list[str]:
+    """The same jail as :func:`landlock_argv`, running *argv* directly (no shell)."""
+    return [*_landlock_prefix(roots, network), *argv]
+
+
+def _landlock_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
+    rw, _ = _mount_dirs(roots)
+    argv = [sys.executable, "-m", "docket.jail"]
+    for path in rw:
+        argv += ["--rw", path]
+    return [*argv, "--net", "open" if network else "none", "--"]
 
 
 def bwrap_command_argv(roots: tuple[Path, ...], argv: list[str], network: bool = True) -> list[str]:
