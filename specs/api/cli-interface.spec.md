@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -277,10 +277,15 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   it: matching `require_approval` policies, pipeline approval and `input` steps,
   `requireApprovalRoles`, the resolved `approvalMode`, the always-on high-risk classes, notifying
   channels). A task with a recorded, unpruned worktree also prints its path, branch, base commit
-  and the exact `git -C <path> diff <base>` and merge commands; a task that ran in place prints no
+  and the exact diff and merge commands (`git -C <path> diff <base>`, or, when the task record
+  holds the git dirs docket recorded, `git --git-dir=<gitDir> --work-tree=<path> diff <base>`, so
+  the hint never reads the `.git` file the agent could rewrite); a task that ran in place prints no
   worktree block. A `run-` ref resolves its task and exits 1 when the run failed
 - `diff <ref> [--pod <p>]`: Print `git diff <base>` of the task's worktree
-  (`edges/adapters/system.py::git_diff`); a task without a worktree, or a failed diff, exits 1
+  (`edges/adapters/system.py::git_diff`); a task without a worktree, or a failed diff, exits 1.
+  Every CLI-side git call on a task worktree first registers the record's `gitDir`/`commonDir`
+  (`system.trust_worktree`), so git reads the recorded repository and never the worktree's
+  `.git` file
 - `trace <ref> [--tail] [--export] [--json] [--pod <p>]`: The task's trace
   (`$TRACES_DIR/<project>/agent:<project>:<task-id>.jsonl`), one line per event with the tool
   name on `tool_call` lines; `--tail` follows until a `session_end` event and then returns;
@@ -327,7 +332,11 @@ The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.
   audited `task.retry`)
 - `cancel` requests cancellation of the task's live run (`core.runs.cancel_run`, which writes
   one `runs.cancel` audit entry and kills every tracked process group) and settles a stale
-  `running` claim as `failed` (`core.dispatch.reclaim_stale_running`)
+  `running` claim as `failed` (`core.dispatch.reclaim_stale_running`). A task parked in
+  `waiting_input` or `waiting_approval` is cancelled too (`core.dispatch.cancel_parked_task`): it
+  ends `cancelled` (the status a cancelled live run gives), its question or approval is cleared
+  (a pending approval record is denied) so `docket inbox` no longer lists it, no hop runs, and one
+  `task.cancel` audit entry names the project, task, prior status and channel `cli`
 **Output**: One confirmation line. `approve`, `answer`, `retry` and `--for` end with the run
 hint: `docket is running and will pick it up` when `docket start` is running, else
 `Next: docket run --pod <p>` on stderr, for a task ref and for an `apr-` token alike; `cancel` ends with `Next: docket task retry <id>` when it
@@ -993,6 +1002,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.7.0 (2026-10-13)
+- `task cancel` cancels a task parked in `waiting_input` or `waiting_approval`; `task diff` and the
+  `task show` diff hint use the git dirs docket recorded for the worktree.
 
 ### Version 2.6.0 (2026-10-13)
 - `setup profile [lights-out|attended]` and the `profile` pod setting (`pod set profile`), ADR 0025 D2.

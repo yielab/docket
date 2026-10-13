@@ -13,6 +13,7 @@ policy at every role. ``pod_gating_cost``'s token estimate is gating-only, never
 
 from __future__ import annotations
 
+import contextlib as _contextlib
 import datetime as _dt
 import fnmatch as _fnmatch
 import hashlib as _hashlib
@@ -3489,6 +3490,49 @@ def retry_task(project: str, task_id: str) -> bool:
     if found:
         _audit.audit_log("task.retry", f"{project}/{task_id}")
     return found
+
+
+def cancel_parked_task(project: str, task_id: str, *, channel: str, actor: str = "") -> str:
+    """Cancel a task parked in ``waiting_input`` or ``waiting_approval``: it ends ``cancelled``,
+    its question or approval is cleared (a pending approval record is denied) and no hop runs.
+    Audited ``task.cancel``. Returns the prior status, or ``""`` when the task is not parked."""
+    prior = ""
+    token = ""
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal prior, token
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        for t in tasks:
+            if t.get("id") != task_id:
+                continue
+            _normalize_task(t)
+            if t.get("status") not in ("waiting_input", "waiting_approval"):
+                return None
+            prior = str(t["status"])
+            token = str(t.get("approvalToken") or "")
+            for key in ("question", "approvalToken", "pendingApprovalIndex", "taskGrants"):
+                t.pop(key, None)
+            t["status"] = "cancelled"
+            t["reason"] = "cancelled by operator"
+            t["completedAt"] = _now()
+            t["claimId"] = None
+            return {"tasks": tasks}
+        return None
+
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    if not prior:
+        return ""
+    if token:
+        with _contextlib.suppress(_ap.ApprovalError):
+            _ap.approval_deny(token, channel, actor=actor)
+    tasks_after = doc.get("tasks")
+    _mem.sync_dispatch_tasks(
+        _cfg.workspace_dir(_pod.member_id(project, "lead")),
+        tasks_after if isinstance(tasks_after, list) else [],
+    )
+    _audit.audit_log("task.cancel", f"{project}/{task_id}: was={prior} channel={channel}")
+    return prior
 
 
 def unblock_pod(project: str) -> int:

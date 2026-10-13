@@ -89,11 +89,14 @@ def _worktree(project: str, task: dict[str, Any]) -> dict[str, str] | None:
     branch = str(record.get("branch") or "")
     codebase = str(_pod_codebase(project) or "")
     root = f"git -C {codebase} " if codebase else "git "
+    git_dir, common_dir = str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
+    _sys.trust_worktree(path, git_dir, common_dir)
+    where = f"--git-dir={git_dir} --work-tree={path}" if git_dir and common_dir else f"-C {path}"
     return {
         "path": path,
         "branch": branch,
         "baseCommit": base,
-        "diff": f"git -C {path} diff {base}",
+        "diff": f"git {where} diff {base}",
         "merge": f"{root}merge {branch}",
     }
 
@@ -825,15 +828,21 @@ def _task_cancel(
     ref: str = typer.Argument(..., help="Task id, short id or run id"),
     pod: str | None = pod_option(),
 ) -> None:
-    """Stop the run a task is in and settle a claim left behind by a dead dispatch.
+    """Stop the run a task is in, cancel a parked task, and settle a claim left behind by a dead
+    dispatch.
 
-    A live run is asked to stop and its processes are signalled. A task still marked running
-    whose dispatcher is gone is settled as failed, ready for `docket task retry`.
+    A live run is asked to stop and its processes are signalled. A task waiting for an answer or
+    an approval is cancelled and leaves the inbox. A task still marked running whose dispatcher
+    is gone is settled as failed, ready for `docket task retry`.
 
     Example: docket task cancel task-04ff
     """
     found = _resolve(pod, ref)
     cancelled = _cancel_live_runs(found, _task_record(found).get("status"))
+    parked = _dispatch.cancel_parked_task(found.project, found.task_id, channel="cli")
+    if parked:
+        ui.success(f"Cancelled task {short_id(found.task_id)}; it was {parked}")
+        cancelled += 1
     reclaimed = False
     if _task_record(found).get("status") == "running":
         _dispatch.reclaim_stale_running(found.project)
