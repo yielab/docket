@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.5.0
+**Version**: 3.6.0
 **Status**: Stable
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -408,6 +408,10 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 - The project segment must be non-empty and must pass `core.provisioning.validate_project_id`
   (specs/validation/input-validation.spec.md §1); either failure rejects with `400 {"error": ...}`,
   checked after the auth check and before the request body is even read (W36-C1).
+- A pod whose effective pipeline cannot be resolved (`DispatchError` from the pod's settings or its
+  bound pipeline: copy missing, unreadable or hash-mismatched) is answered like `POST /tasks/<project>`:
+  `404` when there is no pod for the project, otherwise `400 {"error": <the error text>}`; no run
+  record is created and the connection is never dropped.
 - A body that is not a JSON object (e.g. malformed JSON, or valid JSON that isn't an object) is
   rejected with `400` before any pipeline is even resolved.
 - A missing `required` pipeline variable (one absent from both the body and the pipeline's own
@@ -772,6 +776,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.6.0 (2026-10-13)
+
+- `POST /dispatch/<project>` maps a `DispatchError` raised while resolving the effective pipeline to
+  404 (no pod) or 400 instead of dropping the connection.
 
 ### Version 3.5.0 (2026-10-12)
 

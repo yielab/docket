@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.6.0
+**Version**: 2.7.1
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -292,7 +292,8 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   and reported with the reason; `--force` (confirmed, or `--yes` off a TTY) removes them anyway
   (the unmerged branch stays) and audits it (`pod.worktrees.prune`). `--traces` also deletes
   TERMINATED trace files of the pod past `TRACE_RETENTION_DAYS` (an OPEN trace is never deleted)
-  and terminal run records past the same window; `--days N` overrides it and without `--traces`
+  and terminal run records of the pod past the same window (another pod's records are never
+  touched; `core.runs.prune_terminal(project=None)` is fleet-wide only for the serve sweep); `--days N` overrides it and without `--traces`
   exits 2. `--dry-run` changes nothing. Ends with `Next: docket task list`
 **Output**: Every bracketed identifier and every task description or failure reason is printed
 literally, never interpreted as terminal markup
@@ -993,6 +994,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.7.1 (2026-10-13)
+- `task prune --traces --pod X` removes only pod X's terminal run records (it removed every pod's).
+- The generated per-agent AGENTS.md no longer tells the agent to write multi-step work to HEARTBEAT.md
+  (dispatch maintains the ledger); `TEMPLATE_VERSION` 4 -> 5.
 
 ### Version 2.6.0 (2026-10-13)
 - `setup profile [lights-out|attended]` and the `profile` pod setting (`pod set profile`), ADR 0025 D2.

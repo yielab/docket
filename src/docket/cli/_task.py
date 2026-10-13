@@ -464,7 +464,7 @@ def _prune_records(project: str, days: int | None, dry_run: bool) -> None:
     report = _trace.expire_old_traces(retention_s=retention_s, dry_run=dry_run, project=project)
     verb = "Would delete" if dry_run else "Deleted"
     ui.info(f"{verb} {report.expired_count} trace file(s) past {report.retention_s // 86400} days.")
-    removed = _runs.prune_terminal(retention_s=retention_s, dry_run=dry_run)
+    removed = _runs.prune_terminal(retention_s=retention_s, dry_run=dry_run, project=project)
     ui.info(f"{'Would remove' if dry_run else 'Removed'} {removed} terminal run record(s).")
 
 
