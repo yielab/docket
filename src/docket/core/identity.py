@@ -32,6 +32,7 @@ from docket.core import context as _context
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
 from docket.core import policy as _policy
+from docket.core import repo_view as _repo_view
 from docket.core import skills as _skills
 from docket.core.audit import audit_log
 from docket.core.memory import HEARTBEAT_FILE, MEMORY_FILE, REQUIRED_STARTUP_FILE
@@ -417,7 +418,13 @@ def project_instruction_files(
     relative_paths = settings.project_instructions
     if relative_paths:
         return relative_paths, "set"
-    if (root / _DEFAULT_PROJECT_INSTRUCTIONS_FILE).is_file():
+    view = _repo_view.view_for(root)
+    present = (
+        view.is_file(_DEFAULT_PROJECT_INSTRUCTIONS_FILE)
+        if view is not None
+        else (root / _DEFAULT_PROJECT_INSTRUCTIONS_FILE).is_file()
+    )
+    if present:
         return (_DEFAULT_PROJECT_INSTRUCTIONS_FILE,), "default"
     return (), ""
 
@@ -448,14 +455,17 @@ def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) ->
         return ""
     role = _fleet.meta_get(agent_id, "role", "")
     parts: list[str] = []
+    view = _repo_view.view_for(root)
     for rel in relative_paths:
-        path = root / rel
-        if not path.is_file():
+        if view is not None:
+            text = view.read_text(rel)
+        else:
+            path = root / rel
+            text = _read_workspace_text(path) if path.is_file() else None
+        if text is None:
             parts.append(f"[... {rel} not found ...]")
             continue
-        screened, status = _screen_project_instructions_file(
-            role, rel, _read_workspace_text(path), project=project
-        )
+        screened, status = _screen_project_instructions_file(role, rel, text, project=project)
         parts.append(screened if status == "omitted" else f"## {rel}\n{screened}")
     return "\n\n".join(parts)
 

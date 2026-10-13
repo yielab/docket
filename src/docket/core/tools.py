@@ -670,7 +670,20 @@ def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     if skill is None:
         known = ", ".join(sorted(discovered)) or "(none)"
         return ToolOutcome(False, error=f"unknown skill {name!r}; known skills: {known}")
-    outcome = toolbox.read_file((skill.directory,), _str_arg(args, "path", "SKILL.md"))
+    skill_path = _str_arg(args, "path", "SKILL.md")
+    if skill.view is not None:
+        parts = skill_path.split("/")
+        if skill_path.startswith("/") or any(p in ("", ".", "..") for p in parts):
+            outcome = ToolOutcome(False, error=f"not a file: {skill_path}", refusal="path_escape")
+        else:
+            text = skill.view.read_text(f"{_skills.CODEBASE_SKILLS_REL}/{name}/{skill_path}")
+            outcome = (
+                ToolOutcome(False, error=f"not a file: {skill_path}")
+                if text is None
+                else toolbox.text_outcome(text)
+            )
+    else:
+        outcome = toolbox.read_file((skill.directory,), skill_path)
     # A skill body is repository prose, the same trust class as a fetched page or an MCP
     # result: screened as untrusted input before the model reads it.
     return screen_tool_result(

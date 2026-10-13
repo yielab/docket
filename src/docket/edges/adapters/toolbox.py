@@ -94,6 +94,11 @@ def resolve_within(roots: tuple[Path, ...], candidate: str) -> Path:
 # ── file tools ────────────────────────────────────────────────────────────────
 
 
+def text_outcome(text: str) -> ToolOutcome:
+    """A successful outcome carrying *text*, bounded like a ``read`` result."""
+    return ToolOutcome(True, content=_truncate(text))
+
+
 def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 0) -> ToolOutcome:
     """Read a text file, optionally a line window of it (1-indexed *offset*)."""
     try:

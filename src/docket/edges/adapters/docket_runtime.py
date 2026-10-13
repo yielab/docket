@@ -27,6 +27,7 @@ from docket.core import agent_loop as _loop
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp
 from docket.core import pod as _pod
+from docket.core import repo_view as _repo_view
 from docket.core import runs as _runs
 from docket.core import session as _session
 from docket.core import telemetry as _telemetry
@@ -190,6 +191,38 @@ def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> s
         if candidate_path.parent == tasks_dir and candidate_path.is_dir():
             return str(candidate_path)
     return ""
+
+
+def _base_commit_view(
+    pipeline_worktree: str, project: str, task_id: str
+) -> _repo_view.RepoView | None:
+    """The codebase's files at the task's recorded ``baseCommit``, or ``None`` (read the filesystem)
+    without a task worktree, a base commit or recorded git dirs: without those, host-side git
+    could not be kept off the worktree's own agent-writable ``.git`` file."""
+    if not pipeline_worktree or not task_id:
+        return None
+    from docket.core import dispatch as _dispatch
+
+    try:
+        tasks = _dispatch.read_tasks(project)
+    except Exception:  # an unreadable queue file must not fail the turn
+        return None
+    record = next((t.get("worktree") for t in tasks if t.get("id") == task_id), None)
+    if not isinstance(record, dict):
+        return None
+    base = str(record.get("baseCommit") or "")
+    git_dir, common_dir = str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
+    recorded = str(record.get("dir") or "")
+    if not (base and git_dir and common_dir and recorded):
+        return None
+    if Path(recorded).resolve() != Path(pipeline_worktree).resolve():
+        return None
+    _system.trust_worktree(pipeline_worktree, git_dir, common_dir)
+    return _repo_view.RepoView(
+        base,
+        lambda rel: _system.git_read_blob(pipeline_worktree, base, rel),
+        lambda rel: _system.git_list_tree_dirs(pipeline_worktree, base, rel),
+    )
 
 
 def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
@@ -554,19 +587,28 @@ class DocketDriver:
                 else None
             ),
         )
-        result = _loop.run_agent_turn(
-            backend,
-            registry,
-            ctx,
-            session_key,
-            message,
-            config=loop_config,
-            trace_project=trace_project,
-            trace_session_key=trace_session_key,
-            trace_task_id=trace_task_id or "",
-        )
+        view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or env_task_id)
+        view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None
+        try:
+            result = _loop.run_agent_turn(
+                backend,
+                registry,
+                ctx,
+                session_key,
+                message,
+                config=loop_config,
+                trace_project=trace_project,
+                trace_session_key=trace_session_key,
+                trace_task_id=trace_task_id or "",
+            )
+        finally:
+            if view_token is not None:
+                _repo_view.unregister(view_token)
 
-        return _turn_result_from(result)
+        turn = _turn_result_from(result)
+        if view is not None:
+            turn.repo_files = dict(view.composed)
+        return turn
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         """Enumerate this agent's sessions. A directory name is the percent-encoded session KEY

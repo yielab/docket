@@ -38,6 +38,7 @@ _RUNTIME_FILES = (
     "core/plugins.py",
     "core/policy.py",
     "core/provider.py",
+    "core/repo_view.py",
     "core/runtime_driver.py",
     "core/security.py",
     "core/session.py",
