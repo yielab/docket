@@ -1,6 +1,6 @@
 """A recipe may declare pod-scoped MCP servers (``mcp-servers/*.yaml``, ``kind: mcp-server``).
 
-Installed only by ``docket pod apply`` (ADR 0012), live for that pod's turns only, never
+Installed only by ``docket pod update`` (ADR 0012), live for that pod's turns only, never
 selectable by another pod, and round-tripped by ``pod export``. See mcp-client.spec.md
 ("Pod-scoped servers") and config-format.spec.md.
 """

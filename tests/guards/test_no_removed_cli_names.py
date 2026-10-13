@@ -64,7 +64,7 @@ class TestTable:
             ("docket pod <p> queue", "docket task list"),
             ("docket pod <project> config set budgetUsd 20", "docket pod set budgetUsd 20"),
             ("docket pod <project> config unset pipeline", "docket pod unset pipeline"),
-            ("docket pod <p> apply recipe", "docket pod apply recipe"),
+            ("docket pod <p> apply recipe", "docket pod update recipe"),
             ("docket pod <p> remove x-reviewer", "docket pod remove x-reviewer"),
             (
                 'docket pod <p> set-verify x-impl "make test"',
@@ -123,7 +123,7 @@ class TestTable:
         assert rcn.rewrite_text(once) == once
 
     def test_live_pod_verbs_are_not_taken_for_a_pod_name(self) -> None:
-        for line in ("docket pod set budgetUsd 20", "docket pod apply x", "docket pod reset m"):
+        for line in ("docket pod set budgetUsd 20", "docket pod update x", "docket pod reset m"):
             assert rcn.rewrite_line(line) == line
             assert not rcn.survivors(line)
 

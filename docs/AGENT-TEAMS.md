@@ -84,7 +84,7 @@ templates, gate contract, denied tools, and tool profile.
 ```bash
 docket pod roles                 # every registered archetype: built-in, starter, user
 docket pod roles reviewer        # one archetype's full definition (YAML/JSON)
-docket pod apply ./producer.yaml  # register a custom archetype from a YAML file
+docket pod update ./producer.yaml  # register a custom archetype from a YAML file
 docket pod validate ./producer.yaml   # dry-run the schema + template render
 ```
 
@@ -105,7 +105,7 @@ ships six more you can drop into any pod without writing a line of YAML:
 
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod add researcher`. A user-authored archetype (a standalone YAML file,
-`docket pod apply`) can add a brand-new role name or override an existing one — merged into
+`docket pod update`) can add a brand-new role name or override an existing one — merged into
 `~/.docket/docket-roles.json`, "user wins" by name; `--pod <p>` scopes it to one pod. A denied tool
 is absent from that role's turn, not merely discouraged: it is the only capability statement a role
 carries (`cannot:` in the short form), and denying a tool denies every tool of its kind, MCP tools
@@ -161,7 +161,7 @@ compose a custom shape today, provision the closest built-in and add roles by ha
 `spec-first`, `spec-writer`, `reflexion`, `dual-review`, `cross-family-review`, `frugal`), checks
 that fail a task whose tests prove nothing (`anti-tautology`, `mutation`), and a tool pack
 (`code-intel`). `docket pod recipes` shows what each brings, derived from
-its files; `docket init --recipe tdd` starts a new pod from one, `docket pod apply
+its files; `docket init --recipe tdd` starts a new pod from one, `docket pod update
 git-safety` applies one onto a pod that already exists, and a directory under
 `~/.docket/recipes/<name>/` is addressable the same way. A recipe is the same directory shape as
 a repository's own `.docket/`, which plain `docket init` discovers, validates and applies when it
@@ -304,9 +304,9 @@ Implementer," from `SOUL.md`). Display names resolve from role; docket-managed w
 self-authored `IDENTITY.md`. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
 
 A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
-templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod apply` when
+templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod update` when
 they drift from the current archetype), the **operator-owned** `INSTRUCTIONS.md` right after
-`SOUL.md` (docket never writes it, so it survives `docket pod apply` and `docket pod reset`), and a
+`SOUL.md` (docket never writes it, so it survives `docket pod update` and `docket pod reset`), and a
 `projectInstructions` section — the repository's `AGENTS.md` by default, or the codebase files
 named with `docket pod set projectInstructions <path,...>`, screened through the same
 `pre_input` policy hook as any other input and restricted to relative paths that can't escape the
@@ -379,7 +379,7 @@ docket pod recipes                      # the eighteen shipped recipes and your 
 docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a methodology) or
                                          #   your own directory; a committed .docket/ is applied
                                          #   by plain `docket init`
-docket pod apply <name|dir>    # apply a recipe name or a directory such as .docket
+docket pod update <name|dir>    # apply a recipe name or a directory such as .docket
 docket pod export [<dir>]      # write the pod's own scope back to .docket/
 docket pod validate [<dir|file>]       # check every kind: document before applying
 docket pod show                         # list members
@@ -391,7 +391,7 @@ docket pod delete                      # tear down the whole pod
 # Role archetypes
 docket pod roles                        # every registered archetype
 docket pod roles <name>                 # one archetype's full definition
-docket pod apply <file.yaml>             # register/override a custom archetype
+docket pod update <file.yaml>             # register/override a custom archetype
 docket pod validate [file.yaml]        # dry-run schema + template validation
 
 # Run the pipeline

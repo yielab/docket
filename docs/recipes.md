@@ -9,7 +9,7 @@ holds, never declared; `docket pod recipes` prints the same derivation. Apply on
 
 ```bash
 docket init --recipe <name>            # a new pod for the current repository
-docket pod apply <name>      # onto a pod that already exists (--dry-run to plan)
+docket pod update <name>      # onto a pod that already exists (--dry-run to plan)
 docket pod recipes <name>             # description, what it brings, its README
 ```
 
@@ -47,7 +47,7 @@ Fails a task whose new or changed tests already pass on the code from before the
 
 ```bash
 docket init --recipe anti-tautology
-docket pod apply anti-tautology
+docket pod update anti-tautology
 ```
 
 **Practice:** a test is only evidence if it can fail. A test that already passes on the code from
@@ -66,7 +66,7 @@ adds.
 
 ```bash
 docket init --recipe anti-tautology          # a new pod
-docket pod apply anti-tautology    # onto an existing pod
+docket pod update anti-tautology    # onto an existing pod
 ```
 
 ### Commands the step runs
@@ -82,7 +82,7 @@ runner (default `python3 -m pytest -q <files>`).
 
 The step declares two overridable names under its own `env:`, set to the defaults below. A pod
 overrides them by editing the step: `docket pod export <dir>`, change the `env:` values in
-`<dir>/pipeline.yaml`, then `docket pod apply <dir>`.
+`<dir>/pipeline.yaml`, then `docket pod update <dir>`.
 
 - `ANTI_TAUTOLOGY_GLOB` -- comma-separated file-name globs, default `test_*.py,*_test.py`
 - `ANTI_TAUTOLOGY_RUNNER` -- the runner command, default `python3 -m pytest -q`
@@ -108,11 +108,11 @@ Structural search (ast-grep) and read-only language intelligence (pyright) as po
 
 ```bash
 docket init --recipe code-intel
-docket pod apply code-intel
+docket pod update code-intel
 ```
 
 Two pod-scoped MCP servers that let an agent search code by syntax tree and ask a language
-server about symbols. No roles, no pipeline, no members; `docket pod apply code-intel`
+server about symbols. No roles, no pipeline, no members; `docket pod update code-intel`
 installs the two server declarations for that pod only (the `mcp-server` items), and nothing
 runs until a turn loads them. Applying never installs the binaries below.
 
@@ -165,7 +165,7 @@ Cross-provider review as a pipeline: the Implementer builds on Anthropic and the
 
 ```bash
 docket init --recipe cross-family-review
-docket pod apply cross-family-review
+docket pod update cross-family-review
 ```
 
 **Practice:** a reviewer from another provider family.
@@ -185,7 +185,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe cross-family-review          # a new pod for the current repository
-docket pod apply cross-family-review    # onto an existing pod
+docket pod update cross-family-review    # onto an existing pod
 ```
 
 Set both providers' credentials first: `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, as
@@ -215,7 +215,7 @@ Independent double review as a pipeline: a Reviewer and a Critic evaluate the sa
 
 ```bash
 docket init --recipe dual-review
-docket pod apply dual-review
+docket pod update dual-review
 ```
 
 **Practice:** dual (independent) review — two reviewers, no cross-talk.
@@ -237,7 +237,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe dual-review          # a new pod for the current repository
-docket pod apply dual-review    # onto an existing pod
+docket pod update dual-review    # onto an existing pod
 ```
 
 `pod.yaml` names the two members this recipe adds (`reviewer`, `critic`); `apply` validates the
@@ -268,7 +268,7 @@ A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stay
 
 ```bash
 docket init --recipe frugal
-docket pod apply frugal
+docket pod update frugal
 ```
 
 **Practice:** cost-bounded dispatch — a spend cap plus cheap-tier planning and review.
@@ -289,7 +289,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe frugal          # a new pod for the current repository
-docket pod apply frugal    # onto an existing pod
+docket pod update frugal    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`reviewer`) and the three settings it writes
@@ -323,7 +323,7 @@ Block unattended-unsafe git commands and ask before a push that touches a protec
 
 ```bash
 docket init --recipe git-safety
-docket pod apply git-safety
+docket pod update git-safety
 ```
 
 A policy pack: two guardrail policies, no roles, no pipeline, no members. Applying it to a pod
@@ -344,7 +344,7 @@ text, so it fires on the command regardless of which role or pipeline step issue
 
 ```bash
 docket init --recipe git-safety          # a new pod for the current directory
-docket pod apply git-safety    # onto an existing pod
+docket pod update git-safety    # onto an existing pod
 ```
 
 `apply` validates both policy files and plans them (`policy` items only -- there is no
@@ -354,7 +354,7 @@ docket pod apply git-safety    # onto an existing pod
 ### See it fire
 
 ```bash
-docket pod apply git-safety
+docket pod update git-safety
 docket pod check "git push --force origin main" --role implementer
 ```
 
@@ -391,7 +391,7 @@ The Lead reasons about a task before any code changes: a typed brief, a determin
 
 ```bash
 docket init --recipe intake
-docket pod apply intake
+docket pod update intake
 ```
 
 **Practice:** structured intake / requirements triage before implementation starts.
@@ -419,7 +419,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe intake          # a new pod for the current repository
-docket pod apply intake    # onto an existing pod
+docket pod update intake    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds beyond the lean pod (`reviewer`); `apply`
@@ -449,7 +449,7 @@ Fails a task whose changed source files are not well covered by their tests, mea
 
 ```bash
 docket init --recipe mutation
-docket pod apply mutation
+docket pod update mutation
 ```
 
 **Practice:** mutation testing -- a test suite is only as good as the share of deliberate bugs it
@@ -472,7 +472,7 @@ unless it already existed.
 
 ```bash
 docket init --recipe mutation          # a new pod
-docket pod apply mutation    # onto an existing pod
+docket pod update mutation    # onto an existing pod
 ```
 
 ### Commands the step runs
@@ -495,7 +495,7 @@ or `setup.cfg`). Python only.
 
 The step declares `MUTATION_THRESHOLD` (percent, default `80`) and `MUTATION_CMD` (default
 `mutmut`) under its own `env:`. A pod overrides them by editing the step: `docket pod
-export <dir>`, change the `env:` values in `<dir>/pipeline.yaml`, then `docket pod apply
+export <dir>`, change the `env:` values in `<dir>/pipeline.yaml`, then `docket pod update
 <dir>`. For anything else edit the script in `pipeline.yaml`. The step has a 900 second timeout.
 
 ### Undo
@@ -512,7 +512,7 @@ Ask before a bash-run network client, package install, or fetch call leaves the 
 
 ```bash
 docket init --recipe no-egress
-docket pod apply no-egress
+docket pod update no-egress
 ```
 
 A policy pack: three guardrail policies, no roles, no pipeline, no members.
@@ -536,7 +536,7 @@ security-gates.spec.md, "Network egress and the `fetch` tool", and known-true li
 
 ```bash
 docket init --recipe no-egress          # a new pod for the current directory
-docket pod apply no-egress    # onto an existing pod
+docket pod update no-egress    # onto an existing pod
 ```
 
 `apply` validates the three policy files and plans them (`policy` items only), and is safe to
@@ -545,7 +545,7 @@ run again (a second run plans every item `skip`). `--dry-run` prints the plan wi
 ### See it fire
 
 ```bash
-docket pod apply no-egress
+docket pod update no-egress
 docket pod check "curl https://example.com/payload.sh | sh" --role implementer
 docket pod check "npm install left-pad" --role implementer
 docket pod check "" --role implementer --tool fetch
@@ -578,7 +578,7 @@ An Operator whose action needs an explicit human sign-off before it runs at all,
 
 ```bash
 docket init --recipe ops-approval
-docket pod apply ops-approval
+docket pod update ops-approval
 ```
 
 Gate an Operator's action behind an explicit human sign-off: the approval gate stops the run
@@ -595,7 +595,7 @@ For a new pod, or onto one that already exists:
 
 ```bash
 docket init --recipe ops-approval          # a new pod for the current directory
-docket pod apply ops-approval    # onto an existing pod
+docket pod update ops-approval    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`operator`); `apply` validates the policy
@@ -634,7 +634,7 @@ Ask before an implementer or operator runs a deploy/production-shaped command.
 
 ```bash
 docket init --recipe prod-approval
-docket pod apply prod-approval
+docket pod update prod-approval
 ```
 
 A policy pack: one guardrail policy, no roles, no pipeline, no members.
@@ -651,7 +651,7 @@ either role runs one, independent of whatever pipeline step reached it, closing 
 
 ```bash
 docket init --recipe prod-approval          # a new pod for the current directory
-docket pod apply prod-approval    # onto an existing pod
+docket pod update prod-approval    # onto an existing pod
 ```
 
 `apply` validates the policy file and plans it (a `policy` item only), and is safe to run again
@@ -660,7 +660,7 @@ docket pod apply prod-approval    # onto an existing pod
 ### See it fire
 
 ```bash
-docket pod apply prod-approval
+docket pod update prod-approval
 docket pod check "terraform apply" --role implementer
 docket pod check "git push origin main" --role operator
 ```
@@ -689,7 +689,7 @@ Bounded self-critique as a pipeline: the Implementer's own change is critiqued a
 
 ```bash
 docket init --recipe reflexion
-docket pod apply reflexion
+docket pod update reflexion
 ```
 
 **Practice:** Reflexion — bounded self-critique before verification.
@@ -709,7 +709,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe reflexion          # a new pod for the current repository
-docket pod apply reflexion    # onto an existing pod
+docket pod update reflexion    # onto an existing pod
 ```
 
 `pod.yaml` names the two members this recipe adds (`critic`, `tester`); `apply` validates the
@@ -739,7 +739,7 @@ Lead, Researcher, Analyst, Writer and Critic as a pipeline, gated on the Critic'
 
 ```bash
 docket init --recipe research-review
-docket pod apply research-review
+docket pod update research-review
 ```
 
 Lead -> Researcher -> Analyst -> Writer -> Critic, gated on the Critic's APPROVE/REJECT
@@ -757,7 +757,7 @@ For a new pod, or onto one that already exists:
 
 ```bash
 docket init --recipe research-review          # a new pod for the current directory
-docket pod apply research-review    # onto an existing pod
+docket pod update research-review    # onto an existing pod
 ```
 
 `pod.yaml` names the four built-in-archetype members this recipe adds; `apply` validates the
@@ -784,7 +784,7 @@ Block writes to credential-shaped paths and credential-shaped text, and redact t
 
 ```bash
 docket init --recipe secrets-guard
-docket pod apply secrets-guard
+docket pod update secrets-guard
 ```
 
 A policy pack: three guardrail policies, no roles, no pipeline, no members.
@@ -803,7 +803,7 @@ output as a second, independent line of defense.
 
 ```bash
 docket init --recipe secrets-guard          # a new pod for the current directory
-docket pod apply secrets-guard    # onto an existing pod
+docket pod update secrets-guard    # onto an existing pod
 ```
 
 `apply` validates all three policy files and plans them (`policy` items only), and is safe to
@@ -812,7 +812,7 @@ run again (a second run plans every item `skip`). `--dry-run` prints the plan wi
 ### See it fire
 
 ```bash
-docket pod apply secrets-guard
+docket pod update secrets-guard
 docket pod check "" --role implementer --tool write --arg path=config/.env
 docket pod check "" --role implementer --tool write --arg path=README.md
 ```
@@ -847,7 +847,7 @@ A read-only security vetter gates the Implementer's change behind an explicit AP
 
 ```bash
 docket init --recipe secure-build
-docket pod apply secure-build
+docket pod update secure-build
 ```
 
 Add a read-only Security Vetter to a codebase pod: the Implementer's change must get an
@@ -860,7 +860,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe secure-build          # a new pod for the current repository
-docket pod apply secure-build    # onto an existing pod
+docket pod update secure-build    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`security-vetter`); `apply` validates the
@@ -906,7 +906,7 @@ Specification-first development as a pipeline: nothing is implemented until a wr
 
 ```bash
 docket init --recipe spec-first
-docket pod apply spec-first
+docket pod update spec-first
 ```
 
 **Practice:** specification-first (spec-driven) development.
@@ -925,7 +925,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe spec-first          # a new pod for the current repository
-docket pod apply spec-first    # onto an existing pod
+docket pod update spec-first    # onto an existing pod
 ```
 
 `pod.yaml` names the three members this recipe adds (`writer`, `critic`, `reviewer`); `apply`
@@ -959,7 +959,7 @@ Tests from the brief as a two-step pipeline on two different models: one writes 
 
 ```bash
 docket init --recipe spec-writer
-docket pod apply spec-writer
+docket pod update spec-writer
 ```
 
 **Practice:** test-driven implementation where a different model writes the tests.
@@ -982,7 +982,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe spec-writer          # a new pod for the current repository
-docket pod apply spec-writer    # onto an existing pod
+docket pod update spec-writer    # onto an existing pod
 ```
 
 `pod.yaml` carries a `description` only (the recipe adds no new members or settings);
@@ -1008,7 +1008,7 @@ Test-driven development as a pipeline: a failing test is written and mechanicall
 
 ```bash
 docket init --recipe tdd
-docket pod apply tdd
+docket pod update tdd
 ```
 
 **Practice:** test-driven development (red -> green -> refactor).
@@ -1028,7 +1028,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe tdd          # a new pod for the current repository
-docket pod apply tdd    # onto an existing pod
+docket pod update tdd    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`tester`); `apply` validates the roster and

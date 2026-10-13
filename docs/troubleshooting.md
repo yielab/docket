@@ -478,7 +478,7 @@ into MEMORY.md first:
 docket pod reset <agent-id>
 ```
 
-For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod apply`.
+For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod update`.
 
 ## Non-interactive runs (`docket exec`)
 
@@ -565,5 +565,5 @@ outcome** — one stopped on a specific denied tool call, the other never starte
 5. **Emergency reset:**
    ```bash
    # If all else fails: re-render a pod's member files
-   docket pod apply
+   docket pod update
    ```

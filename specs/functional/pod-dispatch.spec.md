@@ -1644,7 +1644,7 @@ any CLI rendering of this evidence.*
    selects in-place provisioning defaults to off.
 2. An in-place run **MUST** provision its pod through the same core provisioning function that
    `docket init` uses, and **MUST** apply its recipe through the same plan-then-apply path that
-   `docket pod apply` uses.
+   `docket pod update` uses.
 3. Every member of an in-place pod **MUST** run on the one model the run was given, including
    members a recipe adds.
 4. The run's approval mode **MUST** be written through the typed pod-setting coercion, never as a

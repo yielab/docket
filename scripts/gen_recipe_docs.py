@@ -36,7 +36,7 @@ holds, never declared; `docket pod recipes` prints the same derivation. Apply on
 
 ```bash
 docket init --recipe <name>            # a new pod for the current repository
-docket pod apply <name>      # onto a pod that already exists (--dry-run to plan)
+docket pod update <name>      # onto a pod that already exists (--dry-run to plan)
 docket pod recipes <name>             # description, what it brings, its README
 ```
 
@@ -102,7 +102,7 @@ def render() -> str:
         lines.append("")
         lines.append("```bash")
         lines.append(f"docket init --recipe {p.name}")
-        lines.append(f"docket pod apply {p.name}")
+        lines.append(f"docket pod update {p.name}")
         lines.append("```")
         lines.append("")
         body = _readme_body(p)

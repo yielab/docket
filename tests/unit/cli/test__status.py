@@ -190,3 +190,53 @@ class TestParkedQuestionAndSandbox:
             lambda: {"isolation": "on", "network": "none", "backend": "docker"},
         )
         assert _json("--pod", "demo")["isolation"] == "on (docker, network none)"
+
+
+class TestCommandsRows:
+    """`status` names the commands the operator allowed and any the repository since changed."""
+
+    def _reviewed(self, tmp_path: Path, run: str) -> Path:
+        from docket.core import reviewed_repos as _rr
+        from docket.core.pod_apply import RunItem
+
+        code = tmp_path / "code"
+        (code / ".docket").mkdir(parents=True)
+        (code / ".docket" / "pipeline.yaml").write_text(
+            f"name: p\nsteps:\n  - id: migrate\n    run: {run}\n"
+        )
+        _rr.remember(code, (RunItem("pipeline-step", "migrate", "make migrate"),))
+        return code
+
+    def test_allowed_and_changed_rows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import fleet as _fleet
+        from docket.core import pod as _pod_core
+
+        _seed(tmp_path, monkeypatch)
+        code = self._reviewed(tmp_path, "make evil")
+        _fleet.meta_set(_pod_core.member_id("demo", "lead"), "codebase", str(code))
+        result = runner.invoke(_app, ["status", "--pod", "demo"])
+        assert result.exit_code == 0
+        assert "Commands:" in result.output
+        assert "1 allowed on " in result.output and "(code " in result.output
+        assert "1 changed in the repository, waiting for your OK: docket run asks" in (
+            result.output
+        )
+
+    def test_no_review_no_rows(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _seed(tmp_path, monkeypatch)
+        result = runner.invoke(_app, ["status", "--pod", "demo"])
+        assert "Commands" not in result.output
+
+    def test_unchanged_has_no_changed_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import fleet as _fleet
+        from docket.core import pod as _pod_core
+
+        _seed(tmp_path, monkeypatch)
+        code = self._reviewed(tmp_path, "make migrate")
+        _fleet.meta_set(_pod_core.member_id("demo", "lead"), "codebase", str(code))
+        result = runner.invoke(_app, ["status", "--pod", "demo"])
+        assert "1 allowed on " in result.output and "changed in the repository" not in result.output

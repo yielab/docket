@@ -5,7 +5,7 @@
 `~/.docket/workspaces/projects/`. There are no shared agents: no workspace is provisioned outside a pod. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
 requirement and role-archetypes.spec.md. P26-10 adds the operator-owned `INSTRUCTIONS.md` and
-`docket pod apply` — see the same requirement and pod-dispatch.spec.md. P26-20 added
+`docket pod update` — see the same requirement and pod-dispatch.spec.md. P26-20 added
 "Shipped-data templates" below: `templates/recipes/<name>/` ships alongside this spec's own
 `templates/policies/` as read-only package data, neither of which is itself a workspace. P31-2
 adds requirement 4: `$DOCKET_HOME/recipes/<name>/`, the operator's own recipes, is *not*
@@ -99,12 +99,12 @@ covers the resulting file set for either workspace kind, not blueprint selection
 6. `INSTRUCTIONS.md` **MAY** exist in any project-agent workspace, pod member or not.
    Unlike every other file above it is **operator-owned**: docket **MUST NOT** create,
    write, regenerate, move, or delete it at any point — not at provisioning, not by
-   `docket pod apply`, not by `pod set verify`'s TOOLS.md rewrite, not by `docket pod
+   `docket pod update`, not by `pod set verify`'s TOOLS.md rewrite, not by `docket pod
    reset`, and not by `docket setup --fix`. When present, its content is composed into
    the live prompt immediately after `SOUL.md` (agent-loop.spec.md requirement 30) so an
    operator's own instructions survive every regeneration path that would otherwise
    overwrite a generated file. A pod member's `SOUL.md`/`AGENTS.md`/`TOOLS.md` remain
-   fully regeneratable — `docket pod apply [--dry-run]` re-renders whichever of them
+   fully regeneratable — `docket pod update [--dry-run]` re-renders whichever of them
    have drifted from the member's current role archetype and stored metadata (a
    `POD_TEMPLATE_VERSION` bump, or the archetype's own content changing), applying the
    new text and restamping `templateVersion` in `.docket-meta.json`; `--dry-run` prints
@@ -144,7 +144,7 @@ permission/provisioning rules apply to.
    through a `docket.config` accessor (`policy_templates_dir()`, `recipes_dir()`) rather than a
    hardcoded relative path, so a template's real location can never drift from where the
    installed package actually put it.
-2. A role a recipe provisions (e.g. `docket pod add security-vetter` after `docket pod apply
+2. A role a recipe provisions (e.g. `docket pod add security-vetter` after `docket pod update
    templates/recipes/secure-build/roles/security-vetter.yaml`) **MUST** produce a workspace
    satisfying every requirement above — the same `700`/`600` permissions, the same required core
    files, the same contract marker. A recipe is a source of *archetype data*
@@ -192,7 +192,7 @@ docket init [<project>] [location] [--blueprint <name>]  # Provision a pod (see 
 docket pod add <role> [--pod <name>]         # Add a member workspace to an existing pod
 docket setup --fix          # Verify/repair structure and permissions
 docket pod reset <member>                 # Distill memory, then regenerate all files from metadata
-docket pod apply [--dry-run]     # Re-render stale pod-member SOUL/AGENTS/TOOLS
+docket pod update [--dry-run]     # Re-render stale pod-member SOUL/AGENTS/TOOLS
 docket setup [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md in a pod member
 ```
 

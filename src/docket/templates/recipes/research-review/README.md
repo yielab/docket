@@ -15,7 +15,7 @@ For a new pod, or onto one that already exists:
 
 ```bash
 docket init --recipe research-review          # a new pod for the current directory
-docket pod apply research-review    # onto an existing pod
+docket pod update research-review    # onto an existing pod
 ```
 
 `pod.yaml` names the four built-in-archetype members this recipe adds; `apply` validates the

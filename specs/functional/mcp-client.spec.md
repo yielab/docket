@@ -301,7 +301,7 @@ This specification does NOT cover:
 38. `PodSettings` `mcpServers` **MUST** accept a global name or a name in this pod's own
     pod-scoped file, and **MUST** refuse any other name; a name that belongs to another pod
     **MUST** be refused with an error saying so. Nothing installs a pod-scoped server except
-    `docket pod apply` (ADR 0012): `validate`, `apply --dry-run`, `init --no-apply` and
+    `docket pod update` (ADR 0012): `validate`, `apply --dry-run`, `init --no-apply` and
     dispatch write nothing.
 
 ### Turn root for stdio servers

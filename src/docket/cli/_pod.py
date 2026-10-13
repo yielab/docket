@@ -611,7 +611,7 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
         _pod_config_set_schedule(project, lead_id, value)
         return
     if key in pod.PodSettings.RECORDED_KEYS:
-        ui.error(f"{key} is written by apply, not by set")
+        ui.error(f"{key} is written by update, not by set")
         raise typer.Exit(1)
     try:
         coerced = pod.PodSettings.coerce(key, value, project=project)

@@ -1,7 +1,7 @@
 """Shipped recipe bundles (``templates/recipes/<name>/``) are real, tested and configurable.
 
 Each recipe is data only: role YAML(s), a pipeline YAML, a small `pod.yaml`, and an optional
-policy pack, applied in one command (`docket pod apply`, `core.pod_apply`). The tests below
+policy pack, applied in one command (`docket pod update`, `core.pod_apply`). The tests below
 read exactly what the wheel ships (`docket.config.recipes_dir()`), so a recipe that fails to
 validate, resolve against a real roster, or actually dispatch fails here first, never only in an
 operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
@@ -152,7 +152,7 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
 def test_recipe_applies_cleanly_to_a_fixture_pod(
     recipe_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``docket pod apply <recipe_dir>`` leaves every pipeline step resolvable -- a policy
+    """``docket pod update <recipe_dir>`` leaves every pipeline step resolvable -- a policy
     pack has no pipeline to resolve, so applying it cleanly is the whole assertion."""
     project = "fixture"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
@@ -179,12 +179,12 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(
 def test_pod_apply_resolves_a_shipped_recipe_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``docket pod apply secure-build`` applies the shipped recipe, as ``init --recipe``
+    """``docket pod update secure-build`` applies the shipped recipe, as ``init --recipe``
     does -- a README can print a command that needs no path into the installed package."""
     project = "byname"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
 
-    assert _pod_cli("apply", "secure-build", "--pod", project).exit_code == 0
+    assert _pod_cli("update", "secure-build", "--pod", project).exit_code == 0
 
     assert "security-vetter" in _dispatch.pod_full_roster(project)
 
@@ -655,7 +655,7 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
     with pytest.raises(typer.Exit) as exc:
         _pod.set_setting(project, "configSource", "/tmp/whatever")
     assert exc.value.exit_code == 1
-    assert "written by apply" in capsys.readouterr().err
+    assert "written by update" in capsys.readouterr().err
 
     # A `pod.yaml` `settings` mapping cannot carry them either -- refused the same way any
     # unknown setting already is, since both are deliberately outside `PodSettings.KEYS`.
@@ -757,7 +757,7 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
 ) -> None:
     """A recipe under the operator's own ``recipes/`` directory is listed with scope
     ``operator`` alongside every shipped recipe, and resolves by name for
-    ``docket pod apply`` exactly as a shipped one does."""
+    ``docket pod update`` exactly as a shipped one does."""
     project = "recipefixture"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
 
@@ -778,7 +778,7 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
     for shipped_name in REQUIRED_RECIPES:
         assert infos[shipped_name].scope == "shipped"
 
-    plan = json.loads(_pod_cli("apply", "mine", "--pod", project, "--dry-run", "--json").output)
+    plan = json.loads(_pod_cli("update", "mine", "--pod", project, "--dry-run", "--json").output)
     assert [(item["kind"], item["name"], item["action"]) for item in plan["items"]] == [
         ("policy", "x.yaml", "add")
     ]
@@ -788,7 +788,7 @@ def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """``docket pod recipes <unknown>`` exits 1, with a message naming both ``operator:``
-    and ``shipped:`` recipe lists -- the same fail-closed error ``docket pod apply``/
+    and ``shipped:`` recipe lists -- the same fail-closed error ``docket pod update``/
     ``docket init --recipe`` raise."""
     home = tmp_path / ".docket"
     repoint_docket_home(monkeypatch, home)

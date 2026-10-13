@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.27.0
+**Version**: 1.27.1
 **Status**: Implemented
 **Last Updated**: 2026-10-12
 
@@ -45,7 +45,7 @@ This specification does NOT cover:
   when the meta is absent, empty, or names an unknown blueprint — see `pod-dispatch.spec.md`,
   "Pipeline order and participation", for the exact resolution order. A `research`, `content`, or
   `ops` pod dispatched that way now runs its full roster and gates, not only its Lead step.
-- User-authored blueprint definitions. Unlike `docket pod apply` for archetypes, there is no
+- User-authored blueprint definitions. Unlike `docket pod update` for archetypes, there is no
   a command to add a blueprint from a file yet — the five built-ins are the whole registry today (see
   Requirements, "User-authored blueprints" below)
 - Per-role org-vs-pod scope as a blueprint-level concept — scope is a property of the *archetype*
@@ -167,7 +167,7 @@ This specification does NOT cover:
 
 ### User-authored blueprints
 
-1. Unlike role archetypes (`docket pod apply <file.yaml>`), there is currently no
+1. Unlike role archetypes (`docket pod update <file.yaml>`), there is currently no
    a command to add a blueprint — the five built-ins in `core/blueprints.py` are Python literals and
    are the entire registry. A future card may add a `~/.docket/docket-blueprints.json` user
    overlay following the same pattern `docket-roles.json` established; until then, composing a
@@ -199,10 +199,10 @@ This specification does NOT cover:
 A blueprint shapes a pod at `docket init` time; this section covers the complementary case — a
 team shape applied to a pod that already exists (ADR 0009). Before this section, applying a
 shipped recipe to an existing pod meant a per-recipe sequence of role installs, `docket pod add
-<role>` and pipeline-binding commands; `docket pod apply <dir>` composes the same writers into one command, once a directory shape becomes common enough
+<role>` and pipeline-binding commands; `docket pod update <dir>` composes the same writers into one command, once a directory shape becomes common enough
 (a pod reproduced on a second machine) to be worth automating.
 
-1. `docket pod apply <name|dir> [--dry-run] [--json]` **MUST** read *dir* (an argument that is
+1. `docket pod update <name|dir> [--dry-run] [--json]` **MUST** read *dir* (an argument that is
    not an existing directory resolves as a shipped recipe name through the same `resolve_recipe`
    requirement 8 gives `docket init --recipe`, and an unresolvable name exits 1 naming the
    shipped recipes) as: an optional `roles/*.yaml`
@@ -223,7 +223,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    complete Agent Skill, applied whole into this pod's own `config/skills/<name>/` (see
    requirement 6's digest and "Pod manifests: export" below).
 2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
-   (`core.config.pod_config_dir(project)/roles.json`), the same target `docket pod apply
+   (`core.config.pod_config_dir(project)/roles.json`), the same target `docket pod update
    --pod <name> <file.yaml>` already writes to — never the global user overlay
    (`~/.docket/docket-roles.json`). `core/pod.py`'s roster helpers (the id-parsing
    `_role_names`/`parse_member_id` that `pod_full_roster`/`members_of` depend on to resolve a
@@ -287,7 +287,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    `--recipe` together with a present `.docket/` **MUST** exit 1 naming both sources, before
    provisioning — two sources of record is an ambiguity this command refuses rather than picks
    between. `--no-apply` **MUST** provision the pod and skip applying either source, instead
-   printing the `docket pod apply <dir>` command that would apply it.
+   printing the `docket pod update <dir>` command that would apply it.
 9. **Recipe summary (ADR 0013 §1 rule 1).** A directory's scope is derived from its contents,
    never a declared field: `core.pod_apply.summarize_recipe(directory)` reads, without needing a
    project or a role registry, the count of `roles/*.yaml|yml|json`, `policies/*.yaml|yml|json`,
@@ -304,7 +304,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    members 1 · pipeline secure-build · plugins 0 · skills 0 · settings 0` (`pipeline none` when
    no pipeline resolves), with `· exporters <name>[, <name>...]` appended only when the recipe
    names at least one (e.g. `... · settings 0 · exporters langfuse`). `docket pod validate <dir>` (see
-   `config-format.spec.md`) prints this summary after its per-file lines; `docket pod apply`
+   `config-format.spec.md`) prints this summary after its per-file lines; `docket pod update`
    and `docket init --recipe`/a discovered `.docket/` print it, and the directory's own
    `description` when set, before the plan itself (`cli-interface.spec.md`).
 10. **Recipe listing (ADR 0013 §1 rule 5).** `core.pod_apply.list_recipes()` **MUST** return one
@@ -345,7 +345,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     **MUST** print the same per-name state lines, from the directory's own declared list
     (requirement 9), without requiring a project.
 
-12. **One file, and no argument (ADR 0022 decision 5).** `docket pod apply <file>` with an
+12. **One file, and no argument (ADR 0022 decision 5).** `docket pod update <file>` with an
     existing file **MUST** install that one document: a `kind: role` file into this pod's own role
     overlay (the target requirement 2 names) and a `kind: policy` file into this pod's own
     `config/policies/` (validated first by `core.policy.validate_policy`); any other kind **MUST**
@@ -378,14 +378,20 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     before/now per changed item and **MUST NOT** print the current code. The code is independent
     of item order. A repository whose `allowCommands` names `sh`, `bash`, `zsh`, `dash`, `sudo`,
     `ssh`, `nc` or `socat` **MUST** exit 2 before provisioning (security-gates item 1). `--no-apply`
-    skips the review because nothing is applied.
+    skips the review because nothing is applied. `docket pod update <dir>` (the verb `apply` was
+    renamed to, with no alias) **MUST** put a directory that is not a shipped recipe through the
+    same review against the pod's recorded codebase, on a terminal or with `--accept <code>`, and
+    `docket run` **MUST** do the same for a changed item before dispatching; neither
+    `docket start`, `dispatch_pod` nor `docket exec` reads `.docket/`. A review shows the repository's
+    commands as before/now; `core.pod_apply.repo_changes` derives them from the directory and the
+    stored review.
 
 ### Pod manifests: export
 
 The write direction the deferred manifest carried since "apply" shipped: `apply` composes a
 directory *onto* a pod; `export` writes one back out, in the same shape, so a pod already
 configured by hand — or evolved past whatever recipe seeded it — can be reproduced on a second
-machine, the trigger `docket pod apply` itself named as deferred.
+machine, the trigger `docket pod update` itself named as deferred.
 
 1. `docket pod export [<dir>]` **MUST** write exactly this pod's own scope — *dir*
    defaults to `<codebase>/.docket/` (the pod Lead's own `codebase` meta) when omitted — in the same directory shape
@@ -591,6 +597,11 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.27.1 (2026-10-12)
+
+- `apply` is renamed `update` throughout; requirement 12 extends the review to `pod update` and
+  `docket run` (ADR 0024 section 6).
 
 ### Version 1.27.0 (2026-10-12)
 

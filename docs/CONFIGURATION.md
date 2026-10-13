@@ -329,7 +329,7 @@ Codebase: ${codebaseOrConfigured} (stack: ${stack}).
 
 ```bash
 docket pod validate security-reviewer.yaml    # checks fields and dry-renders both templates
-docket pod apply security-reviewer.yaml         # -> ~/.docket/docket-roles.json
+docket pod update security-reviewer.yaml         # -> ~/.docket/docket-roles.json
 docket pod add security-reviewer          # provisions myapp-security-reviewer
 ```
 
@@ -505,7 +505,7 @@ How policies combine and what they ignore:
 
 **Extending with a predicate plugin.** The closed `when` vocabulary above covers most policies;
 for a check no built-in predicate expresses, `~/.docket/plugins/` (operator scope) or a pod's own
-`config/plugins/` (copied there by `docket pod apply`, never read live from a codebase) can
+`config/plugins/` (copied there by `docket pod update`, never read live from a codebase) can
 hold a small Python file registering a named predicate, referenced as `when: {plugin: <name>,
 with: {...}}` — `then:` still decides the action. Every predicate plugin is loaded only from
 operator/pod scope (never the agent's own workspace), audited by name and file hash, and a
@@ -606,7 +606,7 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 A recipe is a directory in the same shape as a repository's `.docket/` (§3.11): `pod.yaml`,
 `roles/`, `pipeline.yaml`, `policies/`, `plugins/`, `skills/`, every part optional. **What a recipe
 brings is derived from what the directory holds, never declared**: `docket pod validate <dir>`,
-`docket pod apply --dry-run`, `docket init --recipe` and `docket pod recipes` all print the
+`docket pod update --dry-run`, `docket init --recipe` and `docket pod recipes` all print the
 same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). Eighteen
 ship with docket, of five kinds; the full page, generated from the recipes themselves, is
 [the recipe library](recipes.md).
@@ -623,9 +623,9 @@ ship with docket, of five kinds; the full page, generated from the recipes thems
 docket pod recipes                        # every recipe reachable by name, what each brings
 docket pod recipes tdd                    # description, summary, the recipe's own README
 docket init --recipe secure-build          # a new pod for this repository, recipe applied after provisioning
-docket pod apply git-safety          # a policy pack onto a pod that already exists
-docket pod apply ./team-recipes/ci   # a directory of your own, same shape
-docket pod apply --dry-run           # no argument: <codebase>/.docket/, plan only
+docket pod update git-safety          # a policy pack onto a pod that already exists
+docket pod update ./team-recipes/ci   # a directory of your own, same shape
+docket pod update --dry-run           # no argument: <codebase>/.docket/, plan only
 ```
 
 A name resolves in three places, nearest wins: a directory path as given, then your own
@@ -646,10 +646,10 @@ code and apply that once so the record names the repo:
 
 ```bash
 docket init --recipe tdd
-docket pod apply git-safety
-docket pod apply secrets-guard
+docket pod update git-safety
+docket pod update secrets-guard
 docket pod export --force          # the merged team, in .docket/
-docket pod apply                   # plans every item skip; configSource is now ./.docket
+docket pod update                   # plans every item skip; configSource is now ./.docket
 git add .docket && git commit -m "Add: the myapp agent team"
 ```
 
@@ -713,8 +713,8 @@ one. The loop you run each time the team changes:
 docket pod export             # first time: write what the pod has now into ./.docket/
 $EDITOR .docket/pipeline.yaml       # change the route, a rule, a role
 docket pod validate                     # every document, invalid files first, exit 1 on any error
-docket pod apply --dry-run    # the plan: add / replace / skip per item
-docket pod apply              # write it (one pod.apply audit entry when something changed)
+docket pod update --dry-run    # the plan: add / replace / skip per item
+docket pod update              # write it (one pod.apply audit entry when something changed)
 git add .docket && git commit       # the team is versioned with the code
 ```
 
@@ -722,8 +722,8 @@ Three commands read it, and nothing else does:
 
 | Moment | Command | What happens |
 |---|---|---|
-| Creating the pod | `docket init` (with `.docket/` present) or `docket init --recipe <name\|dir>` | every document is validated **before** the pod is provisioned (an error exits 1 naming file, line and field, and provisions nothing); after provisioning, the directory is applied exactly as `pod apply` would, with one `pod.apply` audit entry. `--no-apply` provisions only. `--recipe` and a present `.docket/` together are refused: one source of record. |
-| Re-applying after a change | `docket pod apply` (defaults to `<codebase>/.docket/`) | additive and idempotent: a second run plans every item `skip`; `--dry-run` shows the plan |
+| Creating the pod | `docket init` (with `.docket/` present) or `docket init --recipe <name\|dir>` | every document is validated **before** the pod is provisioned (an error exits 1 naming file, line and field, and provisions nothing); after provisioning, the directory is applied exactly as `pod update` would, with one `pod.apply` audit entry. `--no-apply` provisions only. `--recipe` and a present `.docket/` together are refused: one source of record. |
+| Re-applying after a change | `docket pod update` (defaults to `<codebase>/.docket/`) | additive and idempotent: a second run plans every item `skip`; `--dry-run` shows the plan |
 | Writing it back | `docket pod export` (defaults to `<codebase>/.docket/`; refuses a non-empty one without `--force`) | the pod's own scope in the short form, ready to commit |
 
 Rules worth knowing:
@@ -1066,7 +1066,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationMode,networkMode}` | init, `setup sandbox` | isolation and network mode (`isolationMode`, `networkMode`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
 | `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `setup provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `setup provider add/remove/export`. Malformed entries are named by `docket setup`. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `setup model set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `setup model set`. Malformed entries are ignored silently. |
-| `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | you | tool narrowing, hop budget, gate contract; templates at provisioning | by hand; `pod apply <file>` writes the pod's own overlay |
+| `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | you | tool narrowing, hop budget, gate contract; templates at provisioning | by hand; `pod update <file>` writes the pod's own overlay |
 | `policies/*.yaml\|json` | one policy per file (§3.6) | `docket setup`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
 | `docket-mcp-servers.json` | `servers[{name,command,args,env,timeout,kind,tools,isolate}]` | `setup mcp add/remove` | every turn | via command |
 | `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `setup export enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
@@ -1135,8 +1135,8 @@ rest of the original list; what remains below is the honest boundary, not a back
 
 - **`WORKFLOW_AUTO.md` and `memory/` are not in the prompt** (§2). Edit `SOUL.md`/`MEMORY.md`.
 - **Your prompt text belongs in `INSTRUCTIONS.md`.** It is operator-owned (docket never writes
-  it), composes right after `SOUL.md`, and survives `pod set verify` and `pod apply`; generated files
-  are re-rendered wholesale by `docket pod apply` when a template or archetype changes
+  it), composes right after `SOUL.md`, and survives `pod set verify` and `pod update`; generated files
+  are re-rendered wholesale by `docket pod update` when a template or archetype changes
   (`--dry-run` shows the diff, `docket setup` flags stale members).
 - **A skipped file is silent on the live path, but `docket setup` names it.** An invalid schedule spec,
   model-policy entry or overlay role — global or pod-scoped — never crashes a fleet — the loader

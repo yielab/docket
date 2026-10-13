@@ -281,7 +281,7 @@ def _infer_kind_from_location(path: Path) -> str | None:
 
 def _load_role(path: Path) -> dict[str, Any]:
     """The canonical wire dict for a role file: the short form is normalised first
-    (``core.archetypes.load_role_file``), then validated exactly as ``pod apply`` does."""
+    (``core.archetypes.load_role_file``), then validated exactly as ``pod update`` does."""
     try:
         doc = _archetypes.load_role_file(str(path))
         _archetypes.from_wire(str(doc.get("name", "")), doc)

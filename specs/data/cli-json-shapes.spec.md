@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.27.0
+**Version**: 1.27.1
 **Status**: Complete
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -90,7 +90,8 @@ structural rules hold everywhere:
   "usage":       "{ input, output (measured tokens), estimateUsd (a labelled estimate) }",
   "outcomes":    "{ success, failure, aborted, meanMs | null, p95Ms | null }",
   "lastRun":     "{ id, state, finishedAt } | null",
-  "running":     "boolean (docket start is running)"
+  "running":     "boolean (docket start is running)",
+  "commands":    "{ allowed, date, code, changed } (only when the operator allowed the repository's commands)"
 }
 ```
 
@@ -354,18 +355,18 @@ one `Project instr.:` line reporting `projectInstructions` (`AGENTS.md (default)
 `Exporters:` block listing each `name dialect state (scope)` (or `none enabled`), and,
 when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
 
-### `docket pod apply --json` / `pod roles --json` / `pod policies --json` / `pod recipes --json`
+### `docket pod update --json` / `pod roles --json` / `pod policies --json` / `pod recipes --json`
 
 ```json
 {
-  "pod apply": {"items": [{"kind": "role|policy|plugin|skill|mcp-server|member|pipeline|setting", "name": "string", "action": "add|replace|skip", "note": "string"}]},
+  "pod update": {"items": [{"kind": "role|policy|plugin|skill|mcp-server|member|pipeline|setting", "name": "string", "action": "add|replace|skip", "note": "string"}]},
   "pod roles": "array of {name, source, scope, modelClass, gate, description}; with a NAME, the archetype's wire object plus \"source\"",
   "pod policies": "array of {id, hook, action, description}; with --plugins, {\"policies\": that array, \"plugins\": array of {name, scope, file, sha256}}; with an ID, the policy's own JSON",
   "pod recipes": "array of {name, scope, brings, directory, description, roles, policies, members, pipeline, plugins, skills, settings, mcp_servers, unjailed_mcp_servers}; with a NAME, one such object plus \"readme\""
 }
 ```
 
-`pod apply --dry-run --json` prints the plan and writes nothing; `pod apply --json` with no argument
+`pod update --dry-run --json` prints the plan and writes nothing; `pod update --json` with no argument
 exits 1. Output is Rich-free on stdout.
 
 ### `docket start` HTTP endpoints
@@ -419,6 +420,10 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.27.1 (2026-10-12)
+
+- A pod object carries `commands` when the operator has allowed its repository's commands.
 
 ### Version 1.27.0 (2026-10-08)
 

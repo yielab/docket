@@ -73,7 +73,7 @@ This specification does NOT cover:
    `core.mcp_tools.load_mcp_server_document`). An `mcp-server` document is `name`, `command`,
    `args`, `env`, `timeout`, `access` (`read`|`write`, the server's declared kind; the key is not
    `kind` because `kind:` is the envelope) and `tools` and `isolate` (default `true`; `false` starts the server on the host, outside the turn's jail,
-   and `pod apply` and its dry run print that the server runs unjailed); it lives under a recipe's `mcp-servers/`,
+   and `pod update` and its dry run print that the server runs unjailed); it lives under a recipe's `mcp-servers/`,
    which `discover_config_paths` lists after `policies/`.
 2. A document's `kind:` key, when present, **MUST** be one of `KINDS`; any other value **MUST**
    raise `ConfigDocError` naming every value in `KINDS` and, when one is close enough
@@ -118,7 +118,7 @@ This specification does NOT cover:
    `ConfigDocError` naming the file and the parser's own message; this spec does not change what
    any of the six parsers accepts or rejects.
 3. `core/pod_apply.py::plan_apply`'s manifest read and `_plan_roles`'s per-file role read,
-   `docket pod apply <file>`, `docket pod validate` and `docket pod plan --pipeline` **MUST** all
+   `docket pod update <file>`, `docket pod validate` and `docket pod plan --pipeline` **MUST** all
    call `load_document` (through `validate_path` for the last two) rather than their own prior
    direct parse call — one parse path for every command that reads a stand-alone configuration
    file.

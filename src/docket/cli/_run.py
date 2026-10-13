@@ -22,7 +22,70 @@ from docket.core import models as _models
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod_core
+from docket.core import pod_apply as _pod_apply
 from docket.core.audit import audit_log
+
+
+def _stdin_is_tty() -> bool:
+    return sys.stdin.isatty()
+
+
+def _repo_dir(project: str) -> Path | None:
+    """``<codebase>/.docket`` of *project*'s Lead, or None for a pod with no codebase."""
+    codebase = _fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
+    return Path(codebase) / ".docket" if codebase else None
+
+
+def _ask_changed_commands(changes: _pod_apply.RepoChanges) -> bool:
+    """Show before/now for each changed command and ask; off a terminal warn and say no."""
+    from docket.cli._pod_config import run_item_label
+
+    when = f" on {changes.allowed_on}" if changes.allowed_on else ""
+    if not _stdin_is_tty():
+        ui.warn(
+            "The repository changed a command that needs your OK. Running with the version "
+            f"you allowed{when}. To review it, run docket run on a terminal."
+        )
+        return False
+    ui.console.print(f"The repository changed a command since you allowed it{when}:")
+    for change in changes.runs_changed:
+        ui.console.print(f"  {escape(run_item_label(change.item))}")
+        ui.console.print(f"    before: {escape(change.before or '(not allowed before)')}")
+        ui.console.print(f"    now:    {escape(change.item.runs)}")
+    if input("Allow the new version? [y/N] ").strip().lower() in ("y", "yes"):
+        return True
+    ui.info(f"Running with the version you allowed{when}.")
+    return False
+
+
+def _pick_up_repository(project: str) -> None:
+    """Apply what the pod's repository changed in ``.docket/`` since the last apply; a changed
+    command needs the operator's OK, else the pod keeps the version it has."""
+    from docket.core import reviewed_repos as _reviewed
+
+    directory = _repo_dir(project)
+    if directory is None:
+        return
+    try:
+        changes = _pod_apply.repo_changes(project, directory)
+    except _pod_apply.PodApplyError as exc:
+        ui.warn(f"The repository's .docket/ was not applied: {exc}. Running with the pod as it is.")
+        return
+    if changes is None:
+        return
+    if changes.review.refused:
+        ui.warn(
+            f"The repository lets the agent run {', '.join(changes.review.refused)}, which is "
+            "never applied. Running with the pod as it is."
+        )
+        return
+    if changes.runs_changed and not _ask_changed_commands(changes):
+        return
+    if changes.review.runs and (changes.runs_changed or changes.allowed_on):
+        _reviewed.remember(directory.parent, changes.review.runs)
+    _pod_apply.apply(changes.plan)
+    if changes.adds_changed:
+        ui.info(f"Updated from the repository: {', '.join(changes.adds_changed)}.")
 
 
 def _parse_vars(values: list[str]) -> dict[str, str]:
@@ -282,6 +345,7 @@ def cmd_run(
     if not piece.ok:
         ui.error("No model endpoint yet", "Run docket setup")
         raise typer.Exit(1)
+    _pick_up_repository(project)
     _pod_dispatch(
         project,
         resume=resume,

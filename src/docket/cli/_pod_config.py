@@ -148,11 +148,14 @@ def render_exporter_states(names: tuple[str, ...]) -> None:
 # -- apply ------------------------------------------------------------------------------------
 
 
-def cmd_apply(
+def cmd_update(
     target: str | None = typer.Argument(None, help="Recipe name, directory or one document file"),
     pod: str | None = pod_option(),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show the plan; write nothing"),
     json_out: bool = typer.Option(False, "--json", help="Print the plan as JSON"),
+    accept: str | None = typer.Option(
+        None, "--accept", help="Allow exactly the repository commands with this review code"
+    ),
 ) -> None:
     """Install configuration onto the pod, or re-sync its instructions.
 
@@ -160,14 +163,14 @@ def cmd_apply(
     policy file installs that document. With no argument, members whose SOUL,
     AGENTS or TOOLS are stale are re-rendered from the current archetypes.
 
-    Example: docket pod apply .docket --dry-run"""
+    Example: docket pod update .docket --dry-run"""
     project = _pod_name(pod)
     if target is None:
         _sync(project, dry_run, json_out)
     elif Path(target).is_file():
         _apply_file(project, Path(target), dry_run, json_out)
     else:
-        _apply_directory(project, target, dry_run, json_out)
+        _apply_directory(project, target, dry_run, json_out, accept)
 
 
 def _sync(project: str, dry_run: bool, json_out: bool) -> None:
@@ -199,12 +202,26 @@ def _sync(project: str, dry_run: bool, json_out: bool) -> None:
         _contract.next_step("docket pod show")
 
 
-def _apply_directory(project: str, target: str, dry_run: bool, json_out: bool) -> None:
+def _review_directory(project: str, directory: Path, json_out: bool, accept: str | None) -> None:
+    """The operator's OK for what *directory* runs on this machine; exits 2 when not given."""
+    from docket.cli import _agents
+
+    root = _default_dir(project).parent
+    request = _agents.InitRequest(accept=accept, json_out=json_out)
+    if _agents.review_repo_source(request, root, directory, "docket pod update"):
+        raise typer.Exit(2)
+
+
+def _apply_directory(
+    project: str, target: str, dry_run: bool, json_out: bool, accept: str | None = None
+) -> None:
     try:
         directory = _pod_apply.resolve_recipe(target)
         plan = _pod_apply.plan_apply(project, directory)
     except _pod_apply.PodApplyError as ex:
         _fail(str(ex))
+    if not dry_run:
+        _review_directory(project, directory, json_out, accept)
     if json_out:
         _contract.emit_json({"items": [asdict(item) for item in plan.items]})
     else:
@@ -284,7 +301,7 @@ def cmd_export(
 ) -> None:
     """Write the pod's own configuration into a directory.
 
-    The default is the repository's .docket/, the form `pod apply` and `docket
+    The default is the repository's .docket/, the form `pod update` and `docket
     init` read back. A non-empty directory is refused unless --force.
 
     Example: docket pod export .docket --force"""
@@ -566,7 +583,7 @@ def cmd_recipes(
     """List the recipe library, or show one recipe.
 
     Recipes resolve nearest scope first: your own ~/.docket/recipes/ before the
-    shipped library. Nothing is installed; `pod apply` installs.
+    shipped library. Nothing is installed; `pod update` installs.
 
     Example: docket pod recipes tdd"""
     if name is None:
@@ -641,7 +658,7 @@ def cmd_roles(
     """List the role archetypes, or show one in full.
 
     The registry is built-ins, the starter library, your overlay and, inside a
-    pod, the pod's own overlay (nearest wins). Install one with `pod apply`.
+    pod, the pod's own overlay (nearest wins). Install one with `pod update`.
 
     Example: docket pod roles reviewer"""
     project = _scope_pod(pod)
