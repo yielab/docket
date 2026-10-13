@@ -12,6 +12,7 @@ import typer
 from docket import ui
 from docket.cli import _contract
 from docket.core import fleet as _fleet
+from docket.core import profile as _profile
 from docket.core import security as _sec
 from docket.core.audit import audit_log
 from docket.edges.adapters import system as _sys
@@ -26,6 +27,11 @@ sandbox_app = typer.Typer(
 class NetworkMode(StrEnum):
     none = "none"
     open = "open"
+
+
+class ProfileChoice(StrEnum):
+    lights_out = "lights-out"
+    attended = "attended"
 
 
 class BackendChoice(StrEnum):
@@ -276,3 +282,32 @@ def sandbox_classes() -> None:
 
     Example: docket setup sandbox classes"""
     raise typer.Exit(classes())
+
+
+def profile(choice: str | None) -> int:
+    """Show or record the fleet profile; recording ``lights-out`` lists the fleet-level gaps."""
+    if choice is None:
+        ui.console.print(f"Profile   {_fleet.get_profile()}", markup=False, highlight=False)
+        return 0
+    _fleet.set_profile(choice)
+    audit_log("gates.profile", choice)
+    if choice == "attended":
+        ui.success("Profile attended; nothing extra is required before a task runs")
+        return 0
+    ui.success("Profile lights-out; a task is refused until every requirement holds")
+    for violation in _profile.fleet_violations():
+        ui.warn(f"{violation.requirement}: {violation.detail}. Fix: {violation.fix}")
+    ui.dim("Per-pod requirements (external gate, secrets) show in docket status and doctor.")
+    return 0
+
+
+def cmd_profile(
+    choice: ProfileChoice | None = typer.Argument(None, help="lights-out or attended"),
+) -> None:
+    """Show or set the profile: lights-out refuses tasks until isolation, no network and a gate hold.
+
+    Example: docket setup profile lights-out"""
+    rc = profile(choice.value if choice else None)
+    if choice:
+        _contract.next_step("docket status")
+    raise typer.Exit(rc)

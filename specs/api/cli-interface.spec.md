@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -579,6 +579,13 @@ the choice in fleet.json; `auto` is landlock or seatbelt, `docker` is docker onl
 is a usage error, exit 2), `network none|open` (any other word is a usage error,
 exit 2), `classes` lists the high-risk action classes. Writes are audited as `gates.isolate`, `gates.backend` and
 `gates.network`. See security-gates.spec.md.
+**`setup profile [lights-out|attended]`** — bare is a read of the recorded profile (`attended` when
+nothing is recorded); `lights-out` records it in fleet.json and prints each unmet requirement with
+the fleet-level requirements (isolation, network) still unmet with their fixes (exit 0: recording is
+not refusal; the per-pod ones show in `status` and `doctor`); `attended` clears the record; any other word is a usage
+error (exit 2). Writes are audited as `gates.profile`. `pod set profile lights-out|attended`
+sets a pod's profile and refuses `attended` under a global `lights-out` (exit 1). See
+security-gates.spec.md "Profiles".
 **`setup harness [--json] [--role ROLE]`** — a read: what `docket exec --contract 1.2` would get
 from the setup home (`DOCKET_SETUP_HOME`, default `~/.docket`): ready or the refusal reason, the
 setup model per role, the reachable models and each provider's credential source. Reads only
@@ -986,6 +993,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.6.0 (2026-10-13)
+- `setup profile [lights-out|attended]` and the `profile` pod setting (`pod set profile`), ADR 0025 D2.
 
 ### Version 2.5.0 (2026-10-13)
 - `setup harness [--json] [--role]`, the offline readiness for harness callers; `exec --model`

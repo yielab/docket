@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.48.0
+**Version**: 0.49.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1252,6 +1252,42 @@ pre-grants", this section governs for `--answers stdin` only.
    `--mcp` branch) and `DocketDriver.run_turn` call it before any task process is spawned;
    `core/` never does. Hiding the environment from root is a non-goal.
 
+### Profiles (implemented, ADR 0025 D2 as amended)
+
+1. **Two profiles.** `attended` (the default; nothing recorded) changes nothing. `lights-out` is a
+   recorded operator choice that makes a pod's dispatch refuse to start unless the requirements
+   below hold. The same binary runs both; the profile adds demands, it moves no default (ADR 0021
+   and ADR 0004 stand).
+2. **Recording.** Globally: `FleetSecurity.profile` (`fleet.json` `security.profile`), `unset`
+   until `docket setup profile lights-out` writes `lights-out`; `docket setup profile attended`
+   returns it to `unset`. Per pod: `PodSettings.profile` (`pod set profile lights-out|attended`).
+   The effective profile is `lights-out` when either is `lights-out`; a pod can only move toward
+   stricter, so `PodSettings.coerce("profile", "attended")` is refused while the global profile is
+   `lights-out` (this covers `pod set` and a `pod.yaml` `settings` mapping). Writes are audited
+   (`gates.profile`, `pod.config`).
+3. **Requirements** (`core/profile.py::lights_out_violations`, a pure function over a `Facts`
+   dataclass; `gather_facts` fills it from the existing readers and decides nothing itself). Each
+   violation names its requirement and its fix:
+   - `isolation`: isolation is on (`get_isolation_enabled`) and `sandbox_availability().backend`
+     is not `none` (the decision `_resolve_sandbox` makes);
+   - `network`: `effective_network(pod)` is `none` with scope `global` or `pod` (a recorded
+     choice; the unrecorded default does not count) and, with isolation on, the jail enforces it;
+   - `external-gate`: every planned step whose role is `implementer` (a role target, or an agent
+     target whose recorded role is `implementer`) carries an `ExternalGate`; a `parallel` group is
+     walked;
+   - `secrets`: no variable docket injects for the pod (the Implementer's port and scratch
+     variables, and the `env` of each MCP server in the pod's effective set) is named in the
+     secret store.
+   There is no HTTP MCP server check: MCP servers are stdio only and run in the jail.
+4. **Refuse, do not degrade.** `dispatch_task` evaluates the profile once, after the pipeline is
+   planned and before `_run_pipeline`. A violation audits `profile.refused` (pod, task and the
+   requirements), runs no hop and raises `DispatchError` naming each requirement and its fix; it
+   folds into `failure_kind "dispatch_refused"`, which is resumable once the operator fixes the
+   cause. This covers `run` and `start --dispatch`. `exec` is out of scope (no `--profile`).
+5. **One reader.** `doctor` and `status` show the effective profile and its violations from the
+   same `gather_facts` + `lights_out_violations` call. With the effective profile `attended`
+   they print nothing extra.
+
 ## Interface Contracts
 
 ### `docket setup sandbox` command (implemented)
@@ -1723,6 +1759,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.49.0 (2026-10-13)
+
+- P42-4: new "Profiles" section: the `lights-out` profile (global in the fleet security record, per
+  pod stricter-only), its four requirements, the `profile.refused` dispatch refusal and the
+  shared doctor/status reader. The HTTP-MCP requirement of ADR 0025 D2 is dropped (stdio only).
 
 ### Version 0.48.0 (2026-10-13)
 

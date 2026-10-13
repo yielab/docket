@@ -282,6 +282,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "requireVerify": "require_verify",
     "maxConsultationsPerTask": "max_consultations_per_task",
     "network": "network",
+    "profile": "profile",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -385,6 +386,10 @@ class PodSettings(BaseModel):
     # off the network. It only ever narrows -- see ``effective_network``.
     network: str = Field("open", alias="network")
 
+    # 'attended' (the default) or 'lights-out' (core/profile.py): a pod may only move toward
+    # stricter than the fleet's recorded profile -- ``coerce`` refuses a weaker write.
+    profile: str = Field("attended", alias="profile")
+
     # Where this pod's team came from (ADR 0012): the absolute directory `core.pod_apply.apply`
     # last applied, and a sha256 fingerprint of that directory's contents at that moment
     # (`core.pod_apply.directory_digest`). Written only by `apply`, right after a plan that
@@ -421,6 +426,7 @@ class PodSettings(BaseModel):
         "requireVerify",
         "maxConsultationsPerTask",
         "network",
+        "profile",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
@@ -558,6 +564,15 @@ class PodSettings(BaseModel):
             raise ValueError("must be 'none' or 'open'")
         return name
 
+    @field_validator("profile", mode="before")
+    @classmethod
+    def _parse_profile(cls, value: Any) -> str:
+        """``attended`` or ``lights-out``."""
+        name = str(value).strip().lower()
+        if name not in ("attended", "lights-out"):
+            raise ValueError("must be 'attended' or 'lights-out'")
+        return name
+
     @field_validator("exporters", mode="before")
     @classmethod
     def _parse_exporters(cls, value: Any) -> tuple[str, ...]:
@@ -612,6 +627,15 @@ class PodSettings(BaseModel):
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
             )
         settings = cls._validated({key: value}, project=project, mcp_extra=mcp_extra, stored=False)
+        if (
+            key == "profile"
+            and settings.profile == "attended"
+            and _fleet.get_profile() == "lights-out"
+        ):
+            raise PodSettingsError(
+                "profile: 'attended' is weaker than the fleet's lights-out profile; "
+                "a pod can only move toward stricter (docket setup profile attended first)"
+            )
         return cast(
             "float | int | str", cls._stored_form(getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
         )

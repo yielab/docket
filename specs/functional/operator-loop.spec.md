@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.5.3
+**Version**: 1.6.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-08
 
@@ -543,6 +543,16 @@ functions, every surface is transport"; this area is that transport.
    `AnswerError` MUST become a raised `McpToolError` (the SDK's own `isError` convention),
    naming the policy id or the underlying message respectively -- never an inline error field.
 
+### Profile lines (ADR 0025 D2)
+
+1. When the effective profile (security-gates.spec.md "Profiles") is `lights-out`, the health report
+   (`docket setup`, "doctor") prints a `Profile:` section after its security gates with one line per
+   violation and its fix,
+   and `docket status` prints a `Profile` row on the pod block listing the same violations;
+   `status --json` carries `profile {name, violations: [{requirement, fix}]}` and the health
+   report's JSON carries `checks.securityGates.profile {<pod>: {name, violations}}`, only then. Both call `core/profile.py::gather_facts` and `lights_out_violations`, the function
+   dispatch calls. With the effective profile `attended` the output is byte-identical to before.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.operator_contract`)
@@ -786,6 +796,10 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.6.0 (2026-10-13)
+
+- P42-4: the doctor and status profile lines ("Profile lines"), present only under `lights-out`.
 
 ### Version 1.5.3 (2026-10-08)
 

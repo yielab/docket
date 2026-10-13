@@ -18,6 +18,7 @@ from docket.cli._target import TargetError, pod_option, resolve_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
+from docket.core import profile as _profile
 from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.utils import (
@@ -170,6 +171,11 @@ def _project_summary(project: str) -> dict[str, Any]:
         },
         "lastRun": _last_run(project),
         **({"commands": c} if (c := _commands(roots[0] if roots else "")) else {}),
+        **(
+            {"profile": _profile.as_json(_profile.project_violations(project))}
+            if _profile.effective_profile(project) == _profile.LIGHTS_OUT
+            else {}
+        ),
     }
 
 
@@ -235,6 +241,16 @@ def _seconds(ms: int | None) -> str:
     return "—" if ms is None else f"{ms / 1000:.1f}s"
 
 
+def _profile_rows(profile: dict[str, Any] | None) -> list[tuple[str, str]]:
+    """The ``Profile`` row under ``lights-out`` and one indented fix per unmet requirement."""
+    if not profile:
+        return []
+    violations = profile["violations"]
+    rows = [("Profile", "lights-out, all requirements met" if not violations else "lights-out")]
+    rows.extend(("", f"{v['requirement']}: {v['fix']}") for v in violations)
+    return rows
+
+
 def _command_rows(commands: dict[str, Any] | None) -> list[tuple[str, str]]:
     if not commands:
         return []
@@ -278,6 +294,7 @@ def _render_current(summary: dict[str, Any]) -> None:
             f" · {tasks['failed']} failed",
         ),
         *_command_rows(summary.get("commands")),
+        *_profile_rows(summary.get("profile")),
         ("Approved, ready", str(tasks["approvedReady"])),
         ("Tokens", tokens),
         (
