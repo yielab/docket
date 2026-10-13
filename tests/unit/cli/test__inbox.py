@@ -83,6 +83,37 @@ class TestHumanView:
         assert "opt2 (Search) (recommended)" in out
         assert "docket task answer task-q" in out
 
+    def test_a_multi_line_question_indents_every_continuation_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _tasks(
+            "demo",
+            {
+                "id": "task-m",
+                "status": "waiting_input",
+                "question": {
+                    "id": "q-2",
+                    "taskId": "task-m",
+                    "pod": "demo",
+                    "step": "lead",
+                    "message": "First line?\nSecond line.\nThird line.",
+                    "requestedSchema": {
+                        "type": "object",
+                        "properties": {"note": {"type": "string"}},
+                    },
+                    "createdAt": "2026-09-28T00:00:00Z",
+                    "kind": "clarification",
+                    "options": [{"id": "opt1", "label": "Root", "description": "At the root."}],
+                },
+            },
+        )
+
+        out = _inbox("--peek").output
+
+        assert "    Q: First line?\n       Second line.\n       Third line.\n" in out
+        assert not any(ln and not ln.startswith(" ") and "line" in ln for ln in out.splitlines())
+
     def test_a_held_approval_prints_the_whole_command_and_both_decisions(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

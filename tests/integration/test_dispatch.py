@@ -498,11 +498,11 @@ class TestHopEnvInjection:
     actual env, not just TOOLS.md prose."""
 
     def test_hop_env_none_for_lead(self) -> None:
-        assert _dispatch._hop_env("demo-lead", "lead") is None
+        assert _dispatch.hop_env("demo-lead", "lead") is None
 
     def test_hop_env_none_for_reviewer_and_tester(self) -> None:
-        assert _dispatch._hop_env("demo-reviewer", "reviewer") is None
-        assert _dispatch._hop_env("demo-tester", "tester") is None
+        assert _dispatch.hop_env("demo-reviewer", "reviewer") is None
+        assert _dispatch.hop_env("demo-tester", "tester") is None
 
     def test_hop_env_none_for_implementer_without_allocation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -516,13 +516,13 @@ class TestHopEnvInjection:
         raw.pop("portRangeCount", None)
         raw.pop("scratchDir", None)
         path.write_text(json.dumps(raw))
-        assert _dispatch._hop_env("demo-implementer", "implementer") is None
+        assert _dispatch.hop_env("demo-implementer", "implementer") is None
 
     def test_hop_env_set_for_implementer_with_allocation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        env = _dispatch._hop_env("demo-implementer", "implementer")
+        env = _dispatch.hop_env("demo-implementer", "implementer")
         assert env is not None
         assert env["DOCKET_PORT_BASE"] == str(_res.PORT_BASE)
         assert env["DOCKET_PORT_COUNT"] == str(_res.PORT_RANGE_SIZE)
