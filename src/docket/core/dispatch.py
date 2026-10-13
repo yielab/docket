@@ -711,6 +711,43 @@ def _resolve_hop_instructions(
     return _archetypes.resolve_hop_instruction(archetype) if archetype else ""
 
 
+def _is_gate_failure_carryover(hop: HopResult | None) -> bool:
+    """Whether *hop* is a routed mechanical-gate hop being carried back to its route's
+    target: it holds the route's resolved ``next_step`` and real ``verify`` evidence. A
+    verdict rework hop never has ``next_step``, so the two carryovers cannot be confused."""
+    return hop is not None and hop.next_step is not None and hop.verify is not None
+
+
+def _gate_failed_section(step_id: str, output_tail: str) -> str:
+    """The one place the ``--- GATE FAILED: <step id> ---`` carryover section is written:
+    the header, then the routed hop's already-redacted verify output tail. Ends with a newline
+    like the other carryover sections."""
+    return f"--- GATE FAILED: {step_id} ---\n{output_tail}\n"
+
+
+def _compose_gate_failed(hop: HopResult, budget_tokens: int, comp: _HopComposition) -> str:
+    """The ``GATE FAILED`` section for *hop*, its persisted redacted ``verify.outputTail``
+    (never raw output) fit to *budget_tokens*, recorded in *comp* as role ``gate_failed``.
+    Unlike a verdict rework hop, *hop* stays in the generic carryover loop: its own output
+    is still prior context and only the gate's failure is new."""
+    from docket.core import context as _ctx
+
+    assert hop.verify is not None
+    raw_tail = str(hop.verify.get("outputTail", ""))
+    tail, truncated = _ctx._truncate_summary(raw_tail, budget_tokens)
+    comp.sections.append(
+        {
+            "role": "gate_failed",
+            "original_bytes": len(raw_tail.encode("utf-8")),
+            "sent_bytes": len(tail.encode("utf-8")),
+            "truncated": truncated,
+            "dropped_fields": [],
+        }
+    )
+    comp.truncated = comp.truncated or truncated
+    return _gate_failed_section(hop.step_id or hop.role, tail)
+
+
 def _latest_brief_hop_index(prior: list[HopResult]) -> int | None:
     """The most recent prior hop whose artifact carries a Lead intake brief, or ``None`` --
     the Implementer's own view (``_hop_message``) replaces that one hop's carryover
@@ -763,7 +800,12 @@ def _hop_message(
         )
         return message, comp
 
-    instructions = _resolve_hop_instructions(role, project, rework_hop, step_instructions)
+    instructions = _resolve_hop_instructions(
+        role,
+        project,
+        None if _is_gate_failure_carryover(rework_hop) else rework_hop,
+        step_instructions,
+    )
 
     # The role's total token budget, minus what the immutable task
     # description and this role's own fixed instruction footer already cost
@@ -779,7 +821,10 @@ def _hop_message(
     lines = [f"Task: {desc}", ""]
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
 
-    if rework_hop is not None and rework_hop.output:
+    gate_failed_hop = rework_hop if _is_gate_failure_carryover(rework_hop) else None
+    if gate_failed_hop is not None:
+        lines.append(_compose_gate_failed(gate_failed_hop, carryover_budget, comp))
+    elif rework_hop is not None and rework_hop.output:
         # Rendered from the hop's *artifact*, not its raw output, so this
         # reflects the same structured content (see `render()`'s own
         # "Verdict: ..." line, added when the artifact carries one) the next
@@ -813,7 +858,7 @@ def _hop_message(
     # from the most recent hop (rank 0), so `context.hop_share` gives it the
     # biggest share.
     for i, h in enumerate(prior):
-        if not h.output or h is rework_hop:
+        if not h.output or (h is rework_hop and gate_failed_hop is None):
             continue
         rank = last_index - i
         hop_budget = _ctx.hop_share(rank, carryover_budget)
@@ -1101,7 +1146,9 @@ def _replay_pipeline_position(
                     )
                     key = (step_id, label)
                     route_counts[key] = route_counts.get(key, 0) + 1
-                rework_hop = None
+                    rework_hop = hop if hop.verify is not None else None
+                else:
+                    rework_hop = None
                 pi = target_index
                 continue
         gate = node.gate if isinstance(node, _orch.PlannedUnit) else None
@@ -2681,6 +2728,10 @@ def _run_pipeline(
                 break
             if _block_on_missing_resources(ctx, outcome, result):
                 break
+            if next_index <= pipeline_index and outcome.hops[0].verify is not None:
+                # A backward route out of a mechanical gate: the target's next hop is told
+                # why the gate failed (see `_gate_failed_section`).
+                pending_rework_by_index[next_index] = outcome.hops[0]
             pipeline_index = next_index
             continue
         if outcome.kind == "advance" and _block_on_missing_resources(ctx, outcome, result):
