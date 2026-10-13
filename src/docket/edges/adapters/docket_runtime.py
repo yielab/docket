@@ -196,10 +196,9 @@ def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> s
 def _base_commit_view(
     pipeline_worktree: str, project: str, task_id: str
 ) -> _repo_view.RepoView | None:
-    """A reader serving the codebase's files at the task's recorded ``baseCommit``, or ``None``
-    when this turn has no task worktree, the task record names no base commit, or docket recorded
-    no git dirs for the worktree (nothing then keeps host-side git off the worktree's own
-    ``.git`` file, so the filesystem is read as before)."""
+    """The codebase's files at the task's recorded ``baseCommit``, or ``None`` (read the filesystem)
+    without a task worktree, a base commit or recorded git dirs: without those, host-side git
+    could not be kept off the worktree's own agent-writable ``.git`` file."""
     if not pipeline_worktree or not task_id:
         return None
     from docket.core import dispatch as _dispatch
@@ -589,8 +588,7 @@ class DocketDriver:
             ),
         )
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or env_task_id)
-        if view is not None:
-            _repo_view.register(pipeline_worktree, view)
+        view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None
         try:
             result = _loop.run_agent_turn(
                 backend,
@@ -604,8 +602,8 @@ class DocketDriver:
                 trace_task_id=trace_task_id or "",
             )
         finally:
-            if view is not None:
-                _repo_view.unregister(pipeline_worktree)
+            if view_token is not None:
+                _repo_view.unregister(view_token)
 
         turn = _turn_result_from(result)
         if view is not None:
