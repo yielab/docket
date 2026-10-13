@@ -59,7 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   off the allowlist (a new session escapes the process group a cancel kills). Interpreters stay
   allowlisted: without the sandbox the allowlist is not a containment boundary
   (security-gates 0.51.0).
-- **The jail no longer lets an agent move another branch (Wave 108, W108-2).** See security-gates 0.52.0.
+- **The jail no longer lets an agent move another branch (Wave 108).** On every backend
+  (Landlock, Docker, Seatbelt) a linked task worktree's jail keeps the common dir's `refs`,
+  `logs/refs` and `packed-refs` read-only and re-opens only the task branch's ref and reflog
+  directory (`refs/heads/docket/<pod>/`), so a jailed `git update-ref refs/heads/main` or a tag
+  write fails while a commit on the task's branch works. A linked worktree that is not a docket
+  task gets no ref write; a main checkout under Docker or Seatbelt is unchanged
+  (security-gates 0.52.0, 0.53.0).
 - **A parked task can be cancelled (Wave 108).** `docket task cancel` ends a task waiting for
   an answer or an approval as `cancelled`, takes it out of the inbox, denies a pending approval
   and audits `task.cancel`; before, the only exit was `task answer --decline`.

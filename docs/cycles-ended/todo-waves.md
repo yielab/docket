@@ -13496,3 +13496,27 @@ Carried out of Phase 39 (ADR 0022 "Closed with, and carried"), maintainer-owned 
 
 Deferred to named triggers: `kind: autonomy` (a verifier that emits one) and per-task credential
 minting (an issuer a pod needs).
+## ☑ WAVE 108 COMPLETE — every carried item closed, CLOSED 2026-10-13 (no phase; opened 2026-10-13)
+
+The owner asked to close every item carried out of every phase. A read-only verification at
+`7e28ad07` found these still open (W108-5/6 come from a second pass over the Phase 26 close, W108-7 from measuring its `tee` note); everything else carried in the roadmap was already closed or is
+a trigger-deferred decision (ROADMAP "Deliberately not scheduled"). Packets:
+[.agents/handoffs/wave-108-worker-packets.md](.agents/handoffs/wave-108-worker-packets.md); one
+Sonnet worker per card in `../rack-cli-wt/w108-<n>`, all four in parallel by function-level
+ownership; W108-8 came from W108-2's own residue (Docker and Seatbelt kept every ref writable).
+Integrator changes at merge: the `task show` diff hint names `GIT_COMMON_DIR`; `setsid` is not a
+wrapper; `--answer-timeout` reaches every `--recipe` hop; the text `setup --fix` report counts a
+home with agents and no delivering channel. Integrator-owned and done on `develop`: `isolation.png` re-rendered with the Landlock
+report (`ad2172f5`); ROADMAP cut to a one-line-per-phase status with its old sections archived.
+
+| Card | What | Status |
+| --- | --- | --- |
+| W108-1 | `task cancel` ends a parked (`waiting_input`) task; CLI-side git on a task worktree uses the recorded git dirs | DONE (`10f9f21e`) |
+| W108-2 | The Landlock jail grants ref writes only for the task's own branch | DONE (`ff964039`) |
+| W108-3 | `docket exec`: a cache dir, a per-run approval wait, a reader thread that stops with the run | DONE (`225555c1`) |
+| W108-4 | `dispatch.hop_env` public for `core/profile.py`; the inbox indents a multi-line question | DONE (`3271c3ac`) |
+| W108-5 | The dispatch webhook answers a broken bound pipeline with 404/400; the retired HEARTBEAT line leaves AGENTS.md; the smoke script's removed verb; `task prune --traces --pod` scoped to the pod | DONE (`c0208a23`) |
+| W108-6 | `setup --fix --json` reports every check the text report runs | DONE (`ebd5a2de`) |
+| W108-7 | The classifier sees through `env`/`xargs` and the deleting flags of `find`/`awk` | DONE (`4fc3fb25`) |
+| W108-8 | Docker and Seatbelt narrow ref writes the way Landlock does | DONE (`0426bac3`) |
+

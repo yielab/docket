@@ -248,19 +248,22 @@ Under Docker the jail is only as capable as its image, `DOCKET_SANDBOX_IMAGE` (d
 **What it covers, once on.**
 - Every `bash` call runs in the jail. Only the agent's workspace and the task's worktree are
   writable; the rest of the host is read-only or absent. The task worktree's git directories are
-  writable only where git needs it (`objects`, `refs`, `logs`, and a linked worktree's own git
-  dir), so the agent can commit, branch and read the log. The repository's hooks, config,
-  attributes and `packed-refs` stay read-only on every backend, so nothing the jail writes runs
-  later in your own git; host-side git in a task worktree uses the git dirs docket recorded and
-  never reads the agent-writable `.git` file, so a planted `core.fsmonitor` or `hooksPath` never
+  writable only where git needs it: `objects`, the linked worktree's own git dir, and the ref
+  and reflog directory of the task's own branch (`refs/heads/docket/<pod>/`), so the agent can
+  commit on its branch and read the log, but cannot move `main`, a tag or another pod's branch
+  (task branches of the same pod share that directory). In a linked worktree that is not a
+  docket task, the jail grants no ref write at all: the agent edits files and the caller commits.
+  The repository's hooks, config, attributes and `packed-refs` stay read-only on every backend,
+  so nothing the jail writes runs later in your own git; host-side git in a task worktree,
+  including `docket task diff`, uses the git dirs docket recorded and never reads the
+  agent-writable `.git` or `commondir` file, so a planted `core.fsmonitor` or `hooksPath` never
   runs. `tests/integration/test_escape_matrix.py` gates every release on Linux and macOS (the
   macOS rows run in CI only).
 - **On Linux, a root holding a `.git` directory is refused.** Landlock cannot keep hooks and config
   read-only inside a main checkout, so a jailed command there (for example `docket exec` in a
   plain repository) exits 125 and runs nothing. Use a git worktree, or choose Docker with
-  `docket setup sandbox backend docker`; seatbelt and Docker run there.
-- **What is still open.** `refs` stays writable, so a jailed agent can move another branch's ref
-  (no code runs from it), and `docket task diff` does not use the recorded git dirs yet.
+  `docket setup sandbox backend docker`; seatbelt and Docker run there, with the checkout's refs
+  writable (it is your own checkout, and the agent commits on its branch).
 - Stdio MCP servers always start in the same jail.
 - A jailed process sees only `PATH`, the pod's injected variables and your git identity, never
   docket's credentials.

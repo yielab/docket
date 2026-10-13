@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (63 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (64 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -23,6 +23,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 |---|---|---|---|
 | 2026-10-13 | ☑ PHASE 41 COMPLETE — one execution envelope (D-60, ADR 0024): eight cards over Waves 100–103, closed 2026-10-13 | `todo-waves.md` | 12,885 |
 | 2026-10-13 | ☑ PHASE 42 COMPLETE — lights-out profile and external gate (D-61, ADR 0025): eight cards over Waves 104–107, closed 2026-10-13 | `todo-waves.md` | 15,354 |
+| 2026-10-13 | ☑ WAVE 108 COMPLETE — every carried item closed, CLOSED 2026-10-13 (no phase; opened 2026-10-13) | `todo-waves.md` | 2,239 |
 | 2026-10-12 | ☑ PHASE 40 COMPLETE — harden the agent boundary (D-58, ADR 0023): thirteen cards over Waves 98–100, closed 2026-10-12 | `todo-waves.md` | 21,431 |
 | 2026-10-08 | ☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07) | `todo-waves.md` | 65,803 |
 | 2026-10-08 | ☑ WAVE 96 COMPLETE — the live-run triage card A, CLOSED 2026-10-08 (no phase; opened 2026-10-08) | `todo-waves.md` | 3,272 |

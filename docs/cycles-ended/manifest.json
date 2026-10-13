@@ -718,5 +718,13 @@
     "heading": "◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/)",
     "bytes": 1346,
     "sha256": "196fbb1b6eae0b98d0b5b6b116b896d4dd7cdd33d2d883f991af8d29472cd136"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 108 COMPLETE — every carried item closed, CLOSED 2026-10-13 (no phase; opened 2026-10-13)",
+    "bytes": 2239,
+    "sha256": "a4ff33ed85d8722592fa0f5a7ebfd7a4f6ad13e5d62b96708e7ec7bf8bfa8971"
   }
 ]

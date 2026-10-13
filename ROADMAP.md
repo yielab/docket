@@ -10,8 +10,11 @@ phase records, wave narratives and this file's older sections are archived verba
 ## Status
 
 **Last updated: 2026-10-13.** Every phase 0–42 is complete. No phase is planned and no item is
-carried: Wave 108 (no phase) closes the last items carried out of Phases 41 and 42. A new phase
-starts from a measured trigger or an operator request, never from this file.
+carried: Wave 108 (no phase, closed 2026-10-13) closed the last carried items of every phase — a
+parked task can be cancelled, host-side git trusts only the recorded git dirs, every jail narrows
+ref writes to the task's branch, the classifier sees through `env`/`xargs`/`find -delete`, `exec`
+gets a cache dir and a per-run approval wait, `setup --fix --json` matches the text report. A new
+phase starts from a measured trigger or an operator request, never from this file.
 
 **Release:** `v0.2.0-beta.4` is the latest published release (2026-10-06). `0.2.0-beta.5` is
 declared in `CHANGELOG.md` and `VERSION` (harness contract 1.2) and is not tagged. Cutting a

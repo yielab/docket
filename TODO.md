@@ -17,25 +17,12 @@
 > resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
 > reading the diff and assuming.
 
-## ◇ WAVE 108 — close every carried item (no phase), opened 2026-10-13
+## ◇ NO ACTIVE WAVE — Wave 108 closed 2026-10-13: every carried item closed
 
-The owner asked to close every item carried out of every phase. A read-only verification at
-`7e28ad07` found these still open (W108-5/6 come from a second pass over the Phase 26 close, W108-7 from measuring its `tee` note); everything else carried in the roadmap was already closed or is
-a trigger-deferred decision (ROADMAP "Deliberately not scheduled"). Packets:
-[.agents/handoffs/wave-108-worker-packets.md](.agents/handoffs/wave-108-worker-packets.md); one
-Sonnet worker per card in `../rack-cli-wt/w108-<n>`, all four in parallel by function-level
-ownership. Integrator-owned and done on `develop`: `isolation.png` re-rendered with the Landlock
-report (`ad2172f5`); ROADMAP cut to a one-line-per-phase status with its old sections archived.
-
-| Card | What | Status |
-| --- | --- | --- |
-| W108-1 | `task cancel` ends a parked (`waiting_input`) task; CLI-side git on a task worktree uses the recorded git dirs | IN-PROGRESS |
-| W108-2 | The Landlock jail grants ref writes only for the task's own branch | IN-PROGRESS |
-| W108-3 | `docket exec`: a cache dir, a per-run approval wait, a reader thread that stops with the run | IN-PROGRESS |
-| W108-4 | `dispatch.hop_env` public for `core/profile.py`; the inbox indents a multi-line question | IN-PROGRESS |
-| W108-5 | The dispatch webhook answers a broken bound pipeline with 404/400; the retired HEARTBEAT line leaves AGENTS.md; the smoke script's removed verb; `task prune --traces --pod` scoped to the pod | IN-PROGRESS |
-| W108-6 | `setup --fix --json` reports every check the text report runs | IN-PROGRESS |
-| W108-7 | The classifier sees through `env`/`xargs` and the deleting flags of `find`/`awk` | IN-PROGRESS |
+Wave 108 (no phase) closed every item carried out of every phase, archived in
+[docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). No phase is planned and
+nothing is carried; what is deliberately not scheduled is in ROADMAP "Status". A new wave starts
+from a measured trigger or an operator request.
 
 ## How to use this board (read before claiming a task)
 
