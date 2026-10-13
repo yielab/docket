@@ -272,3 +272,29 @@ class TestLandlockBackend:
         monkeypatch.setattr(landlock, "abi_version", lambda: 5)
         monkeypatch.setenv("DOCKET_SANDBOX_PROBE", "none")
         assert _sys.landlock_available() is False
+
+
+class TestTaskEnvironmentCacheDir:
+    def test_cache_dir_sets_the_six_variables(self, tmp_path: Path) -> None:
+        env = _sys.task_environment({"A": "1"}, cache_dir=tmp_path)
+
+        for name in (
+            "HOME",
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "UV_CACHE_DIR",
+            "PIP_CACHE_DIR",
+            "npm_config_cache",
+        ):
+            assert env[name] == str(tmp_path)
+        assert env["A"] == "1"
+
+    def test_the_overlay_still_wins_over_the_cache_variables(self, tmp_path: Path) -> None:
+        env = _sys.task_environment({"HOME": "/elsewhere"}, cache_dir=tmp_path)
+
+        assert env["HOME"] == "/elsewhere"
+
+    def test_without_cache_dir_home_is_inherited(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("HOME", "/inherited")
+
+        assert _sys.task_environment()["HOME"] == "/inherited"

@@ -298,6 +298,7 @@ def run_bash(
     cancelled: Callable[[], bool] | None = None,
     on_process: Callable[[str, dict[str, Any]], None] | None = None,
     network: bool = True,
+    cache_dir: Path | None = None,
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
@@ -343,6 +344,9 @@ def run_bash(
     container_name = ""
     if backend in ("docker", "bwrap", "landlock"):
         env = {**_system.git_identity_env(cwd), **(env or {})}
+        if cache_dir is not None:
+            env = {**_system.cache_environment(cache_dir), **env}
+            roots = (*roots, cache_dir.resolve())
     if backend == "docker":
         container_name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
         popen_arg: str | list[str] = _system.docker_run_argv(

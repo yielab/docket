@@ -455,6 +455,10 @@ def _allocate_pod_resources(project: str) -> tuple[int, int, str, bool, bool]:
         _cfg.PODS_DIR.chmod(0o700)
         scratch.parent.chmod(0o700)
         scratch.chmod(0o700)
+    cache = _cfg.pod_cache_dir(project)
+    cache.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        cache.chmod(0o700)
     return start, count, str(scratch), created, scratch_created
 
 
@@ -482,6 +486,7 @@ def _remove_attempt_runtime(project: str, *, scratch_created: bool, work_dir_cre
     """Remove only Docket runtime paths this failed attempt created."""
     if scratch_created:
         shutil.rmtree(_cfg.pod_scratch_dir(project), ignore_errors=True)
+        shutil.rmtree(_cfg.pod_cache_dir(project), ignore_errors=True)
     if work_dir_created:
         shutil.rmtree(_cfg.pod_work_dir(project), ignore_errors=True)
     # Drop an otherwise empty directory created only as a parent above, but
