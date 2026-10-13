@@ -11,14 +11,14 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 106 (Phase 42's sub-wave C, P42-4 ∥ P42-5; opened 2026-10-13)
+> ## ▶ ACTIVE BOARD — WAVE 107 (Phase 42's sub-wave D, P42-6 ∥ P42-7; opened 2026-10-13)
 >
 > **Phase 42** (lights-out profile and external gate, D-61,
 > [ADR 0025](docs/adr/0025-lights-out-profile-and-external-gate.md), accepted with amendments)
-> opened 2026-10-13; sub-wave A closed in Wave 104, sub-wave B (the external gate) in Wave 105
-> (rollup `96e580ad`). **Wave 106** runs sub-wave C: **P42-4** (the `lights-out` profile) and
-> **P42-5** (evidence 1.1.0), one Sonnet worker each in an isolated worktree at `96e580ad`,
-> function-level ownership of `core/dispatch.py`, merge P42-5 then P42-4; packets in
+> opened 2026-10-13; sub-waves A–C closed in Waves 104–106 (rollup `a8ee3dd1`). **Wave 107** runs
+> the last sub-wave: **P42-7** (network `none` reported where egress is open; reproduced on
+> `setup sandbox`), one Sonnet worker in an isolated worktree, and **P42-6** (documentation and
+> the live run), the integrator's; packets in
 > [.agents/handoffs/phase-42-worker-packets.md](.agents/handoffs/phase-42-worker-packets.md).
 > **Phase 41** (D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed 2026-10-13,
 > archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -316,7 +316,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A closed in Wave 104, sub-wave B closed in Wave 105, sub-wave C active in Wave 106
+## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A closed in Wave 104, sub-wave B closed in Wave 105, sub-wave C closed in Wave 106, sub-wave D active in Wave 107
 
 > **Opened 2026-10-13.** ADR 0025 was accepted with amendments (its last section): the external
 > gate is a command plus an exit map whose four labels route through the existing `on:` map; a
@@ -477,7 +477,7 @@ fields and validates against the new schema; a task without either carries neith
 
 ### P42-6 — documentation and the live run
 
-**Status:** TODO (sub-wave D, integrator) · **Size:** M · **Model:** integrator
+**Status:** IN PROGRESS (Wave 107, integrator) · **Size:** M · **Model:** integrator
 
 **Goal:** `docs/SECURITY-SIMPLE.md`, `docs/CONFIGURATION.md`, `docs/commands.md` (generated),
 the README (D-37: describe what exists); `SECURITY.md` brought to ADR 0024 (it still describes
@@ -489,7 +489,7 @@ this host with isolation off and passing with `setup sandbox on` and network `no
 
 ### P42-7 — `none` reported where egress is open
 
-**Status:** TODO (sub-wave D) · **Size:** S · **Model:** Sonnet · **Spec:** operator-loop.spec.md / security-gates.spec.md (network)
+**Status:** IN PROGRESS (Wave 107; reproduced on `setup sandbox`) · **Size:** S · **Model:** Sonnet · **Spec:** operator-loop.spec.md / security-gates.spec.md (network)
 
 **Trigger (ADR 0025 question 8):** `core/pod.py::effective_network` returns `none` at scope
 `default` when nothing is recorded, and with isolation off egress is open; `doctor`, `status` and

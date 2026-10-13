@@ -270,3 +270,44 @@ both cards touch `core/dispatch.py`:
     fields under 1.1.0 and validates against the new schema.
   - A task with neither carries neither.
   - `task_evidence(..., "1.0.0")` is byte-identical to today's output for the same task.
+
+## Wave 107: Phase 42 sub-wave D (base: the Wave 106 rollup on `develop`)
+
+P42-6 belongs to the integrator: docs and the live run. It touches only prose docs, specs
+prose and `scripts/`. P42-7 goes to one worker and owns the CLI surfaces listed below. The two
+do not overlap.
+
+### P42-7: `none` reported where egress is open
+
+- **Worktree / branch:** `../rack-cli-wt/p42-7`, `phase-42/p42-7`.
+- **Reproduced by the integrator on 2026-10-13.** In a fresh `DOCKET_HOME`, with isolation off
+  (nothing recorded), `docket setup sandbox` prints
+  `ok Network: none (default); jailed tool calls have no network`. With the sandbox off,
+  nothing is jailed and egress is open, so that `ok` line tells the operator the network is
+  cut when it is not.
+- **Goal:** every surface that reports the network mode must also say whether that mode is
+  enforced:
+  - `docket setup sandbox`;
+  - `docket status` and its sandbox posture line, plus `--json`;
+  - doctor (`docket setup check`) and `--json`;
+  - `init`'s sandbox line, if it prints the network.
+
+  With isolation off, the line must say the network is open (`none` is recorded or defaulted,
+  but not enforced), and it must not carry `ok`. With isolation on, the line stays as it is
+  today. One function owns the wording and every surface calls it. Find where the line is built
+  with `rg -n "jailed tool calls have no network" src`.
+- **Core reader:** use `core/pod.py::effective_network` together with
+  `core/fleet.py::get_isolation_enabled`. Do not change what `effective_network` returns: the
+  dispatch path and the P42-4 profile rely on it.
+- **Out of scope:** `docket setup profile` and the `lights-out` requirement lines (P42-4 just
+  shipped them); the profile's network check.
+- **Spec:**
+  - The sandbox-visibility section of `specs/functional/security-gates.spec.md`
+    (`rg -n "Network:" specs`).
+  - `specs/functional/operator-loop.spec.md`, for the status/doctor lines.
+  - `specs/data/cli-json-shapes.spec.md`, if a JSON field is added.
+- **RED:** one test per surface. Each runs with a fresh home and isolation off, and asserts
+  that the network line does not claim the network is cut and does not carry `ok`. Each must
+  fail on the base. Add one row with isolation on and network `none`, unchanged.
+- **Goldens:** if a golden captures the network line, its change is deliberate. Explain the
+  diff line by line, and never regenerate one for any other reason.
