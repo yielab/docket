@@ -13478,3 +13478,21 @@ without routing `pass` (a verdict gate is exempt, it names its own passing value
 `_refine_with_model` keeps an already-located error. RED first for each; the live rerun ended
 `done` with the note followed.
 
+## ◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/)
+
+Carried out of Phase 39 (ADR 0022 "Closed with, and carried"), maintainer-owned or unscheduled:
+- Tack's one string: `"harness", "run"` becomes `"exec"` in
+  `objetivosMios/crates/tack-runner/src/harness/docket.rs`, in `docket/probe.rs` (the argv and two
+  doc comments) and in the three argv arrays of `docket/tests.rs`, then that crate's harness
+  tests. Refused three times by the session's permission classifier; the maintainer applies it.
+- The live asset re-capture: done 2026-10-09 (`scripts/maint/capture-doc-journey.sh` on the
+  local endpoint, two runs; the gate scene continued with `task answer` in the same throwaway
+  home; `scripts/render-doc-assets.py` re-transcribed; `docs/assets/README.md` records it).
+- The YieLab landing page (`~/Sites/newPortaflio/content/docket-landing.ts`) after the release
+  that ships the names.
+- The eighteen locators of the live run (`internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`,
+  last section; the six worth a card are in ADR 0022 "Live run"): a triage list, not cards.
+- The triage's five cards are closed: A in Wave 96 (`50da5d59`), B–E in Wave 97 (archived).
+
+Deferred to named triggers: `kind: autonomy` (a verifier that emits one) and per-task credential
+minting (an issuer a pod needs).

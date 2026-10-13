@@ -2340,3 +2340,540 @@ savings claim, telemetry/A2A work, new adapter, or feature-count exit criterion.
 
 ---
 
+## ⇢ STATUS AT A GLANCE — every phase, one line each
+
+**Last updated: 2026-10-13.** **Phase 42 (lights-out profile and external gate, D-61, ADR 0025) opened and closed 2026-10-13**; paragraph below. **Phase 39 (one CLI surface, D-57) closed 2026-10-08** (paragraph below, after D-56), followed the same day by **Wave 96** (no phase: the live run's card A, `init` as a real Typer command, the linter gaps, the docs sweep) and **Wave 97** (the triage's cards B–E: `status` knows a parked question and the sandbox, help and messages tell the truth, the progress view names the hop, provider add records the advertised model). **Phase 40 (harden the agent boundary, D-58, ADR 0023) closed 2026-10-12** — the 2026-10-12 security audit's open items: thirteen cards over Waves 98–100; D-59 was answered (ADR 0024 §6) and Wave 100 shipped it (P40-5, P40-13), closing the phase at thirteen cards. **Phase 41 (one execution envelope, D-60, ADR 0024) closed 2026-10-13**: Landlock + seccomp on Linux, Seatbelt on macOS, Docker only when chosen, verify and `run:` steps inside the jail, a per-pod cache dir as the jailed home, the sandbox visible in `init`/`status`/`setup sandbox`/doctor, bwrap and `isolate: false` deleted, and an escape matrix that gates release; eight cards over Waves 100–103. Every numbered phase 0–42 is complete; no phase is planned. **Phase 26 (the configuration contract, D-42) closed 2026-09-26** (Waves 38–40, 20/20 cards): governance fails closed, pod settings are typed and writable (nine `pod config` keys), pipelines and prompt budgets are configurable per pod, and three shipped recipes prove the surface end to end. **Wave 37 closed 2026-09-25** (D-41): a triage that ran the product on six surfaces found twelve defects, fixed by six cards in two batches — the worst stalled every unattended dispatch whose command began with `cd`, and the sixth unwired-machinery instance (the installed console script skipped aliases and removed-command notices) is closed. **Wave 36 closed 2026-09-21** (opened 2026-09-19, D-40): eleven cards for the code-side defects the documentation audit of `v0.2.0-beta.3` found, run as three batches of one-card Sonnet workers under one integrator; the fifth unwired-machinery instance (blueprint pipelines) is wired, `POST /pods` validates project ids, and `--debug` is retired. **Phase 25
+(human maintainability, D-36) and Phase 24 (harness mode, D-35) both completed on 2026-09-12**, the
+first as Wave 31's thirteen cards and the second as Wave 30's five. **Wave 32 closed the same day** (2026-09-12): a
+documentation truth pass over the drift those two phases left, plus the two follow-ups Wave 31
+measured and deferred. **Waves 33 and 34 closed 2026-09-13**: an audit of the Wave 32 closure, repository hygiene, a docstring-only comment sweep (558/112 to 372/40 without changing a line of code), then the D-36 function split finished under a new function-span ratchet, two measured fixes, and a read-only audit that found the fourth unwired-machinery instance. **Wave 35 closed the same day**: a second docstring sweep (372/40 to 229/29), the dead `gatesEnabled` flag retired, and the integration lane's `SUBJECT` line given a rule and a guard. **Phase 23 closed 2026-09-14** (D-39): its release evidence is the `v0.2.0-beta.2` publication of
+2026-09-07, and the card that would have published a newer beta was removed from the board.
+**`v0.2.0-beta.3` was published 2026-09-18** as a maintainer action, the first with harness mode,
+after CI on `main` went green again on the dependency floor and on macOS. The next release is
+likewise a maintainer action, not a card. **Phase 27 (per-pod configuration and portable teams, D-43) shipped 2026-09-26**, ten cards
+over Waves 41–43 (eight planned plus two defects found inside the phase: pod-overlay roles
+dropped from the roster, `apply` skipping policies): roles, policies and MCP selection resolve
+per pod above a global structural base, an MCP server declares its kind and tools, the Lead's
+instruction is data, and the recipe directory is a manifest with `docket pod <p> apply|export`
+proven by a round trip; reasoning in
+[docs/adr/0009-per-pod-configuration-and-portable-teams.md](docs/adr/0009-per-pod-configuration-and-portable-teams.md).
+**Phase 28 (configuration format v1 and the two extension points, D-44) shipped 2026-09-26**,
+eight cards over Waves 44–46, one Sonnet worker per card under one integrator: a `kind` envelope
+and one `docket validate`, short forms for roles, pipelines and policies over the unchanged
+canonical form (each normaliser proven by a round trip), control flow as bounded data (`on`,
+`until`, closed `when` predicates, command steps; the executor is `core/dispatch.py`, which the ADR
+had mislocated), hashed, operator-applied Python predicate plugins for policies that are never
+imported from the codebase, generated JSON Schemas and a short-form `export`; reasoning in
+[docs/adr/0010-config-format-v1-and-extension-points.md](docs/adr/0010-config-format-v1-and-extension-points.md).
+**Phase 29 (the provider catalog, D-45) shipped 2026-09-27**, seven cards over Waves 47–49, one
+Sonnet worker per card under one integrator: model providers are `kind: provider` documents in two
+scopes (fourteen built-in in the wheel, global for the operator) from which every provider table
+derives, a closed `dialect` field selects the adapter, credentials are referenced by name only
+(bearer, a named header, or none, plus static headers), registration verifies *with* the
+credential and classifies the answer (only a transport failure refuses), `provider
+add/list/show/remove/export` round-trip a document, `Retry-After` is honoured up to a 60 s ceiling,
+`docket auth` is a removed command and `keys setup` walks the catalog, and `config explain` names
+the provider, its scope and where the credential came from; reasoning in
+[docs/adr/0011-provider-catalog.md](docs/adr/0011-provider-catalog.md).
+**Phase 30 (the team lives in the repo, D-46) shipped 2026-09-27**, seven cards over Waves
+50–51 (four Sonnet workers in parallel, then the integrator): a repository's `.docket/` directory
+is the team's configuration of record — `docket init` validates it before provisioning and
+applies it after (or `--recipe <name|dir>`; `--no-apply`), `apply`/`export` default to it, the
+pod records `configSource`/`configDigest` so `config explain` reports drift, nothing is applied
+without an operator command; a pipeline step may name its `model` for that hop only; `editRights`
+is retired; running the product for the new assets found that a recipe's role applied into a pod
+fell to the compiled-in default model on a local fleet (fixed: the archetype resolves in its
+pod's registry, the fallback is the registry default); the three terminal assets were
+re-captured from one real run under the `docket` wordmark and the README was rebuilt on the
+tagline *agent teams as configuration, your rules, in YAML*, with its prose tests rebuilt from
+that README rather than carried forward; reasoning in
+[docs/adr/0012-the-team-lives-in-the-repo.md](docs/adr/0012-the-team-lives-in-the-repo.md).
+**Phase 31 (recipes as a library, and the repository's standards, D-47) shipped 2026-09-27**, seven
+cards over Waves 53–55 (four Sonnet workers in parallel, then two, then the integrator): a recipe's
+scope is derived from its directory and shown by `validate`, `apply --dry-run`, `init --recipe` and
+the new `docket recipes list|show`; `pod.yaml` gains `description`; `apply` records the source on
+every validated apply; a name resolves against a path, `~/.docket/recipes/`, then the shipped
+library, now twelve recipes of three kinds (teams, four policy packs on structured predicates,
+five methodology pipelines: `tdd`, `spec-first`, `reflexion`, `dual-review`, `frugal`); the
+repository's `AGENTS.md` composes by default as screened project instructions; skills follow the
+Agent Skills shape in three scopes with a prompt index and one `skill` tool through the chokepoint
+(three shipped recipes carry one); `docs/recipes.md` is generated from the recipes and checked in
+CI. Running the suite found two unwired seams inside the phase (the `skill` tool's kind missing
+from `BUILTIN_TOOL_KINDS`; `core/skills.py` absent from the runtime wheel's file list), both
+closed in P31-6; reasoning in
+[docs/adr/0013-recipes-as-a-library-and-the-repos-standards.md](docs/adr/0013-recipes-as-a-library-and-the-repos-standards.md).
+**Phase 32 (observability as configuration, D-48) shipped 2026-09-28**, nine cards over Waves
+56–59 (two, three and three Sonnet workers in parallel, then the integrator): the trace gains an
+`llm_call` event with measured latency and a spec of its own; a neutral `Span`/`SpanEvent` model
+in `core/telemetry.py` projects the existing vocabulary once with deterministic ids; a
+destination is a `kind: exporter` document (built-in + global, closed `dialect`, credentials by
+name) whose dialect selects the one edge module that knows the wire, v1 = `otlp-http` over stdlib
+`urllib`; five ready built-ins (local collector, Jaeger, Langfuse, Honeycomb, Phoenix) that
+`docket exporters enable <name>` authenticates and probes; a bounded pipeline that never blocks a
+turn, started lazily by `run_turn`; `payload: metadata` by default so repository content never
+leaves the host unless the operator says so; `pod.yaml` may name destinations; `config
+explain`/`doctor` read the exporter's own health. Verified live 2026-09-28: a real dispatch
+against a real `otel/opentelemetry-collector` produced real `gen_ai.chat` spans with measured
+token counts, matching `docket trace` and a non-zero `exported` health counter; Langfuse's
+round-trip stays open, named in `observability-export.spec.md` §"External verification" as
+blocked on the operator's own credentials rather than skipped silently. Three independent cards
+across the phase version-bumped the same still-Draft spec from the same base and conflicted on
+merge — reconciled by hand each time, a predictable cost of two workers targeting one Draft
+file, not a process failure. D-24's cut of the OpenTelemetry SDK stands; reasoning in
+[docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md).
+Board archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
+**Phase 33 (export privacy levels, D-49) shipped 2026-09-28** (opened and closed the same day), six
+cards over Waves 60–63 (one Sonnet worker, then two, two, then the integrator), triggered by the live Langfuse
+run: every generation's Input/Output was empty, `payload: full` changed nothing a destination
+renders, and the `metadata` denylist already let an approval's command line and run error text
+leave the host. What a destination may see becomes a set of content classes (`toolArguments`,
+`errors`, `toolResults`, `completions`, `prompts`, `instructions`) chosen per exporter as a level
+(`minimal` default, `actions`, `conversation`, `full`) or an explicit `share:` list; an allowlist
+where spans are built maps every attribute to one class and filters conversations per message
+part; the model call records its content only when an enabled exporter asks; widening is a
+confirmed, audited command; the level shows in `list`/`show`/`explain`/`doctor`, on the root
+span, and in an offline `docket exporters preview`. Content uses the OTel GenAI `Opt-In`
+attribute names, which Langfuse reads natively; reasoning in
+[docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
+Verified live at `minimal`/`actions`/`conversation` against a local collector and Langfuse with
+canaries (none at `minimal`); that run found `tool_result` never recording its output and fixed
+it. Follow-up recorded, not scheduled: the pipeline's idle flush can emit a session's root span
+twice. Board archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
+**Phase 34 (the operator loop, D-50) shipped 2026-09-29** (opened 2026-09-28), seventeen cards
+over Waves 64–70 (one worker per card, Sonnet or Haiku, in isolated worktrees under one
+integrator), triggered by the operator's request and three facts found reading the live path:
+the only four real approvals expired unanswered, an in-turn `ask` under `serve --dispatch`
+stalls every pod, and the Lead cannot ask anything although its prompt said it owns human
+communication. Work that needs a human **parks** (`approvalMode: park`, a new `waiting_input`
+state, single-use pre-grants matched by a stable args digest) instead of blocking a thread; the
+Lead's intake is an opt-in pipeline pattern (a typed `TaskBrief`, a new `input` step, the
+`intake` recipe, a deterministic resource pre-check); one derived inbox (`docket inbox`,
+`GET /inbox`, the MCP `inbox` tool, Telegram `/status`) feeds every surface; notifications are
+CloudEvents delivered by `kind: channel` documents (console, desktop, webhook signed per
+Standard Webhooks, command, ntfy, email, Telegram by amendment of its Command grammar 7 and a new
+`/answer` verb); questions and answers take the MCP elicitation shape and task states map one to
+one onto A2A 1.0.0. Reasoning in
+[docs/adr/0016-operator-loop-and-interop-standards.md](docs/adr/0016-operator-loop-and-interop-standards.md).
+**The integrator's close (P34-17) added three seam tests no card owned alone** — the real HTTP
+`POST /approvals/<token>` write route threaded into the pre-grant mechanism and a real
+re-dispatch; `content: minimal` vs `actions` enforced at a real local `webhook` delivery, not
+either card's own unit test; the operator's exact typed answer reaching the Lead's own re-entry
+message via `## Operator answers` — and found two real defects by running the product rather
+than reading it: the operator-loop scenario's own `eventsDelivered` counter read a
+`channels-health.json` key that never existed, always `0` since it was written; `--live-model`
+registered its provider after `docket init`, so that path had never actually completed `init`.
+sweepBlockedSeconds dropped from the pre-Wave-65 baseline of ~12-13s to under a second
+(deterministic, park removing the blocking wait) but measured 138.0s under the real local model —
+real per-hop generation latency serialized across one sweep worker, a different cost than the one
+`park` targets, named for a maintainer rather than acted on. Both named deferred triggers this
+phase carries were evaluated at the close and did not fire: fewer than 10 real parked approvals
+exist on this machine to measure the mid-turn-resume trigger against, and the one-worker-per-pod
+trigger's scripted-backend condition does not hold (see the ADR's own "Deferred with named
+triggers" section for the full reasoning). Board archived in
+[docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md); packets stay in
+[.agents/handoffs/wave-64-worker-packets.md](.agents/handoffs/wave-64-worker-packets.md). Nothing
+is parked, except `cli-interface.spec.md` coverage for `docket inbox`/`channels`/`notify`/
+`pregrant`/`explain interruptions`, named there for a follow-up card rather than backfilled under
+this close's time budget.
+**Phase 35 (docket in a harness-agnostic factory, D-51) opened 2026-09-29, closed 2026-10-04**: ten
+cards over Waves 71–75. Carried to the next phase: the process-wide approval timeout for a run and
+the answer reader's daemon thread (both in the archived Wave 73 block). It was triggered by the maintainer's request to architect docket's part of the
+structured-agentic-engineering plan, and by facts read in the consumer:
+- Tack runs docket as one of four interchangeable harnesses and no longer polls its HTTP API;
+- Tack's U8 is blocked because no `harness-v1.1` exists;
+- Tack declares docket's decisions `Unsupported`.
+
+What the phase ships:
+- an opt-in harness contract v1.1 carrying exactly Tack's four M3 items: process lifecycle
+  events with cancellable process groups, questions on stdout answered on stdin, a written-path
+  list, and `--token-file`;
+- the caller's limits (`--max-tokens`, `--policy`);
+- a recipe pipeline run in place (`--recipe`);
+- pod dispatch keeps its evidence (verify output, commit, base, diffstat, `requireVerify`);
+- two measured defects fixed (`guardrail_block.action`; pod-scoped `tokenBudget`).
+
+docket executes and records but never certifies its own work; merge readiness and autonomy
+belong to an independent verifier. Phases 36–38 (consultation and evidence packs,
+verification-ready execution, the L4 envelope) are outlined in `TODO.md` and not claimable.
+Reasoning and reversals in
+[docs/adr/0017-docket-in-a-harness-agnostic-factory.md](docs/adr/0017-docket-in-a-harness-agnostic-factory.md);
+packets in [.agents/handoffs/wave-71-worker-packets.md](.agents/handoffs/wave-71-worker-packets.md).
+
+**Phase 36 (consultation packs and evidence-v1, D-53) opened 2026-10-04, closed 2026-10-04.** Eleven
+cards over Waves 76–81: operator-v1.1 (`Question.kind`, `options[]`, `recommendation`, `Answer.optionId`),
+`reason`/`actor` on approval grant and deny, approval packs (the model's rationale plus three
+options), a `consult` built-in tool for every role capped by `maxConsultationsPerTask`, a per-pod
+corrections ledger, evidence-v1 (one document behind the CLI, HTTP and the harness), and escalation
+metrics. Wave 76 is a Phase 35 follow-up: the harness `files` list stops reporting verify artifacts
+and paths dirty before the run. Carried to the next phase, by name: the parked consult question
+crosses to the answering process through an in-process registry (it fails closed out of process);
+`approve_task` is scoped to one turn; `question.taskId` in a single-turn harness consult is the
+session key; options are not rendered in Telegram or channel notifications. A live run on the local
+endpoint called `consult` and showed an approval pack, and a live pod dispatch parked a Lead's
+`consult`, took the operator's non-recommended option and finished `done` on it (ADR 0018 "Live
+run"). Reasoning in
+[docs/adr/0018-consultation-packs-and-evidence-v1.md](docs/adr/0018-consultation-packs-and-evidence-v1.md).
+
+**Phase 37 (verification-ready execution, D-54) opened 2026-10-04, closed 2026-10-04.** Nine
+cards over Waves 82–84:
+- one git worktree per task, created at claim and recorded on the task, instead of one per
+  Implementer, so a task's evidence counts only its own change;
+- `pre_input` screening of MCP tool results;
+- the task's id and evidence commits as environment for command steps;
+- a `no_progress` stop reason;
+- recipe-declared, pod-scoped MCP servers, which a turn starts in its own root;
+- the `anti-tautology`, `mutation`, `spec-writer`, `cross-family-review` and `code-intel`
+  recipes.
+
+Re-verifying the outline found two false claims ("recipes, no core change" and "an MCP pack as
+recipes"), which the ADR corrects. A live run on the local endpoint dispatched two tasks back to
+back with nothing merged. The second ran in its own worktree, on the new HEAD, and its `diffStat`
+counted only its own change.
+
+Carried to the next phase, by name:
+- the redaction pattern in `core/trace.py` matches `sk=` inside `task=`;
+- finished task worktrees have no retention policy;
+- `fetch` results are not screened;
+- the check recipes read their overrides from the process environment;
+- the four Phase 36 items: the in-process consult registry, the turn scope of `approve_task`,
+  the session key as a single-turn consult's `question.taskId`, and options not rendered in
+  Telegram or channel notifications.
+
+Reasoning in
+[docs/adr/0019-verification-ready-execution.md](docs/adr/0019-verification-ready-execution.md).
+
+**Phase 38 (the execution envelope, D-55) opened 2026-10-05, closed 2026-10-05.** Isolation on by default (bwrap
+first, with a preflight that names the fix, and a jail in which a task worktree can commit); an
+opt-in network lockdown mode; stdio MCP servers in the same jail; file tools that never follow a
+symlink out of their roots; `pre_input` on `fetch` results; no docket credential in a task's
+processes; one sweep worker per pod; a left boundary on the redaction pattern. Re-verifying the
+outline corrected three claims (file tools are not moved into a subprocess, the lockdown does not
+change ADR 0004's default, and docket has no issuer to mint per-task credentials from), and
+deferred `kind: autonomy` until a verifier produces one. Reasoning in
+[docs/adr/0020-the-execution-envelope.md](docs/adr/0020-the-execution-envelope.md).
+
+Eleven cards over Waves 85–88. Two came from running the product: the live run found a posture
+refusal retried three times (P38-10), and a measurement found `code-intel`'s `ast-grep` server
+unable to start in the jail (P38-11). Integration found three more defects the workers' own suites
+could not: 95 tests that depended on the host having bwrap, a jail escape through a writable
+`.git/hooks`, and a symlink fix that still followed a symlinked directory. Two live runs on the
+local endpoint (ADR 0020 "Live run"): a default-isolated task committed from inside bwrap,
+`network none` failed name resolution and an MCP `dial` with `ENETUNREACH`, a lockdown with
+isolation off was refused before any model call, and only `--no-isolate` let an MCP server write
+outside the roots.
+
+Carried to the next phase, by name: `doctor` does not list a pod's unjailed MCP servers; a
+submodule's hooks are not overlaid read-only; docker's default image cannot commit and `--network
+none` has no real-docker oracle; stopping `serve` waits for in-flight sweeps; worktree retention,
+the check recipes' environment overrides and the four Phase 36 items; `kind: autonomy` and
+credential minting stay deferred to their triggers. No phase is planned after this one.
+
+**Waves 89–90 (no phase, 2026-10-05): the carried items, closed.** The operator asked to close
+every item carried out of Phases 36–38; for the two deferred to a trigger (task-worktree retention,
+options in channels) that request was the trigger. Ten cards: unjailed MCP servers visible per pod,
+the jail unable to write a submodule's or a linked worktree's git metadata, a two-stage `serve`
+stop, `docket pod <p> worktrees prune`, options in `conversation`-level notifications and Telegram
+`/answer <task> <id>`, a real-docker oracle, `env:` on `run:` steps, the parked consult question
+persisted, and `approve_task` across a task's later hops of the asking role on all four approval
+channels. Review found the sixth unwired-machinery instance (the inbox never carried a task's
+question) and five card defects; the live run found two more (a jailed commit with no git
+identity, and a verify command's `__pycache__/` blocking every prune), and the documentation
+capture a third (a policy `ask` on `consult` asked approval to ask the operator). Reasoning and the run in ADR 0020 "Closed by Waves 89–90". `kind: autonomy` and
+credential minting stay deferred. No phase is planned.
+
+**Isolation is opt-in again (D-56, 2026-10-06, no phase).** The first CI run on hosts with no
+sandbox (macOS) refused every turn, and the quick start had never named a sandbox as a
+requirement. The operator decided isolation is opt-in: `docket gates isolate on` turns it on,
+and once on it still fails closed. Everything else Phase 38 shipped stands. The feature and its
+host requirements are documented in `docs/SECURITY-SIMPLE.md` "Workspace isolation (opt-in)".
+Reasoning in [docs/adr/0021-isolation-is-opt-in.md](docs/adr/0021-isolation-is-opt-in.md).
+
+**`v0.2.0-beta.4` was published 2026-10-06** as a maintainer action, from `develop` with CI green
+on every job (pre-release; wheel, sdist, installer tarball, SHA256SUMS and SBOM all attested): the team in the repository, eighteen recipes, the provider catalog, trace export with
+privacy levels, the operator loop, consultations and evidence, and opt-in isolation since
+`v0.2.0-beta.3`. The Homebrew formula is pinned to the published asset (`3665dc25`).
+
+**Phase 40 (harden the agent boundary, D-58, [ADR 0023](docs/adr/0023-harden-the-agent-boundary.md)) opened and closed 2026-10-12: thirteen cards over Waves 98–100; D-59 was answered in ADR 0024 and P40-5/P40-13 shipped it in Wave 100 (a repository's commands need the operator's OK, remembered until they change; `docket run` picks changes up; `pod apply` is `pod update`).** A
+five-lane security audit on 2026-10-12 (plan and evidence in the gitignored
+`internal-docs/security-audit-2026-10-12.md`) ran docket against a hostile repository on the
+local model. It fixed eleven contained defects in the working tree in the same session — the
+newline command-separator bypass, the `git -c … push origin main` regex, the approval-token path
+traversal, the bwrap jail masking `DOCKET_HOME`, the store symlink and exclusive-temp hardening,
+the Telegram poison-update wedge, the control-plane JSON body guard, trace redaction of
+env-sourced and bare vendor tokens, `docket init` installing the baseline policies, pod-scoped
+`on: input` policies reaching every screen, and the skill-body screen (specs security-gates
+0.38.0, trace-store 1.7.0, mcp-client 1.10.0, agent-loop 1.33.0, telegram-integration 2.6.0).
+Phase 40 schedules the open items as twelve cards for a multi-agent wave: audit every refused
+tool call, a channel on enqueue/dispatch audit, an audit tail-truncation anchor, bounded audit
+volume, the `docket init` apply-confirmation (P40-5, **blocked on D-59** because it narrows ADR
+0012), a non-dumpable process so `/proc/<pid>/environ` cannot leak credentials to an unjailed
+child, an untrusted frame around repository text in the system prompt, a same-host redirect lock
+for authenticated requests, dropping the Telegram chat ids from the unauthenticated
+`/status.json`, a real `fetch` deadline and timeout clamp, 0700 directory modes, and the
+supply-chain pins (`code-intel` MCP server, `pyjwt`, `uv sync --locked`, SHA-pinned actions).
+Model susceptibility itself is out of scope: the phase judges containment, not whether a model
+obeys. The isolation-default and broad argument-path-containment questions stay deferred (ADR
+0020/0021, D-56). Reasoning in [docs/adr/0023-harden-the-agent-boundary.md](docs/adr/0023-harden-the-agent-boundary.md);
+cards archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). Integration findings at the Wave 100 close: the review code grew from 6 to 16 hex (a 24-bit code let a repository brute-force a change that matches a script's `--accept`), and the quick start and configuration guide had a bare `pod apply` applying `.docket/`, which ADR 0022 decision 5 had changed to a re-sync.
+
+**Phase 42 (lights-out profile and external gate, D-61, [ADR 0025](docs/adr/0025-lights-out-profile-and-external-gate.md)) opened 2026-10-13.** docket is one of three tools (an orchestrator such as Tack, this runtime, an independent verifier) meant to run a lights-out factory at L3, L4 or L5, each usable alone. docket adds what lets an operator run it unattended without learning who the verifier is and without changing a fresh install: a `type: external` gate that maps an outside command's exit code to `pass`/`fail`/`needs_human`/`error` and routes each through the existing `on:` map (a human is an existing `input` step); the gate's output carried into the reworked hop, for mechanical gates too (a backward route re-ran its target blind); the repository's `AGENTS.md` and skills read from the task's `baseCommit`, not the agent-writable worktree; a `lights-out` profile that refuses to start a pod dispatch without isolation, network `none`, an external gate on every Implementer step, no HTTP MCP server and no secret-named injected variable; and evidence `1.1.0` with `gate` and `directives`. Accepted with amendments that cut the `exec` gate and profile flags, the override pack, risk and domain, the corrections export and the new ids, each with a named trigger (ADR 0025, last section). Seven cards over four sub-waves, scheduled by contention on `core/dispatch.py`: **A** P42-1 ∥ P42-3 · **B** P42-2 · **C** P42-4 ∥ P42-5 · **D** P42-6 ∥ P42-7. **Sub-wave A closed in Wave 104** (merges `5498d4b1` P42-1, `a0d58ede` P42-3): a gate that sends a task back now says why, and repository instructions and codebase skills come from the base commit; integration fixed a cross-thread registry race (a `ContextVar` now) and a false `GATE FAILED` on a backward `pass` route. **Sub-wave B closed in Wave 105** (merge `563c6508`, P42-2): the external gate; integration closed a gate bypass (the exit code came from a jail-writable file; now the process's own status via `system.run_command`) and a short-form `input` step that dropped its `on:` map. **Sub-wave C closed in Wave 106** (merges `44fe0a2e` P42-5, `30f56be3` P42-4): evidence 1.1.0 (`gate`, `directives`; the harness result stays 1.0.0) and the `lights-out` profile (`setup profile`, pod `profile`, a refusal before the first hop audited `profile.refused`). **Sub-wave D closed in Wave 107, and with it the phase** (merge `68c03f6d` P42-7: the network is reported as not enforced while isolation is off, on every surface including `pod show`; P42-6 docs `e29a996d`). **The live run found what the suites did not** (P42-8, `e9317013`): a `needs_human` question hid the verifier's reasons, the operator's answer never reached the retried Implementer, and a pass walked straight into the `input` step and re-parked the task (now refused at `validate` for a mechanical- or external-gated step unless `pass` is routed); `pod validate` also masked every error of a pipeline with an unquoted `on:`. Across the phase, adversarial review of green worker commits found a cross-thread registry race, a false GATE FAILED on a backward `pass` route, a gate bypass through a jail-writable exit-code file, and a dropped short-form `on:`. **Carried, unscheduled:** `core/profile.py` reads the injected variables through the private `dispatch._hop_env`; the inbox prints a multi-line question unindented; a `waiting_input` task can only be declined, not cancelled; the verifier's unannounced product name is in unpushed history from `e8774fad` until `e29a996d` (a maintainer decision before any push). **Deferred with triggers (ADR 0025 amendments):** `exec` gate and profile flags, a gate override, risk and domain, the corrections export, attempt ids and trace digests, a gate network grant.
+
+**Phase 41 (one execution envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) opened 2026-10-12 and closed 2026-10-13 (sub-wave D, P41-8, in Wave 103: the escape matrix; Landlock keeps hooks and config read-only and refuses a root holding a `.git` directory; host-side git names the recorded git dirs); sub-wave A (P41-1 Landlock + seccomp jail, P41-6 the gate rule and network `none`) closed in Wave 100; sub-wave B (P41-5 a per-pod cache dir as the jailed home, P41-4 verify and `run:` inside the jail, P41-2 Seatbelt on macOS) closed in Wave 101 on 2026-10-13; sub-wave C (P41-3 bwrap and `isolate: false` deleted, Docker only when chosen; P41-7 the sandbox visible in `init`, `status`, `setup sandbox`, doctor and `install.sh`) closed in Wave 102 the same day.** Integration finding: since the gate now allows off-allowlist binaries on the promise of a jail, a sandboxed `bash` call that finds no backend at call time runs nothing instead of falling back to the host. Landlock cannot make a sub-path of a writable root read-only, so the bwrap `.git` overlay has no counterpart; P41-8 gained the row that proves an agent-rewritten `.git` file cannot make host-side git run its code. Wave 101 integration: the two parallel cards met at one function, `system.jail_launch`, which takes the pod cache dir as a read-write root; the seam test is a jailed verify whose `$HOME` write lands in the pod cache. Seatbelt is unit-pinned only until P41-8's macOS job runs it. Wave 102 finding: deleting bwrap removed the only Linux backend with read-only `.git/hooks`/`config` overlays; the Landlock jail grants the whole git dir read-write, an escape for an isolated agent, closed by P41-8 (RED on the base for hooks, config, the `.git` file, `commondir` and `config.worktree`). **Carried, unscheduled:** the jail keeps `refs` writable, so an isolated agent can move another branch's ref (no code runs); the trusted-worktree record is registered by dispatch only, so CLI-side git (`task diff`) still reads the `.git` file; `docket exec` has no pod cache dir; Seatbelt and the macOS rows run only in CI; `docs/assets/isolation.png` still shows bwrap (re-capture).
+The audit left the structural gap the cards could not close: the sandbox jails the agent's
+`bash` only, while `verifyCmd`, `run:` steps and `isolate: false` servers run on the host, the
+jail reads the whole disk with the network open, and bwrap is a system dependency CI containers
+cannot satisfy. The maintainer's decisions, after comparing Claude Code, Codex CLI and OpenHands:
+one envelope for everything the project runs; Landlock + seccomp on Linux (kernel >= 5.13, no
+package, no user namespace), Seatbelt on macOS (ships with the OS), Docker only when chosen,
+bwrap deleted; inside the envelope every command but a high-risk class is allowed and the
+allowlist applies only outside it; the sandbox stays off by default (D-56) but is visible at the
+end of `init`, the top of `status` and in `doctor`; network `none` by default inside the
+envelope; `isolate: false` deleted in favour of a per-pod cache directory. Eight cards over four
+sub-waves (contention: `edges/adapters/system.py`), with an escape matrix on real backends as
+the release gate. Packets: `.agents/handoffs/phase-41-worker-packets.md`.
+
+**Phase 39 (one CLI surface, D-57) opened 2026-10-07, closed 2026-10-08.** A read-only audit of the CLI (command
+inventory, six journeys run live in a throwaway home, sourced best practices) found 46 flat
+commands over 161 entry points with no real sub-command, 23 commands parsing their own action
+word so that `--help` never works below the top level and an unknown flag is silently dropped
+(`pod <p> dispatch --dry-run` ran for real), the pod named seven ways, three off-TTY policies for
+destructive commands, bare `gates isolate` writing a security setting, and a `done` task's change
+sitting in a worktree no command names. Re-verifying it found the **seventh unwired-machinery
+instance**: the three org specialists and the portfolio manager are provisioned, listed and
+health-checked and nothing ever runs one. The maintainer's decision, reached over three rounds
+(the audit's 32, a cut to 22 on "does the noun answer its own question", a cut to eleven on
+"does the name explain itself, and what owns it"; `pod` discussed and kept): `init status inbox
+task run pod log setup start stop exec`, the pod resolved from the directory, approvals under the
+task, the roster and the configuration under the pod, the machine's pieces under `setup`, one
+interaction contract, one role vocabulary, and every redundant or agent-era command, the
+per-agent pin, the persona layer and the specialists deleted outright with no alias, notice or
+migration, with that rule written into `CONTRIBUTING.md`, `AGENTS.md` and §3 below. Twenty-four
+cards over Waves 91–95 (foundation; the mechanical registry split; the groups; help, guards,
+docs and assets; the live re-measurement). Reasoning in
+[docs/adr/0022-one-cli-surface.md](docs/adr/0022-one-cli-surface.md); packets in
+`.agents/handoffs/wave-91-worker-packets.md`.
+
+**Wave 96 (no phase, 2026-10-08): the live run's card A, closed.** The Phase 39 live run left
+eighteen locators; a read-only triage (gitignored `internal-docs/cli-ux-audit-2026-10-07/
+triage-2026-10-08.md`) found nine defects, nine by design, and proposed five cards A–E. The
+operator asked to continue and A was the only one where a spec MUST was false: `task approve
+<apr-token>` ended without the run hint, and a deny's reason reached trace and audit but never its
+task (the correction was keyed by a field no gate wrote; the task's reason was the fixed `approval
+denied`). One card, `50da5d59`: the pod comes from the approval record, the reason rides into the
+task as `approval denied: <reason>` and the correction carries the task's id (operator-loop 1.5.2,
+pod-dispatch 6.36.2, cli-interface 2.1.1). The same day, with no card: `docket init` became a real
+Typer command with a one-screen help (`a49abba0`, cli-interface 2.1.0), the invocation linter
+closed its two gaps (`ebbc7b64`) and six docs were swept of pre-Phase-39 names in prose
+(`d8be1e24`). B–E followed as Wave 97 (next paragraph).
+
+**Wave 97 (no phase, 2026-10-08): the live run's cards B–E, closed.** The operator asked to close
+every pending item; the four remaining triage cards ran as one worker each in isolated worktrees
+off the claim commit (`c540afcc`), packets in `.agents/handoffs/wave-97-worker-packets.md`,
+merged E, B, C, D. B (`48b10796`): `status` counts a `waiting_input` task (`tasks.waitingInput`,
+`N waiting input`, pod `waiting`) and its `Isolation:` line reports the sandbox posture from the
+`setup sandbox` reader instead of a fixed phrase (cli-json-shapes 1.27.0, cli-interface 2.1.2).
+C (`7b8b14ae`): the five task-verb examples pass a task id, `pod set` says `invalid value` for a
+rejected value, the forecast pluralises and a policy interruption is described by its predicate
+kinds, never the regex (operator-loop 1.5.3, pod-dispatch 6.36.3). D (`f99bbf9a`, decision on the
+card): the progress view names the task on its session lines and prints an indented `▶ <hop> …`
+as each hop starts, from dispatch's existing hop marker; no trace event was added (cli-interface
+2.1.3). E (`805b44fc`): `setup provider add` without `--model` records the first id the one
+registration probe advertises (model-profiles 3.3.0). Every gate green on the rollup. Nothing
+from the live-run triage is open; the two maintainer-owned items (Tack's string, the asset
+re-capture) stay with the maintainer; no phase is planned.
+
+Twenty-five cards over Waves 91–95 (P39-25, the invocation guard, was added in Wave 95 from a
+Wave 94 lesson: a rename guard proves the old names gone, and only a check against the live tree
+proves the new lines true). Sonnet workers in isolated worktrees, Haiku for the documentation
+sweeps, one integrator. Integration found what the workers' suites could not: a seam between the
+pod resolver and the groups that each card had passed alone, a conflict where two cards deleted
+the same function, and about twenty invocations in the documentation sweeps naming verbs the tree
+lacks. The live re-measurement (ADR 0022 "Live run", 2026-10-08): none of the audit's sixteen
+defects reproduces, the newcomer path types no pod name, a fresh machine reaches `Ready` through
+`docket setup` alone, every help level has an example, and the checklist scores 18 of 20 (the
+bare-name library readers; no hint switch).
+
+Carried, by name: Tack's one string (`"harness", "run"` to `"exec"`) and the live asset
+re-capture, both refused by the integrating session's permission classifier and the maintainer's
+to run; the landing page after the release that ships the names; the eighteen live-run locators as
+a triage list; two gaps in the invocation linter. No phase is planned after this one.
+
+> **How to read the rest of this file.** Nothing below is a task list; executable cards are in
+> `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's
+> decision changelog were moved verbatim to [docs/cycles-ended/](docs/cycles-ended/README.md)** (`roadmap-phases.md`,
+> `roadmap-changelog.md`, SHA-256 manifest). **This table is the authority; a phase heading is not.**
+
+| Phase | What it was | Status |
+| --- | --- | --- |
+| 0–4 | Truth & correctness, cost enforcement, consolidation, park experiments, strengthen | ☑ done |
+| 5 | Channel portability + system snapshot | ☑ done |
+| 6 / 6b | Model & provider agnosticism · tier-less role→model policy | ☑ done |
+| 7 | *Renumbered away* — the former "Product & community"; folded into 11–13 | — n/a |
+| 8 | Agent observability, guardrails & drift (HITL) | ☑ done |
+| 9 | Contract integrity: spec↔runtime gap | ☑ done |
+| 10 | Agent architecture: project pods | ☑ done |
+| 11 | Competitive differentiation | ☑ done (2026-06-25) |
+| 12 | Consolidation & hardening | ☑ done (2026-07-02) |
+| 13 | Close the differentiation gaps | ☑ done (2026-07-02) |
+| 14–18 | **Platformization I–V** — dispatch hardening, wired governance, declarative orchestration, context/memory, runtime-driver port + MCP | ☑ done (38 cards, 7 waves, closed 2026-07-31) |
+| 19 | **docket takes the runtime (D-19)** — owns the loop, registry, all three policy hooks, approvals, audit, sessions. No daemon. | ☑ done (13 cards, waves 8–11) — **record in `docs/cycles-ended/todo-waves.md` + §Changelog; this file has no Phase 19 section** |
+| 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
+| 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
+| 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ☑ **complete (2026-09-14)** — Waves 26–29. Release evidence is the public `v0.2.0-beta.2` (wheel, sdist, installer archive, checksums, SPDX SBOM, provenance attestation); W29-C7's remaining half, a newer beta, was removed by D-39. Record in `docs/cycles-ended/roadmap-phases.md` |
+| — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
+| — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
+| — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
+| — | **Wave 21** (not a phase): daemon-free current-state truth pass | ☑ done (2026-08-19) — current contracts, docs, source prose, and hermetic fixtures now describe only Docket-owned runtime/state; explicit migration history preserved |
+| — | **Wave 22** (not a phase): observable whole-product workflow proof | ☑ done (2026-08-19) — one hermetic command crosses CLI subprocesses, loopback HTTP, the runtime/tool/gate path, approval resume, and durable observability state |
+| — | **Wave 23** (not a phase): real local-model workflow + reachable startup state | ☑ done (2026-08-19) — an opt-in Qwen canary crosses the full workflow; bounded HEARTBEAT/AGENTS/TOOLS/MEMORY context now reaches every live turn without widening tool roots |
+| — | **Wave 24** (not a phase): realistic memory-backed Git maintenance | ☑ done (2026-08-19) — exact durable memory fails closed on corruption; real worktree code continuity reaches Reviewer/Tester; public plus hidden acceptance passes on the local model |
+| — | **Wave 25** (not a phase): live-model request and outcome truth | ☑ done (2026-08-30) — all 11 cards and the live private-boundary canary passed; integrated at `6b925f0` with full commit-level gates green |
+| — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
+| — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
+| — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
+| — | **Wave 29** (not a phase): adoption evidence and public release | ☑ complete (2026-09-14) — C1–C6 shipped; C7 published `v0.2.0-beta.2` on 2026-09-07 and its closing half was removed from the board by D-39 |
+| 24 | **Harness mode (D-35)** — docket as a governed, non-interactive execution harness a plan-of-record (Tack) spawns as a subprocess | ☑ **complete (2026-09-12)** — Wave 30, five cards. `docket harness run`/`status` ship with a published, versioned, test-pinned contract; the three seams it needed are wired and proved reached by a real subprocess |
+| 25 | **Human maintainability (D-36)** — test lanes with a budgeted agent lane, one unit file per module, zero-archaeology comments ratcheted in CI, generated CLI/API docs, board and roadmap cut to size | ☑ **complete (2026-09-12)** — Wave 31, thirteen cards. The board and roadmap reached their line targets on 2026-09-14, when the Wave 29 and Phase 23 sections archived |
+| — | **Wave 31** (not a phase): baseline → lane move → structural guards → comment hygiene → per-module merges → in-process CLI tests → generated docs → board archive → split the three 500-line functions | ☑ complete (2026-09-11 to 2026-09-12) — thirteen cards W31-C0…C10, C8 split in two; C9 and C10 opened by defects the work surfaced |
+| — | **Wave 30** (not a phase): in-flight bash cancellation, non-interactive approval outcome, trace subscriber, harness contract + command | ☑ complete (2026-09-12) — five cards W30-C1…C5. C1 merged on a second pass after a pipe-drain regression; C2 and C3 formed a seam that emptied the contract's blocked payload until a round-trip test was added |
+| — | **Wave 32** (not a phase): documentation truth pass — four parallel audits over disjoint doc groups, then seven cards splitting the drift Phases 24 and 25 left | ☑ complete (2026-09-12) — removed a script, CI workflow and hook that never existed; swept a repeat of defect W19-5 from the quick start; and found one anti-pattern in three places, a spec index, an env-var table and a blueprint list each checked against retyped rather than derived reference data |
+| — | **Wave 33** (not a phase): audit of the Wave 32 closure, repository hygiene, docstring-only comment sweep | ☑ complete (2026-09-13) — the closure held (gates, baselines, metrics all in sync); fifteen merged worktrees, eight merged branches, a spent migration script and two never-running skips retired; thirteen bounded docstring packets merged, each proved AST-identical with docstrings stripped, and the comment baseline ratcheted to 372/40. Found the gitignored CLAUDE.md still calling session compaction unwired two waves after W20-C2 wired it |
+| — | **Wave 34** (not a phase): finish the D-36 function split behind a function-span ratchet, two measured fixes, one read-only audit | ☑ complete (2026-09-13) — `tests/guards/test_function_span.py` (150-line ceiling, closures included) listed seven functions; C1 to C4 split `run_agent_turn` (909 lines, twenty closures), `compact_session`, `do_POST` and `_doctor_json` with zero behaviour change, each proved by an unchanged public API and untouched tests, leaving one deliberate entry; C5 made the harness cancellation test deterministic under load; C6 gave the duplicated provider credential table one owner; A1 found the fourth unwired-machinery instance, `docket gates enable/disable` writing a flag nothing on the live path reads while spec, README and command help claimed it changed delivery, and C7 made those claims true (wire or retire stays an open maintainer decision) |
+| — | **Wave 35** (not a phase): second docstring sweep, one dead flag, one lane rule | ☑ complete (2026-09-13) — six docstring-only packets (C1 to C6) over twenty-five modules, each proved AST-identical with docstrings stripped, took the comment baseline from 372/40 to 229/29; C7 retired `FleetSecurity.gatesEnabled`, a flag with no live-path reader and no product writer (spec 0.19.2); C8 made every integration test's `SUBJECT` an importable `docket` path, guarded by `test_layout.py` (spec 2.17.0, seen red on seven free-text values). Two things the wave found on the way: `scripts/gen_cli_docs.py --check`, a CI job, had raised ImportError since the Wave 34 credential-table merge because the integrator's batch gates never ran it (fixed, and added to the gates), and the `maintain sessions` banner still said sessions are never compacted (corrected) |
+| — | **Wave 36** (not a phase): eleven code-side defects found by the 2026-09-19 documentation audit (D-40) | ☑ complete (2026-09-21) — three batches by file contention, ten code fixes and one prose sweep, all eleven merged with RED tests; C6 proved live on the local endpoint (research pod 5 hops to done, ops pod reaches `waiting_approval`). Batch 1: project-id validation at the core provisioning boundary (C1), `docket mcp servers add` unreachable through Click (C2), MCP approvals that never resume a dispatch task (C4), `maintain rebuild` bare-deleting memory (C5), blueprint pipelines never executed — the fifth unwired-machinery instance (C6), verify-command orphans on timeout (C7). Batch 2: HTTP approval-channel forgery (C3), CLI `--json` types (C8), the inert `--debug` flag and PRICE-override claim (C9), budget warnings that read a cost that is always zero (C10). Batch 3: a docstring and spec sweep (C11). Cards in [TODO.md](TODO.md); worker packets in [.agents/handoffs/wave-36-worker-packets.md](.agents/handoffs/wave-36-worker-packets.md) |
+| — | **Wave 37** (not a phase): defects found by running the product (D-41) | ☑ complete (2026-09-25) — opened and closed the same day from a six-surface triage; all six cards merged with RED tests, full gates green, and live evidence on the local endpoint (the journey dispatch reaches `done — 3 hop(s)` with `APPROVE`; a `cd`-prefixed production push still asks). Two batches by file contention: bash allowlist + `policies test` parity (C1), exactly-once trace cursor and HTTP contract gaps (C2), console script bypassing aliases and removed-command notices — sixth unwired-machinery instance — plus `help <command>` (C3), harness-v1 schema references (C4); batch 2: approval conflict vs not-found and the measured flake (C5), `cost <id> --json` and unknown-flag rejection (C6). Archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md); packets in [.agents/handoffs/wave-37-worker-packets.md](.agents/handoffs/wave-37-worker-packets.md) |
+| 26 | **The configuration contract (D-42)** — every operator-facing setting has one writer, is validated at write, has a live consumer on the default path, fails closed (governance) or loud (everything else), is observable with provenance, and survives regeneration | ✅ **complete 2026-09-26** (opened 2026-09-25; Waves 38–40, 20/20 cards, one integrator + Sonnet workers in isolated worktrees). A live E2E connection audit (pod → config → custom-role pipeline run, two tasks to `done`) added P26-18 (membership guessed from the id string breaks hyphenated custom roles), P26-19 (a deterministic refusal orphans the task as `running`) and P26-20 (shipped, CI-validated recipes). Governance first: a malformed `block` policy currently fails **open** (P26-1). Context budgets follow the model window instead of a fixed ~24 KB (P26-2/P26-3). Reasoning: [ADR 0008](docs/adr/0008-configuration-contract.md) |
+
+**Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
+trigger (see §4.5's prioritization rule, D-24, and §7):
+
+| Not doing | Why |
+| --- | --- |
+| Multi-tenancy / the tenant axis | **CUT** (D-22, D-24). Trigger to revisit: docket itself serving more than one end customer from one host. |
+| Streaming · browser automation | **CUT** by D-24 — no measured need in *this* system. Use MCP for browser tooling. |
+| OpenTelemetry **SDK** | Still cut (D-24). What Phase 32 (D-48) schedules is a projection of docket's own trace vocabulary to OTLP/HTTP behind a `kind: exporter` document, with zero dependencies; the SDK, OTLP metrics/logs, sampling and context propagation stay out. D-25's two-runtime trigger governs anything beyond that. |
+| Egress lockdown | Shipped as an opt-in mode in Phase 38 (D-55): `docket gates network none`; the default stays open (D-23), and `fetch` remains the inspectable path. |
+| A dashboard of our own | Ruled out since Phase 11 and reaffirmed by 22 — docket feeds one. |
+| Build-agent profile · MCP listing cache · Go/Rust rewrite | Deferred behind named triggers. |
+
+Session compaction is no longer in this deferred table: its trigger fired and W20-C2/C2b shipped
+the live fail-closed and hierarchical paths. W20-C3 then measured material cross-hop duplication,
+and W20-C4 closed it with step-scoped durable histories while preserving typed handoffs.
+
+**Known-true limits live in [README.md](README.md#known-limits)**, not here — they change faster
+than this file.
+
+**Release:** `v0.2.0-beta.3`, cut 2026-09-18 and published by `release.yml` with wheel, sdist,
+installer archive, checksums, SPDX SBOM and a GitHub provenance attestation. Changes after it
+land under `CHANGELOG.md` `[Unreleased]`; cutting the next beta is a maintainer action through
+`release.yml`, not a board card. Every release carries a SemVer `-beta.N` suffix until the project is field-hardened enough to
+drop it (see README's beta warning).
+
+Status legend used in the older sections below: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven,
+planned · 🚧 in progress · 🗓️ planned / deferred
+
+> **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
+> `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
+> here and removed — their durable content lives in `docs/cycles-ended/roadmap-phases.md` (completed migration) and §4.5
+> (architectural principles); their executable task boards are spent (the migration shipped).
+> Git history retains the originals.
+
+## Tracked decisions (not yet scheduled)
+
+- 🗓️ **Project rename (deferred).** "docket" collides with Ruby Docket, is a generic word, and is
+  hard to search. The decision is to **keep "docket" as an independent product name for now** and
+  revisit a searchable, namespace-clean rename (candidate: `docketctl`) before any wide public
+  launch. Do not anchor positioning to the retired runtime: D-19 made Docket own the loop and
+  removed that compatibility relationship. Touch points a rename must update: binary
+  name, `install.sh`/`uninstall.sh` paths, Homebrew `Formula/`, docs, and the metrics script.
+- ☑ **Version-pinned CI for the retired daemon — CUT (2026-08-19).** Superseded by D-19's clean
+  break: Docket has no daemon binary, adapter, shared schema, package dependency, or compatibility
+  layer to test. Current compatibility is the OpenAI-compatible model endpoint plus optional MCP,
+  as recorded in [COMPATIBILITY.md](COMPATIBILITY.md). Installing an unrelated runtime weekly would
+  add a false signal rather than protect a live contract.
+- ☑ **Telegram conversation memory (TC-1…TC-7, shipped 2026-07-20).** A live investigation
+  (triggered by the docket Telegram group dropping an accepted task across a context reset) found
+  three gaps *beyond* the memory-durability fix (WORKFLOW_AUTO `CONTRACT_VERSION` v3): split
+  identity from leftover external-runtime scaffolding, no durable conversation persistence, and no
+  registry. **Delivered:** docket-owned identity — optional `Persona` on `AgentMeta` rendered into
+  `SOUL.md`, `docket persona`, and `docket doctor` quarantine of `IDENTITY.md`/`BOOTSTRAP.md`
+  (`core/identity.py`); a docket-owned **conversation registry** (`core/conversations.py`,
+  `docket conversations list/show/resume/set`, seeded at `docket wire`); and a doctor advisory on
+  the memory index. TC-3 established the retired runtime's per-agent sqlite as a rebuildable RAG
+  index (not a transcript), so durability is docket-owned by design. Full record:
+  [internal-docs/telegram-conversation-memory.md](internal-docs/telegram-conversation-memory.md)
+  and [agent-structure-analysis.md §6](internal-docs/agent-structure-analysis.md). Deferred:
+  `--persona` at `docket add` time; auto-populating `last_message`/`task_ref` from dispatch/serve.
+- ☑ **External "opencode" audits evaluated + dismissed (2026-07-20).** Two agent-generated audits
+  (`DESIGN-PATTERN-AUDIT.md`, `SECURITY-AUDIT-REPORT.md`) were reviewed against the code and
+  **deleted** as net-negative: they fabricated non-existent functions (`_create_agent_meta`,
+  `exec_in_workspace`), flagged a dispatch "layer violation" that doesn't exist (`core/dispatch.py`
+  delegates execution through the runtime driver and system adapter, no raw subprocess), cited a stale
+  `_install.py` size, and otherwise recommended cargo-cult OOP against the deliberate
+  functional style. The **one** actionable idea — a boundary guard — was implemented as the true
+  invariant: `tests/guards/test_no_subprocess_in_core.py` (core/ must be process-free),
+  a sibling of the CH-3 no-UI-in-core test. Its optional adapter-split suggestion became moot when
+  D-19 deleted the external-runtime adapter outright.
+
+> Read §1–§4.5 once for mission, ground truth, conventions and principles; then take work only
+> from `TODO.md`. Completed phase records are in `docs/cycles-ended/roadmap-phases.md`.
+
+---
+
+### Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19**
+
+> **Read this box before the section it introduces.** D-19 (2026-07-31) **took the runtime**. docket
+> now owns the turn loop, the tool registry, all three policy hooks, approvals, audit and sessions,
+> and rents protocols only. The ACL is gone; so is the daemon. The section below is kept **because
+> the reasoning was sound and the trigger it named is exactly what fired** — not as live guidance.
+>
+> **What actually forced the reversal, and it is the durable lesson:** docket shipped four
+> `pre_tool_call` policy templates that had **never once been evaluated**, because the daemon owned
+> the inside of a turn. The wrap boundary was not merely limiting the roadmap; it was making the
+> product's central claim false. *Whoever owns the loop owns the interception points* — which is
+> also why agent frameworks (LangGraph/CrewAI/AutoGen) are rejected on principle: they own the loop,
+> and therefore the gates.
+>
+> **What survived the reversal, unchanged:** the "one typed port, one shipped driver" discipline
+> (`core/runtime_driver.py`, `DocketDriver` — **not** a plugin framework), no DI/ORM/event-bus,
+> boring typed Python, and the rule that a *second* driver needs a named trigger. The
+> anti-overengineering table below still governs, with its "one backend (OpenClaw)" row read as
+> "one runtime, ours".
+
+- **The moat is the control plane, not the engine.** OpenClaw owns the *execution plane* (the agent
+  loop, LLM/provider calls + model routing, tool execution + sandbox, the gateway, session/channel
+  plumbing, approval-hook enforcement) — large, security-critical, changing *weekly*. docket owns the
+  *control plane* (provisioning, multi-project isolation, cost guardrails, opinionated UX,
+  Telegram-first ops, fleet health). That control plane is the product's differentiator; none of it
+  requires owning the agent loop.
+- **Why not rebuild the runtime:** velocity/treadmill risk (LLM runtimes churn; wrapping inherits
+  provider support for free), security surface (sandbox + isolation + gates are the most expensive
+  things to get right), and time-to-value. "No direct OpenClaw CLI or JSON editing" is itself the
+  sellable proposition.
+- **The boundary makes it reversible:** the ACL (`edges/adapters/openclaw.py`, deleted by P19-7b when
+  D-19 took the runtime) was the single place OpenClaw's shape lives, so build-vs-wrap stays a *reversible* bet, not a
+  load-bearing assumption smeared across the codebase. **Do not build a plugin/`AbstractBackend`
+  framework** — there is exactly one runtime; one concrete ACL behind a thin boundary is enough.
+- **When standalone *would* become right (triggers, not dates):** OpenClaw stalls / repeatedly breaks
+  compatibility / changes license or direction; the roadmap needs runtime-level capabilities upstream
+  consistently refuses; or the ACL ends up working *around* OpenClaw more than *with* it. Even then,
+  prefer absorbing a thin slice behind the existing ACL port over a full rebuild.
+- **Critical consequence for every phase** *(revised 2026-07-30 per D-15)*: **docket orchestrates
+  hops; the daemon executes every tool call inside a turn.** Since AA-7's real dispatch, docket *is*
+  in the execution path for the dispatch lane and is accountable for its queue/state/retry
+  correctness — the old "docket is not in the agent execution path" phrasing is retired. What
+  survives unchanged is the split every feature must still declare: *pure-docket* (config,
+  provisioning, metadata, templates, policy authoring, hop orchestration — ships first, fully
+  testable) vs *daemon-gated* (anything that intercepts **inside** a turn — isolated behind a spike,
+  never overclaimed). Phases 8, 10, and 14–18 are all shaped by this split.
+
+> **Platformization amendment (2026-07-30, decisions D-14…D-18):** the Phases 14–18 program revises
+> two lines above, deliberately and narrowly. (1) The `AbstractBackend` ban becomes "one typed
+> **RuntimeDriver port**, one shipped driver" — formalizing the execution slice the ACL already
+> half-owns, because the 2026-07-29 audit found that coupling leaking around it (session-JSONL cost
+> parsing in `core/`, 11 argv shapes) rather than contained by it. A *second* driver still needs a
+> trigger from the list above. (2) "Not in the execution path" is rewritten per D-15. Everything
+> else in this section — wrap-don't-rebuild, no DI/ORM/event-bus, boring typed Python — stands and
+> governs Phases 14–18 too.
+

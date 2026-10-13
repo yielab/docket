@@ -686,5 +686,37 @@
     "heading": "☑ PHASE 42 COMPLETE — lights-out profile and external gate (D-61, ADR 0025): eight cards over Waves 104–107, closed 2026-10-13",
     "bytes": 15354,
     "sha256": "6edf13907f4b58a2af7bea0264e8cde00d9f97842350c49b890771a4e6dcec67"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "⇢ STATUS AT A GLANCE — every phase, one line each",
+    "bytes": 54219,
+    "sha256": "9f144e3a4304bbab4b7fde85c677588a8fa2bab496245e1127df570118a17f00"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "Tracked decisions (not yet scheduled)",
+    "bytes": 3415,
+    "sha256": "aa10132cb0665b5b2882552b3d3d5ff54374b742b9cdde7b07073b1a541d0250"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19**",
+    "bytes": 4538,
+    "sha256": "8a89e8be254aa75ea6e043db5ad0b24f9110e0b125a4e1ed8e898a50b6c49bb9"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/)",
+    "bytes": 1346,
+    "sha256": "196fbb1b6eae0b98d0b5b6b116b896d4dd7cdd33d2d883f991af8d29472cd136"
   }
 ]

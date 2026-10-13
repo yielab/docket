@@ -12,8 +12,8 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (62 archived) |
-| [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (23 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (63 archived) |
+| [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
 
@@ -27,6 +27,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | 2026-10-08 | ☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07) | `todo-waves.md` | 65,803 |
 | 2026-10-08 | ☑ WAVE 96 COMPLETE — the live-run triage card A, CLOSED 2026-10-08 (no phase; opened 2026-10-08) | `todo-waves.md` | 3,272 |
 | 2026-10-08 | ☑ WAVE 97 COMPLETE — the live-run triage cards B–E, CLOSED 2026-10-08 (no phase; opened 2026-10-08) | `todo-waves.md` | 10,834 |
+| 2026-10-08 | ◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/) | `todo-waves.md` | 1,346 |
 | 2026-10-05 | ☑ WAVE 88 COMPLETE — Phase 38 CLOSED 2026-10-05 — the execution envelope (D-55), Waves 85–88 (opened 2026-10-05) | `todo-waves.md` | 18,813 |
 | 2026-10-05 | ☑ WAVES 89–90 COMPLETE — the carried items, CLOSED 2026-10-05 (no phase; opened 2026-10-05) | `todo-waves.md` | 16,884 |
 | 2026-10-04 | ☑ WAVE 73 COMPLETE — Phase 35 CLOSED 2026-10-04 — docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29) | `todo-waves.md` | 29,104 |
@@ -112,6 +113,9 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | W29-C6 — generate and publish the reproducible adoption baseline | `todo-waves.md` | 5,649 |
 | Planned program — PHASE 25: human maintainability (D-36) | `roadmap-phases.md` | 8,260 |
 | Planned program — PHASE 24: harness mode (D-35) | `roadmap-phases.md` | 7,010 |
+| ⇢ STATUS AT A GLANCE — every phase, one line each | `roadmap-phases.md` | 54,219 |
+| Tracked decisions (not yet scheduled) | `roadmap-phases.md` | 3,415 |
+| Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19** | `roadmap-phases.md` | 4,538 |
 <!-- archive-index:end -->
 
 ## Handoffs
