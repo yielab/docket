@@ -619,8 +619,13 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("DOCKET_SANDBOX_BACKEND",),
-        "Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed",
-        "auto-detected (docker > bwrap > none)",
+        "Force or disable the sandbox backend (`landlock`/`docker`/`bwrap`/`none`) regardless of what is actually installed",
+        "auto-detected (landlock > bwrap > docker > none)",
+    ),
+    (
+        ("DOCKET_SANDBOX_PROBE",),
+        "`none` makes the Landlock probe report the kernel feature absent (tests that simulate a host with no backend)",
+        "unset (the kernel is probed)",
     ),
     (
         ("SHELL",),

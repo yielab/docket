@@ -914,7 +914,8 @@ No command emits any other exit code today.
 | `DOCKET_POD` | Pod that commands taking `--pod` act on when the flag is omitted | unset |
 | `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket setup sandbox on`) | `alpine:3.20` |
-| `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |
+| `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`landlock`/`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (landlock > bwrap > docker > none) |
+| `DOCKET_SANDBOX_PROBE` | `none` makes the Landlock probe report the kernel feature absent (tests that simulate a host with no backend) | unset (the kernel is probed) |
 | `SHELL` | Login shell name; `docket setup` uses it to name the completion command it offers | unset (bash assumed) |
 | `DOCKET_SERVE_TOKEN` | Fix `docket start`'s bearer token instead of generating one per run | unset (random) |
 | `DOCKET_LLM_BASE_URL` | Process-wide override that points every model at one endpoint (local dev, tests without stored config) | unset |

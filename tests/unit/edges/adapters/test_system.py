@@ -257,7 +257,18 @@ class TestLandlockBackend:
     def test_availability_follows_the_abi_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from docket.edges.adapters import landlock
 
+        monkeypatch.delenv("DOCKET_SANDBOX_PROBE", raising=False)
         monkeypatch.setattr(landlock, "abi_version", lambda: 0)
         assert _sys.landlock_available() is False
         monkeypatch.setattr(landlock, "abi_version", lambda: 3)
         assert _sys.landlock_available() is True
+
+    def test_the_probe_override_hides_the_kernel_feature(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``DOCKET_SANDBOX_PROBE=none`` reports Landlock absent whatever the kernel says."""
+        from docket.edges.adapters import landlock
+
+        monkeypatch.setattr(landlock, "abi_version", lambda: 5)
+        monkeypatch.setenv("DOCKET_SANDBOX_PROBE", "none")
+        assert _sys.landlock_available() is False
