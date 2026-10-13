@@ -107,6 +107,23 @@ class TestInitInstallsTheBaselinePolicies:
         assert "block-destructive.yaml" in installed or "block-destructive.json" in installed
 
 
+def test_init_closes_with_the_sandbox_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The output ends with a `This machine` block naming the sandbox posture."""
+    from tests.conftest import repoint_docket_home
+
+    repoint_docket_home(monkeypatch, tmp_path / "home")
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+    code = tmp_path / "code"
+    code.mkdir()
+    assert _agents.run_init(_agents.InitRequest(name="demo", location=str(code))) == 0
+    out = capsys.readouterr().out
+    tail = out[out.index("This machine") :]
+    assert "Sandbox   off. The agent's commands run with your user's permissions." in tail
+    assert "Turn it on: docket setup sandbox on" in tail
+
+
 def test_a_new_workspace_and_its_memory_are_created_0700(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

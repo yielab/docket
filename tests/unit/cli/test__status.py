@@ -59,6 +59,28 @@ def _json(*args: str) -> Any:
     return json.loads(result.stdout)
 
 
+class TestTheSandboxOpensTheOutput:
+    def test_the_first_line_is_the_sandbox_posture(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+
+        lines = runner.invoke(_app, ["status", "--pod", "demo"]).output.splitlines()
+        first = next(ln for ln in lines if ln.strip())
+
+        assert first.startswith("Sandbox   off. The agent's commands run with your user's")
+        assert "Isolation" not in "\n".join(lines)
+
+    def test_all_opens_with_it_too(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+
+        out = runner.invoke(_app, ["status", "--all"]).output
+
+        assert out.lstrip().startswith("Sandbox   off.")
+
+
 class TestCurrentPod:
     def test_a_scripted_trace_of_one_done_and_two_failed_reads_1_2_0(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -172,7 +194,7 @@ class TestParkedQuestionAndSandbox:
     def test_isolation_reports_the_sandbox_state_in_json_and_on_the_line(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """JSON and the human line carry the same phrase, built from sandbox_state."""
+        """JSON carries the phrase built from sandbox_state; the text opens with the Sandbox line."""
         _seed(tmp_path, monkeypatch)
         monkeypatch.setattr(
             _status,
@@ -182,7 +204,7 @@ class TestParkedQuestionAndSandbox:
         phrase = "off (default); bwrap found, network open"
 
         assert _json("--pod", "demo")["isolation"] == phrase
-        assert phrase in runner.invoke(_app, ["status", "--pod", "demo"]).output
+        assert "Sandbox   " in runner.invoke(_app, ["status", "--pod", "demo"]).output
 
         monkeypatch.setattr(
             _status,

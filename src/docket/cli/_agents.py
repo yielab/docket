@@ -323,6 +323,11 @@ def run_init(req: InitRequest) -> int:
     ui.console.print("  docket pod add reviewer # add a role")
     _offer_desktop_channel()
     from docket.cli import _contract, _setup
+    from docket.cli._setup_sandbox import print_sandbox_block
+
+    ui.console.print()
+    ui.console.print("This machine")
+    print_sandbox_block()
 
     if not _setup.readiness().endpoint.ok:
         ui.warn("No model endpoint yet")

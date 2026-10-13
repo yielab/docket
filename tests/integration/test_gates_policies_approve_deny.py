@@ -118,10 +118,12 @@ class TestGatesStatus:
     def test_status_unset(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         rc = _setup_sandbox.status()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Isolation: off (default)" in out
+        assert "Sandbox   off. The agent's commands run" in out
+        assert _setup_sandbox.sandbox_state()["isolation"] == "off (default)"
 
     def test_status_always_reports_the_gate_active(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
@@ -189,8 +191,7 @@ class TestGatesIsolate:
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "off"
         assert "Isolation off" in out
-        _setup_sandbox.status()
-        assert "Isolation: off (explicit)" in capsys.readouterr().out
+        assert _setup_sandbox.sandbox_state()["isolation"] == "off"
 
 
 # ── policies ──────────────────────────────────────────────────────────────────

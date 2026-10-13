@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import platform
+import re
+import sys
 from enum import StrEnum
 
 import typer
@@ -29,34 +32,102 @@ def _off_label(state: str) -> str:
     return "off (explicit)" if state == "off" else state
 
 
+_MISSING = {
+    "linux": "Linux: a kernel with Landlock (>= 5.13)",
+    "macos": "macOS: /usr/bin/sandbox-exec (ships with the OS)",
+    "windows": "Windows: use WSL2; native runs without a sandbox",
+    "other": "no sandbox backend exists for this platform",
+}
+_NOT_AVAILABLE = {
+    "linux": "not available: Linux needs a kernel with Landlock (5.13 or newer).",
+    "macos": "not available: macOS needs /usr/bin/sandbox-exec, which ships with the OS.",
+    "windows": "not available on native Windows; use WSL2.",
+    "other": "not available: no sandbox backend exists for this platform.",
+}
+
+
+def _platform_name() -> str:
+    if sys.platform.startswith("linux"):
+        return "linux"
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform in ("win32", "cygwin"):
+        return "windows"
+    return "other"
+
+
+def _kernel() -> str | None:
+    found = re.match(r"(\d+\.\d+)", platform.release())
+    return found.group(1) if found else None
+
+
+def _available(avail: _sys.SandboxAvailability) -> list[str]:
+    return [
+        name for name, ok in (("landlock", avail.landlock), ("seatbelt", avail.seatbelt)) if ok
+    ] + (["docker"] if avail.docker else [])
+
+
+def sandbox_lines() -> list[str]:
+    """The ``Sandbox`` posture as printed by init, status and setup sandbox: line, then hint."""
+    backend = _sys.sandbox_availability().backend
+    plat = _platform_name()
+    if _fleet.get_isolation_enabled():
+        if backend == "none":
+            return [f"Sandbox   on, but no backend is usable; turns are refused. {_MISSING[plat]}"]
+        return [f"Sandbox   on ({backend}, network {_fleet.get_network_mode()})"]
+    if backend == "none":
+        return [f"Sandbox   {_NOT_AVAILABLE[plat]}"]
+    return [
+        "Sandbox   off. The agent's commands run with your user's permissions.",
+        "          Turn it on: docket setup sandbox on",
+    ]
+
+
+def print_sandbox_block() -> None:
+    """Print the ``Sandbox`` lines plain, so every command shows them the same way."""
+    for line in sandbox_lines():
+        ui.console.print(line, markup=False, highlight=False)
+
+
 def sandbox_state() -> dict[str, object]:
-    """Isolation state, network mode and the backend found, without writing anything."""
+    """Isolation state, network mode and the per-platform probe, without writing anything."""
+    avail = _sys.sandbox_availability()
+    plat = _platform_name()
+    lines = sandbox_lines()
     return {
         "gate": "always active",
         "isolation": _fleet.get_isolation_state(),
         "isolationEnabled": _fleet.get_isolation_enabled(),
         "network": _fleet.get_network_mode(),
-        "backend": _sys.sandbox_availability().backend,
+        "backend": avail.backend,
+        "platform": plat,
+        "kernel": _kernel() if avail.landlock else None,
+        "available": _available(avail),
+        "missing": _MISSING[plat] if avail.backend == "none" else None,
+        "line": lines[0],
+        "hint": lines[1].strip() if len(lines) > 1 else None,
     }
 
 
+def _backend_report(state: dict[str, object]) -> str:
+    backend = state["backend"]
+    if backend == "none":
+        return f"Backend: none found. Needs {state['missing']}"
+    if backend == "landlock" and state["kernel"]:
+        return f"Backend: landlock (kernel {state['kernel']})"
+    return f"Backend: {backend}"
+
+
 def status(json_out: bool = False) -> int:
-    """Print the gate, isolation and network posture; a read."""
+    """Print the gate, the probe report and the network posture; a read."""
     state = sandbox_state()
     if json_out:
         _contract.emit_json(state)
         return 0
     ui.header("Sandbox")
     ui.success("Tool-call gate: always active (policy engine + high-risk command classifier)")
-    backend = state["backend"]
-    if state["isolationEnabled"]:
-        ui.success(
-            f"Isolation: {state['isolation']} (backend {backend}); a turn refuses to run "
-            "rather than fall back unsandboxed"
-        )
-    else:
-        ui.warn(f"Isolation: {_off_label(str(state['isolation']))}; tools run on the host")
-        ui.dim("Turn it on: docket setup sandbox on (needs bubblewrap or docker)")
+    ui.dim(_backend_report(state))
+    print_sandbox_block()
     if state["network"] == "none":
         default = "" if _fleet.network_mode_recorded() else " (default)"
         ui.success(f"Network: none{default}; jailed tool calls have no network")

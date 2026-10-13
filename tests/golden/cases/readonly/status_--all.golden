@@ -1,2 +1,5 @@
 EXIT:0
+Sandbox   off. The agent's commands run with your user's permissions.
+          Turn it on: docket setup sandbox on
+
 ! No initialized projects. Run docket init inside a project directory.
