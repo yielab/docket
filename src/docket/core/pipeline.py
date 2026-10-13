@@ -870,9 +870,9 @@ def _normalize_input_short_step(step_id: str, target: dict[Any, Any]) -> dict[st
     # `- ask: {input: {from: triage}}` -- a one-key mapping whose value is itself a
     # mapping carrying `input`. Like command steps, its sugar lives inside *target*.
     step: dict[str, Any] = {"id": step_id, "input": target["input"]}
-    for key in ("on",):
-        if key in target:
-            step[key] = target[key]
+    on = _get_on(target)
+    if on is not _NO_ON:
+        step["on"] = on
     return step
 
 

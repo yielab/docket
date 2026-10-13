@@ -676,6 +676,7 @@ steps:
 ### Version 2.16.0 (2026-10-13)
 
 - "Gates" item 5 and "Outcome routing" items 1, 5 and 6: the `external` gate kind with `exitMap`, the `gate: {external: CMD}` short form, the four routable labels `pass|fail|needs_human|error` and the three failure kinds (P42-2).
+- "Short form": an `input` step's unquoted `on:` key (read by YAML as the boolean `True`) is kept, as it already was for a role step; it was silently dropped (found by P42-2).
 
 ### Version 2.15.0 (2026-10-13)
 

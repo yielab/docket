@@ -170,3 +170,14 @@ steps:
 def test_plan_label_names_the_command() -> None:
     gate = _pipeline.ExternalGate(command="v.sh --x")
     assert _orch._gate_label(gate) == "external(v.sh --x)"
+
+
+def test_a_short_form_input_step_keeps_an_unquoted_on_map() -> None:
+    # YAML reads a bare `on:` key as the boolean True; the input short form must still route.
+    spec = _load(
+        "name: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "    gate: {external: verify}\n    on: {needs_human: ask}\n"
+        "  - ask:\n      input: {from: build}\n      on: {answered: {goto: build, max: 1}}\n"
+    )
+    ask = next(s for s in spec.steps if s.id == "ask")
+    assert ask.on == {"answered": {"goto": "build", "max": 1}}
