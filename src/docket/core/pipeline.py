@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -116,8 +116,56 @@ class ApprovalGate(BaseModel):
     message: str = ""
 
 
+_EXTERNAL_LABELS = ("pass", "fail", "needs_human")
+EXTERNAL_OUTCOMES = frozenset({"pass", "fail", "needs_human", "error"})
+
+
+def _default_exit_map() -> dict[str, list[int]]:
+    return {"pass": [0], "fail": [1], "needs_human": [2]}
+
+
+class ExternalGate(BaseModel):
+    """Run an operator command after the step's hop and map its exit code to ``pass``, ``fail``
+    or ``needs_human`` (anything unmapped, a timeout, a jail refusal: ``error``). The member's
+    ``verifyCmd`` is not run; see specs/functional/pipeline-format.spec.md ("Gates" item 5)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: Literal["external"] = "external"
+    command: str
+    timeout: int | None = Field(None, gt=0)
+    exit_map: dict[str, list[int]] = Field(default_factory=_default_exit_map, alias="exitMap")
+
+    @model_validator(mode="after")
+    def _check(self) -> ExternalGate:
+        if not self.command.strip():
+            raise ValueError("external gate 'command' must not be empty")
+        if set(self.exit_map) != set(_EXTERNAL_LABELS):
+            raise ValueError(f"external gate 'exitMap' must name exactly {list(_EXTERNAL_LABELS)}")
+        seen: dict[int, str] = {}
+        for label in _EXTERNAL_LABELS:
+            codes = self.exit_map[label]
+            if not codes:
+                raise ValueError(f"external gate 'exitMap' {label!r} must list at least one code")
+            for code in codes:
+                if code in seen:
+                    raise ValueError(
+                        f"external gate 'exitMap' code {code} is in both {seen[code]!r} "
+                        f"and {label!r}"
+                    )
+                seen[code] = label
+        return self
+
+    def label_for(self, code: int) -> str:
+        """The label *code* maps to, ``error`` when no list holds it."""
+        for label in _EXTERNAL_LABELS:
+            if code in self.exit_map[label]:
+                return label
+        return "error"
+
+
 Gate = Annotated[
-    MechanicalGate | VerdictGate | ApprovalGate,
+    MechanicalGate | VerdictGate | ApprovalGate | ExternalGate,
     Field(discriminator="type"),
 ]
 
@@ -229,6 +277,16 @@ class Step(BaseModel):
     # target). See specs/functional/pipeline-format.spec.md ("Outcome routing").
     on: dict[str, Any] | None = None
 
+    @field_validator("gate", mode="before")
+    @classmethod
+    def _external_sugar(cls, value: Any) -> Any:
+        """``gate: {external: CMD}`` is the short spelling of ``{type: external, command: CMD}``."""
+        if isinstance(value, dict) and "external" in value:
+            if set(value) != {"external"}:
+                raise ValueError("'gate: {external: CMD}' takes no other key")
+            return {"type": "external", "command": value["external"]}
+        return value
+
     @model_validator(mode="after")
     def _check_shape(self) -> Step:
         if not self.id.strip():
@@ -335,6 +393,13 @@ class Step(BaseModel):
                 f"step {self.id!r}: 'model' must be 'cheap', 'strong', or a "
                 f"'<provider>/<id>' literal (got {self.model!r})"
             )
+        if isinstance(self.gate, ExternalGate) and self.on:
+            invalid = {str(k).lower() for k in self.on} - EXTERNAL_OUTCOMES
+            if invalid:
+                raise ValueError(
+                    f"step {self.id!r}: an external gate's 'on' keys must be a subset of "
+                    f"{sorted(EXTERNAL_OUTCOMES)}; got invalid key(s): {sorted(invalid)}"
+                )
         return self
 
 
@@ -453,6 +518,8 @@ def _default_edge_reachable(step: Step) -> bool:
     if isinstance(gate, VerdictGate):
         pass_labels = {v.lower() for v in gate.pass_values}
         return not pass_labels <= on_labels
+    if isinstance(gate, ExternalGate):
+        return "pass" not in on_labels
     return True
 
 
@@ -644,6 +711,7 @@ _STEP_SUGAR_KEYS = frozenset(
         "verify",
         "verdict",
         "approval",
+        "gate",
         "instructions",
         "timeout",
         "retries",
@@ -725,6 +793,12 @@ def _build_approval_gate(approval: Any) -> dict[str, Any]:
     )
 
 
+def _build_external_gate(step_id: str, gate: Any) -> dict[str, Any]:
+    if not isinstance(gate, dict) or set(gate) != {"external"}:
+        raise _ShortFormError(f"step {step_id!r}: 'gate' must be '{{external: <command>}}'")
+    return {"type": "external", "command": gate["external"]}
+
+
 def _try_build_rework(step_id: str, on: Any, seen_ids: list[str]) -> dict[str, Any] | None:
     """The canonical ``rework:`` mapping for the one recognized single-bounded-backward
     shorthand, else ``None`` (meaning *on* becomes the step's own canonical ``on`` field
@@ -758,6 +832,8 @@ def _build_gate(
         return _build_mechanical_gate(entry["verify"]), on
     if "approval" in entry:
         return _build_approval_gate(entry["approval"]), on
+    if "gate" in entry:
+        return _build_external_gate(step_id, entry["gate"]), on
     return None, on
 
 
@@ -794,9 +870,9 @@ def _normalize_input_short_step(step_id: str, target: dict[Any, Any]) -> dict[st
     # `- ask: {input: {from: triage}}` -- a one-key mapping whose value is itself a
     # mapping carrying `input`. Like command steps, its sugar lives inside *target*.
     step: dict[str, Any] = {"id": step_id, "input": target["input"]}
-    for key in ("on",):
-        if key in target:
-            step[key] = target[key]
+    on = _get_on(target)
+    if on is not _NO_ON:
+        step["on"] = on
     return step
 
 

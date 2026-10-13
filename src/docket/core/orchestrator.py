@@ -267,6 +267,8 @@ def _gate_label(gate: _pipeline.Gate | None) -> str:
         return f"verdict({'|'.join(gate.pass_values)}{rework})"
     if isinstance(gate, _pipeline.ApprovalGate):
         return "approval"
+    if isinstance(gate, _pipeline.ExternalGate):
+        return f"external({gate.command})"
     return "unknown"  # pragma: no cover - Gate is a closed discriminated union
 
 

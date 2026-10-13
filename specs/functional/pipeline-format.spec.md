@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.15.0
+**Version**: 2.16.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -36,7 +36,7 @@ edge the short form could already express keeps normalizing to the canonical `re
 byte-identical to before; every other `on:` shape that used to be refused as "not available yet"
 now loads. The canonical form itself, and everything this format's executor and CLI surface read
 beyond the new field, is unchanged.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -227,8 +227,8 @@ This specification does NOT cover:
 
 ### Gates
 
-1. A `gate` **MUST** be one of exactly three kinds, discriminated by its own `type` field:
-   `mechanical`, `verdict`, or `approval`. An unrecognized `type` **MUST** be a validation error.
+1. A `gate` **MUST** be one of exactly four kinds, discriminated by its own `type` field:
+   `mechanical`, `verdict`, `approval`, or `external`. An unrecognized `type` **MUST** be a validation error.
 2. **`mechanical`** — `command` (`str | None`, default `None`) and `timeout` (`int | None`, `> 0`
    if given). A non-zero exit from `command` fails the step. `command: None` **MUST** be
    interpreted as "defer to the target agent's own configured check" (today's Implementer
@@ -252,6 +252,18 @@ This specification does NOT cover:
    approval. This format defines only the gate's shape; its wiring to docket's approval store
    (tokens, grant/deny, timeout-resolves-to-denied) shipped with Phase 15 G-1 / W-2 and is
    specified in `pod-dispatch.spec.md` and `security-gates.spec.md`, not here.
+
+5. **`external`** (P42-2, ADR 0025 D1) — `command` (`str`, required, non-empty), `timeout` (`int |
+   None`, `> 0` if given) and `exitMap` (`{pass, fail, needs_human}`, each a non-empty list of
+   exit codes, default `{pass: [0], fail: [1], needs_human: [2]}`, the three lists disjoint).
+   The command is an operator string run after the step's hop; the code never names a verifier. It
+   has four outcome labels, `pass`, `fail`, `needs_human` and `error`: an exit code in no list, a
+   timeout, a jail refusal and a missing command are `error`. An external gate runs only its
+   `command`; the member's `verifyCmd` is not run. It is a pipeline-step gate only: a role's
+   `gateContract` never resolves to it. A step with an external gate **MAY** write
+   `gate: {external: "<command>"}` (the short form), in a short or a canonical step; it
+   normalizes to `{type: external, command: "<command>"}` and an unknown key beside `external`
+   is a validation error.
 
 ### Rework edges
 
@@ -393,8 +405,9 @@ This specification does NOT cover:
 ### Outcome routing
 
 1. A step **MAY** declare `on` (`dict[str, Route] | None`), a canonical field alongside `gate`: a
-   mapping from an outcome label — a verdict gate's matched marker, or `"pass"`/`"fail"` for a
-   mechanical gate, each compared case-insensitively — to a `Route`. A `Route` is either a mapping
+   mapping from an outcome label — a verdict gate's matched marker, `"pass"`/`"fail"` for a
+   mechanical gate, or `"pass"`/`"fail"`/`"needs_human"`/`"error"` for an external gate (any other
+   key on an external-gated step is a validation error), each compared case-insensitively — to a `Route`. A `Route` is either a mapping
    `{goto: <step id>, max: <int >= 1>}` (`max` **MUST** be present when `goto` names a step at or
    before this one) or one of the literal strings `"fail"`, `"stop"`, or a bare step id (a forward
    target equivalent to `{goto: <that id>}` with no bound).
@@ -415,10 +428,17 @@ This specification does NOT cover:
 4. The one recognized single-bounded-backward-edge shorthand (see "Short form" above) **MUST**
    keep normalizing to the canonical `rework:` edge, never to `on`, so every existing rework-based
    document and the three shipped recipes stay byte-identical.
-5. A backward or self route out of a `mechanical` gate that did not pass (for example
+5. A backward or self route out of a `mechanical` or `external` gate that did not pass (for example
    `until: verify`) **MUST** tell the target's next hop why the gate failed: dispatch adds a `--- GATE FAILED: <step id> ---`
-   section carrying the routed hop's redacted verify output (`pod-dispatch.spec.md`, "Bounded hop
-   prompts" item 9). A forward route, a backward `pass` route and a verdict gate's route add no such section.
+   section carrying the routed hop's redacted verify output, or an external gate's reasons
+   (`pod-dispatch.spec.md`, "Bounded hop prompts" item 9). A forward route, a backward `pass` route and a verdict gate's route add no such section.
+6. An external gate's `fail`, `needs_human` and `error` outcomes each **MAY** be routed by the
+   step's `on` map (the default-edge reachability walk counts an external gate's `pass` as the
+   default edge). An outcome the map does not name and that is not `pass` fails the task with
+   failure kind `gate_failed`, `gate_needs_human` or `gate_error` (`pod-dispatch.spec.md`,
+   "Generalized gate execution" item 6). `on: {needs_human: <input step>}` parks the task on an
+   existing `input` step whose `answered`/`declined` route on; the reasons survive that detour
+   (`pod-dispatch.spec.md`, "Bounded hop prompts" item 9).
 
 ### Conditional steps and command steps
 
@@ -652,6 +672,11 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.16.0 (2026-10-13)
+
+- "Gates" item 5 and "Outcome routing" items 1, 5 and 6: the `external` gate kind with `exitMap`, the `gate: {external: CMD}` short form, the four routable labels `pass|fail|needs_human|error` and the three failure kinds (P42-2).
+- "Short form": an `input` step's unquoted `on:` key (read by YAML as the boolean `True`) is kept, as it already was for a role step; it was silently dropped (found by P42-2).
 
 ### Version 2.15.0 (2026-10-13)
 

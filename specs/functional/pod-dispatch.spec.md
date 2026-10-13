@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.41.0
+**Version**: 6.42.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1344,6 +1344,25 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    routed at all and keeps emitting whatever trace event it always has. A routed hop's persisted
    record **MUST** carry the resolved target, so a resumed task (`_replay_pipeline_position`)
    follows the same decision rather than re-deriving it.
+6. **The external gate (P42-2, ADR 0025 D1).** An `ExternalGate` **MUST** run `gate.command`
+   and nothing else (the member's `verifyCmd` is not run) through `_run_in_envelope`, in the
+   directory a mechanical gate uses, with the task coordinates of `_task_command_env`
+   (`DOCKET_TASK_ID`, `DOCKET_BASE_COMMIT`, `DOCKET_HEAD_COMMIT`) plus `DOCKET_GATE_REASONS_FILE`,
+   bounded by the gate's `timeout` else `verifyTimeoutS`. The file lives under the pod cache dir
+   (a read-write jail root), is deleted before the command runs and is never read from a prior run.
+   Its envelope, working-tree fingerprint, output redaction and `hop.verify` are the mechanical
+   gate's own (one shared helper). The exit code maps through `exitMap`; an unmapped code, a
+   timeout, a jail refusal (`[verify not run: ...]`) and an empty command are `error`. After the
+   command, the reasons file, when present, **MUST** be read: UTF-8 JSON of at most 64 KiB shaped
+   `{"reasons": [{"summary": str, ...}]}`; anything else sets `reasonsInvalid` and the redacted
+   output tail stands in as the reasons. Reasons are untrusted: each text field is redacted and
+   screened as `pre_input` the way an MCP result is (`tools.screen_tool_result`), a blocked one
+   is dropped and sets `reasonsInvalid`, and no reason field drives control flow. A routed outcome
+   (`on` names the label) **MUST** persist `hop.verify` with the label and route; an unrouted
+   `fail`, `needs_human` or `error` **MUST** fail the task with failure kind `gate_failed`,
+   `gate_needs_human` or `gate_error`; an unrouted `pass` advances. A pod without a cache dir
+   still runs the gate; its exit code is then the pass/fail projection and the output tail is the
+   reasons.
 
 ### Conditional steps and command steps
 
@@ -1603,6 +1622,11 @@ any CLI rendering of this evidence.*
      applied to the `verification_failed` trace event's `output` field. A secret held in
      `core/secrets.py` and echoed by the verify command **MUST NOT** appear anywhere in a persisted
      `outputTail`.
+   - P42-2: an external gate's `verify` also carries `label` (`pass|fail|needs_human|error`),
+     the real `exitCode` (the process's code, captured by a wrapper into a pod-cache file; `-1` when the command never finished, e.g. a timeout; the pass/fail projection 0/1 when the pod has no cache dir),
+     `reasons` (the screened, redacted entries, absent when there are none) and
+     `reasonsInvalid` (`bool`, `true` when the file was present but unusable). A mechanical gate's
+     `exitCode` stays `0` or `1` and it adds no `label`.
    - `touched` (`list[str]`, internal, unreleased P35-12): absolute paths a git status snapshot
      taken immediately before and after the command shows as created or changed by it
      (`system.git_worktree_fingerprint`). Empty off a git checkout. The harness drops them from
@@ -1818,7 +1842,12 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    `_gate_failed_section` is the one function that writes this text. The routed hop's own output
    stays in the generic carryover, and the Implementer instruction is the ordinary one, not the
    reviewer-rework text. A resume rebuilds the carryover from the last routed hop the way it
-   rebuilds a rework hop (`_replay_pipeline_position`). A forward route, a backward `pass` route, an
+   rebuilds a rework hop (`_replay_pipeline_position`). For an external gate the section carries
+   its screened `verify.reasons` (one line each: severity, `path:line`, summary, detail) in place
+   of the output tail, which stands in only when there are none; and when the gate's routed hop
+   went forward to an `input` step, the operator's `answered` route back to the gated step
+   (`core.answers.answer_task`) carries the same section into that retry: replay hands the
+   gate-failed hop to the target of the operator hop that follows it. A forward route, a backward `pass` route, an
    unrouted gate and a verdict rework **MUST** compose byte-identical messages to before.
 
 ### Task status vocabulary
@@ -2143,6 +2172,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.42.0 (2026-10-13)
+
+- "Generalized gate execution" item 6, "Hop evidence" 1 and "Bounded hop prompts" 9: the external gate (exit map, reasons file, `label`/`reasons`/`reasonsInvalid`/real `exitCode` on `hop.verify`, failure kinds `gate_failed`/`gate_needs_human`/`gate_error`), and the reasons surviving an `input` step's answer (P42-2).
 
 ### Version 6.41.0 (2026-10-13)
 
