@@ -13,6 +13,11 @@
 > `approval` step, or a task a guardrail policy flagged at enqueue, also uses (see "Guardrail
 > Policies" below). `git`/`npm` stay on the curated allowlist for usability, so a plain `git push`
 > isn't gated by itself — see "High-Risk Actions" below for the argument-aware exception.
+> A wrapper does not hide a command: `env rm -rf x`, `xargs rm`, `find -delete` and an `awk`
+> program that runs a command ask exactly as `rm` does. **The allowlist is not a containment
+> boundary**, though: an allowlisted interpreter (`python3`, `node`, `make`) can write or delete
+> anything you can, and `cp`/`mv`/`tee`/`sed -i` are ordinary development writes. Turn the
+> sandbox on when the agent's commands must not reach outside the project.
 >
 > **There is exactly one approval system, and it is answerable from four places** — all
 > audit-logged, tagged with the channel that answered: a CLI channel (`docket task approve`/

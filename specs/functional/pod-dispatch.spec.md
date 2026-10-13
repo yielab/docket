@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.44.0
+**Version**: 6.45.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1471,8 +1471,13 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    of the task's pod that lists the task or, while the task is `running`, names none yet (a run
    lists its tasks only when it finishes), and **MUST** settle a `running` task whose claimant is
    gone through `core.dispatch.reclaim_stale_running` (`failed`, `failureKind: "stale_claim"`,
-   audited `task.reclaimed`), ending with `Next: docket task retry <id>`; with neither a live
-   run nor a stale claim it **MUST** exit 1 and change nothing. `cancel_run` **MUST** durably
+   audited `task.reclaimed`), ending with `Next: docket task retry <id>`. A task parked in
+   `waiting_input` or `waiting_approval` **MUST** be cancelled through
+   `core.dispatch.cancel_parked_task`: it ends `cancelled` with no hop run, its question, approval
+   token and task grants are cleared, a pending approval record is denied on the calling channel
+   (so neither leaves anything in the inbox), the Lead's ledger is re-synced and one `task.cancel`
+   audit entry names the prior state and channel. With no live run, no stale claim and no parked
+   state it **MUST** exit 1 and change nothing. `cancel_run` **MUST** durably
    request cancellation and kill every tracked process group currently recorded as in-flight for
    that run. Queued work becomes terminal immediately;
    running work remains `running` with a visible request until its executor observes the signal and
@@ -2192,6 +2197,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.45.0 (2026-10-13)
+- Cancellation item 1: `task cancel` cancels a task parked in `waiting_input` or
+  `waiting_approval` through `core.dispatch.cancel_parked_task` (Wave 108).
 
 ### Version 6.44.0 (2026-10-13)
 

@@ -51,6 +51,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The classifier sees through wrappers (Wave 108).** With isolation off, `env rm -rf x`,
+  `echo x | xargs rm`, `find . -delete` and an `awk` program calling `system(` ran unasked
+  because the leading name was allowlisted. `env`, `xargs`, `nice`, `nohup`, `timeout`, `time`,
+  `command` and `stdbuf` are now classified by the command they run; `find` with a deleting or
+  executing action and an `awk` program that runs a command or writes a file ask. `setsid` stays
+  off the allowlist (a new session escapes the process group a cancel kills). Interpreters stay
+  allowlisted: without the sandbox the allowlist is not a containment boundary
+  (security-gates 0.51.0).
+- **The jail no longer lets an agent move another branch (Wave 108, W108-2).** See security-gates 0.52.0.
+- **A parked task can be cancelled (Wave 108).** `docket task cancel` ends a task waiting for
+  an answer or an approval as `cancelled`, takes it out of the inbox, denies a pending approval
+  and audits `task.cancel`; before, the only exit was `task answer --decline`.
+- **Host-side git on a task worktree trusts only the recorded git dirs (Wave 108).**
+  `docket task diff` registers the task's recorded `gitDir`/`commonDir` before running git, and
+  the diff hint in `task show` names both through `GIT_DIR`/`GIT_COMMON_DIR`/`GIT_WORK_TREE`, so
+  neither reads the `.git` or `commondir` file the agent could rewrite.
+- **`docket exec` (Wave 108).** A jailed run gets a per-workspace cache dir under the caller's
+  `DOCKET_HOME` as its home; `--answer-timeout` reaches the wait through the run's env
+  (`DOCKET_APPROVAL_TIMEOUT`, including every hop of a `--recipe` run) instead of mutating
+  `config.TOOL_APPROVAL_TIMEOUT`; the stdin answer reader stops with the run and is joined
+  (harness-mode 1.10.0).
+- **`docket setup --fix --json` reports every check the text report runs (Wave 108).** Eight
+  missing checks gained stable keys, so `healthy` cannot be true while the text counts an issue;
+  the text report now counts a home with project agents and no delivering channel as an issue,
+  as the JSON did (cli-json-shapes 1.32.0).
+- **Smaller fixes (Wave 108).** `POST /dispatch/<project>` answers 404/400 instead of dropping
+  the connection when a pod's bound pipeline cannot be resolved (serve-read-api 3.6.0);
+  `task prune --traces --pod X` removes only that pod's terminal run records; the generated
+  AGENTS.md drops the retired "write it to HEARTBEAT.md" line (template version 5); `docket
+  inbox` indents every continuation line of a multi-line question, held command or label
+  (operator-loop 1.7.0); `core/profile.py` uses the public `dispatch.hop_env`;
+  `docs/assets/isolation.png` shows the Landlock sandbox report.
+
 - **The network is no longer reported as cut while it is open (Phase 42, P42-7).** With
   isolation off, `docket setup sandbox`, `docket setup`, `docket status` and `docket pod show`
   printed the network as `none` (with an `ok`) although nothing was jailed and egress was open.
