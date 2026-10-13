@@ -482,7 +482,7 @@ fields and validates against the new schema; a task without either carries neith
 **Goal:** `docs/SECURITY-SIMPLE.md`, `docs/CONFIGURATION.md`, `docs/commands.md` (generated),
 the README (D-37: describe what exists); `SECURITY.md` brought to ADR 0024 (it still describes
 bwrap, `--no-isolate` and `gates isolate on`); a dated note in ADR 0017 that its "Assay" is the
-verifier now called Prill; ADR 0022's `pod <p> corrections` row removed. A live run on the local
+verifier is a working name only; ADR 0022's `pod <p> corrections` row removed. A live run on the local
 endpoint (`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`) with a toy verifier that fails once with reasons
 and then passes; then `needs_human` answered with `task answer`; then the profile refusing on
 this host with isolation off and passing with `setup sandbox on` and network `none`.
@@ -498,6 +498,28 @@ every surface already says the network is open or unenforced, close the card as 
 
 **Goal:** every surface that prints the network mode says `none (not enforced: isolation off)`
 or equivalent when the jail is not on.
+
+### P42-8 — the `needs_human` path, as the live run found it
+
+**Status:** DONE (2026-10-13, integrator, Wave 107) · **Size:** S · **Model:** integrator · **Spec:** pipeline-format.spec.md 2.17.0 ("Outcome routing" 7), pod-dispatch.spec.md 6.44.0
+
+**Trigger (P42-6's live run on the local endpoint, 2026-10-13):** a verifier exiting 2 parked
+the task on its `input` step, and then (1) the inbox showed only the step's fixed message, not
+the verifier's reasons; (2) the operator's answer never reached the Implementer it routed back
+to (`_render_operator_answers` composes for the Lead only); (3) after the answer the gate
+passed and the default edge entered the `input` step again, re-parking the task: the
+`on: {needs_human: ask}` pattern needs `pass` routed, and nothing said so. Also found:
+`docket pod validate` masked every error of a pipeline with an unquoted `on:` behind "Input
+should be a valid string" (the envelope model typed step keys as `str`; YAML loads `on` as
+`True`) and printed the path twice.
+
+**Shipped:** `_run_input_step` appends the `from` step's failed-gate report to the question;
+`_gate_failed_section` carries the operator's latest answer on the retry behind it; `validate`
+refuses a mechanical- or external-gated step that routes to the `input` step right after it
+without routing `pass` (a verdict gate is exempt, it names its own passing values; the shipped
+`intake` recipe proved it); `PipelineDocument` accepts non-string step keys and
+`_refine_with_model` keeps an already-located error. RED first for each; the live rerun ended
+`done` with the note followed.
 
 ## ◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/)
 

@@ -44,7 +44,8 @@ Five ideas cover everything docket does:
   told, and which tools it lacks. A reviewer without a write tool *cannot* write; it is not merely
   asked not to.
 - **Pipeline.** The order in which roles work a task and the gate after each step: the exit code of
-  your verify command, a reviewer's `APPROVE` or `REQUEST-CHANGES`, a tester's `PASS` or `FAIL`.
+  your verify command or of an independent verifier you name, a reviewer's `APPROVE` or
+  `REQUEST-CHANGES`, a tester's `PASS` or `FAIL`.
 - **Policy.** A rule checked on every tool call, by every agent: allow it, ask a human, or deny it.
 - **Recipe.** A ready-made team, policy pack or working method you add with one command. Eighteen
   ship with docket.

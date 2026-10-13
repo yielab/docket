@@ -272,6 +272,34 @@ and pipeline `run:` steps run with docket's credentials stripped from their envi
 same jail as `bash` when isolation is on (refused when no backend is usable), on the host when it
 is off.
 
+### Running unattended: the `lights-out` profile and the external gate
+
+Nobody reads the diff of a run nobody watches, so docket will not start one without the
+safeguards that replace that reader:
+
+```bash
+docket setup sandbox on
+docket setup sandbox network none
+docket setup profile lights-out        # or: docket pod set profile lights-out (one pod)
+docket status                          # Profile: lights-out, all requirements met
+```
+
+- **Refuse, don't degrade.** Under `lights-out` a dispatch refuses each task before its first
+  hop unless isolation is on with a usable backend, the jail's network is a recorded `none`,
+  every Implementer step has an external gate, and no variable docket injects for the pod is
+  named in the secret store. The refusal names each fix and is audited as `profile.refused`;
+  no model is called. A fresh install is `attended` and nothing changes.
+- **An independent verifier, not docket, decides.** An external gate
+  (`gate: {external: "<command>"}`, see [CONFIGURATION §3.5](CONFIGURATION.md)) runs your
+  verifier in the same jail after the Implementer's hop. docket reads only the process's own
+  exit status (a value the command writes cannot change it) and an optional reasons file, which
+  is screened as untrusted text before an agent sees it. It never names a verifier and never
+  decides a merge.
+- **The rules the agent works under are the approved ones.** In a task's worktree,
+  `AGENTS.md`, project instruction files and repository skills are read from the commit the
+  task started from, so an agent cannot rewrite them for the next hop. The task's evidence
+  records each file's sha256 (`directives`) and each gate's result (`gate`).
+
 ### Layer 6: Telemetry export (what leaves the host)
 
 - **Off by default.** Every built-in exporter (`docket setup export list`) ships `enabled: false`.

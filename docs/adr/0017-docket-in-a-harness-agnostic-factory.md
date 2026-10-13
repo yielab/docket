@@ -88,6 +88,8 @@ grows first.
    name is Assay, a separate tool that the plan of record runs after any harness. docket
    supplies raw evidence in a published shape (Phase 36's `evidence-v1`) and does not grow a
    verdict about it.
+   *(Note, 2026-10-13: "Assay" was a working name only. ADR 0025 connects docket to any such
+   verifier through an external gate without naming it.)*
 6. **The two measured defects are fixed in this phase**, because Phase 35 touches the same
    functions: `guardrail_block.action`, and `budget_for_role(..., project=)` for both callers
    (the Phase 30 `resolve_role_model` defect, second instance).

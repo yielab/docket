@@ -411,12 +411,42 @@ form):
   (a bounded mechanical self-retry).
 - **Gate sugar:** `verify: true` (or a command string) for a mechanical gate; `verdict: [...]`
   for a verdict gate, first marker passing; `approval: "<message>"` for a human sign-off (the
-  task waits in `waiting_approval`). No sugar key at all falls back to the role's own gate.
+  task waits in `waiting_approval`). `gate: {external: "<command>"}` hands the verdict to an
+  outside verifier (below). No sugar key at all falls back to the role's own gate.
 - **`on: {<label>: {goto: <step>, max: <n>}}`** routes any named outcome — not only a verdict's
   rework — to an earlier or later step, `fail`, or `stop`; a backward or self target requires
   `max`. **`when:`** (`changed`, `var`+`is`, `memberPresent`) skips a step; a **command step**
   (`- lint: {run: "ruff check ."}`) runs no agent turn at all, its exit code and last stdout
   line becoming its outcome.
+
+**An outside verifier: the external gate.** A step's gate can be any command you name; docket
+runs it after the hop, in the task's worktree and the pod's sandbox, and reads only its exit
+status, mapped by `exitMap` (default `0` pass, `1` fail, `2` needs a human; anything else, a
+timeout or a refusal is `error`). The verifier may write
+`{"reasons": [{"summary": "...", "path": "...", "line": 3}]}` (at most 64 KiB) to
+`$DOCKET_GATE_REASONS_FILE`; docket screens those reasons as untrusted, records them on the hop,
+and shows them to the retried Implementer under `--- GATE FAILED: <step> ---`. Every label routes
+through `on:`; an unrouted `fail`, `needs_human` or `error` fails the task (`gate_failed`,
+`gate_needs_human`, `gate_error`). To bring a human in, route `needs_human` to an `input` step
+whose answer goes back to the gated step. The question shows the verifier's reasons, and the
+answer reaches the retry. Route `pass` too, or a pass walks straight into the question:
+
+```yaml
+- id: build
+  role: implementer
+  gate: {external: "my-verifier --base $DOCKET_BASE_COMMIT --head $DOCKET_HEAD_COMMIT"}
+  on:
+    pass: stop                         # or the step that should follow
+    fail: {goto: build, max: 3}        # retry with the reasons
+    needs_human: ask
+- id: ask
+  input: {from: build, message: "The verifier wants a human."}
+  on: {answered: {goto: build, max: 1}, declined: fail}
+```
+
+A backward route out of any gate that did not pass, `until: verify` included, gives the
+retried hop the gate's output the same way. The gate's label, exit code and `reasonsInvalid`
+appear in the task's evidence (`docket task show --json`, `v: "1.1.0"`).
 
 One rule to plan around: a **bound** pipeline (`docket pod set pipeline`) is treated like a
 caller-supplied `--pipeline` — the pod's `maxReworkCycles` setting never patches it, so the file's own
@@ -607,6 +637,15 @@ The command writes `docket-mcp-servers.json`. Its tools appear in a turn as
   `DOCKET_SERVE_TOKEN` to make that token stable.
 - **Telegram.** `docket setup notify bind <p>-lead` binds a chat. It writes `fleet.json` `bindings` and
   `docket-conversations.json`.
+- **Nobody watching: the `lights-out` profile.** `docket setup profile lights-out` (every pod) or
+  `docket pod set profile lights-out` (one pod; a pod can only be stricter than the fleet) makes
+  each dispatch refuse a task before its first hop unless isolation is on with a usable backend,
+  the jail's network is a recorded `none` (`docket setup sandbox network none` or
+  `docket pod set network none`), every Implementer step has an external gate (§3.5), and no
+  variable docket injects for the pod is named in the secret store. The refusal names each fix,
+  is audited (`profile.refused`), and the task can be retried once the fix is in.
+  `docket status` and `docket setup` show the profile and what it still lacks. The default is
+  `attended`, which changes nothing.
 
 ### 3.9 Turn-loop limits
 
@@ -785,6 +824,13 @@ An explicit list never adds to the default: name `AGENTS.md` in it if you want b
 `AGENTS.md` docket writes inside each agent's private workspace is a different file (a role's
 red lines, §2); the two are composed in different sections. Nested `AGENTS.md` files deeper in
 the tree are not read: a turn has one root.
+
+**In a task's worktree, the version that applies is the approved one.** When a task runs in its
+own git worktree, `AGENTS.md`, every `projectInstructions` file and the skills under
+`.docket/skills/` are read from the commit the worktree started from, not from the worktree the
+agent can edit. An Implementer that rewrites `AGENTS.md` changes its diff, not what the Reviewer
+is told; the change applies once you merge it. The task's evidence lists each file and its
+sha256 under `directives`.
 
 ### 3.13 Skills: instructions an agent pulls on demand
 

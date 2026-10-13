@@ -63,44 +63,55 @@ docket **always enforces its tool-approval gate** — there is no switch that tu
 curated allowlist plus an approval step for dangerous operations not on it (e.g. `rm`, `dd`,
 `docker`), with a fail-closed default — a call gated `ask` blocks on docket's own approval
 store (`core/approval.py`) and times out to **denied**, never left pending. Approvals are
-answerable through **four channels** — `docket approve`/`docket deny` from any shell, `docket
-serve`'s `POST /approvals/<token>` for CI/automation, MCP (a client like Claude Code or Codex
-answering through `docket mcp serve`), and Telegram (`docket wire`) — and every grant, deny, or
-timeout is audit-logged with the channel it came from
+answerable through **four channels** — `docket task approve`/`docket task deny` from any shell,
+`docket start`'s `POST /approvals/<token>` for CI/automation, MCP (a client like Claude Code or
+Codex answering through `docket start --mcp`), and Telegram (`docket setup notify`, then `docket
+start --telegram`) — and every grant, deny, or timeout is audit-logged with the channel it came
+from
 (`channel="cli"|"http"|"mcp"|"telegram"|"timeout"`). The classifier behind this
 (`core/security.py`'s `classify_command`) is **argument-aware**: it reads the whole command
 line, including every segment behind a `;`, `&&`, `||`, or pipe, so `git status` is allowed
 while `git push origin production` asks — `git`/`npm` stay on the curated allowlist for
 usability, but that no longer means their dangerous invocations are unexamined.
 
-Workspace isolation is a separate layer, **opt-in** (off by default): `docket gates isolate on`
-additionally confines `bash` to a per-agent `bwrap` (first choice) or Docker sandbox; stdio MCP
-servers start in the same jail unless declared `--no-isolate`. Turning it on needs bubblewrap on
-Linux or a running Docker, and the command exits 1 if neither is usable. Once on, it **fails
-closed**: with no usable backend when a turn starts, the turn is refused before any model call or
-tool execution and the refusal is audit-logged (`isolation.refused`, naming the fixes: install
-bubblewrap or start docker, or `docket gates isolate off`), rather than silently running
-unsandboxed. Both `isolate on` and `isolate off` are audited.
+Workspace isolation is a separate layer, **opt-in** (off by default): `docket setup sandbox on`
+runs everything the project runs (the agent's `bash`, verify commands, `run:` steps and stdio MCP
+servers) in one jail: Landlock plus seccomp on Linux (kernel 5.13 or newer, no package needed),
+Seatbelt on macOS, or Docker when chosen with `docket setup sandbox backend docker`. Turning it on
+is refused when no backend is usable. Once on, it **fails closed**: with no usable backend when a
+turn starts, the turn is refused before any model call or tool execution and the refusal is
+audit-logged (`isolation.refused`), rather than silently running unsandboxed. Every change of the
+setting is audited. Inside the jail the network is `none` unless the operator opens it
+(`docket setup sandbox network open`).
+
+**Unattended runs (the `lights-out` profile).** `docket setup profile lights-out` (or one pod's
+`profile` setting) makes every dispatch refuse a task before its first hop unless isolation is on
+with a usable backend, the jail's network is a recorded `none`, every Implementer step has an
+external verification gate, and no variable docket injects for the pod is named in the secret
+store. A refusal names each fix and is audited (`profile.refused`); nothing degrades silently.
+An external gate runs an operator-named command in the same jail and reads only its exit status
+and an optional reasons file, screened as untrusted; docket never names a verifier and never
+decides a merge.
 
 There is no command or flag that turns the tool-call gate off, and no approval-routing posture
 flag. See [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
 (Status: Implemented; the gate is always on, workspace isolation is opt-in).
 
-## `docket mcp serve`: the control plane over MCP
+## `docket start --mcp`: the control plane over MCP
 
-`docket mcp serve` (ROADMAP Phase 18 L-3) exposes docket's control plane — pods, task queue,
+`docket start --mcp` exposes docket's control plane — pods, task queue,
 dispatch, the run registry, HITL approvals, and recorded cost — as MCP (Model Context Protocol)
 tools over stdio, so a client like Claude Code or Codex can drive docket the same way a human
 would from a shell. It changes docket's *surface*, not its *model*: every tool call goes through
 the exact same audit log, approval gate, and dispatch pipeline a CLI invocation does — there is no
 MCP-specific bypass, and every call (including read-only ones) is audit-logged. Trust boundary:
-whoever can spawn the `docket mcp serve` process can do anything the CLI can do — the same
+whoever can spawn the `docket start --mcp` process can do anything the CLI can do — the same
 boundary the CLI itself already has, since the server only speaks stdio (no network listener, no
-bearer token, unlike `docket serve`'s HTTP API). See
+bearer token, unlike `docket start`'s HTTP API). See
 [`specs/api/mcp-server.spec.md`](specs/api/mcp-server.spec.md).
 
-**This is a server, and separately also a client.** `docket mcp serve` never executes another MCP
-server's tools inside an agent turn — that direction is a different feature, `docket mcp servers
+**This is a server, and separately also a client.** `docket start --mcp` never executes another
+MCP server's tools inside an agent turn — that direction is a different feature, `docket setup mcp
 add/list/remove` (`core/mcp_tools.py`, `edges/adapters/mcp_client.py`), which adapts a configured
 external server's tools into ordinary registry entries so they are gated exactly like a built-in,
 namespaced `mcp__<server>__<tool>` so a remote server cannot shadow `bash`. A remote tool's
@@ -117,12 +128,12 @@ status, including what is configured/gated versus what is wired into a live turn
 >
 > **Public VPS / shared / internet-exposed host — treat as dangerous.** An autonomous agent
 > with exec access on an exposed host is a serious liability. The tool-call gate is always on, but also
-> **turn workspace isolation on** (`docket gates isolate on`; it is off by default, needs
-> bwrap or a running Docker, and fails closed once on), consider `docket gates network none`, use the `keyring` secret
-> backend, and never run with broad ambient credentials. Instruction-level constraints alone
-> are *not* sufficient here — and remember network egress is open unless you opt in to
-> `docket gates network none` (see below): otherwise `bash` can still reach the network through
-> interpreters and package managers on the curated allowlist even with gates on.
+> **turn workspace isolation on** (`docket setup sandbox on`; it is off by default and fails
+> closed once on), keep the jail's network `none`, use the `keyring` secret backend, and never
+> run with broad ambient credentials. For runs nobody watches, record the `lights-out` profile,
+> which refuses to start without those. Instruction-level constraints alone are *not* sufficient
+> here — and remember that with isolation off, egress is open: `bash` can reach the network
+> through interpreters and package managers on the curated allowlist even with the gate on.
 
 ## Secret storage
 
@@ -137,14 +148,12 @@ API keys are stored via a pluggable backend (`DOCKET_SECRETS_BACKEND`):
 docket is honest about its limits. It does **not**:
 
 - **lock down network egress by default.** `fetch` is domain-allowlisted and refuses everything
-  by default until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but with the default
-  `network open`, `bash` can still reach the network through interpreters and package managers on
-  the curated allowlist (`SAFE_BINS` in `core/security.py`, e.g. `python3`, `pip`, `npm`, `git`).
-  `docket gates network none` (or a pod's `network` setting) cuts the *jail's* network, so `bash`
-  and jailed MCP servers lose it and `fetch` becomes the only, inspectable path. It does not
-  cover `verifyCmd` or `run:` steps (they run on the host), anything with isolation off (a turn
-  is refused while `network none` is set), or HTTP MCP servers and `fetch`, which run in docket's
-  own process.
+  by default until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but with isolation off (the
+  default), `bash` can still reach the network through interpreters and package managers on the
+  curated allowlist (`SAFE_BINS` in `core/security.py`, e.g. `python3`, `pip`, `npm`, `git`).
+  With isolation on, the jail's network is `none` unless opened (`docket setup sandbox network`,
+  or a pod's `network` setting), so `bash`, verify commands, `run:` steps and stdio MCP servers
+  lose it and `fetch`, which runs in docket's own process, is the only, inspectable path.
 - sandbox or contain the model endpoint itself, or a remote MCP server's own process — if a
   model or an MCP server is compromised, docket's gates constrain what it can ask docket's
   tools to do, but do not contain the endpoint/server itself;

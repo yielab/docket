@@ -5,7 +5,7 @@ and reshape parts of the decision below; where they disagree, the amendments win
 
 **Question:** docket is one of three tools that can be used alone or together: an orchestrator and
 project manager (for example Tack), this runtime, and an independent verifier that emits a
-merge-readiness pack (for example Prill, where `prill verify` exits 0 for "eligible for
+merge-readiness pack (for example one whose `verify` command exits 0 for "eligible for
 auto-merge" and 1 for "reject"). Together they are meant to run a lights-out software factory,
 where autonomy rises by level:
 - **L3:** the agent proposes, a human validates every change.
@@ -81,7 +81,7 @@ a verdict beyond an exit code, and never decides a merge. Without the new settin
      role: implementer
      gate:
        type: external
-       command: "prill verify --base $DOCKET_BASE_COMMIT --head $DOCKET_HEAD_COMMIT"  # example only
+       command: "my-verifier verify --base $DOCKET_BASE_COMMIT --head $DOCKET_HEAD_COMMIT"  # example only
        reasonsFile: ".docket-gate/reasons.json"   # optional; relative to the task worktree
        exitMap: { pass: [0], fail: [1], needsHuman: [2] }   # default shown
        timeout: 900
@@ -331,11 +331,11 @@ Found while reading; not fixed by this ADR:
   a running Docker", `docket gates isolate on` (now `docket setup sandbox on`) and the refusal
   text. Landlock plus seccomp on Linux, Seatbelt on macOS and Docker only when chosen are the
   current backends (ADR 0024 decision 3).
-- ADR 0017 names the independent verifier "Assay" (decision 5). The verifier that exists today is
-  Prill. ADR 0017 is a record of its date; the name should be corrected with a note, not
-  rewritten.
+- ADR 0017 names the independent verifier "Assay" (decision 5), a working name only. ADR 0017 is
+  a record of its date; it gets a note, not a rewrite.
 - ADR 0022's table lists `pod <p> ... corrections`, which has no command in `src/docket/cli/`
-  (open question 10).
+  (open question 10). *(At acceptance: that row maps the retired `pod <p> corrections` to
+  `task show`, which shows the ledger; there is nothing to fix.)*
 
 ## Accepted with amendments (2026-10-13)
 
