@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.34.0
+**Version**: 1.35.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -229,6 +229,19 @@ This specification does NOT cover:
     an error and never a raise. This section carries no path off the codebase root: `PodSettings`
     refuses an absolute, home-relative, or `..`-containing path at `set`, before a pod even has a
     resolved root to check it against.
+    **Base-commit source (P42-3).** When the turn runs in a task worktree whose task record carries
+    a `baseCommit` and the git dirs docket recorded for it, the codebase's `AGENTS.md`, every
+    `projectInstructions` file and the codebase-scope skills (`.docket/skills/`, index and the
+    `skill` tool's reads) **MUST** be read from the blob at `baseCommit` through host-side git on
+    those recorded dirs (`edges/adapters/system.py::git_read_blob`/`git_list_tree_dirs`), never
+    from the worktree: an Implementer that rewrites `AGENTS.md` or a skill changes nothing the
+    next hop is told. A path absent at `baseCommit` is absent (the not-found marker, no skill),
+    whatever the worktree holds. `core/repo_view.py::RepoView` is the injected reader; `core/`
+    never shells out. The bytes each view served are recorded as `RepoView.composed`, a mapping
+    repository-relative path to the sha256 of those bytes, and returned on
+    `TurnResult.repo_files`. With no task worktree (`docket exec` in place, a plain turn), no
+    `baseCommit` or no recorded git dirs, composition is byte-identical to before. Pod-scope and
+    global skills are not repository files and are unchanged. This applies to every run.
     Right after the project-instructions section, an optional `# Skills` index (P31-6, ADR 0013 §3 rule 8) lists every skill
     `core.skills.discover_skills(project, project_roots[0])` resolves — three scopes, nearest
     wins by name: a codebase's own `.docket/skills/`, this pod's own `config/skills/` (a
@@ -814,6 +827,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.35.0 (2026-10-13)
+
+- Project instructions and codebase-scope skills compose from the task's `baseCommit` blob when a
+  task worktree and its recorded git dirs exist (`core/repo_view.py`, P42-3); the served files'
+  sha256 ride `TurnResult.repo_files`.
 
 ### Version 1.34.0 (2026-10-12)
 

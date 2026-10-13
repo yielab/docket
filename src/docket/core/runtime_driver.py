@@ -105,6 +105,10 @@ class TurnResult:
     # The turn loop's own stop reason (``core.agent_loop.StopReason``: ``approval_unavailable``,
     # ``max_iterations``, ...), finer than ``failure_kind``; ``""`` when the driver gave none.
     stop_reason: str = field(default="", kw_only=True)
+    # Repository files this turn's prompt and skill reads were served from the task's base commit:
+    # repository-relative path -> sha256 of the bytes served. Empty when the turn read the
+    # filesystem (no task worktree).
+    repo_files: dict[str, str] = field(default_factory=dict, kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────

@@ -282,6 +282,26 @@ def _worktree_config_poisoned(git_dir: str, common_dir: str) -> bool:
     return bool(_WORKTREE_CONFIG_ON.search(text))
 
 
+def _trusted_git_env(
+    cwd: str, env: dict[str, str] | None
+) -> tuple[dict[str, str] | None, str | None]:
+    """The environment for host-side git in *cwd*, and a refusal reason or ``None``. In a worktree
+    docket recorded, the git dir, common dir and work tree are named through the environment, so
+    nothing the agent wrote at ``.git`` is read; a poisoned per-worktree config is refused."""
+    trusted = _TRUSTED_TREES.get(os.path.realpath(cwd))
+    if trusted is None:
+        return env, None
+    git_dir, common_dir = trusted
+    if _worktree_config_poisoned(git_dir, common_dir):
+        return env, "refused: the worktree config could name a program to run"
+    return {
+        **(os.environ if env is None else env),
+        "GIT_DIR": git_dir,
+        "GIT_COMMON_DIR": common_dir,
+        "GIT_WORK_TREE": os.path.realpath(cwd),
+    }, None
+
+
 def _git_run(
     cwd: str,
     args: list[str],
@@ -289,22 +309,11 @@ def _git_run(
     env: dict[str, str] | None = None,
     config: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
-    """Run ``git -C cwd <config> <args>``. In a worktree docket recorded, the git dir, common dir
-    and work tree are named through the environment, so nothing the agent wrote at ``.git``
-    is read; a poisoned per-worktree config makes it fail closed instead of running."""
-    trusted = _TRUSTED_TREES.get(os.path.realpath(cwd))
-    if trusted is not None:
-        git_dir, common_dir = trusted
-        if _worktree_config_poisoned(git_dir, common_dir):
-            return subprocess.CompletedProcess(
-                args, 1, "", "refused: the worktree config could name a program to run"
-            )
-        env = {
-            **(os.environ if env is None else env),
-            "GIT_DIR": git_dir,
-            "GIT_COMMON_DIR": common_dir,
-            "GIT_WORK_TREE": os.path.realpath(cwd),
-        }
+    """Run ``git -C cwd <config> <args>``; a worktree docket recorded is addressed through its
+    recorded git dirs (see ``_trusted_git_env``) and fails closed on a poisoned config."""
+    env, refused = _trusted_git_env(cwd, env)
+    if refused is not None:
+        return subprocess.CompletedProcess(args, 1, "", refused)
     return subprocess.run(
         ["git", "-C", cwd, *config, *args],
         capture_output=True,
@@ -1177,6 +1186,57 @@ def git_head_sha(cwd: str) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
+
+
+_FULL_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+
+
+def _repo_rel_path_ok(rel: str) -> bool:
+    parts = rel.split("/")
+    return bool(rel) and not rel.startswith("/") and all(p not in ("", ".", "..") for p in parts)
+
+
+def git_read_blob(cwd: str, rev: str, rel: str) -> bytes | None:
+    """The bytes of repository path *rel* at commit *rev* (a full sha), read host-side through the
+    git dirs docket recorded for the worktree at *cwd* when it recorded any. ``None`` when the
+    path is absent at *rev*, is not a blob, *rev*/*rel* are malformed, or git is unavailable."""
+    if not _FULL_SHA.match(rev) or not _repo_rel_path_ok(rel) or not git_available():
+        return None
+    env, refused = _trusted_git_env(cwd, None)
+    if refused is not None:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "cat-file", "blob", f"{rev}:{rel}"],
+            capture_output=True,
+            timeout=_QUERY_TIMEOUT,
+            env=env,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def git_list_tree_dirs(cwd: str, rev: str, rel: str) -> list[str] | None:
+    """Names of the subdirectories directly under *rel* at commit *rev*, sorted, read like
+    ``git_read_blob``; ``None`` when *rel* is absent at *rev* or not a directory."""
+    if not _FULL_SHA.match(rev) or not _repo_rel_path_ok(rel) or not git_available():
+        return None
+    env, refused = _trusted_git_env(cwd, None)
+    if refused is not None:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "ls-tree", "-d", "--name-only", "-z", f"{rev}:{rel}"],
+            capture_output=True,
+            timeout=_QUERY_TIMEOUT,
+            env=env,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return sorted(n.decode("utf-8", "replace") for n in result.stdout.split(b"\0") if n)
 
 
 def git_merge_base(cwd: str, other_branch: str) -> str | None:

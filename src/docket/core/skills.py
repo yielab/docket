@@ -19,6 +19,7 @@ from typing import Literal
 
 import docket.config as _cfg
 from docket.core.audit import audit_log
+from docket.core.repo_view import RepoView, view_for
 
 SkillScope = Literal["codebase", "pod", "global", ""]
 
@@ -48,6 +49,8 @@ class SkillMeta:
     description: str
     directory: Path
     scope: SkillScope = ""
+    # Set when the skill was served from a base-commit view: its files then live only there.
+    view: RepoView | None = None
 
 
 def _extract_frontmatter(text: str) -> str | None:
@@ -70,7 +73,12 @@ def parse_skill_file(path: Path, *, scope: SkillScope = "") -> SkillMeta:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise SkillError(path, "file", f"cannot read: {exc}") from exc
+    return parse_skill_text(path, text, scope=scope)
 
+
+def parse_skill_text(path: Path, text: str, *, scope: SkillScope = "") -> SkillMeta:
+    """``parse_skill_file`` over *text* already read; *path* names the file for errors and the
+    directory the name must match."""
     frontmatter = _extract_frontmatter(text)
     if frontmatter is None:
         raise SkillError(path, "frontmatter", "missing opening/closing '---' block")
@@ -115,7 +123,11 @@ def discover_skills(project: str, codebase_root: Path | str | None) -> dict[str,
         scopes.append((_cfg.pod_config_dir(project) / "skills", "pod"))
     scopes.append((_cfg.SKILLS_DIR, "global"))
 
+    view = view_for(codebase_root)
     for directory, scope in scopes:
+        if scope == "codebase" and view is not None:
+            _discover_in_view(view, directory, found)
+            continue
         if not directory.is_dir():
             continue
         for skill_dir in sorted(p for p in directory.iterdir() if p.is_dir()):
@@ -131,3 +143,23 @@ def discover_skills(project: str, codebase_root: Path | str | None) -> dict[str,
                 continue
             found[meta.name] = meta
     return found
+
+
+CODEBASE_SKILLS_REL = ".docket/skills"
+
+
+def _discover_in_view(view: RepoView, directory: Path, found: dict[str, SkillMeta]) -> None:
+    """The codebase-scope skills at the view's commit; *directory* only names them for display."""
+    for name in view.list_dirs(CODEBASE_SKILLS_REL):
+        if name in found:
+            continue
+        skill_file = directory / name / "SKILL.md"
+        text = view.read_text(f"{CODEBASE_SKILLS_REL}/{name}/SKILL.md")
+        if text is None:
+            continue
+        try:
+            meta = parse_skill_text(skill_file, text, scope="codebase")
+        except SkillError as exc:
+            audit_log("skills.invalid", str(exc))
+            continue
+        found[meta.name] = SkillMeta(meta.name, meta.description, meta.directory, "codebase", view)
