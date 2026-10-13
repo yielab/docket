@@ -678,5 +678,13 @@
     "heading": "☑ PHASE 41 COMPLETE — one execution envelope (D-60, ADR 0024): eight cards over Waves 100–103, closed 2026-10-13",
     "bytes": 12885,
     "sha256": "3311031d40fe988e3328bdd09a32b2fdcb587df047e7328bc5c33bf9b9c718ed"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ PHASE 42 COMPLETE — lights-out profile and external gate (D-61, ADR 0025): eight cards over Waves 104–107, closed 2026-10-13",
+    "bytes": 15354,
+    "sha256": "6edf13907f4b58a2af7bea0264e8cde00d9f97842350c49b890771a4e6dcec67"
   }
 ]

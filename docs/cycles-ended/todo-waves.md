@@ -13265,3 +13265,216 @@ dispatch's host-side git run": it must not execute anything the agent wrote. If 
 is in this card: host-side git calls in a task worktree pass the gitdir docket recorded
 (`--git-dir`/`--work-tree`) and never read the worktree's `.git` file.
 
+## ☑ PHASE 42 COMPLETE — lights-out profile and external gate (D-61, ADR 0025): eight cards over Waves 104–107, closed 2026-10-13
+
+> **Opened 2026-10-13.** ADR 0025 was accepted with amendments (its last section): the external
+> gate is a command plus an exit map whose four labels route through the existing `on:` map; a
+> human is an existing `input` step; the `exec` gate and profile flags, the override pack, risk
+> and domain, the corrections export and the attempt ids and digests are cut with named
+> triggers. Plan and reasoning: gitignored `internal-docs/adr-0025-plan-2026-10-13.es.md`.
+>
+> **Sub-waves, by contention on `core/dispatch.py`:** **A** P42-1 ∥ P42-3 · **B** (on A's
+> rollup) P42-2 · **C** P42-4 ∥ P42-5 · **D** P42-6 ∥ P42-7. Each worker owns its card's files
+> plus its owning spec section; `README.md`, `docs/SECURITY-SIMPLE.md`, `docs/CONFIGURATION.md`,
+> CLAUDE.md's limits and this board are the integrator's, rewritten as each card merges (D-37).
+> Packets in [.agents/handoffs/phase-42-worker-packets.md](.agents/handoffs/phase-42-worker-packets.md).
+>
+> **Wave 104 closed sub-wave A (2026-10-13).** Integration findings: P42-3's base-commit view
+> lived in a module-global registry keyed by the worktree, and the children of a `parallel` group
+> share one worktree on separate threads, so a sibling that ended first cleared the view of one
+> still running (reproduced; now a `ContextVar`, `tests/unit/core/test_repo_view.py`). P42-1
+> carried a "GATE FAILED" section for a backward route taken on `pass` (now gated on the verify
+> label or exit code, one owner `_is_gate_failure_carryover`). Known gap for P42-2: an `input`
+> step's answer resumes behind a synthetic operator hop with no `verify`, so the reasons must be
+> carried across it.
+>
+> **Wave 105 closed sub-wave B (2026-10-13).** Integration findings: the gate read its command's
+> exit code from a file under the pod cache dir, writable inside the jail, so an agent-written
+> test could plant a read-only `0` and pass a failing verifier (reproduced; now
+> `system.run_command` returns the process's own status and the file is gone). A short-form
+> `input` step dropped an unquoted `on:` (YAML's `True` key), the exact shape of the
+> `needs_human` pattern (fixed through `_get_on`). Found for sub-wave C: MCP servers are stdio
+> only, so the profile's "no HTTP MCP server" check is dropped; evidence embedded in the harness
+> result stays `1.0.0` (a published contract), `1.1.0` is for `task show` and serve.
+>
+> **Wave 106 closed sub-wave C (2026-10-13).** P42-5 merged first (`44fe0a2e`), then P42-4
+> (`30f56be3`); `core/dispatch.py` auto-merged on the function-level split. The integrator added
+> the seam test the two cards could not own alone (`6d83f79b`: a dispatched external gate read
+> back as evidence 1.1.0's `gate`). P42-4 dropped the HTTP-MCP requirement (stdio only) and
+> counts the Implementer's `DOCKET_PORT_*`/`DOCKET_SCRATCH_DIR` and the pod's MCP server env as
+> injected variables. The two `setup shell` goldens gained the new `profile` verb, deliberately.
+>
+> **Wave 107 closed sub-wave D and the phase (2026-10-13).** P42-7 (merge `68c03f6d`): the network
+> is reported as not enforced while isolation is off, on `setup sandbox`, `setup`, `status` and,
+> added at integration, `pod show`. P42-6 ran the product live on the local endpoint (gate loop,
+> `needs_human` round trip, profile refusal then pass in the jail) and found three defects in the
+> `needs_human` path plus a masked `validate` error, fixed as P42-8 (`e9317013`); docs in
+> `e29a996d`. Found at the close: the verifier's product name (unannounced) had entered ADR 0025,
+> ROADMAP and TODO in `e8774fad`; it is removed from the tree, not from the unpushed history.
+
+### P42-1 — a backward route carries the gate's output into the rework hop
+
+**Status:** DONE (2026-10-13, merge `5498d4b1`, Wave 104) · **Size:** S · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Outcome routing"), pod-dispatch.spec.md ("Bounded hop prompts")
+
+**Trigger (code reading, 2026-10-13, ADR 0025 amendments):** `core/dispatch.py::_run_pipeline`
+fills `pending_rework_by_index` only for `kind == "rework"` (a verdict gate's edge). A `routed`
+outcome that goes backward (`until: verify`, `on: {fail: {goto: implement, max: N}}`) re-runs its
+target with no carryover, and `hop.verify.outputTail` is not in the artifact `_hop_message`
+renders, so the Implementer retries without knowing why the gate failed.
+
+**Goal:** when a routed outcome's target is at or before the current step and the routed hop
+carries `verify` evidence, the target's next hop gets a `--- GATE FAILED: <step id> ---` section
+built from that evidence (the redacted `outputTail`; P42-2 adds reasons), fit to the same
+carryover budget and recorded in `_HopComposition` like `REWORK REQUIRED`. A resume (after an
+`input` step's answer, or a restart) rebuilds the carryover from the last gated hop the way
+`_resolve_resume_state` rebuilds a rework hop.
+
+**Non-goals:** the external gate (P42-2); any change to verdict-gate rework; forward routes.
+
+**Live path:** `core/dispatch.py::_run_pipeline` (the `routed` branch), `_hop_message`,
+`_resolve_resume_state`; `core/context.py` only if the section needs its own compile helper.
+
+**Acceptance:** RED on the base: a pod pipeline `implement` (mechanical gate, `until: verify,
+max: 2`) whose verify command fails once with a unique marker in its output, then passes; with a
+recording fake runner, the second Implementer message contains the marker under `GATE FAILED`;
+the task ends `done` with two Implementer hops. A forward route and a pipeline with no route are
+byte-identical to today (goldens unchanged). Lane: integration. Oracle: the recorded message.
+
+### P42-3 — repository instructions and skills come from the task's base commit
+
+**Status:** DONE (2026-10-13, merge `a0d58ede`, Wave 104) · **Size:** S · **Model:** Sonnet · **Spec:** agent-loop.spec.md (project instructions, the `project_roots[0]` paragraph), role-archetypes.spec.md (skills scopes)
+
+**Trigger (ADR 0025 evidence row "the project-instructions root is the task worktree"):**
+`edges/adapters/docket_runtime.py` passes `roots=(Path(pipeline_worktree),)` and
+`core/identity.py::_project_instructions_raw` reads `project_roots[0] / "AGENTS.md"`, so an
+Implementer that edits `AGENTS.md` changes what the Reviewer and Tester are told in the same
+task. `core/skills.py::discover_skills` reads `<codebase_root>/.docket/skills/` the same way.
+
+**Goal:** when a turn runs in a task worktree with a recorded `baseCommit`, the codebase's
+`AGENTS.md`, every `projectInstructions` file and the codebase-scope skills are read from the
+blob at `baseCommit` (host-side `git show`/`cat-file` on the git dirs docket recorded, through
+`edges/adapters/system.py`), never from the worktree. A file absent at `baseCommit` is absent.
+Without a task worktree (`exec` in place, a plain turn) nothing changes. Every run, not only a
+profile (ADR 0025 amendments, question 4).
+
+**Non-goals:** pod-scope and global skills; nested `AGENTS.md`; evidence of what applied (P42-5).
+
+**Live path:** `core/identity.py::_project_instructions_raw`/`project_instruction_files`,
+`core/skills.py::discover_skills`, the roots passed in `edges/adapters/docket_runtime.py`, a
+reader in `edges/adapters/system.py`.
+
+**Acceptance:** RED on the base: a task worktree whose Implementer hop rewrites `AGENTS.md` with
+a marker and commits; the next hop's composed system prompt carries the `baseCommit` text and not
+the marker. Same for a skill under `.docket/skills/`. The read costs one git call per file per
+turn; measure it and record the number in the card's report. Lane: integration. Oracle: the
+composed prompt.
+
+### P42-2 — the external gate
+
+**Status:** DONE (2026-10-13, merge `563c6508`, Wave 105) · **Size:** M · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Gates", "Outcome routing"), pod-dispatch.spec.md (gate evaluation, "Hop evidence")
+
+**Trigger:** ADR 0025 D1 as amended.
+
+**Goal:** `ExternalGate {type: external, command, timeout?, exitMap?}` in the `Gate` union
+(default exit map `{pass: [0], fail: [1], needs_human: [2]}`), short form `gate: {external:
+CMD}`, `on:` keys validated against `pass|fail|needs_human|error`, `_default_edge_reachable`
+aware of it. `_evaluate_external_gate` shares a helper extracted from `_evaluate_mechanical_gate`
+(envelope, fingerprint, redaction, `hop.verify`) and adds only: the exit mapping (`error` for an
+unmapped code, a timeout, a jail refusal, a missing command); `DOCKET_GATE_REASONS_FILE` under the
+pod cache dir, deleted before the run, read after it (UTF-8 JSON ≤ 64 KiB, `{reasons: [{summary,
+...}]}`, else `reasonsInvalid` and the output tail stands in), screened by `pre_input` and
+redacted; the reasons in P42-1's `GATE FAILED` section; `hop.verify` gains `label`,
+`reasonsInvalid` and the real `exitCode` (mechanical gates keep 0/1). An unrouted `fail`,
+`needs_human` or `error` fails the task with failure kinds `gate_failed`, `gate_needs_human`,
+`gate_error`. The member's `verifyCmd` is not run by an external gate.
+
+**Non-goals:** `exec` flags, an override, a gate network grant, reading any verdict file.
+
+**Acceptance:** unit: parse, short form, validation errors. Integration with a fake verifier
+script exiting 0, 1 (with reasons), 2, 7 and sleeping past its timeout; reasons too large, not
+JSON, and pre-existing (deleted before the run, never read). Seam test with real code on both
+sides: gate `needs_human` → `on: {needs_human: ask}` → `input` step parks → `answers.answer_task`
+`accept` → `answered: {goto: implement, max: 1}` → the Implementer's message carries the reasons.
+A pipeline without an external gate is byte-identical (goldens unchanged).
+
+### P42-4 — the `lights-out` profile
+
+**Status:** DONE (2026-10-13, merge `30f56be3`, Wave 106) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (new "Profiles" section), cli-interface.spec.md (`setup profile`), operator-loop.spec.md (doctor/status lines)
+
+**Goal:** `core/profile.py::lights_out_violations(project) -> list[Violation]`, pure, each with
+its fix: isolation on with a usable backend; network `none` enforced by the jail (recorded or
+pod-level); an `ExternalGate` on every step whose role is an Implementer in the loaded pipeline;
+no HTTP MCP server in the pod's effective set; no pod-injected variable named in the secret
+store. Recorded globally in the fleet security record (`docket setup profile
+lights-out|attended`, audited) and per pod (`PodSettings.profile`, stricter only). One check in
+dispatch before a task's first hop (covers `run` and `start --dispatch`): a violation refuses the
+task with `profile.refused` audited and nothing run. `doctor` and `status` show the profile and
+its violations from the same function.
+
+**Non-goals:** `exec --profile`; risk, domain, `onNeedsHuman`; changing any default (a fresh
+install is `attended`, nothing recorded).
+
+**Acceptance:** each requirement has a RED row (profile on, that requirement unmet → refused,
+audited, no hop run) and one positive row (all met → the task runs). `attended` and no record
+are byte-identical to today (goldens unchanged except the new `setup profile` surface).
+
+### P42-5 — evidence 1.1.0: `gate` and `directives`
+
+**Status:** DONE (2026-10-13, merge `44fe0a2e`, Wave 106) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md ("Evidence v1"), cli-json-shapes.spec.md
+
+**Goal:** `core/evidence.py` emits `v: "1.1.0"`: `HopEvidence.gate {label, exitCode,
+reasonsInvalid}` only on a hop that ran an external gate; `TaskEvidence.directives [{path,
+sha256}]` for the repository files P42-3 composed (recorded on the hop by P42-3's reader, so
+evidence reads it, never recomputes it). Schema under `docs/contracts/evidence-v1.1/`. Before
+merge, confirm that Tack's evidence parser accepts the new version and fields; if it does not,
+the card reports it and the integrator decides.
+
+**Acceptance:** a fixture task with an external-gated hop and an `AGENTS.md` produces both
+fields and validates against the new schema; a task without either carries neither field.
+
+### P42-6 — documentation and the live run
+
+**Status:** DONE (2026-10-13, integrator, Wave 107; docs `e29a996d`) · **Size:** M · **Model:** integrator
+
+**Goal:** `docs/SECURITY-SIMPLE.md`, `docs/CONFIGURATION.md`, `docs/commands.md` (generated),
+the README (D-37: describe what exists); `SECURITY.md` brought to ADR 0024 (it still describes
+bwrap, `--no-isolate` and `gates isolate on`); a dated note in ADR 0017 that its "Assay" is the
+verifier is a working name only; ADR 0022's `pod <p> corrections` row removed. A live run on the local
+endpoint (`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`) with a toy verifier that fails once with reasons
+and then passes; then `needs_human` answered with `task answer`; then the profile refusing on
+this host with isolation off and passing with `setup sandbox on` and network `none`.
+
+### P42-7 — `none` reported where egress is open
+
+**Status:** DONE (2026-10-13, merge `68c03f6d`, Wave 107) · **Size:** S · **Model:** Sonnet · **Spec:** operator-loop.spec.md / security-gates.spec.md (network)
+
+**Trigger (ADR 0025 question 8):** `core/pod.py::effective_network` returns `none` at scope
+`default` when nothing is recorded, and with isolation off egress is open; `doctor`, `status` and
+`setup sandbox` may print `none`. **RED first:** reproduce on a fresh home with isolation off; if
+every surface already says the network is open or unenforced, close the card as not reproduced.
+
+**Goal:** every surface that prints the network mode says `none (not enforced: isolation off)`
+or equivalent when the jail is not on.
+
+### P42-8 — the `needs_human` path, as the live run found it
+
+**Status:** DONE (2026-10-13, integrator, Wave 107) · **Size:** S · **Model:** integrator · **Spec:** pipeline-format.spec.md 2.17.0 ("Outcome routing" 7), pod-dispatch.spec.md 6.44.0
+
+**Trigger (P42-6's live run on the local endpoint, 2026-10-13):** a verifier exiting 2 parked
+the task on its `input` step, and then (1) the inbox showed only the step's fixed message, not
+the verifier's reasons; (2) the operator's answer never reached the Implementer it routed back
+to (`_render_operator_answers` composes for the Lead only); (3) after the answer the gate
+passed and the default edge entered the `input` step again, re-parking the task: the
+`on: {needs_human: ask}` pattern needs `pass` routed, and nothing said so. Also found:
+`docket pod validate` masked every error of a pipeline with an unquoted `on:` behind "Input
+should be a valid string" (the envelope model typed step keys as `str`; YAML loads `on` as
+`True`) and printed the path twice.
+
+**Shipped:** `_run_input_step` appends the `from` step's failed-gate report to the question;
+`_gate_failed_section` carries the operator's latest answer on the retry behind it; `validate`
+refuses a mechanical- or external-gated step that routes to the `input` step right after it
+without routing `pass` (a verdict gate is exempt, it names its own passing values; the shipped
+`intake` recipe proved it); `PipelineDocument` accepts non-string step keys and
+`_refine_with_model` keeps an already-located error. RED first for each; the live rerun ended
+`done` with the note followed.
+

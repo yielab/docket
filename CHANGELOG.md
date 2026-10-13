@@ -51,6 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The network is no longer reported as cut while it is open (Phase 42, P42-7).** With
+  isolation off, `docket setup sandbox`, `docket setup`, `docket status` and `docket pod show`
+  printed the network as `none` (with an `ok`) although nothing was jailed and egress was open.
+  They now say `none (<scope>), not enforced: isolation off, egress is open`, and the JSON of
+  `setup` and `setup sandbox` carries `networkEnforced`.
 - **A verifier that asks for a human is now answerable (Phase 42 live run).** The parked
   question shows the gate's reasons, the operator's answer reaches the Implementer it sends the
   task back to, and `validate` refuses a gated step that routes to the `input` step right after

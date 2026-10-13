@@ -1,7 +1,8 @@
 # ADR 0025 (D-61): a lights-out profile, an external verification gate, and directives from the repository
 
 **Status:** Accepted 2026-10-13 **with the amendments at the end of this record**, which cut
-and reshape parts of the decision below; where they disagree, the amendments win. Phase 42.
+and reshape parts of the decision below; where they disagree, the amendments win. Implemented
+by Phase 42, closed 2026-10-13 (ROADMAP).
 
 **Question:** docket is one of three tools that can be used alone or together: an orchestrator and
 project manager (for example Tack), this runtime, and an independent verifier that emits a
