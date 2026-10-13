@@ -7,7 +7,7 @@ _docket_verbs() {
     "task") echo "add list show diff trace prune approve deny answer retry cancel" ;;
     "pod") echo "show add remove reset delete set unset update export validate plan check recipes roles policies" ;;
     "log") echo "verify" ;;
-    "setup") echo "shell provider model sandbox notify export mcp" ;;
+    "setup") echo "shell harness provider model sandbox notify export mcp" ;;
     "setup provider") echo "add list show remove export rotate" ;;
     "setup model") echo "list set preset reset" ;;
     "setup sandbox") echo "status on off backend network classes" ;;
@@ -59,6 +59,7 @@ _docket_options() {
     "log verify") echo "--help" ;;
     "setup") echo "--json --fix --help" ;;
     "setup shell") echo "--help" ;;
+    "setup harness") echo "--json --role --help" ;;
     "setup provider") echo "--help" ;;
     "setup provider add") echo "--credential --model --ctx --max-tokens --no-preset --help" ;;
     "setup provider list") echo "--json --help" ;;

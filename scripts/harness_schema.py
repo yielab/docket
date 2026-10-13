@@ -2,13 +2,14 @@
 """harness_schema.py -- render the harness contract's schema.json files.
 
 ``core.harness``'s Pydantic models (v1's ``HarnessEvent``/``HarnessResult``;
-v1.1's ``HarnessEventV11``/``HarnessResultV11``/``AnswerLine``) are the source
+v1.1's ``HarnessEventV11``/``HarnessResultV11``/``AnswerLine``; v1.2's ``HarnessEventV12``/
+``HarnessResultV12``/``AnswerLineV12``) are the source
 of truth; this script only serializes them, so `--check` failing means a wire
 shape moved without regenerating the published artifact in the same change.
 
 Usage:
-  ./scripts/harness_schema.py            # regenerate both schema.json files
-  ./scripts/harness_schema.py --check    # exit 1 if either file on disk is stale
+  ./scripts/harness_schema.py            # regenerate every schema.json file
+  ./scripts/harness_schema.py --check    # exit 1 if any file on disk is stale
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 SCHEMA_PATH = ROOT / "docs" / "contracts" / "harness-v1" / "schema.json"
 SCHEMA_V11_PATH = ROOT / "docs" / "contracts" / "harness-v1.1" / "schema.json"
+SCHEMA_V12_PATH = ROOT / "docs" / "contracts" / "harness-v1.2" / "schema.json"
 
 sys.path.insert(0, str(SRC))
 
@@ -89,6 +91,28 @@ def render_v11() -> str:
     return json.dumps(document, indent=2, sort_keys=True) + "\n"
 
 
+def render_v12() -> str:
+    """Return the generated v1.2 schema.json content, trailing newline included."""
+    from docket.core import harness
+
+    definitions = {
+        "HarnessEvent": harness.HarnessEventV12.model_json_schema(),
+        "HarnessResult": harness.HarnessResultV12.model_json_schema(),
+        "AnswerLine": harness.AnswerLineV12.model_json_schema(),
+    }
+    root_defs = _hoist_defs(definitions)
+
+    document = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "docket harness contract",
+        "version": harness.HARNESS_CONTRACT_V12,
+        "definitions": definitions,
+    }
+    if root_defs:
+        document["$defs"] = root_defs
+    return json.dumps(document, indent=2, sort_keys=True) + "\n"
+
+
 def _sync(path: Path, rendered: str, check_only: bool) -> bool:
     """Write or check one schema file. Returns True if it is up to date."""
     if check_only:
@@ -115,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ok = _sync(SCHEMA_PATH, render(), check_only)
     ok = _sync(SCHEMA_V11_PATH, render_v11(), check_only) and ok
+    ok = _sync(SCHEMA_V12_PATH, render_v12(), check_only) and ok
 
     return 0 if ok else 1
 

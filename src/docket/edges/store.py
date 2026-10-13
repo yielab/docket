@@ -100,6 +100,15 @@ def read_modify_write(
         return updated
 
 
+def read_json_readonly(path: Path) -> dict[str, Any]:
+    """Read one object from a home docket must not write: no lock file, no backup recovery.
+    A missing, unreadable or malformed file reads as ``{}``."""
+    try:
+        return _parse_json_object(path.read_bytes())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, _NotJSONObject):
+        return {}
+
+
 def read_json(path: Path) -> dict[str, Any]:
     """Read one object, recovering a malformed primary from its valid backup."""
     if not path.exists() and not path.parent.exists():

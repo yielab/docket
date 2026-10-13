@@ -22,6 +22,7 @@ from docket.cli import (
     _service,
     _setup,
     _setup_export,
+    _setup_harness,
     _setup_mcp,
     _setup_model,
     _setup_notify,
@@ -84,6 +85,7 @@ _setup.setup_app.command("shell")(_setup_shell.cmd_shell)
 _setup.setup_app.add_typer(_setup_notify.notify_app)
 _setup.setup_app.add_typer(_setup_export.export_app)
 _setup.setup_app.add_typer(_setup_mcp.mcp_app)
+_setup.setup_app.command("harness")(_setup_harness.cmd_harness)
 _pod.pod_app.command("update")(_pod_config.cmd_update)
 _pod.pod_app.command("export")(_pod_config.cmd_export)
 _pod.pod_app.command("validate")(_pod_config.cmd_validate)

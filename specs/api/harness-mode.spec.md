@@ -1,10 +1,11 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented (`docket exec`). Contract 1.1
 (P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
-"Contract 1.1" below.
-**Last Updated**: 2026-10-10
+"Contract 1.1" below. Contract 1.2 (ADR 0026, D-62, docket 0.2.0-beta.5) is opt-in and
+implemented: the run uses the operator's own `docket setup` -- see "Contract 1.2" below.
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -135,8 +136,9 @@ convention:
   because its other fields are well-formed.
 - **Refusal table.** `core.harness.preflight(environ, home_default, workspace)` MUST return a
   refusal when: `DOCKET_HOME` is unset; `DOCKET_HOME` resolves to the caller's default home;
-  `DOCKET_LLM_BASE_URL` is unset; `DOCKET_NO_TRACE=1`; or `workspace` is not a directory. It
-  MUST return `None` when every condition above is satisfied.
+  `DOCKET_LLM_BASE_URL` is unset (contracts 1.0 and 1.1 only; under 1.2 the endpoint comes from
+  the setup home, see "Contract 1.2"); `DOCKET_NO_TRACE=1`; or `workspace` is not a directory.
+  It MUST return `None` when every condition above is satisfied.
 - **Result mapping.** `core.harness.result_from(turn, usage, run)` MUST map a successful
   `TurnResult` to `status: ok`; a `failure_kind` of `run_cancelled` to `status: cancelled`; an
   error naming `approval_unavailable` to `status: blocked` with the parsed rule; any other
@@ -149,14 +151,16 @@ convention:
 - **Fixture validity.** Every line of every committed fixture MUST validate against
   `HarnessEvent` (all but the last line) or `HarnessResult` (the last line).
 - **CLI argument checks precede `preflight`.** `docket exec` MUST refuse (exit 2, one
-  `HarnessResult` with `status: refused`) a missing `--workspace`, a missing `--model`, or
-  both/neither of `--task`/`--task-file`, before `core.harness.preflight` ever runs.
+  `HarnessResult` with `status: refused`) a missing `--workspace`, a missing `--model` (under
+  contracts 1.0 and 1.1; optional under 1.2), or both/neither of `--task`/`--task-file`, before
+  `core.harness.preflight` ever runs.
 - **`approval_mode` reaches the driver.** `docket exec` MUST pass
   `DOCKET_APPROVAL_MODE=refuse` in `run_turn`'s `env`, and `DocketDriver.run_turn` MUST map it
   onto `ToolContext.approval_mode` -- an unset or unrecognized value MUST resolve to `"wait"`.
-- **Isolation.** No `docket exec` invocation may read or write anything under the
-  operator's own default `DOCKET_HOME` -- every docket-owned file it touches lives under the
-  caller-supplied home.
+- **Isolation.** No `docket exec` invocation may write anything under the operator's own default
+  `DOCKET_HOME` -- every docket-owned file it writes lives under the caller-supplied home. Under
+  contracts 1.0 and 1.1 it reads nothing there either; under 1.2 it reads exactly the three
+  setup-home files "Contract 1.2" section 2 names, and nothing else.
 
 ## Contract 1.1
 
@@ -178,6 +182,7 @@ recorded in ADR 0017.
 |---|---|
 | `1.0` (default) | Every line stamps `v: "1.0.0"`; behavior is byte-identical to before this option existed. |
 | `1.1` | Every line -- events, and the terminal result, including a refusal reached after this flag parsed -- stamps `v: "1.1.0"` and validates against the v1.1 shapes below. |
+| `1.2` | Every line stamps `v: "1.2.0"` and validates against the v1.2 shapes ("Contract 1.2"); the run may use the operator's setup. |
 | anything else | Refused (exit 2, one `HarnessResult` with `status: refused`), before `preflight` runs, like any other malformed argument. |
 
 ### 2. The v1.1 envelope
@@ -437,7 +442,149 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   process lifecycle events ride the stream (Section 3). `task` is populated by a recipe run
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
+## Contract 1.2
+
+**Status of this section: implemented (ADR 0026, D-62, docket 0.2.0-beta.5).** A caller that holds
+no model credential, endpoint or catalog runs docket on the operator's own `docket setup`.
+Contracts 1.0 and 1.1 are unchanged, including the `DOCKET_LLM_BASE_URL` requirement: every rule
+in this section applies only to a run that passed `--contract 1.2`.
+
+### 1. The v1.2 envelope
+
+Every line stamps `v: "1.2.0"`: `HarnessEventV12`, `HarnessResultV12` and `AnswerLineV12` are the
+v1.1 shapes with that version, and the `--token-file` body stamps it too. `HarnessResultV12.model`
+is `ModelInfoV12`: `requested` (the PROVIDER/ID the run used), `served` (as in 1.0: read off the
+last response body) and `source`, `"explicit"` when `--model` was given and `"setup default"`
+when the setup registry chose it (section 3). A refusal carries `model.source` `""`. Every 1.1
+option is accepted under 1.2 with its 1.1 rules (`--answers`, `--answer-timeout`, `--token-file`,
+`--max-tokens`, `--policy`) except `--recipe`, which stays a 1.1 feature (exit 2 under 1.2:
+`--recipe needs --contract 1.1`). The generated schema is
+`docs/contracts/harness-v1.2/schema.json` (`scripts/harness_schema.py`), pinned like the others.
+
+### 2. The setup home
+
+1. The **setup home** is `DOCKET_SETUP_HOME` when set, otherwise the default home
+   (`~/.docket`). `DOCKET_HOME` keeps its 1.0 rules: set, and not the default home; the run's
+   state (meta, run record, session, trace, audit) lives there and only there.
+2. When `DOCKET_LLM_BASE_URL` is unset, the run resolves its endpoint from the setup home and
+   `preflight` does not require the variable. The run reads exactly three files there:
+   `docket-providers.json` (the operator's global provider catalog, merged over the built-in
+   catalog shipped in the package), `docket-models.json` (the model registry) and
+   `secrets.json` (the credential store or the keyring's index). It reads them with
+   `edges/store.py::read_json_readonly` (no lock file, no backup recovery), never writes
+   anything under the setup home, and never reads pods, policies, traces, workspaces, sessions
+   or the audit log there. A missing or malformed file reads as empty.
+3. `DOCKET_LLM_BASE_URL` set wins as under 1.1: the endpoint is that URL and the credential is
+   `DOCKET_LLM_API_KEY` (or the provider-prefix fallback); the setup home is still read for the
+   model when `--model` is omitted. `DOCKET_LLM_API_KEY` set wins over any stored credential.
+
+### 3. The model
+
+1. `--model PROVIDER/ID` is optional. Given, it is used as is (`source: "explicit"`).
+2. Omitted, the run uses the setup registry's `roles.<role>` for its `--role` (default
+   `implementer`), then the registry's `default` (`source: "setup default"`). Built-in rank
+   anchors never select a model here: they are not a choice the operator made.
+3. When neither names a model, the run is refused (exit 2) before any network call:
+   `no model is set up for role 'implementer' in <setup home>; run 'docket setup model set
+   implementer PROVIDER/ID' (or 'docket setup provider add <name>'), or pass --model`.
+
+### 4. The credential
+
+1. The model's provider must be in the merged catalog; otherwise the run is refused:
+   `provider '<p>' is not in docket's provider catalog (<setup home>); add it with 'docket setup
+   provider add <p>'`.
+2. A provider whose `auth.type` is `none` needs no credential. Otherwise, per name in
+   `auth.credentials`, in order: the process environment; `secrets.json`'s value; the OS keyring
+   (`secret-tool lookup service <DOCKET_KEYRING_SERVICE> key <name>`) when `secrets.json` lists
+   the name with an empty value, which is how the keyring backend records it. The first that
+   yields a value is the credential.
+3. No credential is a refusal, never an unauthenticated request:
+   `provider '<p>' needs credential <NAME>, which is not in the environment or in <setup
+   home>/secrets.json; export <NAME>, or store it with 'docket setup provider add <p>'`.
+4. A keyring lookup that fails (no `secret-tool`, no D-Bus session, as inside most sandboxes, or no
+   entry) is a refusal that says so: `provider '<p>' keeps credential <NAME> in the OS keyring, and
+   the keyring lookup failed (no secret-tool or no D-Bus session, as inside a sandbox); export
+   <NAME> in the environment, or store it in the file backend: DOCKET_SECRETS_BACKEND=file docket
+   setup provider add <p>`. No refusal sentence ever contains a credential value.
+5. The resolved value is registered with the trace redaction set (`core.trace.register_secret`),
+   and its name with the set stripped from every child process environment
+   (`system.register_credential_name`), as `DOCKET_LLM_API_KEY` is.
+6. The endpoint is built from the catalog entry (`base_url`, `auth`, `headers`, `dialect`, the
+   model's context window) by the same function interactive docket uses
+   (`edges/adapters/llm.py::endpoint_from_spec`), and the driver gets a backend for exactly that
+   endpoint (`DocketDriver(backend_factory=...)`).
+
+### 5. Readiness: `docket setup harness --json`
+
+A read-only, offline answer for a caller deciding whether to run docket at all. It reads the setup
+home exactly as section 2 says (honouring `DOCKET_SETUP_HOME`), makes no network call and prints no
+credential value. `--role ROLE` (default `implementer`) selects the role `ready` and
+`default_model` answer for. Exit 0 when `ready`, 1 otherwise. One JSON object:
+
+```json
+{
+  "v": "1.2.0",
+  "setup_home": "/home/me/.docket",
+  "endpoint_override": false,
+  "ready": true,
+  "reason": "",
+  "role": "implementer",
+  "default_model": "local/qwen3",
+  "default_models": {"implementer": "local/qwen3", "lead": "local/qwen3", "reviewer": null},
+  "models": [{"model": "local/qwen3", "provider": "local"}],
+  "providers": [
+    {"name": "local", "scope": "global", "base_url": "http://127.0.0.1:8081/v1",
+     "credential": {"needed": false, "name": "", "resolves": true, "source": "none"}},
+    {"name": "openrouter", "scope": "built-in", "base_url": "https://openrouter.ai/api/v1",
+     "credential": {"needed": true, "name": "OPENROUTER_API_KEY", "resolves": false,
+                    "source": "none"}}
+  ]
+}
+```
+
+- `ready`: a run with no `--model` for `role` would resolve a model, an endpoint and a
+  credential; `reason` is then `""`, otherwise exactly the refusal sentence that run would print
+  (sections 3-4 share one function with the run, so the two cannot drift).
+- `default_models`: every built-in role, its setup model (section 3) or `null`.
+- `models`: `PROVIDER/ID` for each model the catalog lists, and each model the registry names,
+  whose provider needs no credential or has one that resolves; sorted, one entry per model.
+- `providers`: every catalog provider, sorted by name; `credential.source` is `env`, `store`,
+  `keyring` or `none` (nothing resolved, or nothing needed: see `needed`).
+- `endpoint_override`: `DOCKET_LLM_BASE_URL` is set, so a run would use it instead of the
+  catalog (section 2.3).
+
+### 6. Probing for 1.2
+
+A caller probes without spending anything: `env -u DOCKET_HOME docket exec --contract 1.2
+--workspace . --task probe`. A docket that implements this section answers exit 2 with a
+`v: "1.2.0"` refused result whose `error` is `DOCKET_HOME is not set; harness mode never runs
+against the default home`. A docket that predates it answers exit 2 with a `v: "1.0.0"` refused
+result whose `error` begins `--contract must be one of`. No model is called either way.
+
+### 7. Validation
+
+- **v1.2 version fail-closed.** `HarnessEventV12`, `HarnessResultV12` and `AnswerLineV12` naming
+  any `v` other than `"1.2.0"` MUST fail validation.
+- **Contract table.** `--contract` MUST accept `1.0`, `1.1` and `1.2`; a build that lacks a value
+  refuses it before preflight (pinned by a unit test on the table).
+- **Setup home is read-only.** A 1.2 run against a stub endpoint MUST leave the setup home's file
+  list and every file's mtime unchanged.
+- **Refusals precede the network.** A missing model, provider or credential, and a failed keyring
+  lookup, MUST refuse (exit 2) with no HTTP request made.
+- **Readiness is offline and secret-free.** `docket setup harness --json` MUST make no network
+  call, and a seeded credential value MUST appear in neither its stdout nor its stderr.
+
 ## Changelog
+
+### Version 1.9.0 (2026-10-13)
+
+- Contract 1.2 (ADR 0026, D-62): the run reads the operator's setup from the setup home
+  (`DOCKET_SETUP_HOME` or the default home; three files, read-only) when `DOCKET_LLM_BASE_URL`
+  is unset; `--model` is optional and the result's `model.source` says `explicit` or `setup
+  default`; a missing or unreadable credential is a refusal naming the provider and the
+  credential; `docket setup harness --json` is the offline readiness and model list; the probe
+  for 1.2 is a refusal on unset `DOCKET_HOME`. The refusal table and the isolation rule name
+  their 1.2 exceptions; 1.0 and 1.1 are unchanged.
 
 ### Version 1.8.0 (2026-10-10)
 

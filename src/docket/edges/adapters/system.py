@@ -84,6 +84,17 @@ def secret_tool_lookup(service: str, key: str) -> str | None:
     return result.stdout or None
 
 
+def keyring_secret(name: str) -> str | None:
+    """*name*'s value from the OS keyring under docket's service, or ``None`` when ``secret-tool``
+    is missing or the lookup fails (no D-Bus session, no entry)."""
+    if not secret_tool_available():
+        return None
+    from docket import config as _cfg
+
+    value = secret_tool_lookup(_cfg.KEYRING_SERVICE, name)
+    return value.strip() if value else None
+
+
 def secret_tool_store(service: str, key: str, value: str) -> bool:
     """Store one secret via `secret-tool store` (value piped over stdin, never argv). Returns
     ``False`` on any failure -- unlike `secret_tool_lookup`, the caller treats that as an
@@ -681,6 +692,15 @@ _IMAGE_PROBE_TIMEOUT = 30
 _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces
 
 
+_REGISTERED_CREDENTIAL_NAMES: set[str] = set()
+
+
+def register_credential_name(name: str) -> None:
+    """Treat *name* as a credential in this process (stripped from every child environment)."""
+    if name:
+        _REGISTERED_CREDENTIAL_NAMES.add(name)
+
+
 def credential_names() -> set[str]:
     """Every environment name docket treats as a credential: ``DOCKET_LLM_API_KEY``,
     ``TELEGRAM_BOT_TOKEN``, each name the provider catalog declares and each in the secret store.
@@ -688,7 +708,7 @@ def credential_names() -> set[str]:
     from docket.core import provider as _provider
     from docket.core import secrets as _secrets
 
-    names = {"DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN"}
+    names = {"DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN", *_REGISTERED_CREDENTIAL_NAMES}
     names.update(_secrets.secrets_keys())
     for spec in _provider.load_catalog().entries.values():
         names.update(spec.auth.credentials)

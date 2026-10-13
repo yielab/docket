@@ -71,6 +71,22 @@ class TestUsageError:
         assert _exec._usage_error("/ws", "hi", None, "local/x", None, "1.0") is None
         assert _exec._usage_error("/ws", "hi", None, "local/x", None, "1.1") is None
 
+    def test_contract_1_2_is_in_the_table(self) -> None:
+        assert _exec._CONTRACT_VERSIONS["1.2"] == "1.2.0"
+        assert _exec._usage_error("/ws", "hi", None, "local/x", None, "1.2") is None
+
+    def test_a_build_that_predates_1_2_refuses_it_as_a_contract_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        old_table = {k: v for k, v in _exec._CONTRACT_VERSIONS.items() if k != "1.2"}
+        monkeypatch.setattr(_exec, "_CONTRACT_VERSIONS", old_table)
+        problem = _exec._usage_error("/ws", "hi", None, None, None, "1.2")
+        assert problem == "--contract must be one of ['1.0', '1.1'], got '1.2'"
+
+    def test_model_is_optional_under_1_2_only(self) -> None:
+        assert _exec._usage_error("/ws", "hi", None, None, None, "1.2") is None
+        assert _exec._usage_error("/ws", "hi", None, None, None, "1.1") == "--model is required"
+
     def test_an_unknown_contract_is_reported_before_a_missing_workspace(self) -> None:
         problem = _exec._usage_error(None, "hi", None, "local/x", None, "2.0")
         assert problem is not None and "--contract" in problem

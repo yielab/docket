@@ -36,7 +36,10 @@ HARNESS_CONTRACT_VERSION = "1.0.0"
 # change; recipe runs (`task`) are declared here but not yet produced by any
 # live path.
 HARNESS_CONTRACT_V11 = "1.1.0"
-HARNESS_CONTRACT_VERSIONS = (HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT_V11)
+# The third, opt-in contract (ADR 0026): the 1.1 shapes stamped 1.2.0, ``model.source`` added,
+# and a run that may use the operator's own setup instead of DOCKET_LLM_BASE_URL.
+HARNESS_CONTRACT_V12 = "1.2.0"
+HARNESS_CONTRACT_VERSIONS = (HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT_V11, HARNESS_CONTRACT_V12)
 
 HarnessResultStatus = Literal["ok", "failed", "blocked", "cancelled", "refused"]
 # `docket task show TOKEN`'s three answers -- a later command's own
@@ -97,6 +100,28 @@ class HarnessEventV11(_VersionedEnvelopeV11):
     event: dict[str, Any] = Field(json_schema_extra={"additionalProperties": True})
 
 
+class _VersionedEnvelopeV12(BaseModel):
+    """1.2 sibling of ``_VersionedEnvelopeV11``, pinned to ``"1.2.0"`` exactly."""
+
+    v: str = HARNESS_CONTRACT_V12
+
+    @field_validator("v")
+    @classmethod
+    def _known_version(cls, value: str) -> str:
+        if value != HARNESS_CONTRACT_V12:
+            raise ValueError(f"unsupported harness contract version: {value!r}")
+        return value
+
+
+class HarnessEventV12(_VersionedEnvelopeV12):
+    """1.2 sibling of ``HarnessEventV11``: the same shape under ``"1.2.0"``."""
+
+    token: str
+    seq: int
+    ts: str
+    event: dict[str, Any] = Field(json_schema_extra={"additionalProperties": True})
+
+
 class BlockedInfo(BaseModel):
     """Which policy rule stopped the run, when ``status`` is ``"blocked"``."""
 
@@ -112,6 +137,17 @@ class ModelInfo(BaseModel):
 
     requested: str = ""
     served: str = ""
+
+
+ModelSource = Literal["explicit", "setup default", ""]
+
+
+class ModelInfoV12(BaseModel):
+    """``ModelInfo`` plus how the model was chosen: ``--model`` or the operator's setup."""
+
+    requested: str = ""
+    served: str = ""
+    source: ModelSource = ""
 
 
 class UsageInfo(BaseModel):
@@ -352,6 +388,36 @@ class HarnessResultV11(_VersionedEnvelopeV11):
         return value.model_dump(by_alias=True, mode="json") if value is not None else None
 
 
+class AnswerLineV12(_VersionedEnvelopeV12):
+    """``AnswerLine`` under ``"1.2.0"``."""
+
+    token: str
+    answer: Answer
+
+
+class HarnessResultV12(_VersionedEnvelopeV12):
+    """The 1.2 terminal result: every 1.1 field, with ``model`` saying how it was chosen."""
+
+    token: str
+    status: HarnessResultStatus
+    stop_reason: str = ""
+    error: str = ""
+    blocked: BlockedInfo | None = None
+    model: ModelInfoV12
+    usage: UsageInfo
+    cost_usd: None = None
+    run_state: str = ""
+    files: list[FileChange] = Field(default_factory=list)
+    task: HarnessTask | None = None
+    limits: Limits = Field(default_factory=Limits)
+    approvals: list[ApprovalEntry] = Field(default_factory=list)
+    question: QuestionV11 | None = None
+
+    @field_serializer("question")
+    def _question_on_the_wire(self, value: QuestionV11 | None) -> dict[str, Any] | None:
+        return value.model_dump(by_alias=True, mode="json") if value is not None else None
+
+
 @dataclass(frozen=True)
 class Refusal:
     """Why harness mode exits before any run starts (exit code 2)."""
@@ -364,8 +430,12 @@ class Refusal:
 # field but status/error stays at its empty default.
 def refusal_result(
     reason: str, *, version: str = HARNESS_CONTRACT_VERSION
-) -> HarnessResult | HarnessResultV11:
+) -> HarnessResult | HarnessResultV11 | HarnessResultV12:
     """The one ``HarnessResult`` a refused run ever prints (exit code 2)."""
+    if version == HARNESS_CONTRACT_V12:
+        return HarnessResultV12(
+            token="", status="refused", error=reason, model=ModelInfoV12(), usage=UsageInfo()
+        )
     if version == HARNESS_CONTRACT_V11:
         return HarnessResultV11(
             v=HARNESS_CONTRACT_V11,
@@ -384,8 +454,15 @@ def refusal_result(
     )
 
 
-def preflight(environ: Mapping[str, str], home_default: Path, workspace: Path) -> Refusal | None:
-    """Refuse to run, or clear the caller to proceed, without touching global state."""
+def preflight(
+    environ: Mapping[str, str],
+    home_default: Path,
+    workspace: Path,
+    *,
+    version: str = HARNESS_CONTRACT_VERSION,
+) -> Refusal | None:
+    """Refuse to run, or clear the caller to proceed, without touching global state. Under
+    contract 1.2 the endpoint may come from the setup home, so ``DOCKET_LLM_BASE_URL`` is optional."""
     # Measured against the caller's own environ, never docket.config globals,
     # so this stays pure and testable without repointing process-wide state.
     home_raw = environ.get("DOCKET_HOME", "").strip()
@@ -404,7 +481,7 @@ def preflight(environ: Mapping[str, str], home_default: Path, workspace: Path) -
             "harness mode requires a caller-owned home"
         )
 
-    if not environ.get("DOCKET_LLM_BASE_URL", "").strip():
+    if version != HARNESS_CONTRACT_V12 and not environ.get("DOCKET_LLM_BASE_URL", "").strip():
         return Refusal(
             "DOCKET_LLM_BASE_URL is required; harness mode never falls back to a stored provider"
         )
@@ -543,4 +620,36 @@ def result_from_v11(
         question=question
         if base.status == "blocked" and base.blocked is not None and base.blocked.tool == "consult"
         else None,
+    )
+
+
+def result_from_v12(
+    turn: TurnResult,
+    usage: UsageReport,
+    run: dict[str, Any],
+    *,
+    source: ModelSource,
+    files: Sequence[FileChange] = (),
+    limits: Limits | None = None,
+    approvals: Sequence[ApprovalEntry] = (),
+    question: QuestionV11 | None = None,
+) -> HarnessResultV12:
+    """The 1.2 result: the 1.1 mapping reused, ``model.source`` from how the model was chosen."""
+    base = result_from_v11(
+        turn, usage, run, files=files, limits=limits, approvals=approvals, question=question
+    )
+    return HarnessResultV12(
+        token=base.token,
+        status=base.status,
+        stop_reason=base.stop_reason,
+        error=base.error,
+        blocked=base.blocked,
+        model=ModelInfoV12(requested=base.model.requested, served=base.model.served, source=source),
+        usage=base.usage,
+        run_state=base.run_state,
+        files=base.files,
+        task=base.task,
+        limits=base.limits,
+        approvals=base.approvals,
+        question=base.question,
     )

@@ -42,15 +42,20 @@ def handle_line(
     token: str,
     questions: queue.Queue[harness.AnswerLine | None] | None = None,
     ledger: harness.ApprovalLedger | None = None,
+    version: str = harness.HARNESS_CONTRACT_V11,
 ) -> None:
     """Apply one stdin line to the run *token*. Never raises for a bad line. A question answer
     goes to *questions* when a recipe run is waiting for one, else it is ignored. An approval
-    decision that this call applies is recorded on *ledger* for the result's ``approvals``."""
+    decision that this call applies is recorded on *ledger* for the result's ``approvals``.
+    The line must be stamped with the run's contract *version*."""
     text = line.strip()
     if not text:
         return
+    line_model = (
+        harness.AnswerLineV12 if version == harness.HARNESS_CONTRACT_V12 else harness.AnswerLine
+    )
     try:
-        answer_line = harness.AnswerLine.model_validate_json(text)
+        answer_line = line_model.model_validate_json(text)
     except ValidationError:
         _say("answer line ignored: not a valid answer line")
         return
@@ -62,7 +67,7 @@ def handle_line(
     if answer.questionId is not None:
         if _consult.is_waiting(answer.questionId):
             _deliver_consult(answer)
-        elif questions is None:
+        elif questions is None or not isinstance(answer_line, harness.AnswerLine):
             _say("answer line ignored: question answers need --recipe")
         else:
             questions.put(answer_line)
@@ -136,6 +141,7 @@ def serve(
     stop: threading.Event,
     questions: queue.Queue[harness.AnswerLine | None] | None = None,
     ledger: harness.ApprovalLedger | None = None,
+    version: str = harness.HARNESS_CONTRACT_V11,
 ) -> Iterator[None]:
     """Read answers for run *token* from stdin on a daemon thread until EOF or *stop*. At EOF a
     *questions* queue gets its ``None`` end marker and the approval answer stream is closed
@@ -146,7 +152,7 @@ def serve(
             if stop.is_set():
                 return
             try:
-                handle_line(line, token, questions, ledger)
+                handle_line(line, token, questions, ledger, version)
             except Exception:
                 # An answer that cannot be applied leaves its approval pending, and
                 # the deadline denies it. Say so without the line's contents.
@@ -181,13 +187,14 @@ def guard(
     token: str,
     questions: queue.Queue[harness.AnswerLine | None] | None = None,
     ledger: harness.ApprovalLedger | None = None,
+    version: str = harness.HARNESS_CONTRACT_V11,
 ) -> Iterator[None]:
     """Run the answer reader and the wait bound for ``--answers stdin``; otherwise a no-op."""
     if answers_raw != "stdin":
         yield
         return
     timeout = int(answer_timeout_raw) if answer_timeout_raw is not None else None
-    with serve(token, threading.Event(), questions, ledger), wait_budget(timeout):
+    with serve(token, threading.Event(), questions, ledger, version), wait_budget(timeout):
         yield
 
 

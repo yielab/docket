@@ -7,8 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.5] - 2026-10-13
+
+Harness contract 1.2: a program that runs docket through `docket exec` no longer needs to hold a
+model key, endpoint or catalog. Under `--contract 1.2` the run uses the operator's own `docket
+setup` (read-only, from `DOCKET_SETUP_HOME` or `~/.docket`), `--model` defaults to the role's
+setup model, and `docket setup harness --json` answers offline whether that setup can serve a run.
+Since `v0.2.0-beta.4` docket also gained one CLI surface of eleven commands, a hardened agent
+boundary (Phase 40), and one execution envelope on Landlock, Seatbelt or a chosen Docker, with an
+escape matrix that gates release (Phase 41).
+
+**Breaking changes.** docket has no installed base yet, so nothing removed below kept an alias:
+the CLI is eleven top-level commands (ADR 0022; removed names exit 2), `docket harness run` is
+`docket exec`, `pod apply` is `pod update`, the `bwrap` backend and the `isolate` field of
+`kind: mcp-server` are gone, and a repository's run-on-this-machine commands need the
+operator's OK (ADR 0024 section 6). Harness contracts 1.0 and 1.1 are unchanged.
+
 ### Added
 
+- **Harness contract 1.2: `docket exec` runs on the operator's own setup (ADR 0026, D-62).**
+  `--contract 1.2` stamps every line `v: "1.2.0"`. With `DOCKET_LLM_BASE_URL` unset, the endpoint
+  and credential come from the setup home (`DOCKET_SETUP_HOME`, default `~/.docket`): the provider
+  catalog, the model registry and the credential store or keyring, read without a lock and never
+  written. `--model` is optional; the result's `model.source` says `explicit` or `setup default`.
+  A missing model, provider or credential, or a keyring lookup that fails (as inside a sandbox
+  with no D-Bus), refuses with exit 2 before any request, naming the provider and the
+  credential, never its value; the resolved key is redacted from traces and stripped from child
+  environments. `docket setup harness --json` is the offline readiness and model list. A caller
+  probes for 1.2 with `env -u DOCKET_HOME docket exec --contract 1.2 --workspace . --task probe`:
+  1.2 answers with the `DOCKET_HOME` refusal, older builds with `--contract must be one of`.
+  Schema in `docs/contracts/harness-v1.2/schema.json`.
 - **Wave 102: the sandbox is visible (P41-7).** `docket init` ends with a `This machine` /
   `Sandbox` block, `docket status` opens with it (the `Isolation` row is gone from the text), and
   `docket setup sandbox` prints what this machine has (`Backend: landlock (kernel 6.14)`, or what

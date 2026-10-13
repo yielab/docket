@@ -403,3 +403,63 @@ def test_result_from_v11_carries_the_approvals_and_defaults_to_none() -> None:
     entry = harness.ApprovalEntry(token="apr-1", tool="bash", callId="c", outcome="accepted")
     result = harness.result_from_v11(turn, _usage(), _run(), approvals=[entry])
     assert result.approvals == [entry]
+
+
+# ── contract 1.2 ──────────────────────────────────────────────────────────────
+
+
+def test_preflight_under_12_needs_no_base_url(tmp_path: Path) -> None:
+    environ = _base_environ(tmp_path)
+    del environ["DOCKET_LLM_BASE_URL"]
+    (tmp_path / "workspace").mkdir()
+    refusal = harness.preflight(
+        environ,
+        tmp_path / "default-home",
+        tmp_path / "workspace",
+        version=harness.HARNESS_CONTRACT_V12,
+    )
+    assert refusal is None
+
+
+def test_preflight_under_12_still_refuses_an_unset_docket_home(tmp_path: Path) -> None:
+    refusal = harness.preflight(
+        {}, tmp_path / "default-home", tmp_path, version=harness.HARNESS_CONTRACT_V12
+    )
+    assert refusal is not None
+    assert refusal.reason.startswith("DOCKET_HOME is not set")
+
+
+def test_preflight_under_11_still_requires_the_base_url(tmp_path: Path) -> None:
+    environ = _base_environ(tmp_path)
+    del environ["DOCKET_LLM_BASE_URL"]
+    refusal = harness.preflight(
+        environ, tmp_path / "default-home", tmp_path, version=harness.HARNESS_CONTRACT_V11
+    )
+    assert refusal is not None and "DOCKET_LLM_BASE_URL" in refusal.reason
+
+
+def test_a_v12_result_naming_another_version_fails_closed() -> None:
+    payload = harness.refusal_result("x", version=harness.HARNESS_CONTRACT_V12).model_dump()
+    payload["v"] = harness.HARNESS_CONTRACT_V11
+    with pytest.raises(Exception, match="unsupported harness contract version"):
+        harness.HarnessResultV12.model_validate(payload)
+
+
+def test_a_v12_refusal_is_stamped_120_with_an_empty_source() -> None:
+    result = harness.refusal_result("nope", version=harness.HARNESS_CONTRACT_V12)
+    assert isinstance(result, harness.HarnessResultV12)
+    assert (result.v, result.status, result.model.source) == ("1.2.0", "refused", "")
+
+
+def test_the_v12_result_records_how_the_model_was_chosen() -> None:
+    turn = TurnResult(True, "done", 0.0, {"model": "stubby/served"}, "")
+    usage = UsageReport(totals=UsageTotals())
+    result = harness.result_from_v12(
+        turn, usage, {"id": "run-1", "variables": {"model": "stubby/m1"}}, source="setup default"
+    )
+    assert result.v == "1.2.0"
+    assert result.model.model_dump() == {
+        "requested": "stubby/m1",
+        "served": "stubby/served",
+        "source": "setup default",
+    }

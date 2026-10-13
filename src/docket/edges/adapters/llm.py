@@ -30,7 +30,7 @@ import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from docket.core import context as _context
 from docket.core.llm import (
@@ -44,6 +44,9 @@ from docket.core.llm import (
 )
 from docket.core.runtime_driver import FailureKind
 from docket.edges.adapters.redirects import open_same_origin
+
+if TYPE_CHECKING:
+    from docket.core.provider import ProviderSpec
 
 # Endpoints that return one of these are worth trying again: an overloaded or
 # briefly-unreachable server is not an answer. Everything else in the 4xx range
@@ -547,18 +550,7 @@ def resolve_endpoint(model: str) -> Endpoint | None:
         from docket.core import provider as _prov
 
         api_key, _source = _prov.resolve_credential(spec)
-        exact = next((row for row in spec.models if row.id == model_id), None)
-        return Endpoint(
-            base_url=spec.base_url,
-            model_id=model_id,
-            api_key=api_key,
-            provider=provider,
-            context_window_tokens=exact.context_window if exact else None,
-            max_output_tokens=exact.max_tokens if exact else None,
-            auth_type=spec.auth.type,
-            auth_header=spec.auth.header,
-            headers=tuple(spec.headers.items()),
-        )
+        return endpoint_from_spec(spec, provider, model_id, api_key)
 
     # Absent from the catalog: only DOCKET_LLM_BASE_URL can resolve it, deriving the
     # credential's env name from the provider prefix (never a per-provider literal here).
@@ -585,7 +577,32 @@ def resolve_endpoint(model: str) -> Endpoint | None:
     )
 
 
+def endpoint_from_spec(spec: ProviderSpec, provider: str, model_id: str, api_key: str) -> Endpoint:
+    """The endpoint catalog entry *spec* (named *provider*) gives *model_id*, with *api_key*
+    already resolved."""
+    exact = next((row for row in spec.models if row.id == model_id), None)
+    return Endpoint(
+        base_url=spec.base_url,
+        model_id=model_id,
+        api_key=api_key,
+        provider=provider,
+        context_window_tokens=exact.context_window if exact else None,
+        max_output_tokens=exact.max_tokens if exact else None,
+        auth_type=spec.auth.type,
+        auth_header=spec.auth.header,
+        headers=tuple(spec.headers.items()),
+    )
+
+
 _DIALECTS: dict[str, type[OpenAIChatClient]] = {"openai-chat": OpenAIChatClient}
+
+
+def client_for_endpoint(
+    endpoint: Endpoint, dialect: str = "openai-chat"
+) -> OpenAIChatClient | None:
+    """A client for an already-resolved *endpoint*, or ``None`` when *dialect* has no adapter."""
+    client_cls = _DIALECTS.get(dialect)
+    return client_cls(endpoint) if client_cls else None
 
 
 def client_for(model: str) -> OpenAIChatClient | None:
@@ -601,5 +618,4 @@ def client_for(model: str) -> OpenAIChatClient | None:
         spec = _prov.load_catalog().get(endpoint.provider)
         if spec is not None:
             dialect = spec.dialect
-    client_cls = _DIALECTS.get(dialect)
-    return client_cls(endpoint) if client_cls else None
+    return client_for_endpoint(endpoint, dialect)

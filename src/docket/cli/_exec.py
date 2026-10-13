@@ -31,8 +31,10 @@ from docket.cli import _harness_recipe as _recipe
 from docket.core import harness
 from docket.core import policy as _policy
 from docket.core import runs as _runs
+from docket.core import setup_home as _setup_home
 from docket.core import trace as _trace
 from docket.core.dispatch import DispatchError
+from docket.core.models import AgentMeta
 from docket.core.operator_contract import QuestionV11
 from docket.core.runtime_driver import (
     DOCKET_APPROVAL_MODE,
@@ -43,6 +45,7 @@ from docket.core.runtime_driver import (
 )
 from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime as _dr
+from docket.edges.adapters import llm as _llm
 from docket.edges.adapters import system as _system
 
 
@@ -70,12 +73,15 @@ class ExecOptions:
 _DEFAULT_TIMEOUT = 300
 _DEFAULT_ROLE = "implementer"
 
-# An opt-in v1.1 wire contract. "1.0" stays the default and is
+# Opt-in v1.1 and v1.2 wire contracts. "1.0" stays the default and is
 # byte-identical to before this flag existed.
 _CONTRACT_VERSIONS: dict[str, str] = {
     "1.0": harness.HARNESS_CONTRACT_VERSION,
     "1.1": harness.HARNESS_CONTRACT_V11,
+    "1.2": harness.HARNESS_CONTRACT_V12,
 }
+# Contracts that carry every 1.1 option (files, answers, token file, limits, policies).
+_V11_FAMILY = ("1.1", "1.2")
 
 
 def _v11_usage_error(
@@ -87,7 +93,7 @@ def _v11_usage_error(
     """Validate ``--token-file``, ``--max-tokens`` and ``--policy``; all need ``--contract 1.1``."""
     if token_file_raw is None and max_tokens_raw is None and not policy_raws:
         return None
-    if contract_raw != "1.1":
+    if contract_raw not in _V11_FAMILY:
         return "--token-file, --max-tokens and --policy need --contract 1.1"
     if max_tokens_raw is not None:
         try:
@@ -103,9 +109,9 @@ def _v11_usage_error(
     return None
 
 
-def _write_token_file(path: Path, token: str) -> None:
+def _write_token_file(path: Path, token: str, version: str = harness.HARNESS_CONTRACT_V11) -> None:
     """Write ``{"v", "token", "pid"}`` to *path* atomically, readable by its owner only."""
-    body = json.dumps({"v": harness.HARNESS_CONTRACT_V11, "token": token, "pid": os.getpid()})
+    body = json.dumps({"v": version, "token": token, "pid": os.getpid()})
     staging = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     fd = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -183,7 +189,11 @@ _PACK_KEYS = frozenset({"rationale", "options", "rationaleBlocked"})
 
 def _event_line(
     contract_version: str, token: str, seq: int, record: dict[str, Any]
-) -> harness.HarnessEvent | harness.HarnessEventV11:
+) -> harness.HarnessEvent | harness.HarnessEventV11 | harness.HarnessEventV12:
+    if contract_version == harness.HARNESS_CONTRACT_V12:
+        return harness.HarnessEventV12(
+            token=token, seq=seq, ts=str(record.get("ts", "")), event=record
+        )
     if contract_version == harness.HARNESS_CONTRACT_V11:
         return harness.HarnessEventV11(
             token=token, seq=seq, ts=str(record.get("ts", "")), event=record
@@ -205,7 +215,19 @@ def _final_result(
     max_tokens: int | None = None,
     approvals: list[harness.ApprovalEntry] | None = None,
     question: QuestionV11 | None = None,
-) -> harness.HarnessResult | harness.HarnessResultV11:
+    source: harness.ModelSource = "",
+) -> harness.HarnessResult | harness.HarnessResultV11 | harness.HarnessResultV12:
+    if contract_version == harness.HARNESS_CONTRACT_V12:
+        return harness.result_from_v12(
+            turn,
+            usage_report,
+            run_rec,
+            source=source,
+            files=files or [],
+            limits=harness.Limits(maxTokens=max_tokens),
+            approvals=approvals or [],
+            question=question,
+        )
     if contract_version == harness.HARNESS_CONTRACT_V11:
         return harness.result_from_v11(
             turn,
@@ -233,7 +255,7 @@ def _answers_usage_error(
     """Validate ``--answers`` and ``--answer-timeout``; both need ``--contract 1.1``."""
     if answers_raw is None and answer_timeout_raw is None:
         return None
-    if contract_raw != "1.1":
+    if contract_raw not in _V11_FAMILY:
         return "--answers and --answer-timeout need --contract 1.1"
     if answers_raw is None:
         return "--answer-timeout needs --answers stdin"
@@ -266,7 +288,7 @@ def _usage_error(
         if not task_text and not task_file_raw:
             return "one of --task or --task-file is required"
         return "--task and --task-file are mutually exclusive"
-    if not model:
+    if not model and contract_raw != "1.2":
         return "--model is required"
     if timeout_raw is not None:
         try:
@@ -305,11 +327,14 @@ def _execute_turn(
     emit: Callable[[dict[str, Any]], None],
     written: harness.WrittenFiles,
     approvals: harness.ApprovalLedger,
+    contract_version: str = harness.HARNESS_CONTRACT_VERSION,
 ) -> list[_RunOutcome]:
     """Run the turn with the stdout relay and the written-files and approvals trackers subscribed,
     bracketed by the session's start and end trace events."""
     with (
-        _answers.guard(answers_raw, answer_timeout_raw, token, ledger=approvals),
+        _answers.guard(
+            answers_raw, answer_timeout_raw, token, ledger=approvals, version=contract_version
+        ),
         _trace.subscribe(emit),
         _trace.subscribe(written.observe),
         _trace.subscribe(approvals.observe),
@@ -363,6 +388,7 @@ def _finish(
     approvals: harness.ApprovalLedger,
     max_tokens: int | None,
     baseline: dict[str, tuple[str, int, int]] | None = None,
+    source: harness.ModelSource = "",
 ) -> int:
     """Print the one terminal result line and map its status to the exit code."""
     run_rec = _runs.get_run(token) or {}
@@ -374,7 +400,7 @@ def _finish(
         )
 
     usage_report = driver.usage(agent_id)
-    v11 = contract_version == harness.HARNESS_CONTRACT_V11
+    v11 = contract_version in (harness.HARNESS_CONTRACT_V11, harness.HARNESS_CONTRACT_V12)
     files = _touched_files(workspace, written.changes, baseline) if v11 else None
     entries = approvals.finish(cancelled=turn.failure_kind == "run_cancelled") if v11 else None
     result = _final_result(
@@ -386,6 +412,7 @@ def _finish(
         max_tokens=max_tokens,
         approvals=entries,
         question=approvals.last_question,
+        source=source,
     )
     print(result.model_dump_json())
     print(f"docket exec: run {token} finished status={result.status}", file=sys.stderr)
@@ -395,6 +422,38 @@ def _finish(
     if result.status == "refused":
         return 2
     return 1
+
+
+def _usage_problem(opts: ExecOptions) -> str | None:
+    """The first usage error in *opts*, checked before preflight; ``None`` when there is none."""
+    return (
+        _usage_error(
+            opts.workspace, opts.task, opts.task_file, opts.model, opts.timeout, opts.contract
+        )
+        or _answers_usage_error(opts.answers, opts.answer_timeout, opts.task_file, opts.contract)
+        or _v11_usage_error(opts.token_file, opts.max_tokens, opts.policy, opts.contract)
+        or _recipe.usage_error(opts)
+    )
+
+
+def _token_file_problem(raw: str | None, token: str, version: str) -> str | None:
+    """Write the ``--token-file`` when one was asked for; the refusal reason if that fails."""
+    if raw is None:
+        return None
+    try:
+        _write_token_file(Path(raw).expanduser(), token, version)
+    except OSError as exc:
+        return f"could not write --token-file {raw!r}: {exc}"
+    return None
+
+
+def _register_agent(agent_id: str, meta: AgentMeta, policy_paths: list[Path]) -> None:
+    """Write the run's meta and install its ``--policy`` files in the caller-owned home."""
+    _cfg.workspace_dir(agent_id).mkdir(parents=True, exist_ok=True)
+    _store.write_json(_cfg.meta_path(agent_id), meta)
+    for policy_path in policy_paths:
+        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(policy_path, _cfg.POLICIES_DIR / policy_path.name)
 
 
 def run_exec(opts: ExecOptions) -> int:
@@ -417,12 +476,7 @@ def run_exec(opts: ExecOptions) -> int:
     policy_raws = opts.policy
     recipe_raw = opts.recipe
 
-    problem = (
-        _usage_error(workspace_raw, task_text, task_file_raw, model, timeout_raw, contract_raw)
-        or _answers_usage_error(answers_raw, answer_timeout_raw, task_file_raw, contract_raw)
-        or _v11_usage_error(token_file_raw, max_tokens_raw, policy_raws, contract_raw)
-        or _recipe.usage_error(opts)
-    )
+    problem = _usage_problem(opts)
     if problem:
         # An invalid --contract itself has no known version to stamp; every
         # other usage error stamps whatever contract the caller did select.
@@ -432,12 +486,21 @@ def run_exec(opts: ExecOptions) -> int:
 
     contract_version = _CONTRACT_VERSIONS[contract_raw]
 
-    assert workspace_raw is not None and model is not None  # narrowed by _usage_error
+    assert workspace_raw is not None  # narrowed by _usage_error
     workspace = Path(workspace_raw).expanduser()
     home_default = Path.home() / ".docket"
-    refusal = harness.preflight(os.environ, home_default, workspace)
+    refusal = harness.preflight(os.environ, home_default, workspace, version=contract_version)
     if refusal is not None:
         return _refuse(refusal.reason, contract_version)
+
+    driver: _dr.DocketDriver | None = None
+    source: harness.ModelSource = ""
+    if contract_version == harness.HARNESS_CONTRACT_V12:
+        resolved = _resolve_setup(model, role, home_default)
+        if isinstance(resolved, str):
+            return _refuse(resolved, contract_version)
+        model, source, driver = resolved
+    assert model is not None  # required by _usage_error below 1.2, resolved above at 1.2
 
     try:
         task = _task_text(task_text, task_file_raw)
@@ -457,22 +520,12 @@ def run_exec(opts: ExecOptions) -> int:
         return _refuse(str(exc), contract_version)
 
     session_key = f"agent:{agent_id}:default"
-    _cfg.workspace_dir(agent_id).mkdir(parents=True, exist_ok=True)
-    _store.write_json(_cfg.meta_path(agent_id), meta)
-
-    for policy_path in policy_paths:
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(policy_path, _cfg.POLICIES_DIR / policy_path.name)
+    _register_agent(agent_id, meta, policy_paths)
 
     run = _runs.create_run("cli", agent_id, variables={"model": model})
     token = str(run["id"])
-    if token_file_raw is not None:
-        try:
-            _write_token_file(Path(token_file_raw).expanduser(), token)
-        except OSError as exc:
-            return _refuse(
-                f"could not write --token-file {token_file_raw!r}: {exc}", contract_version
-            )
+    if token_problem := _token_file_problem(token_file_raw, token, contract_version):
+        return _refuse(token_problem, contract_version)
     print(f"docket exec: run {token} agent={agent_id} model={model} role={role}", file=sys.stderr)
 
     seq = 0
@@ -505,7 +558,8 @@ def run_exec(opts: ExecOptions) -> int:
         _runs.cancel_run(token)
 
     old_handler = signal.signal(signal.SIGTERM, _handle_sigterm)
-    driver = _dr.default_driver()
+    if driver is None:
+        driver = _dr.default_driver()
     # --answers stdin waits for the caller's answer line; otherwise nobody can answer.
     env = {DOCKET_APPROVAL_MODE: "wait" if answers_raw == "stdin" else "refuse"}
     env[DOCKET_TASK_ID] = token
@@ -530,6 +584,7 @@ def run_exec(opts: ExecOptions) -> int:
             emit=_emit,
             written=written,
             approvals=approvals,
+            contract_version=contract_version,
         )
     finally:
         signal.signal(signal.SIGTERM, old_handler)
@@ -545,7 +600,35 @@ def run_exec(opts: ExecOptions) -> int:
         approvals=approvals,
         max_tokens=max_tokens,
         baseline=baseline,
+        source=source,
     )
+
+
+def _resolve_setup(
+    model: str | None, role: str, home_default: Path
+) -> tuple[str, harness.ModelSource, _dr.DocketDriver | None] | str:
+    """Contract 1.2: the model, how it was chosen and a driver bound to the setup home's
+    endpoint, or the refusal sentence. Reads the setup home only (ADR 0026); no network call."""
+    view = _setup_home.load_setup(_setup_home.setup_home(os.environ, home_default))
+    run = _setup_home.resolve_run(
+        view, role=role, model=model, environ=os.environ, keyring=_system.keyring_secret
+    )
+    if run.refusal:
+        return run.refusal
+    source: harness.ModelSource = (
+        "explicit" if run.source == _setup_home.SOURCE_EXPLICIT else "setup default"
+    )
+    if run.spec is None or run.credential is None:
+        return run.model, source, None  # DOCKET_LLM_BASE_URL names the endpoint, as under 1.1
+    provider, _, model_id = run.model.partition("/")
+    if run.credential.value:
+        _trace.register_secret(run.credential.value)
+        _system.register_credential_name(run.credential.name)
+    endpoint = _llm.endpoint_from_spec(run.spec, provider, model_id, run.credential.value)
+    client = _llm.client_for_endpoint(endpoint, run.spec.dialect)
+    if client is None:
+        return f"provider '{provider}' uses dialect {run.spec.dialect!r}, which has no adapter"
+    return run.model, source, _dr.DocketDriver(backend_factory=lambda _model: client)
 
 
 def _refuse(reason: str, version: str = harness.HARNESS_CONTRACT_VERSION) -> int:
@@ -566,7 +649,8 @@ def cmd_exec(
         "--model",
         help=(
             "PROVIDER/ID of the model to use. ID is sent to DOCKET_LLM_BASE_URL; PROVIDER only "
-            "names the fallback credential <PROVIDER>_API_KEY when DOCKET_LLM_API_KEY is unset"
+            "names the fallback credential <PROVIDER>_API_KEY when DOCKET_LLM_API_KEY is unset. "
+            "Optional under --contract 1.2: the role's model in this machine's docket setup"
         ),
     ),
     role: str | None = typer.Option(None, "--role", help="Role to run as (default implementer)"),
@@ -574,7 +658,9 @@ def cmd_exec(
     agent_id: str | None = typer.Option(
         None, "--agent-id", help="Name the agent instead of a random one"
     ),
-    contract: str = typer.Option("1.0", "--contract", help="Wire contract version: 1.0 or 1.1"),
+    contract: str = typer.Option(
+        "1.0", "--contract", help="Wire contract version: 1.0, 1.1 or 1.2"
+    ),
     answers: str | None = typer.Option(
         None, "--answers", help="'stdin': read answer lines from stdin (needs --contract 1.1)"
     ),
@@ -603,7 +689,9 @@ def cmd_exec(
 
     Streams newline-delimited JSON events on stdout and ends with exactly one
     versioned result line; every log goes to stderr. Needs DOCKET_HOME set to a
-    caller-owned directory and DOCKET_LLM_BASE_URL set. A tool call that would need
+    caller-owned directory and DOCKET_LLM_BASE_URL set; under --contract 1.2 the
+    endpoint and model may come from this machine's docket setup instead
+    (DOCKET_SETUP_HOME, default ~/.docket, read only). A tool call that would need
     a human is denied at once. SIGTERM cancels the run. Exit 0 the result is ok,
     1 it failed, was blocked or cancelled, 2 refused before any run started.
 
