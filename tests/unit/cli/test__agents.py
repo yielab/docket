@@ -121,3 +121,94 @@ def test_a_new_workspace_and_its_memory_are_created_0700(
     ws = tmp_path / "home" / "projects" / "demo"
     assert oct(os.stat(ws).st_mode & 0o777) == "0o700"
     assert oct(os.stat(ws / "memory").st_mode & 0o777) == "0o700"
+
+
+def _repo(tmp_path: Path, step: str = "sh scripts/migrate.sh") -> Path:
+    code = tmp_path / "code"
+    (code / ".docket").mkdir(parents=True)
+    (code / ".docket" / "pipeline.yaml").write_text(
+        f"name: p\nsteps:\n  - id: migrate\n    run: {step}\n"
+    )
+    return code
+
+
+def _pod_exists() -> bool:
+    return (_cfg.PROJECTS_DIR / "demo-lead").is_dir()
+
+
+class TestInitAsksBeforeApplyingRepositoryCommands:
+    """A repository's run-on-this-machine items need the operator's OK before init applies them."""
+
+    @pytest.fixture(autouse=True)
+    def _tty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+
+    def test_no_terminal_creates_nothing_and_prints_the_code(self, tmp_path: Path) -> None:
+        result = runner.invoke(app, ["init", "demo", str(_repo(tmp_path))])
+        assert result.exit_code == 2
+        assert not _pod_exists()
+        assert "sh scripts/migrate.sh" in result.output
+        assert "docket init --accept " in result.output
+
+    def test_accept_with_the_printed_code_creates_the_pod_and_audits(self, tmp_path: Path) -> None:
+        from docket.core.audit import read_audit
+
+        code = _repo(tmp_path)
+        out = runner.invoke(app, ["init", "demo", str(code), "--json"])
+        review = __import__("json").loads(out.output)
+        assert out.exit_code == 2 and review["status"] == "needs_review"
+        ok = runner.invoke(app, ["init", "demo", str(code), "--accept", review["reviewCode"]])
+        assert ok.exit_code == 0 and _pod_exists()
+        assert any(e.get("action") == "repo.allow" for e in read_audit())
+
+    def test_a_wrong_code_exits_2_without_printing_the_current_code(self, tmp_path: Path) -> None:
+        code = _repo(tmp_path)
+        first = __import__("json").loads(
+            runner.invoke(app, ["init", "demo", str(code), "--json"]).output
+        )
+        result = runner.invoke(app, ["init", "demo", str(code), "--accept", "000000"])
+        assert result.exit_code == 2 and not _pod_exists()
+        assert first["reviewCode"] not in result.output
+        assert "since review code 000000" in result.output
+
+    def test_a_terminal_y_creates_the_pod_and_is_remembered_per_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: True)
+        code = _repo(tmp_path)
+        yes = runner.invoke(app, ["init", "demo", str(code)], input="y\n")
+        assert yes.exit_code == 0 and _pod_exists()
+        assert "Runs on this machine" in yes.output and "Adds to the team" in yes.output
+        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+        import shutil
+
+        shutil.rmtree(_cfg.PROJECTS_DIR / "demo-lead")
+        shutil.rmtree(_cfg.PROJECTS_DIR / "demo-implementer", ignore_errors=True)
+        _cfg.FLEET_FILE.unlink(missing_ok=True)
+        again = runner.invoke(app, ["init", "demo", str(code)])
+        assert again.exit_code == 0
+        from tests.conftest import repoint_docket_home
+
+        repoint_docket_home(monkeypatch, tmp_path / "second-home")
+        assert runner.invoke(app, ["init", "demo", str(code)]).exit_code == 2
+
+    def test_a_terminal_n_creates_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: True)
+        result = runner.invoke(app, ["init", "demo", str(_repo(tmp_path))], input="n\n")
+        assert result.exit_code == 2 and not _pod_exists()
+
+    def test_a_shell_in_allow_commands_exits_2(self, tmp_path: Path) -> None:
+        code = tmp_path / "code"
+        (code / ".docket").mkdir(parents=True)
+        (code / ".docket" / "pod.yaml").write_text("settings:\n  allowCommands: [bash]\n")
+        result = runner.invoke(app, ["init", "demo", str(code)])
+        assert result.exit_code == 2 and not _pod_exists()
+        assert "bash" in result.output and "make, npm" in result.output
+
+    def test_a_shipped_recipe_by_name_never_asks(self, tmp_path: Path) -> None:
+        code = tmp_path / "code"
+        code.mkdir()
+        result = runner.invoke(app, ["init", "demo", str(code), "--recipe", "tdd"])
+        assert result.exit_code == 0 and _pod_exists()

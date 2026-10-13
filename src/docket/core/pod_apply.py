@@ -841,6 +841,111 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     )
 
 
+REPO_REFUSED_COMMANDS: tuple[str, ...] = ("sh", "bash", "zsh", "dash", "sudo", "ssh", "nc", "socat")
+
+
+@dataclass(frozen=True)
+class RunItem:
+    """One thing a directory would run on this machine: its ``kind``, ``name`` and the
+    exact ``runs`` text the operator is asked to allow."""
+
+    kind: str
+    name: str
+    runs: str
+
+
+@dataclass(frozen=True)
+class PlanReview:
+    """A directory split into ``adds`` (``kind name`` lines) and ``runs`` (RunItems), plus the
+    shell-like ``allowCommands`` names ``REPO_REFUSED_COMMANDS`` refuses."""
+
+    adds: tuple[tuple[str, str], ...]
+    runs: tuple[RunItem, ...]
+    refused: tuple[str, ...] = ()
+
+
+def is_shipped_recipe(directory: Path) -> bool:
+    """Whether *directory* is a recipe docket ships (exempt from the operator review)."""
+    try:
+        directory.resolve().relative_to(_cfg.recipes_dir().resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _run_steps(steps: list[Any]) -> list[RunItem]:
+    found: list[RunItem] = []
+    for step in steps:
+        if step.run is not None:
+            env = "".join(f" {k}={v}" for k, v in sorted((step.env or {}).items()))
+            found.append(RunItem("pipeline-step", step.id, f"{step.run}{env}"))
+        found.extend(_run_steps(step.parallel or []))
+    return found
+
+
+def _loosened_denials(directory: Path) -> list[RunItem]:
+    found: list[RunItem] = []
+    builtin = _arch.load_registry()
+    roles_dir = directory / "roles"
+    for role_file in sorted(roles_dir.glob("*.yaml")) if roles_dir.is_dir() else []:
+        doc = _config_docs_doc(role_file, "role")
+        name = str(doc.get("name", "")).strip()
+        base = builtin.get(name)
+        if base is None:
+            continue
+        removed = sorted(set(base.denied_tools) - {str(t) for t in doc.get("deniedTools", [])})
+        if removed:
+            found.append(RunItem("role-loosens", name, "removes denial of " + ", ".join(removed)))
+    return found
+
+
+def _config_docs_doc(path: Path, kind: str) -> dict[str, Any]:
+    from docket.core import config_docs as _config_docs
+
+    try:
+        return dict(_config_docs.load_document(path, kind=kind).doc)
+    except _config_docs.ConfigDocError:
+        return {}
+
+
+def classify_directory(directory: Path) -> PlanReview:
+    """Read-only split of *directory* into adds and run-on-this-machine items; needs no pod."""
+    manifest_file = directory / "pod.yaml"
+    manifest = _config_docs_doc(manifest_file, "pod") if manifest_file.is_file() else {}
+    settings = manifest.get("settings") or {}
+    runs: list[RunItem] = []
+    adds: list[tuple[str, str]] = []
+    pipeline_file = directory / str(manifest.get("pipeline") or "pipeline.yaml")
+    if pipeline_file.is_file():
+        spec = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8")).spec
+        runs.extend(_run_steps(spec.steps if spec is not None else []))
+        adds.append(("pipeline", pipeline_file.name))
+    for server in _declared_servers(directory):
+        runs.append(RunItem("mcp-server", server.name, " ".join([server.command, *server.args])))
+    plugins_dir = directory / "plugins"
+    for plugin in sorted(plugins_dir.glob("*.py")) if plugins_dir.is_dir() else []:
+        sha = hashlib.sha256(plugin.read_bytes()).hexdigest()[:12]
+        runs.append(RunItem("plugin", plugin.name, f"{plugin.name} sha256:{sha}"))
+    raw_allow = settings.get("allowCommands", [])
+    allowed = raw_allow if isinstance(raw_allow, list) else str(raw_allow).split(",")
+    names = sorted({str(n).strip() for n in allowed if str(n).strip()})
+    if names:
+        runs.append(RunItem("allow-commands", "allowCommands", ", ".join(names)))
+    if str(settings.get("network", "")) == "open":
+        runs.append(RunItem("network", "network", "open"))
+    runs.extend(_loosened_denials(directory))
+    for sub, kind in (("roles", "role"), ("policies", "policy")):
+        sub_dir = directory / sub
+        if sub_dir.is_dir():
+            adds.extend((kind, p.stem) for p in sorted(_config_glob(sub_dir)))
+    skills_dir = directory / "skills"
+    if skills_dir.is_dir():
+        adds.extend(("skill", p.name) for p in sorted(skills_dir.iterdir()) if p.is_dir())
+    adds.extend(("setting", k) for k in sorted(settings) if k not in ("allowCommands", "network"))
+    refused = tuple(n for n in names if n in REPO_REFUSED_COMMANDS)
+    return PlanReview(tuple(adds), tuple(runs), refused)
+
+
 def apply(plan: ApplyPlan) -> ApplyResult:
     """Write every non-``skip`` item in *plan* (role -> policy -> plugin -> skill -> mcp-server -> member -> pipeline
     -> setting order). Audits ``pod.apply`` only on change; records ``configSource``/

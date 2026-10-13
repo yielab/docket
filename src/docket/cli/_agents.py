@@ -44,6 +44,8 @@ class InitRequest:
     blueprint: str | None = None
     recipe: str | None = None
     no_apply: bool = False
+    accept: str | None = None
+    json_out: bool = False
     from_file: str | None = None
     full: bool = False
     with_roles: str = ""
@@ -76,6 +78,100 @@ def _resolve_repo_apply_source(loc_path: Path, cli_recipe: str | None) -> tuple[
                 ui.console.print(f"[red]{escape(str(config_error))}[/red]")
             return None, 1
     return apply_source, 0
+
+
+def _stdin_is_tty() -> bool:
+    return sys.stdin.isatty()
+
+
+def _refuse_shell(review: _pod_apply.PlanReview) -> int:
+    ui.error(
+        f"Not set up. The repository lets the agent run {', '.join(review.refused)}. A shell "
+        "runs whatever command follows it, so docket's command checks never see what it "
+        "actually does."
+    )
+    ui.console.print("Ask the repository to list the tools the team uses instead, like: make, npm")
+    return 2
+
+
+def _changed_since_review(root: Path, code: str, review: _pod_apply.PlanReview) -> int:
+    from docket.core import reviewed_repos as _reviewed
+
+    ui.error(
+        f"Not set up. The repository changed what runs on this machine since review code {code}:"
+    )
+    before = _reviewed.lookup(root)
+    was = {(i.kind, i.name): i.runs for i in before.items} if before else {}
+    for item in review.runs:
+        if was.get((item.kind, item.name)) != item.runs:
+            ui.console.print(f"  {escape(_label(item))}")
+            ui.console.print(
+                f"    before: {escape(was.get((item.kind, item.name), '(not reviewed)'))}"
+            )
+            ui.console.print(f"    now:    {escape(item.runs)}")
+    ui.console.print(
+        "Review the new version with: docket init --no-apply, then docket pod apply --dry-run"
+    )
+    return 2
+
+
+def _label(item: _pod_apply.RunItem) -> str:
+    from docket.cli._pod_config import run_item_label
+
+    return run_item_label(item)
+
+
+def _needs_review(req: InitRequest, review: _pod_apply.PlanReview, code: str) -> int:
+    from docket.cli._pod_config import render_run_items
+
+    if req.json_out:
+        items = [{"kind": i.kind, "name": i.name, "runs": i.runs} for i in review.runs]
+        ui.console.print_json(
+            _json.dumps({"status": "needs_review", "reviewCode": code, "items": items})
+        )
+        return 2
+    n = len(review.runs)
+    ui.error(
+        f"Not set up. The repository brings {n} command{'s' if n != 1 else ''} that need your OK, "
+        "and there is no terminal to ask on. Nothing was created."
+    )
+    render_run_items(review.runs)
+    ui.console.print("To continue, either:")
+    ui.console.print("  run docket init once on a terminal on this machine, or")
+    ui.console.print(f"  allow exactly these from the script: docket init --accept {code}")
+    ui.console.print("  or skip the repository's configuration: docket init --no-apply")
+    return 2
+
+
+def review_repo_source(req: InitRequest, loc_path: Path, apply_source: Path) -> int:
+    """The operator's OK for what *apply_source* runs on this machine, asked before anything is
+    created. 0 means go on; 2 means stop (already printed). Shipped recipes are exempt."""
+    from docket.cli._pod_config import render_review
+    from docket.core import reviewed_repos as _reviewed
+
+    if _pod_apply.is_shipped_recipe(apply_source):
+        return 0
+    review = _pod_apply.classify_directory(apply_source)
+    if review.refused:
+        return _refuse_shell(review)
+    if not review.runs or _reviewed.is_reviewed(loc_path, review.runs):
+        return 0
+    code = _reviewed.review_code(review.runs)
+    if req.accept is not None:
+        if req.accept != code:
+            return _changed_since_review(loc_path, req.accept, review)
+    elif _stdin_is_tty() and not req.json_out:
+        ui.console.print()
+        render_review(review)
+        ui.console.print("They run with your user's permissions.")
+        answer = input("Allow them? You will only be asked again if they change. [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            ui.error("Not set up. Nothing was created.")
+            return 2
+    else:
+        return _needs_review(req, review, code)
+    _reviewed.remember(loc_path, review.runs)
+    return 0
 
 
 def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
@@ -153,6 +249,10 @@ def run_init(req: InitRequest) -> int:
     apply_source, resolve_rc = _resolve_repo_apply_source(loc_path, req.recipe)
     if resolve_rc:
         return resolve_rc
+    if apply_source is not None and not req.no_apply:
+        review_rc = review_repo_source(req, loc_path, apply_source)
+        if review_rc:
+            return review_rc
 
     # No codebase to inspect for a workdir blueprint — stack is whatever the
     # operator types (or blank), never auto-detected from marker files.
@@ -598,6 +698,14 @@ def cmd_init(
         "--no-apply",
         help="Provision only; print the docket pod apply command for .docket/ or the recipe.",
     ),
+    accept: str | None = typer.Option(
+        None,
+        "--accept",
+        help="Allow exactly the commands a repository brings, by the review code a refused init printed.",
+    ),
+    json_out: bool = typer.Option(
+        False, "--json", help="Print a refused review as JSON (status, reviewCode, items)."
+    ),
 ) -> None:
     """Create the team for this repository: a pod of agents that owns this codebase.
 
@@ -613,7 +721,9 @@ def cmd_init(
     if pod not in (None, "full"):
         raise typer.BadParameter("only 'full' is accepted", param_hint="--pod")
     others = (project, location, blueprint, pod, with_roles, codebase, name, recipe)
-    if from_file is not None and (no_apply or any(o is not None for o in others)):
+    if from_file is not None and (
+        no_apply or accept or json_out or any(o is not None for o in others)
+    ):
         raise typer.BadParameter("--from takes no other argument or option", param_hint="--from")
     req = InitRequest(
         name=name or project,
@@ -621,6 +731,8 @@ def cmd_init(
         blueprint=blueprint,
         recipe=recipe,
         no_apply=no_apply,
+        accept=accept,
+        json_out=json_out,
         from_file=from_file,
         full=pod == "full",
         with_roles=with_roles or "",

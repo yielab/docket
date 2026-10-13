@@ -131,6 +131,7 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("NOTIFY_STATE_FILE", "notify-state.json"),
     ("CHANNELS_HEALTH_FILE", "channels-health.json"),
     ("TELEGRAM_OFFSET_FILE", "docket-telegram-offset.json"),
+    ("REVIEWED_REPOS_FILE", "reviewed-repos.json"),
     ("INBOX_CURSOR_FILE", "inbox-cursor.json"),
     ("MODEL_REGISTRY_FILE", "docket-models.json"),
     ("ARCHETYPE_REGISTRY_FILE", "docket-roles.json"),

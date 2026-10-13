@@ -31,7 +31,7 @@ _PROMPT_SITES: dict[str, int] = {
     "cli/_setup_notify.py": 4,
     "cli/_setup_model.py": 1,
     "cli/_setup_export.py": 1,
-    "cli/_agents.py": 1,
+    "cli/_agents.py": 2,
     "cli/_task.py": 2,
 }
 
