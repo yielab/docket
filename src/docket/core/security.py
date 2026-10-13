@@ -318,7 +318,10 @@ def _redirects_stay_inside(
 
 
 def classify_command(
-    command: str, extra_bins: frozenset[str] = frozenset(), roots: tuple[Path, ...] = ()
+    command: str,
+    extra_bins: frozenset[str] = frozenset(),
+    roots: tuple[Path, ...] = (),
+    jailed: bool = False,
 ) -> CommandVerdict:
     """Decide whether *command* may run unattended. First match wins: empty
     -> deny; opaque (command substitution/``eval``/``exec``) or
@@ -343,6 +346,11 @@ def classify_command(
     argument is model-composed text. The default, empty *extra_bins* leaves
     every prior verdict byte-identical, as does the default, empty *roots*:
     with nowhere to place a target, a sensitive redirect always asks.
+
+    *jailed* (the call will run inside the execution envelope) stands the
+    allowlist down: a binary off it is allowed. The opaque check, the
+    high-risk classes and redirect containment (now for every binary) still
+    apply, so only the allowlist's approval noise goes.
 
     Does not catch: a safe binary used destructively within its own remit
     (``git reset --hard``), writes through a redirect outside the workspace
@@ -383,7 +391,11 @@ def classify_command(
     for segment in segments:
         bin_name = os.path.basename(segment.tokens[0])
         off_allowlist = bin_name not in SAFE_BINS and bin_name not in extra_bins
-        redirect_sensitive = bin_name in _REDIRECT_SENSITIVE_BINS or bin_name in extra_bins
+        redirect_sensitive = (
+            jailed or bin_name in _REDIRECT_SENSITIVE_BINS or bin_name in extra_bins
+        )
+        if jailed and off_allowlist:
+            off_allowlist = False
         if (
             not off_allowlist
             and segment.redirected

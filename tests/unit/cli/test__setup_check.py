@@ -479,7 +479,7 @@ class TestChecks:
             "isolation": "on",
             "sandboxBackend": "bwrap",
             "dockerImageHasGit": None,
-            "network": "open",
+            "network": "none",
             "unjailedMcpServers": [],
         }
 

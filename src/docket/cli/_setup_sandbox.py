@@ -58,7 +58,8 @@ def status(json_out: bool = False) -> int:
         ui.warn(f"Isolation: {_off_label(str(state['isolation']))}; tools run on the host")
         ui.dim("Turn it on: docket setup sandbox on (needs bubblewrap or docker)")
     if state["network"] == "none":
-        ui.success("Network: none; jailed tool calls have no network")
+        default = "" if _fleet.network_mode_recorded() else " (default)"
+        ui.success(f"Network: none{default}; jailed tool calls have no network")
     else:
         ui.dim("Network: open (a pod's network none still narrows it)")
     return 0

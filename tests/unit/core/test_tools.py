@@ -298,6 +298,34 @@ class TestRedirectsIntoTheWorkspace:
         assert outside.decision == "ask"
 
 
+class TestJailedGateStandsDownTheAllowlist:
+    """Inside the envelope an off-allowlist binary is allowed; the high-risk classes stay."""
+
+    def test_an_off_allowlist_binary_is_allowed_only_when_jailed(self) -> None:
+        assert classify_command("curl https://x").action == "ask"
+        assert classify_command("curl https://x", jailed=True).action == "allow"
+        assert classify_command("bash -c 'make test'", jailed=True).action == "allow"
+
+    def test_high_risk_opaque_and_unparseable_still_ask_when_jailed(self) -> None:
+        assert classify_command("git push origin production", jailed=True).action == "ask"
+        assert classify_command("echo $(id)", jailed=True).action == "ask"
+        assert classify_command('ls "unterminated', jailed=True).action == "ask"
+        assert classify_command("  ", jailed=True).action == "deny"
+
+    def test_redirect_containment_holds_for_every_binary_when_jailed(self, workspace: Path) -> None:
+        roots = (workspace,)
+        assert classify_command("curl x > ../o", roots=roots, jailed=True).action == "ask"
+        assert classify_command("curl x > o", roots=roots, jailed=True).action == "allow"
+
+    def test_the_live_gate_jails_only_a_sandboxed_context(self, ctx: ToolContext) -> None:
+        bash_tool = builtin_registry().get("bash")
+        assert bash_tool is not None
+        call = {"command": "curl https://x"}
+        assert evaluate_tool_call(bash_tool, call, ctx).decision == "ask"
+        ctx.sandbox = "auto"
+        assert evaluate_tool_call(bash_tool, call, ctx).decision == "allow"
+
+
 class TestExtraBinsExtendTheAllowlist:
     """`classify_command`'s `extra_bins` parameter -- `core.pod.PodSettings.allow_commands`'s
     live path. Default empty leaves every prior verdict byte-identical."""

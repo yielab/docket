@@ -261,7 +261,10 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
     if tool.kind == "exec":
         command = str(args.get("command") or "")
         cmd_verdict = classify_command(
-            command, extra_bins=frozenset(ctx.allow_commands), roots=tuple(ctx.roots)
+            command,
+            extra_bins=frozenset(ctx.allow_commands),
+            roots=tuple(ctx.roots),
+            jailed=ctx.sandbox == "auto",
         )
         if cmd_verdict.action != "allow":
             command_decision = "ask" if cmd_verdict.action == "ask" else "deny"
