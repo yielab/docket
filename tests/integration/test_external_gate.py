@@ -373,3 +373,17 @@ class TestNeedsHumanSeam:
 
         persisted = _dispatch.read_tasks("demo")[0]
         assert persisted["status"] == "failed"
+
+
+def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Seam: P42-2 writes hop.verify, P42-5's evidence 1.1.0 reads it; real code on both sides.
+    from docket.core import evidence as _evidence
+
+    res, _ = _run(tmp_path, monkeypatch, "echo broke\nexit 1\n")
+    doc = _evidence.task_evidence("demo", res.task_id, "1.1.0").model_dump(by_alias=True)
+    gates = [h["gate"] for h in doc["hops"] if "gate" in h]
+    assert gates == [{"label": "fail", "exitCode": 1, "reasonsInvalid": False}]
+    legacy = _evidence.task_evidence("demo", res.task_id, "1.0.0").model_dump(by_alias=True)
+    assert all("gate" not in h for h in legacy["hops"])
