@@ -866,6 +866,47 @@ class TestTaskCancel:
         assert after["failureKind"] == "stale_claim"
         assert "docket task retry" in result.stderr
 
+    def test_a_task_parked_on_a_question_is_cancelled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import audit as _audit
+        from docket.core import inbox as _inbox
+
+        parked = _seed_parked_task(tmp_path, monkeypatch)
+        hops = len(parked["hops"])
+
+        result = _task("cancel", parked["id"])
+
+        assert result.exit_code == 0, result.output
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["status"] == "cancelled"
+        assert not after.get("question")
+        assert len(after["hops"]) == hops
+        listed = [
+            i.model_dump_json()
+            for i in _inbox.build_inbox(now="2030-01-01T00:00:00+00:00").needs_you
+        ]
+        assert not any(parked["id"] in i for i in listed)
+        entries = [e for e in _audit.read_audit() if e["action"] == "task.cancel"]
+        assert len(entries) == 1 and "channel=cli" in entries[0]["detail"]
+
+    def test_a_task_parked_on_an_approval_is_cancelled_and_the_approval_denied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import approval as _ap
+
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        token = _park_on_approval("demo", task["id"])
+
+        result = _task("cancel", task["id"])
+
+        assert result.exit_code == 0, result.output
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["status"] == "cancelled" and not after["approvalToken"]
+        assert _ap.approval_get(token)["state"] == "denied"
+        assert not _ap.list_pending()
+
     def test_a_task_with_nothing_in_flight_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

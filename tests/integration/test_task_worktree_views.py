@@ -66,6 +66,34 @@ def test_task_diff_prints_the_uncommitted_change_against_the_base(seeded: dict[s
     assert "+x = 2" in result.output
 
 
+def test_task_diff_reads_the_recorded_repository_not_a_rewritten_git_file(
+    seeded: dict[str, Any], tmp_path: Path
+) -> None:
+    from docket.edges.adapters import system as _system
+
+    wt = Path(seeded["wt"])
+    dirs = _system.worktree_git_dirs(str(wt))
+    assert dirs is not None
+    other = tmp_path / "other"
+    other.mkdir()
+    _git(other, "init", "-q")
+    (other / "calc.py").write_text("planted\n")
+    _git(other, "add", ".")
+    _git(other, "commit", "-qm", "planted")
+    path = _dispatch.pod_task_list_path("demo")
+    doc = _store.read_json(path)
+    for t in doc["tasks"]:
+        t["worktree"]["gitDir"], t["worktree"]["commonDir"] = dirs
+    _store.write_json(path, doc)
+    (wt / ".git").write_text(f"gitdir: {other / '.git'}\n")
+
+    result = _runner.invoke(app, ["task", "diff", seeded["id"], "--pod", "demo"])
+
+    assert result.exit_code == 0, result.output
+    assert "+x = 2" in result.output
+    assert "planted" not in result.output
+
+
 def test_task_show_prints_a_command_that_yields_the_same_diff(seeded: dict[str, Any]) -> None:
     result = _runner.invoke(app, ["task", "show", seeded["id"], "--json", "--pod", "demo"])
 
