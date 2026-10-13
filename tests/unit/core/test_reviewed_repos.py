@@ -16,10 +16,10 @@ A = RunItem("pipeline-step", "migrate", "sh scripts/migrate.sh")
 B = RunItem("mcp-server", "db", "npx -y @acme/db-mcp@1.4.2")
 
 
-def test_the_code_is_six_hex_and_independent_of_item_order() -> None:
-    """The same items in any order give the same six-hex code; a changed command changes it."""
+def test_the_code_is_sixteen_hex_and_independent_of_item_order() -> None:
+    """The same items in any order give the same 16-hex code; a changed command changes it."""
     code = _reviewed.review_code((A, B))
-    assert len(code) == 6 and int(code, 16) >= 0
+    assert len(code) == 16 and int(code, 16) >= 0
     assert _reviewed.review_code((B, A)) == code
     assert _reviewed.review_code((A, RunItem(B.kind, B.name, "npx evil"))) != code
 

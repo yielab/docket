@@ -370,7 +370,8 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     `init` **MUST**: on a terminal, print both groups with each item's exact command and ask
     `[y/N]` once, remember a `y` (repository root, digest of exactly those items, date, items)
     and audit `repo.allow` with `repo`, `code` and `items`; off a terminal, create nothing and
-    exit 2 listing the numbered items, the six-hex review code and the three ways on (`docket
+    exit 2 listing the numbered items, the 16-hex review code (64 bits, so a repository
+    cannot be crafted to match a code a script already accepts) and the three ways on (`docket
     init` on a terminal, `docket init --accept <code>`, `docket init --no-apply`), or with
     `--json` print `{"status": "needs_review", "reviewCode", "items"}`. `--accept <code>` **MUST**
     match the code exactly and then behaves as a `y`; a different code **MUST** exit 2 showing

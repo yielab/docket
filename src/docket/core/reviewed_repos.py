@@ -14,7 +14,7 @@ from docket.core.audit import audit_log
 from docket.core.pod_apply import RunItem
 from docket.edges import store
 
-CODE_LENGTH = 6
+CODE_LENGTH = 16
 
 
 @dataclass(frozen=True)
