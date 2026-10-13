@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.27.1
+**Version**: 1.27.2
 **Status**: Implemented
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -597,6 +597,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.27.2 (2026-10-13)
+
+- `code-intel`'s MCP servers declare no `isolate` key; every stdio server starts in the turn's jail.
 
 ### Version 1.27.1 (2026-10-12)
 

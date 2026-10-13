@@ -11,16 +11,15 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 102 (Phase 41's sub-wave C; opened 2026-10-13)
+> ## ◇ NO ACTIVE WAVE — Wave 102 closed 2026-10-13: Phase 41 sub-wave C done; sub-wave D (P41-8) next
 >
 > **Phase 40** (ROADMAP D-58, [ADR 0023](docs/adr/0023-harden-the-agent-boundary.md)) closed
 > 2026-10-12 over Waves 98–100, archived in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). **Phase 41** (one execution
-> envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed sub-waves A and B in
-> Waves 100–101 (rollup `bcc64595`). **Wave 102** runs sub-wave C, **P41-3 ∥ P41-7**, one Sonnet
-> worker per card in an isolated worktree under one integrator, packets in
-> [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md)
-> (ownership of `cli/_setup_sandbox.py` split there). Merge order: P41-3, P41-7.
+> envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed sub-waves A–C in
+> Waves 100–102. Sub-wave D (**P41-8**, the escape matrix) is ready on the Wave 102 rollup and now
+> carries a measured escape: the Landlock jail grants the whole git dir read-write (packet in
+> [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md)).
 >
 > **Wave 97 closed 2026-10-08** (no phase): the live-run triage cards B–E, archived verbatim in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -315,14 +314,16 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-waves A and B closed (Waves 100–101); sub-wave C active in Wave 102
+## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-waves A–C closed (Waves 100–102); sub-wave D (P41-8) next
 
-> **Opened 2026-10-12; sub-wave A (P41-1, P41-6) closed in Wave 100, sub-wave B (P41-5, P41-4,
-> P41-2) in Wave 101.** Sub-wave C bases on the Wave 101 rollup. Integrator notes from B:
-> `system.jail_launch` is the one jail builder (`bash`, verify, `run:`) and takes the pod cache dir
-> as a rw root with its six variables; stdio MCP servers gained a seatbelt branch
-> (`seatbelt_command_argv`); `docket exec` has no pod, so its jailed commands get no cache dir and
-> keep the operator's `HOME` value (denied by the jail) — decide in P41-7 or leave. The maintainer's 2026-10-12 decisions (ADR 0024): one jail for
+> **Opened 2026-10-12; sub-waves A (P41-1, P41-6), B (P41-5, P41-4, P41-2) and C (P41-3,
+> P41-7) closed in Waves 100–102.** `system.jail_launch` is the one jail builder (`bash`, verify,
+> `run:`) and takes the pod cache dir as a rw root. bwrap and `isolate` are gone; Docker only when
+> chosen (`setup sandbox backend docker`). **Open, measured at the Wave 102 close:** with bwrap
+> gone, the Landlock jail is Linux's only automatic backend and it grants the whole git dir
+> read-write (`_mount_dirs`), so an isolated agent can write `.git/hooks`/`config`; P41-8 owns
+> the RED row and the fix. `docket exec` has no pod, so its jailed commands get no cache dir.
+> The maintainer's 2026-10-12 decisions (ADR 0024): one jail for
 > everything the project runs, Landlock + seccomp on Linux, Seatbelt on macOS, Docker when
 > chosen, bwrap and `isolate: false` deleted, the gate lenient inside the envelope and strict
 > outside, sandbox off by default and visible, network `none` by default. A coordinator activates
@@ -384,7 +385,7 @@ card cannot run it on Linux and says so.
 
 ### P41-3 — delete bwrap and `isolate: false`; Docker is a chosen backend
 
-**Status:** IN PROGRESS (Wave 102, sub-wave C) · **Size:** S · **Model:** Haiku · **Spec:** mcp-client.spec.md (requirement 40 deleted), security-gates.spec.md
+**Status:** DONE (2026-10-13, merge `e3a2ae7d`) · **Size:** S · **Model:** Haiku · **Spec:** mcp-client.spec.md (requirement 40 deleted), security-gates.spec.md
 
 **Goal:** delete `_bwrap_prefix`, `bwrap_argv`, `bwrap_available`, the `bwrap` backend value
 and its tests; delete the `isolate` field from `kind: mcp-server` documents (schema regenerated
@@ -458,7 +459,7 @@ print the network mode recaptured with the diff explained. Oracle: `classify_com
 
 ### P41-7 — the sandbox is visible: probe, platform lines, backend choice
 
-**Status:** IN PROGRESS (Wave 102, sub-wave C) · **Size:** M · **Model:** Sonnet · **Spec:** cli-interface.spec.md (`init`, `status`, `setup sandbox`), cli-json-shapes.spec.md (`status --json` if a field changes)
+**Status:** DONE (2026-10-13, merge `b90a03b5`) · **Size:** M · **Model:** Sonnet · **Spec:** cli-interface.spec.md (`init`, `status`, `setup sandbox`), cli-json-shapes.spec.md (`status --json` if a field changes)
 
 **Trigger (D-60 §4-5):** `docket init` says nothing about the sandbox; only `status` has an
 `Isolation:` line; nobody installing learns whether a backend exists or what to install.

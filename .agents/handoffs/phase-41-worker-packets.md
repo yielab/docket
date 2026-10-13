@@ -169,3 +169,26 @@ own packet only. Two additions:
   sub-path): rewrite the task worktree's `.git` file to an agent-made gitdir with
   `core.hooksPath`, then run dispatch's host-side git; nothing the agent wrote may execute. The
   fix, if needed, is yours: pass docket's recorded gitdir explicitly to host-side git.
+
+**Added at the Wave 102 close (coordinator, measured in the code): the Landlock jail grants the
+whole git dir read-write.** `system._mount_dirs` puts the root *and* `git_dirs(root)` (the
+worktree's gitdir and the common dir) in `rw`; `_guarded_paths` (hooks, `config`,
+`config.worktree`, `info/attributes`, the `.git` pointer file, submodule equivalents) only ever
+became read-only overlays under bwrap, which P41-3 deleted. Under `auto` on Linux an isolated
+agent can therefore write `<common>/hooks/*` or `<common>/config` (`core.hooksPath`,
+`core.fsmonitor`) and the operator's next host-side git runs it. Seatbelt (`deny file-write*`
+after the grants) and docker (read-only binds) are not affected. The matrix rows for hooks,
+config and the `.git` file must run on landlock and must fail first (RED). The fix is this card's,
+in `edges/adapters/system.py`/`landlock.py` only:
+- Grant read-write on the git dir's **writable parts**, not on the git dir: for a linked
+  worktree `<common>/objects`, `<common>/refs`, `<common>/logs` and `<common>/worktrees/<name>`
+  (minus its `config.worktree`, `gitdir`, `commondir`); the rest of `<common>` read-only. Commit,
+  branch and log in a task worktree must still work (a positive row that commits).
+- When the root is a main checkout (`gitdir == common`), git also writes files at the git dir's
+  top (`index`, `HEAD`, `ORIG_HEAD`, `COMMIT_EDITMSG`, `*.lock`), and Landlock cannot grant a
+  file's creation without the directory's create/remove rights. Measure: either commits from a
+  jailed main checkout fail closed with a clear message (record that as a limit), or find a
+  rule set that grants those names without `hooks`/`config`; do not grant the directory.
+- The `.git` *file* of a linked worktree lives inside the root and stays writable; the
+  host-side mitigation is the one above (host git in a task worktree passes the recorded gitdir).
+

@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Implemented
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -315,6 +315,10 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.10.0 (2026-10-13)
+
+- A `kind: mcp-server` document has no `isolate` field: an `isolate:` key is an unknown-key error and every stdio server starts in the turn's jail (Phase 41, P41-3).
 
 ### Version 1.9.0 (2026-10-08)
 

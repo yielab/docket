@@ -14,8 +14,9 @@ docket's plain voice (`ok`, `->`, `!`); on a terminal the same lines read `✓`,
 
 **You need:** Python 3.11+, Git, Bash, and one OpenAI-compatible chat-completions endpoint with
 function-tool support. **Optional:** a sandbox for the agents' shell. Isolation is opt-in: turn it
-on with `docket setup sandbox on`, which needs bubblewrap (`bwrap`) on Linux or a running Docker
-(the only choice on macOS); see
+on with `docket setup sandbox on`, which needs nothing installed: Landlock in the Linux kernel
+(5.13 or newer) or `sandbox-exec` on macOS, or Docker if you choose it with
+`docket setup sandbox backend docker`; `docket setup sandbox` shows what this machine has. See
 [Workspace isolation](SECURITY-SIMPLE.md#workspace-isolation-opt-in-the-sandbox-for-the-agents-shell).
 The route below uses a local model on `127.0.0.1:8081` (llama.cpp, vLLM,
 LM Studio, Ollama all work); a hosted provider is a one-line variant in step 2.
@@ -59,7 +60,7 @@ model endpoint      missing   lead ->                             docket setup p
                               ANTHROPIC_API_KEY is required for
                               the resolved endpoint
 notifications       optional  console only (nobody is told)       docket setup notify enable desktop
-sandbox             optional  off; backend found: bwrap           docket setup sandbox on
+sandbox             optional  off; backend found: landlock        docket setup sandbox on
 shell completion    optional  not enabled                         docket setup shell zsh
 background service  optional  not installed                       docket start
 Provider [local]: local
@@ -199,7 +200,7 @@ git worktree list                         # the task's worktree, on its own bran
 ```
 
 <p align="center">
-  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's workspace and model, isolation on with bwrap, the task's git worktree on its own branch beside a clean main checkout, and the one-line fix living only in the worktree" width="760">
+  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's workspace and model, isolation on, the task's git worktree on its own branch beside a clean main checkout, and the one-line fix living only in the worktree" width="760">
 </p>
 
 ---

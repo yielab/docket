@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 102: the sandbox is visible (P41-7).** `docket init` ends with a `This machine` /
+  `Sandbox` block, `docket status` opens with it (the `Isolation` row is gone from the text), and
+  `docket setup sandbox` prints what this machine has (`Backend: landlock (kernel 6.14)`, or what
+  is missing per platform; `--json` gains `platform`, `kernel`, `available`, `missing`, `line`,
+  `hint`). `doctor` counts a home with pods and no usable backend as an issue
+  (`securityGates.sandboxUsable`), and `install.sh` prints the probe's one line.
+- **Wave 102: `docket setup sandbox backend auto|docker` (P41-3).** Docker is used only when
+  chosen; `auto` means Landlock on Linux and Seatbelt on macOS.
 - **Wave 101: verify commands and `run:` steps run inside the sandbox (P41-4, ADR 0024).** With
   isolation on, a pod's `verifyCmd` and a pipeline `run:` step run in the same jail as the agent's
   `bash` (the task worktree writable, the pod's network) instead of on the host, and fail closed
@@ -62,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer exempt: its options are on the live tree.
   A header in the plain console voice (`docket - Apply plan myapp`, what a piped command prints)
   is output, not an invocation, inside a fenced block too.
+
+### Removed
+
+- **Wave 102: the `bwrap` sandbox backend and the `isolate` field of `kind: mcp-server` (P41-3,
+  ADR 0024).** With them go `setup mcp add --no-isolate`, doctor's unjailed-MCP warning, `config
+  explain`'s `isolate` and the recipes' unjailed-server note; an `isolate:` key is an unknown-key
+  error, and every stdio MCP server starts in the turn's jail when isolation is on.
 
 ### Fixed
 

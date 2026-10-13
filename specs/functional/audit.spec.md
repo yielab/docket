@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.14.0
+**Version**: 2.14.1
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket log verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -433,6 +433,10 @@ $ docket log verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.14.1 (2026-10-13)
+
+- `isolation.refused` wording: no sandbox backend is usable (bwrap is no longer a backend).
 
 ### Version 2.14.0 (2026-10-12)
 
