@@ -22,6 +22,7 @@ from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
 from docket.core import identity as _identity
 from docket.core import mcp_tools as _mcp_tools
+from docket.core import network_posture as _network_posture
 from docket.core import pod as _pod
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
@@ -31,6 +32,15 @@ from docket.core import tools as _tools
 from docket.core.models import AgentKind, AgentMeta
 from docket.edges import store as _store
 from docket.edges.adapters import llm as _llm
+
+
+def _network_text(net: dict[str, Any]) -> str:
+    """The network line, worded by ``core.network_posture`` so it never claims a cut network
+    while isolation is off."""
+    posture = _network_posture.network_posture(
+        str(net["mode"]), str(net["scope"]), isolation_on=_fleet.get_isolation_enabled()
+    )
+    return posture.line
 
 
 def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
@@ -392,8 +402,7 @@ def render_pod(report: dict[str, Any]) -> None:
     note = "unset: park without a TTY, wait on one" if approval["source"] == "unset" else "set"
     _kv("Approval mode:", f"{approval['effective']} ({note})")
     _kv("Pipeline:", report["pipeline"]["source"])
-    net = report["network"]
-    _kv("Network:", f"{net['mode']} ({net['scope']})")
+    _kv("Network:", _network_text(report["network"]))
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         _kv(
@@ -470,8 +479,7 @@ def render_member(report: dict[str, Any]) -> None:
     _render_context(report)
     if report["pipeline"] is not None:
         _kv("Pipeline:", report["pipeline"]["source"])
-    net = report["network"]
-    _kv("Network:", f"{net['mode']} ({net['scope']})")
+    _kv("Network:", _network_text(report["network"]))
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         _kv(

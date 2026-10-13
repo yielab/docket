@@ -1125,8 +1125,9 @@ otherwise.
    not enforced: isolation off, egress is open`, carries no `ok` marker, and the status phrase reads
    `network none (not enforced: isolation off)`. With isolation on the line is unchanged
    (`none (<scope>); jailed tool calls have no network`). The JSON surfaces gain `networkEnforced`
-   (true only when isolation is on and the mode is `none`). `core.pod.effective_network` is not
-   changed by reporting.
+   (true only when isolation is on and the mode is `none`). `docket pod show`'s `Network:` line (a
+   member's or a pod's effective mode) is worded by the same `core.network_posture.network_posture`;
+   its `--json` keeps `{mode, scope}`. `core.pod.effective_network` is not changed by reporting.
 
 ### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
 
