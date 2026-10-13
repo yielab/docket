@@ -66,8 +66,8 @@ def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def server(tmp_path: Path) -> _mt.McpServerConfig:
-    script = tmp_path / "server.py"
+def server(root: Path) -> _mt.McpServerConfig:
+    script = root / "server.py"
     script.write_text(_SERVER)
     return _mt.McpServerConfig(name="probe", command=sys.executable, args=[str(script)])
 

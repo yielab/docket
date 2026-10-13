@@ -94,10 +94,15 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
         raise RuntimeError("isolation is on but the turn has no root to jail the server to")
     backend = _system.sandbox_availability().backend
     server = [config.command, *config.args]
-    if backend == "landlock":
-        argv = _system.landlock_command_argv(roots, server, launch.network)
-    elif backend == "seatbelt":
-        argv = _system.seatbelt_command_argv(roots, server, launch.network)
+    if backend in ("landlock", "seatbelt"):
+        tmp = _system.jail_tmp_dir(roots, None)
+        build = (
+            _system.landlock_command_argv
+            if backend == "landlock"
+            else _system.seatbelt_command_argv
+        )
+        env = ["env", *(f"{k}={v}" for k, v in _system.tmp_environment(tmp).items())]
+        argv = build((*roots, tmp), [*env, *server], launch.network)
     elif backend == "docker":
         name = f"docket-mcp-{uuid.uuid4().hex[:12]}"
         argv = _system.docker_command_argv(name, roots, server, dict(config.env), launch.network)

@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.53.0
+**Version**: 0.54.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1005,7 +1005,8 @@ either.
     none|open, "--", "/bin/sh", "-c", command]`; the first root is the cwd. The entry sets
     `PR_SET_NO_NEW_PRIVS`, then a Landlock ruleset that handles every filesystem right the probed
     ABI knows: read-write (read, write, make-*, remove, plus refer/truncate/ioctl-dev where the
-    ABI has them) on the roots and `$TMPDIR`; read and execute only on `/usr`, `/lib`, `/lib64`,
+    ABI has them) on the roots, including the launch's private temp dir (never the shared system
+    temp dir); read and execute only on `/usr`, `/lib`, `/lib64`,
     `/bin`, `/sbin`, `/etc`, `/opt`, `sys.prefix` and `/dev/zero|urandom`, read-write on
     `/dev/null|tty`. Nothing else is granted, so the operator's home and `DOCKET_HOME` are denied
     for read as well as write. A listed path that does not exist is skipped. Under `--net none` the
@@ -1041,7 +1042,8 @@ either.
     `mach-lookup`, `file-read-metadata` and signals to self allowed; read-only `subpath` rules for
     `/usr`, `/bin`, `/sbin`, `/etc`, `/private/etc`, `/System/Library`, `/Library` and `sys.prefix`;
     read of `/dev/random|urandom`, read-write of `/dev/null|zero|tty|dtracehelper`; read-write
-    `subpath` rules for each root, its repository dirs and the real path of `$TMPDIR`; a
+    `subpath` rules for each root, its repository dirs and the launch's private temp dir (never
+    the real `$TMPDIR`); a
     `(deny file-write* ...)` for each guarded git path (hooks, config) after the grants; then
     `(deny network*)` or `(allow network*)`. Paths are quoted for the profile language (`\` and `"`
     escaped). The operator's home and `DOCKET_HOME` are unreadable. `sandbox-exec` is deprecated by
@@ -1801,6 +1803,17 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.54.0 (2026-10-13)
+
+- Every Landlock and Seatbelt launch gets a private temp dir instead of the shared one:
+  `jail_launch` creates `<cache_dir>/tmp` (0700) when the launch has a cache dir, else
+  `<DOCKET_HOME>/jail-tmp/<short hash of the first root>` (0700), grants it read-write like an
+  `extra_rw` root and exports it as `TMPDIR`, `TMP` and `TEMP`. `landlock.plan_ruleset` no longer
+  grants `tempfile.gettempdir()` and `seatbelt_profile` no longer grants the real `$TMPDIR`, so
+  the jail cannot write the shared `/tmp`. Stdio MCP servers (`mcp_client._jailed_command`) get
+  the same dir and variables; verify and `run:` steps reach it through `jail_launch`. Docker is
+  unchanged: the container already has its own `/tmp`.
 
 ### Version 0.53.0 (2026-10-13)
 

@@ -28,6 +28,7 @@ ARCHETYPE_REGISTRY_FILE = DOCKET_HOME / "docket-roles.json"
 # WORKSPACES_DIR/projects/<id> (PROJECTS_DIR below); pod
 # members live directly at WORKSPACES_DIR/<role-or-project>/...
 WORKSPACES_DIR = DOCKET_HOME / "workspaces"
+JAIL_TMP_DIR = DOCKET_HOME / "jail-tmp"
 PROJECTS_DIR = WORKSPACES_DIR / "projects"
 # PODS_DIR: per-pod runtime resources (scratch dir, workdir) -- see
 # pod_scratch_dir()/pod_work_dir() below. Distinct from a pod's *workspace*

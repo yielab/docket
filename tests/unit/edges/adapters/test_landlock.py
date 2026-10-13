@@ -81,10 +81,14 @@ class TestPlanRuleset:
 
     def test_roots_get_everything_and_read_roots_only_read(self) -> None:
         plan = dict(self._plan(5).rules)
-        assert plan["/work"] == plan["/tmp"] == landlock.handled_fs_for(5)
+        assert plan["/work"] == landlock.handled_fs_for(5)
         assert plan["/usr"] == landlock.READ_RIGHTS
         assert "/missing" not in plan
         assert "/home" not in plan
+
+    def test_the_shared_system_temp_dir_is_not_granted(self) -> None:
+        plan = dict(self._plan(5).rules)
+        assert "/tmp" not in plan
 
     def test_device_files_get_file_rights_only(self) -> None:
         plan = dict(self._plan(5).rules)

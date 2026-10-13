@@ -138,6 +138,7 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("PROJECTS_DIR", "workspaces/projects"),
     ("AUDIT_LOG", "audit.log"),
     ("WORKSPACES_DIR", "workspaces"),
+    ("JAIL_TMP_DIR", "jail-tmp"),
     ("PODS_DIR", "workspaces/pods"),
 )
 

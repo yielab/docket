@@ -306,6 +306,28 @@ def test_a_write_outside_the_roots_is_refused(backend: str, arena: Path) -> None
     assert done.returncode != 0
 
 
+def test_the_shared_system_temp_dir_is_not_writable(backend: str, work: Path) -> None:
+    target = Path(system.tempfile.gettempdir()) / f"escape-{uuid.uuid4().hex}"
+    attack = f"touch {target}"
+    try:
+        control = _run(backend, work, attack, jailed=False)
+        assert control.returncode == 0 and target.exists()
+        target.unlink()
+        done = _run(backend, work, attack)
+        if backend != "docker":
+            assert done.returncode != 0
+        assert not target.exists()
+    finally:
+        target.unlink(missing_ok=True)
+
+
+def test_the_private_temp_dir_is_writable(backend: str, work: Path) -> None:
+    if backend == "docker":
+        pytest.skip("the container has its own /tmp")
+    done = _run(backend, work, 'touch "$TMPDIR/x" && test "$TMPDIR" = "$TMP"')
+    assert done.returncode == 0
+
+
 def test_a_hook_cannot_be_planted_in_the_common_git_dir(backend: str, task_tree: TaskTree) -> None:
     wt, hook = task_tree.wt, task_tree.common / "hooks" / "pre-commit"
     attack = f"printf '#!/bin/sh\\ntouch {wt}/hook-ran\\n' > {hook}"
