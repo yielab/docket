@@ -193,7 +193,7 @@ DISPATCH_SWEEP_WORKERS = int(os.environ.get("DISPATCH_SWEEP_WORKERS", "4"))
 
 # TEMPLATE_VERSION: workspace-prompt schema version. Bump when the generated
 # SOUL/AGENTS/TOOLS prose changes so `doctor` flags older agents for rebuild.
-TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))
+TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "5"))
 
 META_FILE = ".docket-meta.json"
 

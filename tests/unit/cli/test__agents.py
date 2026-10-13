@@ -229,3 +229,14 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
         code.mkdir()
         result = runner.invoke(app, ["init", "demo", str(code), "--recipe", "tdd"])
         assert result.exit_code == 0 and _pod_exists()
+
+
+def test_the_generated_agents_file_does_not_tell_the_agent_to_write_the_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dispatch maintains HEARTBEAT.md, so AGENTS.md carries no write-it-down instruction."""
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "home" / "projects")
+    _agents._create_workspace("demo", "demo", "/tmp/x", "py", "", "m")
+    text = (tmp_path / "home" / "projects" / "demo" / "AGENTS.md").read_text()
+    assert "Before starting multi-step work" not in text
+    assert "unwritten" not in text

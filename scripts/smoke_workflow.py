@@ -2273,7 +2273,7 @@ def _run_operator_loop_scenario(
         run_cli("init", "--from", str(beta_spec))
         run_cli("setup", "sandbox", "off")
         run_cli("pod", "apply", "prod-approval", "--pod", "alpha")
-        run_cli("pod", "beta", "set-verify", "beta-implementer", "false")
+        run_cli("pod", "set", "verify", "false", "--member", "beta-implementer", "--pod", "beta")
         print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")
 
         for label, pod_name, description in _operator_loop_tasks():

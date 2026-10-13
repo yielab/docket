@@ -223,11 +223,13 @@ class TestConcurrentCreate:
         assert len(_runs.list_runs()) == n
 
 
-def _bare_run(run_id: str, state: str, finished_at: str | None) -> dict[str, object]:
+def _bare_run(
+    run_id: str, state: str, finished_at: str | None, project: str = "proj"
+) -> dict[str, object]:
     return {
         "id": run_id,
         "source": "sweep",
-        "project": "proj",
+        "project": project,
         "state": state,
         "taskIds": [],
         "error": "",
@@ -255,6 +257,16 @@ class TestPruneTerminal:
         assert removed == 10_000
         remaining_ids = {r["id"] for r in _runs.list_runs()}
         assert remaining_ids == {"run-running", "run-recent"}
+
+    def test_prune_with_a_project_leaves_other_pods_records(self, runs_file: Path) -> None:
+        old = "2020-01-01T00:00:00+00:00"
+        runs = [_bare_run("run-a", "succeeded", old, "a"), _bare_run("run-b", "failed", old, "b")]
+        runs_file.write_text(json.dumps({"runs": runs}), encoding="utf-8")
+
+        assert _runs.prune_terminal(project="a", dry_run=True) == 1
+        assert _runs.prune_terminal(project="a") == 1
+
+        assert {r["id"] for r in _runs.list_runs()} == {"run-b"}
 
     def test_prune_dry_run_reports_without_deleting(self, runs_file: Path) -> None:
         old = "2020-01-01T00:00:00+00:00"

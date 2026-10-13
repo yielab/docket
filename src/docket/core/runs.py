@@ -437,10 +437,11 @@ def prune_terminal(
     *,
     dry_run: bool = False,
     now: float | None = None,
+    project: str | None = None,
 ) -> int:
     """Remove terminal run records (succeeded/failed/cancelled) whose ``finishedAt``
-    is older than the retention window (default ``config.TRACE_RETENTION_S``).
-    Returns the count removed (or, under *dry_run*, that would be)."""
+    is older than the retention window (default ``config.TRACE_RETENTION_S``); with
+    *project*, only that pod's. Returns the count removed (or, under *dry_run*, that would be)."""
     # queued/running records are never touched regardless of age -- this must never
     # delete evidence of live work. A record with no parseable finishedAt (malformed)
     # is kept, never guessed at. Sharing TRACE_RETENTION_S with core/trace.py's own
@@ -450,6 +451,8 @@ def prune_terminal(
     removed = 0
 
     def _eligible(rec: dict[str, Any]) -> bool:
+        if project is not None and rec.get("project") != project:
+            return False
         if str(rec.get("state", "")) not in _TERMINAL_STATES:
             return False
         epoch = _epoch_from_iso(str(rec.get("finishedAt") or ""))

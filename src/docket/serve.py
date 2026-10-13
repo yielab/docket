@@ -1431,6 +1431,10 @@ class _DocketHandler(BaseHTTPRequestHandler):
         except _pipeline.VariableError as exc:
             self._send_json_error(str(exc), 400)
             return
+        except _dispatch.DispatchError as exc:
+            msg = str(exc)
+            self._send_json_error(msg, 404 if msg.startswith("no pod for") else 400)
+            return
 
         # The run record is created — and its id handed back to
         # the caller — BEFORE any dispatch work is attempted. The actual
