@@ -23,6 +23,7 @@ from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import network_posture as _np
 from docket.core import policy as _pol
 from docket.core import profile as _profile
 from docket.core import secrets as _secrets
@@ -467,23 +468,19 @@ def _check_security_gates(ids: list[str] | None = None) -> int:
         )
         issues = 1
 
-    net_mode = _fleet.get_network_mode()
-    if net_mode == "none":
-        if not _fleet.network_mode_recorded():
-            ui.dim(
-                "  Network: none (default) -- enforced only inside the sandbox; "
-                "docket setup sandbox network open to grant it"
-            )
-        elif not enabled:
-            ui.warn(
-                "  Network: none (global), but isolation is off -- turns will be refused. "
-                "docket setup sandbox on, or docket setup sandbox network open"
-            )
-        else:
-            ui.success("  Network: none (global) -- jailed tool calls have no network")
-    else:
+    posture = _np.global_posture()
+    if posture.enforced:
+        ui.success(f"  Network: {posture.line}")
+    elif posture.mode == "open":
         ui.dim(
             "  Network: open (granted) -- docket setup sandbox network none to cut the sandbox's network"
+        )
+    elif posture.scope == "default":
+        ui.dim(f"  Network: {posture.line}; docket setup sandbox network open to grant it")
+    else:
+        ui.warn(
+            f"  Network: {posture.line} -- turns will be refused. "
+            "docket setup sandbox on, or docket setup sandbox network open"
         )
 
     return issues
@@ -844,6 +841,7 @@ def _check_json_security() -> dict[str, Any]:
         "sandboxUsable": backend != "none",
         "dockerImageHasGit": _docker_image_has_git(),
         "network": _fleet.get_network_mode(),
+        "networkEnforced": _np.global_posture().enforced,
     }
 
 

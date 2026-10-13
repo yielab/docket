@@ -5,4 +5,4 @@ ok Tool-call gate: always active (policy engine + high-risk command classifier)
 Backend: docker
 Sandbox   off. The agent's commands run with your user's permissions.
           Turn it on: docket setup sandbox on
-ok Network: none (default); jailed tool calls have no network
+Network: none (default), not enforced: isolation off, egress is open

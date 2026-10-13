@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from tests.conftest import repoint_docket_home
+
 import docket.config as _cfg
 from docket.cli import _pod_show
 from docket.core.models import AgentMeta
@@ -49,3 +52,14 @@ class TestScopeLabel:
 
     def test_unknown_source_is_empty(self) -> None:
         assert _pod_show._scope_label("") == ""
+
+
+class TestNetworkText:
+    def test_none_with_isolation_off_says_it_is_not_enforced(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        repoint_docket_home(monkeypatch, home)
+        text = _pod_show._network_text({"mode": "none", "scope": "default"})
+        assert "not enforced" in text and "egress is open" in text

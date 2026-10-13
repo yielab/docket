@@ -17,6 +17,7 @@ from docket.cli._setup_sandbox import _off_label, print_sandbox_block, sandbox_s
 from docket.cli._target import TargetError, pod_option, resolve_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import network_posture as _np
 from docket.core import pod as _pod
 from docket.core import profile as _profile
 from docket.core import runs as _runs
@@ -67,8 +68,10 @@ def _approved_ready(task: dict[str, Any]) -> bool:
 def _isolation_phrase() -> str:
     """The sandbox posture in one phrase, from the reader `setup sandbox status` uses."""
     state = sandbox_state()
-    backend, network = str(state["backend"]), state["network"]
-    if state["isolation"] == "on":
+    backend = str(state["backend"])
+    isolation_on = state["isolation"] == "on"
+    network = _np.network_posture(str(state["network"]), "", isolation_on=isolation_on).short
+    if isolation_on:
         return f"on ({backend}, network {network})"
     found = "no backend found" if backend == "none" else f"{backend} found"
     return f"{_off_label(str(state['isolation']))}; {found}, network {network}"

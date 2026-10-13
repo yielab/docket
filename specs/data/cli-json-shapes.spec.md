@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.30.0
+**Version**: 1.31.0
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -62,7 +62,8 @@ structural rules hold everywhere:
       "sandboxBackend": "string ('landlock' | 'seatbelt' | 'docker' | 'none')",
       "sandboxUsable": "boolean (false when the backend is 'none'; with at least one project agent it adds one to `issues`)",
       "dockerImageHasGit": "boolean | null (null unless the backend is docker and isolation is on; false when the DOCKET_SANDBOX_IMAGE probe finds no git or no local image)",
-      "network": "string ('open' | 'none'; the global mode)"
+      "network": "string ('open' | 'none'; the global mode)",
+      "networkEnforced": "boolean (true only when isolation is on and the mode is 'none'; false means egress is open)"
     },
     "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
   }
@@ -80,7 +81,7 @@ structural rules hold everywhere:
   "path":        "string (codebase or workDir; may be empty)",
   "status":      "ready | active | waiting | attention | degraded (waiting: a task is waiting_approval or waiting_input)",
   "memberCount": "number",
-  "isolation":   "string (the sandbox posture: 'on (<backend>, network <open|none>)' or '<off (default)|off>; <backend|no backend> found, network <open|none>')",
+  "isolation":   "string (the sandbox posture: 'on (<backend>, network <open|none>)' or '<off (default)|off>; <backend|no backend> found, network <open|none>', where isolation off and mode none reads 'network none (not enforced: isolation off)')",
   "members":     "array of { id, role, status: ready | missing }",
   "tasks": {
     "pending": "number", "running": "number", "waitingApproval": "number",
@@ -427,6 +428,9 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.31.0 (2026-10-13)
+- `doctor --json` `securityGates` and `setup sandbox --json` gain `networkEnforced`; `status` `isolation` says `network none (not enforced: isolation off)` when isolation is off.
 
 ### Version 1.30.0 (2026-10-13)
 - `docket task show --json` `evidence` is the 1.1.0 document (`hops[].gate`, `directives`, both absent when empty); the harness result's embedded evidence stays 1.0.0.

@@ -467,6 +467,19 @@ class TestChecks:
         assert "turns will be refused" not in out
         assert _setup_check._check_json_security()["isolation"] == "off (default)"
 
+    def test_the_default_network_is_reported_as_not_enforced_while_isolation_is_off(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        _setup_check._check_security_gates()
+        line = next(ln for ln in capsys.readouterr().out.splitlines() if "Network:" in ln)
+        assert "not enforced: isolation off" in line
+        assert "jailed tool calls have no network" not in line
+        security = _setup_check._check_json_security()
+        assert security["network"] == "none"
+        assert security["networkEnforced"] is False
+
     def test_pods_and_no_usable_backend_is_an_issue(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -496,6 +509,7 @@ class TestChecks:
             "sandboxUsable": True,
             "dockerImageHasGit": None,
             "network": "none",
+            "networkEnforced": True,
         }
 
     def test_security_gates_reports_the_refusal_when_no_backend(
