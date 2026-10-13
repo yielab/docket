@@ -264,10 +264,12 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
     )
 
 
-def _resolve_network(agent_id: str, role: str, want_sandbox: bool) -> tuple[bool, str | None]:
+def _resolve_network(
+    agent_id: str, role: str, want_sandbox: bool, project: str | None = None
+) -> tuple[bool, str | None]:
     """``(network_allowed, refusal)`` for this turn. Mode ``none`` needs the jail to enforce it,
     so with isolation off the turn is refused up front and audited (``network.refused``)."""
-    mode, scope = _pod.effective_network(_pod.pod_of(agent_id))
+    mode, scope = _pod.effective_network(project or _pod.pod_of(agent_id))
     if mode == "open":
         return True, None
     if want_sandbox:
@@ -284,6 +286,19 @@ def _resolve_network(agent_id: str, role: str, want_sandbox: bool) -> tuple[bool
         "ways: turn isolation on with 'docket setup sandbox on', or lift the lockdown "
         "with 'docket setup sandbox network open' (and the pod's network setting)."
     )
+
+
+def resolve_command_jail(project: str, label: str) -> tuple[_system.JailPolicy | None, str | None]:
+    """``(jail, refusal)`` for a command docket launches outside an agent turn (a verify command,
+    a ``run:`` step): ``(None, None)`` with isolation off, the pod's jail with it on, and a
+    refusal message when isolation is on but no backend is usable."""
+    want_sandbox, refusal = _resolve_sandbox(project, label)
+    if refusal is not None:
+        return None, refusal
+    if not want_sandbox:
+        return None, None
+    network_allowed, _ = _resolve_network(project, label, True, project=project)
+    return _system.JailPolicy(network=network_allowed), None
 
 
 def _resolve_posture(agent_id: str, role: str) -> tuple[bool, bool]:

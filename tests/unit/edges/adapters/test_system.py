@@ -272,3 +272,62 @@ class TestLandlockBackend:
         monkeypatch.setattr(landlock, "abi_version", lambda: 5)
         monkeypatch.setenv("DOCKET_SANDBOX_PROBE", "none")
         assert _sys.landlock_available() is False
+
+
+# ── jail_launch / run_verify_cmd under a jail ─────────────────────────────────
+
+
+class TestJailLaunch:
+    @pytest.fixture(autouse=True)
+    def _no_identity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys, "git_identity_env", lambda root: {})
+
+    def test_landlock_argv_roots_extra_rw_and_minimal_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", "/usr/bin")
+        monkeypatch.setenv("SOME_SECRET", "x")
+        cache = tmp_path / "cache"
+        launch = _sys.jail_launch(
+            (tmp_path,), "echo hi", "landlock", network=False, env={"A": "1"}, extra_rw=(cache,)
+        )
+        assert launch.argv[:3] == [_sys.sys.executable, "-m", "docket.jail"]
+        rw = [launch.argv[i + 1] for i, a in enumerate(launch.argv) if a == "--rw"]
+        assert rw == [str(tmp_path.resolve()), str(cache.resolve())]
+        assert launch.argv[launch.argv.index("--net") + 1] == "none"
+        assert launch.argv[-3:] == ["/bin/sh", "-c", "echo hi"]
+        assert launch.env == {"PATH": "/usr/bin", "A": "1"}
+
+    def test_docker_names_a_container_and_leaves_the_process_env_to_the_cli(
+        self, tmp_path: Path
+    ) -> None:
+        launch = _sys.jail_launch((tmp_path,), "true", "docker", env={"A": "1"})
+        assert launch.env is None
+        assert launch.container.startswith("docket-sbx-")
+        assert launch.argv[:2] == ["docker", "run"]
+        assert "A=1" in launch.argv
+
+    def test_no_backend_is_an_error(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError):
+            _sys.jail_launch((tmp_path,), "true", "none")
+
+
+class TestVerifyUnderJail:
+    def test_no_usable_backend_runs_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        marker = tmp_path / "ran"
+        passed, output = _sys.run_verify_cmd(
+            f"touch {marker}", str(tmp_path), jail=_sys.JailPolicy()
+        )
+        assert passed is False
+        assert "verify not run" in output
+        assert not marker.exists()
+
+    def test_high_risk_refusal_comes_before_the_jail(self, tmp_path: Path) -> None:
+        passed, output = _sys.run_verify_cmd(
+            "git push origin production", str(tmp_path), jail=_sys.JailPolicy()
+        )
+        assert passed is False
+        assert "refused" in output

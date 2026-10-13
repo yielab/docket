@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.38.0
+**Version**: 6.40.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -1190,6 +1190,11 @@ Every requirement below still holds byte-for-byte for the Implementer specifical
    CLAUDE.md's layering rule).
 6. This gate only applies to the Implementer hop; Reviewer and Tester hops are never subject to
    it.
+6. With isolation recorded on, the verify command **MUST** run inside the same jail a `bash` call of
+   the pod takes (`security-gates.spec.md` Exec sandbox item 11): cwd the task worktree, the
+   worktree its read-write root, the pod's network. With no usable backend it **MUST NOT** run and
+   the gate fails (`[verify not run: ...]`, audited `isolation.refused`). With isolation off it runs on the host
+   unchanged.
 
 ### Required verification (`requireVerify`)
 
@@ -1351,7 +1356,7 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    session, no cost. Its command **MUST** first be classified (`core.security.classify_command`,
    extended by the pod's own `allowCommands`); an `allow` verdict **MUST** run it via
    `edges.adapters.system.run_verify_cmd`, in the same cwd this section's `changed` predicate
-   uses, bounded by the step's own `timeout` else the pod's `verifyTimeoutS`. A non-`allow`
+   uses, bounded by the step's own `timeout` else the pod's `verifyTimeoutS`. With isolation recorded on the command **MUST** run in the same jail as the verify command (Implementer verification gate item 6) and a missing backend fails the step. A non-`allow`
    verdict **MUST NOT** run the command: under the pod's `approvalMode: "refuse"` the step
    **MUST** fail immediately, naming the classifier's reason; under the default `"wait"` it
    **MUST** gate exactly like a pipeline `approval` step (`_gate_pre_hop_approval`, keyed to the
@@ -2114,6 +2119,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.40.0 (2026-10-13)
+
+- "Implementer verification gate" item 6 and "Conditional steps and command steps" item 2: `verifyCmd` and `run:` commands run inside the isolation jail when isolation is on, fail closed with no backend, and are unchanged with isolation off.
 
 ### Version 6.38.0 (2026-10-12)
 

@@ -18,7 +18,6 @@ import re
 import subprocess
 import threading
 import time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -251,17 +250,6 @@ def grep_files(
 # ── exec ──────────────────────────────────────────────────────────────────────
 
 
-def _jailed_env(env: dict[str, str] | None) -> dict[str, str]:
-    """Minimal environment for a real sandboxed run: PATH plus whatever the caller explicitly
-    asked to inject. Deliberately **not** the full host environment ``run_bash``'s unsandboxed
-    path uses -- forwarding it wholesale into a jail would hand a "sandboxed" command every
-    credential the unsandboxed path has, the exact reach this backend exists to cut down."""
-    minimal = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
-    if env:
-        minimal.update(env)
-    return minimal
-
-
 def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None) -> str:
     """The honest, per-call answer to "was this actually sandboxed, and by what": ``""`` when
     nobody asked (default ``sandbox="off"``, behaviour untouched byte for byte). When asked
@@ -342,22 +330,11 @@ def run_bash(
     popen_env: dict[str, str] | None
     container_name = ""
     if backend in ("docker", "bwrap", "landlock"):
-        env = {**_system.git_identity_env(cwd), **(env or {})}
-    if backend == "docker":
-        container_name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
-        popen_arg: str | list[str] = _system.docker_run_argv(
-            container_name, roots, command, env, network
-        )
+        launch = _system.jail_launch(roots, command, backend, network=network, env=env)
+        popen_arg: str | list[str] = launch.argv
         shell = False
-        popen_env = None  # the CLI inherits; the container gets only `env`, via -e flags in argv
-    elif backend == "bwrap":
-        popen_arg = _system.bwrap_argv(roots, command, network)
-        shell = False
-        popen_env = _jailed_env(env)
-    elif backend == "landlock":
-        popen_arg = _system.landlock_argv(roots, command, network)
-        shell = False
-        popen_env = _jailed_env(env)
+        popen_env = launch.env
+        container_name = launch.container
     else:
         popen_arg = command
         shell = True
