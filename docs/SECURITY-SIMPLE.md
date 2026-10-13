@@ -6,8 +6,8 @@
 > tool call an agent makes passes through one chokepoint (`core/tools.py`'s `dispatch_tool`) before
 > it executes — there is no external daemon in the loop any more, and nothing to bypass it. That
 > chokepoint is **always active**: an argument-aware command classifier plus the `pre_tool_call`
-> policy hook decide `allow`/`ask`/`deny` for every call; no flag or command turns it off. A
-> dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, an unlisted
+> policy hook decide `allow`/`ask`/`deny` for every call; no flag or command turns it off. With
+> isolation off (the default), a dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, an unlisted
 > shell interpreter, ...) is routed to **docket's own approval store** and blocks the call until a
 > human answers — the same store a pod-dispatch hop held on a `requireApprovalRoles`/pipeline
 > `approval` step, or a task a guardrail policy flagged at enqueue, also uses (see "Guardrail
@@ -68,8 +68,9 @@ and every member's AGENTS.md `## Red Lines` repeats "Never push to main/master o
 without HITL approval" plus the stay-in-this-pod rule. Nothing instructs an agent not to *commit*.
 
 These are **prompt-level constraints**: agents are instructed to follow them. On top of that,
-docket's own tool-call chokepoint is always active regardless of the prompt: non-allowlisted
-dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require approval before they run —
+docket's own tool-call chokepoint is always active regardless of the prompt: with isolation off,
+non-allowlisted dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require approval
+before they run (inside the sandbox only the high-risk classes do) —
 see the status note above for who can answer, and for the `git`/`npm` carve-out.
 
 ### 2. A Reviewer Can Veto (when the pod has one)
@@ -164,11 +165,12 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   (fails closed, before the shell even starts) since it runs synchronously with no approver
   reachable mid-hop; a hop's real output is separately scanned for a match on the way through
   the pipeline (flagged, not blocked, by itself).
-- **What this does NOT do by default:** lock down network egress. With the default `network open`,
-  `bash` can still reach the network through interpreters and package managers on the curated
-  allowlist (`python3`, `node`, `git clone`, ...) — the `fetch` tool is domain-allowlisted and the
-  *inspectable* path, but not the only one until you run `docket setup sandbox network none`, which cuts
-  the jail's network (verify commands and `run:` steps still run on the host). It is also scoped to what docket itself dispatches: a
+- **What this does NOT do by default:** lock down network egress. Isolation is off by default, so
+  `bash` runs on the host and reaches the network through interpreters and package managers on
+  the curated allowlist (`python3`, `node`, `git clone`, ...) — the `fetch` tool is
+  domain-allowlisted and the *inspectable* path, but not the only one until you turn the sandbox
+  on (`docket setup sandbox on`), whose network is `none` unless `docket setup sandbox network
+  open` grants it (verify commands and `run:` steps still run on the host). It is also scoped to what docket itself dispatches: a
   process started outside docket's turn loop is outside this gate entirely.
 - **Only `bash` is jailed, and only with isolation on.** The command gate above applies to every
   `bash` call; the opt-in bwrap/Docker isolation (next section) jails `bash` and stdio MCP servers.

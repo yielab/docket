@@ -423,9 +423,11 @@ read|write`, default `write`; `--tools a,b` limits which of its tools register).
 - Denials are per role, plus an optional per-pod list: `docket pod set deniedTools fetch`
   removes `fetch` from every role of that pod. To restrict one agent, give it a custom role.
 
-**Shell commands (the curated allowlist).** A `bash` call runs unattended only when **every**
-segment's binary (behind `;`, `&&`, `||` and pipes) is on a fixed list and no high-risk class
-matches. Anything else asks a human.
+**Shell commands (the curated allowlist).** With isolation off (the default), a `bash` call runs
+unattended only when **every** segment's binary (behind `;`, `&&`, `||` and pipes) is on a fixed
+list and no high-risk class matches. Anything else asks a human. Inside the sandbox the list
+stands down: any binary runs unattended except a high-risk class, a command docket cannot read
+statically, or a redirect outside the pod's roots, which still ask.
 
 - **On the list:** `ls cat head tail wc sort uniq cut tr nl grep egrep rg fd find file stat tree
   realpath dirname basename sed awk jq yq diff comm git node npm npx pnpm yarn python python3 pip
@@ -526,9 +528,10 @@ creates `approvals/<id>.json`.
 
 **Network.** `fetch` refuses every host until you allow it:
 `FETCH_ALLOWED_DOMAINS=docs.python.org,api.github.com`. That makes `fetch` the *inspectable*
-path; by default it is not the only one, since `bash` can still reach the network through
-allowlisted interpreters. `docket setup sandbox network none` (or a pod's `network` setting) cuts the
-jail's network, leaving `fetch` as the only path.
+path. With isolation off (the default) it is not the only one, since `bash` runs on the host and
+reaches the network through allowlisted interpreters. Inside the sandbox the network is `none`
+by default, leaving `fetch` as the only path; `docket setup sandbox network open` (or a pod's
+`network` setting) grants it.
 
 **Isolation (opt-in).** Off by default: tools run on the host. `docket setup sandbox on` jails
 `bash` and stdio MCP servers in bwrap (Linux) or Docker (Linux or macOS), and refuses to record
@@ -625,7 +628,7 @@ docket pod recipes tdd                    # description, summary, the recipe's o
 docket init --recipe secure-build          # a new pod for this repository, recipe applied after provisioning
 docket pod update git-safety          # a policy pack onto a pod that already exists
 docket pod update ./team-recipes/ci   # a directory of your own, same shape
-docket pod update --dry-run           # no argument: <codebase>/.docket/, plan only
+docket pod update .docket --dry-run   # the repository's own directory, plan only
 ```
 
 A name resolves in three places, nearest wins: a directory path as given, then your own
@@ -649,7 +652,7 @@ docket init --recipe tdd
 docket pod update git-safety
 docket pod update secrets-guard
 docket pod export --force          # the merged team, in .docket/
-docket pod update                   # plans every item skip; configSource is now ./.docket
+docket pod update .docket           # plans every item skip; configSource is now ./.docket
 git add .docket && git commit -m "Add: the myapp agent team"
 ```
 
@@ -713,8 +716,8 @@ one. The loop you run each time the team changes:
 docket pod export             # first time: write what the pod has now into ./.docket/
 $EDITOR .docket/pipeline.yaml       # change the route, a rule, a role
 docket pod validate                     # every document, invalid files first, exit 1 on any error
-docket pod update --dry-run    # the plan: add / replace / skip per item
-docket pod update              # write it (one pod.apply audit entry when something changed)
+docket pod update .docket --dry-run  # the plan: add / replace / skip per item
+docket pod update .docket            # write it (one pod.apply audit entry when something changed)
 git add .docket && git commit       # the team is versioned with the code
 ```
 
@@ -723,7 +726,7 @@ Three commands read it, and nothing else does:
 | Moment | Command | What happens |
 |---|---|---|
 | Creating the pod | `docket init` (with `.docket/` present) or `docket init --recipe <name\|dir>` | every document is validated **before** the pod is provisioned (an error exits 1 naming file, line and field, and provisions nothing); after provisioning, the directory is applied exactly as `pod update` would, with one `pod.apply` audit entry. `--no-apply` provisions only. `--recipe` and a present `.docket/` together are refused: one source of record. |
-| Re-applying after a change | `docket pod update` (defaults to `<codebase>/.docket/`) | additive and idempotent: a second run plans every item `skip`; `--dry-run` shows the plan |
+| Re-applying after a change | `docket run` picks it up before dispatching, or `docket pod update .docket` | additive and idempotent: a second run plans every item `skip`; `--dry-run` shows the plan; a changed command the repository runs on this machine waits for your OK. With no argument, `pod update` re-renders stale member instructions instead |
 | Writing it back | `docket pod export` (defaults to `<codebase>/.docket/`; refuses a non-empty one without `--force`) | the pod's own scope in the short form, ready to commit |
 
 Rules worth knowing:

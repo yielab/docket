@@ -662,5 +662,13 @@
     "heading": "☑ WAVE 97 COMPLETE — the live-run triage cards B–E, CLOSED 2026-10-08 (no phase; opened 2026-10-08)",
     "bytes": 10834,
     "sha256": "e101538228400ad43995ad884adcb1182907f9e2d96767039888318ed160589a"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ PHASE 40 COMPLETE — harden the agent boundary (D-58, ADR 0023): thirteen cards over Waves 98–100, closed 2026-10-12",
+    "bytes": 21431,
+    "sha256": "310e283fdeea7bebe0eb743d090b84155887fb106f5974a2a7ef0ae0b10c63b4"
   }
 ]

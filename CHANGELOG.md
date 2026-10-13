@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 100: a Linux sandbox that needs no package (P41-1, ADR 0024).** `python -m docket.jail`
+  confines a command with Landlock (the roots and the temp dir writable, system paths readable,
+  the home and `DOCKET_HOME` unreadable) and, under network `none`, a seccomp filter that refuses
+  IPv4/IPv6 sockets; it fails closed (exit 125, nothing run) when the kernel cannot enforce it.
+  It is probed before bwrap and docker and selectable with `DOCKET_SANDBOX_BACKEND=landlock`;
+  `DOCKET_SANDBOX_PROBE=none` hides it for tests that simulate a host with no backend.
+- **Wave 100: a repository's commands need your OK (P40-5, D-59).** `docket init` splits a
+  `.docket/` into what it adds to the team and what it runs on this machine (`run:` steps, MCP
+  server commands, plugins, `allowCommands`, `network: open`, a role that drops a built-in
+  denial). On a terminal it asks once and remembers the answer in `~/.docket/reviewed-repos.json`
+  (0600, audited `repo.allow`) until those commands change; off a terminal it creates nothing and
+  exits 2 with the items and a 16-hex code that `docket init --accept <code>` allows exactly.
+  A repository can never allowlist `sh`, `bash`, `zsh`, `dash`, `sudo`, `ssh`, `nc` or `socat`.
+- **Wave 100: `docket run` picks repository changes up (P40-13).** Before dispatching it applies
+  what the repository added (`-> Updated from the repository: ...`); a changed command asks on a
+  terminal and, off one, runs with the version you allowed. `docket status` shows the allowed
+  commands and any change waiting for your OK. `start`, `exec` and dispatch never re-read the
+  repository (pinned by a guard).
+
 - **`docket --version` names the commit from a checkout.** A source tree prints
   `docket 0.2.0b4 (git 23591894, dirty)` -- the short HEAD sha, and `dirty` when `git status`
   reports changes -- so a tree 96 commits past the tag is no longer indistinguishable from the
@@ -31,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is output, not an invocation, inside a fenced block too.
 
 ### Fixed
+
+- **Wave 100: a sandboxed `bash` call with no usable backend runs nothing.** It used to fall
+  back to the host with a `[sandbox: none]` marker; since the gate now allows off-allowlist
+  binaries on the promise of a jail, it returns `not run: no sandbox backend is usable`.
+- **The quick start and configuration guide** showed a bare `pod apply` applying `.docket/`;
+  with no argument it re-renders stale member instructions (ADR 0022), so they now say
+  `docket pod update .docket`.
 
 - **Phase 40, Wave 99: the agent boundary, continued.** The docket process marks itself
   non-dumpable on Linux (`docket exec`, `docket start`, every turn), so an unjailed `bash` call,
@@ -130,6 +156,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was the fixed `approval denied`. `POST /approvals/<token>` with `reason` carries it the same way.
 
 ### Changed
+
+- **Wave 100: the gate inside the sandbox, and network `none` (P41-6, ADR 0024).** Inside a
+  working jail the command gate allows any binary except a high-risk class, a command it cannot
+  read statically, or a redirect outside the roots; outside it the allowlist applies as before.
+  The sandbox's network defaults to `none` (`docket setup sandbox network open` grants it); with
+  isolation off nothing can cut the network, so only a recorded `none` refuses a turn.
+- **`docket pod apply` is `docket pod update`** (P40-13), with `--accept`; a repository
+  directory goes through the same review as `init`. `pod apply` is an ordinary unknown command.
 
 - **The public visuals are re-captured from a real run of the eleven-command CLI** (2026-10-09,
   local 16k-context model, `scripts/maint/capture-doc-journey.sh`): `hero.gif`, `isolation.png`

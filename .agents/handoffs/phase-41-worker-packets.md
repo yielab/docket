@@ -133,3 +133,7 @@ own packet only. Two additions:
   one positive row (write inside the root succeeds). Every negative row must fail with the
   backend on, and the test must fail if the backend silently ran nothing (assert the positive
   row and a marker file the jailed command writes).
+- Plus the `.git`-file row the card added at the Wave 100 close (Landlock has no read-only
+  sub-path): rewrite the task worktree's `.git` file to an agent-made gitdir with
+  `core.hooksPath`, then run dispatch's host-side git; nothing the agent wrote may execute. The
+  fix, if needed, is yours: pass docket's recorded gitdir explicitly to host-side git.

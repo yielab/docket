@@ -353,7 +353,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     directory. It **MUST** support `--dry-run` and `--json` (`{"items": [...]}` as for a
     directory), write one `pod.apply` audit entry naming the file, and leave `configSource`/
     `configDigest` alone — a single document is not the configuration of record. `docket pod
-    apply` with **no** argument **MUST** re-render the SOUL/AGENTS/TOOLS of every member whose
+    update` with **no** argument **MUST** re-render the SOUL/AGENTS/TOOLS of every member whose
     stored template version is stale from the current archetype and metadata (`--dry-run` shows
     the diffs without writing; an in-sync pod is a no-op), never touching the operator-owned
     `INSTRUCTIONS.md`, and writes one `pod.sync` audit entry per re-rendered member; `--json` with

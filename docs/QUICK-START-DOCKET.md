@@ -221,7 +221,7 @@ docket pod show myapp-implementer         # the effective configuration, with wh
 
 ```text
   Pipeline: bound pipeline (hash 45f7aaf31d1f...)
-  Network: open (default)
+  Network: none (default)
   Config source: .../templates/recipes/secure-build (digest ec69082e5924..., drift: no)
 ```
 
@@ -335,8 +335,8 @@ Then:
 
 ```bash
 docket pod validate                           # every document under .docket/, invalid files first
-docket pod update --dry-run          # the plan: add / replace / skip per item
-docket pod update                    # writes it; a second run plans every item skip
+docket pod update .docket --dry-run  # the plan: add / replace / skip per item
+docket pod update .docket            # writes it; a second run plans every item skip
 git add .docket && git commit -m "Add: the myapp agent team"
 ```
 

@@ -84,7 +84,7 @@ In a repository (`cd ~/code/myapp`), create the team from whatever you have:
 | --- | --- | --- |
 | nothing yet | `docket init` | the lean default: a Lead that plans and an Implementer that edits in a git worktree per task |
 | a known shape in mind | `docket init --recipe secure-build` | the default team plus the recipe: here a read-only security vetter, its pipeline and a policy |
-| a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned |
+| a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned; any command it would run on this machine waits for your OK |
 
 Eighteen recipes ship: teams (`secure-build`, `research-review`, `ops-approval`, `intake`), policy
 packs (`git-safety`, `no-egress`, `secrets-guard`, `prod-approval`), methodology pipelines (`tdd`,
@@ -92,7 +92,7 @@ packs (`git-safety`, `no-egress`, `secrets-guard`, `prod-approval`), methodology
 that fail a task whose tests prove nothing (`anti-tautology`, `mutation`) and a tool pack
 (`code-intel`). A **pod** is the team of agents attached to one repository: its members, its rules, its queue,
 its ports and worktrees; a recipe is a team that can be installed, a pod is that team living in a
-repo. `docket pod recipes` shows what each recipe brings; `docket pod apply tdd` adds one to the
+repo. `docket pod recipes` shows what each recipe brings; `docket pod update tdd` adds one to the
 pod you are standing in. You never type the pod's name inside its repository.
 
 Then give the team work and read what it did:
@@ -152,9 +152,9 @@ Langfuse, structure-only unless widened. `docket status` reports measured tokens
 dollar figure it did not record; the budget gate works on a labelled estimate. `/status.json` and `/metrics` feed your own board — docket does not ship one.
 
 *Limit:* the audit log is tamper-evident, not tamper-proof (one predecessor link survives
-rotation). `fetch` is deny-by-default, but `bash` reaches the network: on the host by default, and inside
-the jail too once isolation is on, until `docket setup sandbox network none` cuts it; verify commands run
-unjailed.
+rotation). `fetch` is deny-by-default, but with isolation off (the default) `bash` runs on the host and
+reaches the network; once isolation is on the jail has no network unless `docket setup sandbox
+network open` grants it. Verify commands still run unjailed.
 
 ## Make it yours
 
@@ -190,8 +190,9 @@ the member's verify command and a nonzero exit fails the task. `verdict` gates o
 unambiguous marker at the start of a line; `on` is a bounded route, never an expression.
 
 Edit, then `docket pod validate` checks the directory against published schemas, `docket pod plan`
-shows the run before it happens, and `docket pod apply` puts the change on the pod. Commit the
-directory and a plain `docket init` builds the same team on any machine. `docket pod show`
+shows the run before it happens, and `docket pod update .docket` puts the change on the pod;
+`docket run` picks it up on its own. Commit the directory and a plain `docket init` builds the
+same team on any machine. `docket pod show`
 prints every effective value, the layer that set it, the provider it resolved to, and
 whether `.docket/` has drifted since it was applied.
 
@@ -209,7 +210,7 @@ configuration, never a fork:
 | A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/recipes/<name>/`, used by name like the shipped eighteen |
 | The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` |
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pod validate/plan`; run once with `docket run --pipeline <file>` or bind it with `docket pod set pipeline <file>` |
-| What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket pod apply`; a step may name its own `model` |
+| What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket pod update`; a step may name its own `model` |
 | Your own words in front of an agent | Instructions | `INSTRUCTIONS.md`, which docket never writes; your repo's `AGENTS.md` is read by default, screened as untrusted; `docket pod set projectInstructions` names other files |
 | Reusable instructions an agent pulls on demand | Skills | `skills/<name>/SKILL.md` (the Agent Skills shape) in `.docket/`, a recipe or `~/.docket/skills/`; the prompt lists them, the `skill` tool reads one through the chokepoint, deniable per role |
 | What is forbidden or needs a human, everywhere | Policies | a `kind: policy` YAML (`when`/`then`), live on the next call; `docket pod check`/`validate`; hashed predicate plugins for the rare complex rule |

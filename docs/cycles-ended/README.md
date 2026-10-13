@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (59 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (60 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (23 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-10-12 | ☑ PHASE 40 COMPLETE — harden the agent boundary (D-58, ADR 0023): thirteen cards over Waves 98–100, closed 2026-10-12 | `todo-waves.md` | 21,431 |
 | 2026-10-08 | ☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07) | `todo-waves.md` | 65,803 |
 | 2026-10-08 | ☑ WAVE 96 COMPLETE — the live-run triage card A, CLOSED 2026-10-08 (no phase; opened 2026-10-08) | `todo-waves.md` | 3,272 |
 | 2026-10-08 | ☑ WAVE 97 COMPLETE — the live-run triage cards B–E, CLOSED 2026-10-08 (no phase; opened 2026-10-08) | `todo-waves.md` | 10,834 |
