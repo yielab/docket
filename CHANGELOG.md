@@ -52,11 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The Seatbelt profile lets a jailed command start on macOS.** Every command jailed by the Seatbelt backend died of SIGABRT
-  before it ran (`command exited -6 [sandbox: seatbelt]`): the profile denied mapping
-  executables and reading dyld's shared cache, which lives on the Cryptexes volume since macOS
-  13. The profile now allows `file-map-executable` and reads `/System/Cryptexes`,
-  `/System/Volumes/Preboot/Cryptexes`, `/private/var/db/dyld`, `/private/var/select` and `/opt`
-  (never all of `/System`, whose data volume holds the home). Security Gates 0.55.0.
+  before it ran (`command exited -6 [sandbox: seatbelt]`): macOS 26 aborts a process that cannot
+  list the root directory, and the profile denied it. The profile now allows reading `/` itself
+  (its entry names, not its subtree) and `/opt`, without which Homebrew's git could not load
+  its libraries. Bisected on the macOS runner; the home stays unreadable. Security Gates 0.55.0.
 - **The sdist builds and installs with uv 0.13.** It shipped the repository-only `benchmarks/`
   directory, whose trace fixture is named with `:`, a member name uv 0.13 refuses to extract.
   `benchmarks/` is now excluded like `Formula/`, and no sdist member may contain `:` (CLI

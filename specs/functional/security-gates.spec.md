@@ -1039,12 +1039,11 @@ either.
 12. **The Seatbelt jail (`system.seatbelt_argv`).** `seatbelt_argv(roots, command, network)` returns
     `["/usr/bin/sandbox-exec", "-p", <profile>, "/bin/sh", "-c", command]`. The profile is one fixed
     template: `(version 1)`, `(deny default)`, `process-exec*`, `process-fork`, `sysctl-read`,
-    `mach-lookup`, `file-read-metadata`, `file-map-executable` (opening a file still needs a read
-    grant) and signals to self allowed; read-only `subpath` rules for `/usr`, `/bin`, `/sbin`,
-    `/etc`, `/opt`, `/private/etc`, `/private/var/select` (`/bin/sh`'s target),
-    `/private/var/db/dyld`, `/System/Library`, `/System/Cryptexes`,
-    `/System/Volumes/Preboot/Cryptexes` (dyld's shared cache since macOS 13), `/Library` and
-    `sys.prefix` -- never all of `/System`, whose `Volumes/Data` holds the home;
+    `mach-lookup`, `file-read-metadata` and signals to self allowed; `file-read-data` of the
+    literal `/` (the root's entry names, not its subtree: macOS 26 aborts a process that cannot
+    list it, with SIGABRT and no output); read-only `subpath` rules for `/usr`, `/bin`, `/sbin`,
+    `/etc`, `/opt` (Homebrew's libraries), `/private/etc`, `/System/Library`, `/Library` and
+    `sys.prefix`;
     read of `/dev/random|urandom`, read-write of `/dev/null|zero|tty|dtracehelper`; read-write
     `subpath` rules for each root, its repository dirs and the launch's private temp dir (never
     the real `$TMPDIR`); a
@@ -1809,11 +1808,10 @@ $ git clone https://anywhere.example/repo.git
 ## Changelog
 
 ### Version 0.55.0 (2026-10-14)
-- Exec sandbox item 12: the Seatbelt profile allows `file-map-executable` and reads dyld's shared
-  cache (`/System/Cryptexes`, `/System/Volumes/Preboot/Cryptexes`, `/private/var/db/dyld`),
-  `/private/var/select` and `/opt`. Without them every seatbelt-jailed command died of SIGABRT
-  on the macOS CI runner before running (`command exited -6`), and the macOS escape matrix
-  never passed.
+- Exec sandbox item 12: the Seatbelt profile allows `file-read-data` of the literal `/` and reads
+  `/opt`. Without the first, every seatbelt-jailed command died of SIGABRT with no output on the
+  macOS 26 CI runner (`command exited -6`), so the macOS escape matrix never passed; without
+  `/opt`, Homebrew's git could not load its libraries. Bisected on the runner.
 
 ### Version 0.54.0 (2026-10-13)
 

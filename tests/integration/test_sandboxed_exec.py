@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -267,8 +268,9 @@ class TestHonestReportingIsDeterministic:
         out = toolbox.run_bash((workspace,), "touch ran", sandbox="auto")
         assert not out.ok and not (workspace / "ran").exists()
         assert out.error.startswith("not run: no sandbox backend is usable")
+        native = "seatbelt" if sys.platform == "darwin" else "landlock"
         assert (
-            "[sandbox: none (landlock unavailable, docker not chosen or unreachable)]" in out.error
+            f"[sandbox: none ({native} unavailable, docker not chosen or unreachable)]" in out.error
         )
 
     def test_auto_forced_to_none_when_both_are_actually_available_says_so_too(

@@ -400,13 +400,12 @@ def _pin_profile_env(monkeypatch: pytest.MonkeyPatch) -> None:
 _PROFILE_HEAD = (
     "(version 1)\n"
     "(deny default)\n"
-    "(allow process-exec* process-fork sysctl-read mach-lookup file-read-metadata"
-    " file-map-executable)\n"
+    "(allow process-exec* process-fork sysctl-read mach-lookup file-read-metadata)\n"
     "(allow signal (target self))\n"
+    '(allow file-read-data (literal "/"))\n'
     '(allow file-read* (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/etc")'
-    ' (subpath "/opt") (subpath "/private/etc") (subpath "/private/var/select")'
-    ' (subpath "/private/var/db/dyld") (subpath "/System/Library") (subpath "/System/Cryptexes")'
-    ' (subpath "/System/Volumes/Preboot/Cryptexes") (subpath "/Library") (subpath "/opt/py"))\n'
+    ' (subpath "/opt") (subpath "/private/etc") (subpath "/System/Library") (subpath "/Library")'
+    ' (subpath "/opt/py"))\n'
     '(allow file-read* (literal "/dev/random") (literal "/dev/urandom"))\n'
     '(allow file-read* file-write* (literal "/dev/null") (literal "/dev/zero")'
     ' (literal "/dev/tty") (literal "/dev/dtracehelper"))\n'
