@@ -27,8 +27,11 @@ classifiers = [
 #   * `typer>=0.16` — typer 0.12.x pairs with a modern click (8.4.x) to raise
 #     `TypeError: Secondary flag is not valid for non-boolean flag` on this
 #     CLI's `--flag/--no-flag` options, while 0.13.x crashes rendering help
-#     with Click 8.5's required ``ctx`` parameter. 0.16.0 is the first release
-#     verified against both constraints.
+#     with Click 8.5's required ``ctx`` parameter. 0.16.0 was the first release
+#     verified against both constraints -- until Click 8.3+ (re-measured 2026-10-14):
+#     typer 0.16.0-0.17.4 accept any click and, paired with Click 8.5, pass a missing
+#     required argument through as ``None`` instead of a usage error (exit 1, not 2).
+#     0.17.5 caps ``click<8.3`` and 0.18.0 supports Click 8.5, so 0.17.5 is the floor.
 #   * `pydantic>=2` — pydantic 2.0 raises `NameError` for the `model_source`
 #     field (protected `model_` namespace) and rejects `Field(discriminator=...)`
 #     on this union shape. 56 test modules failed to even import. 2.1 is clean.
@@ -46,7 +49,7 @@ classifiers = [
 # with `pydantic-core` left to its own resolution (uv picks the newest compatible with
 # whichever pydantic is pinned), matching how `floors.txt` resolves it in CI.
 dependencies = [
-    "typer>=0.16",
+    "typer>=0.17.5",
     "rich>=13",
     "pydantic>=2.11",
     "pydantic-settings>=2",
@@ -57,8 +60,10 @@ dependencies = [
 [tool.hatch.build]
 # Homebrew consumes the release sdist, but the formula's SHA-256 is derived from
 # that same archive. Keeping the formula out of the archive avoids a circular,
-# non-reproducible release input; it remains a repository release input.
-exclude = ["/Formula"]
+# non-reproducible release input; it remains a repository release input. `benchmarks/`
+# is repository-only too, and its trace fixture is named with `:`, which uv 0.13 refuses
+# to extract from an sdist.
+exclude = ["/Formula", "/benchmarks"]
 
 [project.urls]
 Homepage = "https://github.com/yielab/docket"

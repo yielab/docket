@@ -27,6 +27,7 @@ def test_the_confinement_is_applied_before_exec(monkeypatch: pytest.MonkeyPatch)
     calls: list[str] = []
     monkeypatch.setattr(landlock, "abi_version", lambda: 5)
     monkeypatch.setattr(landlock, "no_new_privs", lambda: calls.append("nnp"))
+    monkeypatch.setattr(landlock, "socket_filter", lambda: b"\0" * 8)
     monkeypatch.setattr(landlock, "install_socket_filter", lambda p: calls.append("seccomp"))
     monkeypatch.setattr(landlock, "enforce", lambda plan: calls.append("landlock"))
     monkeypatch.setattr(jail.os, "execvp", lambda f, a: calls.append(f"exec {a}"))

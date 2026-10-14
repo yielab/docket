@@ -99,8 +99,12 @@ def find_partial_repointers(
     for path in sorted(tests_root.glob("**/*.py")):
         if path == CONFTEST_PATH:
             continue
+        text = path.read_text(encoding="utf-8")
+        # A hit names a tracked constant literally; skipping files that never do saves the parse.
+        if not any(name in text for name in tracked):
+            continue
         rel = str(path.relative_to(REPO_ROOT))
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = ast.parse(text, filename=str(path))
         for fn in ast.walk(tree):
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue

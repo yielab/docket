@@ -44,6 +44,15 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
 
 
 @pytest.fixture(autouse=True)
+def _plain_typer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Typer decides at import whether to force colour, from ``GITHUB_ACTIONS``/``FORCE_COLOR``,
+    and Rich reads ``FORCE_COLOR`` itself, so on a CI runner usage errors and help arrive boxed
+    in ANSI and no substring matches."""
+    monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", None)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Safety net: default AUDIT_LOG to an ephemeral path for every test.
 

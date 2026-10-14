@@ -93,6 +93,9 @@ def arena(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         shutil.rmtree(base)
         pytest.fail(f"the arena {real} is under a granted temp dir; rows would prove nothing")
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", base / "projects")
+    # A commit inside the jail needs an identity; a CI runner has no user.name.
+    for var in system._GIT_IDENTITY_VARS:
+        monkeypatch.setenv(var, "t" if var.endswith("NAME") else "t@t")
     try:
         yield base.resolve()
     finally:

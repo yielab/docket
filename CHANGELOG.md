@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a usable backend, the jail's network is a recorded `none`, every Implementer step has an
   external gate, and no variable docket injects for the pod is named in the secret store. A
   refusal is audited (`profile.refused`), names each fix, and settles `dispatch_refused`, so the
-  task can be retried once the fix is in. `status` and `doctor` show the profile and what it
+  task can be retried once the fix is in. `status` and `setup` show the profile and what it
   lacks. Nothing changes until an operator records the profile; `attended` is the default.
 - **Evidence 1.1.0 (Phase 42, P42-5).** `docket task show --json` and serve's evidence route
   report `v: "1.1.0"`, adding `gate` (label, exit code, reasonsInvalid) to a hop that ran an
@@ -51,6 +51,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Seatbelt profile lets a jailed command start on macOS.** Every command jailed by the Seatbelt backend died of SIGABRT
+  before it ran (`command exited -6 [sandbox: seatbelt]`): the profile denied mapping
+  executables and reading dyld's shared cache, which lives on the Cryptexes volume since macOS
+  13. The profile now allows `file-map-executable` and reads `/System/Cryptexes`,
+  `/System/Volumes/Preboot/Cryptexes`, `/private/var/db/dyld`, `/private/var/select` and `/opt`
+  (never all of `/System`, whose data volume holds the home). Security Gates 0.55.0.
+- **The sdist builds and installs with uv 0.13.** It shipped the repository-only `benchmarks/`
+  directory, whose trace fixture is named with `:`, a member name uv 0.13 refuses to extract.
+  `benchmarks/` is now excluded like `Formula/`, and no sdist member may contain `:` (CLI
+  Interface 2.7.2).
+- **The typer floor is `>=0.17.5`.** typer 0.16.0-0.17.4 accept Click 8.3+ and then pass a
+  missing required argument through as `None`: `docket task answer` with no id crashed (exit 1)
+  instead of a usage error (exit 2). 0.17.5 caps Click below 8.3 and 0.18 supports it.
 - **The classifier sees through wrappers (Wave 108).** With isolation off, `env rm -rf x`,
   `echo x | xargs rm`, `find . -delete` and an `awk` program calling `system(` ran unasked
   because the leading name was allowlisted. `env`, `xargs`, `nice`, `nohup`, `timeout`, `time`,
@@ -102,7 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `setup` and `setup sandbox` carries `networkEnforced`.
 - **A verifier that asks for a human is now answerable (Phase 42 live run).** The parked
   question shows the gate's reasons, the operator's answer reaches the Implementer it sends the
-  task back to, and `validate` refuses a gated step that routes to the `input` step right after
+  task back to, and `pod validate` refuses a gated step that routes to the `input` step right after
   it without routing `pass`, which re-parked the task after a passing retry.
 - **`docket pod validate` shows a pipeline's real error.** With an unquoted `on:` key anywhere,
   every error was reported as "Input should be a valid string", and the path was printed twice.
@@ -144,7 +157,7 @@ operator's OK (ADR 0024 section 6). Harness contracts 1.0 and 1.1 are unchanged.
   `Sandbox` block, `docket status` opens with it (the `Isolation` row is gone from the text), and
   `docket setup sandbox` prints what this machine has (`Backend: landlock (kernel 6.14)`, or what
   is missing per platform; `--json` gains `platform`, `kernel`, `available`, `missing`, `line`,
-  `hint`). `doctor` counts a home with pods and no usable backend as an issue
+  `hint`). `setup` counts a home with pods and no usable backend as an issue
   (`securityGates.sandboxUsable`), and `install.sh` prints the probe's one line.
 - **Wave 102: `docket setup sandbox backend auto|docker` (P41-3).** Docker is used only when
   chosen; `auto` means Landlock on Linux and Seatbelt on macOS.

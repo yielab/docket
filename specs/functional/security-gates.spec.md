@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.54.0
+**Version**: 0.55.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1039,8 +1039,12 @@ either.
 12. **The Seatbelt jail (`system.seatbelt_argv`).** `seatbelt_argv(roots, command, network)` returns
     `["/usr/bin/sandbox-exec", "-p", <profile>, "/bin/sh", "-c", command]`. The profile is one fixed
     template: `(version 1)`, `(deny default)`, `process-exec*`, `process-fork`, `sysctl-read`,
-    `mach-lookup`, `file-read-metadata` and signals to self allowed; read-only `subpath` rules for
-    `/usr`, `/bin`, `/sbin`, `/etc`, `/private/etc`, `/System/Library`, `/Library` and `sys.prefix`;
+    `mach-lookup`, `file-read-metadata`, `file-map-executable` (opening a file still needs a read
+    grant) and signals to self allowed; read-only `subpath` rules for `/usr`, `/bin`, `/sbin`,
+    `/etc`, `/opt`, `/private/etc`, `/private/var/select` (`/bin/sh`'s target),
+    `/private/var/db/dyld`, `/System/Library`, `/System/Cryptexes`,
+    `/System/Volumes/Preboot/Cryptexes` (dyld's shared cache since macOS 13), `/Library` and
+    `sys.prefix` -- never all of `/System`, whose `Volumes/Data` holds the home;
     read of `/dev/random|urandom`, read-write of `/dev/null|zero|tty|dtracehelper`; read-write
     `subpath` rules for each root, its repository dirs and the launch's private temp dir (never
     the real `$TMPDIR`); a
@@ -1803,6 +1807,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.55.0 (2026-10-14)
+- Exec sandbox item 12: the Seatbelt profile allows `file-map-executable` and reads dyld's shared
+  cache (`/System/Cryptexes`, `/System/Volumes/Preboot/Cryptexes`, `/private/var/db/dyld`),
+  `/private/var/select` and `/opt`. Without them every seatbelt-jailed command died of SIGABRT
+  on the macOS CI runner before running (`command exited -6`), and the macOS escape matrix
+  never passed.
 
 ### Version 0.54.0 (2026-10-13)
 

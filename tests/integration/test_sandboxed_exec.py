@@ -262,6 +262,7 @@ class TestHonestReportingIsDeterministic:
     ) -> None:
         """The gate allowed the command on the promise of a jail, so no jail means no run."""
         monkeypatch.setattr(system, "landlock_available", lambda: False)
+        monkeypatch.setattr(system, "seatbelt_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
         out = toolbox.run_bash((workspace,), "touch ran", sandbox="auto")
         assert not out.ok and not (workspace / "ran").exists()

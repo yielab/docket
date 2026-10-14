@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.7.1
+**Version**: 2.7.2
 **Status**: Complete
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -44,7 +44,9 @@ without deleting dependencies shared by other installed packages.
 
 The release sdist MUST exclude the repository-only `Formula/` directory. The
 Homebrew formula hashes that exact archive, so including the formula would make
-the published input depend on its own output digest.
+the published input depend on its own output digest.  No sdist member name may
+contain `:`: uv 0.13 refuses to extract such a member, so it could neither build
+a wheel from the sdist nor install it.
 
 The `[project.scripts]` console-command object MUST be the same entry point that
 `python -m docket` runs (`docket.__main__:main`), which only invokes the Typer
@@ -1003,6 +1005,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.7.2 (2026-10-14)
+- No release sdist member name contains `:` (uv 0.13 refused to build or install the sdist, whose
+  repository-only `benchmarks/` fixture is named with one; `benchmarks/` is now excluded).
 
 ### Version 2.7.1 (2026-10-13)
 - `task prune --traces --pod X` removes only pod X's terminal run records (it removed every pod's).

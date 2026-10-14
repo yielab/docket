@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned: uv 0.13 refuses an sdist member named with ":", which the adoption
+  # baseline's immutable source commit (benchmarks/results/wave29) holds.
+  UV_VERSION: "0.12.24"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,6 +21,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: ${{ env.UV_VERSION }}
 
       - name: Set up Python
         run: uv python install 3.11

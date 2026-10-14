@@ -44,8 +44,8 @@ def test_root_artifacts_install_as_canonical_docket_without_source_tree(
     _run("uv", "build", "--out-dir", str(artifacts), cwd=ROOT, env=env)
     artifact = next(artifacts.glob(f"docket-*{suffix}"))
     if suffix == ".tar.gz":
-        with tarfile.open(artifact, "r:gz") as archive:
-            assert not any("/Formula/" in name for name in archive.getnames())
+        with tarfile.open(artifact, "r:gz") as tar:
+            assert not [n for n in tar.getnames() if ":" in n or "/Formula/" in n]
     floors = tmp_path / "floors.txt"
     _run(
         "uv",

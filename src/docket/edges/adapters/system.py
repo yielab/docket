@@ -488,13 +488,21 @@ def landlock_argv(roots: tuple[Path, ...], command: str, network: bool = True) -
     return [*_landlock_prefix(roots, network), "/bin/sh", "-c", command]
 
 
+# dyld maps the shared cache from the Cryptexes volume (macOS 13+) and /bin/sh follows
+# /private/var/select/sh; without them every jailed command dies of SIGABRT before it runs.
+# Never all of /System: /System/Volumes/Data is the whole user volume, home included.
 _SEATBELT_READ = (
     "/usr",
     "/bin",
     "/sbin",
     "/etc",
+    "/opt",
     "/private/etc",
+    "/private/var/select",
+    "/private/var/db/dyld",
     "/System/Library",
+    "/System/Cryptexes",
+    "/System/Volumes/Preboot/Cryptexes",
     "/Library",
 )
 _SEATBELT_READ_DEVICES = ("/dev/random", "/dev/urandom")
@@ -515,7 +523,8 @@ def seatbelt_profile(roots: tuple[Path, ...], network: bool = True) -> str:
     lines = [
         "(version 1)",
         "(deny default)",
-        "(allow process-exec* process-fork sysctl-read mach-lookup file-read-metadata)",
+        "(allow process-exec* process-fork sysctl-read mach-lookup file-read-metadata"
+        " file-map-executable)",
         "(allow signal (target self))",
         "(allow file-read* " + " ".join(f"(subpath {_sbpl(p)})" for p in read) + ")",
         "(allow file-read* "
