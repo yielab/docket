@@ -512,7 +512,8 @@ def seatbelt_profile(roots: tuple[Path, ...], network: bool = True) -> str:
     """The fixed Seatbelt profile: deny by default, system paths and ``sys.prefix`` readable, the
     roots (with their repository dirs) read-write, guarded git paths not writable."""
     rw, ro = _mount_dirs(roots)
-    read = [*_SEATBELT_READ, os.path.realpath(sys.prefix)]
+    prefixes = (os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix))
+    read = list(dict.fromkeys((*_SEATBELT_READ, *prefixes)))
     lines = [
         "(version 1)",
         "(deny default)",

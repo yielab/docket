@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list the root directory, and the profile denied it. The profile now allows reading `/` itself
   (its entry names, not its subtree) and `/opt`, without which Homebrew's git could not load
   its libraries. Bisected on the macOS runner; the home stays unreadable. Security Gates 0.55.0.
+- **A virtualenv's `python3` runs inside the jail.** Both jails granted the venv (`sys.prefix`)
+  but not the interpreter it points at (`sys.base_prefix`), which uv and pyenv install under the
+  home: under Seatbelt `python3` could not start, and under Landlock it only started by falling
+  back to a system Python of the same minor version. Both now read `sys.base_prefix`.
 - **The sdist builds and installs with uv 0.13.** It shipped the repository-only `benchmarks/`
   directory, whose trace fixture is named with `:`, a member name uv 0.13 refuses to extract.
   `benchmarks/` is now excluded like `Formula/`, and no sdist member may contain `:` (CLI

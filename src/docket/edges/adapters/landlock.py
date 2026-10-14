@@ -94,7 +94,8 @@ def handled_fs_for(abi: int) -> int:
 
 
 def default_ro_roots() -> tuple[str, ...]:
-    return (*DEFAULT_RO, sys.prefix)
+    # A venv's interpreter and stdlib live under base_prefix, often in the operator's home.
+    return tuple(dict.fromkeys((*DEFAULT_RO, sys.prefix, sys.base_prefix)))
 
 
 def plan_ruleset(

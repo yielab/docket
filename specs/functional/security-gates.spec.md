@@ -1007,7 +1007,8 @@ either.
     ABI knows: read-write (read, write, make-*, remove, plus refer/truncate/ioctl-dev where the
     ABI has them) on the roots, including the launch's private temp dir (never the shared system
     temp dir); read and execute only on `/usr`, `/lib`, `/lib64`,
-    `/bin`, `/sbin`, `/etc`, `/opt`, `sys.prefix` and `/dev/zero|urandom`, read-write on
+    `/bin`, `/sbin`, `/etc`, `/opt`, `sys.prefix`, `sys.base_prefix` (a venv's interpreter and
+    stdlib) and `/dev/zero|urandom`, read-write on
     `/dev/null|tty`. Nothing else is granted, so the operator's home and `DOCKET_HOME` are denied
     for read as well as write. A listed path that does not exist is skipped. Under `--net none` the
     entry handles Landlock TCP bind/connect with no rule when ABI >= 4, and installs a seccomp
@@ -1042,8 +1043,8 @@ either.
     `mach-lookup`, `file-read-metadata` and signals to self allowed; `file-read-data` of the
     literal `/` (the root's entry names, not its subtree: macOS 26 aborts a process that cannot
     list it, with SIGABRT and no output); read-only `subpath` rules for `/usr`, `/bin`, `/sbin`,
-    `/etc`, `/opt` (Homebrew's libraries), `/private/etc`, `/System/Library`, `/Library` and
-    `sys.prefix`;
+    `/etc`, `/opt` (Homebrew's libraries), `/private/etc`, `/System/Library`, `/Library`,
+    `sys.prefix` and `sys.base_prefix`;
     read of `/dev/random|urandom`, read-write of `/dev/null|zero|tty|dtracehelper`; read-write
     `subpath` rules for each root, its repository dirs and the launch's private temp dir (never
     the real `$TMPDIR`); a
@@ -1812,6 +1813,9 @@ $ git clone https://anywhere.example/repo.git
   `/opt`. Without the first, every seatbelt-jailed command died of SIGABRT with no output on the
   macOS 26 CI runner (`command exited -6`), so the macOS escape matrix never passed; without
   `/opt`, Homebrew's git could not load its libraries. Bisected on the runner.
+- Exec sandbox items 11-12: both jails also read `sys.base_prefix`. A venv's `python3` resolves to
+  its base interpreter, often under the operator's home: under Seatbelt it could not start, and
+  under Landlock it started only by falling back to a system Python of the same minor version.
 
 ### Version 0.54.0 (2026-10-13)
 

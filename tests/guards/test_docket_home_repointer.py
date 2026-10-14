@@ -117,7 +117,11 @@ class TestOneWayToRepointDocketHome:
             rel = str(path.relative_to(TESTS_ROOT))
             if rel in ALLOWLIST:
                 continue
-            tree = ast.parse(path.read_text(), filename=str(path))
+            text = path.read_text()
+            # A violation names DOCKET_HOME literally; skipping files that never do saves the parse.
+            if "DOCKET_HOME" not in text:
+                continue
+            tree = ast.parse(text, filename=str(path))
             for func_name, lineno in _function_violations(tree):
                 failures.append(f"tests/{rel}:{lineno} in {func_name}()")
         assert not failures, (

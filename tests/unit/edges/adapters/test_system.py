@@ -318,6 +318,9 @@ class TestJailLaunch:
     ) -> None:
         monkeypatch.setenv("PATH", "/usr/bin")
         monkeypatch.setenv("SOME_SECRET", "x")
+        # /usr/bin/git is the Xcode shim on macOS, whose first run alone can pass 2s.
+        monkeypatch.setattr(_sys, "git_dirs", lambda root: [])
+        monkeypatch.setattr(_sys, "git_identity_env", lambda root: {})
         cache = tmp_path / "cache"
         launch = _sys.jail_launch(
             (tmp_path,), "echo hi", "landlock", network=False, env={"A": "1"}, extra_rw=(cache,)
@@ -393,6 +396,7 @@ class TestVerifyUnderJail:
 
 def _pin_profile_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_sys.sys, "prefix", "/opt/py")
+    monkeypatch.setattr(_sys.sys, "base_prefix", "/opt/py")
     monkeypatch.setattr(_sys.os.path, "realpath", lambda p: str(p))
     monkeypatch.setattr(_sys, "_mount_dirs", lambda roots: ([str(r) for r in roots], []))
 
