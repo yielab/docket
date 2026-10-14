@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.5] - 2026-10-14
+
+Harness contract 1.2: a program that runs docket through `docket exec` no longer needs to hold a
+model key, endpoint or catalog. Under `--contract 1.2` the run uses the operator's own `docket
+setup` (read-only, from `DOCKET_SETUP_HOME` or `~/.docket`), `--model` defaults to the role's
+setup model, and `docket setup harness --json` answers offline whether that setup can serve a run.
+Since `v0.2.0-beta.4` docket also gained one CLI surface of eleven commands, a hardened agent
+boundary (Phase 40), and one execution envelope on Landlock, Seatbelt or a chosen Docker, with an
+escape matrix that gates release (Phase 41). Phase 42 adds an external verification gate
+(a pipeline step runs your verifier and routes on its exit status) and the `lights-out` profile,
+which refuses an unattended dispatch unless isolation, a cut network and an external gate are all
+in place. The jail was hardened again before the cut: commands no longer reach the shared temp
+dir or another branch's refs, the classifier sees through `env`/`xargs`/`find -delete`, and the
+Seatbelt backend now passes the escape matrix on macOS.
+
+**Breaking changes.** docket has no installed base yet, so nothing removed below kept an alias:
+the CLI is eleven top-level commands (ADR 0022; removed names exit 2), `docket harness run` is
+`docket exec`, `pod apply` is `pod update`, the `bwrap` backend and the `isolate` field of
+`kind: mcp-server` are gone, and a repository's run-on-this-machine commands need the
+operator's OK (ADR 0024 section 6). Harness contracts 1.0 and 1.1 are unchanged.
+
 ### Added
 
 - **An external verification gate (Phase 42, P42-2, ADR 0025).** A pipeline step can carry
@@ -33,116 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   external gate and `directives` (path and sha256 of each repository file composed from the
   base commit) to the task. The evidence embedded in a harness result stays `1.0.0`, byte for
   byte.
-
-### Changed
-
-- **A gate that sends a task back says why (Phase 42, P42-1).** A backward `on:` route out of a
-  gate that did not pass (for example `until: verify`) now gives the target's next hop a
-  `--- GATE FAILED: <step id> ---` section with the gate's redacted output tail. Before, the
-  Implementer retried without seeing why its verify command failed. A forward route, a backward
-  `pass` route and a verdict rework compose the same messages as before.
-- **Repository instructions come from the task's base commit (Phase 42, P42-3).** In a task
-  worktree, the codebase's `AGENTS.md`, every `projectInstructions` file and the skills under
-  `.docket/skills/` are read with host-side git from the commit the worktree was created from,
-  not from the agent-writable worktree, so an Implementer can no longer rewrite what the
-  Reviewer and Tester are told in the same task. A file added by the task is not read until it
-  is merged. Without a task worktree nothing changes. The turn result carries the path and
-  sha256 of each file served (`TurnResult.repo_files`).
-
-### Fixed
-
-- **The Seatbelt profile lets a jailed command start on macOS.** Every command jailed by the Seatbelt backend died of SIGABRT
-  before it ran (`command exited -6 [sandbox: seatbelt]`): macOS 26 aborts a process that cannot
-  list the root directory, and the profile denied it. The profile now allows reading `/` itself
-  (its entry names, not its subtree) and `/opt`, without which Homebrew's git could not load
-  its libraries. Bisected on the macOS runner; the home stays unreadable. Security Gates 0.55.0.
-- **A virtualenv's `python3` runs inside the jail.** Both jails granted the venv (`sys.prefix`)
-  but not the interpreter it points at (`sys.base_prefix`), which uv and pyenv install under the
-  home: under Seatbelt `python3` could not start, and under Landlock it only started by falling
-  back to a system Python of the same minor version. Both now read `sys.base_prefix`.
-- **The sdist builds and installs with uv 0.13.** It shipped the repository-only `benchmarks/`
-  directory, whose trace fixture is named with `:`, a member name uv 0.13 refuses to extract.
-  `benchmarks/` is now excluded like `Formula/`, and no sdist member may contain `:` (CLI
-  Interface 2.7.2).
-- **The typer floor is `>=0.17.5`.** typer 0.16.0-0.17.4 accept Click 8.3+ and then pass a
-  missing required argument through as `None`: `docket task answer` with no id crashed (exit 1)
-  instead of a usage error (exit 2). 0.17.5 caps Click below 8.3 and 0.18 supports it.
-- **The classifier sees through wrappers (Wave 108).** With isolation off, `env rm -rf x`,
-  `echo x | xargs rm`, `find . -delete` and an `awk` program calling `system(` ran unasked
-  because the leading name was allowlisted. `env`, `xargs`, `nice`, `nohup`, `timeout`, `time`,
-  `command` and `stdbuf` are now classified by the command they run; `find` with a deleting or
-  executing action and an `awk` program that runs a command or writes a file ask. `setsid` stays
-  off the allowlist (a new session escapes the process group a cancel kills). Interpreters stay
-  allowlisted: without the sandbox the allowlist is not a containment boundary
-  (security-gates 0.51.0).
-- **The jail no longer lets an agent move another branch (Wave 108).** On every backend
-  (Landlock, Docker, Seatbelt) a linked task worktree's jail keeps the common dir's `refs`,
-  `logs/refs` and `packed-refs` read-only and re-opens only the task branch's ref and reflog
-  directory (`refs/heads/docket/<pod>/`), so a jailed `git update-ref refs/heads/main` or a tag
-  write fails while a commit on the task's branch works. A linked worktree that is not a docket
-  task gets no ref write; a main checkout under Docker or Seatbelt is unchanged
-  (security-gates 0.52.0, 0.53.0).
-- **The jail no longer writes the shared temp dir (Wave 108).** Landlock and Seatbelt granted
-  the system temp dir (`/tmp` on Linux) read-write, so a jailed command could write anything
-  under it, a repository there included. Each jailed launch now gets a private 0700 temp dir
-  (`<cache dir>/tmp`, else `DOCKET_HOME/jail-tmp/<hash>`) exported as `TMPDIR`/`TMP`/`TEMP`,
-  stdio MCP servers included; Docker keeps the container's own `/tmp` (security-gates 0.54.0).
-- **A parked task can be cancelled (Wave 108).** `docket task cancel` ends a task waiting for
-  an answer or an approval as `cancelled`, takes it out of the inbox, denies a pending approval
-  and audits `task.cancel`; before, the only exit was `task answer --decline`.
-- **Host-side git on a task worktree trusts only the recorded git dirs (Wave 108).**
-  `docket task diff` registers the task's recorded `gitDir`/`commonDir` before running git, and
-  the diff hint in `task show` names both through `GIT_DIR`/`GIT_COMMON_DIR`/`GIT_WORK_TREE`, so
-  neither reads the `.git` or `commondir` file the agent could rewrite.
-- **`docket exec` (Wave 108).** A jailed run gets a per-workspace cache dir under the caller's
-  `DOCKET_HOME` as its home; `--answer-timeout` reaches the wait through the run's env
-  (`DOCKET_APPROVAL_TIMEOUT`, including every hop of a `--recipe` run) instead of mutating
-  `config.TOOL_APPROVAL_TIMEOUT`; the stdin answer reader stops with the run and is joined
-  (harness-mode 1.10.0).
-- **`docket setup --fix --json` reports every check the text report runs (Wave 108).** Eight
-  missing checks gained stable keys, so `healthy` cannot be true while the text counts an issue;
-  the text report now counts a home with project agents and no delivering channel as an issue,
-  as the JSON did (cli-json-shapes 1.32.0).
-- **Smaller fixes (Wave 108).** `POST /dispatch/<project>` answers 404/400 instead of dropping
-  the connection when a pod's bound pipeline cannot be resolved (serve-read-api 3.6.0);
-  `task prune --traces --pod X` removes only that pod's terminal run records; the generated
-  AGENTS.md drops the retired "write it to HEARTBEAT.md" line (template version 5); `docket
-  inbox` indents every continuation line of a multi-line question, held command or label
-  (operator-loop 1.7.0); `core/profile.py` uses the public `dispatch.hop_env`;
-  `docs/assets/isolation.png` shows the Landlock sandbox report.
-
-- **The network is no longer reported as cut while it is open (Phase 42, P42-7).** With
-  isolation off, `docket setup sandbox`, `docket setup`, `docket status` and `docket pod show`
-  printed the network as `none` (with an `ok`) although nothing was jailed and egress was open.
-  They now say `none (<scope>), not enforced: isolation off, egress is open`, and the JSON of
-  `setup` and `setup sandbox` carries `networkEnforced`.
-- **A verifier that asks for a human is now answerable (Phase 42 live run).** The parked
-  question shows the gate's reasons, the operator's answer reaches the Implementer it sends the
-  task back to, and `pod validate` refuses a gated step that routes to the `input` step right after
-  it without routing `pass`, which re-parked the task after a passing retry.
-- **`docket pod validate` shows a pipeline's real error.** With an unquoted `on:` key anywhere,
-  every error was reported as "Input should be a valid string", and the path was printed twice.
-- **A short-form `input` step keeps an unquoted `on:` map.** YAML reads a bare `on:` as the
-  boolean `True`; the input short form dropped it, so `- ask: {input: ..., on: ...}` loaded with
-  no routes.
-
-## [0.2.0-beta.5] - 2026-10-13
-
-Harness contract 1.2: a program that runs docket through `docket exec` no longer needs to hold a
-model key, endpoint or catalog. Under `--contract 1.2` the run uses the operator's own `docket
-setup` (read-only, from `DOCKET_SETUP_HOME` or `~/.docket`), `--model` defaults to the role's
-setup model, and `docket setup harness --json` answers offline whether that setup can serve a run.
-Since `v0.2.0-beta.4` docket also gained one CLI surface of eleven commands, a hardened agent
-boundary (Phase 40), and one execution envelope on Landlock, Seatbelt or a chosen Docker, with an
-escape matrix that gates release (Phase 41).
-
-**Breaking changes.** docket has no installed base yet, so nothing removed below kept an alias:
-the CLI is eleven top-level commands (ADR 0022; removed names exit 2), `docket harness run` is
-`docket exec`, `pod apply` is `pod update`, the `bwrap` backend and the `isolate` field of
-`kind: mcp-server` are gone, and a repository's run-on-this-machine commands need the
-operator's OK (ADR 0024 section 6). Harness contracts 1.0 and 1.1 are unchanged.
-
-### Added
 
 - **Harness contract 1.2: `docket exec` runs on the operator's own setup (ADR 0026, D-62).**
   `--contract 1.2` stamps every line `v: "1.2.0"`. With `DOCKET_LLM_BASE_URL` unset, the endpoint
@@ -226,6 +137,81 @@ operator's OK (ADR 0024 section 6). Harness contracts 1.0 and 1.1 are unchanged.
   error, and every stdio MCP server starts in the turn's jail when isolation is on.
 
 ### Fixed
+
+- **The Seatbelt profile lets a jailed command start on macOS.** Every command jailed by the
+  Seatbelt backend died of SIGABRT before it ran (`command exited -6 [sandbox: seatbelt]`): macOS 26 aborts a process that cannot
+  list the root directory, and the profile denied it. The profile now allows reading `/` itself
+  (its entry names, not its subtree) and `/opt`, without which Homebrew's git could not load
+  its libraries. Bisected on the macOS runner; the home stays unreadable. Security Gates 0.55.0.
+- **A virtualenv's `python3` runs inside the jail.** Both jails granted the venv (`sys.prefix`)
+  but not the interpreter it points at (`sys.base_prefix`), which uv and pyenv install under the
+  home: under Seatbelt `python3` could not start, and under Landlock it only started by falling
+  back to a system Python of the same minor version. Both now read `sys.base_prefix`.
+- **The sdist builds and installs with uv 0.13.** It shipped the repository-only `benchmarks/`
+  directory, whose trace fixture is named with `:`, a member name uv 0.13 refuses to extract.
+  `benchmarks/` is now excluded like `Formula/`, and no sdist member may contain `:` (CLI
+  Interface 2.7.2).
+- **The typer floor is `>=0.17.5`.** typer 0.16.0-0.17.4 accept Click 8.3+ and then pass a
+  missing required argument through as `None`: `docket task answer` with no id crashed (exit 1)
+  instead of a usage error (exit 2). 0.17.5 caps Click below 8.3 and 0.18 supports it.
+- **The classifier sees through wrappers (Wave 108).** With isolation off, `env rm -rf x`,
+  `echo x | xargs rm`, `find . -delete` and an `awk` program calling `system(` ran unasked
+  because the leading name was allowlisted. `env`, `xargs`, `nice`, `nohup`, `timeout`, `time`,
+  `command` and `stdbuf` are now classified by the command they run; `find` with a deleting or
+  executing action and an `awk` program that runs a command or writes a file ask. `setsid` stays
+  off the allowlist (a new session escapes the process group a cancel kills). Interpreters stay
+  allowlisted: without the sandbox the allowlist is not a containment boundary
+  (security-gates 0.51.0).
+- **The jail no longer lets an agent move another branch (Wave 108).** On every backend
+  (Landlock, Docker, Seatbelt) a linked task worktree's jail keeps the common dir's `refs`,
+  `logs/refs` and `packed-refs` read-only and re-opens only the task branch's ref and reflog
+  directory (`refs/heads/docket/<pod>/`), so a jailed `git update-ref refs/heads/main` or a tag
+  write fails while a commit on the task's branch works. A linked worktree that is not a docket
+  task gets no ref write; a main checkout under Docker or Seatbelt is unchanged
+  (security-gates 0.52.0, 0.53.0).
+- **The jail no longer writes the shared temp dir (Wave 108).** Landlock and Seatbelt granted
+  the system temp dir (`/tmp` on Linux) read-write, so a jailed command could write anything
+  under it, a repository there included. Each jailed launch now gets a private 0700 temp dir
+  (`<cache dir>/tmp`, else `DOCKET_HOME/jail-tmp/<hash>`) exported as `TMPDIR`/`TMP`/`TEMP`,
+  stdio MCP servers included; Docker keeps the container's own `/tmp` (security-gates 0.54.0).
+- **A parked task can be cancelled (Wave 108).** `docket task cancel` ends a task waiting for
+  an answer or an approval as `cancelled`, takes it out of the inbox, denies a pending approval
+  and audits `task.cancel`; before, the only exit was `task answer --decline`.
+- **Host-side git on a task worktree trusts only the recorded git dirs (Wave 108).**
+  `docket task diff` registers the task's recorded `gitDir`/`commonDir` before running git, and
+  the diff hint in `task show` names both through `GIT_DIR`/`GIT_COMMON_DIR`/`GIT_WORK_TREE`, so
+  neither reads the `.git` or `commondir` file the agent could rewrite.
+- **`docket exec` (Wave 108).** A jailed run gets a per-workspace cache dir under the caller's
+  `DOCKET_HOME` as its home; `--answer-timeout` reaches the wait through the run's env
+  (`DOCKET_APPROVAL_TIMEOUT`, including every hop of a `--recipe` run) instead of mutating
+  `config.TOOL_APPROVAL_TIMEOUT`; the stdin answer reader stops with the run and is joined
+  (harness-mode 1.10.0).
+- **`docket setup --fix --json` reports every check the text report runs (Wave 108).** Eight
+  missing checks gained stable keys, so `healthy` cannot be true while the text counts an issue;
+  the text report now counts a home with project agents and no delivering channel as an issue,
+  as the JSON did (cli-json-shapes 1.32.0).
+- **Smaller fixes (Wave 108).** `POST /dispatch/<project>` answers 404/400 instead of dropping
+  the connection when a pod's bound pipeline cannot be resolved (serve-read-api 3.6.0);
+  `task prune --traces --pod X` removes only that pod's terminal run records; the generated
+  AGENTS.md drops the retired "write it to HEARTBEAT.md" line (template version 5); `docket
+  inbox` indents every continuation line of a multi-line question, held command or label
+  (operator-loop 1.7.0); `core/profile.py` uses the public `dispatch.hop_env`;
+  `docs/assets/isolation.png` shows the Landlock sandbox report.
+
+- **The network is no longer reported as cut while it is open (Phase 42, P42-7).** With
+  isolation off, `docket setup sandbox`, `docket setup`, `docket status` and `docket pod show`
+  printed the network as `none` (with an `ok`) although nothing was jailed and egress was open.
+  They now say `none (<scope>), not enforced: isolation off, egress is open`, and the JSON of
+  `setup` and `setup sandbox` carries `networkEnforced`.
+- **A verifier that asks for a human is now answerable (Phase 42 live run).** The parked
+  question shows the gate's reasons, the operator's answer reaches the Implementer it sends the
+  task back to, and `pod validate` refuses a gated step that routes to the `input` step right after
+  it without routing `pass`, which re-parked the task after a passing retry.
+- **`docket pod validate` shows a pipeline's real error.** With an unquoted `on:` key anywhere,
+  every error was reported as "Input should be a valid string", and the path was printed twice.
+- **A short-form `input` step keeps an unquoted `on:` map.** YAML reads a bare `on:` as the
+  boolean `True`; the input short form dropped it, so `- ask: {input: ..., on: ...}` loaded with
+  no routes.
 
 - **Wave 103: the Landlock jail keeps git hooks and config read-only (P41-8).** It granted a
   repository's whole git dir, so an isolated agent on Linux could write `.git/hooks` or
@@ -341,6 +327,19 @@ operator's OK (ADR 0024 section 6). Harness contracts 1.0 and 1.1 are unchanged.
   was the fixed `approval denied`. `POST /approvals/<token>` with `reason` carries it the same way.
 
 ### Changed
+
+- **A gate that sends a task back says why (Phase 42, P42-1).** A backward `on:` route out of a
+  gate that did not pass (for example `until: verify`) now gives the target's next hop a
+  `--- GATE FAILED: <step id> ---` section with the gate's redacted output tail. Before, the
+  Implementer retried without seeing why its verify command failed. A forward route, a backward
+  `pass` route and a verdict rework compose the same messages as before.
+- **Repository instructions come from the task's base commit (Phase 42, P42-3).** In a task
+  worktree, the codebase's `AGENTS.md`, every `projectInstructions` file and the skills under
+  `.docket/skills/` are read with host-side git from the commit the worktree was created from,
+  not from the agent-writable worktree, so an Implementer can no longer rewrite what the
+  Reviewer and Tester are told in the same task. A file added by the task is not read until it
+  is merged. Without a task worktree nothing changes. The turn result carries the path and
+  sha256 of each file served (`TurnResult.repo_files`).
 
 - **Wave 100: the gate inside the sandbox, and network `none` (P41-6, ADR 0024).** Inside a
   working jail the command gate allows any binary except a high-risk class, a command it cannot
