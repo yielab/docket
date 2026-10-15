@@ -17,7 +17,13 @@
 > resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
 > reading the diff and assuming.
 
-## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — PLANNED 2026-10-14
+## ▶ ACTIVE BOARD — Wave 109 (Phase 43, the task: P43-1..5) — claimed 2026-10-14
+
+Base: the commit that adds this banner on `develop`. Five workers (four Sonnet, one Haiku), one
+isolated worktree each on branch `p43-<n>-<slug>`; merge order P43-1..5. Wave 110 stays planned
+until 109 merges.
+
+## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — IN PROGRESS (Wave 109) 2026-10-14
 
 Brief: [ADR 0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md). Contract:
 [specs/api/operator-api.spec.md](specs/api/operator-api.spec.md) (5.0.0, planned). Packets:
@@ -40,7 +46,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-1 — an addressable task over HTTP and CLI
 
-- **Status:** TODO · **Size:** M · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@worker p43-1) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0027 evidence table rows 1 and 2: `POST /tasks/<pod>` takes four fields and
   every id is `uuid4`; an external plan of record cannot retry safely or find its task.
 - **Goal:** `enqueue_task` accepts `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
@@ -67,7 +73,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-2 — the task worktree starts from `baseRef`
 
-- **Status:** TODO · **Size:** S · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@worker p43-2) · **Size:** S · **Model:** Sonnet
 - **Trigger:** `provision_task_worktree` always branches from the codebase's HEAD
   (`core/pod_provisioning.py`), so a rework cannot continue on the previous attempt's branch.
 - **Goal:** `git_worktree_add(repo, path, branch, start_point="")` passes the start point;
@@ -89,7 +95,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-3 — pipeline and gate per task
 
-- **Status:** TODO · **Size:** M · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@worker p43-3) · **Size:** M · **Model:** Sonnet
 - **Trigger:** `dispatch_pod` resolves `effective_spec` once before the claim loop; a bug and a
   feature in the same pod cannot run different methodologies; the task's acceptance command has
   nowhere to go.
@@ -118,7 +124,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-4 — restrictions and `maxTokens` reach the live hop
 
-- **Status:** TODO · **Size:** M · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@worker p43-4) · **Size:** M · **Model:** Sonnet
 - **Trigger:** security condition in ADR 0027 point 3; today nothing on a task can narrow a hop.
 - **Goal:** at `_compose_hop`: `deniedTools` is unioned into the role narrowing
   (`registry_for_role` denials + pod `deniedTools` + task); `network: "none"` is the hop's jail
@@ -149,7 +155,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-5 — `hop_started` / `hop_finished`, model and provider on the hop
 
-- **Status:** TODO · **Size:** S · **Model:** Haiku
+- **Status:** IN-PROGRESS (@worker p43-5) · **Size:** S · **Model:** Haiku
 - **Trigger:** measurement 3 in ADR 0027: a full run's trace has no hop-level event; the hop
   record has `usage` but no `model`/`provider`.
 - **Goal:** `EVENT_TYPES` gains `hop_started`, `hop_finished` with the payloads of
