@@ -94,6 +94,8 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "question_asked",  # a `consult` call posed a QuestionV11 to the operator (core/consult.py)
         "input_expired",  # an unanswered question passed its deadline; task -> blocked
         "llm_call",  # one backend chat-completions exchange: model, tokens, latency
+        "hop_started",  # a pod-dispatch hop began: step, member, model, provider, cycle
+        "hop_finished",  # ...and ended: ok, verdict, gate, usage, durationMs
         "process_started",  # a tool handler's real OS process group started
         "process_exited",  # ...and its matching exit, with exitCode or signal
         "error",

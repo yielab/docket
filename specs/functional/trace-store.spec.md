@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -8,7 +8,7 @@ every trace-emitting module writes through: `core/agent_loop.py` (tool and model
 the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
 `harness-mode.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -77,9 +77,10 @@ This specification does NOT cover:
    `rework_started`, `review_rejected`, `stale_claim`, `hop_retry`, `paused_refused`,
    `approval_required`, `approval_resumed`, `approval_task_denied`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
-   `verdict_unparseable`, `step_skipped`, `command_step`, `route_taken`, `llm_call`, `error`,
-   `session_end`. Adding a member **MUST** be a one-line change to this frozenset; removing one
-   is a breaking change to every consumer enumerated in Scope above.
+   `verdict_unparseable`, `step_skipped`, `command_step`, `route_taken`, `llm_call`,
+   `hop_started`, `hop_finished`, `error`, `session_end`. Adding a member **MUST** be a one-line
+   change to this frozenset; removing one is a breaking change to every consumer enumerated in
+   Scope above.
 
 ### Redaction
 
@@ -331,6 +332,12 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.8.0 (2026-10-14)
+
+- `EVENT_TYPES` gains `hop_started` and `hop_finished` (P43-5, `pod-dispatch.spec.md` 6.50.0): one
+  pair per pod-dispatch hop, written in the task's session. Their payloads are defined there;
+  this store owns only their membership in the vocabulary.
 
 ### Version 1.7.0 (2026-10-12)
 
