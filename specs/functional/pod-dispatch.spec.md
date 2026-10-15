@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.45.0
+**Version**: 6.48.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -531,6 +531,21 @@ was seeded once at binding time.)*
    that removal fails. `docket pod plan` **MUST** name its resolved source: an
    explicit `--file`'s path, the bound pipeline's hash, the blueprint's name, or "built-in
    default".
+7. **Pipeline per task (P43-3).** A claimed task that carries a `pipeline` name (a string,
+   `^[a-z0-9][a-z0-9._-]*$`; a name with a path separator never reaches the filesystem) **MUST**
+   run that pipeline instead of the pod's effective one, resolved once at claim by
+   `_task_pipeline(project, task, default_spec)`: first
+   `<pod config dir>/pipelines/<name>.yaml` (or `.yml`), source `pod:<name>`; then a recipe
+   directory of that name (the operator's `recipes/` before the shipped ones) holding a
+   `pipeline.yaml`, source `recipe:<name>`; otherwise the task is refused. A task with no
+   `pipeline` runs the default and records source `default`. A chosen pipeline is
+   caller-supplied-like: it is never patched with the pod's `maxReworkCycles`, and its variables
+   are resolved per task as the default's are. A name that resolves to nothing, a file that does
+   not validate, or unresolved step variables **MUST** settle the claimed task `failed` with
+   `failureKind: "pipeline"` and the reason, before any hop and with no hop recorded, and emit
+   one `dispatch_refused` trace event naming the reason; the dispatch loop then continues to the
+   next task. `pipeline` is not in `RESUMABLE_FAILURE_KINDS`: `--resume` does not reclaim it.
+   The claim records `pipelineSource` on the task.
 
 ### Per-hop execution
 
@@ -1366,6 +1381,21 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    `gate_needs_human` or `gate_error`; an unrouted `pass` advances. The exit status is always the
    process's own (`system.run_command`), never a value the command wrote; a pod without a cache
    dir still runs the gate, with no reasons file, so the output tail is the reasons.
+7. **Gate per task (P43-3).** A claimed task that carries a `gate` (`{"command": str,
+   "timeoutS"?: int, "map"?: {exit code: label}}`) **MUST** get an `ExternalGate` built from it
+   (`_task_gate`; `map` moves the named codes to their label over the default `pass: 0`,
+   `fail: 1`, `needs_human: 2`), evaluated after the own gate of the pipeline's **last
+   `implementer` step** (else the last step that runs an agent turn) has advanced, and never in
+   place of that gate. It uses the step's own `on` map and the same label handling as item 6. The
+   step's own gate is evaluated first: a non-advancing outcome (a failure, or a route other than
+   `pass`) stands and the task gate does not run. A task gate that does not pass decides the
+   hop's outcome, so `{"command": "false"}` fails the task `gate_failed` after the implementer
+   passed `verifyCmd`. The trace events of item 6 carry `"source": "task"` in their payload and
+   `hop.verify` carries `"source": "task"` and, when the step's own gate also produced evidence
+   and the task gate passed, nests the task gate's evidence under `taskGate`. A gate that cannot
+   be built, or a pipeline with no step to attach it to, refuses the task as item 7 of "Pipeline
+   order and participation" does. The claim records `gateApplied` (`true` when the task carries a
+   gate) on the task.
 
 ### Conditional steps and command steps
 
@@ -2017,7 +2047,8 @@ tool_result                 # after a successful hop; also emitted (payload {"ve
 error                       # after a failed hop (in place of tool_result)
 cost_charged                # after any hop with nonzero cost
 budget_exceeded             # the budget gate blocked a hop (task -> blocked)
-verification_failed         # a mechanical gate's command exited nonzero (any role, not just implementer)
+verification_failed         # a mechanical gate's command exited nonzero (any role, not just implementer);
+                             #   an external gate's payload carries `source: "task"` for a task's own gate
 tester_verdict_failed       # the Tester's reply was FAIL or unparseable (legacy name, preserved)
 rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle (legacy name, preserved)
 review_rejected              # a second REQUEST-CHANGES exhausted the rework budget (legacy name, preserved)
@@ -2027,7 +2058,8 @@ verdict_rejected              # W-8: a non-built-in verdict gate's reply matched
 verdict_unparseable           # W-8: a non-built-in verdict gate's reply had no recognized marker
 route_taken                  # a step's own `on` map resolved a gate outcome (naming step/outcome/target)
 stale_claim                  # the crash sweep failed a running task whose claim went stale
-dispatch_refused             # a DispatchError on the claimed-task path settled the task as failed
+dispatch_refused             # a DispatchError on the claimed-task path settled the task as failed;
+                             #   also a claim-time refusal (an unknown task `pipeline`), payload `reason`
 paused_refused                # a claim attempt was refused because the pod's Lead is paused
 approval_required              # a require_approval gate fired (task -> waiting_approval)
 approval_resumed                # a granted approval flipped the task back to pending (G-1)
@@ -2197,6 +2229,12 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.48.0 (2026-10-14)
+- Pipeline order and participation item 7 and Generalized gate execution item 7: a task's
+  `pipeline` selects a pod-local or shipped-recipe pipeline at claim (`failureKind: "pipeline"`
+  when it resolves to nothing), a task's `gate` is an external gate after the last implementer
+  step's own gate; the claim records `pipelineSource` and `gateApplied` (P43-3).
 
 ### Version 6.45.0 (2026-10-13)
 - Cancellation item 1: `task cancel` cancels a task parked in `waiting_input` or
