@@ -1709,9 +1709,14 @@ document (`evidence.py`, `docs/contracts/`) are unchanged.*
    `provider` is the catalog provider name. `_hop_record` persists both as `model` and `provider`
    keys; `_hop_from_record` reads them and defaults an old record that has neither to `""`. Both
    are additive: the evidence document does not read them, and no existing key changes meaning.
-4. Until the runtime driver reports the served model on its turn result, a hop's `model` and
-   `provider` **MUST** be `""`, and every `hop_started`/`hop_finished` payload carries those
-   empty strings. A consumer **MUST NOT** treat an empty `model` as a model name.
+4. `hop_started`'s `model` and `provider` name the **planned** model: the step's own `model`
+   override (resolved as "Per-hop execution" requirement 5) when the step declares one, else the
+   member's configured `model` in `.docket-meta.json`, else the driver's default model. The
+   `hop_started` event is written before the turn, so it cannot name the served model.
+   `hop_finished`'s `model` and `provider` name the **served** model the turn reported, and the
+   hop record persists the same served values. A hop whose turn reported no served model records
+   `""` for both. The two events can differ when the endpoint serves a different model than the
+   one requested.
 5. Each time `_finalize_task` settles a task (a terminal state or a waiting one), it **MUST**
    write `task["usage"]` as `{"input": n, "output": n, "byModel": {<model>: {"input": n,
    "output": n}}}`, summed over the task's persisted `hops` (a hop with `usage` `null` adds
@@ -2237,9 +2242,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
 
 ### Version 6.50.0 (2026-10-14)
 - **Hop events and task usage (P43-5, ADR 0027).** New "Hop events and task usage" section:
-  `hop_started`/`hop_finished` trace events per hop (`trace-store.spec.md` 1.8.0), `HopResult.model`
-  and `provider` persisted on the hop record (empty until the driver reports the served model),
-  and `task["usage"]` (`input`/`output`/`byModel`) written at finalize. Red reason: the trace
+  `hop_started`/`hop_finished` trace events per hop (`trace-store.spec.md` 1.8.0),
+  `HopResult.model`/`provider` persisted on the hop record (`hop_started` names the planned model,
+  `hop_finished` and the record the served one, from the turn result), and `task["usage"]`
+  (`input`/`output`/`byModel` keyed by the served model) written at finalize. Red reason: the trace
   vocabulary had no hop-level event, `HopResult` had no model fields, and `_finalize_task` wrote
   no task usage.
 

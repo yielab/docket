@@ -431,6 +431,8 @@ def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:
         retry_after_s=result.retry_after_s,
         usage=result.usage if result.usage.total_tokens else None,
         stop_reason=result.stop_reason,
+        model=result.model,
+        provider=result.provider,
     )
 
 

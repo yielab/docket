@@ -1063,12 +1063,24 @@ class TestHopEvents:
         for event in events:
             keys = _HOP_STARTED_KEYS if event["event_type"] == "hop_started" else _HOP_FINISHED_KEYS
             assert set(event["payload"]) == keys
+        started = [e["payload"] for e in events if e["event_type"] == "hop_started"]
+        assert [p["model"] for p in started] == [
+            "anthropic/claude-haiku-4-5",
+            "anthropic/claude-sonnet-4-6",
+        ]
+        assert [p["provider"] for p in started] == ["anthropic", "anthropic"]
+        finished = [e["payload"] for e in events if e["event_type"] == "hop_finished"]
+        assert {(p["model"], p["provider"]) for p in finished} == {("local/served-model", "local")}
         raw = json.loads(_dispatch.pod_task_list_path("demo").read_text())
         (stored,) = [t for t in raw["tasks"] if t["id"] == str(task["id"])]
+        assert [(h["model"], h["provider"]) for h in stored["hops"]] == [
+            ("local/served-model", "local"),
+            ("local/served-model", "local"),
+        ]
         assert stored["usage"] == {
             "input": 14,
             "output": 6,
-            "byModel": {"": {"input": 14, "output": 6}},
+            "byModel": {"local/served-model": {"input": 14, "output": 6}},
         }
 
 
@@ -1082,6 +1094,8 @@ class _ScriptedBackend:
             message=assistant(self._texts.pop(0)),
             finish_reason="stop",
             usage=TokenUsage(7, 3),
+            model="served-model",
+            provider="local",
         )
 
 
