@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -74,7 +74,8 @@ This specification does NOT cover:
    `guardrail_check`, `guardrail_block`, `approval_requested`, `approval_granted`,
    `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`, `drift_alert`,
    `verification_failed`, `tester_verdict_failed`, `reviewer_verdict_unparseable`,
-   `rework_started`, `review_rejected`, `stale_claim`, `hop_retry`, `paused_refused`,
+   `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
+   `paused_refused`,
    `approval_required`, `approval_resumed`, `approval_task_denied`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
    `verdict_unparseable`, `step_skipped`, `command_step`, `route_taken`, `llm_call`, `error`,
@@ -331,6 +332,12 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.8.0 (2026-10-14)
+
+- Requirement 6: `dispatch_refused` joins `EVENT_TYPES`. `core/dispatch.py` has written it since
+  the deterministic-refusal work, but `trace_event` rejected it as unknown, so no refusal ever
+  reached a trace file.
 
 ### Version 1.7.0 (2026-10-12)
 

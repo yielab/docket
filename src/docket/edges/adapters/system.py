@@ -1171,15 +1171,21 @@ def git_worktree_fingerprint(cwd: str) -> dict[str, tuple[str, int, int]]:
     return prints
 
 
-def git_worktree_add(repo_dir: str, worktree_path: str, branch: str) -> tuple[bool, str]:
-    """Create a git worktree at ``worktree_path`` on a new branch ``branch``.
-    Returns ``(success, error_message)``; degrades gracefully, returning
-    ``(False, reason)`` on any error rather than raising."""
+def git_worktree_add(
+    repo_dir: str, worktree_path: str, branch: str, start_point: str = ""
+) -> tuple[bool, str]:
+    """Create a worktree at ``worktree_path`` on new branch ``branch`` (from ``start_point`` if
+    given). Returns ``(success, error_message)``; never raises, returning ``(False, reason)``."""
     if not git_available():
         return False, "git not found on PATH"
+    if start_point.startswith("-"):
+        return False, f"invalid start point {start_point!r}"
+    argv = ["git", "-C", repo_dir, "worktree", "add", "-b", branch, worktree_path]
+    if start_point:
+        argv.append(start_point)
     try:
         result = subprocess.run(
-            ["git", "-C", repo_dir, "worktree", "add", "-b", branch, worktree_path],
+            argv,
             capture_output=True,
             text=True,
             timeout=30,
