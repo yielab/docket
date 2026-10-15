@@ -289,7 +289,7 @@ class TestCreateWithBrief:
             {"description": "fix it", "brief": {"objective": "fix the flaky test"}},
             token=token,
         )
-        assert status == 200
+        assert status == 201
         tasks = _dispatch.read_tasks("demo")
         assert len(tasks) == 1
         assert tasks[0]["id"] == body["task"]
@@ -308,5 +308,5 @@ class TestCreateWithBrief:
         url, token = live_server
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         status, body = _post(f"{url}/tasks/demo", {"description": "fix it"}, token=token)
-        assert status == 200
+        assert status == 201
         assert body["status"] == "pending"
