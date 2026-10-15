@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.55.0
+**Version**: 0.56.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -1336,6 +1336,40 @@ pre-grants", this section governs for `--answers stdin` only.
    same `gather_facts` + `lights_out_violations` call. With the effective profile `attended`
    they print nothing extra.
 
+### Task restrictions (implemented, ADR 0027 point 3)
+
+A task may carry `restrictions` (`deniedTools`, `network`, `policies`; shape and the refusal of
+anything that would widen are enforced at enqueue, operator-api.spec.md "Arguments"). They narrow
+the hops of that one task and never widen anything.
+
+1. **Narrow only.** The hop's denied set is the union of the role's `denied_tools`, the pod's
+   `deniedTools` and the task's `deniedTools`; the hop's network is `none` when the pod, the
+   global setting or the task says `none` (`core/dispatch.py::_hop_network`); the task's policy
+   documents evaluate in addition to the global and pod policies, never instead of them.
+2. **Where it lands.** `core/dispatch.py::_compose_hop` hands the restrictions to the driver
+   through three internal env coordinates (`DOCKET_TASK_DENIED_TOOLS`, `DOCKET_TASK_NETWORK`,
+   `DOCKET_TASK_POLICIES`, popped by `DocketDriver` like `DOCKET_APPROVAL_MODE`, never visible to
+   a tool). `core/tools.py::dispatch_tool` is untouched: it still evaluates `pre_tool_call`
+   policies through `core/policy.py::policy_eval_detail`, which also reads the turn's task
+   policy documents (`policy.task_policies`, a context variable set by the driver around
+   `run_agent_turn`).
+3. **`deniedTools` is a block policy, not a registry removal.** The driver turns the denied names
+   into one `pre_tool_call` policy with `action: block` and `policy_id` `task-restriction`, so a
+   refused call is an audited `tool.deny` carrying `policy_id='task-restriction'` and the hop
+   continues with the refusal as the tool result. The set is closed by capability as
+   `registry_for_role` does: every tool of a denied built-in's kind (an MCP tool is
+   registered `write`) is named in the policy too.
+4. **`policies` are block-only, re-checked at the hop.** Each document is normalised, validated
+   with the policy validator and its action MUST be `block`; a document that fails either check
+   refuses the hop before it starts (`DispatchError`, so the task fails `dispatch_refused`).
+   Whatever its own `id`, a task document evaluates under the id `task-restriction`, so the
+   audit entry names the source.
+5. **`network: "none"` fails closed.** The jail's network is `none` for the hop whatever the pod
+   records. With isolation off nothing can cut the network, so the turn is refused up front and
+   audited `network.refused` with scope `task`, exactly as a recorded pod `none` is.
+6. **Not covered.** `verifyCmd` and `run:` steps keep the pod's network posture; a per-task
+   `allowCommands` does not exist; nothing here is a dollar budget.
+
 ## Interface Contracts
 
 ### `docket setup sandbox` command (implemented)
@@ -1807,6 +1841,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.56.0 (2026-10-14)
+- New "Task restrictions": a task's `deniedTools`, `network` and block-only `policies` narrow its
+  hops (union of denied sets, network `none` if any layer says so, task policies evaluated in
+  addition under the id `task-restriction`), delivered to the driver by three internal env
+  coordinates; `core/tools.py` is unchanged. A refused call is an audited `tool.deny` with
+  `policy_id='task-restriction'`.
 
 ### Version 0.55.0 (2026-10-14)
 - Exec sandbox item 12: the Seatbelt profile allows `file-read-data` of the literal `/` and reads

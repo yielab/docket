@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.45.0
+**Version**: 6.49.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -582,6 +582,18 @@ was seeded once at binding time.)*
    (`trace-store.spec.md` requirement 19). The task-level `session_start`/`session_end`/
    `dispatch_refused` events `core/dispatch.py` writes directly (see "Trace events this pipeline
    emits" below) are unaffected and carry no `task_id`.
+7. A task's `restrictions` (operator-api.spec.md "Arguments") **MUST** narrow every hop of that
+   task: `_compose_hop` hands the denied tools, the `none` network and the block-only policy
+   documents to the driver (security-gates.spec.md "Task restrictions"); a policy document that
+   is not valid or whose action is not `block` **MUST** refuse the hop before it starts
+   (`dispatch_refused`).
+8. A task's `maxTokens` **MUST** bound its measured usage: a hop runs with
+   `token_budget = maxTokens - sum(input + output of the task's persisted hops)`
+   (`_task_token_budget`, read from the queue record so a sibling's or earlier hop's usage
+   counts). A hop that would start with `<= 0` left **MUST NOT** run; the task fails with
+   `failureKind: "budget"` and reason naming the cap. A hop the turn loop stops on its
+   `token_budget` (`stop_reason == "token_budget"`) under a task `maxTokens` **MUST** fail the
+   task with the same `failureKind`. An unset `maxTokens` leaves the turn loop's configured default.
 
 ### Step-scoped durable runtime history (Wave 20 W20-C4)
 
@@ -2197,6 +2209,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.49.0 (2026-10-14)
+- "Per-hop execution" items 7-8: a task's `restrictions` narrow its hops, and its `maxTokens` is a
+  budget over the hops' measured usage (`failureKind: "budget"`).
 
 ### Version 6.45.0 (2026-10-13)
 - Cancellation item 1: `task cancel` cancels a task parked in `waiting_input` or
