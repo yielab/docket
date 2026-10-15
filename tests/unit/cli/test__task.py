@@ -334,6 +334,59 @@ class TestTaskAdd:
 
         assert "May ask you: 2 policies, 1 role gate -- see" in result.output
 
+    def test_the_six_addressing_flags_are_stored_on_the_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+
+        result = _runner.invoke(
+            app,
+            [
+                *("task", "add", "x", "--pod", "demo"),
+                *("--external-ref", "TACK-1", "--idempotency-key", "k-1"),
+                *("--base-ref", "main", "--pipeline", "tdd"),
+                *("--gate", "make test", "--max-tokens", "5000"),
+            ],
+        )
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert result.exit_code == 0, result.output
+        assert task["externalRef"] == "TACK-1"
+        assert task["idempotencyKey"] == "k-1"
+        assert task["baseRef"] == "main"
+        assert task["pipeline"] == "tdd"
+        assert task["gate"] == {"command": "make test"}
+        assert task["maxTokens"] == 5000
+
+    def test_a_repeated_idempotency_key_says_already_queued(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        args = ["task", "add", "x", "--idempotency-key", "k-1", "--pod", "demo"]
+
+        first = _runner.invoke(app, args)
+        second = _runner.invoke(app, args)
+
+        tasks = _dispatch.read_tasks("demo")
+        assert (first.exit_code, second.exit_code) == (0, 0)
+        assert len(tasks) == 1
+        assert "already queued" in second.output
+        assert tasks[0]["id"] in second.output
+
+    @pytest.mark.parametrize(
+        "flags",
+        [["--gate", " "], ["--max-tokens", "0"], ["--external-ref", "x" * 201]],
+    )
+    def test_an_invalid_addressing_flag_enqueues_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, flags: list[str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+
+        result = _runner.invoke(app, ["task", "add", "x", "--pod", "demo", *flags])
+
+        assert result.exit_code == 1
+        assert _dispatch.read_tasks("demo") == []
+
 
 @pytest.mark.parametrize("verb", ["approve", "deny", "answer", "retry", "cancel"])
 def test_task_verb_help_example_uses_a_task_id(verb: str) -> None:

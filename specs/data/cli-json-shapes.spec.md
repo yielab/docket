@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.32.0
+**Version**: 1.33.0
 **Status**: Complete
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -168,6 +168,24 @@ was granted is listed in `needsYou` with `state: "approved_ready"` and `command:
 
 `worktree` is the recorded task worktree directory, or `null` for a task that has none (ran in
 place, not yet claimed, or pruned). Queue order.
+
+### Task record keys added by an addressable enqueue
+
+`GET /tasks/<pod>` and `GET /tasks/<pod>/<id>` return the queue record. A task enqueued with
+the six addressing flags of `task add` (`cli-interface.spec.md`) or a
+`POST /tasks/<pod>` body carries each field that was set, and omits the rest:
+
+```json
+{
+  "externalRef": "string (1-200 chars)",
+  "idempotencyKey": "string (1-200 chars)",
+  "baseRef": "string",
+  "pipeline": "string",
+  "gate": { "command": "string", "timeoutS": "integer > 0 (optional)", "map": "{exit code: pass|fail|needs_human} (optional)" },
+  "maxTokens": "integer > 0",
+  "restrictions": { "deniedTools": ["string"], "network": "none", "policies": ["policy document"] }
+}
+```
 
 ### `docket task show <ref> --json`
 
@@ -442,6 +460,9 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.33.0 (2026-10-14)
+- The task record keys an addressable enqueue adds (`externalRef` ... `restrictions`), as `GET /tasks/<pod>[/<id>]` returns them (P43-1).
 
 ### Version 1.32.0 (2026-10-13)
 - `doctor --json` / `setup --fix --json` gain `modelRegistry`, `archetypeOverlay`, `schedules`,

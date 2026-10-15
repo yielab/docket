@@ -266,6 +266,16 @@ def validate_policy(path: Path) -> str:
     return _validate_doc(p, str(path))
 
 
+def validate_policy_document(doc: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Normalize one in-memory policy document and validate it: ``(canonical, error)`` with
+    ``error`` empty when valid. The dict counterpart of :func:`validate_policy`."""
+    try:
+        canonical = normalize_policy(doc)
+    except Exception as exc:
+        return {}, f"cannot parse policy document: {exc}"
+    return canonical, _validate_doc(canonical, str(canonical.get("id", "policy")))
+
+
 def _pod_policies_dir(project: str) -> Path | None:
     """This pod's own policy directory under ``pod_config_dir``, or ``None`` for no pod."""
     if not project:

@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.7.2
+**Version**: 2.8.0
 **Status**: Complete
 **Last Updated**: 2026-10-14
 
@@ -264,13 +264,19 @@ A `<ref>` is a full task id, the short id `task list` prints, a unique prefix, o
 (`core/task_ref.py`); an unknown or ambiguous ref exits 1 and an ambiguous one lists every
 candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every pod.
 **Verbs**:
-- `add "<text>" [--priority high|normal|low] [--brief FILE.json] [--pod <p>]`: Queue the task on
+- `add "<text>" [--priority high|normal|low] [--brief FILE.json] [--external-ref REF]
+  [--idempotency-key KEY] [--base-ref REF] [--pipeline NAME] [--gate COMMAND]
+  [--max-tokens N] [--pod <p>]`: Queue the task on
   the resolved pod's own list (`~/.docket/workspaces/<project>-lead/TASK_LIST.json`). The text is
   one argument; empty text or text over 500 characters exits 1, an unknown priority exits 2.
   `--brief` loads and validates the file as a `TaskBrief` (operator-v1); an invalid one exits 1
   and enqueues nothing, a valid one is passed to `core.dispatch.enqueue_task(brief=)`. Prints the
   one-line interruption forecast (`core.interruptions.NOTHING_WILL_ASK`, or `May ask you: ...`
   naming `docket task show`) and ends with `Next: docket run`
+  The six addressing flags are stored on the task verbatim (`operator-api.spec.md` "Arguments");
+  `--gate` takes the command string alone and exits 1 when empty. A second `add` whose
+  `--idempotency-key` is already in the queue enqueues nothing and prints the existing id with
+  `ok already queued`
 - `list [--json] [--pod <p>]`: The pod's queue, every status: short id, priority, status, cost,
   the worktree path when one exists, description. `--json` prints `{"pod", "tasks": [...]}`
   (`cli-json-shapes.spec.md`)
@@ -1005,6 +1011,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.8.0 (2026-10-14)
+- `task add` gains `--external-ref`, `--idempotency-key`, `--base-ref`, `--pipeline`, `--gate` and `--max-tokens` (P43-1).
 
 ### Version 2.7.2 (2026-10-14)
 - No release sdist member name contains `:` (uv 0.13 refused to build or install the sdist, whose
