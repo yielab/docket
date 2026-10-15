@@ -335,21 +335,36 @@ SSE, aggregate statistics (ADR 0027 point 10).
 ### P43-12 — one door: delete `exec` and harness mode, API version 5, beta.6
 
 - **Status:** TODO · **Size:** M · **Model:** Sonnet (the deletion list is a script; the prose
-  sweep is the judgment part) · **Blocked on:** ADR 0027 open question 1 (maintainer: delete in
-  beta.6, or one release later)
+  sweep is the judgment part). Maintainer's decision 2026-10-14: delete in beta.6, nothing kept
+  for compatibility, no alias, hint, notice or migration anywhere.
 - **Trigger:** ADR 0027 point 1 and ROADMAP D-57: with the task routes live, `docket exec` is a
   second door kept for the past.
 - **Goal:** `scripts/maint/remove_harness_mode.py` deletes, with `git rm`: `cli/_exec.py`,
   `cli/_harness_answers.py`, `cli/_harness_recipe.py`, `cli/_setup_harness.py`,
-  `core/harness.py`, `docs/contracts/harness-v1*`, `tests/fixtures/harness-contract/`,
-  `tests/unit/cli/test__exec.py`, `tests/unit/core/test_harness.py`,
-  `tests/integration/test_harness_*.py`, `tests/integration/test_sandboxed_exec.py` (after
-  moving its stub OpenAI server and its jail fixtures into `tests/integration/conftest.py` --
-  P43-4 and P43-10 depend on that stub), `specs/api/harness-mode.spec.md`; removes `exec` from
-  `cli/__init__.py`'s registry and `setup harness` from `cli/_setup.py`; `core/operator_contract.py`
-  keeps what `inbox`/`answer` use (`QuestionV11` goes only if nothing else imports it). Then the
-  prose: the 20 files `rg -ln 'docket exec|harness' docs/*.md README.md specs/*/*.md` lists lose
-  the claims (`docs/DEVELOPMENT-HARNESS.md` is deleted or rewritten as the HTTP walkthrough);
+  `core/harness.py`, `core/setup_home.py`, `core/harness_pipeline.py` (the in-place ephemeral
+  pod exists only for `exec --recipe`), `scripts/harness_schema.py`,
+  `docs/contracts/harness-v1*`, `tests/fixtures/harness-contract/`, `tests/unit/cli/test__exec.py`,
+  `tests/unit/core/test_harness.py`, `tests/unit/core/test_setup_home.py` and
+  `test_harness_pipeline.py` if present, `tests/integration/test_harness_*.py`,
+  `tests/integration/test_sandboxed_exec.py` (after moving its stub OpenAI server and its jail
+  fixtures into `tests/integration/conftest.py` -- P43-4 and P43-10 depend on that stub),
+  `specs/api/harness-mode.spec.md`, `docs/DEVELOPMENT-HARNESS.md` (deleted; the HTTP walkthrough
+  is `operator-api.spec.md`), scene `6-harness` of `scripts/maint/capture-doc-journey.sh` and
+  its transcription in `scripts/render-doc-assets.py` and `docs/assets/README.md`; removes
+  `exec` from `cli/__init__.py`'s registry and `setup harness` from `cli/_setup.py`; `exec`
+  joins `scripts/maint/rewrite_cli_names.py`'s removed names and the pairs in
+  `tests/guards/test_no_removed_cli_names.py` that name it as a destination are dropped;
+  `cli/_exec.py` leaves `tests/guards/test_dispatch_never_rereads_the_repository.py::_UNREAD`;
+  the `docket exec: run` entry leaves `scripts/maint/lint_cli_invocations.py`; the exit-code
+  row in `scripts/gen_cli_docs.py` loses the `exec` clause. **Anything that only the harness
+  used goes too, proven by `rg`** (`core/operator_contract.py::QuestionV11`, `DOCKET_SETUP_HOME`,
+  the `refuse` approval default in `edges/adapters/docket_runtime.py`, any `harness`-named
+  branch in `core/agent_loop.py`, `core/tools.py`, `core/dispatch.py`, `core/consult.py`,
+  `core/escalation.py`, `core/evidence.py`, `core/memory.py`, `core/trace.py`); what a pod also
+  uses stays (`approvalMode: refuse` is a pod setting in `core/pod.py` and stays). Then the
+  prose: the files `rg -ln 'docket exec|harness contract|harness mode' docs/*.md README.md
+  CONTRIBUTING.md specs/*/*.md` lists lose the claims (ADR files and `docs/cycles-ended/` are
+  history and are not edited; the integrator adds the superseded line to ADR 0001/0026);
   `docs/commands.md` regenerated; `tests/agent` prose tests rebuilt from the README; ten CLI
   commands (`docket --help` golden regenerated and explained). Finally `SERVE_API_VERSION =
   "5"`, `serve-read-api.spec.md` `API version` line → 5 (3.9.0, naming `operator-api.spec.md`
@@ -359,12 +374,16 @@ SSE, aggregate statistics (ADR 0027 point 10).
   `docket run`/`task add`.
 - **Files/functions:** as listed; the registry `cli/__init__.py`; `serve.py::SERVE_API_VERSION`.
   Forbidden: any `core/dispatch.py` function.
-- **Acceptance:** `docket exec` → exit 2 as an unknown command, no hint; `docket --help` lists
-  ten commands; `uv run pytest` default lanes green with the stub server reachable from
-  `tests/integration/conftest.py`; `scripts/metrics.py --check` re-measured by the integrator;
-  `GET /status.json` → `apiVersion == "5"`; `rg -n 'docket exec|harness contract|HARNESS_'
-  src docs specs README.md` prints nothing; the escape matrix still runs (it used
-  `exec` for some scenes: port them to `docket run` on a seeded pod or to the task route).
+- **Acceptance:** `docket exec` → exit 2 as an unknown command, no hint, no mention in any
+  error text; `docket --help` lists ten commands; `uv run pytest` default lanes green with the
+  stub server reachable from `tests/integration/conftest.py`; `scripts/metrics.py --check`
+  re-measured by the integrator; `GET /status.json` → `apiVersion == "5"`;
+  `rg -n 'docket exec|harness contract|harness mode|HARNESS_|setup_home|harness_pipeline|DOCKET_SETUP_HOME'
+  src scripts tests docs/*.md specs README.md CONTRIBUTING.md` prints nothing (the adoption
+  benchmark's own `benchmarks/harness.py` and CI's "test harness" wording are a different word
+  and stay); the escape matrix still runs (it used `exec` for some scenes: port them to
+  `docket run` on a seeded pod or to the task route); `capture-doc-journey.sh` runs scenes
+  1 to 5 and no sixth.
 - **RED test:** `tests/unit/cli/test_registry.py::test_exec_is_an_unknown_command` (exit 2, no
   hint) and `tests/integration/test_serve_status.py::test_api_version_is_5`.
 - **Spec:** as in Goal; ADR 0001/0026 get a one-line "superseded on the harness by ADR 0027"

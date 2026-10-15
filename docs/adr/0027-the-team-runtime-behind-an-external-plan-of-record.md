@@ -15,10 +15,15 @@ to a long-lived pod, through one harness with no modes, and never has to work ar
 
 1. **One door: HTTP against `docket start --dispatch`, API version 5.** An external plan of
    record enqueues into a pod, follows the pod's trace with the cursor that already exists, and
-   reads, cancels, retries and diffs a task over the same routes. `docket exec`, harness
-   contracts 1.0 to 1.2, `docket setup harness` and `core/harness.py` are deleted with their
-   tests, schemas and fixtures (ROADMAP D-57: nothing is kept for the past). `docket task add` and
-   `docket run` remain the foreground path for a person at a terminal.
+   reads, cancels, retries and diffs a task over the same routes. `docket exec` and everything
+   that existed only for it are deleted in the same release, with no alias, notice, hint,
+   migration or compatibility branch (ROADMAP D-57: nothing is kept for the past; confirmed by
+   the maintainer on 2026-10-14): the command, `docket setup harness`, harness contracts 1.0 to
+   1.2 (`core/harness.py`, `core/setup_home.py`, `core/harness_pipeline.py`, the in-place
+   ephemeral pod and `--recipe`), the schemas, fixtures, tests, the capture scene, the
+   `DEVELOPMENT-HARNESS` guide and every sentence that describes them. A module, flag, setting
+   or approval mode that only the harness used goes with it; one that a pod also uses stays.
+   `docket task add` and `docket run` remain the foreground path for a person at a terminal.
 
 2. **A task is addressable and self-describing.** `POST /tasks/<pod>` and `docket task add`
    accept, all optional: `externalRef` (a caller label, filterable), `idempotencyKey` (the same
@@ -87,7 +92,7 @@ Tack merges and counts money; the verifier signs; docket runs the work and recor
   version 5. `specs/data/serve-read-api.spec.md` keeps the unchanged read routes.
 - ADR 0001 (harness mode), ADR 0016's "Tack polls" paragraph and ADR 0026 are superseded on
   the harness: the capability moved to the pod and the HTTP routes. Their reasoning stays.
-- Twelve cards in three waves, `TODO.md` Phase 43; packets in
+- Twelve cards in three waves, `TODO.md` Phase 43, none blocked; packets in
   `.agents/handoffs/phase-43-worker-packets.md`.
 
 ## What the consumer changes
@@ -116,11 +121,9 @@ One harness, no modes. Tack designs it in its own repository; what it needs from
 
 ## Open questions
 
-Blocking (decide before Wave 111):
-
-1. **Delete `exec` in beta.6, or one release later?** Tack still runs contract 1.2 today. The
-   default is deletion in beta.6 with Tack's cutover in the same step: both are one operator's,
-   docket has no other user, and a kept command is the shim D-57 forbids.
+Blocking: none. The one that was (delete `exec` in beta.6 or one release later) was answered
+by the maintainer on 2026-10-14: delete in beta.6, Tack's cutover in the same step, nothing
+kept for compatibility.
 
 Not blocking (a default is chosen; say so if it is wrong):
 
