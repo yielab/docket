@@ -150,6 +150,24 @@ def cmd_add(
     text: str = typer.Argument(..., metavar="TEXT", help="What the task should do"),
     priority: Priority = typer.Option(Priority.normal, "--priority", help="Queue priority"),
     brief: Path | None = typer.Option(None, "--brief", help="A TaskBrief JSON file"),
+    external_ref: str | None = typer.Option(
+        None, "--external-ref", help="A label from your plan of record, stored verbatim"
+    ),
+    idempotency_key: str | None = typer.Option(
+        None, "--idempotency-key", help="Queue once: a second add with this key adds nothing"
+    ),
+    base_ref: str | None = typer.Option(
+        None, "--base-ref", help="Branch or commit the task worktree starts from"
+    ),
+    pipeline: str | None = typer.Option(
+        None, "--pipeline", help="Pod-local pipeline or recipe name for this task"
+    ),
+    gate: str | None = typer.Option(
+        None, "--gate", help="Command run as an extra gate after the implementer"
+    ),
+    max_tokens: int | None = typer.Option(
+        None, "--max-tokens", help="Token budget across the task's hops"
+    ),
     pod: str | None = pod_option(),
 ) -> None:
     """Queue a task for the pod; `docket run` works the queue.
@@ -165,10 +183,25 @@ def cmd_add(
         ui.error(f"Description too long ({len(text)} chars)", f"Limit: {MAX_DESCRIPTION}")
         raise typer.Exit(1)
     try:
-        task = _dispatch.enqueue_task(project, text, priority.value, brief=loaded, channel="cli")
+        task, created = _dispatch.enqueue_task_once(
+            project,
+            text,
+            priority.value,
+            brief=loaded,
+            channel="cli",
+            external_ref=external_ref,
+            idempotency_key=idempotency_key,
+            base_ref=base_ref,
+            pipeline=pipeline,
+            gate={"command": gate} if gate is not None else None,
+            max_tokens=max_tokens,
+        )
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
+    if not created:
+        ui.success(escape(f"already queued for pod '{project}': [{task['id']}]"))
+        return
     ui.success(escape(f"Queued for pod '{project}': [{task['id']}] {text}"))
     ui.dim(f"  {_interruption_summary(str(task['id']), project)}")
     _contract.next_step("docket run")

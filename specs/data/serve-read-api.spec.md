@@ -449,7 +449,10 @@ Request body:
 | `trusted` | boolean | No | Overrides the `pre_input` policy check's trust flag for this one enqueue (see `core.dispatch.enqueue_task`'s `trusted` parameter). Omitted, it preserves the CLI/MCP default exactly (trusted). It does **not** change the persisted task's `source` field or introduce a new trust/source vocabulary — the only thing it touches is which `pre_input` policies are eligible to fire (today: whether the `prompt-injection` policy id is skipped). |
 | `brief` | object | No | **Added in 2.13.2 (Phase 34, P34-13).** A `TaskBrief` document (operator-v1, `operator-loop.spec.md`), the HTTP counterpart of `docket task add --brief`. A non-object value is `400`; a malformed/invalid one is `422` before anything is enqueued. A well-formed one is passed to `core.dispatch.enqueue_task(brief=...)`, which appends it to the task description as a `## Pre-brief` section and persists it on the task's `brief` field — the same path `delegate --brief` takes. |
 
-Success response (task queued, `pending`):
+Success response (task queued, `pending`). **Phase 43 (`operator-api.spec.md`, P43-1):** a new
+task answers `201` with `"created": true` beside these keys, and the body takes the addressing
+fields (`externalRef`, `idempotencyKey`, ...); a repeated `idempotencyKey` answers `200` with
+`"created": false`. Every `200` below for a task that was created reads `201`:
 
 ```json
 {"ok": true, "task": "task-91a2...", "project": "myapp", "status": "pending"}

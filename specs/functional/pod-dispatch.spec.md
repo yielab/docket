@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.45.0
+**Version**: 6.46.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -215,6 +215,27 @@ origin class (`operator`, `reviewer` for a rework task) and alone drives the `pr
 default; `channel` never changes trust. The detail names no description text. A task persisted
 before this version has no `channel`. `POST /dispatch/<project>` **MUST** append `run.dispatch`
 naming the run, the project and `channel=http` beside its `create_run`.
+
+#### Addressable task (P43-1, ADR 0027)
+
+1. `enqueue_task` **MUST** accept `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
+   `gate`, `max_tokens` and `restrictions` as keyword arguments, validate them through
+   `core/task_options.py::validate_task_options` (shape and narrowing only) before anything is
+   persisted, and store each one that is set on the task record verbatim under its camelCase key:
+   `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens`, `restrictions`.
+   A field left unset is absent from the record. Later cards read `baseRef` (P43-2), `pipeline`
+   and `gate` (P43-3), `maxTokens` and `restrictions` (P43-4) at claim or hop time; enqueue acts
+   on none of them.
+2. A wrongly shaped field (a non-string `externalRef`, an empty string, a `maxTokens` that is not
+   a positive integer, a `gate` without a `command`) raises `DispatchError`. A `restrictions`
+   entry that would widen -- `network` other than `"none"`, a `deniedTools` name outside
+   `core.archetypes.BUILTIN_TOOL_KINDS`, a policy whose action is not `block` or that does not
+   validate -- raises `TaskRestrictionError`, a `DispatchError` subclass, so a caller can tell
+   `422` from `400`. Nothing is persisted and no `task.enqueue` is audited in either case.
+3. When `idempotency_key` is set and a task in this pod's queue already carries that
+   `idempotencyKey`, the lookup runs inside the same locked read-modify-write that appends, the
+   queue is left untouched, no `task.enqueue` is audited, and that existing record is returned.
+   `enqueue_task_once(...)` returns `(task, created)`; `enqueue_task(...)` returns the task alone.
 
 ### Task references
 
@@ -2197,6 +2218,9 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.46.0 (2026-10-14)
+- "Addressable task": `enqueue_task` takes and stores `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens` and `restrictions`; an existing `idempotencyKey` returns the queued task and enqueues nothing; a widening restriction raises `TaskRestrictionError` (P43-1).
 
 ### Version 6.45.0 (2026-10-13)
 - Cancellation item 1: `task cancel` cancels a task parked in `waiting_input` or
