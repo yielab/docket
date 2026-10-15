@@ -1014,3 +1014,38 @@ class TestStaleClaimReclaim:
         assert results == []
         assert _dispatch.read_tasks("myapp")[0]["status"] == "running"
         assert "task.reclaimed" not in _audit_actions()
+
+
+class TestTaskRestrictionHelpers:
+    """The hop's network is the narrower of pod and task; maxTokens counts persisted hop usage."""
+
+    @pytest.mark.parametrize(
+        ("pod_mode", "task_mode", "expected"),
+        [
+            ("open", None, "open"),
+            ("open", "none", "none"),
+            ("none", None, "none"),
+            ("none", "none", "none"),
+        ],
+    )
+    def test_hop_network_takes_the_narrower(
+        self, pod_mode: str, task_mode: str | None, expected: str
+    ) -> None:
+        assert _dispatch._hop_network(pod_mode, task_mode) == expected
+
+    def test_token_budget_is_the_cap_less_persisted_usage(self) -> None:
+        task = {
+            "maxTokens": 1000,
+            "hops": [{"usage": {"input": 300, "output": 100}}, {"usage": None}, {"role": "x"}],
+        }
+
+        assert _dispatch._task_token_budget(task) == 600
+
+    def test_token_budget_goes_non_positive_when_spent(self) -> None:
+        task = {"maxTokens": 100, "hops": [{"usage": {"input": 90, "output": 20}}]}
+
+        assert _dispatch._task_token_budget(task) == -10
+
+    @pytest.mark.parametrize("task", [{}, {"maxTokens": None}, {"maxTokens": True}])
+    def test_no_cap_means_no_budget(self, task: dict[str, Any]) -> None:
+        assert _dispatch._task_token_budget(task) is None

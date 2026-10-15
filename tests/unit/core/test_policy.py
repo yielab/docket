@@ -483,3 +483,73 @@ class TestStructuredPredicates:
             _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=ask_call).action
             == "require_approval"
         )
+
+
+class TestTaskPolicies:
+    """A task's block-only documents evaluate in addition to the file policies, in one scope."""
+
+    def _doc(self, **fields: object) -> dict[str, object]:
+        return {
+            "kind": "policy",
+            "name": "mine",
+            "appliesTo": ["*"],
+            "when": {"tool": "write"},
+            "then": "block",
+        } | fields
+
+    def test_a_task_document_blocks_under_the_task_restriction_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path, raising=True)
+        call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
+        doc = _policy.task_policy_document(self._doc())
+
+        with _policy.task_policies([doc]):
+            hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
+        outside = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
+
+        assert (hit.action, hit.policy_id) == ("block", "task-restriction")
+        assert outside.action == "allow"
+
+    def test_a_task_document_never_loosens_a_file_policy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path, raising=True)
+        _write_policy(
+            tmp_path,
+            "global.json",
+            {
+                "id": "global-block",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "when": {"tool": "write"},
+                "action": "block",
+            },
+        )
+        call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
+        with _policy.task_policies([_policy.task_policy_document(self._doc(then="block"))]):
+            hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
+
+        assert hit.policy_id == "global-block"
+
+    def test_only_a_valid_block_document_is_accepted(self) -> None:
+        with pytest.raises(ValueError, match="only block"):
+            _policy.task_policy_document(self._doc(then="warn"))
+        with pytest.raises(ValueError, match="mapping"):
+            _policy.task_policy_document("block everything")
+        with pytest.raises(ValueError, match="match or when"):
+            _policy.task_policy_document(
+                {"kind": "policy", "name": "x", "appliesTo": ["*"], "then": "block"}
+            )
+
+    def test_the_denied_tools_document_blocks_each_named_tool(self) -> None:
+        doc = _policy.denied_tools_document(["write", "edit"])
+        facts = [_policy.ToolCallFacts(t, {}, lambda: "") for t in ("write", "edit", "read")]
+
+        with _policy.task_policies([doc]):
+            actions = [
+                _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=f).action
+                for f in facts
+            ]
+
+        assert actions == ["block", "block", "allow"]

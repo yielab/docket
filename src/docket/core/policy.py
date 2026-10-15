@@ -15,7 +15,9 @@ import json
 import os
 import re
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
@@ -53,6 +55,12 @@ _RANK: dict[str, int] = {
     "warn": 1,
     "allow": 0,
 }
+
+# The id every task-restriction document evaluates and audits under.
+TASK_POLICY_ID = "task-restriction"
+
+# The block-only documents the running turn's task carries, set by ``task_policies``.
+_TASK_POLICIES: ContextVar[tuple[dict[str, Any], ...]] = ContextVar("_TASK_POLICIES", default=())
 
 # Policy ids skipped when source=operator (--trusted).
 _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
@@ -266,6 +274,44 @@ def validate_policy(path: Path) -> str:
     return _validate_doc(p, str(path))
 
 
+def task_policy_document(doc: Any) -> dict[str, Any]:
+    """*doc* (short or canonical) as a validated canonical block policy under ``TASK_POLICY_ID``;
+    raises ``ValueError`` for anything invalid or whose action is not ``block``."""
+    if not isinstance(doc, dict):
+        raise ValueError("a task policy must be a mapping")
+    canonical = normalize_policy(doc)
+    canonical["id"] = TASK_POLICY_ID
+    error = _validate_doc(canonical, TASK_POLICY_ID)
+    if error:
+        raise ValueError(error)
+    if canonical["action"] != "block":
+        raise ValueError(f"a task policy may only block, got action {canonical['action']!r}")
+    return canonical
+
+
+def denied_tools_document(names: Sequence[str]) -> dict[str, Any]:
+    """One ``pre_tool_call`` block document naming every tool in *names* (``when.anyOf``)."""
+    return {
+        "id": TASK_POLICY_ID,
+        "applies_to": ["*"],
+        "hook": "pre_tool_call",
+        "action": "block",
+        "message": "tool denied by this task's restrictions",
+        "when": {"anyOf": [{"tool": name} for name in names]},
+    }
+
+
+@contextmanager
+def task_policies(documents: Sequence[dict[str, Any]]) -> Iterator[None]:
+    """Evaluate *documents* (already ``task_policy_document``-checked) after the file policies for
+    the duration of the block, in this context only."""
+    token = _TASK_POLICIES.set(tuple(documents))
+    try:
+        yield
+    finally:
+        _TASK_POLICIES.reset(token)
+
+
 def _pod_policies_dir(project: str) -> Path | None:
     """This pod's own policy directory under ``pod_config_dir``, or ``None`` for no pod."""
     if not project:
@@ -446,17 +492,20 @@ def policy_eval_detail(
             best_rank = rank
             best = PolicyHit(action=action, policy_id=policy_id, message=message)
 
+    documents: list[tuple[str, dict[str, Any] | None]] = []
     for path in policy_files(project):
         try:
-            p: dict[str, Any] | None = read_policy(path)
+            documents.append((path.name, read_policy(path)))
         except Exception:
-            p = None
+            documents.append((path.name, None))
+    documents.extend((TASK_POLICY_ID, doc) for doc in _TASK_POLICIES.get())
 
+    for label, p in documents:
         # Fail closed on a broken file (security-gates.spec.md, policy engine requirement 7):
         # a file the validator rejects blocks within its readable scope -- its declared hook
         # and applies_to when those parse, every hook and role when the file itself does not --
         # attributed to the file so the audit/trace record names what to fix.
-        error = "unreadable" if p is None else _validate_doc(p, path.name)
+        error = "unreadable" if p is None else _validate_doc(p, label)
         if error:
             declared_hook = (p or {}).get("hook")
             hooks = {declared_hook} if declared_hook in VALID_HOOKS else VALID_HOOKS
@@ -467,8 +516,8 @@ def policy_eval_detail(
             if hook in hooks and ("*" in applies or role in applies):
                 consider(
                     "block",
-                    path.name,
-                    f"policy file {path.name} is broken ({error}); failing closed",
+                    label,
+                    f"policy file {label} is broken ({error}); failing closed",
                 )
             continue
 
