@@ -534,6 +534,98 @@ class TestDeterministicRefusalFailsOnlyThatTask:
             _dispatch.dispatch_task("myapp", task, runner=_crasher)
 
 
+class TestBaseRefRefusedAtClaim:
+    """A task whose ``baseRef`` cannot be honoured fails at claim: no hop, ``failureKind``
+    ``base_ref``, and the loop moves on to the next task."""
+
+    def _runner(self, calls: list[str]) -> Any:
+        def _run(
+            agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None
+        ) -> _rd.TurnResult:
+            calls.append(agent_id)
+            return _rd.TurnResult(True, "done", 0.0, {})
+
+        return _run
+
+    def test_an_unhonourable_base_ref_fails_the_task_with_no_hop(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        _dispatch.enqueue_task("myapp", "needs a base", channel="cli")
+        _dispatch.enqueue_task("myapp", "plain", channel="cli")
+        queue = _dispatch.read_tasks("myapp")
+        queue[0]["baseRef"] = "nope"
+        from docket.edges import store as _store
+
+        _store.write_json(_dispatch.pod_task_list_path("myapp"), {"tasks": queue})
+        calls: list[str] = []
+
+        results = _dispatch.dispatch_pod("myapp", runner=self._runner(calls))
+
+        first, second = _dispatch.read_tasks("myapp")
+        assert first["status"] == "failed"
+        assert first["failureKind"] == "base_ref"
+        assert "nope" in first["reason"]
+        assert first["hops"] == []
+        assert first["claimId"] is None
+        assert first["completedAt"]
+        assert "worktree" not in first
+        assert second["status"] == "done"
+        assert [r.status for r in results] == ["failed", "done"]
+        assert all(a.startswith("myapp-") for a in calls) and calls
+
+    def test_the_refusal_is_traced_as_dispatch_refused_naming_the_ref(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_NO_TRACE", "0")
+        _seed_lean_pod("myapp")
+        _dispatch.enqueue_task("myapp", "needs a base", channel="cli")
+        queue = _dispatch.read_tasks("myapp")
+        queue[0]["baseRef"] = "nope"
+        from docket.edges import store as _store
+
+        _store.write_json(_dispatch.pod_task_list_path("myapp"), {"tasks": queue})
+
+        _dispatch.dispatch_pod("myapp", runner=self._runner([]))
+
+        events = [
+            e
+            for f in _trace.project_trace_dir("myapp").glob("*.jsonl")
+            for e in _trace.read_trace(f)
+            if e.get("event_type") == "dispatch_refused"
+        ]
+        assert len(events) == 1
+        assert "nope" in json.dumps(events[0])
+
+    def test_base_ref_is_not_resumable(self) -> None:
+        assert "base_ref" not in _dispatch.RESUMABLE_FAILURE_KINDS
+
+    def test_refuse_claimed_task_settles_any_failure_kind(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        _put_task(
+            "myapp",
+            {
+                "id": "t1",
+                "description": "x",
+                "status": "running",
+                "claimId": "c",
+                "hops": [{"role": "lead"}],
+            },
+        )
+
+        res = _dispatch._refuse_claimed_task("myapp", {"id": "t1"}, "pipeline", "no such pipeline")
+
+        (stored,) = _dispatch.read_tasks("myapp")
+        assert (res.status, res.failure_kind, res.reason) == (
+            "failed",
+            "pipeline",
+            "no such pipeline",
+        )
+        assert stored["status"] == "failed"
+        assert stored["failureKind"] == "pipeline"
+        assert stored["reason"] == "no such pipeline"
+        assert stored["claimId"] is None
+        assert stored["hops"] == [{"role": "lead"}]
+
+
 class TestResumableFailureKinds:
     """``_eligible_for_claim``/``_apply_result`` treat ``dispatch_refused`` the same way they
     already treat ``stale_claim`` -- resumable, immediately, with no staleness math -- while an
