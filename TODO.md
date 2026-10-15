@@ -17,13 +17,13 @@
 > resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
 > reading the diff and assuming.
 
-## ▶ ACTIVE BOARD — Wave 109 (Phase 43, the task: P43-1..5) — claimed 2026-10-14
+## ▶ ACTIVE BOARD — Wave 109 COMPLETE 2026-10-14 (Phase 43); Wave 110 next
 
-Base: the commit that adds this banner on `develop`. Five workers (four Sonnet, one Haiku), one
-isolated worktree each on branch `p43-<n>-<slug>`; merge order P43-1..5. Wave 110 stays planned
-until 109 merges.
+Wave 109 (P43-1..5) merged into `develop` from base `1ee0d907`: merges `8cc63cbe`, `5d7d8818`,
+`5847db50`, `a9ffef6c`, `db1f8cd2`, then the rollup. Wave 110 (P43-6..9) is claimable: open it
+with this banner and a new base commit.
 
-## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — IN PROGRESS (Wave 109) 2026-10-14
+## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — IN PROGRESS (Wave 109 complete, Wave 110 next) 2026-10-14
 
 Brief: [ADR 0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md). Contract:
 [specs/api/operator-api.spec.md](specs/api/operator-api.spec.md) (5.0.0, planned). Packets:
@@ -46,7 +46,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-1 — an addressable task over HTTP and CLI
 
-- **Status:** IN-PROGRESS (@worker p43-1) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-14 (`aa5e5355`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0027 evidence table rows 1 and 2: `POST /tasks/<pod>` takes four fields and
   every id is `uuid4`; an external plan of record cannot retry safely or find its task.
 - **Goal:** `enqueue_task` accepts `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
@@ -73,7 +73,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-2 — the task worktree starts from `baseRef`
 
-- **Status:** IN-PROGRESS (@worker p43-2) · **Size:** S · **Model:** Sonnet
+- **Status:** DONE 2026-10-14 (`3456acc1`) · **Size:** S · **Model:** Sonnet
 - **Trigger:** `provision_task_worktree` always branches from the codebase's HEAD
   (`core/pod_provisioning.py`), so a rework cannot continue on the previous attempt's branch.
 - **Goal:** `git_worktree_add(repo, path, branch, start_point="")` passes the start point;
@@ -95,7 +95,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-3 — pipeline and gate per task
 
-- **Status:** IN-PROGRESS (@worker p43-3) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-14 (`131e36f1`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** `dispatch_pod` resolves `effective_spec` once before the claim loop; a bug and a
   feature in the same pod cannot run different methodologies; the task's acceptance command has
   nowhere to go.
@@ -124,7 +124,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-4 — restrictions and `maxTokens` reach the live hop
 
-- **Status:** IN-PROGRESS (@worker p43-4) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-14 (`887ab82c`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** security condition in ADR 0027 point 3; today nothing on a task can narrow a hop.
 - **Goal:** at `_compose_hop`: `deniedTools` is unioned into the role narrowing
   (`registry_for_role` denials + pod `deniedTools` + task); `network: "none"` is the hop's jail
@@ -155,7 +155,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-5 — `hop_started` / `hop_finished`, model and provider on the hop
 
-- **Status:** IN-PROGRESS (@worker p43-5) · **Size:** S · **Model:** Haiku
+- **Status:** DONE 2026-10-14 (`bf68cefd + 9309097c`) · **Size:** S · **Model:** Haiku
 - **Trigger:** measurement 3 in ADR 0027: a full run's trace has no hop-level event; the hop
   record has `usage` but no `model`/`provider`.
 - **Goal:** `EVENT_TYPES` gains `hop_started`, `hop_finished` with the payloads of
@@ -405,6 +405,20 @@ SSE, aggregate statistics (ADR 0027 point 10).
   are already per task; a card would add a `maxParallelTasks` pod setting and a bounded pool in
   `dispatch_pod`.
 - **Warm workspace** -- trigger in ADR 0027 point 10 (measured 6.5 s + 15.5 s, 829 MB).
+- **`pod apply`/`pod export` do not carry `config/pipelines/`** (P43-3): a pod-local pipeline is
+  read at claim but cannot be shipped in `.docket/`. Natural home: P43-7 or P43-8.
+- **A task's `network: none` cuts the agent turn only** (P43-4): `verifyCmd` and `run:` steps keep
+  the pod's posture; the spec says so. A parallel group's merge in `_run_group_node` drops
+  `_UnitOutcome.failure_kind`, so a budget stop inside a group loses `budget`.
+- **Two enqueue entry points** (P43-1): `enqueue_task` returns the task, `enqueue_task_once`
+  returns `(task, created)`; fold into one when the remaining callers (`telegram.py`, `_mcp.py`)
+  are next touched. A raced duplicate `idempotencyKey` under `require_approval` can leave an
+  orphan approval token.
+- **`trace-store.spec.md` requirement 6 says "exactly"** but the code's `EVENT_TYPES` has members
+  the list never named (found by P43-2); re-derive the list from the frozenset.
+- **Real-Docker tests over their duration ceiling under load** (`test_network_lockdown.py`,
+  `test_sandboxed_exec.py`, `test_escape_matrix.py[docker]`): pass alone, fail when five suites
+  run at once. A flake, not a regression; measured 2026-10-14.
 
 ## How to use this board (read before claiming a task)
 

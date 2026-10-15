@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **An addressable task (Phase 43, P43-1, ADR 0027).** `POST /tasks/<pod>` and `docket task add`
+  take `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens` and
+  `restrictions`, stored verbatim on the task. A repeated `idempotencyKey` returns the queued task
+  (`200`, `created: false`) and enqueues nothing; a new task answers `201`. A restriction that
+  would widen the pod's limits is `422`. `GET /tasks/<pod>?externalRef=&status=` filters and
+  `GET /tasks/<pod>/<id>` returns one record.
+- **A task's worktree starts from its `baseRef` (P43-2).** A ref that cannot be honoured fails the
+  task at claim with `failureKind: base_ref` and no hop, instead of running in place; no
+  directory or branch is left behind. A `baseRef` starting with `-` is refused.
+- **Pipeline and gate per task (P43-3).** A task's `pipeline` names a pod-local
+  `pipelines/<name>.yaml` or a shipped recipe; an unknown name fails the task with
+  `failureKind: pipeline` before any hop. A task's `gate` runs after the last implementer step's
+  own gate and routes through the same `on:` labels. The claim records `pipelineSource` and
+  `gateApplied`.
+- **Task restrictions and a token budget reach the live hop (P43-4).** `deniedTools`,
+  `network: none` and block-only `policies` narrow every hop of the task and are audited as
+  `policy_id='task-restriction'`; `maxTokens` caps the task's measured usage and fails it with
+  `failureKind: budget`. Enqueue and the hop validate task policies through one function.
+- **`hop_started` and `hop_finished` trace events (P43-5).** One pair per hop: the start names
+  the planned model, the finish the served one with usage, verdict, gate and duration. Hop
+  records carry `model` and `provider`, and a settled task carries `usage` keyed by served model.
+
+### Changed
+
+- A `POST /tasks/<pod>` that creates a task answers `201` (was `200`).
+
+### Fixed
+
+- `dispatch_refused` trace events were rejected as an unknown type and never written.
+
 ## [0.2.0-beta.5] - 2026-10-14
 
 Harness contract 1.2: a program that runs docket through `docket exec` no longer needs to hold a

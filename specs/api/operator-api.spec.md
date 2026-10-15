@@ -1,8 +1,9 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.0.1
-**Status**: Planned (Phase 43, ADR 0027). Nothing below is implemented until the card that owns
-each route closes; the cards are on the active board, Phase 43. `SERVE_API_VERSION` stays `"4"` until
+**Version**: 5.1.0
+**Status**: Partially implemented (Phase 43, ADR 0027). Wave 109 shipped the task fields, the task
+routes of P43-1 and the hop events; every other route is planned until the card that owns it
+closes (the route table's Status column). `SERVE_API_VERSION` stays `"4"` until
 Wave 111 closes.
 **Last Updated**: 2026-10-14
 
@@ -48,20 +49,20 @@ Every route below requires `Authorization: Bearer <token>` (the token `docket st
 writes with `--token-file`); `401` comes before any other check. `<pod>` is a project id and is
 validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malformed body is `400`.
 
-| Route | Owner in `core/` | Card |
-|---|---|---|
-| `POST /tasks/<pod>` | `dispatch.enqueue_task` | P43-1 |
-| `GET /tasks/<pod>?externalRef=&status=` | `dispatch.read_tasks` | P43-1 |
-| `GET /tasks/<pod>/<id>` | `dispatch.read_tasks` | P43-1 |
-| `POST /tasks/<pod>/<id>/cancel` | `dispatch.cancel_task` (new, moved from `cli/_task.py`) | P43-10 |
-| `POST /tasks/<pod>/<id>/retry` | `dispatch.retry_task` | P43-10 |
-| `GET /tasks/<pod>/<id>/diff` | `dispatch.task_diff` (new) over `edges/adapters/system.py` | P43-10 |
-| `GET /pods` | `dispatch.dispatchable_pods` | P43-6 |
-| `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 |
-| `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 |
-| `POST /pods/<p>/apply` | `pod_apply.plan_apply` / `classify_directory` / `apply` | P43-8 |
-| `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 |
-| `GET /health` (dispatch block) | `serve.render_health` | P43-11 |
+| Route | Owner in `core/` | Card | Status |
+|---|---|---|---|
+| `POST /tasks/<pod>` | `dispatch.enqueue_task` | P43-1 | Implemented (Wave 109) |
+| `GET /tasks/<pod>?externalRef=&status=` | `dispatch.read_tasks` | P43-1 | Implemented (Wave 109) |
+| `GET /tasks/<pod>/<id>` | `dispatch.read_tasks` | P43-1 | Implemented (Wave 109) |
+| `POST /tasks/<pod>/<id>/cancel` | `dispatch.cancel_task` (new, moved from `cli/_task.py`) | P43-10 | Planned |
+| `POST /tasks/<pod>/<id>/retry` | `dispatch.retry_task` | P43-10 | Planned |
+| `GET /tasks/<pod>/<id>/diff` | `dispatch.task_diff` (new) over `edges/adapters/system.py` | P43-10 | Planned |
+| `GET /pods` | `dispatch.dispatchable_pods` | P43-6 | Planned |
+| `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Planned |
+| `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Planned |
+| `POST /pods/<p>/apply` | `pod_apply.plan_apply` / `classify_directory` / `apply` | P43-8 | Planned |
+| `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Planned |
+| `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Planned |
 
 The CLI keeps symmetry: `docket task add` gains `--external-ref`, `--idempotency-key`,
 `--base-ref`, `--pipeline`, `--gate`, `--max-tokens` (P43-1); `docket task cancel|retry|diff`
@@ -289,6 +290,12 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.1.0 (2026-10-14)
+
+- Status: partially implemented. Wave 109 closed P43-1..5: the task fields and their claim-time
+  and hop-time effects, the three P43-1 task routes, the hop events. The route table gains a
+  Status column.
 
 ### Version 5.0.1 (2026-10-14)
 
