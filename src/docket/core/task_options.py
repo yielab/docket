@@ -101,14 +101,10 @@ def _check_restrictions(restrictions: TaskRestrictions) -> None:
                 f"restrictions.deniedTools: {name!r} is not a known tool ({', '.join(sorted(known))})"
             )
     for index, doc in enumerate(restrictions.policies or []):
-        canonical, error = _policy.validate_policy_document(doc)
-        if error:
-            raise TaskRestrictionError(f"restrictions.policies[{index}]: {error}")
-        if canonical.get("action") != "block":
-            raise TaskRestrictionError(
-                f"restrictions.policies[{index}]: every rule's action must be 'block', "
-                f"got {canonical.get('action')!r}"
-            )
+        try:
+            _policy.task_policy_document(doc)
+        except Exception as exc:
+            raise TaskRestrictionError(f"restrictions.policies[{index}]: {exc}") from exc
 
 
 def validate_task_options(

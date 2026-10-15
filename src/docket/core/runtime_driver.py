@@ -76,6 +76,13 @@ DOCKET_APPROVAL_EXPIRES_AT = "DOCKET_APPROVAL_EXPIRES_AT"
 # unset value keeps the configured AGENT_LOOP_TOKEN_BUDGET default.
 DOCKET_TURN_TOKEN_BUDGET = "DOCKET_TURN_TOKEN_BUDGET"
 
+# Same route again, one per task restriction (security-gates.spec.md "Task restrictions"), popped by
+# DocketDriver: a JSON list of tool names to block, the literal "none" to cut the jail's network,
+# and a JSON list of block-only policy documents evaluated after the pod's.
+DOCKET_TASK_DENIED_TOOLS = "DOCKET_TASK_DENIED_TOOLS"
+DOCKET_TASK_NETWORK = "DOCKET_TASK_NETWORK"
+DOCKET_TASK_POLICIES = "DOCKET_TASK_POLICIES"
+
 # Same route again: this turn's `consult` budget (a non-negative integer, as text). Popped by
 # DocketDriver into ToolContext.max_consultations; unset, the driver reads the pod's
 # `maxConsultationsPerTask` setting (default 3).
