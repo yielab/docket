@@ -319,7 +319,7 @@ worker writes its entry under its own version; the integrator renumbers on merge
   `_submit_pod_sweep`), `tests/unit/cli/test__service.py` (`--bind`). Golden: `start --help`.
 - Forbidden: `_claim_next_task`, the body of `reclaim_stale_running`, `_compose_hop`.
 
-### P43-12 — delete harness mode, version 5, beta.6 (Sonnet; blocked on ADR 0027 question 1)
+### P43-12 — delete harness mode, version 5, beta.6 (Sonnet; approved 2026-10-14, nothing kept)
 
 - Script first: `scripts/maint/remove_harness_mode.py` with the exact list the card gives,
   `--check` (prints what it would remove) and the removal (`git rm`). Before running it, move
@@ -332,7 +332,16 @@ worker writes its entry under its own version; the integrator renumbers on merge
 - Registry: `cli/__init__.py` (the 177-line registry, `scripts/maint/split_cli_registry.py`
   wrote it; edit the registry, not the script, and keep the guard
   `tests/guards/test_cli_registry*.py` green). `cli/_setup.py`: drop `setup harness`.
-  `core/operator_contract.py`: delete only what no remaining module imports.
+- Only-the-harness-used-it rule: for every symbol the card lists under "proven by `rg`", run
+  `rg -n <symbol> src tests scripts` after the deletions; zero remaining users means the
+  symbol goes in this card (its test too), one remaining user means it stays untouched. Say
+  which way each went in the return. `core/setup_home.py` and `core/harness_pipeline.py` are
+  expected to go; `approvalMode: refuse` in `core/pod.py` and `core/tools.py` is expected to
+  stay (a pod setting). The `refuse` default in `edges/adapters/docket_runtime.py` was the
+  harness's: the driver's default becomes the pod's (`wait`), with the dispatch call sites
+  unchanged because they pass the mode explicitly (verify with `rg -n "approval_mode" src`).
+- No trace: no alias, no "did you mean", no notice in `--help`, no `CHANGELOG` "deprecated"
+  wording (it says removed), no `# removed` comment, no skipped test, no empty module.
 - Prose: for each file in `rg -ln 'docket exec|harness' docs/*.md README.md specs/*/*.md`,
   remove or rewrite the sentence; `docs/DEVELOPMENT-HARNESS.md` becomes the HTTP walkthrough
   of `operator-api.spec.md` or is deleted (say which in the return). `tests/agent` README
