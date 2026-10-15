@@ -18,6 +18,7 @@ import contextlib
 import hashlib
 import json
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -28,11 +29,13 @@ from docket.core import agent_loop as _loop
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp
 from docket.core import pod as _pod
+from docket.core import policy as _policy
 from docket.core import repo_view as _repo_view
 from docket.core import runs as _runs
 from docket.core import session as _session
 from docket.core import telemetry as _telemetry
 from docket.core import trace as _trace
+from docket.core.archetypes import BUILTIN_TOOL_KINDS
 from docket.core.audit import audit_log
 from docket.core.consult import DEFAULT_MAX_CONSULTATIONS
 from docket.core.llm import ChatBackend
@@ -43,7 +46,10 @@ from docket.core.runtime_driver import (
     DOCKET_APPROVAL_TIMEOUT,
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
+    DOCKET_TASK_DENIED_TOOLS,
     DOCKET_TASK_ID,
+    DOCKET_TASK_NETWORK,
+    DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
     PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
@@ -296,6 +302,58 @@ def _turn_token_budget(raw: str | None) -> int:
     return value if value > 0 else _cfg.AGENT_LOOP_TOKEN_BUDGET
 
 
+def _task_scope(registry: ToolRegistry, tool_env: dict[str, str]) -> AbstractContextManager[None]:
+    """The policy scope for the turn's task restrictions; pops their coordinates from *tool_env*
+    so no tool sees them (the network one was read by ``_resolve_posture``)."""
+    tool_env.pop(DOCKET_TASK_NETWORK, None)
+    denied_raw = tool_env.pop(DOCKET_TASK_DENIED_TOOLS, None)
+    policies_raw = tool_env.pop(DOCKET_TASK_POLICIES, None)
+    return _policy.task_policies(_task_policy_documents(registry, denied_raw, policies_raw))
+
+
+def _loop_config(backend: ChatBackend, timeout: int, token_budget: int) -> _loop.LoopConfig:
+    """The turn loop's bounds: wall clock, measured-token budget and the endpoint's own windows."""
+    context_window = getattr(backend, "context_window_tokens", None)
+    max_output_tokens = getattr(backend, "max_output_tokens", None)
+    return _loop.LoopConfig(
+        wall_clock_timeout_s=float(timeout),
+        token_budget=token_budget,
+        context_window_tokens=(
+            context_window if isinstance(context_window, int) and context_window > 0 else None
+        ),
+        max_tokens=(
+            max_output_tokens
+            if isinstance(max_output_tokens, int) and max_output_tokens > 0
+            else None
+        ),
+    )
+
+
+def _task_policy_documents(
+    registry: ToolRegistry, denied_raw: str | None, policies_raw: str | None
+) -> list[dict[str, Any]]:
+    """The turn's task-restriction policy documents: one block document for the denied tools
+    (closed by kind, like ``registry_for_role``) plus the task's own, already-checked documents."""
+    from docket.core.dispatch import DispatchError
+
+    documents: list[dict[str, Any]] = []
+    try:
+        denied = [str(n) for n in json.loads(denied_raw)] if denied_raw else []
+        if denied:
+            kinds = {kind for name in denied if (kind := BUILTIN_TOOL_KINDS.get(name))}
+            named = {
+                name
+                for name in registry.names()
+                if (tool := registry.get(name)) is not None and tool.kind in kinds
+            }
+            documents.append(_policy.denied_tools_document(sorted({*denied, *named})))
+        for doc in json.loads(policies_raw) if policies_raw else []:
+            documents.append(_policy.task_policy_document(doc))
+    except ValueError as exc:
+        raise DispatchError(f"task restrictions refused: {exc}") from exc
+    return documents
+
+
 def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
     """Decode ``DOCKET_PREGRANTS``' JSON list into ``Pregrant`` tuples; malformed or
     incomplete entries are dropped rather than raised, fail closed (a dropped entry
@@ -347,11 +405,19 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
 
 
 def _resolve_network(
-    agent_id: str, role: str, want_sandbox: bool, project: str | None = None
+    agent_id: str,
+    role: str,
+    want_sandbox: bool,
+    project: str | None = None,
+    *,
+    task_none: bool = False,
 ) -> tuple[bool, str | None]:
     """``(network_allowed, refusal)`` for this turn. Mode ``none`` needs the jail to enforce it,
-    so with isolation off the turn is refused up front and audited (``network.refused``)."""
+    so with isolation off the turn is refused up front and audited (``network.refused``).
+    *task_none* is the task's own ``network: none``: it narrows, never widens."""
     mode, scope = _pod.effective_network(project or _pod.pod_of(agent_id))
+    if task_none:
+        mode, scope = "none", ("task" if scope == "default" else scope)
     if mode == "open":
         return True, None
     if want_sandbox:
@@ -359,9 +425,10 @@ def _resolve_network(
     if scope == "default":
         return True, None
     audit_log("network.refused", f"agent={agent_id} role={role or '?'} scope={scope}")
-    setting = (
-        "'docket setup sandbox network none'" if scope == "global" else "the pod's network=none"
-    )
+    setting = {
+        "global": "'docket setup sandbox network none'",
+        "task": "the task's network restriction",
+    }.get(scope, "the pod's network=none")
     return False, (
         f"network is none ({setting}) but isolation is off, and only the sandbox can cut "
         "the network -- refusing to run this turn with the network open. Fix one of two "
@@ -383,15 +450,19 @@ def resolve_command_jail(project: str, label: str) -> tuple[_system.JailPolicy |
     return _system.JailPolicy(network=network_allowed, cache_dir=_ensure_pod_cache(project)), None
 
 
-def _resolve_posture(agent_id: str, role: str) -> tuple[bool, bool]:
-    """``(want_sandbox, network_allowed)``: the isolation go/no-go, then the network's. A refused
-    posture raises ``DispatchError`` (deterministic: a retry cannot succeed)."""
+def _resolve_posture(
+    agent_id: str, role: str, env: dict[str, str] | None = None
+) -> tuple[bool, bool]:
+    """``(want_sandbox, network_allowed)``: the isolation go/no-go, then the network's; *env*'s
+    task network coordinate can only cut it. A refused posture raises ``DispatchError``."""
     from docket.core.dispatch import DispatchError
+
+    task_none = (env or {}).get(DOCKET_TASK_NETWORK) == "none"
 
     want_sandbox, refusal = _resolve_sandbox(agent_id, role)
     if refusal is not None:
         raise DispatchError(refusal)
-    network_allowed, refusal = _resolve_network(agent_id, role, want_sandbox)
+    network_allowed, refusal = _resolve_network(agent_id, role, want_sandbox, task_none=task_none)
     if refusal is not None:
         raise DispatchError(refusal)
     return want_sandbox, network_allowed
@@ -520,7 +591,7 @@ class DocketDriver:
                 failure_kind="invalid_output",
             )
 
-        want_sandbox, network_allowed = _resolve_posture(agent_id, meta.role)
+        want_sandbox, network_allowed = _resolve_posture(agent_id, meta.role, env)
         effective_model = model or meta.model or _cfg.DEFAULT_MODEL
         backend = self.backend_factory(effective_model)
         if backend is None:
@@ -608,34 +679,22 @@ class DocketDriver:
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
-        context_window = getattr(backend, "context_window_tokens", None)
-        max_output_tokens = getattr(backend, "max_output_tokens", None)
-        loop_config = _loop.LoopConfig(
-            wall_clock_timeout_s=float(timeout),
-            token_budget=token_budget,
-            context_window_tokens=(
-                context_window if isinstance(context_window, int) and context_window > 0 else None
-            ),
-            max_tokens=(
-                max_output_tokens
-                if isinstance(max_output_tokens, int) and max_output_tokens > 0
-                else None
-            ),
-        )
+        loop_config = _loop_config(backend, timeout, token_budget)
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or env_task_id)
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None
         try:
-            result = _loop.run_agent_turn(
-                backend,
-                registry,
-                ctx,
-                session_key,
-                message,
-                config=loop_config,
-                trace_project=trace_project,
-                trace_session_key=trace_session_key,
-                trace_task_id=trace_task_id or "",
-            )
+            with _task_scope(registry, tool_env):
+                result = _loop.run_agent_turn(
+                    backend,
+                    registry,
+                    ctx,
+                    session_key,
+                    message,
+                    config=loop_config,
+                    trace_project=trace_project,
+                    trace_session_key=trace_session_key,
+                    trace_task_id=trace_task_id or "",
+                )
         finally:
             if view_token is not None:
                 _repo_view.unregister(view_token)

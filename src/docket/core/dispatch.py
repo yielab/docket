@@ -1578,10 +1578,80 @@ class _UnitContext:
     task_gate_step_id: str | None = None
 
 
+def _hop_network(pod_mode: str, task_mode: str | None) -> str:
+    """The hop's jail network: ``"none"`` when the pod or the task says so, else ``"open"``.
+    A task can only cut the network, never open one the pod closed."""
+    return "none" if "none" in (pod_mode, task_mode) else "open"
+
+
+def _task_token_budget(task: dict[str, Any]) -> int | None:
+    """What *task*'s ``maxTokens`` has left after its persisted hops' measured usage; ``None``
+    without a cap. Zero or less means no hop may start."""
+    cap = task.get("maxTokens")
+    if not isinstance(cap, int) or isinstance(cap, bool):
+        return None
+    used = 0
+    for hop in task.get("hops") or []:
+        usage = hop.get("usage") if isinstance(hop, dict) else None
+        if isinstance(usage, dict):
+            used += int(usage.get("input") or 0) + int(usage.get("output") or 0)
+    return cap - used
+
+
+def _current_task(ctx: _UnitContext) -> dict[str, Any]:
+    """The task as the queue holds it now (hops persisted so far), else the claimed snapshot."""
+    for entry in read_tasks(ctx.project):
+        if entry.get("id") == ctx.task_id:
+            return entry
+    return ctx.task
+
+
+def _gate_task_tokens(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
+    """Fail the task with ``failureKind: "budget"`` when its ``maxTokens`` is spent before *role*."""
+    left = _task_token_budget(_current_task(ctx))
+    if left is None or left > 0:
+        return None
+    return _UnitOutcome(
+        kind="failed",
+        reason=f"task token budget reached (maxTokens={ctx.task.get('maxTokens')}) before {role}",
+        failure_kind="budget",
+    )
+
+
+def _apply_task_restrictions(
+    ctx: _UnitContext, env: dict[str, str] | None
+) -> dict[str, str] | None:
+    """*env* plus the driver coordinates for the task's restrictions and remaining token budget.
+    A policy document that is invalid or not ``block`` refuses the hop (``DispatchError``)."""
+    extra: dict[str, str] = {}
+    restrictions = ctx.task.get("restrictions")
+    if isinstance(restrictions, dict):
+        if restrictions.get("deniedTools"):
+            extra[_rd.DOCKET_TASK_DENIED_TOOLS] = _json.dumps(list(restrictions["deniedTools"]))
+        task_mode = restrictions.get("network")
+        if task_mode == "none":
+            extra[_rd.DOCKET_TASK_NETWORK] = _hop_network(
+                _pod.effective_network(ctx.project)[0], task_mode
+            )
+        if restrictions.get("policies"):
+            try:
+                documents = [_policy.task_policy_document(d) for d in restrictions["policies"]]
+            except ValueError as exc:
+                raise DispatchError(f"task restrictions refused: {exc}") from exc
+            extra[_rd.DOCKET_TASK_POLICIES] = _json.dumps(documents)
+    left = _task_token_budget(_current_task(ctx))
+    if left is not None:
+        extra[_rd.DOCKET_TURN_TOKEN_BUDGET] = str(left)
+    return {**(env or {}), **extra} if extra else env
+
+
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
     """Budget gate before the hop (see ``pod_gating_cost``); on trip, marks the Lead paused
     so future dispatch attempts are refused at claim time instead of re-running this check.
     Returns ``None`` when the hop may proceed."""
+    task_outcome = _gate_task_tokens(ctx, role)
+    if task_outcome is not None:
+        return task_outcome
     if ctx.cap <= 0.0:
         return None
     spent, estimated = pod_gating_cost(ctx.project)
@@ -1760,6 +1830,7 @@ def _compose_hop(
         env = dict(env or {})
         env[_rd.DOCKET_APPROVAL_TIMEOUT] = str(ctx.approval_timeout)
     env = _consult_budget_env(ctx, env)
+    env = _apply_task_restrictions(ctx, env)
     pregrants_raw = ctx.task.get("pregrants")
     pregrants_raw = [
         *(pregrants_raw if isinstance(pregrants_raw, list) else []),
@@ -2053,6 +2124,13 @@ def _parked_consult_question(
     return question.model_dump(by_alias=True)
 
 
+def _turn_budget_failure_kind(ctx: _UnitContext, run_res: _rd.TurnResult) -> str:
+    """``"budget"`` when the turn loop stopped on the token budget a task ``maxTokens`` set."""
+    if run_res.stop_reason == "token_budget" and ctx.task.get("maxTokens") is not None:
+        return "budget"
+    return ""
+
+
 def _persist_hop_and_trace(
     ctx: _UnitContext,
     role: str,
@@ -2149,6 +2227,7 @@ def _persist_hop_and_trace(
             kind="failed",
             hops=[hop],
             reason=f"{role} hop failed: {hop_error or 'no result'}",
+            failure_kind=_turn_budget_failure_kind(ctx, run_res),
         )
     return None
 
