@@ -267,3 +267,8 @@ def test_a_registered_secret_is_redacted(monkeypatch: pytest.MonkeyPatch) -> Non
     secret = "resolved-from-another-home-0123456789"
     trace.register_secret(secret)
     assert secret not in trace.redact(f"key={secret} end")
+
+
+def test_hop_events_are_known_types() -> None:
+    """The two hop-level events belong to the closed event vocabulary."""
+    assert {"hop_started", "hop_finished"} <= trace.EVENT_TYPES

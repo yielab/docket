@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.49.0
+**Version**: 6.50.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1744,6 +1744,48 @@ any CLI rendering of this evidence.*
    gate execution" is altered by this section — `verify`/`evidence` are additive record-keeping,
    read by nothing on the live gate-decision path.
 
+### Hop events and task usage (ROADMAP Phase 43, card P43-5)
+
+*Trigger: a full run's trace had no hop-level event, so an external consumer could not see where a
+hop began or ended without parsing `tool_call`/`tool_result` text, and the hop record carried
+`usage` with no model or provider to attribute it to (ADR 0027, measurement 3). This section adds
+two trace events and two persisted fields; `tool_call`, `tool_result`, `error` and the evidence
+document (`evidence.py`, `docs/contracts/`) are unchanged.*
+
+1. Every hop **MUST** write a `hop_started` trace event in the task's session, immediately after
+   its `tool_call` hop marker and before the turn. Its payload is exactly these keys: `task`
+   (the task id), `step` (the hop's pipeline step id), `role`, `member` (the hop's member id),
+   `model`, `provider`, `cycle` (the task's rework cycles consumed so far, the sum of
+   `ctx.rework_counts`; `0` before any `REQUEST-CHANGES`) and `attempt` (always `1`: retries are
+   `hop_retry` events, not new starts).
+2. Every hop **MUST** write a `hop_finished` trace event after its closing record (`tool_result`
+   or `error`, and `cost_charged` when present) and before `on_hop` persists the hop. Its payload
+   is the `hop_started` keys, with `attempt` set to the hop's total tries (`HopResult.attempts`),
+   and these additional keys: `ok` (the hop's outcome), `verdict` (`HopResult.artifact.verdict`,
+   or `null`), `gate` (the mechanical gate's `pass`/`fail` from its exit code, an external gate's
+   `label`, or `null` for a hop with no `verify`), `usage` (`HopResult.usage`, `{input, output}`,
+   or `null`), `durationMs` (the hop's trace window, `HopResult.trace` `lastTs` minus `firstTs`,
+   in milliseconds at the trace's one-second precision; `null` when tracing is off) and `error`
+   (`HopResult.error`, `""` when none).
+3. `HopResult` **MUST** carry `model: str = ""` and `provider: str = ""`. `model` is the served
+   model in the form `<provider>/<model id>` (the form the spec's `usage.byModel` keys use);
+   `provider` is the catalog provider name. `_hop_record` persists both as `model` and `provider`
+   keys; `_hop_from_record` reads them and defaults an old record that has neither to `""`. Both
+   are additive: the evidence document does not read them, and no existing key changes meaning.
+4. `hop_started`'s `model` and `provider` name the **planned** model: the step's own `model`
+   override (resolved as "Per-hop execution" requirement 5) when the step declares one, else the
+   member's configured `model` in `.docket-meta.json`, else the driver's default model. The
+   `hop_started` event is written before the turn, so it cannot name the served model.
+   `hop_finished`'s `model` and `provider` name the **served** model the turn reported, and the
+   hop record persists the same served values. A hop whose turn reported no served model records
+   `""` for both. The two events can differ when the endpoint serves a different model than the
+   one requested.
+5. Each time `_finalize_task` settles a task (a terminal state or a waiting one), it **MUST**
+   write `task["usage"]` as `{"input": n, "output": n, "byModel": {<model>: {"input": n,
+   "output": n}}}`, summed over the task's persisted `hops` (a hop with `usage` `null` adds
+   nothing). A hop whose `model` is `""` is summed under the `""` key. A task that has never
+   settled has no `usage` key.
+
 ### In-place ephemeral pods
 
 1. A pod provisioned in place **MUST** give its Implementer no git worktree: the Implementer's
@@ -2277,6 +2319,15 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.50.0 (2026-10-14)
+- **Hop events and task usage (P43-5, ADR 0027).** New "Hop events and task usage" section:
+  `hop_started`/`hop_finished` trace events per hop (`trace-store.spec.md` 1.8.0),
+  `HopResult.model`/`provider` persisted on the hop record (`hop_started` names the planned model,
+  `hop_finished` and the record the served one, from the turn result), and `task["usage"]`
+  (`input`/`output`/`byModel` keyed by the served model) written at finalize. Red reason: the trace
+  vocabulary had no hop-level event, `HopResult` had no model fields, and `_finalize_task` wrote
+  no task usage.
 
 ### Version 6.49.0 (2026-10-14)
 - "Per-hop execution" items 7-8: a task's `restrictions` narrow its hops, and its `maxTokens` is a

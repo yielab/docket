@@ -181,6 +181,10 @@ class HopResult:
     # Repository files this hop's turn composed from the task's base commit, repository-relative
     # path -> sha256 (``TurnResult.repo_files``). Empty when the turn read the filesystem.
     repo_files: dict[str, str] = field(default_factory=dict)
+    # The served model as ``<provider>/<model id>`` and its catalog provider, or ``""`` while the
+    # runtime driver reports no served model (pod-dispatch.spec.md, "Hop events and task usage").
+    model: str = ""
+    provider: str = ""
 
     def __post_init__(self) -> None:
         if self.artifact is None:
@@ -1278,6 +1282,8 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "usage": h.usage,
         "trace": h.trace,
         "repoFiles": h.repo_files or None,
+        "model": h.model,
+        "provider": h.provider,
     }
 
 
@@ -1316,6 +1322,8 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         usage=usage_raw if isinstance(usage_raw, dict) else None,
         trace=trace_raw if isinstance(trace_raw, dict) else None,
         repo_files=dict(files_raw) if isinstance(files_raw, dict) else {},
+        model=str(rec.get("model", "") or ""),
+        provider=str(rec.get("provider", "") or ""),
     )
 
 
@@ -1806,6 +1814,31 @@ def _compose_hop(
         "tool_call",
         _json.dumps({"hop": role, "agent": member_id}),
     )
+    planned_model = ""
+    if node.model:
+        try:
+            planned_model = _models_policy.resolve_step_model(node.model)
+        except ValueError:
+            planned_model = node.model
+    planned_model = planned_model or _fleet.meta_get(member_id, "model", "") or _cfg.DEFAULT_MODEL
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "hop_started",
+        _json.dumps(
+            {
+                "task": ctx.task_id,
+                "step": node.step_id,
+                "role": role,
+                "member": member_id,
+                "model": planned_model,
+                "provider": planned_model.partition("/")[0] if "/" in planned_model else "",
+                "cycle": sum(ctx.rework_counts.values()),
+                "attempt": 1,
+            }
+        ),
+    )
     env = hop_env(member_id, role)
     if pipeline_worktree:
         env = dict(env or {})
@@ -2068,9 +2101,14 @@ def _build_hop_result(
         diff_ref=diff_ref,
         brief=brief,
     )
+    served = run_res.model
+    if served and run_res.provider and "/" not in served:
+        served = f"{run_res.provider}/{served}"
     return HopResult(
         role=role,
         member_id=member_id,
+        model=served,
+        provider=run_res.provider,
         ok=hop_ok,
         output=hop_output,
         cost_usd=run_res.cost_usd,
@@ -2176,6 +2214,44 @@ def _persist_hop_and_trace(
     # `on_hop` so the persisted record's `lastTs` covers them (evidence-v1).
     if hop.trace is not None:
         hop.trace["lastTs"] = _trace._now_iso()
+    duration_ms: int | None = None
+    if hop.trace and hop.trace.get("firstTs") and hop.trace.get("lastTs"):
+        first = _dt.datetime.fromisoformat(hop.trace["firstTs"].replace("Z", "+00:00"))
+        last = _dt.datetime.fromisoformat(hop.trace["lastTs"].replace("Z", "+00:00"))
+        duration_ms = int((last - first).total_seconds() * 1000)
+    verdict = hop.artifact.verdict if hop.artifact is not None else None
+    gate: str | None = None
+    if hop.verify is not None:
+        label = hop.verify.get("label")
+        gate = (
+            label
+            if isinstance(label, str)
+            else ("pass" if hop.verify.get("exitCode") == 0 else "fail")
+        )
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "hop_finished",
+        _json.dumps(
+            {
+                "task": ctx.task_id,
+                "step": hop.step_id,
+                "role": role,
+                "member": hop.member_id,
+                "model": hop.model,
+                "provider": hop.provider,
+                "cycle": sum(ctx.rework_counts.values()),
+                "attempt": hop.attempts,
+                "ok": hop_ok,
+                "verdict": verdict,
+                "gate": gate,
+                "usage": hop.usage,
+                "durationMs": duration_ms,
+                "error": hop_error,
+            }
+        ),
+    )
 
     if ctx.on_hop is not None:
         ctx.on_hop(hop)
@@ -3715,6 +3791,14 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
         for t in tasks:
             if t.get("id") == task_id:
                 _apply_result(t, res)
+                usage: dict[str, Any] = {"input": 0, "output": 0, "byModel": {}}
+                for h in res.hops:
+                    bucket = usage["byModel"].setdefault(h.model, {"input": 0, "output": 0})
+                    for key in ("input", "output"):
+                        n = int((h.usage or {}).get(key, 0) or 0)
+                        usage[key] += n
+                        bucket[key] += n
+                t["usage"] = usage
                 return {"tasks": tasks}
         return None
 
