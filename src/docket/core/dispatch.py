@@ -1565,6 +1565,13 @@ def _compose_hop(
         "tool_call",
         _json.dumps({"hop": role, "agent": member_id}),
     )
+    planned_model = ""
+    if node.model:
+        try:
+            planned_model = _models_policy.resolve_step_model(node.model)
+        except ValueError:
+            planned_model = node.model
+    planned_model = planned_model or _fleet.meta_get(member_id, "model", "") or _cfg.DEFAULT_MODEL
     _trace_locked(
         ctx.project,
         ctx.session_id,
@@ -1576,8 +1583,8 @@ def _compose_hop(
                 "step": node.step_id,
                 "role": role,
                 "member": member_id,
-                "model": "",
-                "provider": "",
+                "model": planned_model,
+                "provider": planned_model.partition("/")[0] if "/" in planned_model else "",
                 "cycle": sum(ctx.rework_counts.values()),
                 "attempt": 1,
             }
@@ -1844,9 +1851,14 @@ def _build_hop_result(
         diff_ref=diff_ref,
         brief=brief,
     )
+    served = run_res.model
+    if served and run_res.provider and "/" not in served:
+        served = f"{run_res.provider}/{served}"
     return HopResult(
         role=role,
         member_id=member_id,
+        model=served,
+        provider=run_res.provider,
         ok=hop_ok,
         output=hop_output,
         cost_usd=run_res.cost_usd,
