@@ -702,3 +702,44 @@ class TestPrivateJailTmp:
         root.mkdir()
         launch = _sys.jail_launch((root,), "true", "docker")
         assert "TMPDIR" not in " ".join(launch.argv)
+
+
+# ── git_worktree_add ──────────────────────────────────────────────────────────
+
+
+class TestGitWorktreeAddStartPoint:
+    def _capture(self, monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+        argvs: list[list[str]] = []
+
+        def _run(argv: list[str], *a: Any, **k: Any) -> _FakeCompleted:
+            argvs.append(argv)
+            return _FakeCompleted(returncode=0)
+
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        monkeypatch.setattr(_sys.subprocess, "run", _run)
+        return argvs
+
+    def test_start_point_is_the_last_argument(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        argvs = self._capture(monkeypatch)
+
+        assert _sys.git_worktree_add("/r", "/w", "br", start_point="prev") == (True, "")
+
+        assert argvs == [["git", "-C", "/r", "worktree", "add", "-b", "br", "/w", "prev"]]
+
+    def test_no_start_point_keeps_the_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        argvs = self._capture(monkeypatch)
+
+        _sys.git_worktree_add("/r", "/w", "br")
+
+        assert argvs == [["git", "-C", "/r", "worktree", "add", "-b", "br", "/w"]]
+
+    def test_a_start_point_that_looks_like_an_option_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        argvs = self._capture(monkeypatch)
+
+        ok, reason = _sys.git_worktree_add("/r", "/w", "br", start_point="--detach")
+
+        assert not ok
+        assert "--detach" in reason
+        assert argvs == []

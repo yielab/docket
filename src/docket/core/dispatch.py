@@ -3209,17 +3209,27 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
 
 
 def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
-    """Record ``task["worktree"]`` for a newly claimed task; a task that has one keeps it. No
-    codebase or an in-place Implementer records nothing; a failed ``worktree add`` records
-    ``fallbackReason`` and the task runs in place."""
+    """Record ``task["worktree"]`` for a claimed task (a recorded one is kept); a failed add
+    records ``fallbackReason`` and runs in place. With a ``baseRef`` it never runs in place:
+    it sets ``claimed["claimRefusal"] = (failure_kind, reason)`` instead."""
     if "worktree" in claimed:
         return
+    base_ref = str(claimed.get("baseRef") or "")
     implementer = _pod.member_id(project, "implementer")
     codebase = str(_fleet.meta_get(implementer, "codebase", "") or "")
     if not codebase or _fleet.meta_get(implementer, "inPlace", ""):
+        if base_ref:
+            claimed["claimRefusal"] = (
+                "base_ref",
+                f"baseRef {base_ref!r} needs a task worktree, but the Implementer has no "
+                "codebase or runs in place",
+            )
         return
     task_id = str(claimed.get("id", ""))
-    record, reason = _pp.provision_task_worktree(implementer, project, task_id, codebase)
+    record, reason = _pp.provision_task_worktree(implementer, project, task_id, codebase, base_ref)
+    if base_ref and not record:
+        claimed["claimRefusal"] = ("base_ref", f"baseRef {base_ref!r} was not used: {reason}")
+        return
     stored: dict[str, Any] = (
         record if record else {"dir": "", "branch": "", "baseCommit": "", "fallbackReason": reason}
     )
@@ -3235,6 +3245,43 @@ def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
 
     _store.read_modify_write(pod_task_list_path(project), _fn)
     claimed["worktree"] = stored
+
+
+def _refuse_claimed_task(
+    project: str, task: dict[str, Any], failure_kind: str, reason: str
+) -> TaskResult:
+    """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
+    runs: clear the claim, keep the recorded hops, and trace ``dispatch_refused``."""
+    task_id = str(task.get("id", "task"))
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        for t in tasks:
+            if isinstance(t, dict) and t.get("id") == task_id:
+                t["status"] = "failed"
+                t["failureKind"] = failure_kind
+                t["reason"] = reason
+                t["completedAt"] = _now()
+                t["claimId"] = None
+                t.pop("claimPid", None)
+                return {"tasks": tasks}
+        return None
+
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    _trace.trace_event(
+        project,
+        f"agent:{project}:{task_id}",
+        "lead",
+        "dispatch_refused",
+        _json.dumps({"reason": reason}),
+    )
+    tasks_after = doc.get("tasks")
+    _mem.sync_dispatch_tasks(
+        _cfg.workspace_dir(_pod.member_id(project, "lead")),
+        tasks_after if isinstance(tasks_after, list) else [],
+    )
+    return TaskResult(task_id=task_id, status="failed", reason=reason, failure_kind=failure_kind)
 
 
 def _claim_next_task(
@@ -3817,6 +3864,10 @@ def dispatch_pod(
             break
         task, resume_hops = claim
         task_id = str(task.get("id", "task"))
+        refusal = task.pop("claimRefusal", None)
+        if refusal is not None:
+            results.append(_refuse_claimed_task(project, task, *refusal))
+            continue
 
         def _persist(hop: HopResult, _project: str = project, _task_id: str = task_id) -> None:
             _persist_hop(_project, _task_id, hop)

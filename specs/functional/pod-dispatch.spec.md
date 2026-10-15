@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.45.0
+**Version**: 6.47.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -1718,7 +1718,22 @@ any CLI rendering of this evidence.*
    A task that already records a worktree (parked `waiting_input`/`waiting_approval`, resumed, or
    retried) **MUST** reuse it; claim never creates a second one.
 4. When git is missing, the codebase is not a repo, or `worktree add` fails, the task **MUST** run
-   in place and record `worktree = {dir: "", branch: "", baseCommit: "", fallbackReason}`.
+   in place and record `worktree = {dir: "", branch: "", baseCommit: "", fallbackReason}`, unless
+   the task carries a `baseRef` (requirement 4a).
+   - 4a. A task with a `baseRef` **MUST** get its worktree created on the new task branch from
+     that ref (`git worktree add -b <branch> <dir> <baseRef>`), record `worktree.baseRef` as
+     given, and `baseCommit` is the new worktree's HEAD, the commit the ref resolved to. A ref
+     that begins with `-` is refused outright. The caller asked for a base, so running in place
+     is wrong: when the ref does not resolve, the codebase is not a repo, git is missing, or the
+     Implementer has no codebase or runs in place, claim **MUST** record no `worktree`, leave no
+     worktree directory or task branch behind, and settle the task through the claim-time refusal
+     (requirement 4b) with `failureKind: "base_ref"` and a reason naming the ref. No hop runs.
+   - 4b. The claim-time refusal (`_refuse_claimed_task(project, task, failure_kind, reason)`)
+     settles the claimed task `failed` with `failureKind`, `reason` and `completedAt`, clears
+     `claimId`, leaves the recorded `hops` untouched, and writes a `dispatch_refused` trace event
+     whose payload `reason` is the refusal reason; `dispatch_pod` then continues to the next
+     eligible task. `base_ref` is not in `RESUMABLE_FAILURE_KINDS`: a resume would refuse again,
+     so the operator re-enqueues with a corrected ref.
 5. Removing the Implementer (`teardown_member`) **MUST** remove every task worktree under its
    `tasks/` directory and delete each task branch merged into the codebase's current branch; a
    branch that is not merged is kept and reported with the manual `git branch -D` command.
@@ -2197,6 +2212,15 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.47.0 (2026-10-14)
+
+- "Task worktrees" 4a/4b: a task's `baseRef` is the start point of its worktree; an unresolvable
+  ref (or any condition that stops the worktree being made) fails the task at claim with
+  `failureKind: "base_ref"`, a `dispatch_refused` trace event and no hop, instead of running in
+  place. The claim-time refusal helper `_refuse_claimed_task` is generic over the failure kind.
+  `dispatch_refused` was never reaching a trace file (`trace_event` rejected it as unknown);
+  `trace-store.spec.md` 1.8.0 admits it.
 
 ### Version 6.45.0 (2026-10-13)
 - Cancellation item 1: `task cancel` cancels a task parked in `waiting_input` or
