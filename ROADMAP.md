@@ -9,7 +9,8 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-13.** Every phase 0–42 is complete. No phase is planned and no item is
+**Last updated: 2026-10-14.** Every phase 0–42 is complete. **Phase 43 is planned** (D-63, ADR 0027;
+twelve cards in three waves on `TODO.md`, measured first, nothing implemented yet). No item is
 carried: Wave 108 (no phase, closed 2026-10-13) closed the last carried items of every phase — a
 parked task can be cancelled, host-side git trusts only the recorded git dirs, every jail narrows
 ref writes to the task's branch and gives each launch a private temp dir (the close's live run
@@ -51,6 +52,7 @@ until the project drops its beta warning.
 | 41 | One execution envelope: Landlock + seccomp, Seatbelt, Docker when chosen | D-60 · [0024](docs/adr/0024-one-execution-envelope.md) | 2026-10-13 |
 | 42 | Lights-out profile and external verification gate | D-61 · [0025](docs/adr/0025-lights-out-profile-and-external-gate.md) | 2026-10-13 |
 | — | Harness contract 1.2: `docket exec` runs on the operator's own setup (no phase) | D-62 · [0026](docs/adr/0026-harness-uses-the-operators-setup.md) | 2026-10-13 |
+| 43 | The team runtime behind an external plan of record: addressable tasks, HTTP lifecycle, pods over HTTP, `.docket/teams/`, one door (API 5, `exec` deleted) | D-63 · [0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md) | **planned 2026-10-14** |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -201,7 +203,7 @@ address exactly those.
 
 ---
 
-## 6. Decisions (D-1…D-62)
+## 6. Decisions (D-1…D-63)
 
 > Every decision is answered; a row stays because a decision outlives its phase. Rows D-1…D-24 were
 > taken in phases archived in `docs/cycles-ended/roadmap-phases.md`, and some name a daemon docket
@@ -270,6 +272,7 @@ address exactly those.
 | D-60 | After Phase 40, the sandbox still covers only the agent's `bash` (verify, `run:` steps and `isolate: false` servers run on the host), the jail reads the whole disk with the network open, and bwrap is a system dependency that CI containers cannot satisfy. What is the envelope, what is required, configurable and installed, on Linux, macOS and Windows? | Phase 41 | **Answered 2026-10-12 (ADR 0024):** one envelope for everything the project runs; Landlock + seccomp on Linux, Seatbelt on macOS, Docker when chosen, bwrap deleted; inside the envelope every command but a high-risk class is allowed, outside the allowlist applies; sandbox off by default (D-56 stands), network `none` by default, `isolate: false` deleted; no package dependency anywhere, fail closed when on. |
 | D-61 | docket, an orchestrator and an independent verifier are meant to run a lights-out factory at L3/L4/L5, each usable alone. What does docket add so an operator can run it unattended safely, without naming the verifier and without changing a fresh install? | Phase 42 | **Answered 2026-10-13 (ADR 0025, accepted with amendments):** an external gate (command + exit map, four labels routed by `on:`, reasons via `DOCKET_GATE_REASONS_FILE`), the gate's output carried into rework, repository instructions read from `baseCommit` on every run, a refuse-don't-degrade `lights-out` profile for pod dispatch, evidence `1.1.0` (`gate`, `directives`). Cut with triggers: `exec` gate/profile flags, override pack, risk/domain, corrections export, attempt ids and digests. |
 | D-62 | Tack is removing its model-provider layer: every harness it runs must use its own login and configuration. Harness mode cannot use docket's: it requires `DOCKET_LLM_BASE_URL`, hides the operator's setup behind a caller-owned `DOCKET_HOME`, requires `--model`, and offers no machine-readable readiness. | 2026-10-13 (no phase; harness contract 1.2, docket 0.2.0-beta.5) | **Answered 2026-10-13 (ADR 0026):** an opt-in contract `1.2` reads the operator's setup from the setup home (`DOCKET_SETUP_HOME` or `~/.docket`; three files, read-only, no lock) when `DOCKET_LLM_BASE_URL` is unset; `--model` defaults to the role's setup model, then the registry default, never a built-in anchor; a missing or unreadable credential refuses before any request; `docket setup harness --json` is the offline readiness; 1.0 and 1.1 unchanged. |
+| D-63 | Tack runs docket as a throwaway agent per attempt (`docket exec`) and gets none of the pod, roles, pipeline, gates or approvals; what must docket add so an external plan of record sends every piece of work to a long-lived pod through one door, without Tack working around docket? | Phase 43 | **Answered 2026-10-14 (ADR 0027, planned):** HTTP against `docket start --dispatch`, API version 5; a task carries `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens` and narrow-only `restrictions`; `hop_started`/`hop_finished` on the trace; cancel/retry/diff and pods (read, `ensure`, `apply`, corrections) over HTTP; `.docket/teams/<pod>/`; the daemon stops between tasks and resumes on every sweep; `exec` and harness contracts deleted (D-57). Deferred with triggers: parallel tasks in a pod, warm workspace, SSE, statistics. Measured first: `npm ci` 6.5 s + build 15.5 s per worktree (829 MB), one llama.cpp slot queues (5/10.6 s for two), a stop signal waited 91 s for a whole sweep. |
 
 ---
 
