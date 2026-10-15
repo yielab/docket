@@ -157,3 +157,172 @@ class TestQueueShapeMatchesReadTasks:
             assert task["status"] == "pending"
             assert task["priority"] == "normal"
             assert "id" in task and "created" in task
+
+
+def _post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST")
+    req.add_header("Content-Type", "application/json")
+    if token is not None:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+def _queue(project: str = "demo") -> list[dict]:  # type: ignore[type-arg]
+    return _dispatch.read_tasks(project)
+
+
+def _enqueue_entries() -> list[dict]:  # type: ignore[type-arg]
+    from docket.core import audit as _audit
+
+    return [e for e in _audit.read_audit() if e.get("action") == "task.enqueue"]
+
+
+_FULL_BODY = {
+    "description": "ship the thing",
+    "externalRef": "TACK-412/attempt-2",
+    "idempotencyKey": "TACK-412:2",
+    "baseRef": "docket/demo/task-91aa",
+    "pipeline": "tdd",
+    "gate": {"command": "npm test -- --ci", "timeoutS": 600, "map": {"3": "needs_human"}},
+    "maxTokens": 400000,
+    "restrictions": {"deniedTools": ["fetch"], "network": "none", "policies": []},
+}
+
+
+class TestAddressableTask:
+    def test_same_idempotency_key_returns_the_existing_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        body = {"description": "once only", "idempotencyKey": "k-1"}
+        first_status, first = _post(f"{url}/tasks/demo", body, token)
+        second_status, second = _post(f"{url}/tasks/demo", body, token)
+        assert (first_status, second_status) == (201, 200)
+        assert (first["created"], second["created"]) == (True, False)
+        assert first["task"] == second["task"]
+        assert len(_queue()) == 1
+        assert len(_enqueue_entries()) == 1
+
+    def test_a_new_task_answers_201_with_the_documented_keys(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        status, body = _post(f"{url}/tasks/demo", {"description": "plain"}, token)
+        assert status == 201
+        assert set(body) == {"ok", "created", "task", "project", "status"}
+        assert body["status"] == "pending"
+
+    def test_the_record_carries_every_field_as_sent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        _status, created = _post(f"{url}/tasks/demo", _FULL_BODY, token)
+        status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+        assert status == 200
+        for key in _FULL_BODY:
+            if key != "description":
+                assert record[key] == _FULL_BODY[key], key
+
+    def test_a_widening_restriction_is_422_and_enqueues_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        bodies = [
+            {"restrictions": {"network": "open"}},
+            {"restrictions": {"deniedTools": ["no_such_tool"]}},
+            {
+                "restrictions": {
+                    "policies": [
+                        {
+                            "kind": "policy",
+                            "name": "p",
+                            "appliesTo": ["*"],
+                            "when": {"tool": "bash"},
+                        }
+                    ]
+                }
+            },
+            {
+                "restrictions": {
+                    "policies": [
+                        {
+                            "kind": "policy",
+                            "name": "p",
+                            "appliesTo": ["*"],
+                            "when": {"tool": "bash"},
+                            "then": "allow",
+                        }
+                    ]
+                }
+            },
+        ]
+        for extra in bodies:
+            status, body = _post(f"{url}/tasks/demo", {"description": "x", **extra}, token)
+            assert status == 422, extra
+            assert "error" in body
+        assert _queue() == []
+        assert _enqueue_entries() == []
+
+    def test_a_wrongly_shaped_field_is_400(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        for extra in (
+            {"externalRef": ""},
+            {"externalRef": "x" * 201},
+            {"idempotencyKey": 7},
+            {"baseRef": ["a"]},
+            {"pipeline": ""},
+            {"gate": "npm test"},
+            {"gate": {"timeoutS": 5}},
+            {"maxTokens": 0},
+            {"maxTokens": "many"},
+            {"restrictions": "none"},
+        ):
+            status, _body = _post(f"{url}/tasks/demo", {"description": "x", **extra}, token)
+            assert status == 400, extra
+        assert _queue() == []
+
+    def test_get_one_task_is_404_when_unknown(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        status, body = _get(f"{url}/tasks/demo/task-nope", token)
+        assert status == 404
+        assert "error" in body
+
+    def test_the_list_filters_by_external_ref_and_status(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        _post(f"{url}/tasks/demo", {"description": "a", "externalRef": "A"}, token)
+        _post(f"{url}/tasks/demo", {"description": "b", "externalRef": "B"}, token)
+        _status, only_a = _get(f"{url}/tasks/demo?externalRef=A", token)
+        assert [t["externalRef"] for t in only_a["tasks"]] == ["A"]
+        _status, pending = _get(f"{url}/tasks/demo?status=pending", token)
+        assert len(pending["tasks"]) == 2
+        _status, done = _get(f"{url}/tasks/demo?status=done", token)
+        assert done["tasks"] == []
+        _status, none = _get(f"{url}/tasks/demo?externalRef=A&status=done", token)
+        assert none["tasks"] == []
+        status, _body = _get(f"{url}/tasks/demo?status=bogus", token)
+        assert status == 400
+
+    def test_one_task_route_needs_the_token(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, _token = live_server
+        status, _body = _get(f"{url}/tasks/demo/task-x")
+        assert status == 401

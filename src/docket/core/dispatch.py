@@ -53,6 +53,7 @@ from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
 from docket.core import secrets as _secrets
 from docket.core import security as _sec
+from docket.core import task_options as _task_options
 from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
@@ -108,6 +109,10 @@ def step_session_key(member_id: str, project: str, task_id: str, step_id: str) -
 
 class DispatchError(Exception):
     """A pod cannot be dispatched (no pod, no lead, …)."""
+
+
+class TaskRestrictionError(DispatchError):
+    """An enqueue asked for a restriction that would widen the pod's limits."""
 
 
 @dataclass
@@ -342,6 +347,21 @@ def _enqueue_pre_input_gate(
     return hit
 
 
+def validate_task_options(**raw: Any) -> _task_options.TaskOptions:
+    """Validate the addressable-task fields; a wrong shape raises DispatchError, a widening
+    restriction its subclass TaskRestrictionError."""
+    try:
+        return _task_options.validate_task_options(**raw)
+    except _task_options.TaskRestrictionError as exc:
+        raise TaskRestrictionError(str(exc)) from exc
+    except _task_options.TaskOptionsError as exc:
+        raise DispatchError(str(exc)) from exc
+
+
+def _queued_with_key(tasks: list[dict[str, Any]], key: str) -> dict[str, Any] | None:
+    return next((t for t in tasks if t.get("idempotencyKey") == key), None)
+
+
 def enqueue_task(
     project: str,
     description: str,
@@ -350,13 +370,34 @@ def enqueue_task(
     channel: str,
     trusted: bool | None = None,
     brief: dict[str, Any] | None = None,
+    **options: Any,
 ) -> dict[str, Any]:
-    """Locked read-modify-write; raises DispatchError (nothing persisted) on no Lead, an invalid
-    *brief* or a blocked ``pre_input``. ``trusted`` never overrides ``source``; *channel*
-    (cli|http|telegram|mcp) is recorded and audited, never trusted."""
+    """The task :func:`enqueue_task_once` queued, or the one already queued for the key."""
+    return enqueue_task_once(
+        project, description, priority, channel=channel, trusted=trusted, brief=brief, **options
+    )[0]
+
+
+def enqueue_task_once(
+    project: str,
+    description: str,
+    priority: str = "normal",
+    *,
+    channel: str,
+    trusted: bool | None = None,
+    brief: dict[str, Any] | None = None,
+    **options: Any,
+) -> tuple[dict[str, Any], bool]:
+    """Locked read-modify-write returning ``(task, created)``; DispatchError persists nothing.
+    A queued ``idempotency_key`` returns that task with ``created`` False; *options* are the
+    addressable-task fields. *channel* (cli|http|telegram|mcp) is recorded, never trusted."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
+    parsed_options = validate_task_options(**options)
+    key = parsed_options.idempotency_key
+    if key is not None and (queued := _queued_with_key(read_tasks(project), key)) is not None:
+        return queued, False
 
     # *brief*, when given, is a pre-brief the operator already knows: validated as a
     # TaskBrief (invalid raises DispatchError, nothing persisted), folded into the enqueued
@@ -403,6 +444,7 @@ def enqueue_task(
     }
     if parsed_brief is not None:
         task["brief"] = parsed_brief.model_dump(by_alias=True)
+    task.update(parsed_options.as_record())
 
     if hit.action == "require_approval":
         action_text = f"pod dispatch — task enqueue for '{project}': {description}"[:1000]
@@ -422,6 +464,8 @@ def enqueue_task(
             ),
         )
 
+    existing: list[dict[str, Any]] = []
+
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:
         tasks_raw = doc.get("tasks")
         tasks = (
@@ -429,12 +473,17 @@ def enqueue_task(
             if isinstance(tasks_raw, list)
             else []
         )
+        if key is not None and (queued := _queued_with_key(tasks, key)) is not None:
+            existing.append(queued)
+            return doc
         tasks.append(task)
         return {"tasks": tasks}
 
     _store.read_modify_write(path, _fn)
+    if existing:
+        return existing[0], False
     _audit.audit_log("task.enqueue", f"project={project} task={task_id} channel={channel}")
-    return task
+    return task, True
 
 
 def pod_pipeline(project: str) -> list[tuple[str, str]]:

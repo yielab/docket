@@ -28,7 +28,7 @@ _docket_options() {
     "stop") echo "--wait --help" ;;
     "exec") echo "--workspace --task --task-file --model --role --timeout --agent-id --contract --answers --answer-timeout --token-file --max-tokens --policy --recipe --verify --help" ;;
     "task") echo "--help" ;;
-    "task add") echo "--priority --brief --pod --help" ;;
+    "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --pod --help" ;;
     "task list") echo "--json --pod --help" ;;
     "task show") echo "--json --pod --help" ;;
     "task diff") echo "--pod --help" ;;

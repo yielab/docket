@@ -35,6 +35,7 @@ from docket.core import audit as _audit
 from docket.core import fleet, utils
 from docket.core import operator_contract as _oc
 from docket.core import provisioning as _prov
+from docket.core import task_options as _task_options
 from docket.core import trace as _trace
 
 DEFAULT_PORT = 7331
@@ -912,6 +913,18 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
 MAX_POST_BODY_BYTES = 1024 * 1024
 
 
+# POST /tasks body name -> enqueue_task option, for the addressable-task fields.
+_TASK_OPTION_FIELDS: tuple[tuple[str, str], ...] = (
+    ("external_ref", "externalRef"),
+    ("idempotency_key", "idempotencyKey"),
+    ("base_ref", "baseRef"),
+    ("pipeline", "pipeline"),
+    ("gate", "gate"),
+    ("max_tokens", "maxTokens"),
+    ("restrictions", "restrictions"),
+)
+
+
 class _DocketHandler(BaseHTTPRequestHandler):
     """Serves the docket endpoints; builds responses on demand. ``serve_token``
     (a `run_serve` subclass attribute) empty means "disallow all auth" --
@@ -1059,15 +1072,19 @@ class _DocketHandler(BaseHTTPRequestHandler):
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)
                 return
-            project = path[len("/tasks/") :]
+            project, _, task_id = path[len("/tasks/") :].partition("/")
             if self._reject_bad_project_id(project):
                 return
             from docket.core import dispatch as _dispatch
 
-            # read_tasks itself returns [] for a project with no pod (absent
-            # queue file) -- no 404 invented here, matching that contract.
-            body = json.dumps({"tasks": _dispatch.read_tasks(project)}).encode("utf-8")
-            self._send(body, "application/json")
+            if task_id:
+                self._send_one_task(project, task_id)
+                return
+            query = _urlparse.parse_qs(_urlparse.urlsplit(full_path).query)
+            tasks = self._filter_tasks(_dispatch.read_tasks(project), query)
+            if tasks is None:
+                return
+            self._send(json.dumps({"tasks": tasks}).encode("utf-8"), "application/json")
         elif path == "/traces":
             # Same rationale as the bare "/tasks" branch above.
             if not self._check_auth():
@@ -1192,6 +1209,31 @@ class _DocketHandler(BaseHTTPRequestHandler):
         except approval.ApprovalError as exc:
             self._send_json_error(str(exc), 404)
 
+    def _send_one_task(self, project: str, task_id: str) -> None:
+        from docket.core import dispatch as _dispatch
+
+        for task in _dispatch.read_tasks(project):
+            if task.get("id") == task_id:
+                self._send(json.dumps(task).encode("utf-8"), "application/json")
+                return
+        self._send_json_error(f"no task '{task_id}' in pod '{project}'", 404)
+
+    def _filter_tasks(
+        self, tasks: list[dict[str, Any]], query: dict[str, list[str]]
+    ) -> list[dict[str, Any]] | None:
+        """Apply ``externalRef`` / ``status``; answers 400 and returns None on an unknown status."""
+        status = query.get("status", [""])[0]
+        if status and status not in _task_options.TASK_STATUSES:
+            self._send_json_error(f"unknown task status '{status}'", 400)
+            return None
+        ref = query.get("externalRef", [""])[0]
+        return [
+            t
+            for t in tasks
+            if (not status or t.get("status") == status)
+            and (not ref or t.get("externalRef") == ref)
+        ]
+
     def _handle_post_tasks(self, path: str) -> None:
         if not self._check_auth():
             self._send_json_error("Unauthorized", 401)
@@ -1254,22 +1296,33 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 return
             brief = brief_raw
 
+        options = {
+            key: task_body.get(name) for key, name in _TASK_OPTION_FIELDS if name in task_body
+        }
         try:
-            task = _dispatch.enqueue_task(
-                project, description, priority, channel="http", trusted=trusted, brief=brief
+            task, created = _dispatch.enqueue_task_once(
+                project,
+                description,
+                priority,
+                channel="http",
+                trusted=trusted,
+                brief=brief,
+                **options,
             )
+        except _dispatch.TaskRestrictionError as exc:
+            self._send_json_error(str(exc), 422)
+            return
         except _dispatch.DispatchError as exc:
             msg = str(exc)
-            # enqueue_task raises DispatchError for exactly two reasons: no
-            # pod for this project (404 — nothing to enqueue against), or a
-            # `block` pre_input policy verdict (4xx, naming the policy id the
-            # exception message already carries — never swallowed into 500).
+            # DispatchError here is: no pod (404), a wrongly shaped option or a `block`
+            # pre_input verdict naming its policy id (400) -- never swallowed into 500.
             status = 404 if msg.startswith("no pod for") else 400
             self._send_json_error(msg, status)
             return
 
         task_resp: dict[str, Any] = {
             "ok": True,
+            "created": created,
             "task": task["id"],
             "project": project,
             "status": task["status"],
@@ -1280,7 +1333,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
         # already sets both on the returned dict for this case).
         if task["status"] == "waiting_approval":
             task_resp["approvalToken"] = task.get("approvalToken", "")
-        self._send(json.dumps(task_resp).encode(), "application/json")
+        self._send(
+            json.dumps(task_resp).encode(), "application/json", status=201 if created else 200
+        )
 
     def _handle_post_task_answer(self, task_id: str) -> None:
         """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket task answer`.
