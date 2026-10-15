@@ -144,19 +144,25 @@ def task_worktrees_dir(member_id: str) -> Path:
 
 
 def provision_task_worktree(
-    member_id: str, project: str, task_id: str, codebase: str
+    member_id: str, project: str, task_id: str, codebase: str, base_ref: str = ""
 ) -> tuple[dict[str, str], str]:
-    """Create ``tasks/<task_id>`` on a new task branch from the codebase's HEAD. Returns
-    ``({dir, branch, baseCommit}, "")``, or ``({}, reason)`` when the task must run in place."""
+    """Create ``tasks/<task_id>`` on a new task branch from ``base_ref`` (else HEAD). Returns
+    ``({dir, branch, baseCommit[, baseRef]}, "")``, or ``({}, reason)`` for no worktree."""
+    tail = "" if base_ref else " -- running in place"
     if not _sys.git_is_repo(codebase):
-        return {}, f"codebase '{codebase}' is not a git repo -- running in place"
+        return {}, f"codebase '{codebase}' is not a git repo{tail}"
     branch = worktree_branch(project, task_id)
     wt_path = str(task_worktrees_dir(member_id) / task_id)
-    ok, err = _sys.git_worktree_add(codebase, wt_path, branch)
+    if base_ref:
+        ok, err = _sys.git_worktree_add(codebase, wt_path, branch, start_point=base_ref)
+    else:
+        ok, err = _sys.git_worktree_add(codebase, wt_path, branch)
     if not ok:
-        return {}, f"git worktree add failed ({err}) -- running in place"
+        return {}, f"git worktree add failed ({err}){tail}"
     base = _sys.git_head_sha(wt_path) or ""
     record = {"dir": wt_path, "branch": branch, "baseCommit": base}
+    if base_ref:
+        record["baseRef"] = base_ref
     dirs = _sys.worktree_git_dirs(wt_path)
     if dirs is not None:
         record["gitDir"], record["commonDir"] = dirs

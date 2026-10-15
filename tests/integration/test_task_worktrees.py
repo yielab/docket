@@ -313,6 +313,76 @@ def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
     assert PIPELINE_WORKTREE_ENV not in (implementer_env or {})
 
 
+def _enqueue_with_base_ref(base_ref: str) -> None:
+    from docket.edges import store as _store
+
+    _dispatch.enqueue_task("demo", "continue the work", channel="cli")
+    queue = _dispatch.read_tasks("demo")
+    queue[0]["baseRef"] = base_ref
+    _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": queue})
+
+
+def test_a_task_with_a_base_ref_starts_its_worktree_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _git(repo, "checkout", "-b", "prev")
+    (repo / "prev.txt").write_text("previous attempt\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "previous attempt")
+    prev_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-")
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _enqueue_with_base_ref("prev")
+
+    (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
+
+    assert res.status == "done", res.reason
+    record = _dispatch.read_tasks("demo")[0]["worktree"]
+    assert record["baseRef"] == "prev"
+    assert record["baseCommit"] == prev_sha
+    assert (Path(record["dir"]) / "prev.txt").is_file()
+
+
+def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _enqueue_with_base_ref("nope")
+    runner = _Runner("b.txt")
+
+    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+
+    task = _dispatch.read_tasks("demo")[0]
+    assert (res.status, res.failure_kind) == ("failed", "base_ref")
+    assert task["status"] == "failed"
+    assert task["failureKind"] == "base_ref"
+    assert "nope" in task["reason"]
+    assert task["hops"] == []
+    assert "worktree" not in task
+    assert runner.roots == []
+    assert not (_pp.task_worktrees_dir("demo-implementer") / task["id"]).exists()
+    assert _pp.worktree_branch("demo", task["id"]) not in _git(repo, "branch", "--list")
+
+
+def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a, **_k: (False, "disk full"))
+    _enqueue_with_base_ref("HEAD")
+
+    (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
+
+    assert (res.status, res.failure_kind) == ("failed", "base_ref")
+    assert "disk full" in _dispatch.read_tasks("demo")[0]["reason"]
+
+
 def test_an_in_place_pod_never_gets_task_worktrees(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
