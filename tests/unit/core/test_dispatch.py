@@ -1014,3 +1014,208 @@ class TestStaleClaimReclaim:
         assert results == []
         assert _dispatch.read_tasks("myapp")[0]["status"] == "running"
         assert "task.reclaimed" not in _audit_actions()
+
+
+_TWO_STEP_YAML = (
+    "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
+)
+
+
+def _bind_one_step_pipeline(project: str) -> None:
+    text = "name: solo\nsteps:\n  - id: kickoff\n    role: lead\n"
+    path = _pod.bound_pipeline_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    _fleet.meta_set(_pod.member_id(project, "lead"), "pipeline", digest)
+
+
+def _write_pod_pipeline(project: str, name: str, text: str) -> None:
+    target = _cfg.pod_config_dir(project) / "pipelines"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / f"{name}.yaml").write_text(text, encoding="utf-8")
+
+
+def _queue_task(project: str, **extra: Any) -> None:
+    _put_task(project, {"id": "task-1", "description": "x", "status": "pending", **extra})
+
+
+class TestTaskPipeline:
+    """A task's own ``pipeline`` and ``gate`` are resolved at claim, per task."""
+
+    def test_task_pipeline_name_selects_a_pod_local_pipeline(self, pod_home: Path) -> None:
+        from tests.fakes import FakeDriver
+
+        _seed_lean_pod("myapp")
+        _bind_one_step_pipeline("myapp")
+        _write_pod_pipeline("myapp", "two", _TWO_STEP_YAML)
+        _queue_task("myapp", pipeline="two")
+
+        results = _dispatch.dispatch_pod("myapp", runner=FakeDriver())
+
+        assert [h.step_id for h in results[0].hops] == ["kickoff", "assemble"]
+        assert _dispatch.read_tasks("myapp")[0]["pipelineSource"] == "pod:two"
+
+    def test_a_task_without_a_pipeline_runs_the_pods_default(self, pod_home: Path) -> None:
+        from tests.fakes import FakeDriver
+
+        _seed_lean_pod("myapp")
+        _bind_one_step_pipeline("myapp")
+        _write_pod_pipeline("myapp", "two", _TWO_STEP_YAML)
+        _queue_task("myapp")
+
+        results = _dispatch.dispatch_pod("myapp", runner=FakeDriver())
+
+        assert [h.step_id for h in results[0].hops] == ["kickoff"]
+        stored = _dispatch.read_tasks("myapp")[0]
+        assert stored["pipelineSource"] == "default"
+        assert stored["gateApplied"] is False
+
+    def test_a_shipped_recipe_name_resolves_its_pipeline(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        default = _dispatch.effective_pipeline("myapp", None)
+
+        spec, source = _dispatch._task_pipeline("myapp", {"pipeline": "tdd"}, default)
+
+        assert source == "recipe:tdd"
+        assert spec.name == "tdd"
+
+    def test_a_pod_local_pipeline_beats_a_recipe_of_the_same_name(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        _write_pod_pipeline("myapp", "tdd", _TWO_STEP_YAML.replace("name: two", "name: mine"))
+        default = _dispatch.effective_pipeline("myapp", None)
+
+        spec, source = _dispatch._task_pipeline("myapp", {"pipeline": "tdd"}, default)
+
+        assert (source, spec.name) == ("pod:tdd", "mine")
+
+    @pytest.mark.parametrize("name", ["nope", "../etc", "/etc", "a/b", "UPPER", "policies-only"])
+    def test_an_unresolvable_name_is_refused(self, pod_home: Path, name: str) -> None:
+        _seed_lean_pod("myapp")
+        default = _dispatch.effective_pipeline("myapp", None)
+
+        with pytest.raises(_dispatch.DispatchError):
+            _dispatch._task_pipeline("myapp", {"pipeline": name}, default)
+
+    def test_an_unknown_pipeline_fails_the_task_before_any_hop(self, pod_home: Path) -> None:
+        from tests.fakes import FakeDriver
+
+        _seed_lean_pod("myapp")
+        _queue_task("myapp", pipeline="nope")
+        driver = FakeDriver()
+
+        results = _dispatch.dispatch_pod("myapp", runner=driver)
+
+        stored = _dispatch.read_tasks("myapp")[0]
+        assert driver.calls == []
+        assert [r.status for r in results] == ["failed"]
+        assert stored["status"] == "failed"
+        assert stored["failureKind"] == "pipeline"
+        assert "nope" in stored["reason"]
+        assert stored["hops"] == []
+        assert stored["claimId"] is None
+        tf = _cfg.TRACES_DIR / "myapp" / "agent:myapp:task-1.jsonl"
+        refused = [e for e in _trace.read_trace(tf) if e["event_type"] == "dispatch_refused"]
+        assert len(refused) == 1
+        assert "nope" in refused[0]["payload"]["reason"]
+
+    def test_a_refused_task_does_not_stop_the_next_one(self, pod_home: Path) -> None:
+        from tests.fakes import FakeDriver
+
+        from docket.edges import store as _store
+
+        _seed_lean_pod("myapp")
+        _store.write_json(
+            _dispatch.pod_task_list_path("myapp"),
+            {
+                "tasks": [
+                    {
+                        "id": "task-1",
+                        "description": "x",
+                        "status": "pending",
+                        "priority": "high",
+                        "pipeline": "nope",
+                    },
+                    {"id": "task-2", "description": "y", "status": "pending"},
+                ]
+            },
+        )
+
+        results = _dispatch.dispatch_pod("myapp", runner=FakeDriver())
+
+        assert [(r.task_id, r.status) for r in results] == [
+            ("task-1", "failed"),
+            ("task-2", "done"),
+        ]
+
+    def test_a_pipeline_refusal_is_not_resumable(self, pod_home: Path) -> None:
+        assert "pipeline" not in _dispatch.RESUMABLE_FAILURE_KINDS
+
+    def test_a_pipeline_with_unresolved_variables_refuses_the_task(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        _write_pod_pipeline(
+            "myapp",
+            "needs",
+            "name: needs\nvariables:\n  ticket: {required: true}\nsteps:\n"
+            "  - id: kickoff\n    role: lead\n    instructions: work on ${ticket}\n",
+        )
+        _queue_task("myapp", pipeline="needs")
+
+        _dispatch.dispatch_pod("myapp", runner=lambda *a, **k: _rd.TurnResult(True, "x", 0.0, {}))
+
+        assert _dispatch.read_tasks("myapp")[0]["failureKind"] == "pipeline"
+
+
+class TestTaskGate:
+    def test_the_gate_maps_exit_codes_over_the_defaults(self) -> None:
+        gate = _dispatch._task_gate(
+            {"gate": {"command": "x", "timeoutS": 9, "map": {"3": "needs_human", "5": "fail"}}}
+        )
+
+        assert gate is not None
+        assert gate.timeout == 9
+        assert [gate.label_for(c) for c in (0, 1, 2, 3, 5, 4)] == [
+            "pass",
+            "fail",
+            "needs_human",
+            "needs_human",
+            "fail",
+            "error",
+        ]
+
+    def test_no_gate_is_none(self) -> None:
+        assert _dispatch._task_gate({}) is None
+
+    @pytest.mark.parametrize(
+        "raw", ["true", {"command": ""}, {"command": "x", "map": {"0": "weird"}}, {"command": 3}]
+    )
+    def test_a_malformed_gate_is_refused(self, raw: Any) -> None:
+        with pytest.raises(_dispatch.DispatchError):
+            _dispatch._task_gate({"gate": raw})
+
+    def test_the_gate_attaches_to_the_last_implementer_step(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        spec = _pipeline.PipelineSpec(
+            name="p",
+            steps=[
+                _pipeline.Step(id="a", role="implementer"),
+                _pipeline.Step(id="lead", role="lead"),
+                _pipeline.Step(id="b", role="implementer"),
+                _pipeline.Step(id="c", role="lead"),
+            ],
+        )
+        plan = _orch.resolve_plan(spec, _dispatch.pod_full_roster("myapp"))
+
+        assert _dispatch._task_gate_step_id(plan.runnable_nodes()) == "b"
+
+    def test_without_an_implementer_the_gate_attaches_to_the_last_agent_step(
+        self, pod_home: Path
+    ) -> None:
+        _seed_lean_pod("myapp")
+        spec = _pipeline.PipelineSpec(
+            name="p",
+            steps=[_pipeline.Step(id="a", role="lead"), _pipeline.Step(id="r", run="true")],
+        )
+        plan = _orch.resolve_plan(spec, _dispatch.pod_full_roster("myapp"))
+
+        assert _dispatch._task_gate_step_id(plan.runnable_nodes()) == "a"

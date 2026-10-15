@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.27.2
+**Version**: 1.28.0
 **Status**: Implemented
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-14
 
 ## Purpose
 
@@ -173,6 +173,16 @@ This specification does NOT cover:
    overlay following the same pattern `docket-roles.json` established; until then, composing a
    custom pod shape means adding roles to an existing pod with `docket pod add <role>`
    after provisioning from the closest built-in blueprint.
+
+### Pod-local pipelines
+
+1. A pod's config dir (`core.config.pod_config_dir(project)`) **MAY** hold a `pipelines/`
+   directory of `<name>.yaml` (or `.yml`) pipeline documents (`pipeline-format.spec.md`). Dispatch
+   reads it live at claim time when a task names that pipeline (`pod-dispatch.spec.md`, "Pipeline
+   order and participation" item 7), ahead of any recipe of the same name. The directory is never
+   a pod's default pipeline: binding one stays `docket pod set pipeline <file>`.
+2. This version only **reads** the directory. `pod apply` and `pod export` do not yet carry it;
+   an operator places the files by hand.
 
 ### Pod settings: set and unset
 
@@ -597,6 +607,11 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.28.0 (2026-10-14)
+
+- New "Pod-local pipelines": `config/pipelines/<name>.yaml` is read at claim when a task names
+  the pipeline (P43-3).
 
 ### Version 1.27.2 (2026-10-13)
 

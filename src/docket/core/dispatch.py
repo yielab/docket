@@ -557,6 +557,132 @@ def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pi
     return builtin.model_copy(update={"steps": new_steps}) if changed else builtin
 
 
+class TaskRunRefusal(DispatchError):
+    """A claimed task's own ``pipeline`` or ``gate`` cannot be honoured; the task settles failed."""
+
+
+_TASK_PIPELINE_NAME = _re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+
+def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
+    """The file and source label *name* resolves to: the pod's ``pipelines/`` directory, then a
+    recipe (the operator's before the shipped ones) holding a ``pipeline.yaml``."""
+    pod_dir = _cfg.pod_config_dir(project) / "pipelines"
+    for suffix in (".yaml", ".yml"):
+        if (pod_dir / f"{name}{suffix}").is_file():
+            return pod_dir / f"{name}{suffix}", f"pod:{name}"
+    for root in (_cfg.user_recipes_dir(), _cfg.recipes_dir()):
+        if (root / name / "pipeline.yaml").is_file():
+            return root / name / "pipeline.yaml", f"recipe:{name}"
+    return None
+
+
+def _task_pipeline(
+    project: str, task: dict[str, Any], default_spec: _pipeline.PipelineSpec
+) -> tuple[_pipeline.PipelineSpec, str]:
+    """The (spec, source) a claimed task runs: its named pipeline, else *default_spec* with
+    source ``default``. Raises ``TaskRunRefusal`` for a name that resolves to nothing valid."""
+    name = task.get("pipeline")
+    if name is None or name == "":
+        return default_spec, "default"
+    if not isinstance(name, str) or not _TASK_PIPELINE_NAME.match(name):
+        raise TaskRunRefusal(f"pipeline {name!r} is not a valid pipeline name")
+    found = _task_pipeline_file(project, name)
+    if found is None:
+        raise TaskRunRefusal(
+            f"unknown pipeline {name!r}: pod {project!r} has no pipelines/{name}.yaml "
+            "and no recipe of that name carries a pipeline.yaml"
+        )
+    path, source = found
+    try:
+        loaded = _pipeline.load_pipeline(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise TaskRunRefusal(f"pipeline {name!r} ({source}) is unreadable: {exc}") from exc
+    if loaded.spec is None:
+        raise TaskRunRefusal(
+            f"pipeline {name!r} ({source}) does not validate: {'; '.join(loaded.errors)}"
+        )
+    return loaded.spec, source
+
+
+def _task_gate(task: dict[str, Any]) -> _pipeline.ExternalGate | None:
+    """The ``ExternalGate`` a task's ``gate`` object describes, or ``None`` for no gate. ``map``
+    moves the named exit codes onto their label over the default 0/1/2 mapping."""
+    raw = task.get("gate")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or not isinstance(raw.get("command"), str):
+        raise TaskRunRefusal("task gate must be an object with a string 'command'")
+    exit_map: dict[str, list[int]] = {"pass": [0], "fail": [1], "needs_human": [2]}
+    mapping = raw.get("map") or {}
+    try:
+        for code_text, label in dict(mapping).items():
+            if label not in exit_map:
+                raise ValueError(f"unknown label {label!r}")
+            code = int(code_text)
+            for codes in exit_map.values():
+                if code in codes:
+                    codes.remove(code)
+            exit_map[label].append(code)
+        return _pipeline.ExternalGate(
+            command=raw["command"], timeout=raw.get("timeoutS"), exit_map=exit_map
+        )
+    except (TypeError, ValueError, _ValidationError) as exc:
+        raise TaskRunRefusal(f"task gate is invalid: {exc}") from exc
+
+
+def _task_gate_step_id(nodes: tuple[_orch.PlannedNode, ...]) -> str | None:
+    """The step a task gate follows: the last ``implementer`` unit, else the last unit that runs
+    an agent turn (a ``run`` or ``input`` step never takes it)."""
+    units = [u for n in nodes for u in (n.children if isinstance(n, _orch.PlannedGroup) else (n,))]
+    turns = [u for u in units if u.run is None and u.input is None]
+    chosen = [u for u in turns if u.role == "implementer"] or turns
+    return chosen[-1].step_id if chosen else None
+
+
+def _resolve_task_run(
+    project: str,
+    task: dict[str, Any],
+    default_spec: _pipeline.PipelineSpec,
+    default_vars: dict[str, Any],
+    variables: dict[str, Any] | None,
+) -> tuple[_pipeline.PipelineSpec, dict[str, Any], str]:
+    """Resolve a claimed task's pipeline, variables and gate, or raise ``TaskRunRefusal``."""
+    spec, source = _task_pipeline(project, task, default_spec)
+    _task_gate(task)
+    if source == "default":
+        return spec, default_vars, source
+    try:
+        resolved = _pipeline.resolve_variables(spec, variables)
+    except _pipeline.VariableError as exc:
+        raise TaskRunRefusal(f"pipeline {task.get('pipeline')!r}: {exc}") from exc
+    missing = _pipeline.unresolved_step_variables(spec, resolved)
+    if missing:
+        raise TaskRunRefusal(
+            f"pipeline {task.get('pipeline')!r}: unresolved variable(s): {', '.join(missing)}"
+        )
+    return spec, resolved, source
+
+
+def _record_task_run(project: str, task: dict[str, Any], source: str) -> None:
+    """Record ``pipelineSource`` and ``gateApplied`` on the claimed task and its stored record."""
+    task["pipelineSource"] = source
+    task["gateApplied"] = task.get("gate") is not None
+    task_id = task.get("id")
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks = doc.get("tasks")
+        if not isinstance(tasks, list):
+            return None
+        for t in tasks:
+            if isinstance(t, dict) and t.get("id") == task_id:
+                t["pipelineSource"] = task["pipelineSource"]
+                t["gateApplied"] = task["gateApplied"]
+        return {"tasks": tasks}
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+
+
 def pod_recorded_cost(project: str) -> float:
     """Sum each pod member's recorded USD spend (always 0.0 today — see ``pod_gating_cost``)."""
     all_ids = [a.id for a in _fleet.list_agents()]
@@ -1397,6 +1523,10 @@ class _UnitContext:
     approval_default: Literal["wait", "park"] = "wait"
     # Seconds an in-turn approval or consult wait may last for every hop; None keeps the default.
     approval_timeout: int | None = None
+    # The task's own gate and the step it follows (``_task_gate_step_id``); see
+    # ``_evaluate_hop_gates``. Defaulted like the fields above.
+    task_gate: _pipeline.ExternalGate | None = None
+    task_gate_step_id: str | None = None
 
 
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
@@ -2195,6 +2325,10 @@ def _parse_gate_reasons(
     return reasons, False
 
 
+def _source_field(source: str) -> dict[str, str]:
+    return {"source": source} if source else {}
+
+
 def _evaluate_external_gate(
     ctx: _UnitContext,
     gate: _pipeline.ExternalGate,
@@ -2203,6 +2337,7 @@ def _evaluate_external_gate(
     member_id: str,
     hop: HopResult,
     prior: list[HopResult],
+    source: str = "",
 ) -> _UnitOutcome:
     """An ``ExternalGate``: run the operator's command, never the member's ``verifyCmd``; map
     its exit through ``exitMap`` and read its reasons file. The step's ``on`` map routes the
@@ -2227,6 +2362,8 @@ def _evaluate_external_gate(
     reasons, invalid = _parse_gate_reasons(ctx, role, reasons_path) if usable else ([], False)
     evidence = _gate_evidence(cmd, code, run)
     evidence["label"] = label
+    if source:
+        evidence["source"] = source
     if reasons:
         evidence["reasons"] = reasons
     evidence["reasonsInvalid"] = invalid
@@ -2239,7 +2376,7 @@ def _evaluate_external_gate(
             ctx.session_id,
             role,
             "tool_result",
-            _json.dumps({"verification": "passed", "cmd": cmd}),
+            _json.dumps({"verification": "passed", "cmd": cmd, **_source_field(source)}),
         )
         return _UnitOutcome(kind="advance", hops=[hop], label=label)
     _trace_locked(
@@ -2247,7 +2384,7 @@ def _evaluate_external_gate(
         ctx.session_id,
         role,
         "verification_failed",
-        _json.dumps({"cmd": cmd, "output": run.redacted, "label": label}),
+        _json.dumps({"cmd": cmd, "output": run.redacted, "label": label, **_source_field(source)}),
     )
     return _UnitOutcome(
         kind="failed",
@@ -2399,6 +2536,37 @@ def _evaluate_post_hop_gate(
     return _UnitOutcome(kind="advance", hops=[hop])  # pragma: no cover - closed Gate union
 
 
+def _evaluate_hop_gates(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    role: str,
+    member_id: str,
+    hop: HopResult,
+    prior: list[HopResult],
+    *,
+    check_approval: bool,
+) -> _UnitOutcome:
+    """The step's own gate, then the task's gate when this is the step it follows and the own
+    gate passed; a non-passing task gate decides the outcome (pod-dispatch.spec.md)."""
+    outcome = _evaluate_post_hop_gate(
+        ctx, node, role, member_id, hop, prior, check_approval=check_approval
+    )
+    gate = ctx.task_gate
+    if gate is None or node.step_id != ctx.task_gate_step_id:
+        return outcome
+    if outcome.kind != "advance" and not (outcome.kind == "routed" and outcome.label == "pass"):
+        return outcome
+    own = hop.verify
+    task_outcome = _evaluate_external_gate(
+        ctx, gate, node, role, member_id, hop, prior, source="task"
+    )
+    if task_outcome.label != "pass":
+        return task_outcome
+    if own is not None:
+        hop.verify = {**own, "taskGate": hop.verify}
+    return outcome
+
+
 def _execute_unit(
     ctx: _UnitContext,
     node: _orch.PlannedUnit,
@@ -2448,7 +2616,7 @@ def _execute_unit(
     if early_outcome is not None:
         return early_outcome
 
-    return _evaluate_post_hop_gate(
+    return _evaluate_hop_gates(
         ctx, node, role, member_id, hop, prior_snapshot, check_approval=check_approval
     )
 
@@ -3097,6 +3265,7 @@ def dispatch_task(
         resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
         resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
+        task_gate = _task_gate(task)
         runtime_steps, id_to_index, raw_step_instructions = _resolve_pipeline_steps(project, spec)
         resolved_vars: dict[str, Any] = variables or {}
         step_instructions = {
@@ -3135,7 +3304,11 @@ def dispatch_task(
             route_counts=route_counts,
             approval_default=approval_default,
             approval_timeout=approval_timeout,
+            task_gate=task_gate,
+            task_gate_step_id=_task_gate_step_id(runtime_steps) if task_gate else None,
         )
+        if task_gate and ctx.task_gate_step_id is None:
+            raise DispatchError("the task gate has no step that runs an agent turn to follow")
 
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))
 
@@ -3235,6 +3408,42 @@ def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
 
     _store.read_modify_write(pod_task_list_path(project), _fn)
     claimed["worktree"] = stored
+
+
+def _refuse_claimed_task(
+    project: str, task: dict[str, Any], failure_kind: str, reason: str
+) -> None:
+    """Settle a just-claimed task as ``failed`` before any hop: *failure_kind* and *reason* on
+    the record, claim cleared, one ``dispatch_refused`` trace event, no hop recorded."""
+    task_id = str(task.get("id", "task"))
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks = doc.get("tasks")
+        if not isinstance(tasks, list):
+            return None
+        for t in tasks:
+            if isinstance(t, dict) and t.get("id") == task_id:
+                t["status"] = "failed"
+                t["failureKind"] = failure_kind
+                t["reason"] = reason
+                t["completedAt"] = _now()
+                t["claimId"] = None
+                t.pop("claimPid", None)
+        return {"tasks": tasks}
+
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    _trace.trace_event(
+        project,
+        f"agent:{project}:{task_id}",
+        "lead",
+        "dispatch_refused",
+        _json.dumps({"reason": reason, "failureKind": failure_kind}),
+    )
+    tasks_after = doc.get("tasks")
+    _mem.sync_dispatch_tasks(
+        _cfg.workspace_dir(_pod.member_id(project, "lead")),
+        tasks_after if isinstance(tasks_after, list) else [],
+    )
 
 
 def _claim_next_task(
@@ -3817,6 +4026,15 @@ def dispatch_pod(
             break
         task, resume_hops = claim
         task_id = str(task.get("id", "task"))
+        try:
+            run_spec, run_vars, source = _resolve_task_run(
+                project, task, effective_spec, resolved_vars, variables
+            )
+        except TaskRunRefusal as exc:
+            _refuse_claimed_task(project, task, "pipeline", str(exc))
+            results.append(TaskResult(task_id, "failed", reason=str(exc), failure_kind="pipeline"))
+            continue
+        _record_task_run(project, task, source)
 
         def _persist(hop: HopResult, _project: str = project, _task_id: str = task_id) -> None:
             _persist_hop(_project, _task_id, hop)
@@ -3834,8 +4052,8 @@ def dispatch_pod(
             on_hop=_persist,
             on_retry=_touch,
             sleep=sleep,
-            spec=spec,
-            variables=resolved_vars,
+            spec=spec if source == "default" else run_spec,
+            variables=run_vars,
             approval_default=approval_default,
             approval_timeout=approval_timeout,
         )
