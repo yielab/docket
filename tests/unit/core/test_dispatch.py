@@ -23,9 +23,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
+from docket.cli import _pod as _cli_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import orchestrator as _orch
@@ -33,6 +34,8 @@ from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
+from docket.core.llm import ChatResponse, TokenUsage, assistant
+from docket.edges.adapters import docket_runtime as _drt
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.dispatch"
@@ -1388,3 +1391,92 @@ class TestTaskRestrictionHelpers:
     @pytest.mark.parametrize("task", [{}, {"maxTokens": None}, {"maxTokens": True}])
     def test_no_cap_means_no_budget(self, task: dict[str, Any]) -> None:
         assert _dispatch._task_token_budget(task) is None
+
+
+_HOP_STARTED_KEYS = {"task", "step", "role", "member", "model", "provider", "cycle", "attempt"}
+_HOP_FINISHED_KEYS = _HOP_STARTED_KEYS | {"ok", "verdict", "gate", "usage", "durationMs", "error"}
+
+
+class TestHopEvents:
+    def test_hop_record_round_trips_model_and_provider(self) -> None:
+        """A hop's model and provider survive the persisted record; an old record reads them empty."""
+        hop = _dispatch.HopResult(
+            role="lead", member_id="m", ok=True, model="local/x", provider="local"
+        )
+        rec = _dispatch._hop_record(hop)
+        assert (rec["model"], rec["provider"]) == ("local/x", "local")
+        back = _dispatch._hop_from_record(rec)
+        assert (back.model, back.provider) == ("local/x", "local")
+        old = _dispatch._hop_from_record({"role": "lead"})
+        assert (old.model, old.provider) == ("", "")
+
+    def test_a_two_hop_run_pairs_hop_events_and_sums_task_usage(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Each hop writes one hop_started and one hop_finished, and the task sums its usage."""
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        repoint_docket_home(monkeypatch, home)
+        record_isolation_off(home)
+        _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        monkeypatch.setenv("DOCKET_NO_TRACE", "0")
+        backend = _ScriptedBackend(["lead plan", "implementer done"])
+        driver = _drt.DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_drt, "default_driver", lambda: driver)
+        task = _dispatch.enqueue_task("demo", "two hops", channel="cli")
+        assert _dispatch.dispatch_pod("demo")[0].status == "done"
+
+        events = [e for e in _trace_events("demo") if e["event_type"].startswith("hop_")]
+        assert [e["event_type"] for e in events] == [
+            "hop_started",
+            "hop_finished",
+            "hop_started",
+            "hop_finished",
+        ]
+        for event in events:
+            keys = _HOP_STARTED_KEYS if event["event_type"] == "hop_started" else _HOP_FINISHED_KEYS
+            assert set(event["payload"]) == keys
+        started = [e["payload"] for e in events if e["event_type"] == "hop_started"]
+        assert [p["model"] for p in started] == [
+            "anthropic/claude-haiku-4-5",
+            "anthropic/claude-sonnet-4-6",
+        ]
+        assert [p["provider"] for p in started] == ["anthropic", "anthropic"]
+        finished = [e["payload"] for e in events if e["event_type"] == "hop_finished"]
+        assert {(p["model"], p["provider"]) for p in finished} == {("local/served-model", "local")}
+        raw = json.loads(_dispatch.pod_task_list_path("demo").read_text())
+        (stored,) = [t for t in raw["tasks"] if t["id"] == str(task["id"])]
+        assert [(h["model"], h["provider"]) for h in stored["hops"]] == [
+            ("local/served-model", "local"),
+            ("local/served-model", "local"),
+        ]
+        assert stored["usage"] == {
+            "input": 14,
+            "output": 6,
+            "byModel": {"local/served-model": {"input": 14, "output": 6}},
+        }
+
+
+class _ScriptedBackend:
+    def __init__(self, texts: list[str]) -> None:
+        self._texts = list(texts)
+
+    def complete(self, messages: Any, **_: Any) -> ChatResponse:
+        return ChatResponse(
+            ok=True,
+            message=assistant(self._texts.pop(0)),
+            finish_reason="stop",
+            usage=TokenUsage(7, 3),
+            model="served-model",
+            provider="local",
+        )
+
+
+def _trace_events(project: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    traces_dir = _cfg.TRACES_DIR / project
+    if traces_dir.is_dir():
+        for f in traces_dir.glob("*.jsonl"):
+            events.extend(_trace.read_trace(f))
+    return events

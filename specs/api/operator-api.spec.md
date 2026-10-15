@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.0.0
+**Version**: 5.0.1
 **Status**: Planned (Phase 43, ADR 0027). Nothing below is implemented until the card that owns
 each route closes; the cards are on the active board, Phase 43. `SERVE_API_VERSION` stays `"4"` until
 Wave 111 closes.
@@ -204,7 +204,9 @@ Two typed records join `trace-store.spec.md`'s `EVENT_TYPES`, written in the tas
 ```
 
 `cycle` is the rework cycle (0 before any `REQUEST-CHANGES`); `verdict` is the Reviewer's or
-Tester's label or `null`; `gate` is the step's gate label or `null`. The existing `tool_call`
+Tester's label or `null`; `gate` is the step's gate label or `null`. `hop_started` names the
+*planned* model (the step's `model` override, else the member's configured model), and
+`hop_finished` names the *served* model the turn reported. The existing `tool_call`
 hop marker and the `tool_result`/`error` closing record stay as they are.
 
 ### Pod answers
@@ -287,6 +289,10 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.0.1 (2026-10-14)
+
+- Trace events: `hop_started` names the planned model and `hop_finished` the served one (P43-5).
 
 ### Version 5.0.0 (2026-10-14)
 

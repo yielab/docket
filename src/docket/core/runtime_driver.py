@@ -120,6 +120,10 @@ class TurnResult:
     # repository-relative path -> sha256 of the bytes served. Empty when the turn read the
     # filesystem (no task worktree).
     repo_files: dict[str, str] = field(default_factory=dict, kw_only=True)
+    # The served model (bare endpoint id) and its provider, as the last response reported them;
+    # "" when no response arrived. See pod-dispatch.spec.md, "Hop events and task usage".
+    model: str = field(default="", kw_only=True)
+    provider: str = field(default="", kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────

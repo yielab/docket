@@ -255,6 +255,8 @@ class AgentLoopResult:
     failure_kind: FailureKind | None = None
     raw: dict[str, Any] = field(default_factory=dict)
     retry_after_s: float | None = None
+    model: str = ""
+    provider: str = ""
 
 
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
@@ -865,6 +867,8 @@ class _TurnState:
     tool_calls_executed: int = 0
     iteration: int = 0
     last_raw: dict[str, Any] = field(default_factory=dict)
+    last_model: str = ""
+    last_provider: str = ""
     summary_usage: TokenUsage = field(default_factory=TokenUsage)
     accounted_summary_usage: TokenUsage = field(default_factory=TokenUsage)
     compaction_failure_stop_reason: StopReason | None = None
@@ -950,6 +954,8 @@ class _TurnState:
             failure_kind=failure_kind,
             raw=self.last_raw,
             retry_after_s=retry_after_s,
+            model=self.last_model,
+            provider=self.last_provider,
         )
 
     def cancellation_requested(self) -> bool:
@@ -1114,6 +1120,7 @@ class _TurnState:
             messages=summary_messages,
         )
         self.last_raw = response.raw
+        self.last_model, self.last_provider = response.model, response.provider
         self.summary_usage = _accumulate(self.summary_usage, response.usage)
         if self.cancellation_requested():
             self.compaction_failure_stop_reason = "run_cancelled"
@@ -1618,6 +1625,7 @@ class _TurnState:
             messages=messages,
         )
         self.last_raw = response.raw
+        self.last_model, self.last_provider = response.model, response.provider
         self.total_usage = _accumulate(self.total_usage, response.usage)
         if self.cancellation_requested():
             if response.usage.total_tokens or response.usage.cached_tokens:
