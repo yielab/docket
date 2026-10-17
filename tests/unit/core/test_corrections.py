@@ -229,3 +229,24 @@ class TestRead:
         records = _corrections.read(project)
         for i, record in enumerate(records):
             assert record["taskId"] == f"task-{i}"
+
+    def test_read_since_keeps_records_strictly_after(self) -> None:
+        """A `since` cursor keeps only records whose ts is strictly later, in append order."""
+        project = "test-proj"
+        for i, ts in enumerate(
+            ["2026-10-01T10:00:00Z", "2026-10-01T10:00:00Z", "2026-10-01T10:00:01Z"]
+        ):
+            _corrections.record(
+                project,
+                "deny_reason",
+                task_id=f"job-{i}",
+                role="reviewer",
+                text="Reason",
+                source="cli",
+                _now=ts,
+            )
+
+        assert [r["taskId"] for r in _corrections.read(project, since="2026-10-01T10:00:00Z")] == [
+            "job-2"
+        ]
+        assert len(_corrections.read(project)) == 3

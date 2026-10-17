@@ -1,11 +1,11 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.1.0
+**Version**: 5.2.0
 **Status**: Partially implemented (Phase 43, ADR 0027). Wave 109 shipped the task fields, the task
 routes of P43-1 and the hop events; every other route is planned until the card that owns it
 closes (the route table's Status column). `SERVE_API_VERSION` stays `"4"` until
 Wave 111 closes.
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -61,7 +61,7 @@ validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malfor
 | `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Planned |
 | `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Planned |
 | `POST /pods/<p>/apply` | `pod_apply.plan_apply` / `classify_directory` / `apply` | P43-8 | Planned |
-| `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Planned |
+| `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Implemented (Wave 110) |
 | `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Planned |
 
 The CLI keeps symmetry: `docket task add` gains `--external-ref`, `--idempotency-key`,
@@ -290,6 +290,14 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.2.0 (2026-10-17)
+
+- Status: Wave 110 shipped P43-9: `GET /pods/<p>/corrections?since=` reads the corrections
+  ledger in append order, keeping records with `ts > since` (`corrections.read(project,
+  since=)`). The route answers `404` for a pod with no Lead, `400` for a `since` that is not
+  ISO-8601, and `401` without the bearer token. `next` is the last returned record's `ts`,
+  else the given `since`, else `""`.
 
 ### Version 5.1.0 (2026-10-14)
 

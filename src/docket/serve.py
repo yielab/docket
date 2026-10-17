@@ -1104,6 +1104,31 @@ class _DocketHandler(BaseHTTPRequestHandler):
             events, next_cursor = _traces_page(project, since)
             body = json.dumps({"events": events, "next": next_cursor}).encode("utf-8")
             self._send(body, "application/json")
+        elif path.startswith("/pods/") and path.endswith("/corrections"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            project = path[len("/pods/") : -len("/corrections")]
+            if self._reject_bad_project_id(project):
+                return
+            from docket.core import corrections as _corrections
+            from docket.core import dispatch as _dispatch
+
+            if project not in _dispatch.dispatchable_pods():
+                self._send_json_error(f"no pod '{project}'", 404)
+                return
+            query = _urlparse.parse_qs(_urlparse.urlsplit(full_path).query)
+            since = (query.get("since") or [""])[0]
+            if since:
+                try:
+                    _dt.datetime.fromisoformat(since.replace("Z", "+00:00"))
+                except ValueError:
+                    self._send_json_error("since must be an ISO-8601 timestamp", 400)
+                    return
+            records = _corrections.read(project, since)
+            next_cursor = str(records[-1].get("ts", "")) if records else since
+            body = json.dumps({"corrections": records, "next": next_cursor}).encode("utf-8")
+            self._send(body, "application/json")
         else:
             self._send(b"not found\n", "text/plain", status=404)
 
