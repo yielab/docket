@@ -326,3 +326,51 @@ class TestAddressableTask:
         url, _token = live_server
         status, _body = _get(f"{url}/tasks/demo/task-x")
         assert status == 401
+
+
+@pytest.fixture()
+def dispatching_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    class _Handler(_DocketHandler):
+        serve_token = _TEST_TOKEN
+        dispatch_on = True
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", _TEST_TOKEN
+    srv.shutdown()
+
+
+class TestPostEnqueueSweep:
+    def test_a_posted_task_starts_its_pods_sweep_when_dispatch_is_on(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        dispatching_server: tuple[str, str],
+    ) -> None:
+        """POST /tasks/<pod> with dispatch on submits one sweep for that pod."""
+        from docket import serve
+
+        _seed_pod(tmp_path, monkeypatch)
+        submitted: list[str] = []
+        monkeypatch.setattr(serve, "_submit_pod_sweep", lambda p: submitted.append(p) or True)
+        url, token = dispatching_server
+
+        status, _body = _post(f"{url}/tasks/demo", {"description": "go"}, token)
+
+        assert status == 201
+        assert submitted == ["demo"]
+
+    def test_a_posted_task_starts_no_sweep_when_dispatch_is_off(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        """Without dispatch the enqueue never submits a sweep."""
+        from docket import serve
+
+        _seed_pod(tmp_path, monkeypatch)
+        submitted: list[str] = []
+        monkeypatch.setattr(serve, "_submit_pod_sweep", lambda p: submitted.append(p) or True)
+        url, token = live_server
+
+        _post(f"{url}/tasks/demo", {"description": "go"}, token)
+
+        assert submitted == []
