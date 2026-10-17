@@ -1153,6 +1153,28 @@ class TestStaleClaimReclaim:
         assert "task.reclaimed" not in _audit_actions()
 
 
+class TestStopBetweenTasks:
+    def test_dispatch_pod_stops_between_tasks_when_asked(self, pod_home: Path) -> None:
+        """A stop that flips after the first claim ends the loop with the rest still pending."""
+        from tests.fakes import FakeDriver
+
+        _seed_lean_pod("myapp")
+        _bind_one_step_pipeline("myapp")
+        tasks = [{"id": f"task-{i}", "description": "x", "status": "pending"} for i in (1, 2, 3)]
+        from docket.edges import store as _store
+
+        _store.write_json(_dispatch.pod_task_list_path("myapp"), {"tasks": tasks})
+        driver = FakeDriver()
+
+        results = _dispatch.dispatch_pod(
+            "myapp", runner=driver, stop=lambda: len(driver.calls) >= 1
+        )
+
+        assert len(results) == 1
+        statuses = [t["status"] for t in _dispatch.read_tasks("myapp")]
+        assert sorted(statuses) == ["done", "pending", "pending"]
+
+
 _TWO_STEP_YAML = (
     "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
 )

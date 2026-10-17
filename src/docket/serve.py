@@ -514,6 +514,7 @@ _SWEEP_LOCK = threading.Lock()
 _sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}
 _sweep_pool: tuple[int, concurrent.futures.ThreadPoolExecutor] | None = None
 _sweep_run_ids: dict[str, str] = {}
+_sweep_stop = threading.Event()
 # How long a second stop signal waits for cancelled sweep runs to settle before exiting anyway.
 SWEEP_ABANDON_WAIT_S = 5.0
 
@@ -537,6 +538,8 @@ def _sweep_one_pod(project: str) -> None:
                 turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
                 verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
                 approval_default="park",
+                resume=True,
+                stop=_sweep_stop.is_set,
             ),
         )
     except Exception as exc:
@@ -619,6 +622,10 @@ class _StopController:
         self._on_abandon = on_abandon
         self._pending = pending
         self._signals = 0
+
+    @property
+    def stopping(self) -> bool:
+        return self.stop.is_set()
 
     def handle(self, signum: int, _frame: object = None) -> None:
         self._signals += 1
@@ -1815,7 +1822,8 @@ def run_serve(
     class _BoundHandler(_DocketHandler):
         serve_token = _token
 
-    stop = threading.Event()
+    global _sweep_stop
+    stop = _sweep_stop = threading.Event()
     server_ready = threading.Event()
     servers: list[ThreadingHTTPServer] = []
 
@@ -1873,5 +1881,6 @@ def run_serve(
             sys.stdout.flush()
             os._exit(controller.exit_code)
         server.server_close()
+        _sweep_stop = threading.Event()
         for signum, handler in previous.items():
             signal.signal(signum, handler)
