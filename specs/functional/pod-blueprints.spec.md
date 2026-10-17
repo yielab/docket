@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.29.0
+**Version**: 1.30.0
 **Status**: Implemented
 **Last Updated**: 2026-10-17
 
@@ -401,7 +401,10 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     `docket run` **MUST** do the same for a changed item before dispatching; neither
     `docket start`, `dispatch_pod` nor `docket exec` reads `.docket/`. A review shows the repository's
     commands as before/now; `core.pod_apply.repo_changes` derives them from the directory and the
-    stored review.
+    stored review. The decision itself (go, refused, needs a code, wrong code, accepted) is
+    `core.pod_apply.review_decision`, shared by the CLI and by `apply_directory` behind `POST /pods/<p>/apply`, which is
+    always off a terminal: without the matching `accept` it creates nothing and answers `409`
+    with the code (`operator-api.spec.md`).
 
 ### Pod manifests: export
 
@@ -614,6 +617,11 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.30.0 (2026-10-17)
+
+- Requirement 12: the review decision is one core function; `POST /pods/<p>/apply` applies the
+  same rule with the code instead of the prompt (P43-8).
 
 ### Version 1.29.0 (2026-10-17)
 
