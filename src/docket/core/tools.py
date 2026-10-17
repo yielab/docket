@@ -93,7 +93,7 @@ class ToolContext:
     consult_count: int = 0
     # Pod dispatch sets it: a consult parks the task (``waiting_input``) rather than waiting.
     consult_park: bool = False
-    # The task this turn serves (a pod task id, or a harness run token); stamps a consult's question.
+    # The task this turn serves (a pod task id); stamps a consult's question.
     task_id: str = ""
 
 
@@ -481,16 +481,9 @@ def _resolve_ask_verdict(
         result.approval_token = pregrant_token
         return False
 
-    if ctx.approval_mode == "refuse" or (
-        ctx.approval_mode == "wait" and _approval.answer_stream_closed()
-    ):
-        # No approval record, no wait: there is nobody on the other end of
-        # this call who could ever answer it -- by posture, or because the
-        # harness answer stream already ended. Reported distinctly from a
-        # timeout or an explicit denial so a caller can tell "nobody was
-        # asked" apart from "someone was asked and said no" or "asked and
-        # nobody answered in time" -- see docs/adr/0001-harness-mode.md
-        # decision 11.
+    if ctx.approval_mode == "refuse":
+        # No approval record, no wait: the pod's posture says nobody will answer. Reported
+        # distinctly from a timeout or an explicit denial ("nobody was asked").
         result.decision = "deny"
         result.denial_kind = "approval_unavailable"
         result.error = result.reason
@@ -595,10 +588,6 @@ def _wait_for_ask_approval(
         if wait_outcome.cancelled:
             result.denial_kind = "run_cancelled"
             result.reason = "run cancellation requested before execution"
-        elif wait_outcome.unanswerable:
-            # Terminal like refuse mode: the answer stream ended mid-wait.
-            result.denial_kind = "approval_unavailable"
-            result.reason = "answer stream closed before a decision arrived"
         else:
             result.denial_kind = "approval_timeout" if wait_outcome.timed_out else "approval_denied"
             result.reason = (
@@ -626,7 +615,7 @@ def _record_task_pregrant(token: str, ctx: ToolContext, tool_name: str, digest: 
             ctx.role or "tool",
             tool_name,
             digest,
-            channel="harness",
+            channel="cli",
             actor="approve_task",
         )
     except _approval.ApprovalError:

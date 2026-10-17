@@ -40,10 +40,10 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
-| [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state, [`docket exec`](DOCKET.md#docket-exec-one-agent-one-turn-for-an-external-caller) |
+| [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state |
 | [Adoption evidence](ADOPTION-EVIDENCE.md) | Reproducible governance and recovery results, with their limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
-| [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. Not `docket exec`, which is the CLI's single-agent mode for an external caller |
+| [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. |
 | [Decision records (ADRs)](adr/) | One reasoned architectural decision per file |
 | [Cycles ended](cycles-ended/README.md) | The archive of closed waves and phases; verbatim, hash-verified, never a source of work |
 

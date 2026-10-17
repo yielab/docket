@@ -1,11 +1,7 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.3.0
-**Status**: Partially implemented (Phase 43, ADR 0027). Wave 109 shipped the task fields, the task
-routes of P43-1 and the hop events; Wave 110 the pod routes (read, `ensure`, `apply`,
-corrections); every other route is planned until the card that owns it
-closes (the route table's Status column). `SERVE_API_VERSION` stays `"4"` until
-Wave 111 closes.
+**Version**: 5.4.0
+**Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
 **Last Updated**: 2026-10-17
 
 ## Purpose
@@ -63,7 +59,7 @@ validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malfor
 | `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Implemented (Wave 110) |
 | `POST /pods/<p>/apply` | `pod_apply.apply_directory` (plan, `review_decision`, apply) | P43-8 | Implemented (Wave 110) |
 | `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Implemented (Wave 110) |
-| `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Planned |
+| `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Implemented (Wave 111) |
 
 The CLI keeps symmetry: `docket task add` gains `--external-ref`, `--idempotency-key`,
 `--base-ref`, `--pipeline`, `--gate`, `--max-tokens` (P43-1); `docket task cancel|retry|diff`
@@ -287,8 +283,7 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   `tests/integration/test_serve_task_lifecycle.py`, `test_serve_pods_config.py`: the real
   `_DocketHandler` on a loopback `ThreadingHTTPServer`, a pod seeded in a temporary
   `DOCKET_HOME`, a stub OpenAI-compatible server on loopback for the routes that run a hop
-  (the stub `tests/integration/test_harness_cli.py` carries today moves to
-  `tests/integration/conftest.py` in P43-12 before that file is deleted).
+  (the stub in `tests/integration/llm_stub.py`, fixture `llm_server`).
 - Each example body above is asserted key-for-key by the route's test (the oracle is the key
   set and the status code, not the prose).
 - `tests/unit/core/test_dispatch.py`: `enqueue_task` idempotency, `restrictions` validation,
@@ -303,6 +298,12 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.4.0 (2026-10-17)
+
+- Status: implemented. The `exec` command and the harness are deleted; this spec is the one door
+  for a program. `GET /status.json` answers
+  `apiVersion` `"5"`.
 
 ### Version 5.3.0 (2026-10-17)
 

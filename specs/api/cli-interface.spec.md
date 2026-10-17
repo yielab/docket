@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Complete
 **Last Updated**: 2026-10-17
 
@@ -36,7 +36,7 @@ MUST run from an artifact-only installation.  `docket --version` prints
 `.git`) it appends ` (git <sha8>)`, and `, dirty` inside the parentheses when `git status`
 reports changes, so a tree ahead of its tag is told apart from the release that tag built.
 Installed project metadata MUST
-report a PEP 440-equivalent form of declared version `0.2.0-beta.5`, Python
+report a PEP 440-equivalent form of declared version `0.2.0-beta.6`, Python
 requirement `>=3.11`, Apache-2.0 licensing, and the canonical project source,
 issues, and homepage URLs.  Uninstalling the
 distribution MUST remove its executable, package, and distribution metadata
@@ -72,7 +72,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | `MEMBER` | `pod show|remove|reset`, `pod set|unset --member` | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; a member of the resolved pod |
 | `KEY VALUE` | `pod set|unset` | A `PodSettings` key, or `verify` with `--member` |
 | `location` | `init` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
-| `provider/model` | `setup model set`, `exec --model` | MUST be well-formed `<provider>/<model-id>`; `setup model set` also accepts the literal `default` |
+| `provider/model` | `setup model set` | MUST be well-formed `<provider>/<model-id>`; `setup model set` also accepts the literal `default` |
 | `NAME` | `setup provider|notify|export|mcp` verbs, `pod recipes|roles|policies` | A catalog or document name; an unknown one exits 1 |
 
 Unrecognized or excess positional arguments are a usage error (exit 2). No command takes a positional pod id; the pod comes from Pod targeting below.
@@ -126,9 +126,9 @@ No pod for <cwd> (looked for a registered codebase containing it). Run 'docket i
 ## Command Registry
 
 
-Eleven commands, in the order `docket --help` shows them (Daily: `init`, `status`, `inbox`,
-`task`, `run`; The pod: `pod`, `log`; Machine: `setup`, `start`, `stop`, `exec`). Each top-level
-command has one section below with every verb it owns. A name that is not one of the eleven, or
+Ten commands, in the order `docket --help` shows them (Daily: `init`, `status`, `inbox`,
+`task`, `run`; The pod: `pod`, `log`; Machine: `setup`, `start`, `stop`). Each top-level
+command has one section below with every verb it owns. A name that is not one of the ten, or
 a verb a group does not have, is an ordinary unknown-command usage error (exit 2).
 
 
@@ -373,7 +373,7 @@ running the allowed version (`-> Running with the version you allowed on <date>.
 terminal the allowed version runs and `! The repository changed a command that needs your OK.
 Running with the version you allowed on <date>. To review it, run docket run on a terminal.` is
 printed. A shell-like `allowCommands` in the changed repository is never applied. Only the typed
-`run` reads `.docket/`: `docket start`, `dispatch_pod` and `docket exec` never do (ADR 0012).
+`run` reads `.docket/`: `docket start` and `dispatch_pod` never do (ADR 0012).
 **Output**: the banner of runnable steps, one line per task, one summary line, one `Next:` line.
 **Return**: `0` on success or an expected pause, `1` when a task ended `failed`, the run record
 ends `failed`, the pod is unknown or no endpoint is configured, `2` on an unknown flag.
@@ -604,12 +604,6 @@ not refusal; the per-pod ones show in `status` and `doctor`); `attended` clears 
 error (exit 2). Writes are audited as `gates.profile`. `pod set profile lights-out|attended`
 sets a pod's profile and refuses `attended` under a global `lights-out` (exit 1). See
 security-gates.spec.md "Profiles".
-**`setup harness [--json] [--role ROLE]`** — a read: what `docket exec --contract 1.2` would get
-from the setup home (`DOCKET_SETUP_HOME`, default `~/.docket`): ready or the refusal reason, the
-setup model per role, the reachable models and each provider's credential source. Reads only
-`docket-providers.json`, `docket-models.json` and `secrets.json` there, writes nothing, makes no
-network call and prints no credential value; exit 0 ready, 1 not. Shape in harness-mode.spec.md
-"Contract 1.2" section 5.
 **`setup shell <bash|zsh>`** — prints the completion script generated from the live command tree;
 any other shell is a usage error (exit 2). Enable it with `eval "$(docket setup shell bash)"`.
 **Return**: 0 on success; 1 when the model endpoint is missing off a terminal, a provider is
@@ -772,26 +766,11 @@ before serving and removes it on exit
 **Return**: 0 when stopped or nothing was running; 1 when the process is still alive after the
 second signal
 
-#### docket exec
-**Purpose**: Run one agent, for one turn, to completion, in a workspace and `DOCKET_HOME` the
-caller supplies — for an external plan-of-record that spawns docket as a subprocess. Full
-contract (wire shapes, refusal table, result mapping) in `harness-mode.spec.md`
-**Syntax**: `docket exec --workspace DIR (--task TEXT | --task-file PATH) [--model PROVIDER/ID]
-[--role implementer] [--timeout SECONDS] [--agent-id ID] [--contract 1.0|1.1|1.2] [--answers stdin]
-[--answer-timeout S] [--token-file PATH] [--max-tokens N] [--policy FILE]... [--recipe NAME|DIR]
-[--verify CMD]`; every option is a declared Typer option, an unknown one exits 2. `--model` is
-required under contracts 1.0 and 1.1; under 1.2 it defaults to the role's model in the
-operator's setup (harness-mode.spec.md "Contract 1.2")
-**Output**: Streams NDJSON `HarnessEvent` lines and exactly one `HarnessResult` on stdout;
-every log goes to stderr
-**Return**: 0 `ok`, 1 `failed`/`blocked`/`cancelled`, 2 refused before any run began (the one
-named exception to the flat convention, see Return Code Convention)
-
 ### Help
 
-`docket --help` shows the tagline and the eleven commands in three panels, in this order: **Daily**
+`docket --help` shows the tagline and the ten commands in three panels, in this order: **Daily**
 (`init`, `status`, `inbox`, `task`, `run`), **The pod** (`pod`, `log`) and **Machine** (`setup`,
-`start`, `stop`, `exec`). The panels are declared on the registrations in `cli/__init__.py`;
+`start`, `stop`). The panels are declared on the registrations in `cli/__init__.py`;
 `cli/_help.py` orders them. The project description in `pyproject.toml` is the same tagline.
 
 An unknown top-level word is a usage error (exit 2, `No such command`). Its message offers, from
@@ -854,7 +833,7 @@ sets:
 
 There is no `DOCKET_DEBUG`, `DOCKET_NO_COLOR`, `DOCKET_MODEL_DEFAULT` or `DOCKET_EDITOR`.
 `DOCKET_APPROVAL_MODE` is not an environment variable despite its name: it is a key of the `env`
-dict `run_turn` receives (see harness-mode.spec.md), never read from `os.environ`.
+dict `run_turn` receives, never read from `os.environ`.
 
 ## Return Code Convention
 
@@ -866,16 +845,6 @@ distinguishes error kinds:
 | 0 | Success | All commands |
 | 1 | Any failure (not found, permission, refused confirmation, driver/model error, …) | All commands |
 | 2 | Usage: an unknown command, flag, subcommand or action, or a required action word left out | All commands |
-
-`docket exec` is the one live exception, and it is deliberate. Its stdout is a wire protocol
-that a caller outside this repository parses, so the exit code has to separate "the run happened and
-ended badly" from "the run never started", which a printed message cannot do for a program:
-
-| Code | `docket exec` meaning |
-|------|-----------------------|
-| 0 | The turn completed; the final `result` line carries `status: "ok"` |
-| 1 | The turn ran and ended `failed`, `blocked` or `cancelled` |
-| 2 | Refused before any turn began: preflight rejected the environment, or the arguments were unusable. Exactly one `result` line with `status: "refused"`, no run record, no meta written |
 
 No other exit codes are produced by docket's own commands. Typer/Click's own usage errors (an
 unknown option, command or verb, before any command body runs) exit `2`; the unknown-word
@@ -969,7 +938,7 @@ notice and the prompt keeps waiting on the next event; it MUST NOT raise out of 
 - `--progress` forces the rendering above even when stderr is not a TTY.
 - `--no-prompt` disables the in-place prompt even when stdin is a TTY; rendering is unaffected.
 
-Neither flag applies to `docket exec` or a non-interactive dispatch caller (`start
+Neither flag applies to a non-interactive dispatch caller (`start
 --dispatch`, a due schedule, the MCP `dispatch` tool) — this section governs only the foreground
 CLI path (`cli/_run.py::_pod_dispatch`, `cli/_progress.py`).
 
@@ -1012,6 +981,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.12.0 (2026-10-17)
+- Declared version `0.2.0-beta.6`. Ten commands: `exec` and `setup harness` are removed with the harness, and its three-code exit table is gone; a retired name is an ordinary unknown command (exit 2).
 
 ### Version 2.11.0 (2026-10-17)
 - `start` gains `--bind <addr>` (default `127.0.0.1`; any other address is reachable off this host).

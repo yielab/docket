@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.35.0
+**Version**: 1.35.1
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -239,7 +239,7 @@ This specification does NOT cover:
     whatever the worktree holds. `core/repo_view.py::RepoView` is the injected reader; `core/`
     never shells out. The bytes each view served are recorded as `RepoView.composed`, a mapping
     repository-relative path to the sha256 of those bytes, and returned on
-    `TurnResult.repo_files`. With no task worktree (`docket exec` in place, a plain turn), no
+    `TurnResult.repo_files`. With no task worktree (a plain turn), no
     `baseCommit` or no recorded git dirs, composition is byte-identical to before. Pod-scope and
     global skills are not repository files and are unchanged. This applies to every run.
     Right after the project-instructions section, an optional `# Skills` index (P31-6, ADR 0013 §3 rule 8) lists every skill
@@ -554,7 +554,7 @@ This specification does NOT cover:
     and `failure_kind="invalid_output"`, make no further backend request, and its actionable error
     **MUST** name the tool, the call id, the policy id, and the reason from the first such result in
     the batch. `core/agent_loop.py::approval_unavailable_error()` is the single renderer of that
-    error string (quoted `key=value` pairs), because `core/harness.py` parses it back. A `gate_denied` or `invalid_call` result in the same or a later batch **MUST NOT** be
+    error string (quoted `key=value` pairs), because `TurnResult` carries no structured field for them. A `gate_denied` or `invalid_call` result in the same or a later batch **MUST NOT** be
     made terminal by this requirement — both remain recoverable and bounded only by the existing
     `max_consecutive_tool_denials` limit (requirements 57-60), exactly as under `approval_mode ==
     "wait"`.
@@ -615,10 +615,6 @@ This specification does NOT cover:
     a later consumer parses one format rather than two independent guesses of it. A `gate_denied`
     or `invalid_call` result elsewhere in the batch **MUST NOT** be made terminal by this
     requirement, exactly as requirement 70 states for `approval_unavailable`.
-76. Harness mode (`core/harness.py`) **MUST NOT** be able to produce `stop_reason="approval_parked"`:
-    it always sets `ToolContext.approval_mode = "refuse"`, never `"park"`, so this stop reason
-    never reaches the published harness-v1 wire contract. That contract is unchanged by this
-    section.
 
 ### The no_progress stop (Phase 37, ADR 0019 section 4)
 
@@ -828,6 +824,10 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
 
 ## Changelog
 
+### Version 1.35.1 (2026-10-17)
+
+- Requirement 70's error string is no longer parsed by `core/harness.py`, and requirement 76 (the harness never parks) is deleted with the harness.
+
 ### Version 1.35.0 (2026-10-13)
 
 - Project instructions and codebase-scope skills compose from the task's `baseCommit` blob when a
@@ -875,9 +875,7 @@ Phase 37 close (P37-8): the entries below were Unreleased and are now this versi
 - **Requirements 75-76: the `approval_parked` stop (Phase 34, D-50, ADR 0016 §2).** A batch
   containing an in-turn `ask` that parked (no matching pre-grant) stops the turn exactly as
   `approval_unavailable` does, naming the tool, call id, policy id and the created approval's
-  token via the new `approval_parked_error()` renderer; harness mode always sets
-  `approval_mode="refuse"`, so this stop reason structurally never reaches the harness-v1 wire
-  contract.
+  token via the new `approval_parked_error()` renderer.
 
 ### Version 1.28.0 (2026-09-28)
 

@@ -43,7 +43,7 @@ def _load_click_group():
 GROUPS: list[tuple[str, list[str]]] = [
     ("Daily", ["init", "status", "inbox", "task", "run"]),
     ("The pod", ["pod", "log"]),
-    ("Machine", ["setup", "start", "stop", "exec"]),
+    ("Machine", ["setup", "start", "stop"]),
 ]
 
 _TOC_SLUG_OVERRIDES: dict[str, str] = {}
@@ -158,7 +158,7 @@ _EXIT_CODES = """\
 |------|---------|
 | 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
 | 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket exec`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or command (an unknown command word names the live commands it could mean) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, or an unrecognized flag or command (an unknown command word names the live commands it could mean) |
 
 No command emits any other exit code today.
 """

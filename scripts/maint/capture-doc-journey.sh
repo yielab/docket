@@ -11,7 +11,7 @@ set -uo pipefail
 ENDPOINT="${1:-http://127.0.0.1:8081/v1}"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/dk.XXXX")"
 OUT="$ROOT/out"
-mkdir -p "$ROOT/code/myapp" "$ROOT/code/svc" "$ROOT/hh" "$OUT"
+mkdir -p "$ROOT/code/myapp" "$OUT"
 
 # A throwaway HOME keeps every path short and renders it as "~"; the operator's own
 # ~/.docket is never read or written.
@@ -35,8 +35,6 @@ seed_repo() {
 printf 'def add(a, b):\n    return a - b\n' >"$ROOT/code/myapp/calc.py"
 printf '# myapp\n' >"$ROOT/code/myapp/README.md"
 seed_repo "$ROOT/code/myapp"
-printf 'VERSION = "1.0"\n' >"$ROOT/code/svc/app.py"
-seed_repo "$ROOT/code/svc"
 
 cd "$ROOT/code/myapp" || exit 1
 docket setup provider add local "$ENDPOINT" --model local-model --ctx 16384 --max-tokens 4096 \
@@ -76,8 +74,6 @@ run 4-gate.txt docket log verify
 # 5-record: what the pod knows about itself after the run.
 run 5-record.txt docket pod show myapp-implementer --pod myapp
 run 5-record.txt docket log verify
-
-run 6-harness.txt "DOCKET_HOME=$HOME/hh DOCKET_LLM_BASE_URL=$ENDPOINT docket exec --workspace $HOME/code/svc --model local/local-model --task 'Run exactly this bash command: git push origin production' 2>/dev/null | tail -1 | python3 -m json.tool"
 
 # Render the capture root as "~" so the transcripts can be copied into the renderer as-is.
 sed -i.bak "s|$ROOT|~|g" "$OUT"/*.txt && rm -f "$OUT"/*.bak

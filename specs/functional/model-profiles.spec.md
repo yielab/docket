@@ -1,10 +1,10 @@
 # Model Policy Specification
 
-**Version**: 3.3.0
+**Version**: 3.3.1
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -110,9 +110,7 @@ feasibility spike remains in ROADMAP and Git history.
    when the pod defines that role (`docket pod show` reports the source as `policy` or
    `pod overlay`). There is no per-agent pin and `.docket-meta.json` carries no `modelSource`; a
    metadata file that still has the key is read without it.
-2. A model **MUST** only be set per member by provisioning (the role's resolved model) and by an
-   in-place `exec` run, which sets the one model the run was given on every member of its
-   ephemeral pod.
+2. A model **MUST** only be set per member by provisioning (the role's resolved model).
 3. A pipeline step's own `model` (`pipeline-format.spec.md`'s "Steps" Requirement 10) **MUST**
    sit above the policy and the pod's role overlay, for that one hop only, and **MUST NOT**
    change `model` in `.docket-meta.json` — the member keeps following its role's model,
@@ -481,6 +479,10 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.3.1 (2026-10-17)
+
+- Requirement 2: the in-place `exec` run no longer sets a member's model; provisioning is the only writer.
 
 ### Version 3.3.0 (2026-10-08)
 

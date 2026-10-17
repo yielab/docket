@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.30.0
+**Version**: 1.30.1
 **Status**: Implemented
 **Last Updated**: 2026-10-17
 
@@ -399,7 +399,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     renamed to, with no alias) **MUST** put a directory that is not a shipped recipe through the
     same review against the pod's recorded codebase, on a terminal or with `--accept <code>`, and
     `docket run` **MUST** do the same for a changed item before dispatching; neither
-    `docket start`, `dispatch_pod` nor `docket exec` reads `.docket/`. A review shows the repository's
+    `docket start` nor `dispatch_pod` reads `.docket/`. A review shows the repository's
     commands as before/now; `core.pod_apply.repo_changes` derives them from the directory and the
     stored review. The decision itself (go, refused, needs a code, wrong code, accepted) is
     `core.pod_apply.review_decision`, shared by the CLI and by `apply_directory` behind `POST /pods/<p>/apply`, which is
@@ -617,6 +617,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.30.1 (2026-10-17)
+
+- The `.docket/` re-read requirement no longer names the removed `exec` command.
 
 ### Version 1.30.0 (2026-10-17)
 

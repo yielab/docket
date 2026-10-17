@@ -7,20 +7,21 @@ Real dispatch over a scripted chat backend; nothing touches the real DOCKET_HOME
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
+from docket.cli import _pod
 from docket.core import answers as _answers
 from docket.core import consult as _consult_mod
 from docket.core import corrections as _corrections
 from docket.core import dispatch as _dispatch
-from docket.core import harness_pipeline as hp
+from docket.core import fleet as _fleet
 from docket.core import inbox as _inbox
 from docket.core import notify as _notify
-from docket.core.harness import Answer
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
@@ -82,45 +83,45 @@ def _consult(call_id: str = "c1") -> ChatResponse:
     )
 
 
+@dataclass(frozen=True)
+class _Run:
+    project: str
+    task_id: str
+
+
 def _start(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     backend: _Backend,
     mode: Literal["wait", "park", "refuse"] = "park",
-    next_answer: Any = None,
-) -> hp.RecipeRun:
-    recipe = tmp_path / "recipe"
-    recipe.mkdir()
-    (recipe / "pod.yaml").write_text("kind: pod\nname: x\n", encoding="utf-8")
+) -> _Run:
     workspace = tmp_path / "codebase"
     workspace.mkdir()
+    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
+    _fleet.meta_set("demo-implementer", "codebase", str(workspace))
+    _fleet.meta_set("demo-implementer", "verifyCmd", "true")
+    _fleet.meta_set("demo-lead", "approvalMode", _pod.pod.PodSettings.coerce("approvalMode", mode))
+    _fleet.meta_set(
+        "demo-lead", "requireVerify", _pod.pod.PodSettings.coerce("requireVerify", "true")
+    )
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    return hp.run_recipe_task(
-        workspace,
-        str(recipe),
-        "in-place task",
-        model="test-model",
-        approval_mode=mode,
-        timeout=60,
-        verify_cmd="true",
-        next_answer=next_answer,
-    )
+    queued = _dispatch.enqueue_task("demo", "in-place task", channel="cli")
+    _dispatch.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
+    return _Run("demo", str(queued["id"]))
 
 
-def _task(run: hp.RecipeRun) -> dict[str, Any]:
-    return next(t for t in _dispatch.read_tasks(run.project) if t["id"] == run.task["id"])
+def _task(run: _Run) -> dict[str, Any]:
+    return next(t for t in _dispatch.read_tasks(run.project) if t["id"] == run.task_id)
 
 
-def _resume(run: hp.RecipeRun) -> dict[str, Any]:
+def _resume(run: _Run) -> dict[str, Any]:
     _dispatch.dispatch_pod(run.project, turn_timeout=60, max_tasks=1)
     return _task(run)
 
 
-def _answer(run: hp.RecipeRun, action: str, content: dict[str, Any] | None) -> None:
-    _answers.answer_task(
-        run.project, str(run.task["id"]), action, content, channel="cli", actor="op"
-    )
+def _answer(run: _Run, action: str, content: dict[str, Any] | None) -> None:
+    _answers.answer_task(run.project, run.task_id, action, content, channel="cli", actor="op")
 
 
 class TestPark:
@@ -250,23 +251,3 @@ class TestTaskWideCap:
         assert task["consultations"] == 3
         tool_msgs = [m.content for m in backend.calls[-1] if m.role == "tool"]
         assert "consultation budget exhausted; decide yourself" in tool_msgs[-1]
-
-
-class TestRecipeHarness:
-    def test_a_question_id_answer_resumes_a_consult_end_to_end(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        backend = _Backend([_final("plan"), _consult(), _final("built")])
-        seen: list[dict[str, Any]] = []
-
-        def _next(question: dict[str, Any]) -> Answer:
-            seen.append(question)
-            return Answer(
-                questionId=question["id"], action="accept", content={"optionId": "sqlite"}
-            )
-
-        run = _start(tmp_path, monkeypatch, backend, "wait", _next)
-
-        assert len(seen) == 1 and seen[0]["kind"] == "decision"
-        assert run.task["status"] == "done"
-        assert "option sqlite (SQLite)" in backend.calls[-1][-1].content

@@ -385,15 +385,10 @@ def _trace_tool_call(
     )
 
 
-# Quoted key=value pairs, because a consumer outside this repository parses
-# this string: core/harness.py turns it back into the published contract's
-# blocked payload, and TurnResult carries no structured field to hold these
-# instead. Prose here silently empties every field over there, which is how
-# the two halves of this seam were first written. Exposed as a function rather
-# than inlined so the round trip can be tested against the real format instead
-# of a copy of it.
+# Quoted key=value pairs, because TurnResult carries no structured field to hold these. A
+# function rather than an inline string so a test can drive the real format.
 def approval_unavailable_error(result: ToolResult) -> str:
-    """Render a refused-approval denial as the harness contract parses it."""
+    """Render a refused-approval denial as quoted key=value pairs."""
     return (
         f"approval_unavailable: tool={result.tool!r} call_id={result.call_id!r} "
         f"policy_id={result.policy_id!r} reason={result.reason!r}"
@@ -1793,14 +1788,8 @@ class _TurnState:
             # can change the outcome. Named specifically so a caller does not
             # have to grep a generic denial-limit error for which rule fired.
             #
-            # The error is written as quoted key=value pairs because a consumer
-            # outside this repository parses it: core/harness.py turns it back
-            # into the published contract's blocked payload, and TurnResult has
-            # no structured field to carry these through instead. Prose here
-            # silently empties every field over there, which is how this was
-            # first shipped. tests/integration/test_harness_contract.py pins
-            # the round trip, so changing this format fails a test rather than
-            # degrading an external contract.
+            # The error is written as quoted key=value pairs because TurnResult has no
+            # structured field to carry these through.
             return self.done(
                 ok=False,
                 stop_reason="approval_unavailable",

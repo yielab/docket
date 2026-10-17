@@ -1,7 +1,7 @@
 """evidence: what a finished task's hops kept, as one published model (1.0.0 and 1.1.0).
 
 ``task_evidence`` is the one builder. It reads the persisted task record and projects each hop
-through these models; later surfaces (CLI, HTTP, harness) serve the result and never assemble it
+through these models; later surfaces (CLI, HTTP) serve the result and never assemble it
 themselves. Everything here is measured or recorded: tokens are the endpoint's counts, never an
 estimate or a dollar figure, and the model carries no score or verdict about the evidence.
 The internal ``verify["touched"]`` key never crosses into this contract.
