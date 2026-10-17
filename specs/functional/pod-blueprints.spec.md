@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.28.0
+**Version**: 1.29.0
 **Status**: Implemented
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -298,6 +298,13 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    provisioning — two sources of record is an ambiguity this command refuses rather than picks
    between. `--no-apply` **MUST** provision the pod and skip applying either source, instead
    printing the `docket pod update <dir>` command that would apply it.
+   A repository may hold several teams: `core.pod_apply.repo_config_dir(codebase, project)` is
+   `<codebase>/.docket/teams/<project>/` when that directory exists, else `<codebase>/.docket/`,
+   and `init --name <pod>`, `pod update`/`export`/`validate` defaults and `docket run`'s change
+   pickup all resolve through it. `docket init` without a name matching a team, in a repository
+   whose `.docket/` has `teams/` and no `pod.yaml`, **MUST** apply nothing and exit 2 naming the
+   teams, before provisioning. `pod export` with no `<dir>` **MUST** write `teams/<pod>/` when the
+   repository already has `.docket/teams/`, and never touch a sibling team's directory.
 9. **Recipe summary (ADR 0013 §1 rule 1).** A directory's scope is derived from its contents,
    never a declared field: `core.pod_apply.summarize_recipe(directory)` reads, without needing a
    project or a role registry, the count of `roles/*.yaml|yml|json`, `policies/*.yaml|yml|json`,
@@ -607,6 +614,11 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.29.0 (2026-10-17)
+
+- "Configuration of record" gains `.docket/teams/<pod>/`: `repo_config_dir`, the `init` exit 2
+  naming the teams, and `export` into `teams/<pod>/` (P43-7).
 
 ### Version 1.28.0 (2026-10-14)
 

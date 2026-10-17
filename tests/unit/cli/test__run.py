@@ -559,3 +559,16 @@ class TestRunPicksUpTheRepository:
         assert result.exit_code == 0 and calls == ["demo"]
         assert "-> Running with the version you allowed on " in result.output
         assert "make migrate" in _pod_core.bound_pipeline_path("demo").read_text()
+
+
+def test_change_pickup_reads_only_the_pods_team_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pod's `.docket/teams/<pod>/` is the directory run watches, not a sibling's."""
+    _seed_pod(tmp_path, monkeypatch)
+    code = tmp_path / "code"
+    (code / ".docket" / "teams" / "demo").mkdir(parents=True)
+    (code / ".docket" / "teams" / "other").mkdir(parents=True)
+    monkeypatch.setattr(_fleet, "meta_get", lambda *_a, **_k: str(code))
+    assert _run._repo_dir("demo") == code / ".docket" / "teams" / "demo"
+    assert _run._repo_dir("third") == code / ".docket"

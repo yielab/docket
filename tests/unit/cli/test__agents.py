@@ -240,3 +240,33 @@ def test_the_generated_agents_file_does_not_tell_the_agent_to_write_the_ledger(
     text = (tmp_path / "home" / "projects" / "demo" / "AGENTS.md").read_text()
     assert "Before starting multi-step work" not in text
     assert "unwritten" not in text
+
+
+def _teams_repo(tmp_path: Path) -> Path:
+    code = tmp_path / "code"
+    for team in ("a", "b"):
+        (code / ".docket" / "teams" / team).mkdir(parents=True)
+        (code / ".docket" / "teams" / team / "pod.yaml").write_text(
+            f"kind: pod\nname: {team}\ndescription: team {team}\n"
+        )
+    return code
+
+
+class TestInitInARepositoryWithTeams:
+    """`.docket/teams/<pod>/` holds one team per pod; `init` picks one by name."""
+
+    def test_the_named_team_is_applied_and_recorded(self, tmp_path: Path) -> None:
+        from docket.core import fleet as _fleet
+
+        code = _teams_repo(tmp_path)
+        result = runner.invoke(app, ["init", "--name", "a", "--codebase", str(code)])
+        assert result.exit_code == 0, result.output
+        source = _fleet.meta_get("a-lead", "configSource", "")
+        assert source.endswith("teams/a")
+
+    def test_no_name_exits_2_naming_the_teams(self, tmp_path: Path) -> None:
+        code = _teams_repo(tmp_path)
+        result = runner.invoke(app, ["init", "--codebase", str(code)])
+        assert result.exit_code == 2
+        assert "a, b" in result.output
+        assert not (_cfg.PROJECTS_DIR / "code-lead").exists()
