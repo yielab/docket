@@ -1480,3 +1480,102 @@ def _trace_events(project: str) -> list[dict[str, Any]]:
         for f in traces_dir.glob("*.jsonl"):
             events.extend(_trace.read_trace(f))
     return events
+
+
+class TestCancelTask:
+    def _seed(self, status: str, **fields: Any) -> str:
+        _seed_lean_pod()
+        task = _dispatch.enqueue_task("myapp", "work", channel="cli")
+        from docket.edges import store as _store
+
+        def _fn(doc: dict[str, Any]) -> dict[str, Any]:
+            for t in doc["tasks"]:
+                t.update(status=status, **fields)
+            return {"tasks": doc["tasks"]}
+
+        _store.read_modify_write(_dispatch.pod_task_list_path("myapp"), _fn)
+        return str(task["id"])
+
+    def test_a_running_task_cancels_its_live_run_and_audits_once(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An in-flight run with no task ids is the running task's: it is cancelled, one audit."""
+        from docket.core import audit as _audit
+        from docket.core import runs as _runs
+
+        task_id = self._seed("running")
+        monkeypatch.setattr(
+            _runs,
+            "list_runs",
+            lambda project=None: [
+                {"id": "run-a", "state": "running", "taskIds": []},
+                {"id": "run-b", "state": "done", "taskIds": []},
+                {"id": "run-c", "state": "running", "taskIds": ["other"]},
+            ],
+        )
+        asked: list[str] = []
+
+        def _cancel(run_id: str) -> _runs.CancelOutcome:
+            asked.append(run_id)
+            return _runs.CancelOutcome(ok=True, message=f"asked {run_id}")
+
+        monkeypatch.setattr(_runs, "cancel_run", _cancel)
+
+        outcome = _dispatch.cancel_task("myapp", task_id, channel="http", reason="why")
+
+        assert asked == ["run-a"]
+        assert outcome.status == "cancelled"
+        assert outcome.cancelled_runs == ("run-a",)
+        assert outcome.messages == ("asked run-a",)
+        cancels = [e for e in _audit.read_audit() if e.get("action") == "task.cancel"]
+        assert len(cancels) == 1
+        assert "channel=http" in cancels[0]["detail"] and "reason=why" in cancels[0]["detail"]
+
+    def test_a_refused_run_cancel_is_a_warning_not_a_cancellation(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A run that will not cancel leaves the task unchanged and reports why."""
+        from docket.core import runs as _runs
+
+        task_id = self._seed("pending")
+        monkeypatch.setattr(
+            _runs,
+            "list_runs",
+            lambda project=None: [{"id": "run-a", "state": "queued", "taskIds": [task_id]}],
+        )
+        monkeypatch.setattr(
+            _runs, "cancel_run", lambda run_id: _runs.CancelOutcome(ok=False, message="nope")
+        )
+
+        outcome = _dispatch.cancel_task("myapp", task_id, channel="cli")
+
+        assert not outcome.cancelled
+        assert outcome.status == "pending"
+        assert outcome.warnings == ("nope",)
+
+    def test_a_parked_task_is_cancelled_through_the_parked_path(self, pod_home: Path) -> None:
+        """A task waiting for input ends cancelled and names where it was parked."""
+        task_id = self._seed("waiting_input", question={"text": "which?"})
+
+        outcome = _dispatch.cancel_task("myapp", task_id, channel="cli")
+
+        assert (outcome.status, outcome.parked_from) == ("cancelled", "waiting_input")
+
+    def test_a_stale_claim_is_settled_not_cancelled(self, pod_home: Path) -> None:
+        """A running task whose claimant is gone ends failed and is reported as reclaimed."""
+        task_id = self._seed("running", claimPid=2**22 + 1)
+
+        outcome = _dispatch.cancel_task("myapp", task_id, channel="cli")
+
+        assert outcome.reclaimed and outcome.cancelled
+        assert outcome.status == "failed"
+
+    def test_nothing_to_cancel_reports_the_status_and_unknown_raises(self, pod_home: Path) -> None:
+        """A done task has nothing in flight; an unknown id is a TaskNotFoundError."""
+        task_id = self._seed("done")
+
+        outcome = _dispatch.cancel_task("myapp", task_id, channel="cli")
+
+        assert not outcome.cancelled and outcome.status == "done"
+        with pytest.raises(_dispatch.TaskNotFoundError):
+            _dispatch.cancel_task("myapp", "task-nope", channel="cli")

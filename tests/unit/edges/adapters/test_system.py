@@ -743,3 +743,50 @@ class TestGitWorktreeAddStartPoint:
         assert not ok
         assert "--detach" in reason
         assert argvs == []
+
+
+class TestGitDiffRange:
+    def test_diffs_base_dot_dot_ref(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        seen: list[list[str]] = []
+
+        def _run(argv: list[str], **kwargs: Any) -> _FakeCompleted:
+            seen.append(argv)
+            return _FakeCompleted(returncode=0, stdout="diff --git a/x b/x\n")
+
+        monkeypatch.setattr(_sys.subprocess, "run", _run)
+        assert _sys.git_diff_range("/tmp/repo", "abc", "br") == "diff --git a/x b/x\n"
+        assert seen[0][-2:] == ["diff", "abc..br"]
+
+    def test_a_long_patch_is_cut_with_a_marker(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        big = "x" * (_sys.DIFF_MAX_CHARS + 10)
+        monkeypatch.setattr(
+            _sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout=big)
+        )
+        patch = _sys.git_diff_range("/tmp/repo", "a", "b")
+        assert patch is not None
+        assert patch.startswith("x" * _sys.DIFF_MAX_CHARS)
+        assert patch.endswith("characters]\n") and len(patch) < len(big) + 80
+
+    def test_none_on_failure_or_without_git(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        assert _sys.git_diff_range("/tmp/repo", "a", "b") is None
+        monkeypatch.setattr(_sys, "git_available", lambda: False)
+        assert _sys.git_diff_range("/tmp/repo", "a", "b") is None
+
+
+class TestGitUntracked:
+    def test_lists_only_question_mark_lines(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        out = " M tracked.py\n?? b/new.txt\n?? a.txt\nA  added.py\n"
+        monkeypatch.setattr(
+            _sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout=out)
+        )
+        assert _sys.git_untracked("/tmp/wt") == ["a.txt", "b/new.txt"]
+
+    def test_empty_when_not_a_repo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        assert _sys.git_untracked("/tmp/nowhere") == []

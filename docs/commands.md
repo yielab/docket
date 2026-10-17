@@ -98,7 +98,10 @@ Example: docket task show task-04ff
 
 **Usage:** `docket task diff`
 
-Print what the task changed in its worktree, against the commit it started from.
+Print what the task's branch changed, against the commit it started from.
+
+Works after the worktree is removed; --json prints the branch, commits, patch and any
+untracked files.
 
 Example: docket task diff task-04ff
 

@@ -31,7 +31,7 @@ _docket_options() {
     "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --pod --help" ;;
     "task list") echo "--json --pod --help" ;;
     "task show") echo "--json --pod --help" ;;
-    "task diff") echo "--pod --help" ;;
+    "task diff") echo "--pod --json --help" ;;
     "task trace") echo "--tail --export --json --pod --help" ;;
     "task prune") echo "--dry-run --force --yes --traces --days --pod --help" ;;
     "task approve") echo "--reason --once --task --for --tool --pod --help" ;;

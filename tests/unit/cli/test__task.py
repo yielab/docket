@@ -236,6 +236,53 @@ class TestTaskDiff:
         assert _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo"]).exit_code == 1
 
 
+class TestTaskCancelRendering:
+    def test_renders_the_outcome_core_returns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "work", channel="cli")
+        seen: dict[str, Any] = {}
+
+        def _cancel(project: str, task_id: str, **kwargs: Any) -> _dispatch.TaskCancelOutcome:
+            seen.update(project=project, task_id=task_id, **kwargs)
+            return _dispatch.TaskCancelOutcome(
+                status="cancelled", parked_from="waiting_input", messages=("run asked",)
+            )
+
+        monkeypatch.setattr(_dispatch, "cancel_task", _cancel)
+        result = _runner.invoke(app, ["task", "cancel", task["id"], "--pod", "demo"])
+
+        assert result.exit_code == 0, result.output
+        assert "run asked" in result.output and "it was waiting_input" in result.output
+        assert seen["channel"] == "cli" and seen["task_id"] == task["id"]
+
+    def test_nothing_in_flight_exits_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "work", channel="cli")
+        result = _runner.invoke(app, ["task", "cancel", task["id"], "--pod", "demo"])
+        assert result.exit_code == 1
+        assert "Nothing is in flight to cancel" in result.output
+
+
+class TestTaskDiffJson:
+    def test_json_prints_the_whole_object(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "work", channel="cli")
+        doc = {"task": task["id"], "patch": "diff --git a/x b/x\n", "worktreePresent": False}
+        monkeypatch.setattr(_dispatch, "task_diff", lambda project, task_id: doc)
+
+        shown = _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo", "--json"])
+        plain = _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo"])
+
+        assert json.loads(shown.output) == doc
+        assert plain.output == doc["patch"]
+
+
 class TestTaskAdd:
     def test_queues_from_the_pod_in_the_environment(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
