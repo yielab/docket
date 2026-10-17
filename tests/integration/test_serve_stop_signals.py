@@ -8,8 +8,20 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from pathlib import Path
+from typing import Any
+
+import pytest
+from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
+from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
+
+import docket.config as _cfg
+from docket import serve
+from docket.cli import _pod
+from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 
 SUBJECT = "docket.serve"
 
@@ -75,3 +87,102 @@ def test_second_sigint_abandons_a_blocked_sweep(tmp_path: Path) -> None:
     runs = json.loads((home / "docket-runs.json").read_text())["runs"]
     assert len(runs) == 1
     assert runs[0]["cancellation"]["requestedAt"]
+
+
+_SOLO = "name: solo\nsteps:\n  - id: kickoff\n    role: lead\n"
+_TWO = (
+    "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
+)
+
+
+@pytest.fixture()
+def sweep_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
+    root = tmp_path / ".docket"
+    (root / "workspaces" / "projects").mkdir(parents=True)
+    (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    repoint_docket_home(monkeypatch, root)
+    record_isolation_off(root)
+    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
+    _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
+    _fleet.meta_set("demo-implementer", "verifyCmd", "")
+    pipelines = _cfg.pod_config_dir("demo") / "pipelines"
+    pipelines.mkdir(parents=True, exist_ok=True)
+    (pipelines / "solo.yaml").write_text(_SOLO, encoding="utf-8")
+    (pipelines / "two.yaml").write_text(_TWO, encoding="utf-8")
+    return root
+
+
+def _wire(home: Path, server: _ScriptedLLMServer) -> None:
+    register_local_provider(
+        home, "local", [{"id": "stub", "contextWindow": 16384, "maxTokens": 4096}], server.base_url
+    )
+    for member in ("demo-lead", "demo-implementer"):
+        _fleet.meta_set(member, "model", "local/stub")
+
+
+def _write_tasks(tasks: list[dict[str, Any]]) -> None:
+    from docket.edges import store as _store
+
+    _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})
+
+
+def test_first_signal_finishes_only_the_running_task(
+    sweep_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the stop set during the first hop, one task ends terminal and two stay pending."""
+    stop = threading.Event()
+    monkeypatch.setattr(serve, "_sweep_stop", stop)
+    server = _ScriptedLLMServer([_final_response("done")], on_request=lambda _r: stop.set())
+    try:
+        _wire(sweep_home, server)
+        _write_tasks(
+            [
+                {"id": f"task-{i}", "description": "x", "status": "pending", "pipeline": "solo"}
+                for i in (1, 2, 3)
+            ]
+        )
+
+        serve._sweep_one_pod("demo")
+    finally:
+        server.stop()
+
+    statuses = sorted(t["status"] for t in _dispatch.read_tasks("demo"))
+    assert statuses == ["done", "pending", "pending"]
+    assert len(server.requests) == 1
+
+
+def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first_hop(
+    sweep_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A running task with a dead claimant is settled stale and continued from hop two."""
+    monkeypatch.setattr(serve, "_sweep_stop", threading.Event())
+    server = _ScriptedLLMServer([_final_response("done")])
+    try:
+        _wire(sweep_home, server)
+        hop = _dispatch.HopResult(
+            role="lead", member_id="demo-lead", ok=True, output="plan", step_id="kickoff"
+        )
+        _write_tasks(
+            [
+                {
+                    "id": "task-1",
+                    "description": "x",
+                    "status": "running",
+                    "pipeline": "two",
+                    "claimId": "c-1",
+                    "claimPid": 2**22 + 12345,
+                    "claimedAt": _dispatch._now(),
+                    "hops": [_dispatch._hop_record(hop)],
+                }
+            ]
+        )
+
+        serve._sweep_one_pod("demo")
+    finally:
+        server.stop()
+
+    task = _dispatch.read_tasks("demo")[0]
+    assert task["status"] == "done", task.get("reason")
+    assert [h["stepId"] for h in task["hops"]] == ["kickoff", "assemble"]
+    assert len(server.requests) == 1
