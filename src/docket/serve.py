@@ -1121,12 +1121,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
             since = (query.get("since") or [""])[0]
             if since:
                 try:
-                    _dt.datetime.fromisoformat(since.replace("Z", "+00:00"))
+                    since = _corrections.utc_cursor(since)
                 except ValueError:
-                    self._send_json_error("since must be an ISO-8601 timestamp", 400)
+                    self._send_json_error("since must be an ISO-8601 timestamp with an offset", 400)
                     return
             records = _corrections.read(project, since)
-            next_cursor = str(records[-1].get("ts", "")) if records else since
+            next_cursor = _corrections.utc_z(str(records[-1].get("ts", "")) if records else since)
             body = json.dumps({"corrections": records, "next": next_cursor}).encode("utf-8")
             self._send(body, "application/json")
         else:

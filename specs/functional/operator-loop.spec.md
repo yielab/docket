@@ -797,7 +797,8 @@ Each JSONL line is a JSON object with these fields:
 - File mode is 0600 on creation.
 - Text is redacted with the same function as trace payloads.
 - Read back in append order, optionally from a cursor: `corrections.read(project, since=)`
-  keeps records with `ts > since` (string compare on ISO-8601 `Z` timestamps), and
+  keeps records with `ts > since` (string compare on the ledger's UTC `isoformat()` form,
+  `+00:00`; the caller normalises `since` into that form), and
   `GET /pods/<p>/corrections?since=` serves it (`operator-api.spec.md`).
 
 ## Changelog
