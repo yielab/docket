@@ -865,6 +865,73 @@ def is_shipped_recipe(directory: Path) -> bool:
     return True
 
 
+@dataclass(frozen=True)
+class ReviewDecision:
+    """The review rule's verdict: ``go`` (nothing to ask), ``refused``, ``needs_code`` (no
+    ``accept`` given), ``code_mismatch`` or ``accepted``. ``code`` is the current review code."""
+
+    status: Literal["go", "refused", "needs_code", "code_mismatch", "accepted"]
+    review: PlanReview
+    code: str = ""
+
+
+def review_decision(repo_root: Path, directory: Path, accept: str | None) -> ReviewDecision:
+    """Whether *directory*'s run-on-this-machine items are cleared by the shipped-recipe
+    exemption, a remembered review or the matching *accept* code. Read-only."""
+    from docket.core import reviewed_repos as _reviewed
+
+    empty = PlanReview((), ())
+    if is_shipped_recipe(directory):
+        return ReviewDecision("go", empty)
+    review = classify_directory(directory)
+    if review.refused:
+        return ReviewDecision("refused", review)
+    if not review.runs or _reviewed.is_reviewed(repo_root, review.runs):
+        return ReviewDecision("go", review)
+    code = _reviewed.review_code(review.runs)
+    if accept is None:
+        return ReviewDecision("needs_code", review, code)
+    return ReviewDecision("accepted" if accept == code else "code_mismatch", review, code)
+
+
+@dataclass(frozen=True)
+class DirectoryOutcome:
+    """What ``apply_directory`` did: ``status`` ``applied``/``planned`` carry ``items``;
+    ``needs_code``/``code_mismatch`` carry ``code`` (needs_code only) and the ``runs`` to review;
+    ``refused`` carries the shell names."""
+
+    status: Literal["applied", "planned", "needs_code", "code_mismatch", "refused"]
+    items: tuple[ApplyItem, ...] = ()
+    code: str = ""
+    runs: tuple[RunItem, ...] = ()
+    refused: tuple[str, ...] = ()
+
+
+def apply_directory(
+    project: str, directory: Path, root: Path, *, accept: str | None, dry_run: bool, channel: str
+) -> DirectoryOutcome:
+    """Off-terminal ``pod update``: plan, enforce the review rule against *root*, apply.
+    Raises PodApplyError when the directory cannot be planned."""
+    from docket.core import reviewed_repos as _reviewed
+
+    plan = plan_apply(project, directory)
+    if dry_run:
+        return DirectoryOutcome("planned", plan.items)
+    decision = review_decision(root, directory, accept)
+    if decision.status == "refused":
+        return DirectoryOutcome("refused", refused=decision.review.refused)
+    if decision.status == "needs_code":
+        return DirectoryOutcome("needs_code", code=decision.code, runs=decision.review.runs)
+    if decision.status == "code_mismatch":
+        found = _reviewed.lookup(root)
+        was = {(i.kind, i.name): i.runs for i in found.items} if found else {}
+        changed = tuple(i for i in decision.review.runs if was.get((i.kind, i.name)) != i.runs)
+        return DirectoryOutcome("code_mismatch", runs=changed)
+    if decision.status == "accepted":
+        _reviewed.remember(root, decision.review.runs)
+    return DirectoryOutcome("applied", apply(plan, channel=channel).items)
+
+
 def _run_steps(steps: list[Any]) -> list[RunItem]:
     found: list[RunItem] = []
     for step in steps:
@@ -1013,7 +1080,7 @@ def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
     )
 
 
-def apply(plan: ApplyPlan) -> ApplyResult:
+def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
     """Write every non-``skip`` item in *plan* (role -> policy -> plugin -> skill -> mcp-server -> member -> pipeline
     -> setting order). Audits ``pod.apply`` only on change; records ``configSource``/
     ``configDigest`` every time, all-``skip`` included (see below)."""
@@ -1097,7 +1164,8 @@ def apply(plan: ApplyPlan) -> ApplyResult:
 
     if plan.has_changes():
         summary = ";".join(f"{item.kind}:{item.name}:{item.action}" for item in plan.items)
-        audit_log("pod.apply", f"project={plan.project} dir={plan.directory} items={summary}")
+        via = f" channel={channel}" if channel else ""
+        audit_log("pod.apply", f"project={plan.project} dir={plan.directory} items={summary}{via}")
 
     # The configuration-of-record (ADR 0012 §2 rule 5): recorded after every plan
     # `plan_apply` validated, an all-`skip` plan included, so composing a second, identical
