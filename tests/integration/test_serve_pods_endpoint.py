@@ -569,6 +569,16 @@ class TestReadPods:
         assert body["pipelineSource"] == _dispatch.effective_pipeline_source("demo")
         assert body["repoConfigDir"] == "/src/demo/.docket"
 
+    def test_repo_config_dir_names_the_pods_team_dir(
+        self, live_server: tuple[str, str], tmp_path: Path
+    ) -> None:
+        """A repository keeping `.docket/teams/<pod>/` reports that directory."""
+        url, token = live_server
+        (tmp_path / "repo" / ".docket" / "teams" / "demo").mkdir(parents=True)
+        _post(f"{url}/pods", {"project": "demo", "path": str(tmp_path / "repo")}, token)
+        _, body = _get(f"{url}/pods/demo", token)
+        assert body["repoConfigDir"] == str(tmp_path / "repo" / ".docket" / "teams" / "demo")
+
     def test_unknown_pod_returns_404(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, body = _get(f"{url}/pods/nope", token)

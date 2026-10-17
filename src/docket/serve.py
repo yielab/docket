@@ -1581,7 +1581,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error("dryRun must be a boolean and accept a string", 400)
             return
         if directory_value is None:
-            directory_value = str(Path(codebase) / ".docket") if codebase else ""
+            directory_value = (
+                str(_pod_apply.repo_config_dir(Path(codebase), project)) if codebase else ""
+            )
         elif not Path(directory_value).is_absolute():
             self._send_json_error("directory must be an absolute path", 400)
             return

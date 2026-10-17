@@ -411,5 +411,11 @@ def pod_detail(project: str) -> dict[str, Any]:
         **pod_report(project),
         "profile": verdict,
         "pipelineSource": _dispatch.effective_pipeline_source(project),
-        "repoConfigDir": str(Path(_codebase(project)) / ".docket") if _codebase(project) else "",
+        "repoConfigDir": _repo_config_dir(project),
     }
+
+
+def _repo_config_dir(project: str) -> str:
+    """The pod's configuration-of-record directory, `""` for a pod with no codebase."""
+    codebase = _codebase(project)
+    return str(_pod_apply.repo_config_dir(Path(codebase), project)) if codebase else ""
