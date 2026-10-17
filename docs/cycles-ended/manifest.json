@@ -726,5 +726,13 @@
     "heading": "☑ WAVE 108 COMPLETE — every carried item closed, CLOSED 2026-10-13 (no phase; opened 2026-10-13)",
     "bytes": 2239,
     "sha256": "a4ff33ed85d8722592fa0f5a7ebfd7a4f6ad13e5d62b96708e7ec7bf8bfa8971"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — COMPLETE (opened 2026-10-14, closed 2026-10-17)",
+    "bytes": 28325,
+    "sha256": "6df4ab17d1bc9fd700f837be9d81e9f160976abd8efa409e8dccb9b1955169f3"
   }
 ]

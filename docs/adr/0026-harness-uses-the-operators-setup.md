@@ -1,5 +1,9 @@
 # ADR 0026 (D-62): harness contract 1.2 runs on the operator's own docket setup
 
+> **Superseded on the harness by ADR 0027 (2026-10-17).** `docket exec`, `setup harness` and the
+> harness contract were deleted in 0.2.0-beta.6 (P43-12); the HTTP routes of
+> `specs/api/operator-api.spec.md` are the one door for a program. Kept as history.
+
 **Question:** Tack, which runs docket through `docket exec` as one of its agent harnesses, is
 removing its own model-provider layer: it will hold no model API key, endpoint or model catalog,
 and every harness it runs must use the login and configuration the operator gave that harness

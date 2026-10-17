@@ -1,5 +1,9 @@
 # ADR 0001 (D-35): harness mode — docket runs one agent, non-interactively, for a caller that owns the workspace
 
+> **Superseded on the harness by ADR 0027 (2026-10-17).** `docket exec`, `setup harness` and the
+> harness contract were deleted in 0.2.0-beta.6 (P43-12); the HTTP routes of
+> `specs/api/operator-api.spec.md` are the one door for a program. Kept as history.
+
 **Decide:** approve a new non-interactive entry point, `docket harness`, that runs **one
 agent, one turn loop, to completion, in a workspace the caller supplies**, streaming
 newline-delimited events on stdout and finishing with a single versioned result object.

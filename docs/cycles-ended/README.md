@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (64 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (65 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-10-14 | ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — COMPLETE (opened 2026-10-14, closed 2026-10-17) | `todo-waves.md` | 28,325 |
 | 2026-10-13 | ☑ PHASE 41 COMPLETE — one execution envelope (D-60, ADR 0024): eight cards over Waves 100–103, closed 2026-10-13 | `todo-waves.md` | 12,885 |
 | 2026-10-13 | ☑ PHASE 42 COMPLETE — lights-out profile and external gate (D-61, ADR 0025): eight cards over Waves 104–107, closed 2026-10-13 | `todo-waves.md` | 15,354 |
 | 2026-10-13 | ☑ WAVE 108 COMPLETE — every carried item closed, CLOSED 2026-10-13 (no phase; opened 2026-10-13) | `todo-waves.md` | 2,239 |

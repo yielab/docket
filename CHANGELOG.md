@@ -55,8 +55,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sweep when dispatch is on; `docket start --bind <addr>` sets the listen address; `/health`
   reports `apiVersion` and a `dispatch` block (`on`, `inflight`, `stopping`, `workers`).
 
+### Removed
+
+- **`docket exec`, `docket setup harness` and the harness contract (P43-12, ADR 0027).** The
+  command, the contracts 1.0 to 1.2 (schemas, fixtures, `--recipe` runs, the stdin answer
+  stream, the in-place ephemeral pod, the `harness` approval channel) and their docs and tests
+  are deleted; a program uses the HTTP routes of `specs/api/operator-api.spec.md`. A retired
+  name is an ordinary unknown command (exit 2). Ten commands remain. Breaking.
+
 ### Changed
 
+- The serve API version is `5` (`GET /status.json` `apiVersion`); docket declares
+  `0.2.0-beta.6`. The published install lines move when the release is cut.
 - A `POST /tasks/<pod>` that creates a task answers `201` (was `200`).
 - `docket task diff` shows the task branch's commits against its base, not the worktree's
   uncommitted changes (`_pin_implementer_tree` commits every real run).
