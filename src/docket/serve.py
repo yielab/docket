@@ -974,6 +974,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
         # to an attacker who can measure response latency.
         return secrets.compare_digest(auth, expected)
 
+    def _send_json(self, payload: dict[str, Any], status: int = 200) -> None:
+        self._send(json.dumps(payload).encode(), "application/json", status)
+
     def _send_json_error(self, msg: str, status: int = 400) -> None:
         body = json.dumps({"ok": False, "error": msg}).encode()
         self._send(body, "application/json", status)
@@ -1119,6 +1122,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._handle_post_tasks(path)
         elif path == "/dispatch" or path.startswith("/dispatch/"):
             self._handle_post_dispatch(path)
+        elif path.startswith("/pods/") and path.endswith("/apply"):
+            self._handle_post_pod_apply(path[len("/pods/") : -len("/apply")])
         elif path == "/pods":
             self._handle_post_pods()
         else:
@@ -1515,6 +1520,82 @@ class _DocketHandler(BaseHTTPRequestHandler):
             {"ok": True, "run": record["id"], "project": project, "status": "dispatched"}
         ).encode()
         self._send(resp_body, "application/json")
+
+    def _handle_post_pod_apply(self, project: str) -> None:
+        """``POST /pods/<p>/apply`` -- apply a directory on this machine to a pod, under the
+        review rule of ADR 0024 section 6 (operator-api.spec.md)."""
+        if not self._check_auth():
+            self._send_json_error("Unauthorized", 401)
+            return
+        if self._reject_bad_project_id(project):
+            return
+        raw = self._read_body()
+        if raw is None:
+            return
+        try:
+            body: Any = json.loads(raw or b"{}")
+        except (json.JSONDecodeError, RecursionError):
+            self._send_json_error("Invalid JSON body", 400)
+            return
+        if not isinstance(body, dict):
+            self._send_json_error("Request body must be a JSON object", 400)
+            return
+        from dataclasses import asdict
+
+        from docket.core import dispatch as _dispatch
+        from docket.core import pod as _pod_core
+        from docket.core import pod_apply as _pod_apply
+
+        if project not in _dispatch.dispatchable_pods():
+            self._send_json_error(f"Unknown pod: {project}", 404)
+            return
+        codebase = fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
+        directory_value = body.get("directory")
+        dry_run, accept = body.get("dryRun", False), body.get("accept")
+        if directory_value is not None and not isinstance(directory_value, str):
+            self._send_json_error("directory must be a string", 400)
+            return
+        if not isinstance(dry_run, bool) or not (accept is None or isinstance(accept, str)):
+            self._send_json_error("dryRun must be a boolean and accept a string", 400)
+            return
+        if directory_value is None:
+            directory_value = str(Path(codebase) / ".docket") if codebase else ""
+        elif not Path(directory_value).is_absolute():
+            self._send_json_error("directory must be an absolute path", 400)
+            return
+        directory = Path(directory_value)
+        if not directory_value or not directory.is_dir():
+            self._send_json_error(f"directory not found: {directory_value}", 400)
+            return
+        root = Path(codebase) if codebase else directory.parent
+        try:
+            outcome = _pod_apply.apply_directory(
+                project, directory, root, accept=accept, dry_run=dry_run, channel="http"
+            )
+        except _pod_apply.PodApplyError as exc:
+            self._send_json_error(str(exc), 400)
+            return
+        if outcome.status == "refused":
+            names = ", ".join(outcome.refused)
+            self._send_json_error(f"allowCommands names refused commands: {names}", 409)
+        elif outcome.status in ("needs_code", "code_mismatch"):
+            payload: dict[str, Any] = {"ok": False}
+            if outcome.status == "needs_code":
+                payload["error"] = "this directory runs commands on this machine; pass accept"
+                payload["reviewCode"] = outcome.code
+            else:
+                payload["error"] = "the directory changed what runs on this machine since that code"
+            payload["runs"] = [asdict(i) for i in outcome.runs]
+            self._send_json(payload, 409)
+        else:
+            self._send_json(
+                {
+                    "ok": True,
+                    "project": project,
+                    "items": [asdict(i) for i in outcome.items],
+                    "dryRun": outcome.status == "planned",
+                }
+            )
 
     def _handle_post_pods(self) -> None:
         """``POST /pods`` — provision a fresh pod from a blueprint. Body,

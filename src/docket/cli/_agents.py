@@ -163,18 +163,17 @@ def review_repo_source(
     from docket.cli._pod_config import render_review
     from docket.core import reviewed_repos as _reviewed
 
-    if _pod_apply.is_shipped_recipe(apply_source):
+    decision = _pod_apply.review_decision(loc_path, apply_source, req.accept)
+    review = decision.review
+    if decision.status == "go":
         return 0
-    review = _pod_apply.classify_directory(apply_source)
-    if review.refused:
+    if decision.status == "refused":
         return _refuse_shell(review)
-    if not review.runs or _reviewed.is_reviewed(loc_path, review.runs):
-        return 0
-    code = _reviewed.review_code(review.runs)
-    if req.accept is not None:
-        if req.accept != code:
-            return _changed_since_review(loc_path, req.accept, review, command)
-    elif _stdin_is_tty() and not req.json_out:
+    if decision.status == "code_mismatch":
+        return _changed_since_review(loc_path, req.accept or "", review, command)
+    if decision.status == "needs_code":
+        if not (_stdin_is_tty() and not req.json_out):
+            return _needs_review(req, review, decision.code, command)
         ui.console.print()
         render_review(review)
         ui.console.print("They run with your user's permissions.")
@@ -184,8 +183,6 @@ def review_repo_source(
                 f"{_stopped(command)}. Nothing was {'created' if command == 'docket init' else 'changed'}."
             )
             return 2
-    else:
-        return _needs_review(req, review, code, command)
     _reviewed.remember(loc_path, review.runs)
     return 0
 

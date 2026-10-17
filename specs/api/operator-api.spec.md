@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.1.0
+**Version**: 5.2.0
 **Status**: Partially implemented (Phase 43, ADR 0027). Wave 109 shipped the task fields, the task
 routes of P43-1 and the hop events; every other route is planned until the card that owns it
 closes (the route table's Status column). `SERVE_API_VERSION` stays `"4"` until
@@ -60,7 +60,7 @@ validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malfor
 | `GET /pods` | `dispatch.dispatchable_pods` | P43-6 | Planned |
 | `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Planned |
 | `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Planned |
-| `POST /pods/<p>/apply` | `pod_apply.plan_apply` / `classify_directory` / `apply` | P43-8 | Planned |
+| `POST /pods/<p>/apply` | `pod_apply.apply_directory` (plan, `review_decision`, apply) | P43-8 | Implemented (Wave 110) |
 | `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Planned |
 | `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Planned |
 
@@ -228,14 +228,19 @@ unchanged keys: `members` with `role`, `model`, `modelSource`; `settings`; `pipe
 `POST /pods` with `ensure` on an existing pod (`200`): `{"ok": true, "created": false,
 "project": "fab-dev"}`; a new pod answers as today with `"created": true`.
 
-`POST /pods/<p>/apply` (`200`): the `ApplyResult` `docket pod update --json` prints
-(`cli-json-shapes.spec.md`), with `"dryRun": true|false`. A directory that runs things without
-a matching `accept` (`409`):
+`POST /pods/<p>/apply` (`200`): `{"ok": true, "project", "items", "dryRun": true|false}`, `items`
+being the `docket pod update --json` list (`cli-json-shapes.spec.md`); a dry run writes nothing.
+A directory that runs things without a matching `accept` (`409`; a wrong `accept` is the same
+`409`, listing only the items that changed since the code was issued, and never the current code):
 
 ```json
-{"error": "this directory runs commands on this machine; pass accept",
- "reviewCode": "7f3a2c", "runs": [{"kind": "run", "detail": "npm ci"}]}
+{"ok": false, "error": "this directory runs commands on this machine; pass accept",
+ "reviewCode": "7f3a2c...", "runs": [{"kind": "pipeline-step", "name": "build", "runs": "npm ci"}]}
 ```
+
+A directory that names a refused `allowCommands` shell is `409` with no `reviewCode`. A
+nonexistent or relative `directory` is `400`, an unknown pod `404`. The apply is audited as
+`pod.apply` with `channel=http`; an accepted code is remembered as the CLI does (`repo.allow`).
 
 `GET /pods/<p>/corrections?since=2026-10-01T00:00:00Z` (`200`):
 
@@ -290,6 +295,11 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.2.0 (2026-10-17)
+
+- `POST /pods/<p>/apply` implemented (P43-8): the review rule off a terminal, `reviewCode` and
+  `runs` on `409`, `dryRun`, `pod.apply` audited with `channel=http`.
 
 ### Version 5.1.0 (2026-10-14)
 

@@ -259,3 +259,34 @@ class TestClassifyDirectory:
         shipped = next(p for p in _cfg.recipes_dir().iterdir() if p.is_dir())
         assert _pod_apply.is_shipped_recipe(shipped)
         assert not _pod_apply.is_shipped_recipe(tmp_path)
+
+
+class TestReviewDecision:
+    """The review rule's verdict for a directory, an optional accept code and a repo root."""
+
+    def _runs(self, tmp_path: Path) -> Path:
+        return _repo_dir(tmp_path, {"pod.yaml": "settings:\n  allowCommands: [make]\n"})
+
+    def test_nothing_to_run_and_shipped_recipes_go(self, tmp_path: Path) -> None:
+        plain = _repo_dir(tmp_path, {"policies/p.json": "{}"})
+        assert _pod_apply.review_decision(tmp_path, plain, None).status == "go"
+        shipped = next(p for p in _cfg.recipes_dir().iterdir() if p.is_dir())
+        assert _pod_apply.review_decision(tmp_path, shipped, "bogus").status == "go"
+
+    def test_run_items_need_the_code_then_accept_it(self, tmp_path: Path) -> None:
+        directory = self._runs(tmp_path)
+        first = _pod_apply.review_decision(tmp_path, directory, None)
+        assert first.status == "needs_code" and len(first.code) == 16
+        assert _pod_apply.review_decision(tmp_path, directory, first.code).status == "accepted"
+        assert _pod_apply.review_decision(tmp_path, directory, "0" * 16).status == "code_mismatch"
+
+    def test_a_shell_is_refused_before_any_code_matters(self, tmp_path: Path) -> None:
+        directory = _repo_dir(tmp_path, {"pod.yaml": "settings:\n  allowCommands: [bash]\n"})
+        assert _pod_apply.review_decision(tmp_path, directory, "x").status == "refused"
+
+    def test_a_remembered_review_goes(self, tmp_path: Path) -> None:
+        from docket.core import reviewed_repos as _reviewed
+
+        directory = self._runs(tmp_path)
+        _reviewed.remember(tmp_path, _pod_apply.classify_directory(directory).runs)
+        assert _pod_apply.review_decision(tmp_path, directory, None).status == "go"
