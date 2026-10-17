@@ -25,7 +25,7 @@ own machine.
 [Changelog](CHANGELOG.md)
 
 > [!WARNING]
-> docket is beta software (`v0.2.0-beta.5`). Core contracts are spec-first and test-backed, but the
+> docket is beta software (`v0.2.0-beta.6`). Core contracts are spec-first and test-backed, but the
 > project has not been hardened against large deployments or adversarial public-host workloads.
 > Expect breaking changes between beta releases and verify consequential outcomes yourself.
 
@@ -71,8 +71,8 @@ brew install docket-cli
 Or with the version-pinned installer, which needs no `sudo`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.5/install.sh \
-  | DOCKET_VERSION=0.2.0-beta.5 bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.6/install.sh \
+  | DOCKET_VERSION=0.2.0-beta.6 bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 

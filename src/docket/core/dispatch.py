@@ -162,8 +162,8 @@ class HopResult:
     parked: bool = False
     # Real evidence from this hop's mechanical verify gate (``_evaluate_mechanical_gate``):
     # ``{"cmd", "exitCode", "durationS", "outputTail", "touched"}`` (``touched`` = absolute paths
-    # the verify command created or changed in a git checkout, internal: the harness drops them
-    # from its ``files`` and never publishes the key), or ``None`` for a hop with no
+    # the verify command created or changed in a git checkout, internal: never published), or
+    # ``None`` for a hop with no
     # verify gate, or one whose gate had no ``verifyCmd`` configured (see
     # ``verification_skipped``). ``exitCode`` is ``0``/``1`` (``run_verify_cmd`` itself
     # carries no numeric exit code to relay). ``outputTail`` is already redacted -- see
@@ -1849,8 +1849,7 @@ def _compose_hop(
         env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree
     resolved_mode = pod_approval_mode(ctx.project, caller_default=ctx.approval_default)
     if resolved_mode in ("refuse", "park"):
-        # Same internal-env route as PIPELINE_WORKTREE_ENV/harness mode
-        # (cli/_harness.py): DocketDriver pops this before the tool env
+        # Same internal-env route as PIPELINE_WORKTREE_ENV: DocketDriver pops this before the tool env
         # reaches ToolContext, so it is never a real tool-visible variable.
         env = dict(env or {})
         env[_rd.DOCKET_APPROVAL_MODE] = resolved_mode
@@ -2128,12 +2127,9 @@ def _build_hop_result(
 
 
 # `core.agent_loop.approval_parked_error` owns this string's format (quoted
-# key=value pairs, the same convention `core.harness`'s `_extract_field` already
-# parses for `approval_unavailable_error`'s sibling string) -- TurnResult carries
-# no structured field for a parked call's token, so this is the one place
-# dispatch.py re-derives it. Only the token is needed here (the tool/policy/reason
-# fields feed the harness contract, not this seam), so this stays a narrow,
-# single-field parser rather than a second copy of harness.py's generic one.
+# key=value pairs) -- TurnResult carries no structured field for a parked call's
+# token, so this is the one place dispatch.py re-derives it. Only the token is
+# needed here, so this stays a narrow, single-field parser.
 _PARKED_ERROR_PREFIX = "approval_parked:"
 _APPROVAL_TOKEN_RE = _re.compile(r"approval_token=(?:'([^']*)'|\"([^\"]*)\"|(\S+))")
 
