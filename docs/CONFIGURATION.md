@@ -781,6 +781,11 @@ docket pod update .docket            # write it (one pod.apply audit entry when 
 git add .docket && git commit       # the team is versioned with the code
 ```
 
+A repository with several pods keeps one directory per team, `.docket/teams/<pod>/`, each in the
+shape above. When it exists, `init --name <pod>`, `pod update`, `pod export`, `pod validate` and
+`docket run` use it instead of `.docket/`; `init` without a matching name exits 2 and lists the
+teams, and `pod export` in a repository that already has `teams/` writes `teams/<pod>/`.
+
 Three commands read it, and nothing else does:
 
 | Moment | Command | What happens |

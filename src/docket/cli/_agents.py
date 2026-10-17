@@ -51,12 +51,30 @@ class InitRequest:
     with_roles: str = ""
 
 
-def _resolve_repo_apply_source(loc_path: Path, cli_recipe: str | None) -> tuple[Path | None, int]:
+def _unnamed_teams(base: Path, chosen: Path) -> list[str]:
+    """The team names under ``base/teams`` when *chosen* is ``base`` itself and ``base`` has no
+    ``pod.yaml``; empty when a team was picked or the repository keeps one team."""
+    teams_dir = base / "teams"
+    if chosen != base or (base / "pod.yaml").is_file() or not teams_dir.is_dir():
+        return []
+    return sorted(p.name for p in teams_dir.iterdir() if p.is_dir())
+
+
+def _resolve_repo_apply_source(
+    loc_path: Path, cli_recipe: str | None, pod_name: str = ""
+) -> tuple[Path | None, int]:
     """The directory `docket init` should apply after provisioning -- a present ``.docket/``
     or a resolved ``--recipe``, mutually exclusive, validated first (ADR 0012). ``(None, 1)``
     means stop (already printed); ``(None, 0)`` means nothing to apply."""
-    docket_dir = loc_path / ".docket"
+    docket_dir = _pod_apply.repo_config_dir(loc_path, pod_name)
     has_docket_dir = docket_dir.is_dir()
+    teams = _unnamed_teams(loc_path / ".docket", docket_dir)
+    if teams and cli_recipe is None:
+        ui.error(
+            f"'{loc_path / '.docket'}' holds several teams ({', '.join(teams)}); "
+            "name one with --name."
+        )
+        return None, 2
     if cli_recipe is not None and has_docket_dir:
         ui.error(f"Both --recipe and an existing '{docket_dir}' were given; use only one.")
         return None, 1
@@ -262,7 +280,7 @@ def run_init(req: InitRequest) -> int:
     # A repository's own `.docket/` is its configuration of record (ADR 0012): discovered,
     # validated, and (unless `--no-apply`) applied after provisioning; `--recipe` starts from
     # a shipped or local recipe the same way, mutually exclusive with a present `.docket/`.
-    apply_source, resolve_rc = _resolve_repo_apply_source(loc_path, req.recipe)
+    apply_source, resolve_rc = _resolve_repo_apply_source(loc_path, req.recipe, aid)
     if resolve_rc:
         return resolve_rc
     if apply_source is not None and not req.no_apply:

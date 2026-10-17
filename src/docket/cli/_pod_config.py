@@ -54,12 +54,15 @@ def _scope_pod(pod: str | None) -> str:
         return ""
 
 
-def _default_dir(project: str) -> Path:
-    """``<codebase>/.docket`` from the Lead's own recorded meta."""
+def _default_dir(project: str, *, create: bool = False) -> Path:
+    """The pod's configuration-of-record directory from the Lead's own recorded meta."""
+    return _pod_apply.repo_config_dir(_codebase(project), project, create=create)
+
+
+def _codebase(project: str) -> Path:
     from docket.core import fleet as _fleet
 
-    codebase = _fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
-    return Path(codebase) / ".docket"
+    return Path(_fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", ""))
 
 
 # -- render helpers shared with init ---------------------------------------------------------
@@ -206,7 +209,7 @@ def _review_directory(project: str, directory: Path, json_out: bool, accept: str
     """The operator's OK for what *directory* runs on this machine; exits 2 when not given."""
     from docket.cli import _agents
 
-    root = _default_dir(project).parent
+    root = _codebase(project)
     request = _agents.InitRequest(accept=accept, json_out=json_out)
     if _agents.review_repo_source(request, root, directory, "docket pod update"):
         raise typer.Exit(2)
@@ -301,12 +304,13 @@ def cmd_export(
 ) -> None:
     """Write the pod's own configuration into a directory.
 
-    The default is the repository's .docket/, the form `pod update` and `docket
+    The default is the repository's .docket/ (.docket/teams/<pod>/ when the
+    repository keeps several teams), the form `pod update` and `docket
     init` read back. A non-empty directory is refused unless --force.
 
     Example: docket pod export .docket --force"""
     project = _pod_name(pod)
-    target = Path(directory) if directory else _default_dir(project)
+    target = Path(directory) if directory else _default_dir(project, create=True)
     if target.exists() and any(target.iterdir()) and not force:
         _fail(f"'{target}' is not empty", "Pass --force to overwrite")
     try:
@@ -356,6 +360,9 @@ def cmd_validate(
 
 def _validate_default() -> Path:
     candidate = Path.cwd() / ".docket"
+    pod = _scope_pod(None)
+    if pod:
+        candidate = _pod_apply.repo_config_dir(Path.cwd(), pod)
     return candidate if candidate.is_dir() else Path.cwd()
 
 
