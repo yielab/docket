@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -796,8 +796,16 @@ Each JSONL line is a JSON object with these fields:
 - Write failures (OSError) are caught and logged, never fail the caller.
 - File mode is 0600 on creation.
 - Text is redacted with the same function as trace payloads.
+- Read back in append order, optionally from a cursor: `corrections.read(project, since=)`
+  keeps records with `ts > since` (string compare on ISO-8601 `Z` timestamps), and
+  `GET /pods/<p>/corrections?since=` serves it (`operator-api.spec.md`).
 
 ## Changelog
+
+### Version 1.8.0 (2026-10-17)
+
+- Wave 110 (P43-9): the corrections ledger has a `since` cursor (Guarantees), read by
+  `GET /pods/<p>/corrections`; the ledger's writers and schema are unchanged.
 
 ### Version 1.7.0 (2026-10-13)
 

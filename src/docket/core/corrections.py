@@ -63,8 +63,9 @@ def record(
         _log.warning(f"Failed to write correction record: {e}")
 
 
-def read(project: str) -> list[dict[str, Any]]:
-    """Read all correction records in append order, or empty list if missing."""
+def read(project: str, since: str = "") -> list[dict[str, Any]]:
+    """Correction records in append order, keeping `ts > since` when given (ISO-8601 Z strings
+    compare correctly), or an empty list if the ledger is missing."""
     path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
     if not path.exists():
         return []
@@ -77,9 +78,11 @@ def read(project: str) -> list[dict[str, Any]]:
                 if not line:
                     continue
                 try:
-                    records.append(_json.loads(line))
+                    rec = _json.loads(line)
                 except _json.JSONDecodeError:
                     continue
+                if not since or str(rec.get("ts", "")) > since:
+                    records.append(rec)
     except OSError:
         pass
 
