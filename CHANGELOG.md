@@ -30,6 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`hop_started` and `hop_finished` trace events (P43-5).** One pair per hop: the start names
   the planned model, the finish the served one with usage, verdict, gate and duration. Hop
   records carry `model` and `provider`, and a settled task carries `usage` keyed by served model.
+- **A pod is readable over HTTP (P43-6).** `GET /pods` lists the dispatchable pods with their
+  queue counts; `GET /pods/<p>` returns the `pod show --json` report plus `profile`,
+  `pipelineSource` and `repoConfigDir`; `POST /pods` with `ensure: true` answers `200`
+  `created: false` on an existing pod and touches nothing. The report readers moved from
+  `cli/_pod_show.py` to `core/pod_report.py` (same shape).
+- **Several teams in one repository (P43-7).** `.docket/teams/<pod>/` holds one team per pod:
+  `docket init --name <pod>`, `pod update`/`export`/`validate` and `docket run` use it, `init`
+  without a matching name exits 2 naming the teams, and `pod export` writes `teams/<pod>/` once
+  the repository keeps `teams/`.
+- **`POST /pods/<p>/apply` (P43-8).** Applies a directory on this machine to a pod under the
+  review rule: `dryRun`, `accept` with the review code (`409` with `reviewCode` and `runs`
+  without it), `pod.apply` audited with `channel=http`. The review decision is one core function
+  shared with the CLI.
+- **`GET /pods/<p>/corrections?since=` (P43-9).** Reads the corrections ledger by cursor; `since`
+  is normalised to UTC (a naive timestamp is `400`), `next` is UTC `Z`.
 
 ### Changed
 

@@ -2,7 +2,8 @@
 
 **Version**: 5.2.0
 **Status**: Partially implemented (Phase 43, ADR 0027). Wave 109 shipped the task fields, the task
-routes of P43-1 and the hop events; every other route is planned until the card that owns it
+routes of P43-1 and the hop events; Wave 110 the pod routes (read, `ensure`, `apply`,
+corrections); every other route is planned until the card that owns it
 closes (the route table's Status column). `SERVE_API_VERSION` stays `"4"` until
 Wave 111 closes.
 **Last Updated**: 2026-10-17

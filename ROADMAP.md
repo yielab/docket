@@ -9,7 +9,7 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-14.** Every phase 0–42 is complete. **Phase 43 is in progress** (Wave 109 complete) (D-63, ADR 0027;
+**Last updated: 2026-10-17.** Every phase 0–42 is complete. **Phase 43 is in progress** (Waves 109-110 complete) (D-63, ADR 0027;
 twelve cards in three waves on `TODO.md`, measured first, nothing implemented yet). No item is
 carried: Wave 108 (no phase, closed 2026-10-13) closed the last carried items of every phase — a
 parked task can be cancelled, host-side git trusts only the recorded git dirs, every jail narrows
@@ -52,7 +52,7 @@ until the project drops its beta warning.
 | 41 | One execution envelope: Landlock + seccomp, Seatbelt, Docker when chosen | D-60 · [0024](docs/adr/0024-one-execution-envelope.md) | 2026-10-13 |
 | 42 | Lights-out profile and external verification gate | D-61 · [0025](docs/adr/0025-lights-out-profile-and-external-gate.md) | 2026-10-13 |
 | — | Harness contract 1.2: `docket exec` runs on the operator's own setup (no phase) | D-62 · [0026](docs/adr/0026-harness-uses-the-operators-setup.md) | 2026-10-13 |
-| 43 | The team runtime behind an external plan of record: addressable tasks, HTTP lifecycle, pods over HTTP, `.docket/teams/`, one door (API 5, `exec` deleted) | D-63 · [0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md) | **in progress**: Wave 109 (the task, P43-1..5) complete 2026-10-14; Waves 110-111 planned |
+| 43 | The team runtime behind an external plan of record: addressable tasks, HTTP lifecycle, pods over HTTP, `.docket/teams/`, one door (API 5, `exec` deleted) | D-63 · [0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md) | **in progress**: Wave 109 (the task, P43-1..5) complete 2026-10-14, Wave 110 (the pod, P43-6..9) complete 2026-10-17; Wave 111 planned |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
