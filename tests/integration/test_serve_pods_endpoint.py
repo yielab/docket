@@ -26,8 +26,10 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _pod
+from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
+from docket.core import pod_report as _pod_report
 from docket.edges import store as _store
 from docket.serve import _DocketHandler
 
@@ -81,6 +83,17 @@ def _post(
     url: str, body: dict[str, Any] | None = None, token: str | None = None
 ) -> tuple[int, dict[str, Any]]:
     return _post_raw(url, json.dumps(body if body is not None else {}).encode(), token)
+
+
+def _get(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:
+    req = urllib.request.Request(url, method="GET")
+    if token is not None:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
 
 
 def _ids() -> list[str]:
@@ -487,3 +500,81 @@ class TestOverridesThreaded:
         assert impl_meta["verifyCmd"] == "npm test"
         lead_meta = json.loads((_ws("demo-lead") / ".docket-meta.json").read_text())
         assert "verifyCmd" not in lead_meta
+
+
+# ── ensure ───────────────────────────────────────────────────────────────────
+
+
+class TestEnsure:
+    def test_ensure_returns_the_existing_pod_unchanged(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        first_status, first = _post(
+            f"{url}/pods", {"project": "demo", "path": "/src/demo", "ensure": True}, token
+        )
+        before = (_cfg.FLEET_FILE).read_bytes()
+        status, body = _post(
+            f"{url}/pods", {"project": "demo", "path": "/other/path", "ensure": True}, token
+        )
+        assert (first_status, first["created"]) == (201, True)
+        assert (status, body) == (200, {"ok": True, "created": False, "project": "demo"})
+        assert _cfg.FLEET_FILE.read_bytes() == before
+        raw = json.loads((_ws("demo-lead") / ".docket-meta.json").read_text())
+        assert raw["codebase"] == "/src/demo"
+
+    def test_without_ensure_an_existing_pod_stays_409(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        status, _body = _post(f"{url}/pods", {"project": "demo", "ensure": False}, token)
+        assert status == 409
+
+    def test_non_boolean_ensure_returns_400(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        status, _body = _post(f"{url}/pods", {"project": "demo", "ensure": "yes"}, token)
+        assert status == 400
+        assert _ids() == []
+
+
+# ── reading pods ─────────────────────────────────────────────────────────────
+
+
+class TestReadPods:
+    def test_unauthenticated_reads_return_401(self, live_server: tuple[str, str]) -> None:
+        url, _ = live_server
+        assert _get(f"{url}/pods")[0] == 401
+        assert _get(f"{url}/pods/demo")[0] == 401
+
+    def test_list_names_each_pod_with_its_queue(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        status, body = _get(f"{url}/pods", token)
+        assert status == 200
+        (row,) = body["pods"]
+        assert (row["name"], row["codebase"], row["members"]) == ("demo", "/src/demo", 2)
+        assert row["profile"] == "attended"
+        assert row["queue"]["pending"] == 0
+
+    def test_empty_fleet_lists_no_pods(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        assert _get(f"{url}/pods", token) == (200, {"pods": []})
+
+    def test_pod_carries_the_show_report_plus_profile_and_sources(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        status, body = _get(f"{url}/pods/demo", token)
+        assert status == 200
+        assert set(_pod_report.pod_report("demo")) <= set(body)
+        assert body["profile"] == {"name": "attended", "violations": []}
+        assert body["pipelineSource"] == _dispatch.effective_pipeline_source("demo")
+        assert body["repoConfigDir"] == "/src/demo/.docket"
+
+    def test_unknown_pod_returns_404(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        status, body = _get(f"{url}/pods/nope", token)
+        assert status == 404
+        assert body["ok"] is False
+
+    def test_bad_pod_id_returns_400(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        assert _get(f"{url}/pods/bad%20id", token)[0] == 400

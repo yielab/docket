@@ -989,6 +989,23 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _send_pod_read(self, path: str) -> None:
+        """``GET /pods`` and ``GET /pods/<p>`` (operator-api.spec.md "Pod answers")."""
+        from docket.core import dispatch as _dispatch
+        from docket.core import pod_report as _pod_report
+
+        project = path[len("/pods/") :] if path.startswith("/pods/") else ""
+        if path == "/pods":
+            pods = [_pod_report.pod_summary(p) for p in _dispatch.dispatchable_pods()]
+            self._send(json.dumps({"pods": pods}).encode("utf-8"), "application/json")
+            return
+        if self._reject_bad_project_id(project):
+            return
+        if project not in _dispatch.dispatchable_pods():
+            self._send_json_error(f"Unknown pod: {project}", 404)
+            return
+        self._send(json.dumps(_pod_report.pod_detail(project)).encode("utf-8"), "application/json")
+
     def do_GET(self) -> None:
         full_path = self.path
         path = full_path.split("?", 1)[0].rstrip("/")
@@ -1085,6 +1102,11 @@ class _DocketHandler(BaseHTTPRequestHandler):
             if tasks is None:
                 return
             self._send(json.dumps({"tasks": tasks}).encode("utf-8"), "application/json")
+        elif path == "/pods" or path.startswith("/pods/"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            self._send_pod_read(path)
         elif path == "/traces":
             # Same rationale as the bare "/tasks" branch above.
             if not self._check_auth():
@@ -1587,6 +1609,11 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error("verifyCmd must be a string", 400)
             return
 
+        ensure = body.get("ensure", False)
+        if not isinstance(ensure, bool):
+            self._send_json_error("ensure must be a boolean", 400)
+            return
+
         from docket.core import pod_provisioning as _pp
 
         try:
@@ -1609,6 +1636,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error(str(exc), 400)
             return
         except _pp.PodAlreadyExistsError:
+            if ensure:
+                self._send(
+                    json.dumps({"ok": True, "created": False, "project": project}).encode(),
+                    "application/json",
+                )
+                return
             self._send_json_error(f"'{project}' already exists", 409)
             return
         except _pp.PodProvisionError as exc:
@@ -1622,6 +1655,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         resp_body = json.dumps(
             {
                 "ok": True,
+                "created": True,
                 "project": result.project,
                 "blueprint": result.blueprint,
                 "members": [
