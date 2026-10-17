@@ -8,15 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from tests.integration.llm_stub import _final_response, _tool_call_response
 from tests.integration.test_harness_cli import (
     REPO_ROOT,
     _AnsweredRun,
     _child_env,
-    _final_response,
     _parse_ndjson,
     _real_docket_home_is_untouched,  # noqa: F401 - module-scoped guard, re-used here
-    _tool_call_response,
-    llm_server,  # noqa: F401 - fixture, re-used here
 )
 
 SUBJECT = "docket.cli._exec"
@@ -57,7 +55,7 @@ class TestConsultOnStdin:
     def test_an_answer_line_delivers_the_chosen_option_to_the_model(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811
+        llm_server: Any,
     ) -> None:
         server = llm_server([_tool_call_response("consult", _CONSULT), _final_response("done")])
         workspace = tmp_path / "ws"
@@ -84,7 +82,7 @@ class TestConsultOnStdin:
     def test_an_unanswered_consult_times_out_and_the_model_decides(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811
+        llm_server: Any,
     ) -> None:
         server = llm_server([_tool_call_response("consult", _CONSULT), _final_response("done")])
         workspace = tmp_path / "ws"
@@ -109,7 +107,7 @@ class TestConsultUnderRefuse:
     def test_the_turn_ends_blocked_with_the_question_in_the_v11_result(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811
+        llm_server: Any,
     ) -> None:
         import subprocess
         import sys
@@ -144,7 +142,7 @@ class TestConsultInRecipeRun:
     def test_a_question_id_line_answers_a_pod_consult_and_the_run_finishes(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811
+        llm_server: Any,
     ) -> None:
         server = llm_server(
             [

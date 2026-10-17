@@ -18,14 +18,12 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from tests.integration.llm_stub import _final_response, _tool_call_response
 from tests.integration.test_harness_cli import (
     REPO_ROOT,
     _AnsweredRun,
     _child_env,
-    _final_response,
     _real_docket_home_is_untouched,  # noqa: F401 - module-scoped guard, re-used here
-    _tool_call_response,
-    llm_server,  # noqa: F401 - fixture, re-used here
 )
 
 SUBJECT = "docket.cli._exec"
@@ -79,7 +77,7 @@ class TestConsumerSeam:
     def test_an_approval_answered_on_stdin_and_files_and_process_events_on_the_stream(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811 - the imported fixture
+        llm_server: Any,
     ) -> None:
         # The bash call needs approval, is granted on stdin, then a write call lands a file.
         server = llm_server(
@@ -122,7 +120,7 @@ class TestConsumerSeam:
     def test_sigterm_during_a_bash_call_cancels_and_reports_process_exited(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811 - the imported fixture
+        llm_server: Any,
     ) -> None:
         marker = f"SEAM_CANCEL_{uuid.uuid4().hex}"
         sleep_command = f'python3 -c "import time; time.sleep(30)  # {marker}"'
@@ -153,7 +151,7 @@ class TestConsumerSeam:
     def test_a_recipe_run_from_a_task_file_reports_its_task_block_and_files(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811 - the imported fixture
+        llm_server: Any,
     ) -> None:
         # Hops: implementer (write, then red), check-red (a command), implementer (green), tester.
         server = llm_server(
@@ -190,7 +188,7 @@ class TestConsumerSeam:
     def test_a_recipe_run_does_not_list_what_its_verify_command_produced(
         self,
         tmp_path: Path,
-        llm_server: Any,  # noqa: F811 - the imported fixture
+        llm_server: Any,
     ) -> None:
         server = llm_server(
             [

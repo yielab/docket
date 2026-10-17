@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
 from tests.fakes import FakeDriver
-from tests.integration.test_harness_cli import _final_response, _ScriptedLLMServer
+from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
 
 import docket.config as _cfg
 from docket.cli import _pod

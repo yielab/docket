@@ -11,11 +11,7 @@ from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
-from tests.integration.test_harness_cli import (
-    _final_response,
-    _ScriptedLLMServer,
-    _tool_call_response,
-)
+from tests.integration.llm_stub import _final_response, _ScriptedLLMServer, _tool_call_response
 
 from docket.cli import _pod
 from docket.core import audit as _audit

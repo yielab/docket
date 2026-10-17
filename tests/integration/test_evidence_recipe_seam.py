@@ -13,13 +13,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from tests.integration.llm_stub import _final_response
 from tests.integration.test_harness_cli import (
     REPO_ROOT,
     _AnsweredRun,
     _child_env,
-    _final_response,
     _real_docket_home_is_untouched,  # noqa: F401 - module-scoped guard, re-used here
-    llm_server,  # noqa: F401 - fixture, re-used here
 )
 
 SUBJECT = "docket.core.evidence"
@@ -27,7 +26,7 @@ SUBJECT = "docket.core.evidence"
 
 def test_harness_recipe_task_evidence_equals_the_cli_json_of_the_same_home(
     tmp_path: Path,
-    llm_server: Any,  # noqa: F811
+    llm_server: Any,
 ) -> None:
     server = llm_server(
         [
