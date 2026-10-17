@@ -4335,6 +4335,7 @@ def dispatch_pod(
     variables: dict[str, Any] | None = None,
     approval_default: Literal["wait", "park"] = "wait",
     approval_timeout: int | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first), looping
     ``dispatch_task`` over locked claims until none remain or *max_tasks* is hit --
@@ -4344,7 +4345,8 @@ def dispatch_pod(
     Raises DispatchError if the pod has no Lead, or -- checked once, here, before any task is
     claimed or any hop runs -- if *variables* (the caller-supplied pipeline variable mapping;
     e.g. the serve webhook's resolved body, or ``docket run --var``) leaves any step's
-    own ``instructions`` with an unresolved ``${var}`` reference. See
+    own ``instructions`` with an unresolved ``${var}`` reference. *stop* is polled before each
+    claim, never inside a task. See
     specs/functional/pipeline-format.spec.md ("Variables"). *approval_default* is this caller's
     own resolution for an unset pod ``approvalMode`` (ADR 0016 SS2) -- forwarded to every task's
     ``dispatch_task`` call unchanged; an explicit pod value always wins over it."""
@@ -4365,7 +4367,7 @@ def dispatch_pod(
         reclaim_stale_running(project)
 
     results: list[TaskResult] = []
-    while max_tasks is None or len(results) < max_tasks:
+    while (max_tasks is None or len(results) < max_tasks) and not (stop is not None and stop()):
         claim = _claim_next_task(project, resume=resume)
         if claim is None:
             break

@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.7.0
+**Version**: 3.8.0
 **Status**: Stable
 **Last Updated**: 2026-10-17
 
@@ -179,10 +179,17 @@ should be measured against production data, not asserted here.
 Liveness check. Always returns HTTP 200 while the process is alive.
 
 ```json
-{"status":"ok"}
+{"status":"ok","apiVersion":"4","dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
 ```
 
-The body is exactly that object. Liveness is represented by the HTTP 200 and `status="ok"`.
+`apiVersion` is `SERVE_API_VERSION`. `dispatch.on` is whether the server runs with `--dispatch`,
+`inflight` the pods with a sweep running, `stopping` whether the first stop signal has arrived and
+`workers` the sweep pool size (`DISPATCH_SWEEP_WORKERS`). Liveness is the HTTP 200 and
+`status="ok"`.
+
+With dispatch on, a successful `POST /tasks/<pod>` enqueue starts that pod's sweep at once
+(`_submit_pod_sweep`, a no-op while one is in flight) instead of waiting for the next refresh;
+`docket start --bind <addr>` sets the listen address (default `127.0.0.1`).
 
 ### GET /runs
 
@@ -782,6 +789,13 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.8.0 (2026-10-17)
+- `/health` gains `apiVersion` and the `dispatch` block (`on`, `inflight`, `stopping`, `workers`).
+- With dispatch on, a successful `POST /tasks/<pod>` calls `_submit_pod_sweep` for that pod.
+- `docket start --bind <addr>` reaches `run_serve(bind=)`.
+- The sweep stops between tasks on the first stop signal and resumes stale claims
+  (`pod-dispatch.spec.md` 6.52.0).
 
 ### Version 3.7.0 (2026-10-17)
 

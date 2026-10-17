@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.51.0
+**Version**: 6.52.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -333,6 +333,11 @@ naming the run, the project and `channel=http` beside its `create_run`.
    task id and which condition fired. A `running` task whose claimant is alive and whose claim is
    inside the lease **MUST NOT** be reclaimed. Without `--resume` nothing is reclaimed (requirement
    4); the `CLAIM_STALE_TIMEOUT` sweep of requirement 3 is unchanged.
+4b. `dispatch_pod(stop=)` **MUST** evaluate `stop()` before each claim and return once it is true,
+   leaving unclaimed tasks `pending`; a task already claimed runs to its terminal state (the stop
+   is never checked inside a task). The `docket start --dispatch` sweep passes the server's stop
+   event and `resume=True`; `reclaim_stale_running` on a queue with no stale claim **MUST NOT**
+   write the queue, trace or audit.
 5. Resuming correctly requires more than "which roles already ran" once the Reviewer's bounded
    rework loop exists, because a role can legitimately appear more than once in a resumed task's
    history (the Implementer re-runs after a REQUEST-CHANGES, then the Reviewer re-reviews).
@@ -2319,6 +2324,16 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.52.0 (2026-10-17)
+- **Stop and resume under the daemon.** `dispatch_pod` takes `stop: Callable[[], bool] | None`,
+  evaluated before each claim and never inside a task: once it returns true the loop returns the
+  results so far and leaves the remaining tasks `pending`. The serve sweep passes the server's
+  first-signal event as `stop` and `resume=True`, so a claim abandoned by a second signal is
+  settled `failed`/`stale_claim` by `reclaim_stale_running` and continued from its last persisted
+  hop on the next sweep; on a queue with no stale claim the reclaim changes, traces and audits
+  nothing. Red reason: `dispatch_pod` had no `stop` parameter, so a stop signal waited for the
+  whole queue.
 
 ### Version 6.51.0 (2026-10-17)
 - **Cancel and diff in core (P43-10, ADR 0027).** `core.dispatch.cancel_task(project, task_id,

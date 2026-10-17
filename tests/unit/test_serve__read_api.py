@@ -148,7 +148,8 @@ class TestApiContract:
 
     def test_health_shape(self, api_home: Path) -> None:
         body = json.loads(serve.render_health())
-        assert body == {"status": "ok"}
+        assert body["status"] == "ok"
+        assert set(body["dispatch"]) == {"on", "inflight", "stopping", "workers"}
 
 
 # ── TestSpecDocExists ─────────────────────────────────────────────────────────

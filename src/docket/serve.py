@@ -442,9 +442,21 @@ def render_metrics() -> str:
     return "\n".join(lines)
 
 
-def render_health() -> str:
-    """Render the /health body: ``{"status":"ok"}\\n``."""
-    return '{"status":"ok"}\n'
+def render_health(dispatch_on: bool = False) -> str:
+    """Render the /health body: status, API version and the dispatch block."""
+    with _SWEEP_LOCK:
+        inflight = sorted(_sweep_inflight)
+    body = {
+        "status": "ok",
+        "apiVersion": SERVE_API_VERSION,
+        "dispatch": {
+            "on": dispatch_on,
+            "inflight": inflight,
+            "stopping": _sweep_stop.is_set(),
+            "workers": cfg.DISPATCH_SWEEP_WORKERS,
+        },
+    }
+    return json.dumps(body, separators=(",", ":")) + "\n"
 
 
 def render_status() -> str:
@@ -514,6 +526,7 @@ _SWEEP_LOCK = threading.Lock()
 _sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}
 _sweep_pool: tuple[int, concurrent.futures.ThreadPoolExecutor] | None = None
 _sweep_run_ids: dict[str, str] = {}
+_sweep_stop = threading.Event()
 # How long a second stop signal waits for cancelled sweep runs to settle before exiting anyway.
 SWEEP_ABANDON_WAIT_S = 5.0
 
@@ -537,6 +550,8 @@ def _sweep_one_pod(project: str) -> None:
                 turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
                 verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
                 approval_default="park",
+                resume=True,
+                stop=_sweep_stop.is_set,
             ),
         )
     except Exception as exc:
@@ -619,6 +634,10 @@ class _StopController:
         self._on_abandon = on_abandon
         self._pending = pending
         self._signals = 0
+
+    @property
+    def stopping(self) -> bool:
+        return self.stop.is_set()
 
     def handle(self, signum: int, _frame: object = None) -> None:
         self._signals += 1
@@ -931,6 +950,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
     never an accidental unauthenticated pass-through."""
 
     serve_token: str = ""
+    dispatch_on: bool = False
     # Bounds every blocking socket read (request line, headers, body) so a
     # client that opens a connection and never finishes sending cannot pin a
     # handler thread forever.
@@ -1017,7 +1037,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         elif path == "/metrics":
             self._send((render_metrics() + "\n").encode("utf-8"), "text/plain; version=0.0.4")
         elif path == "/health":
-            self._send(render_health().encode("utf-8"), "application/json")
+            self._send(render_health(self.dispatch_on).encode("utf-8"), "application/json")
         elif path == "/approvals":
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)
@@ -1397,6 +1417,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
         # already sets both on the returned dict for this case).
         if task["status"] == "waiting_approval":
             task_resp["approvalToken"] = task.get("approvalToken", "")
+        elif created and self.dispatch_on:
+            _submit_pod_sweep(project)
         self._send(
             json.dumps(task_resp).encode(), "application/json", status=201 if created else 200
         )
@@ -1893,8 +1915,10 @@ def run_serve(
 
     class _BoundHandler(_DocketHandler):
         serve_token = _token
+        dispatch_on = dispatch
 
-    stop = threading.Event()
+    global _sweep_stop
+    stop = _sweep_stop = threading.Event()
     server_ready = threading.Event()
     servers: list[ThreadingHTTPServer] = []
 
@@ -1952,5 +1976,6 @@ def run_serve(
             sys.stdout.flush()
             os._exit(controller.exit_code)
         server.server_close()
+        _sweep_stop = threading.Event()
         for signum, handler in previous.items():
             signal.signal(signum, handler)
