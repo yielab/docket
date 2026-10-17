@@ -259,3 +259,20 @@ class TestClassifyDirectory:
         shipped = next(p for p in _cfg.recipes_dir().iterdir() if p.is_dir())
         assert _pod_apply.is_shipped_recipe(shipped)
         assert not _pod_apply.is_shipped_recipe(tmp_path)
+
+
+def test_repo_config_dir_prefers_the_pods_team_dir(tmp_path: Path) -> None:
+    """A pod's `teams/<pod>/` wins over `.docket/`; without it the plain directory stands."""
+    assert _pod_apply.repo_config_dir(tmp_path, "a") == tmp_path / ".docket"
+    (tmp_path / ".docket" / "teams" / "a").mkdir(parents=True)
+    assert _pod_apply.repo_config_dir(tmp_path, "a") == tmp_path / ".docket" / "teams" / "a"
+    assert _pod_apply.repo_config_dir(tmp_path, "b") == tmp_path / ".docket"
+    assert _pod_apply.repo_config_dir(tmp_path, "b", create=True) == (
+        tmp_path / ".docket" / "teams" / "b"
+    )
+
+
+def test_repo_root_of_a_team_dir_is_the_codebase(tmp_path: Path) -> None:
+    """The reviewed-repository key is the codebase for both directory shapes."""
+    assert _pod_apply.repo_root(tmp_path / ".docket" / "teams" / "a") == tmp_path
+    assert _pod_apply.repo_root(tmp_path / ".docket") == tmp_path

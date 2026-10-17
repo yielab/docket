@@ -274,7 +274,8 @@ Example: docket pod update .docket --dry-run
 
 Write the pod's own configuration into a directory.
 
-The default is the repository's .docket/, the form `pod update` and `docket
+The default is the repository's .docket/ (.docket/teams/<pod>/ when the
+repository keeps several teams), the form `pod update` and `docket
 init` read back. A non-empty directory is refused unless --force.
 
 Example: docket pod export .docket --force
