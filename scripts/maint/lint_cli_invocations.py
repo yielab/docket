@@ -36,7 +36,6 @@ OUTPUT_LITERALS = (
     "docket release journey ok",
     "docket starter approved",
     "docket is running and will pick it up",
-    "docket exec: run ",
     "docket \u00b7 ",
 )
 RECORD_HEADING = "## Changelog"

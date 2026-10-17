@@ -39,8 +39,6 @@ EXCLUDED = (
     ".agents",
     ".claude",
     "tests/golden/cases",
-    "docs/contracts/harness-v1/schema.json",
-    "tests/fixtures/harness-contract",
     "scripts/maint/rewrite_cli_names.py",
     "tests/guards/test_no_removed_cli_names.py",
 )
@@ -48,7 +46,6 @@ EXCLUDED_PARTS = {"__pycache__", ".git", ".venv", "node_modules", ".mypy_cache",
 
 # Exact substrings that look like an invocation and are not one.
 ALLOW = (
-    "docket harness contract",  # the published contract's schema title
     '"docket help" not in',  # a test asserting the removed word is absent
 )
 
@@ -79,6 +76,7 @@ REMOVED_TOP_LEVEL = [
     "policies",
     "gates",
     "harness",
+    "exec",
     "doctor",
     "cost",
     "metrics",
@@ -208,9 +206,8 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
     (_c("mcp[ \t]+serve"), "docket start --mcp"),
     (_c("mcp"), "docket setup mcp"),
     (_c("completions"), "docket setup shell"),
-    # service and exec
+    # service
     (_c("serve"), "docket start"),
-    (_c("harness[ \t]+run"), "docket exec"),
     (_c("harness[ \t]+status"), "docket task show"),
 ]
 

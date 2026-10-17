@@ -25,6 +25,7 @@ LARGE_MODULE_LINES = 150
 # multiple modules or a non-src contract, so its SUBJECT is asserted verbatim, not derived.
 _STRUCTURAL_EXEMPT = {
     "test_cli_stubs.py": "docket.cli",
+    "test_registry.py": "docket.cli",
     "test_store_writer.py": "docket.edges.store",
     "test_runtime_adapter_fixture_contract.py": "tests.fixtures.runtime_adapters.scenarios",
 }

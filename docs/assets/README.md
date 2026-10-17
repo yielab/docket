@@ -22,7 +22,7 @@ real CLI through every scene against a live OpenAI-compatible endpoint (default
 capture root rendered as `~`. It takes about five minutes because the gate scene waits out the
 120-second approval timeout. A local model's output varies run to run, so copy what the new run
 actually printed into the scene lists in the renderer: elide with `⋯`, never reword or invent a
-line. The current scenes were captured on 2026-10-09 against a local 16k-context model (the `6-harness` transcript is captured but not rendered). The `setup sandbox` lines of `isolation.png` were re-transcribed on 2026-10-13 from the real command on this host after bwrap was deleted (Landlock, network `none`). The CLI prints its plain voice (`ok`, `->`, `!`) when piped, which is what a transcript is, so the scenes show those prefixes. The local model may park a consultation before delegating; when it does, the capture is continued by answering it (`docket inbox`, `docket task answer <id> --option <id>`, `docket run`) in the same throwaway home, and the scene shows that round.
+line. The current scenes were captured on 2026-10-09 against a local 16k-context model. The `setup sandbox` lines of `isolation.png` were re-transcribed on 2026-10-13 from the real command on this host after bwrap was deleted (Landlock, network `none`). The CLI prints its plain voice (`ok`, `->`, `!`) when piped, which is what a transcript is, so the scenes show those prefixes. The local model may park a consultation before delegating; when it does, the capture is continued by answering it (`docket inbox`, `docket task answer <id> --option <id>`, `docket run`) in the same throwaway home, and the scene shows that round.
 
 ## Regenerate and verify
 
