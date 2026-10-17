@@ -14,14 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from tests.integration.llm_stub import _final_response, _tool_call_response
 from tests.integration.test_harness_cli import (
     REPO_ROOT,
     _AnsweredRun,
     _child_env,
-    _final_response,
     _real_docket_home_is_untouched,  # noqa: F401 - module-scoped guard, re-used here
-    _tool_call_response,
-    llm_server,  # noqa: F401 - fixture, re-used here
 )
 
 SUBJECT = "docket.cli._harness_answers"
@@ -47,7 +45,7 @@ def _harness(definition: str) -> Draft202012Validator:
 
 def test_consult_answered_by_question_id_reaches_the_model_and_every_line_validates(
     tmp_path: Path,
-    llm_server: Any,  # noqa: F811
+    llm_server: Any,
 ) -> None:
     server = llm_server([_tool_call_response("consult", _CONSULT), _final_response("done")])
     workspace = tmp_path / "ws"
