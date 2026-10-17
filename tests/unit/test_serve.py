@@ -10,6 +10,7 @@ drift is caught.
 from __future__ import annotations
 
 import json
+import threading
 import urllib.request
 from pathlib import Path
 from threading import Thread
@@ -156,7 +157,24 @@ class TestRenderMetrics:
 
 class TestRenderHealth:
     def test_health_body(self, fake_home: Path) -> None:
-        assert serve.render_health() == '{"status":"ok"}\n'
+        body = json.loads(serve.render_health())
+        assert set(body) == {"status", "apiVersion", "dispatch"}
+        assert body["status"] == "ok"
+        assert body["apiVersion"] == serve.SERVE_API_VERSION
+
+    def test_health_dispatch_block(self, fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The dispatch block reports the flag, in-flight pods, the stop state and the pool size."""
+        stop = threading.Event()
+        monkeypatch.setattr(serve, "_sweep_stop", stop)
+        monkeypatch.setattr(serve, "_sweep_inflight", {"demo": None})
+        assert json.loads(serve.render_health(True))["dispatch"] == {
+            "on": True,
+            "inflight": ["demo"],
+            "stopping": False,
+            "workers": serve.cfg.DISPATCH_SWEEP_WORKERS,
+        }
+        stop.set()
+        assert json.loads(serve.render_health())["dispatch"]["stopping"] is True
 
 
 # ── live HTTP round-trip (port 0) ─────────────────────────────────────────────
@@ -173,7 +191,7 @@ class TestHttpServer:
         try:
             base = f"http://127.0.0.1:{port}"
             with urllib.request.urlopen(base + "/health", timeout=5) as r:
-                assert json.loads(r.read().decode()) == {"status": "ok"}
+                assert json.loads(r.read().decode())["status"] == "ok"
             with urllib.request.urlopen(base + "/status.json", timeout=5) as r:
                 status = json.loads(r.read().decode())
                 assert status["agents"][0]["id"] == "myshop"

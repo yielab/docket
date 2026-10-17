@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.10.0
+**Version**: 2.11.0
 **Status**: Complete
 **Last Updated**: 2026-10-17
 
@@ -740,9 +740,10 @@ tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client
 #### docket start
 **Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and
 optionally drive pod dispatch pipelines
-**Syntax**: `docket start [--port <n>] [--interval <s>] [--dispatch] [--telegram] [--mcp] [--token-file <path>]`
+**Syntax**: `docket start [--port <n>] [--bind <addr>] [--interval <s>] [--dispatch] [--telegram] [--mcp] [--token-file <path>]`
 **Options**:
 - `--port`/`-p <n>`: Listen port for the HTTP API (default: 7331)
+- `--bind <addr>`: Listen address for the HTTP API (default: `127.0.0.1`, loopback only; any other address is reachable off this host)
 - `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30)
 - `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket start` never dispatches on its own.
 - `--telegram`: Long-poll docket's own Telegram bot for `/approve` `/deny` `/status` `/delegate`
@@ -1011,6 +1012,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.11.0 (2026-10-17)
+- `start` gains `--bind <addr>` (default `127.0.0.1`; any other address is reachable off this host).
 
 ### Version 2.10.0 (2026-10-17)
 - `task diff <ref>` prints the task branch's patch against its base commit (`git diff base..branch`
