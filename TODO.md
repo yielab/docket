@@ -17,14 +17,17 @@
 > resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
 > reading the diff and assuming.
 
-## ▶ ACTIVE BOARD — Wave 110 COMPLETE 2026-10-17 (Phase 43); Wave 111 next
+## ▶ ACTIVE BOARD — Wave 111 OPEN 2026-10-17 (Phase 43: P43-10..12, the daemon and the command)
 
-Wave 109 (P43-1..5) merged from base `1ee0d907` (rollup `f102abce`). Wave 110 (P43-6..9)
-merged into `develop` from base `299863be`: merges `2cb1079e`, `9b008806`, `2f7a84f8`,
-`d3f6dcc2`, the seam fix `cc5c08dc` (both defaults on `repo_config_dir`), then the rollup.
-Wave 111 (P43-10..12) is claimable: open it with this banner and a new base commit.
+Waves 109 (rollup `f102abce`) and 110 (rollup `bd1b6d3c`) are merged into `develop`. Wave 111
+(P43-10 cancel/retry/diff, P43-11 supervised daemon, P43-12 delete `exec`, API 5, beta.6) is
+open: three workers in isolated worktrees based on this banner commit, after the stub LLM
+server moved to `tests/integration/llm_stub.py` so P43-10 and P43-12 do not share a file.
+Merge order P43-10, P43-11, P43-12; the integrator owns `serve.py` route order, the
+`cli-interface`/`pod-dispatch`/`serve-read-api`/`operator-api` changelog order and
+`docs/commands.md`.
 
-## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — IN PROGRESS (Waves 109-110 complete, Wave 111 next) 2026-10-14
+## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — IN PROGRESS (Waves 109-110 complete, Wave 111 open) 2026-10-14
 
 Brief: [ADR 0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md). Contract:
 [specs/api/operator-api.spec.md](specs/api/operator-api.spec.md) (5.0.0, planned). Packets:
