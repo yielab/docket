@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.9.0
+**Version**: 2.10.0
 **Status**: Complete
 **Last Updated**: 2026-10-17
 
@@ -1011,6 +1011,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.10.0 (2026-10-17)
+- `task diff <ref>` prints the task branch's patch against its base commit (`git diff base..branch`
+  in the codebase), so it works after the worktree is removed; `--json` prints the whole
+  `{task, branch, baseCommit, head, patch, untracked, worktreePresent}` object. A task that ran in
+  place exits `1` with `task ran in place` (P43-10).
 
 ### Version 2.9.0 (2026-10-17)
 - `init` in a repository whose `.docket/` has `teams/` and no `pod.yaml` exits `2` naming the teams unless the pod name matches one; the match applies `.docket/teams/<name>/` (P43-7).

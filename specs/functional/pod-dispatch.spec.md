@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.50.0
+**Version**: 6.51.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -2319,6 +2319,20 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.51.0 (2026-10-17)
+- **Cancel and diff in core (P43-10, ADR 0027).** `core.dispatch.cancel_task(project, task_id,
+  *, channel, actor="", reason="")` owns the whole `docket task cancel` decision and returns a
+  frozen `TaskCancelOutcome`: the pod's queued or running runs that carry the task (or an in-flight
+  one naming none while the task is `running`) go through `runs.cancel_run`, a parked task through
+  `cancel_parked_task`, a stale `running` claim through `reclaim_stale_running`. A live-run cancel
+  audits one `task.cancel` (channel, reason); a parked one audits through `cancel_parked_task`; an
+  unknown task raises `TaskNotFoundError`. `core.dispatch.task_diff(project, task_id)` returns
+  `{task, branch, baseCommit, head, patch, untracked, worktreePresent}`: `patch` is `git diff
+  <baseCommit>..<branch>` in the Implementer's codebase (capped at `system.DIFF_MAX_CHARS`
+  characters, cut with a trailing marker line), `untracked` the `??` paths of the worktree while
+  it exists. No worktree branch raises `DispatchError("task ran in place")`; a deleted branch
+  raises `TaskNotFoundError`. Red reason: neither function existed.
 
 ### Version 6.50.0 (2026-10-14)
 - **Hop events and task usage (P43-5, ADR 0027).** New "Hop events and task usage" section:
