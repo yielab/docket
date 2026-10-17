@@ -110,7 +110,7 @@ class TestToolStatus:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         result = _mcp.tool_status()
-        assert result["apiVersion"] == "4"
+        assert result["apiVersion"] == "5"
         assert isinstance(result["agents"], list)
         assert "totalCostUsd" in result
 
