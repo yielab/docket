@@ -17,13 +17,14 @@
 > resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
 > reading the diff and assuming.
 
-## ▶ ACTIVE BOARD — Wave 110 IN PROGRESS 2026-10-17 (Phase 43 the pod: P43-6..9)
+## ▶ ACTIVE BOARD — Wave 110 COMPLETE 2026-10-17 (Phase 43); Wave 111 next
 
-Wave 109 (P43-1..5) merged into `develop` from base `1ee0d907` (rollup `f102abce`). Wave 110
-(P43-6..9) opened 2026-10-17 from this commit: four workers in isolated worktrees (P43-6/7/8
-Sonnet, P43-9 Haiku), integrator merges in card order with `--no-ff`, then the rollup.
+Wave 109 (P43-1..5) merged from base `1ee0d907` (rollup `f102abce`). Wave 110 (P43-6..9)
+merged into `develop` from base `299863be`: merges `2cb1079e`, `9b008806`, `2f7a84f8`,
+`d3f6dcc2`, the seam fix `cc5c08dc` (both defaults on `repo_config_dir`), then the rollup.
+Wave 111 (P43-10..12) is claimable: open it with this banner and a new base commit.
 
-## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — IN PROGRESS (Wave 109 complete, Wave 110 in progress) 2026-10-14
+## ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — IN PROGRESS (Waves 109-110 complete, Wave 111 next) 2026-10-14
 
 Brief: [ADR 0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md). Contract:
 [specs/api/operator-api.spec.md](specs/api/operator-api.spec.md) (5.0.0, planned). Packets:
@@ -183,7 +184,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-6 — a pod is readable over HTTP; `POST /pods` ensures
 
-- **Status:** IN-PROGRESS (@p43-6-sonnet) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-17 (`1a5ccfe4`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** the report exists only in `cli/_pod_show.py::pod_report`; `POST /pods` answers
   `409` to a consumer that only wants the pod to exist.
 - **Goal:** move `pod_report`, `member_report` and their helpers to `core/pod_report.py` (the
@@ -211,7 +212,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-7 — `.docket/teams/<pod>/`: several teams in one repository
 
-- **Status:** IN-PROGRESS (@p43-7-sonnet) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-17 (`d1bdf91f`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** three sites hard-code `<codebase>/.docket`; a repository with five pods has no
   place to keep five teams.
 - **Goal:** `core/pod_apply.py::repo_config_dir(codebase, project) -> Path`: returns
@@ -237,7 +238,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-8 — `POST /pods/<p>/apply`
 
-- **Status:** IN-PROGRESS (@p43-8-sonnet) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-17 (`a1b4053c`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** applying a reviewed directory needs a terminal; a plan of record that merged a
   PR on `.docket/teams/<p>/` cannot apply it.
 - **Goal:** the route of `operator-api.spec.md`: `directory` (absolute, or P43-7's default),
@@ -264,7 +265,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-9 — `GET /pods/<p>/corrections`
 
-- **Status:** IN-PROGRESS (@p43-9-haiku) · **Size:** S · **Model:** Haiku
+- **Status:** DONE 2026-10-17 (`d80b72a3`, `a81ee3b1`) · **Size:** S · **Model:** Haiku
 - **Trigger:** `core/corrections.py::read` exists and nothing exposes it (ADR 0027 point 6).
 - **Goal:** `GET /pods/<p>/corrections?since=<iso>` → `{"corrections": [...], "next": <last ts
   or the given since>}`, records with `ts > since` in append order, `[]` for a pod with no
@@ -416,6 +417,19 @@ SSE, aggregate statistics (ADR 0027 point 10).
   orphan approval token.
 - **`trace-store.spec.md` requirement 6 says "exactly"** but the code's `EVENT_TYPES` has members
   the list never named (found by P43-2); re-derive the list from the frozenset.
+- **A team's skills** (P43-7): `core/skills.py` reads only `<codebase>/.docket/skills`; a repository
+  keeping `teams/<pod>/` has no per-team skills scope. `init --help` and `--name` do not mention
+  teams, and the `docket pod update .docket` hint in `cli/_agents.py::_changed_since_review` is
+  not team-aware.
+- **Queue counts twice** (P43-6): `core/pod_report.py::task_counts` and the inline Counter in
+  `cli/_status.py` (~lines 138-164) compute the same mapping; point `status` at `task_counts`.
+  `pod_report._caller_default` reads `sys.stdin.isatty()`, so under `docket start` the report's
+  approval default depends on the daemon's stdin.
+- **`POST /pods/<p>/apply` edges** (P43-8): a pod with no recorded codebase reviews against
+  `directory.parent`; an all-skip apply writes no `pod.apply` audit entry (pre-existing rule).
+- **Corrections cursor** (P43-9): a client must percent-encode `+` in `since` (a raw `+` decodes
+  to a space and is `400`); a pod whose Lead was removed but whose ledger remains answers `404`
+  (existence is `dispatchable_pods()`, the same rule as `GET /pods`).
 - **Real-Docker tests over their duration ceiling under load** (`test_network_lockdown.py`,
   `test_sandboxed_exec.py`, `test_escape_matrix.py[docker]`): pass alone, fail when five suites
   run at once. A flake, not a regression; measured 2026-10-14.
