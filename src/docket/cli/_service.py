@@ -57,6 +57,11 @@ def _wait_gone(pid: int, seconds: float) -> bool:
 
 def cmd_start(
     port: int = typer.Option(7331, "--port", "-p", help="Port to bind (default 7331)"),
+    bind: str = typer.Option(
+        "127.0.0.1",
+        "--bind",
+        help="Listen address (default 127.0.0.1, loopback only; any other is reachable off this host)",
+    ),
     interval: int = typer.Option(
         30, "--interval", "-i", help="Sweep refresh interval in seconds (default 30)"
     ),
@@ -79,7 +84,7 @@ def cmd_start(
 ) -> None:
     """Start the background service: the local HTTP API, sweeps, and what you turn on.
 
-    Binds 127.0.0.1 only. Always runs the sweeps and /status.json /metrics /health.
+    Binds 127.0.0.1 unless --bind says otherwise. Always runs the sweeps and /status.json /metrics /health.
     --dispatch also runs every pod's queue (spends budget), --telegram polls the
     Telegram bot, --mcp serves docket's tools over stdio and runs nothing else.
     Stop it with `docket stop`.
@@ -112,6 +117,7 @@ def cmd_start(
     try:
         run_serve(
             port=port,
+            bind=bind,
             interval=interval,
             dispatch=dispatch,
             telegram=telegram,
