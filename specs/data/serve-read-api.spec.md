@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.7.0
+**Version**: 3.9.0
 **Status**: Stable
 **Last Updated**: 2026-10-17
 
@@ -35,7 +35,7 @@ It does NOT cover the write endpoints' request handling (`POST /approvals/<token
 request/response body — those are implementation details gated by `Authorization: Bearer <token>`
 and documented in `src/docket/serve.py`.
 
-**API version:** `4`  (`SERVE_API_VERSION = "4"` in `src/docket/serve.py`)
+**API version:** `5`  (`SERVE_API_VERSION = "5"` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
 `/health`) require no auth. `/approvals`, `/inbox`, `/runs`, `/runs/<id>`, and the write endpoints
 all require `Authorization: Bearer <token>`.
@@ -79,7 +79,7 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 
 ```json
 {
-  "apiVersion": "4",
+  "apiVersion": "5",
   "timestamp":  "2026-06-25T10:00:00Z",
   "channels":   ["telegram"],
   "agents": [
@@ -104,7 +104,7 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 
 | Field | Type | Notes |
 |---|---|---|
-| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"4"`. |
+| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"5"`. |
 | `channels` | string[] | Distinct channel names present in Docket's `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here** (3.5.0): a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
@@ -782,6 +782,14 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.9.0 (2026-10-17)
+
+- `API version` is `5`: `apiVersion` in `GET /status.json` and `SERVE_API_VERSION` read `"5"`.
+  The write and lifecycle routes of version 5 (task fields, `/tasks/<pod>/<id>` and its cancel,
+  retry and diff routes, `/pods`, `/pods/<p>/apply`, `/pods/<p>/corrections`) are owned by
+  `operator-api.spec.md`; this spec keeps the read shapes and the versioning policy.
+- The `exec` command and the harness are gone, so the HTTP routes are the only door for a program.
 
 ### Version 3.7.0 (2026-10-17)
 

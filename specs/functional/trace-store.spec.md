@@ -1,21 +1,20 @@
 # Trace Store Specification
 
-**Version**: 1.8.0
+**Version**: 1.8.1
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
-`core/security.py`'s guardrail checks, and `core/harness.py`'s subscriber stream. Before v1.0.0
-the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
-`harness-mode.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
+`core/security.py`'s guardrail checks. Before v1.0.0
+the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
 Docket traces every agent action it can observe to `$TRACES_DIR/<project>/<session_id>.jsonl`,
 one append-only file per session. This specification defines that store: the record shape written
 per line, the full `EVENT_TYPES` vocabulary an event type must belong to before it is accepted,
-the `subscribe` seam a live consumer (`docket task trace --tail`, `docket exec`) reads from
+the `subscribe` seam a live consumer (`docket task trace --tail`) reads from
 without touching disk, `redact`'s secret-shape scrubbing, the `trace_ingest` bridge that projects
 a driver's own session log into this store, and the retention functions (`sweep_all`,
 `expire_old_traces`) that keep it bounded.
@@ -45,8 +44,6 @@ This specification does NOT cover:
   owns `cost_charged`/`budget_warning`/`budget_exceeded`
 - The read API surface over this store (`docket task trace`, `GET` routes) — see
   `serve-read-api.spec.md`
-- The harness-mode NDJSON wire pass-through of these same records — see `harness-mode.spec.md`,
-  whose `event` field is defined as exactly what `trace_event` produced, unmodified
 - Audit (`core/audit.py`'s hash-chained log) — a separate store, separate guarantees, never
   merged with this one
 
@@ -194,7 +191,7 @@ exit, of a real OS process group a tool handler spawns. The only current produce
 `edges/adapters/toolbox.py::run_bash`'s `on_process` callback, threaded through
 `core/tools.py::ToolContext.on_process` and wired to real trace emission by
 `edges/adapters/docket_runtime.py::DocketDriver`. Built for an external plan-of-record (Tack)
-that needs to show and cancel a long-running `bash` call spawned through `docket exec`.
+that needs to show and cancel a long-running `bash` call spawned by a pod task.
 
 1. `EVENT_TYPES` **MUST** additionally include `process_started` and `process_exited`.
 2. `process_started`'s payload **MUST** carry exactly `{"pgid": <int>}` — the spawned process
@@ -218,9 +215,7 @@ that needs to show and cancel a long-running `bash` call spawned through `docket
    `docket task cancel` reaches it; with no run current, the event is still traced, but no pid
    is registered anywhere.
 
-See `harness-mode.spec.md`'s Contract 1.1 (owned by a separate card in this same wave) for how an
-external consumer is expected to use these events; this store owns only their shape and firing
-rule, not that consumer's contract.
+This store owns only the shape and firing rule of these events, not a consumer's contract.
 
 ## Interface Contracts
 
@@ -333,6 +328,10 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.8.1 (2026-10-17)
+
+- The `exec` command and its NDJSON pass-through are removed: the intro, scope and process-event notes lose their references to the harness spec and the harness subscriber.
 
 ### Version 1.8.0 (2026-10-14)
 

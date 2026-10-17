@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.50.0
+**Version**: 6.50.1
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -209,7 +209,7 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
 #### Enqueue channel
 
 `enqueue_task` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram` or
-`mcp` (`docket exec` is `cli`), persist it on the task as `channel` beside `source`, and append
+`mcp`, persist it on the task as `channel` beside `source`, and append
 `task.enqueue` to the audit log naming the project, the task and the channel. `source` stays the
 origin class (`operator`, `reviewer` for a rework task) and alone drives the `pre_input` trust
 default; `channel` never changes trust. The detail names no description text. A task persisted
@@ -846,9 +846,7 @@ was seeded once at binding time.)*
 1. **Trigger.** A pod-dispatch hop that hits an `ask` policy verdict with nobody able to answer
    (no operator watching a headless `docket start`/schedule/webhook run) previously blocked the
    whole hop for `TOOL_APPROVAL_TIMEOUT` (120s, see `security-gates.spec.md`) per gated call, with
-   no way to shorten that for a pod that is known to run unattended. Only harness mode
-   (`cli/_harness.py`) could opt out, by setting `DOCKET_APPROVAL_MODE=refuse` on its own `run_turn`
-   call — a path pod dispatch never took.
+   no way to shorten that for a pod that is known to run unattended.
 2. `_compose_hop` (`core/dispatch.py`) reads `pod_approval_mode(project, caller_default=...)`
    for every hop and, when the resolved mode is `"refuse"` or `"park"`, sets
    `DOCKET_APPROVAL_MODE` to that value in that hop's tool env — merged into whatever env the
@@ -1191,7 +1189,7 @@ was seeded once at binding time.)*
    `DocketDriver.run_turn` builds the `ToolContext` a hop's turn runs under; its `project` field
    **MUST** resolve to the caller-supplied `trace_project` (the pod, threaded in from
    `core/dispatch.py`'s `_run_hop_turn`) when one is given, falling back to the agent id only for
-   a non-dispatch caller (e.g. `docket exec`, which has no pod to file under). This is what
+   a non-dispatch caller that has no pod to file under. This is what
    `core/approval.py`'s `approval_create`/`approval_grant`/`approval_deny` — called with
    `ctx.project` — actually file their `approval_requested`/`approval_granted`/`approval_denied`
    events against; before this requirement, an in-turn gate's approval trace landed under
@@ -1700,8 +1698,7 @@ any CLI rendering of this evidence.*
      `exitCode` stays `0` or `1` and it adds no `label`.
    - `touched` (`list[str]`, internal, unreleased P35-12): absolute paths a git status snapshot
      taken immediately before and after the command shows as created or changed by it
-     (`system.git_worktree_fingerprint`). Empty off a git checkout. The harness drops them from
-     its `files`; it is never published in the harness `verify` block.
+     (`system.git_worktree_fingerprint`). Empty off a git checkout. It is internal and is never published in a `verify` block.
 2. This requirement adds evidence storage only. The existing `verification_failed` trace event
    (cmd + redacted output) and the `tool_result` "passed"/"skipped" trace events **MUST** remain
    byte-for-byte unchanged; `verify` is a new field on the hop record, not a new trace event and not
@@ -1785,26 +1782,6 @@ document (`evidence.py`, `docs/contracts/`) are unchanged.*
    "output": n}}}`, summed over the task's persisted `hops` (a hop with `usage` `null` adds
    nothing). A hop whose `model` is `""` is summed under the `""` key. A task that has never
    settled has no `usage` key.
-
-### In-place ephemeral pods
-
-1. A pod provisioned in place **MUST** give its Implementer no git worktree: the Implementer's
-   meta carries `inPlace: true`, dispatch records no `worktree` on its tasks, and the Implementer's
-   resolved working directory is the codebase the pod was provisioned on. The default provisioning path **MUST** remain unchanged: the keyword that
-   selects in-place provisioning defaults to off.
-2. An in-place run **MUST** provision its pod through the same core provisioning function that
-   `docket init` uses, and **MUST** apply its recipe through the same plan-then-apply path that
-   `docket pod update` uses.
-3. Every member of an in-place pod **MUST** run on the one model the run was given, including
-   members a recipe adds.
-4. The run's approval mode **MUST** be written through the typed pod-setting coercion, never as a
-   raw metadata write, and a value outside `wait|park|refuse` **MUST** be refused before any pod
-   is provisioned.
-5. A run **MUST** refuse, before provisioning, a workspace that is not an existing directory and a
-   recipe that does not resolve. Neither refusal creates a pod.
-6. A run enqueues one task and dispatches the pod with a limit of one task, synchronously. On a
-   pod provisioned by the run, that task is the only pending one, and the run returns its
-   persisted record and one record per hop that ran.
 
 ### Task worktrees
 
@@ -2029,7 +2006,7 @@ the archetype-side `tokenBudget` schema this section consumes.)*
 
 *Trigger: an external verifier needs one stable document of what a task's hops kept, instead of
 reading `verify`/`evidence` dicts and trace files itself. This section adds two optional hop-record
-fields and the `core/evidence.py` models; it serves no surface (CLI, HTTP and harness are a later
+fields and the `core/evidence.py` models; it serves no surface (CLI and HTTP are a later
 card), scores nothing, and carries no dollar figure.*
 
 1. `core/evidence.py` **MUST** hold every evidence-v1 model: `HopEvidence{role, stepId, ok,
@@ -2060,9 +2037,7 @@ card), scores nothing, and carries no dollar figure.*
 7. **Evidence 1.1.0** (ADR 0025 D4 as amended) adds exactly two optional fields and nothing
    else. `task_evidence(project, task_id, version)` **MUST** take the version, `"1.0.0"` or
    `"1.1.0"`; `"1.0.0"` **MUST** produce the same document as before this requirement, byte for
-   byte, and **MUST** carry neither new field. The published harness result
-   (`cli/_harness_recipe.py`) **MUST** embed `"1.0.0"` (the harness contract does not move);
-   `docket task show --json` and `GET /tasks/<pod>/<id>/evidence` **MUST** serve `"1.1.0"`.
+   byte, and **MUST** carry neither new field. `docket task show --json` and `GET /tasks/<pod>/<id>/evidence` **MUST** serve `"1.1.0"`.
 8. Under `"1.1.0"`, `HopEvidence.gate` is `{label, exitCode, reasonsInvalid}`, copied from the hop's
    `verify` and present only when that `verify` carries a `label` (a hop that ran an external gate);
    it adds no verdict about the work. `TaskEvidence.directives` is a list of `{path, sha256}`: the
@@ -2320,6 +2295,12 @@ run is needed to observe this; a later `docket run` — with or without `--resum
 
 ## Changelog
 
+### Version 6.50.1 (2026-10-17)
+
+- The `exec` command and the harness are removed: the `channel` list, the unattended-posture and
+  trace-project notes and the evidence item 7 lose their harness clauses. The "In-place ephemeral
+  pods" section is deleted with its module.
+
 ### Version 6.50.0 (2026-10-14)
 - **Hop events and task usage (P43-5, ADR 0027).** New "Hop events and task usage" section:
   `hop_started`/`hop_finished` trace events per hop (`trace-store.spec.md` 1.8.0),
@@ -2361,7 +2342,7 @@ run is needed to observe this; a later `docket run` — with or without `--resum
 
 ### Version 6.43.0 (2026-10-13)
 
-- "Evidence v1" 7-8: evidence `1.1.0` (`gate` per hop, `directives` per task, `HopResult.repo_files` persisted as `repoFiles`); `task_evidence` takes the version and the harness result keeps `1.0.0` (P42-5).
+- "Evidence v1" 7-8: evidence `1.1.0` (`gate` per hop, `directives` per task, `HopResult.repo_files` persisted as `repoFiles`); `task_evidence` takes the version (P42-5).
 
 ### Version 6.42.0 (2026-10-13)
 
@@ -2506,10 +2487,8 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
 - **Required verification (P35-8, ADR 0017).** New section "Required verification": the
   `requireVerify` pod setting (default false). When true, an Implementer hop with no `verifyCmd`
   fails with `verification_missing` instead of advancing. The default path is byte-identical.
-- **In-place ephemeral pods (P35-7, ADR 0017).** New section "In-place ephemeral pods":
-  `core/harness_pipeline.py::run_recipe_task` provisions a recipe pod whose Implementer runs in
-  the codebase itself, with no worktree, every member pinned to one model. The `env` parameter
-  the packet named is not in the signature; see the card.
+- **In-place ephemeral pods (P35-7, ADR 0017).** Added a section for a recipe pod whose
+  Implementer ran in the codebase itself; that section and its module are gone with the `exec` command.
 
 ### Version 6.25.0 (2026-09-29)
 
@@ -2639,7 +2618,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
   trace directory (`traces/<project>/`), never the hop's agent id — fixed by having
   `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` resolve `ToolContext.project` from
   the caller-supplied `trace_project` (falling back to the agent id only when none is given, e.g.
-  `docket harness run`). New "Registry retention (runs, approvals, conversations)" section: the
+  a standalone turn). New "Registry retention (runs, approvals, conversations)" section: the
   run registry, the approval store, and the conversation registry now share one retention sweep
   (`config.TRACE_RETENTION_S`, the same knob trace expiry uses) that removes only records already
   terminal — a live record is never touched regardless of age. `docket serve`'s periodic sweep
@@ -2690,8 +2669,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
   requirement 3 and new subsection "Unattended approval posture (`approvalMode`, ROADMAP P26-5)":
   a fifth `PodSettings` key, `approvalMode` (`wait`|`refuse`, default `wait`), threads
   `DOCKET_APPROVAL_MODE=refuse` into a hop's tool env the same internal-coordinate way
-  `PIPELINE_WORKTREE_ENV` already travels, closing the gap where only harness mode
-  (`cli/_harness.py`) could opt an unattended turn out of the 120s `TOOL_APPROVAL_TIMEOUT` wait.
+  `PIPELINE_WORKTREE_ENV` already travels, closing the gap that left an unattended turn waiting out the 120s `TOOL_APPROVAL_TIMEOUT` wait.
   `wait` (the default) is byte-identical to every prior dispatch. No new task status, trace event
   type, or failure-kind vocabulary — a refused hop fails through the existing
   `approval_unavailable`/`_persist_hop_and_trace` path.

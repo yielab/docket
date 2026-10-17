@@ -574,7 +574,7 @@ creates `approvals/<id>.json`.
   audited.
 - **Expiry.** Unanswered requests are denied: after `TOOL_APPROVAL_TIMEOUT` (120 s) when a live
   tool call is waiting, after `APPROVAL_TIMEOUT` (900 s) at a pipeline approval gate.
-- **Non-interactive runs.** `docket exec` never waits. It returns `approval_unavailable` instead.
+- **Non-interactive runs.** A pod set to `approvalMode refuse` never waits. It returns `approval_unavailable` instead.
 
 **Network.** `fetch` refuses every host until you allow it:
 `FETCH_ALLOWED_DOMAINS=docs.python.org,api.github.com`. That makes `fetch` the *inspectable*
@@ -796,8 +796,8 @@ Three commands read it, and nothing else does:
 
 Rules worth knowing:
 
-- **Nothing is applied without an operator command.** Dispatch, `docket start`, schedules and
-  `docket exec` never read `.docket/`: an Implementer editing it in its worktree changes nothing until
+- **Nothing is applied without an operator command.** Dispatch, `docket start` and schedules
+  never read `.docket/`: an Implementer editing it in its worktree changes nothing until
   you apply it. `docket pod show` prints `configSource`, `configDigest` and
   `drift: yes|no`, so you can see that the directory moved on since it was applied.
 - **A repository cannot loosen your rules.** Its policies land in the pod scope and accumulate
@@ -882,7 +882,7 @@ document, the same shape as a `kind: provider` (§3.1). Five ship in the wheel, 
 and then from `docket setup provider add`. Nothing is sent until you run `docket setup export enable`, and a
 present credential never turns an exporter on by itself.
 
-Every turn docket runs (a dispatch hop, a `docket start --dispatch` sweep, `docket exec`) hands
+Every turn docket runs (a dispatch hop, a `docket start --dispatch` sweep) hands
 the records it writes to the local trace, already redacted, to `core/telemetry.py`, which turns
 each session into spans: a `docket.session` root with `gen_ai.chat` and `execute_tool` children,
 their ids derived from the session id so a re-send lands on the same trace. A pod dispatch runs
@@ -892,7 +892,7 @@ pipeline delivers them to every enabled exporter as OTLP/HTTP JSON over the stan
 (the `otlp-http` dialect; D-24's cut of the OpenTelemetry SDK stands, D-48). It holds a bounded
 queue, counts what it drops, and never raises into a turn. The pipelines start with the first
 turn of a process and keep that set of exporters and levels for its life, so a change made with
-the commands below reaches the next `docket run` or `docket exec` at once and a running
+the commands below reaches the next `docket run` at once and a running
 `docket start` only after a restart. `DOCKET_NO_EXPORT=1` turns export off for one process;
 `DOCKET_NO_TRACE=1` stops the local write and, with it, the export.
 
@@ -964,7 +964,7 @@ later session would send.
 
 ```bash
 $ docket setup export preview langfuse
-Preview: langfuse  (session agent:harness-e262ed07e5a2:default)
+Preview: langfuse  (session agent:demo-lead:default)
   privacy: actions   shares: errors, toolArguments
 
   execute_tool read
@@ -1033,7 +1033,7 @@ destination in a recipe documents intent without silently starting to ship data 
 exporters: [otel-collector, langfuse]
 ```
 
-**Live proof, this machine, 2026-09-28:** one real `docket exec` turn per level against
+**Live proof, this machine, 2026-09-28:** one real single-agent turn per level against
 the local llama.cpp endpoint, with `otel-collector` (a local `otel/opentelemetry-collector`,
 `debug` exporter) and `langfuse` both enabled at that level, a unique canary in the task and
 another in the file the agent read. `minimal`: no canary in the collector log, in Langfuse, in
