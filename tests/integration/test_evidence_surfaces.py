@@ -1,4 +1,4 @@
-"""evidence-v1 surfaces: CLI --json, GET /tasks/<p>/<id>/evidence and the harness result agree."""
+"""evidence-v1 surfaces: CLI --json and GET /tasks/<p>/<id>/evidence agree."""
 
 from __future__ import annotations
 
@@ -15,10 +15,9 @@ from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _harness_recipe, _pod, app
+from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import evidence as _ev
-from docket.core import harness_pipeline as _hp
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.evidence"
@@ -81,7 +80,7 @@ def _get(url: str, token: str | None = None) -> tuple[int, bytes]:
 
 
 class TestSurfacesAgree:
-    def test_cli_http_and_harness_carry_the_same_document(
+    def test_cli_and_http_carry_the_same_document(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -95,20 +94,11 @@ class TestSurfacesAgree:
         cli_doc = json.loads(shown.output)["evidence"]
         status, http_body = _get(f"{server}/tasks/demo/{task_id}/evidence", _TOKEN)
         assert status == 200
-        run = _hp.RecipeRun(project="demo", task={"id": task_id}, hops=[])
-        harness_doc = _harness_recipe._task_evidence(run)
         assert cli_doc == json.loads(http_body)
         assert cli_doc == _ev.task_evidence("demo", task_id, "1.1.0").model_dump(
             by_alias=True, mode="json"
         )
-        assert harness_doc == _ev.task_evidence("demo", task_id, "1.0.0").model_dump(
-            by_alias=True, mode="json"
-        )
-        assert cli_doc["v"] == "1.1.0" and harness_doc["v"] == "1.0.0"
-        assert {**cli_doc, "v": "1.0.0"} == harness_doc
-
-    def test_harness_block_is_none_without_a_run(self) -> None:
-        assert _harness_recipe._task_evidence(None) is None
+        assert cli_doc["v"] == "1.1.0"
 
 
 class TestErrors:
