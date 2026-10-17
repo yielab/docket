@@ -1,9 +1,9 @@
 """The ``consult`` built-in: a model asks its operator a question with options.
 
 The call is validated through ``QuestionV11`` (operator-v1.1) and then, by approval mode:
-``wait`` traces a ``question_asked`` event and blocks until an answer reader delivers an
-answer (``submit``) or the wait bound passes; ``refuse``/``park`` trace the event and raise
-``ConsultUnavailable``, which ``core/tools.py`` renders as the ``approval_unavailable`` stop.
+``wait`` has nobody to ask and answers "no answer; decide yourself"; ``refuse``/``park`` trace
+the event and raise ``ConsultUnavailable``, which ``core/tools.py`` renders as the
+``approval_unavailable`` stop.
 In pod dispatch (``ctx.consult_park``) a non-refuse consult raises ``ConsultParked`` instead:
 the hop ends, the task parks ``waiting_input`` and ``core.answers`` re-enters the same role.
 The per-task count lives on the task; dispatch passes the remaining budget to each hop.
@@ -16,11 +16,7 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import json
-import queue
 import re
-import threading
-import time
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -33,7 +29,6 @@ from docket.core.operator_contract import (
     AnswerResultV11,
     QuestionV11,
     new_question_id,
-    validate_answer_v11,
 )
 from docket.edges import store as _store
 
@@ -111,66 +106,6 @@ class ConsultParked(ConsultUnavailable):
         super().__init__("consultation parked for an operator answer")
 
 
-@dataclass
-class _Waiter:
-    question: QuestionV11
-    answers: queue.Queue[AnswerResultV11 | None]
-
-
-_LOCK = threading.Lock()
-_WAITING: dict[str, _Waiter] = {}
-_READERS = 0
-
-
-@contextlib.contextmanager
-def answer_reader() -> Iterator[None]:
-    """Mark that something (the harness stdin reader) will deliver answers while open, and
-    release every waiting consultation when it closes."""
-    global _READERS
-    with _LOCK:
-        _READERS += 1
-    try:
-        yield
-    finally:
-        with _LOCK:
-            _READERS -= 1
-        release_all()
-
-
-def release_all() -> None:
-    """Wake every waiting consultation with no answer (end of the answer stream)."""
-    with _LOCK:
-        waiters = list(_WAITING.values())
-    for waiter in waiters:
-        waiter.answers.put(None)
-
-
-def is_waiting(question_id: str) -> bool:
-    with _LOCK:
-        return question_id in _WAITING
-
-
-def submit(question_id: str, action: str, content: dict[str, Any] | None) -> str | None:
-    """Deliver an answer to the waiting consultation *question_id*. ``content['optionId']``
-    names the chosen option. Returns ``None`` when delivered, else a reason (the consultation
-    keeps waiting for a valid answer)."""
-    with _LOCK:
-        waiter = _WAITING.get(question_id)
-    if waiter is None:
-        return "no such waiting question"
-    body = dict(content) if content else {}
-    option_id = body.pop("optionId", None)
-    try:
-        answer = AnswerResultV11.model_validate(
-            {"action": action, "content": body or None, "optionId": option_id}
-        )
-        validate_answer_v11(waiter.question, answer)
-    except ValueError as exc:
-        return str(exc)
-    waiter.answers.put(answer)
-    return None
-
-
 def answer_text(
     question: QuestionV11, answer: AnswerResultV11, content: dict[str, Any] | None
 ) -> str:
@@ -226,41 +161,6 @@ def _trace_question(question: QuestionV11, ctx: ToolContext) -> None:
     )
 
 
-def _wait(question: QuestionV11, ctx: ToolContext) -> ConsultOutcome:
-    waiter = _Waiter(question, queue.Queue())
-    with _LOCK:
-        _WAITING[question.id] = waiter
-    try:
-        _trace_question(question, ctx)
-        bound = _cfg.TOOL_APPROVAL_TIMEOUT if ctx.approval_timeout is None else ctx.approval_timeout
-        deadline = time.monotonic() + max(0, bound)
-        while True:
-            if ctx.cancellation_check is not None and ctx.cancellation_check():
-                return ConsultOutcome(False, error="run cancellation requested")
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return ConsultOutcome(True, content=NO_ANSWER)
-            try:
-                answer = waiter.answers.get(timeout=min(0.25, remaining))
-            except queue.Empty:
-                continue
-            if answer is None:
-                return ConsultOutcome(True, content=NO_ANSWER)
-            return ConsultOutcome(
-                True,
-                content=json.dumps(
-                    {
-                        "action": answer.action,
-                        "optionId": answer.option_id,
-                        "content": answer.content,
-                    }
-                ),
-            )
-    finally:
-        with _LOCK:
-            _WAITING.pop(question.id, None)
-
-
 def run(args: dict[str, Any], ctx: ToolContext) -> ConsultOutcome:
     """Handler for the ``consult`` built-in."""
     if ctx.consult_count >= ctx.max_consultations:
@@ -276,8 +176,4 @@ def run(args: dict[str, Any], ctx: ToolContext) -> ConsultOutcome:
     if ctx.approval_mode != "wait":
         _trace_question(question, ctx)
         raise ConsultUnavailable("a consultation needs an operator answer and none can be given")
-    with _LOCK:
-        has_reader = _READERS > 0
-    if not has_reader:
-        return ConsultOutcome(True, content=NO_ANSWER)
-    return _wait(question, ctx)
+    return ConsultOutcome(True, content=NO_ANSWER)

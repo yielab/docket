@@ -132,7 +132,7 @@ def _count_tasks_started() -> int:
                 events = _trace.read_trace(trace_file)
                 for event in events:
                     if event.get("event_type") == "session_start":
-                        # Count only dispatch-sourced claims, not harness-mode runs
+                        # Count only dispatch-sourced claims
                         payload = event.get("payload", {})
                         if isinstance(payload, str):
                             try:

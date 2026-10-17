@@ -1858,7 +1858,7 @@ class TestStopConditions:
         assert result.error == "endpoint unreachable"
 
 
-# ── non-interactive approval mode (docs/adr/0001-harness-mode.md decision 11) ──
+# ── approval mode `refuse` ───────────────────────────────────────────────────
 
 
 class TestApprovalUnavailable:
@@ -1955,20 +1955,6 @@ class TestApprovalParked:
         record = load_session(session_key)
         assert [message.role for message in record.messages] == ["user", "assistant", "tool"]
         assert "REFUSED [approval_parked]" in record.messages[-1].content
-
-    def test_harness_mode_cannot_produce_approval_parked(
-        self, ctx: ToolContext, registry: ToolRegistry
-    ) -> None:
-        _write_gate_policy("test-ask-echo", r"\becho\b", "require_approval")
-        ctx.approval_mode = "refuse"
-        backend = ScriptedBackend(
-            [
-                _tool_call_response("call-1", "echo", '{"text": "hello"}'),
-                _final("must not be requested"),
-            ]
-        )
-        result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:harness-parity", "go")
-        assert result.stop_reason == "approval_unavailable"
 
 
 # ── cumulative-budget terminal response reservation ─────────────────────────
