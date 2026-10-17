@@ -31,9 +31,9 @@ def _stdin_is_tty() -> bool:
 
 
 def _repo_dir(project: str) -> Path | None:
-    """``<codebase>/.docket`` of *project*'s Lead, or None for a pod with no codebase."""
+    """The configuration-of-record directory of *project*'s Lead, or None with no codebase."""
     codebase = _fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
-    return Path(codebase) / ".docket" if codebase else None
+    return _pod_apply.repo_config_dir(Path(codebase), project) if codebase else None
 
 
 def _ask_changed_commands(changes: _pod_apply.RepoChanges) -> bool:
@@ -82,7 +82,7 @@ def _pick_up_repository(project: str) -> None:
     if changes.runs_changed and not _ask_changed_commands(changes):
         return
     if changes.review.runs and (changes.runs_changed or changes.allowed_on):
-        _reviewed.remember(directory.parent, changes.review.runs)
+        _reviewed.remember(_pod_apply.repo_root(directory), changes.review.runs)
     _pod_apply.apply(changes.plan)
     if changes.adds_changed:
         ui.info(f"Updated from the repository: {', '.join(changes.adds_changed)}.")

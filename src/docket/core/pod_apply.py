@@ -964,13 +964,30 @@ def runs_changed(repo_dir: Path) -> tuple[RunChange, ...]:
     review of its repository (every item when none was remembered)."""
     from docket.core import reviewed_repos as _reviewed
 
-    found = _reviewed.lookup(repo_dir.parent)
+    found = _reviewed.lookup(repo_root(repo_dir))
     was = {(i.kind, i.name): i.runs for i in found.items} if found else {}
     return tuple(
         RunChange(i, was.get((i.kind, i.name)))
         for i in classify_directory(repo_dir).runs
         if was.get((i.kind, i.name)) != i.runs
     )
+
+
+def repo_config_dir(codebase: Path, project: str, *, create: bool = False) -> Path:
+    """The pod's configuration-of-record directory: ``.docket/teams/<project>`` when it exists
+    (or, with *create*, when the repository keeps ``.docket/teams/``), else ``.docket``."""
+    base = codebase / ".docket"
+    team = base / "teams" / project
+    if team.is_dir() or (create and (base / "teams").is_dir()):
+        return team
+    return base
+
+
+def repo_root(repo_dir: Path) -> Path:
+    """The codebase a configuration-of-record directory belongs to."""
+    if repo_dir.parent.name == "teams" and repo_dir.parent.parent.name == ".docket":
+        return repo_dir.parents[2]
+    return repo_dir.parent
 
 
 def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
@@ -986,7 +1003,7 @@ def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
     if directory_digest(repo_dir) == recorded:
         return None
     plan = plan_apply(project, repo_dir)
-    found = _reviewed.lookup(repo_dir.parent)
+    found = _reviewed.lookup(repo_root(repo_dir))
     return RepoChanges(
         plan=plan,
         adds_changed=tuple(f"{i.kind} {i.name}" for i in plan.items if i.action != "skip"),

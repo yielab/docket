@@ -328,3 +328,20 @@ class TestRecipeRows:
     def test_brings_joins_only_the_parts_present(self) -> None:
         assert _pod_config._brings(_summary()) == "nothing"
         assert _pod_config._brings(_summary(roles=2, mcp_servers=("a",))) == "roles+mcp-servers"
+
+
+class TestPodExportIntoTeams:
+    def test_export_writes_the_pods_team_dir_and_leaves_siblings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        code = tmp_path / "code"
+        sibling = code / ".docket" / "teams" / "b"
+        sibling.mkdir(parents=True)
+        (sibling / "pod.yaml").write_text("kind: pod\nname: b\n")
+        before = (sibling / "pod.yaml").read_bytes()
+        assert _pod_run("export", "--pod", "demo").exit_code == 0
+        assert (code / ".docket" / "teams" / "demo" / "pod.yaml").is_file()
+        assert not (code / ".docket" / "pod.yaml").exists()
+        assert sorted(p.name for p in sibling.iterdir()) == ["pod.yaml"]
+        assert (sibling / "pod.yaml").read_bytes() == before

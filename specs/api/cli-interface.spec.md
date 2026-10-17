@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.8.0
+**Version**: 2.9.0
 **Status**: Complete
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -1011,6 +1011,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.9.0 (2026-10-17)
+- `init` in a repository whose `.docket/` has `teams/` and no `pod.yaml` exits `2` naming the teams unless the pod name matches one; the match applies `.docket/teams/<name>/` (P43-7).
 
 ### Version 2.8.0 (2026-10-14)
 - `task add` gains `--external-ref`, `--idempotency-key`, `--base-ref`, `--pipeline`, `--gate` and `--max-tokens` (P43-1).

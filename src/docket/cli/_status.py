@@ -101,7 +101,7 @@ def _last_run(project: str) -> dict[str, Any] | None:
     }
 
 
-def _commands(root: str) -> dict[str, Any] | None:
+def _commands(root: str, project: str = "") -> dict[str, Any] | None:
     """The commands the operator allowed for the repository at *root* and how many of its
     ``.docket/`` run items now differ; None when nothing was ever allowed."""
     from docket.core import pod_apply as _pod_apply
@@ -110,7 +110,7 @@ def _commands(root: str) -> dict[str, Any] | None:
     found = _reviewed.lookup(Path(root)) if root else None
     if found is None:
         return None
-    directory = Path(root) / ".docket"
+    directory = _pod_apply.repo_config_dir(Path(root), project)
     changed = len(_pod_apply.runs_changed(directory)) if directory.is_dir() else 0
     return {"allowed": len(found.items), "date": found.date, "code": found.code, "changed": changed}
 
@@ -173,7 +173,7 @@ def _project_summary(project: str) -> dict[str, Any]:
             "p95Ms": outcomes.p95_ms,
         },
         "lastRun": _last_run(project),
-        **({"commands": c} if (c := _commands(roots[0] if roots else "")) else {}),
+        **({"commands": c} if (c := _commands(roots[0] if roots else "", project)) else {}),
         **(
             {"profile": _profile.as_json(_profile.project_violations(project))}
             if _profile.effective_profile(project) == _profile.LIGHTS_OUT
