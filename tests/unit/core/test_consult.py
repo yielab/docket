@@ -4,8 +4,6 @@ the operator a decision question with options and a recommendation, bounded per 
 from __future__ import annotations
 
 import json
-import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -17,7 +15,6 @@ from docket.core import archetypes as _arch
 from docket.core import consult as _consult
 from docket.core import trace as _trace
 from docket.core.llm import ToolCall
-from docket.core.operator_contract import QuestionV11
 from docket.core.tools import ToolContext, ToolResult, builtin_registry, dispatch_tool
 
 SUBJECT = "docket.core.consult"
@@ -68,23 +65,6 @@ def _events() -> tuple[list[dict[str, Any]], Callable[[], None]]:
     return seen, unsubscribe
 
 
-def _answer_when_asked(
-    seen: list[dict[str, Any]], action: str, content: dict[str, Any] | None
-) -> threading.Thread:
-    def _run() -> None:
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            if seen:
-                qid = seen[0]["payload"]["questionId"]
-                _consult.submit(qid, action, content)
-                return
-            time.sleep(0.01)
-
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-    return thread
-
-
 class TestRegistration:
     def test_consult_is_a_read_kind_builtin(self) -> None:
         tool = builtin_registry().get("consult")
@@ -123,56 +103,8 @@ class TestValidation:
         assert not result.ok and "kind" in result.as_tool_output()
 
 
-class TestWaiting:
-    def test_an_answer_reaches_the_call_as_option_and_content(self) -> None:
-        seen, off = _events()
-        try:
-            with _consult.answer_reader():
-                _answer_when_asked(seen, "accept", {"optionId": "redis", "note": "ok"})
-                result = _call(_args(), _ctx())
-        finally:
-            off()
-        assert result.ok, result.as_tool_output()
-        assert json.loads(result.content) == {
-            "action": "accept",
-            "optionId": "redis",
-            "content": {"note": "ok"},
-        }
-        (event,) = seen
-        question = QuestionV11.model_validate(event["payload"]["question"])
-        assert question.id == event["payload"]["questionId"]
-        assert question.recommendation is not None
-
-    def test_an_answer_naming_no_option_is_rejected_and_the_wait_continues(self) -> None:
-        seen, off = _events()
-        outcome: list[str | None] = []
-
-        def _bad_then_good() -> None:
-            deadline = time.monotonic() + 5
-            while not seen and time.monotonic() < deadline:
-                time.sleep(0.01)
-            qid = seen[0]["payload"]["questionId"]
-            outcome.append(_consult.submit(qid, "accept", {"optionId": "bogus"}))
-            outcome.append(_consult.submit(qid, "accept", {"optionId": "sqlite"}))
-
-        try:
-            with _consult.answer_reader():
-                threading.Thread(target=_bad_then_good, daemon=True).start()
-                result = _call(_args(), _ctx())
-        finally:
-            off()
-        assert outcome[0] is not None and outcome[1] is None
-        assert json.loads(result.content)["optionId"] == "sqlite"
-
-    def test_no_answer_before_the_timeout_tells_the_model_to_decide(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
-        with _consult.answer_reader():
-            result = _call(_args(), _ctx())
-        assert result.ok and result.content == "no answer; decide yourself"
-
-    def test_without_an_answer_reader_nothing_waits(self) -> None:
+class TestWait:
+    def test_a_wait_mode_consult_has_nobody_to_ask_and_tells_the_model_to_decide(self) -> None:
         seen, off = _events()
         try:
             result = _call(_args(), _ctx())
@@ -238,20 +170,11 @@ class TestRefuse:
 
 
 class TestCap:
-    def test_the_call_past_the_cap_is_refused_without_a_question_event(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    def test_the_call_past_the_cap_is_refused_as_budget_exhausted(self) -> None:
         ctx = _ctx()
-        seen, off = _events()
-        try:
-            with _consult.answer_reader():
-                for n in range(3):
-                    assert _call(_args(), ctx, f"c{n}").ok
-                fourth = _call(_args(), ctx, "c4")
-        finally:
-            off()
-        assert len(seen) == 3
+        for n in range(3):
+            assert _call(_args(), ctx, f"c{n}").ok
+        fourth = _call(_args(), ctx, "c4")
         assert not fourth.ok
         assert "consultation budget exhausted; decide yourself" in fourth.as_tool_output()
 

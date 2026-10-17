@@ -145,17 +145,6 @@ _ENV_CREDENTIAL_NAMES = ("DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN")
 _ENV_CREDENTIAL_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_PASSWORD")
 
 
-_REGISTERED_SECRETS: set[str] = set()
-
-
-def register_secret(value: str) -> None:
-    """Redact *value* from every later trace write in this process: a credential resolved from
-    a home this process does not own (harness contract 1.2) is in neither store nor env."""
-    clean = value.strip()
-    if len(clean) > 8:
-        _REGISTERED_SECRETS.add(clean)
-
-
 def _stored_secret_values() -> list[str]:
     """Secret values longer than 8 chars (redact.sh's >8 filter): docket's own store plus every
     credential-shaped variable in this process's environment, since a key exported in the shell
@@ -167,7 +156,6 @@ def _stored_secret_values() -> list[str]:
         values.extend(v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8)
     except Exception:
         pass
-    values.extend(_REGISTERED_SECRETS)
     for name, raw in os.environ.items():
         if name in _ENV_CREDENTIAL_NAMES or name.endswith(_ENV_CREDENTIAL_SUFFIXES):
             value = raw.strip()

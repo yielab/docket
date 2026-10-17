@@ -18,7 +18,6 @@ import datetime as _dt
 import json
 import os
 import re
-import threading
 import time as _time
 import uuid
 from collections.abc import Callable
@@ -71,9 +70,7 @@ def screen_rationale(text: str) -> tuple[str, bool]:
     return _redact(text)[:APPROVAL_RATIONALE_MAX_CHARS], False
 
 
-APPROVAL_CHANNELS: frozenset[str] = frozenset(
-    {"cli", "http", "mcp", "telegram", "timeout", "tack", "harness"}
-)
+APPROVAL_CHANNELS: frozenset[str] = frozenset({"cli", "http", "mcp", "telegram", "timeout", "tack"})
 
 # Every state a resolved approval record can end in. Only "pending" is live; the sweep
 # below must never touch a pending record regardless of age.
@@ -244,9 +241,7 @@ def approval_create(
         data["options"] = approval_options()
     _store.write_json(_approval_path(token), data)
 
-    # The call a paused approval is for, when the caller names it. A caller answering
-    # the request (``docket exec --answers stdin``) needs these to know which
-    # call it is resolving; nothing else in the payload changes.
+    # The call a paused approval is for, when the caller names it.
     requested: dict[str, Any] = {"token": token, "action": redacted_action}
     for key in ("tool", "callId"):
         if (context or {}).get(key):
@@ -638,42 +633,16 @@ def approval_sweep_expired() -> int:
     return swept
 
 
-# The in-process answer stream. ``docket exec --answers stdin`` is the only caller whose
-# answers arrive over a channel that can end mid-turn: when its stdin reaches end of file,
-# nobody can resolve an approval any more, so a wait in progress must not sit until its
-# deadline and a later ask must not create a record nobody will read. Set by
-# ``close_answer_stream`` (the stdin reader at EOF), read by ``wait_for_approval`` and by
-# ``core/tools.py``'s ask branch, cleared by ``open_answer_stream`` when the reader exits.
-# Every other producer (CLI, HTTP, MCP, Telegram) answers from outside the process and never
-# touches it, so a pod dispatch waits exactly as before.
-_ANSWER_STREAM_CLOSED = threading.Event()
-
-
-def close_answer_stream() -> None:
-    """Record that no further answer can arrive in this process (the stdin reader hit EOF)."""
-    _ANSWER_STREAM_CLOSED.set()
-
-
-def open_answer_stream() -> None:
-    """Clear ``close_answer_stream``'s mark, for the reader's exit and for tests."""
-    _ANSWER_STREAM_CLOSED.clear()
-
-
-def answer_stream_closed() -> bool:
-    return _ANSWER_STREAM_CLOSED.is_set()
-
-
 @dataclass(frozen=True)
 class ApprovalWaitResult:
     """Outcome of blocking on one token until it resolves or times out. ``state`` is always
     final (never ``"pending"``); ``timed_out`` is a fail-closed expiry rather than an explicit
-    deny, and ``unanswerable`` a denial made because the answer stream closed mid-wait."""
+    deny."""
 
     state: Literal["granted", "denied"]
     token: str
     timed_out: bool = False
     cancelled: bool = False
-    unanswerable: bool = False
 
 
 def wait_for_approval(
@@ -731,18 +700,6 @@ def wait_for_approval(
                 if final_state not in ("denied", "expired"):
                     raise
             return ApprovalWaitResult("denied", token, cancelled=True)
-        if answer_stream_closed():
-            # Nobody is left to answer: fail closed now rather than at the deadline.
-            try:
-                approval_deny(token, channel="harness", reason="answer stream closed")
-            except (ApprovalNoop, ApprovalError):
-                final_state = str(_read(token).get("state", ""))
-                if final_state == "granted":
-                    return ApprovalWaitResult("granted", token)
-                if final_state not in ("denied", "expired"):
-                    raise
-                return ApprovalWaitResult("denied", token)
-            return ApprovalWaitResult("denied", token, unanswerable=True)
         if do_clock() >= deadline:
             if _resolve_timeout_as_denied(token):
                 return ApprovalWaitResult("denied", token, timed_out=True)

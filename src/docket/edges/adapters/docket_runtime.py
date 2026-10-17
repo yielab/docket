@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import atexit
 import contextlib
-import hashlib
 import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -47,7 +46,6 @@ from docket.core.runtime_driver import (
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
     DOCKET_TASK_DENIED_TOOLS,
-    DOCKET_TASK_ID,
     DOCKET_TASK_NETWORK,
     DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
@@ -167,31 +165,15 @@ def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
     return (_cfg.workspace_dir(agent_id),)
 
 
-def _pod_cache_dir(agent_id: str, workspace: Path | None = None) -> Path | None:
-    """The agent's pod cache dir, created 0700 if a pod provisioned before it existed lacks one.
-    A ``harness-`` agent has no pod: it gets a per-workspace dir under ``DOCKET_HOME`` instead."""
+def _pod_cache_dir(agent_id: str) -> Path | None:
+    """The agent's pod cache dir, created 0700 if a pod provisioned before it existed lacks one."""
     project = _pod.pod_of(agent_id)
-    if project is None:
-        if agent_id.startswith("harness-") and workspace is not None:
-            return _harness_cache_dir(workspace)
-        return None
-    return _ensure_pod_cache(project)
+    return _ensure_pod_cache(project) if project is not None else None
 
 
-def _harness_cache_dir(workspace: Path) -> Path | None:
-    """The cache dir shared by every ``docket exec`` run of *workspace*, created 0700."""
-    digest = hashlib.sha256(str(workspace.resolve()).encode()).hexdigest()[:16]
-    cache = _cfg.DOCKET_HOME / "cache" / "harness" / digest
-    try:
-        cache.mkdir(mode=0o700, parents=True, exist_ok=True)
-    except OSError:
-        return None
-    return cache
-
-
-def _jail_cache_dir(agent_id: str, roots: tuple[Path, ...], want_sandbox: bool) -> Path | None:
+def _jail_cache_dir(agent_id: str, want_sandbox: bool) -> Path | None:
     """The jail's cache dir for this turn; ``None`` when isolation is off."""
-    return _pod_cache_dir(agent_id, roots[0] if roots else None) if want_sandbox else None
+    return _pod_cache_dir(agent_id) if want_sandbox else None
 
 
 def _approval_timeout(raw: str | None) -> int | None:
@@ -294,7 +276,7 @@ def _max_consultations(agent_id: str, raw: str | None) -> int:
 
 def _turn_token_budget(raw: str | None) -> int:
     """*raw* as a positive measured-token ceiling, else the configured loop default -- a
-    malformed value never raises here (the harness CLI validates its own flag first)."""
+    malformed value never raises here."""
     try:
         value = int(raw or "")
     except ValueError:
@@ -536,7 +518,7 @@ class DocketDriver:
         network posture (``_resolve_posture``), or ``self.mcp_loader`` finding an ``mcpServers``
         name absent from the live catalog (see ``_load_mcp_tools``'s own docstring). A caller
         misconfiguration, not an ordinary turn failure, and every production call site (``core/dispatch.py``'s
-        pipeline runner, ``cli/_harness.py``) already lets a raised ``DispatchError``
+        pipeline runner) already lets a raised ``DispatchError``
         propagate to its own settle/fail path rather than treating this driver as
         exception-free. ``on_spawn`` is ignored: this driver backs onto no OS process to
         track -- the loop makes HTTP calls in-process -- and the Protocol allows a
@@ -628,7 +610,6 @@ class DocketDriver:
         max_consultations = _max_consultations(
             agent_id, tool_env.pop(DOCKET_MAX_CONSULTATIONS, None)
         )
-        env_task_id = tool_env.pop(DOCKET_TASK_ID, None) or ""
         token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
@@ -651,8 +632,7 @@ class DocketDriver:
             # in-turn approval gate's trace event must file under. Absent that, resolve
             # the calling agent's own pod, so a standalone pod-member turn still sees
             # that pod's own policy files, not just the global set -- falling back to
-            # agent_id only for a non-pod agent (e.g. an org specialist, or the
-            # harness), which keeps that caller's behavior unchanged.
+            # agent_id only for a non-pod agent.
             project=resolved_project,
             sandbox="auto" if want_sandbox else "off",
             network=network_allowed,
@@ -663,12 +643,12 @@ class DocketDriver:
             max_consultations=max_consultations,
             # A pod dispatch hop (it names its task): a consult parks the task.
             consult_park=trace_task_id is not None,
-            task_id=trace_task_id or env_task_id,
+            task_id=trace_task_id or "",
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,
             approval_timeout=approval_timeout,
-            cache_dir=_jail_cache_dir(agent_id, ctx_roots, want_sandbox),
+            cache_dir=_jail_cache_dir(agent_id, want_sandbox),
             on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role
@@ -682,7 +662,7 @@ class DocketDriver:
         registry = self.registry_factory()
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         loop_config = _loop_config(backend, timeout, token_budget)
-        view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or env_task_id)
+        view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None
         try:
             with _task_scope(registry, tool_env):

@@ -289,7 +289,6 @@ def _write_member_workspace(
     work_dir: str = "",
     blueprint_name: str = "",
     budget_usd: float | None = None,
-    in_place: bool = False,
 ) -> None:
     ws = _cfg.PROJECTS_DIR / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
@@ -345,8 +344,6 @@ def _write_member_workspace(
         meta["scratchDir"] = scratch_dir
     if member.role == "implementer" and verify_cmd:
         meta["verifyCmd"] = verify_cmd
-    if in_place and member.role == "implementer":
-        meta["inPlace"] = True
     # Only stamped when this member was provisioned through a blueprint — a
     # bare `provision_members(...)` call (every existing test, and any future
     # non-blueprint caller) leaves meta exactly as before.
@@ -394,7 +391,6 @@ def provision_member(
     work_dir: str = "",
     blueprint_name: str = "",
     budget_usd: float | None = None,
-    in_place: bool = False,
 ) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it in the fleet registry.
 
@@ -417,7 +413,6 @@ def provision_member(
         work_dir=work_dir,
         blueprint_name=blueprint_name,
         budget_usd=budget_usd,
-        in_place=in_place,
     )
     # Registration is fleet.json only -- there is no daemon to register with
     # (see cli/_agents.py's run_add for the identical reasoning).
@@ -732,7 +727,6 @@ def provision_members(
     budget_usd: float | None = None,
     verify_cmd: str = "",
     work_dir_created: bool = False,
-    in_place: bool = False,
 ) -> list[ProvisionedMember]:
     """Provision a fresh pod's members from an already-resolved role list.
 
@@ -772,7 +766,6 @@ def provision_members(
                 work_dir=work_dir,
                 blueprint_name=blueprint_name,
                 budget_usd=budget_usd,
-                in_place=in_place,
             )
             if not ok:
                 raise PodProvisionError(f"{m.member_id}: {msg}")
@@ -817,7 +810,6 @@ def provision_pod(
     budget_usd: float | None = None,
     verify_cmd: str = "",
     source: str = "declarative",
-    in_place: bool = False,
 ) -> PodProvisionResult:
     """Provision a fresh pod from a blueprint.
 
@@ -871,7 +863,6 @@ def provision_pod(
             budget_usd=effective_budget,
             verify_cmd=verify_cmd,
             work_dir_created=work_dir_created,
-            in_place=in_place,
         )
 
         audit_log(
