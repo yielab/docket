@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import json as _json
 import logging as _logging
 import os
@@ -10,7 +11,7 @@ from typing import Any
 import docket.config as _cfg
 from docket.core import trace as _trace
 
-__all__ = ["read", "record"]
+__all__ = ["read", "record", "utc_cursor", "utc_z"]
 
 _log = _logging.getLogger(__name__)
 
@@ -63,9 +64,25 @@ def record(
         _log.warning(f"Failed to write correction record: {e}")
 
 
+def utc_cursor(ts: str) -> str:
+    """*ts* as the ledger writes it (UTC `isoformat()`); ValueError unless it carries an offset."""
+    stamp = _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    if stamp.tzinfo is None:
+        raise ValueError(f"naive timestamp: {ts}")
+    return stamp.astimezone(_dt.UTC).isoformat()
+
+
+def utc_z(ts: str) -> str:
+    """*ts* as UTC with a `Z` suffix; *ts* unchanged when it does not parse (\"\" stays \"\")."""
+    try:
+        return utc_cursor(ts).replace("+00:00", "Z")
+    except ValueError:
+        return ts
+
+
 def read(project: str, since: str = "") -> list[dict[str, Any]]:
-    """Correction records in append order, keeping `ts > since` when given (ISO-8601 Z strings
-    compare correctly), or an empty list if the ledger is missing."""
+    """Correction records in append order, keeping `ts > since`; both sides must be in the
+    ledger's UTC `isoformat()` form (see `utc_cursor`), or the string compare is wrong."""
     path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
     if not path.exists():
         return []

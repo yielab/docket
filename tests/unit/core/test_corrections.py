@@ -234,7 +234,7 @@ class TestRead:
         """A `since` cursor keeps only records whose ts is strictly later, in append order."""
         project = "test-proj"
         for i, ts in enumerate(
-            ["2026-10-01T10:00:00Z", "2026-10-01T10:00:00Z", "2026-10-01T10:00:01Z"]
+            ["2026-10-01T10:00:00+00:00", "2026-10-01T10:00:00+00:00", "2026-10-01T10:00:01+00:00"]
         ):
             _corrections.record(
                 project,
@@ -246,7 +246,7 @@ class TestRead:
                 _now=ts,
             )
 
-        assert [r["taskId"] for r in _corrections.read(project, since="2026-10-01T10:00:00Z")] == [
-            "job-2"
-        ]
+        assert [
+            r["taskId"] for r in _corrections.read(project, since="2026-10-01T10:00:00+00:00")
+        ] == ["job-2"]
         assert len(_corrections.read(project)) == 3

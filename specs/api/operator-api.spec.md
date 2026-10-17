@@ -128,7 +128,7 @@ Query parameters:
 |---|---|---|
 | `GET /tasks/<pod>` | `externalRef` | exact match |
 | `GET /tasks/<pod>` | `status` | one task status, the enum of `cli-json-shapes.spec.md` |
-| `GET /pods/<p>/corrections` | `since` | ISO timestamp; records with `ts > since`, append order |
+| `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
 
 ## Output
 
@@ -295,9 +295,11 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
 
 - Status: Wave 110 shipped P43-9: `GET /pods/<p>/corrections?since=` reads the corrections
   ledger in append order, keeping records with `ts > since` (`corrections.read(project,
-  since=)`). The route answers `404` for a pod with no Lead, `400` for a `since` that is not
-  ISO-8601, and `401` without the bearer token. `next` is the last returned record's `ts`,
-  else the given `since`, else `""`.
+  since=)`). `since` is any ISO-8601 timestamp with an offset, normalised to UTC before the
+  comparison; a naive `since` (no offset) is `400`, as is one that does not parse. `next` is
+  the last returned record's `ts` in UTC with a `Z` suffix, else the normalised `since` in
+  UTC `Z`, else `""`. The route answers `404` for a pod with no Lead and `401` without the
+  bearer token.
 
 ### Version 5.1.0 (2026-10-14)
 
