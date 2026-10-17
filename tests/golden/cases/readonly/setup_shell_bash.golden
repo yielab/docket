@@ -24,7 +24,7 @@ _docket_options() {
     "status") echo "--all --json --history --days --pod --help" ;;
     "inbox") echo "--json --since --peek --help" ;;
     "run") echo "--resume --timeout --progress --no-prompt --pipeline --var --dry-run --pod --help" ;;
-    "start") echo "--port --interval --dispatch --telegram --mcp --token-file --help" ;;
+    "start") echo "--port --bind --interval --dispatch --telegram --mcp --token-file --help" ;;
     "stop") echo "--wait --help" ;;
     "exec") echo "--workspace --task --task-file --model --role --timeout --agent-id --contract --answers --answer-timeout --token-file --max-tokens --policy --recipe --verify --help" ;;
     "task") echo "--help" ;;
