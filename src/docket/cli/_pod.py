@@ -33,6 +33,7 @@ from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
+from docket.core import pod_report as _report
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 from docket.edges import store
@@ -246,7 +247,7 @@ def cmd_show(
     if member is not None:
         _require_member(project, member)
     try:
-        report = _show.member_report(member) if member else _show.pod_report(project)
+        report = _report.member_report(member) if member else _report.pod_report(project)
     except (_dispatch.DispatchError, pod.PodSettingsError) as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex

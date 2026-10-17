@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.6.0
+**Version**: 3.7.0
 **Status**: Stable
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -602,7 +602,9 @@ Request body:
 | `budget` | number \| numeric string | No | Overrides the blueprint's own default budget cap (applied to the Lead member only). `0`, omitted, or a non-positive value means no override (falls back to the blueprint default). A non-numeric value is `400`. |
 | `verifyCmd` | string | No | Applied to Implementer member(s) only, at creation time — the same `verify_cmd` parameter `docket pod add --verify` / `docket pod set verify --member` already thread through post-hoc, just supplied at creation instead. Validated the same way (`core.pod_provisioning.VerifyCmdError` — no NUL byte, no newline, length-capped); a failing value is `400`. |
 
-Success response (`201`) — the created pod roster:
+Optional `ensure` (boolean, default `false`): see the Changelog entry for 3.7.0.
+
+Success response (`201`) — the created pod roster (with `"created": true`):
 
 ```json
 {
@@ -724,7 +726,8 @@ Tack-granted approval must not be indistinguishable from a CI job's.
   called, and a `project` failing `core.provisioning.validate_project_id`, an unknown `blueprint`,
   or an invalid `verifyCmd` with `400` from `provision_pod`'s own validation (id check first, before
   its exists-check, before any side effect; W36-C1); MUST reject an already-provisioned `project`
-  with `409` without touching the existing pod; and on a genuine mid-provisioning failure MUST leave
+  with `409` without touching the existing pod, unless the body carries `"ensure": true`, which
+  answers `200` with `"created": false` and touches nothing; and on a genuine mid-provisioning failure MUST leave
   no member workspace, no fleet registration and no orphaned port/scratch allocation created by that
   request behind (full rollback) before responding `500`; concurrent same-project attempts MUST leave
   the successful attempt's members, metadata, allocation, and runtime directory untouched. Concurrent
@@ -779,6 +782,15 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.7.0 (2026-10-17)
+
+- `POST /pods` accepts `ensure` (boolean, default `false`): on an existing pod it answers `200`
+  `{"ok": true, "created": false, "project": p}` and touches nothing; without it the `409` stands.
+  The `201` body gains `"created": true`.
+- `GET /pods` (Bearer) lists the dispatchable pods; `GET /pods/<p>` (Bearer, `400` bad id, `404`
+  unknown pod) returns `docket pod show --json`'s object plus `profile`, `pipelineSource` and
+  `repoConfigDir`. Shapes: `operator-api.spec.md` "Pod answers".
 
 ### Version 3.6.0 (2026-10-13)
 

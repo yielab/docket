@@ -19,12 +19,12 @@ from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _pod, _pod_show
+from docket.cli import _pod
 from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp_tools
-from docket.core import pod
+from docket.core import pod, pod_report
 from docket.core import policy as _policy
 from docket.edges import store as _store
 
@@ -60,7 +60,7 @@ def _show(*args: str, project: str = "demo") -> tuple[int, str]:
 def _explain_json(agent_id: str, capsys: pytest.CaptureFixture[str]) -> dict:
     project = pod.pod_of(agent_id)
     if not project:
-        return _pod_show.member_report(agent_id)
+        return pod_report.member_report(agent_id)
     code, out = _show(agent_id, "--json", project=project)
     assert code == 0, out
     return json.loads(out)
