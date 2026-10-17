@@ -938,6 +938,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
     never an accidental unauthenticated pass-through."""
 
     serve_token: str = ""
+    dispatch_on: bool = False
     # Bounds every blocking socket read (request line, headers, body) so a
     # client that opens a connection and never finishes sending cannot pin a
     # handler thread forever.
@@ -1392,6 +1393,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
         # already sets both on the returned dict for this case).
         if task["status"] == "waiting_approval":
             task_resp["approvalToken"] = task.get("approvalToken", "")
+        elif created and self.dispatch_on:
+            _submit_pod_sweep(project)
         self._send(
             json.dumps(task_resp).encode(), "application/json", status=201 if created else 200
         )
@@ -1821,6 +1824,7 @@ def run_serve(
 
     class _BoundHandler(_DocketHandler):
         serve_token = _token
+        dispatch_on = dispatch
 
     global _sweep_stop
     stop = _sweep_stop = threading.Event()
