@@ -3,11 +3,11 @@ EXIT:0
 
 _docket_verbs() {
   case "$1" in
-    "") echo "init status inbox run start stop exec task pod log setup" ;;
+    "") echo "init status inbox run start stop task pod log setup" ;;
     "task") echo "add list show diff trace prune approve deny answer retry cancel" ;;
     "pod") echo "show add remove reset delete set unset update export validate plan check recipes roles policies" ;;
     "log") echo "verify" ;;
-    "setup") echo "profile shell harness provider model sandbox notify export mcp" ;;
+    "setup") echo "profile shell provider model sandbox notify export mcp" ;;
     "setup provider") echo "add list show remove export rotate" ;;
     "setup model") echo "list set preset reset" ;;
     "setup sandbox") echo "status on off backend network classes" ;;
@@ -26,7 +26,6 @@ _docket_options() {
     "run") echo "--resume --timeout --progress --no-prompt --pipeline --var --dry-run --pod --help" ;;
     "start") echo "--port --interval --dispatch --telegram --mcp --token-file --help" ;;
     "stop") echo "--wait --help" ;;
-    "exec") echo "--workspace --task --task-file --model --role --timeout --agent-id --contract --answers --answer-timeout --token-file --max-tokens --policy --recipe --verify --help" ;;
     "task") echo "--help" ;;
     "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --pod --help" ;;
     "task list") echo "--json --pod --help" ;;
@@ -60,7 +59,6 @@ _docket_options() {
     "setup") echo "--json --fix --help" ;;
     "setup profile") echo "--help" ;;
     "setup shell") echo "--help" ;;
-    "setup harness") echo "--json --role --help" ;;
     "setup provider") echo "--help" ;;
     "setup provider add") echo "--credential --model --ctx --max-tokens --no-preset --help" ;;
     "setup provider list") echo "--json --help" ;;

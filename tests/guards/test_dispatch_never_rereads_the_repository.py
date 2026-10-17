@@ -1,6 +1,6 @@
 """Guard: only a typed command re-reads a repository's `.docket/`; dispatch never does.
 
-`docket start`, `dispatch_pod` and `docket exec` must not reach the repository re-read or the
+`docket start` and `dispatch_pod` must not reach the repository re-read or the
 operator's review store (ADR 0012 and 0024), pinned by the names each module references.
 """
 
@@ -13,7 +13,7 @@ import docket
 
 _SRC = Path(docket.__file__).parent
 _FORBIDDEN = {"repo_changes", "classify_directory", "plan_apply", "reviewed_repos"}
-_UNREAD = ("core/dispatch.py", "serve.py", "cli/_exec.py", "cli/_service.py")
+_UNREAD = ("core/dispatch.py", "serve.py", "cli/_service.py")
 
 
 def _names(path: Path) -> set[str]:

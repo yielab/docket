@@ -85,7 +85,6 @@ class TestTable:
             ("docket completions zsh", "docket setup shell zsh"),
             ("docket doctor --fix", "docket setup --fix"),
             ("docket serve --dispatch", "docket start --dispatch"),
-            ("docket harness run --x", "docket exec --x"),
             ("docket audit verify", "docket log verify"),
             ("docket runs show r1", "docket task show r1"),
             ("docket trace tail myapp", "docket task trace --tail"),
@@ -132,7 +131,7 @@ class TestTable:
         assert rcn.survivors("see `docket runs`")
 
     def test_allowed_substrings_are_not_flagged(self) -> None:
-        assert not rcn.survivors('"title": "docket harness contract"')
+        assert not rcn.survivors('assert "docket help" not in out')
 
     def test_unmappable_lines_are_reported_and_left_alone(self) -> None:
         for line in ("docket info x", "docket scope x set k", "docket pod p lead", "docket help"):
