@@ -150,3 +150,11 @@ def test_bad_requests(server: str, tmp_path: Path) -> None:
     assert _post(f"{server}/pods/ghost/apply", {"directory": str(directory)})[0] == 404
     assert _post(f"{server}/pods/demo/apply", {"directory": str(directory)}, token=None)[0] == 401
     assert _post(f"{server}/pods/demo/apply", {"directory": str(directory)}, token="bad")[0] == 401
+
+
+def test_the_default_directory_is_the_pods_team_dir(server: str, tmp_path: Path) -> None:
+    """Without `directory`, apply reads `.docket/teams/<pod>/` when the repository keeps teams."""
+    _directory(tmp_path / "codebase" / ".docket" / "teams", "demo", _ROLE)
+    status, _ = _post(f"{server}/pods/demo/apply", {})
+    assert status == 200 and "x-checker" in _roles("demo")
+    assert _fleet.meta_get("demo-lead", "configSource", "").endswith("teams/demo")

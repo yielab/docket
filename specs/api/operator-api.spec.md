@@ -302,7 +302,7 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
 
 - `GET /pods`, `GET /pods/<p>` and `POST /pods` with `ensure` implemented (P43-6). The pod report
   is `core/pod_report.py`, shared with `docket pod show --json`. `repoConfigDir` is
-  `<codebase>/.docket` until the multi-team directory function replaces it.
+  `pod_apply.repo_config_dir` (`<codebase>/.docket/teams/<pod>` when it exists, else `<codebase>/.docket`).
 - `POST /pods/<p>/apply` implemented (P43-8): the review rule off a terminal, `reviewCode` and
   `runs` on `409`, `dryRun`, `pod.apply` audited with `channel=http`.
 
