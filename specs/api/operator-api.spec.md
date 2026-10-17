@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.2.0
+**Version**: 5.3.0
 **Status**: Partially implemented (Phase 43, ADR 0027). Wave 109 shipped the task fields, the task
 routes of P43-1 and the hop events; Wave 110 the pod routes (read, `ensure`, `apply`,
 corrections); every other route is planned until the card that owns it
@@ -55,9 +55,9 @@ validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malfor
 | `POST /tasks/<pod>` | `dispatch.enqueue_task` | P43-1 | Implemented (Wave 109) |
 | `GET /tasks/<pod>?externalRef=&status=` | `dispatch.read_tasks` | P43-1 | Implemented (Wave 109) |
 | `GET /tasks/<pod>/<id>` | `dispatch.read_tasks` | P43-1 | Implemented (Wave 109) |
-| `POST /tasks/<pod>/<id>/cancel` | `dispatch.cancel_task` (new, moved from `cli/_task.py`) | P43-10 | Planned |
-| `POST /tasks/<pod>/<id>/retry` | `dispatch.retry_task` | P43-10 | Planned |
-| `GET /tasks/<pod>/<id>/diff` | `dispatch.task_diff` (new) over `edges/adapters/system.py` | P43-10 | Planned |
+| `POST /tasks/<pod>/<id>/cancel` | `dispatch.cancel_task` (moved from `cli/_task.py`) | P43-10 | Implemented (Wave 111) |
+| `POST /tasks/<pod>/<id>/retry` | `dispatch.retry_task` | P43-10 | Implemented (Wave 111) |
+| `GET /tasks/<pod>/<id>/diff` | `dispatch.task_diff` over `edges/adapters/system.py` | P43-10 | Implemented (Wave 111) |
 | `GET /pods` | `dispatch.dispatchable_pods` | P43-6 | Implemented (Wave 110) |
 | `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Implemented (Wave 110) |
 | `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Implemented (Wave 110) |
@@ -99,7 +99,10 @@ call the same core functions (P43-10); `docket start` gains `--bind` (P43-11).
 
 Body optional: `{"reason"?: string}`. Cancels a `running` task (kills the hop's process group
 through `runs.cancel_run`, as `docket task cancel` does) or a parked one
-(`cancel_parked_task`). Audited with channel `http`.
+(`cancel_parked_task`). Both halves are `dispatch.cancel_task`. Audited `task.cancel` with channel
+`http` and the reason. `404` for an unknown pod or task; `409` when nothing is in flight to cancel
+(a terminal task). The answer's `status` is `cancelled` when a run was stopped or a parked task
+cancelled, else the task's own status after a stale claim was settled (`failed`).
 
 ### `POST /tasks/<pod>/<id>/retry`
 
@@ -183,7 +186,9 @@ The same body with an `idempotencyKey` already in the queue (`200`):
 `patch` is `git diff <baseCommit>..<branch>` run in the codebase repository (the branch outlives
 the worktree); `untracked` is `git status --porcelain` of the worktree while it exists and `[]`
 with `"worktreePresent": false` afterwards. A task that ran in place (no worktree) answers `409`
-with `"reason": "task ran in place"`.
+with `"reason": "task ran in place"`. `patch` is capped at 500000 characters
+(`system.DIFF_MAX_CHARS`); a longer one is cut and ends with a `[diff truncated ...]` line. A task
+whose branch no longer exists answers `404` with a sentence.
 
 ### Trace events
 
@@ -298,6 +303,11 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.3.0 (2026-10-17)
+
+- `POST /tasks/<pod>/<id>/cancel`, `POST .../retry` and `GET .../diff` implemented (P43-10).
+  `docket task diff` prints the same `patch` (`--json` the whole object).
 
 ### Version 5.2.0 (2026-10-17)
 

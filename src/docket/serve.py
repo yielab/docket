@@ -1073,6 +1073,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error("Unauthorized", 401)
                 return
             self._send_json_error("Missing project", 400)
+        elif path.startswith("/tasks/") and path.endswith("/diff"):
+            self._send_task_diff(path[len("/tasks/") : -len("/diff")])
         elif path.startswith("/tasks/") and path.endswith("/evidence"):
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)
@@ -1297,6 +1299,16 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if rest.endswith("/pregrants"):
             self._handle_post_task_pregrant(rest[: -len("/pregrants")])
             return
+        if rest.endswith("/cancel") or rest.endswith("/retry"):
+            suffix = "/cancel" if rest.endswith("/cancel") else "/retry"
+            project, _, task_id = rest[: -len(suffix)].partition("/")
+            if self._reject_bad_project_id(project):
+                return
+            if suffix == "/cancel":
+                self._handle_post_task_cancel(project, task_id)
+            else:
+                self._handle_post_task_retry(project, task_id)
+            return
         project = rest
         if not project:
             self._send_json_error("Missing project", 400)
@@ -1388,6 +1400,73 @@ class _DocketHandler(BaseHTTPRequestHandler):
         self._send(
             json.dumps(task_resp).encode(), "application/json", status=201 if created else 200
         )
+
+    def _send_task_diff(self, rest: str) -> None:
+        """`GET /tasks/<pod>/<id>/diff` (operator-api.spec.md "Task diff")."""
+        if not self._check_auth():
+            self._send_json_error("Unauthorized", 401)
+            return
+        project, _, task_id = rest.partition("/")
+        if self._reject_bad_project_id(project):
+            return
+        from docket.core import dispatch as _dispatch
+
+        try:
+            doc = _dispatch.task_diff(project, task_id)
+        except _dispatch.TaskNotFoundError as exc:
+            self._send_json_error(str(exc), 404)
+            return
+        except _dispatch.DispatchError as exc:
+            self._send_json({"ok": False, "error": str(exc), "reason": str(exc)}, 409)
+            return
+        self._send_json(doc)
+
+    def _handle_post_task_cancel(self, project: str, task_id: str) -> None:
+        """`POST /tasks/<pod>/<id>/cancel`; body optional `{"reason"?, "actor"?}`."""
+        raw = self._read_body()
+        if raw is None:
+            return
+        try:
+            body: Any = json.loads(raw)
+        except (json.JSONDecodeError, RecursionError):
+            self._send_json_error("Invalid JSON body", 400)
+            return
+        if not isinstance(body, dict):
+            self._send_json_error("Request body must be a JSON object", 400)
+            return
+        reason, actor = body.get("reason"), body.get("actor")
+        from docket.core import dispatch as _dispatch
+
+        try:
+            outcome = _dispatch.cancel_task(
+                project,
+                task_id,
+                channel="http",
+                actor=actor if isinstance(actor, str) and actor else "http",
+                reason=reason if isinstance(reason, str) else "",
+            )
+        except _dispatch.TaskNotFoundError as exc:
+            self._send_json_error(str(exc), 404)
+            return
+        if not outcome.cancelled:
+            self._send_json_error(f"task {task_id} is {outcome.status}; nothing to cancel", 409)
+            return
+        self._send_json({"ok": True, "task": task_id, "status": outcome.status})
+
+    def _handle_post_task_retry(self, project: str, task_id: str) -> None:
+        """`POST /tasks/<pod>/<id>/retry`: a `blocked` or `failed` task flips to `pending`."""
+        from docket.core import dispatch as _dispatch
+
+        task = next((t for t in _dispatch.read_tasks(project) if t.get("id") == task_id), None)
+        if task is None:
+            self._send_json_error(f"task {task_id!r} not found in pod {project!r}", 404)
+            return
+        if not _dispatch.retry_task(project, task_id):
+            self._send_json_error(
+                f"task {task_id} is {task.get('status')}; only failed or blocked tasks retry", 409
+            )
+            return
+        self._send_json({"ok": True, "task": task_id, "status": "pending"})
 
     def _handle_post_task_answer(self, task_id: str) -> None:
         """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket task answer`.

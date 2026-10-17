@@ -396,21 +396,25 @@ def cmd_show(
 def cmd_diff(
     ref: str = typer.Argument(..., help="Task id, short id, unique prefix or run id"),
     pod: str | None = pod_option(),
+    json_out: bool = typer.Option(False, "--json", help="Print the whole diff object as JSON"),
 ) -> None:
-    """Print what the task changed in its worktree, against the commit it started from.
+    """Print what the task's branch changed, against the commit it started from.
+
+    Works after the worktree is removed; --json prints the branch, commits, patch and any
+    untracked files.
 
     Example: docket task diff task-04ff
     """
     found = _resolve(pod, ref)
-    wt = _worktree(found.project, _task_record(found))
-    if wt is None:
-        ui.error(f"Task {short_id(found.task_id)} has no worktree", "It ran in place")
-        raise typer.Exit(1)
-    diff = _sys.git_diff(wt["path"], wt["baseCommit"])
-    if diff is None:
-        ui.error(f"Could not diff {wt['path']}", f"Run {wt['diff']} yourself")
-        raise typer.Exit(1)
-    sys.stdout.write(diff)
+    try:
+        doc = _dispatch.task_diff(found.project, found.task_id)
+    except _dispatch.DispatchError as exc:
+        ui.error(str(exc), f"Task {short_id(found.task_id)} has no worktree branch to diff")
+        raise typer.Exit(1) from exc
+    if json_out:
+        _contract.emit_json(doc)
+    else:
+        sys.stdout.write(str(doc["patch"]))
 
 
 def _event_line(r: dict[str, Any]) -> str:
@@ -540,7 +544,6 @@ _TYPE_COERCERS: dict[str, Any] = {
     "number": float,
     "boolean": lambda v: v.strip().lower() in ("1", "true", "yes", "y"),
 }
-_LIVE_RUN_STATES = ("queued", "running")
 
 
 def _actor() -> str:
@@ -834,32 +837,6 @@ def _task_retry(
     _resume_hint(found.project)
 
 
-def _live_runs(found: TaskRef, status: object) -> list[str]:
-    """Ids of the pod's queued or running runs that carry the task: one that lists it, or an
-    in-flight one (it names its tasks only when it finishes) while the task is running."""
-    ids: list[str] = []
-    for record in _runs.list_runs(found.project):
-        if record.get("state") not in _LIVE_RUN_STATES:
-            continue
-        carried = [str(t) for t in record.get("taskIds") or []]
-        if found.task_id in carried or (not carried and status == "running"):
-            ids.append(str(record["id"]))
-    return ids
-
-
-def _cancel_live_runs(found: TaskRef, status: object) -> int:
-    """Request cancellation of every live run of the task; return how many took."""
-    cancelled = 0
-    for run_id in _live_runs(found, status):
-        outcome = _runs.cancel_run(run_id)
-        if outcome.ok:
-            ui.success(outcome.message)
-            cancelled += 1
-        else:
-            ui.warn(outcome.message)
-    return cancelled
-
-
 @task_app.command("cancel")
 def _task_cancel(
     ref: str = typer.Argument(..., help="Task id, short id or run id"),
@@ -875,20 +852,23 @@ def _task_cancel(
     Example: docket task cancel task-04ff
     """
     found = _resolve(pod, ref)
-    cancelled = _cancel_live_runs(found, _task_record(found).get("status"))
-    parked = _dispatch.cancel_parked_task(found.project, found.task_id, channel="cli")
-    if parked:
-        ui.success(f"Cancelled task {short_id(found.task_id)}; it was {parked}")
-        cancelled += 1
-    reclaimed = False
-    if _task_record(found).get("status") == "running":
-        _dispatch.reclaim_stale_running(found.project)
-        reclaimed = _task_record(found).get("status") != "running"
-        if reclaimed:
-            ui.success(f"Settled the stale claim on task {short_id(found.task_id)}")
-    if not cancelled and not reclaimed:
-        status = _task_record(found).get("status", "unknown")
-        ui.error(f"Task {short_id(found.task_id)} is {status}", "Nothing is in flight to cancel")
+    try:
+        outcome = _dispatch.cancel_task(found.project, found.task_id, channel="cli")
+    except _dispatch.DispatchError as exc:
+        ui.error(str(exc), "Run docket task list to see the ids")
+        raise typer.Exit(1) from exc
+    for line in outcome.messages:
+        ui.success(line)
+    for line in outcome.warnings:
+        ui.warn(line)
+    if outcome.parked_from:
+        ui.success(f"Cancelled task {short_id(found.task_id)}; it was {outcome.parked_from}")
+    if outcome.reclaimed:
+        ui.success(f"Settled the stale claim on task {short_id(found.task_id)}")
+    if not outcome.cancelled:
+        ui.error(
+            f"Task {short_id(found.task_id)} is {outcome.status}", "Nothing is in flight to cancel"
+        )
         raise typer.Exit(1)
-    if reclaimed:
+    if outcome.reclaimed:
         _contract.next_step(f"docket task retry {short_id(found.task_id)}")
