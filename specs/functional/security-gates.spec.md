@@ -1,14 +1,14 @@
 # Security Gates Specification
 
-**Version**: 0.56.0
+**Version**: 0.57.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
 MCP, and Telegram producers, all answering identically; workspace isolation is opt-in (`docket setup sandbox
 on`), and fails closed when on without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
 `ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
-in-turn tool-call gate section below, now with two producers (harness mode and, since ROADMAP
-P26-5, a pod's own `approvalMode` setting). There is no approval-routing posture flag: it and
+in-turn tool-call gate section below, whose one producer is a pod's own `approvalMode` setting
+(ROADMAP P26-5). There is no approval-routing posture flag: it and
 every command that wrote or displayed it are deleted -- see Enablement requirement 2. Cancellation reaches
 an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers. A pod may
 also extend the curated allowlist for its own turns only, via `PodSettings.allowCommands` and
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -701,7 +701,7 @@ tool call to take.**
    `project=ctx.project`. `edges/adapters/docket_runtime.py::run_turn` **MUST** resolve `project`
    as `trace_project or core.pod.pod_of(agent_id) or agent_id`: a dispatch hop's own
    `trace_project` still wins, a standalone pod-member turn now resolves to its pod (so it still
-   sees that pod's own policies, not just the global set), and a non-pod agent (the harness) falls back to `agent_id` exactly as before.
+   sees that pod's own policies, not just the global set), and a non-pod agent falls back to `agent_id` exactly as before.
 5. An `ask` verdict **MUST** block the call synchronously on the real approval store rather than
    merely reporting the requirement: `dispatch_tool` calls `core.approval.approval_create` (falling
    back to `"operator"`/`"tool"` when `project`/`role` are unset) and then
@@ -763,7 +763,7 @@ tool call to take.**
     winner if it committed first, but cancellation after a granted wait still prevents the handler.
     Cancellation is not an approval timeout and **MUST NOT** fabricate a second terminal decision,
     audit event, or trace event.
-11. **Non-interactive approval mode (W30-C2, `docs/adr/0001-harness-mode.md` decision 11).**
+11. **Non-interactive approval mode (W30-C2).**
     `ToolContext` carries `approval_mode: Literal["wait", "refuse"] = "wait"`. Under `"wait"`,
     behavior is byte-identical to every requirement above — record creation, the synchronous wait,
     and timeout semantics are unchanged. Under `"refuse"`, an `ask` verdict **MUST** still be
@@ -775,17 +775,13 @@ tool call to take.**
     `"refuse"`); it stays `""` for an `allow` decision and for a structural refusal that never
     reached a verdict (`invalid_call` from an unknown tool, undecodable arguments, or missing
     required arguments). This mode is fixed and non-interactive by design — it answers "can this
-    caller wait for a human," not "let a human answer from somewhere else" — see the ADR decision
-    for why that is deliberately a separate, unbuilt feature.
-    - **Two producers set `DOCKET_APPROVAL_MODE=refuse` on `RuntimeDriver.run_turn`'s
-      `env`** (`core.runtime_driver.DOCKET_APPROVAL_MODE`), the internal coordinate
-      `DocketDriver` maps onto this field: `cli/_harness.py` (one non-interactive turn with
-      no caller-supplied posture), and, since ROADMAP P26-5, a pod's own
-      `approvalMode: "refuse"` setting (`core.pod.PodSettings`, threaded in by
-      `core/dispatch.py::_compose_hop` for every hop of that pod — see
-      `pod-dispatch.spec.md`, "Unattended approval posture"). Both reach the exact same
-      `ToolContext.approval_mode`/`dispatch_tool` behavior this requirement describes;
-      neither is a second implementation of it.
+    caller wait for a human," not "let a human answer from somewhere else".
+    - **A pod's own `approvalMode: "refuse"` setting is the one producer.** It sets
+      `DOCKET_APPROVAL_MODE=refuse` on `RuntimeDriver.run_turn`'s `env`
+      (`core.runtime_driver.DOCKET_APPROVAL_MODE`), the internal coordinate `DocketDriver` maps
+      onto this field (`core.pod.PodSettings`, threaded in by `core/dispatch.py::_compose_hop`
+      for every hop of that pod — see `pod-dispatch.spec.md`, "Unattended approval posture").
+      An unset or unrecognised value is `wait`.
 
 12. **Cancellation reaches an in-flight `bash` command (W30-C1, D-35 decision 9 amends D-30 for
     this handler only).** The `bash` tool's `handler=` registration in
@@ -1219,44 +1215,16 @@ without asking again.
    `stop_reason == "approval_parked"`, rendered by `approval_parked_error` in the same key=value
    shape `approval_unavailable_error` uses, plus `approval_token`. See agent-loop.spec.md, "The
    approval_parked stop".
-8. **Harness mode is unaffected, except under `--answers stdin`.** `docket exec` sets
-   `DOCKET_APPROVAL_MODE=refuse` unless the caller passes `--answers stdin` (Contract 1.1, P35-5),
-   which sets `wait` for that run; see "The harness answer channel" below. `approval_parked`
-   cannot occur on the default path, and `core/harness.py`'s wire contract is untouched by this
-   section.
 
-### The harness answer channel (implemented, ROADMAP Phase 35 P35-5)
+### Approval tokens and approval packs
 
-A non-interactive caller can answer a paused approval over stdin (`docket exec
---answers stdin`, `specs/api/harness-mode.spec.md` Section 5). This section states what the
-channel may do to an approval. Where it differs from item 8 of "Parked calls and single-use
-pre-grants", this section governs for `--answers stdin` only.
-
-1. **Wait, not refuse.** Under `--answers stdin` the run's `DOCKET_APPROVAL_MODE` is `wait`: an
-   in-turn ask calls `core.approval.wait_for_approval` and blocks until a decision or its
-   deadline. Without the flag, harness mode is `refuse` as before.
-2. **Only the two terminal decisions.** `accept` calls `approval_grant(token, channel="harness")`;
-   `decline` and `cancel` call `approval_deny(token, channel="harness")`. No other action has any
-   effect on an approval.
-3. **Tokens are validated before use.** An answer's `approvalToken` must match the minted form
+1. **Tokens are validated before use.** An approval token must match the minted form
    `apr-<uuid4>`. A token of any other shape is refused, so no path under the approvals directory
-   is ever built from caller text. The same check lives in `core/approval.py::_approval_path`
+   is ever built from caller text. The check lives in `core/approval.py::_approval_path`
    (`APPROVAL_TOKEN_RE`), the one place a token becomes a filename, so the HTTP route, Telegram,
    MCP and the CLI are covered without each validating on its own: a malformed token is
    `ApprovalError("Approval not found")`, never a path.
-4. **Content is screened as input.** A `content` value is serialised and evaluated with
-   `policy_eval_detail("lead", "pre_input", text, trusted=False)`, the same evaluation `/delegate`
-   applies. A `block` or `require_approval` hit leaves the approval **pending**; the decision is
-   not applied, and the stderr line names the policy id, never the content.
-5. **Fail closed.** A line that does not validate, names another run, carries a `questionId`, or
-   resolves an approval that is already decided is ignored with one stderr line. The approval
-   stays pending until its deadline, and an unanswered approval is denied.
-6. **Every resolution is audited with its channel.** The audit entry names `channel=harness` (the
-   existing `approval.grant`/`approval.deny` entries carry the channel; no new event type).
-7. **Credential values never appear in a string.** Neither the stderr diagnostics nor the trace
-   carry a line's text. `approval_requested` carries the call's `tool` and `callId` only, so a
-   caller learns which call it is answering without the call's arguments.
-8. **Approval packs (P36-6, ADR 0018 decision 3).** An approval made for a gated tool call (wait
+2. **Approval packs (P36-6, ADR 0018 decision 3).** An approval made for a gated tool call (wait
    and park postures) carries a pack on its record and on `approval_requested`, as additive
    fields: `rationale` and `options`.
    - `rationale` is the assistant text of the message that made the call
@@ -1267,22 +1235,12 @@ pre-grants", this section governs for `--answers stdin` only.
      there is no text. Approvals created outside a tool call carry neither key.
    - `options` is exactly three operator-v1.1 `Option`s, built through the model, in order:
      `approve_once`, `approve_task`, `deny`.
-   - `approve_task`: a harness answer with `content.optionId = "approve_task"` records the option
-     on the pending record (`approval_set_option`) before the grant. When the waiting call sees a
-     granted record with that option, it creates a pre-grant for that exact call
-     (`create_pregrant`, channel `harness`, tool and canonical argument digest) and adds it to
+   - `approve_task`: a grant that chose `approve_task` records the option on the pending record
+     (`approval_set_option`) before the grant. When the waiting call sees a granted record with
+     that option, it creates a pre-grant for that exact call
+     (`create_pregrant`, channel `cli`, tool and canonical argument digest) and adds it to
      `ToolContext.pregrants`, so one identical later call in the same turn context runs without a
      new approval. It is single-use.
-   - Harness contract 1.0 omits `rationale`, `options` and `rationaleBlocked` from the
-     `approval_requested` event it relays; its stream is byte-identical to before.
-9. **End of stdin closes the channel.** When the reader reaches end of file, no answer can
-   arrive again: it calls `core.approval.close_answer_stream()`. `wait_for_approval` then
-   denies the token it is blocked on (`channel=harness`, reason `answer stream closed`) and
-   returns `unanswerable`, which `core/tools.py` reports as `approval_unavailable` (terminal,
-   agent-loop requirement 70); a later `ask` under mode `wait` is refused on the same branch
-   as mode `refuse`, with no record. The flag is process-wide and cleared when the reader
-   exits; no other producer (CLI, HTTP, MCP, Telegram) ever sets it, so a pod dispatch waits
-   exactly as before. harness-mode spec Section 5 item 10 states the caller's view.
 
 ### Credentials in task processes (implemented, ADR 0020 §8)
 
@@ -1296,7 +1254,7 @@ pre-grants", this section governs for `--answers stdin` only.
 4. `edges/adapters/system.py::make_non_dumpable()` calls `prctl(PR_SET_DUMPABLE, 0)` through
    `ctypes` on Linux, so a same-uid process cannot read this process's `/proc/<pid>/environ` or
    `mem` (`EACCES`). It is a no-op off Linux and on any failure, never raises, and the flag resets
-   across `execve`, so children stay debuggable. `docket exec`, `docket start` (before the
+   across `execve`, so children stay debuggable. `docket start` (before the
    `--mcp` branch) and `DocketDriver.run_turn` call it before any task process is spawned;
    `core/` never does. Hiding the environment from root is a non-goal.
 
@@ -1842,6 +1800,15 @@ $ git clone https://anywhere.example/repo.git
 
 ## Changelog
 
+### Version 0.57.0 (2026-10-17)
+
+- The `exec` command and the harness are removed. The in-turn gate has one producer of `refuse`, a
+  pod's `approvalMode`. The harness answer channel is gone with the stdin reader: the process-wide
+  answer-stream flag, `ApprovalWaitResult.unanswerable` and the `harness` entry of
+  `APPROVAL_CHANNELS` are deleted, so `wait_for_approval` ends only on a decision, cancellation or
+  its deadline. Its token and approval-pack items remain under "Approval tokens and approval
+  packs"; an `approve_task` pre-grant minted in-turn is tagged `cli`.
+
 ### Version 0.56.0 (2026-10-14)
 - New "Task restrictions": a task's `deniedTools`, `network` and block-only `policies` narrow its
   hops (union of denied sets, network `none` if any layer says so, task policies evaluated in
@@ -2094,7 +2061,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
   approval record instead of blocking; `core.approval.create_pregrant`/`consume_pregrant`
   give a human's grant a single-use, digest-matched pass through the chokepoint on a later
   re-entered turn; the expiry sweep resolves both a parked call and an unconsumed pre-grant
-  fail-closed; harness mode is structurally unaffected (always `refuse`).
+  fail-closed; the harness run was structurally unaffected (always `refuse`).
 
 ### Version 0.27.0 (2026-09-26)
 

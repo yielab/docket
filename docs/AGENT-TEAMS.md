@@ -252,9 +252,8 @@ worktree until you merge it. The capture at the top of this guide is one real ru
 **What starts a run.** Nothing runs on its own. The same pipeline runs from `docket run`, a
 schedule (`@every 30m`, cron), an authenticated `POST /dispatch/<project>`, the MCP `dispatch`
 tool, or `docket start --dispatch`. `docket pod set approvalMode refuse` fails an unattended pod
-fast instead of parking it. For an external orchestrator, `docket exec` runs one agent turn, or
-one `--recipe` task under `--contract 1.1`, with exit codes 0 / 1 / 2, stdin answers, written
-files and evidence (see [Architecture](DOCKET.md#docket-exec-one-agent-one-turn-for-an-external-caller)).
+fast instead of parking it. For an external orchestrator, the HTTP routes enqueue an addressable
+task and follow it (see [Architecture](DOCKET.md#one-door-for-a-program)).
 
 **A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step, a
 `requireApprovalRoles` gate, or a tool call an Implementer's own turn wants to `ask` about all

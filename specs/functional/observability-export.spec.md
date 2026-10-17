@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.12.2
+**Version**: 1.12.3
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `pod.yaml`'s
@@ -16,7 +16,7 @@ document, the built-in + global catalog, pure activation classification, and
 shipped wire encoding and transport; `edges/adapters/exporters/__init__.py` builds a `SpanSink`
 from a resolved `ExporterSpec` (`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts
 the pipeline lazily and flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -536,9 +536,8 @@ the end of each of them. These requirements keep that session one complete trace
      with its original `start_ts`, attributes and events: both wrap the turn that flushes. A session's root **MUST** be sent exactly once: when a `session_end` record
      closes it, or when `Pipeline.close` closes every span still open (`flush_open`). Langfuse
      keeps a trace's Input and Output from the first root observation it receives and ignores
-     later copies, so an early copy would freeze the trace on the first hop's answer. Both
-     live `run_turn` callers (`core/dispatch.py` and `docket exec`) write
-     `session_end`; a library caller that never does gets its root at process exit.
+     later copies, so an early copy would freeze the trace on the first hop's answer. The
+     live `run_turn` caller (`core/dispatch.py`) writes `session_end`; a library caller that never does gets its root at process exit.
 107. The built-in `langfuse` document **MUST** alias `docket.session.input` to
      `langfuse.observation.input` and `docket.session.output` to `langfuse.observation.output`,
      so Langfuse derives the trace's Input and Output from the root observation.
@@ -1031,7 +1030,7 @@ instead. The fixture and its golden are unchanged.
 
 ### Privacy levels -- live, 2026-09-28
 
-One real `docket exec` turn per level against the local llama.cpp endpoint, each in a
+One real single-agent turn per level against the local llama.cpp endpoint, each in a
 fresh `DOCKET_HOME` with `otel-collector` (local container, `debug` exporter, `detailed`) and
 `langfuse` (the operator's project) both enabled at that level by `docket setup export enable
 <name> --privacy <level> --yes`. The task carried a unique `CANARY-TASK-<level>-<hex>` and the
@@ -1077,8 +1076,8 @@ privacy leak:
 - At `full`, Langfuse showed every generation's and tool's Input and Output, but the trace's
   own Input and Output stayed empty. Langfuse derives them from the root observation, and
   `docket.session` carried no content at any level. Fixed by requirements 104, 105 and 107.
-- A `docket exec` turn exports no `gen_ai.system_instructions` even at `full`. That is
-  correct, not a gap: a harness workspace composes no system prompt (no `prompt_composed`
+- A turn outside a pod exports no `gen_ai.system_instructions` even at `full`. That is
+  correct, not a gap: such a workspace composes no system prompt (no `prompt_composed`
   record), so there are no instructions to send.
 
 A real four-hop dispatch into the same Langfuse project at `conversation`, on the 1.10.0 code,
@@ -1102,6 +1101,10 @@ The pod's tasks then parked on `bash` calls the curated allowlist refuses (`pyth
 stayed clean.
 
 ## Changelog
+
+### Version 1.12.3 (2026-10-17)
+
+- Requirement 106 names `core/dispatch.py` as the one live `run_turn` caller; the recorded live runs no longer name the removed `exec` command.
 
 ### Version 1.12.2 (2026-10-08)
 
