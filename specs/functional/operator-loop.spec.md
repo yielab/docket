@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.8.0
+**Version**: 1.8.1
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-17
 
@@ -634,24 +634,18 @@ clarification or decision to its operator.
 2. **Budget.** The pod setting `maxConsultationsPerTask` (integer `>= 0`, default 3; 0 disables)
    reaches the turn as `ToolContext.max_consultations`: the driver pops the internal
    `DOCKET_MAX_CONSULTATIONS` env key, else reads the agent's pod setting. Counting is per
-   `ToolContext`, i.e. per turn; in harness single-turn mode that is per task. In pod dispatch
+   `ToolContext`, i.e. per turn. In pod dispatch
    the count is task-wide (item 5). A call past the cap is an error result "consultation budget exhausted; decide yourself" with no
    `question_asked` event; an invalid call does not spend budget.
-3. **Wait (`approvalMode` `wait` with an answer reader).** The call traces `question_asked`
-   (`{questionId, kind, mode, question}`; telemetry exports only `questionId`, `kind`, `mode`)
-   and blocks until `core.consult.submit` delivers an answer, polling cancellation, for at most
-   `TOOL_APPROVAL_TIMEOUT` (`--answer-timeout` under the harness). The answer is validated with
-   `validate_answer_v11` against the question; the tool result is the JSON `{action, optionId,
-   content}`. No answer in time returns "no answer; decide yourself". The only answer reader is
-   the harness stdin reader (harness-mode spec Section 5 item 9); with none open, the call
-   returns the same "no answer" result at once without an event.
+3. **Wait (`approvalMode` `wait`, outside pod dispatch).** Nobody can answer a turn that is
+   not a dispatch hop, so the call returns "no answer; decide yourself" at once, without an
+   event.
 4. **Refuse.** The call traces `question_asked` and ends the turn with the
-   `approval_unavailable` stop an unanswerable approval uses, so a harness run is `blocked` and
-   its 1.1 result carries the `question`. `park` outside pod dispatch (no `consult_park`) is
+   `approval_unavailable` stop an unanswerable approval uses. `park` outside pod dispatch (no `consult_park`) is
    treated as `refuse`; under pod dispatch `approvalMode: refuse` also keeps this behaviour.
 5. **Park and re-entry (pod dispatch, P36-8).** A turn run for a dispatch hop (the driver is
    given the task id) sets `ToolContext.consult_park` unless its approval mode is `refuse`
-   (`wait` included: a pod hop has no stdin reader). A consult from any role then traces `question_asked`, ends the hop
+   (`wait` included: a pod hop has nobody waiting in-turn). A consult from any role then traces `question_asked`, ends the hop
    with the `approval_parked` stop and the hop is persisted `parked`. The stop's token is
    `consult:<question id>`. `consult.park_token` persists the `QuestionV11` through
    `edges/store.py` (`config.CONSULT_PARKED_DIR/<id>.json`, 0600) and `consult.parked_question`
@@ -659,10 +653,9 @@ clarification or decision to its operator.
    process still parks correctly, and the token never carries question text, so no stop error,
    hop record or trace field holds it past redaction. A `consult:` token whose question
    cannot be read fails the task with `consult_question_missing`; it never waits as an
-   approval. A question's `taskId` is `ToolContext.task_id` (the dispatch task id; the harness
-   run token), falling back to the session key only when empty. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
+   approval. A question's `taskId` is `ToolContext.task_id` (the dispatch task id), falling back to the session key only when empty. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
    (`taskId` = the real task id, `step` = the hop's step id), so the inbox lists it under
-   `needsYou` and `docket task answer`, HTTP, MCP and recipe-harness answers reach it through
+   `needsYou` and `docket task answer`, HTTP and MCP answers reach it through
    `answer_task` unchanged; `optionId` travels in the answer `content`. `answer_task` validates a
    v1.1 question with `validate_answer_v11` (accept needs a valid `optionId`; a refused answer
    leaves the task `waiting_input`), records `answers[]`, and reopens the task `pending` with a
@@ -803,6 +796,12 @@ Each JSONL line is a JSON object with these fields:
 
 ## Changelog
 
+### Version 1.8.1 (2026-10-17)
+
+- Consult item 3: with the harness stdin reader gone, a `wait`-mode consult outside pod dispatch
+  always returns "no answer; decide yourself" at once; `core.consult.submit`, `answer_reader` and
+  the in-process waiter are deleted. Items 2, 4 and 5 lose their harness clauses.
+
 ### Version 1.8.0 (2026-10-17)
 
 - Wave 110 (P43-9): the corrections ledger has a `since` cursor (Guarantees), read by
@@ -885,7 +884,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
 - **P36-8.** Consult: park and re-entry in pod dispatch, task-wide `maxConsultationsPerTask` count
   (requirement section "Consult", items 4-5).
 - **P36-7.** Consult: the `consult` built-in, `maxConsultationsPerTask`, the `question_asked` trace event
-  and its harness routing (requirement section "Consult").
+  and its routing (requirement section "Consult").
 - **P36-5.** Corrections ledger: deny reasons, REQUEST-CHANGES texts and declined answers are appended
   to a per-pod JSONL ledger under the D-12 exemption, accessible via `docket pod <p>
   corrections [--json]`. Text is redacted and tail-bounded; write failures are logged, never

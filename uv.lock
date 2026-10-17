@@ -267,7 +267,7 @@ wheels = [
 
 [[package]]
 name = "docket"
-version = "0.2.0b5"
+version = "0.2.0b6"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },

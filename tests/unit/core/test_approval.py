@@ -474,53 +474,6 @@ class TestApprovalTokenIsNotAPath:
         assert _approval.approval_get(pending)["state"] == "pending"
 
 
-class TestAnswerStreamClosed:
-    """`close_answer_stream` says nobody will answer again: a wait in progress ends at once,
-    denied, and reports itself unanswerable rather than timed out."""
-
-    def test_the_flag_is_off_by_default_and_restored_by_open(self, approvals_dir: Path) -> None:
-        assert _approval.answer_stream_closed() is False
-        _approval.close_answer_stream()
-        assert _approval.answer_stream_closed() is True
-        _approval.open_answer_stream()
-        assert _approval.answer_stream_closed() is False
-
-    def test_a_wait_in_progress_ends_denied_and_unanswerable(self, approvals_dir: Path) -> None:
-        token = _approval.approval_create("pod", "implementer", "tool call 'bash'", context={})
-        polls = 0
-
-        def _sleep(_seconds: float) -> None:
-            nonlocal polls
-            polls += 1
-            if polls == 2:
-                _approval.close_answer_stream()
-
-        try:
-            outcome = _approval.wait_for_approval(
-                token, timeout=3600, sleep=_sleep, clock=lambda: 0.0
-            )
-        finally:
-            _approval.open_answer_stream()
-        assert outcome.state == "denied"
-        assert outcome.unanswerable is True
-        assert outcome.timed_out is False
-        assert _approval.approval_get(token)["state"] == "denied"
-        assert polls == 2
-
-    def test_a_decision_that_won_first_is_kept(self, approvals_dir: Path) -> None:
-        token = _approval.approval_create("pod", "implementer", "tool call 'bash'", context={})
-        _approval.approval_grant(token, channel="cli")
-        _approval.close_answer_stream()
-        try:
-            outcome = _approval.wait_for_approval(
-                token, timeout=1, sleep=lambda s: None, clock=lambda: 0.0
-            )
-        finally:
-            _approval.open_answer_stream()
-        assert outcome.state == "granted"
-        assert outcome.unanswerable is False
-
-
 class TestExpiryStillFailCloses:
     def test_expired_not_in_pending_list(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

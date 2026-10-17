@@ -13,7 +13,6 @@ import typer
 from docket import ui
 from docket.cli import (
     _agents,
-    _exec,
     _inbox,
     _log,
     _pod,
@@ -22,7 +21,6 @@ from docket.cli import (
     _service,
     _setup,
     _setup_export,
-    _setup_harness,
     _setup_mcp,
     _setup_model,
     _setup_notify,
@@ -77,7 +75,6 @@ app.add_typer(_log.log_app, rich_help_panel=_POD)
 app.add_typer(_setup.setup_app, rich_help_panel=_MACHINE)
 app.command("start", rich_help_panel=_MACHINE)(_service.cmd_start)
 app.command("stop", rich_help_panel=_MACHINE)(_service.cmd_stop)
-app.command("exec", rich_help_panel=_MACHINE)(_exec.cmd_exec)
 _setup.setup_app.add_typer(_setup_model.provider_app)
 _setup.setup_app.add_typer(_setup_model.model_app)
 _setup.setup_app.add_typer(_setup_sandbox.sandbox_app)
@@ -86,7 +83,6 @@ _setup.setup_app.command("shell")(_setup_shell.cmd_shell)
 _setup.setup_app.add_typer(_setup_notify.notify_app)
 _setup.setup_app.add_typer(_setup_export.export_app)
 _setup.setup_app.add_typer(_setup_mcp.mcp_app)
-_setup.setup_app.command("harness")(_setup_harness.cmd_harness)
 _pod.pod_app.command("update")(_pod_config.cmd_update)
 _pod.pod_app.command("export")(_pod_config.cmd_export)
 _pod.pod_app.command("validate")(_pod_config.cmd_validate)

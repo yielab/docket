@@ -50,8 +50,8 @@ FailureKind = Literal[
 # against same-pod Implementer metadata before using it as a tool root.
 PIPELINE_WORKTREE_ENV = "DOCKET_PIPELINE_WORKTREE"
 
-# Internal caller→driver coordinate for a non-interactive invocation (e.g.
-# harness mode) that has nobody to ask for approval. Travels the same route
+# Internal caller→driver coordinate for a turn that has nobody to ask for approval
+# (a pod's `approvalMode`). Travels the same route
 # as PIPELINE_WORKTREE_ENV: set in run_turn's env, popped by DocketDriver
 # before the tool env is built, and mapped onto ToolContext.approval_mode.
 DOCKET_APPROVAL_MODE = "DOCKET_APPROVAL_MODE"
@@ -87,10 +87,6 @@ DOCKET_TASK_POLICIES = "DOCKET_TASK_POLICIES"
 # DocketDriver into ToolContext.max_consultations; unset, the driver reads the pod's
 # `maxConsultationsPerTask` setting (default 3).
 DOCKET_MAX_CONSULTATIONS = "DOCKET_MAX_CONSULTATIONS"
-
-# Same route again: the task id (a harness run token) this turn serves when the caller is not
-# a pod dispatch hop. Popped by DocketDriver into ToolContext.task_id; a hop's own task id wins.
-DOCKET_TASK_ID = "DOCKET_TASK_ID"
 
 
 @dataclass

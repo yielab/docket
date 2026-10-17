@@ -44,7 +44,7 @@ DEFAULT_INTERVAL = 30
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
 # authenticated write/read-registry endpoints (/dispatch, /runs).
 # Pinned by tests/unit/test_serve__read_api.py (TestApiContract).
-SERVE_API_VERSION = "4"
+SERVE_API_VERSION = "5"
 
 # The channels the HTTP transport itself may claim on POST /approvals/<token>.
 # This is narrower than core.approval.APPROVAL_CHANNELS: "cli", "mcp" and

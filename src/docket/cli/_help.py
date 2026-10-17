@@ -21,7 +21,7 @@ MACHINE = "Machine"
 PANELS: dict[str, tuple[str, ...]] = {
     DAILY: ("init", "status", "inbox", "task", "run"),
     POD: ("pod", "log"),
-    MACHINE: ("setup", "start", "stop", "exec"),
+    MACHINE: ("setup", "start", "stop"),
 }
 _ORDER = [name for names in PANELS.values() for name in names]
 

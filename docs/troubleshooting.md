@@ -225,7 +225,7 @@ docket setup export privacy langfuse conversation  # lists the new classes and a
 
 `actions` adds tool arguments and error text; `conversation` adds prompts, replies and tool
 results, and gives the trace itself the task as its Input and the last answer as its Output;
-`full` adds the system prompt, when the turn has one (a `docket exec` workspace composes
+`full` adds the system prompt, when the turn has one (a turn outside a pod composes
 none). The next session shows the content. An earlier one
 cannot: content is captured only while an exporter grants it.
 
@@ -234,7 +234,7 @@ cannot: content is captured only while an exporter grants it.
 the exporters and levels it started with, narrowing included.
 
 **Fix:** restart `docket start` after `docket setup export enable`, `disable` or `privacy`. A
-one-shot `docket run` or `docket exec` picks the change up at once.
+one-shot `docket run` picks the change up at once.
 
 ### Nothing arrives at the destination
 **Cause:** the exporter is disabled, its credential no longer resolves (then it is skipped
@@ -480,60 +480,21 @@ docket pod reset <agent-id>
 
 For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod update`.
 
-## Non-interactive runs (`docket exec`)
+## A task ends `approval_unavailable`
 
-`docket exec` is a machine-facing entry point for an external caller that owns its own workspace
-and `DOCKET_HOME` — not the interactive CLI most of this guide covers. Its failures show up as an
-exit code and a printed `HarnessResult`, not a human-readable message, so read the result object
-rather than trying to interpret the exit code alone.
+**Symptom:** a task fails with `approval_unavailable`, naming a tool, a call id and a policy id,
+and no approval was ever created.
 
-### Exit code 2 — refused before any turn started
+**Cause:** the pod's `approvalMode` is `refuse`, so a gated tool call ends the hop at once
+instead of waiting for a human. A frequent trigger with a small local model is `echo "..." > file`:
+a redirected `echo` asks unless every target is inside the workspace. A redirect into the
+workspace is allowed (it is the `write` tool by another name); `echo` into `/tmp`, `~`, a `$VAR`
+path or after a `cd` still asks, and so does any binary off the allowlist (`uv`, `tox`, `rm`, ...).
+`pytest` and `python` are on it.
 
-**Symptom:** `docket exec` exits `2` and prints exactly one JSON line with
-`"status":"refused"`, and no agent turn ran at all.
-
-**Cause:** `core.harness.preflight` rejected the environment before starting. The common cases:
-`DOCKET_HOME` is unset or resolves to the operator's own default home (`docket exec` refuses to
-touch a real install's approvals/audit log), `DOCKET_LLM_BASE_URL` is unset, `DOCKET_NO_TRACE=1`
-is set (`docket exec` refuses to run unobserved), or `--workspace` is not a real directory. A
-missing `--model` or a missing/duplicated `--task`/`--task-file` is refused the same way, before
-`preflight` even runs.
-
-**Fix:** the caller must supply its own `DOCKET_HOME` (never the operator's `~/.docket`) and a
-`DOCKET_LLM_BASE_URL`, unset `DOCKET_NO_TRACE`, and pass an existing `--workspace` directory. The
-`error` field on the printed result names which condition failed.
-
-### Exit code 1 with `"status":"blocked"` — a tool call needed approval
-
-**Symptom:** the run exits `1`, and the terminal `HarnessResult` carries `"status":"blocked"` with
-a non-null `blocked` object naming a `tool`, `call_id`, `denial_kind` (`approval_unavailable`),
-`policy_id`, and `reason`.
-
-**Cause:** without `--answers stdin`, `docket exec` runs with approvals refused — there is no
-human on the other end of a caller-owned subprocess to approve a gated tool call, so a verdict of
-`ask` ends the run immediately instead of waiting. The result's `stop_reason` is
-`approval_unavailable`. With `--answers stdin` (contract 1.1) the same thing happens once stdin
-reaches end of file: the caller that could have answered is gone, so a waiting approval is denied
-at once and the run ends `blocked` rather than sitting until `--answer-timeout`.
-
-A frequent trigger with a small local model is `echo "..." > file`: a redirected `echo` asks
-unless every target is inside the workspace. A redirect into the workspace is allowed (it is the
-`write` tool by another name); `echo` into `/tmp`, `~`, a `$VAR` path or after a `cd` still asks,
-and so does any binary off the allowlist (`uv`, `tox`, `rm`, ...). `pytest` and `python` are on
-it.
-
-**Fix:** pass `--contract 1.1 --answers stdin` and answer the `approval_requested` event, keep
-stdin open while the run is live, adjust the policy so the task's tool calls don't need approval
-(see [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)), or re-scope the task to avoid the gated action.
-See [ADR 0001](adr/0001-harness-mode.md) for why refusal is the default.
-
-### Distinguishing `failed`/`cancelled` from `blocked`/`refused`
-
-`"status":"failed"` and `"status":"cancelled"` (also exit `1`) mean a turn actually ran — check
-the NDJSON event stream on stdout (and the logs on stderr) for what happened during the
-run. `"status":"blocked"` and `"status":"refused"` both mean **no completed turn produced the
-outcome** — one stopped on a specific denied tool call, the other never started. See
-[`specs/api/harness-mode.spec.md`](../specs/api/harness-mode.spec.md) for the full result shape.
+**Fix:** `docket pod set approvalMode park` (or `wait`) so the call is put to an operator, adjust
+the policy so the task's tool calls don't need approval (see
+[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)), or re-scope the task to avoid the gated action.
 
 ## Getting Help
 

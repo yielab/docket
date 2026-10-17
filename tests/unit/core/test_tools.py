@@ -686,50 +686,6 @@ class TestParkMode:
         assert record["expiresAt"] == "2099-01-01T00:00:00Z"
 
 
-class TestAnswerStreamClosedInWaitMode:
-    """Once the answer stream is closed, a `wait` turn has nobody to ask: an ask verdict is
-    refused like `approval_mode="refuse"`, with no record and no wait."""
-
-    def test_an_ask_after_the_close_is_approval_unavailable_with_no_record(
-        self, ctx: ToolContext
-    ) -> None:
-        core_approval.close_answer_stream()
-        try:
-            res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
-        finally:
-            core_approval.open_answer_stream()
-        assert res.decision == "deny"
-        assert res.denial_kind == "approval_unavailable"
-        assert not res.executed
-        assert not _cfg.APPROVALS_DIR.exists() or list(_cfg.APPROVALS_DIR.glob("*.json")) == []
-
-    def test_a_wait_cut_short_by_the_close_is_approval_unavailable(
-        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 3600, raising=True)
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_POLL_INTERVAL_S", 0.01, raising=True)
-        real_sleep = core_approval._time.sleep
-        polls = 0
-
-        def _sleep(seconds: float) -> None:
-            nonlocal polls
-            polls += 1
-            if polls == 2:
-                core_approval.close_answer_stream()
-            real_sleep(seconds)
-
-        monkeypatch.setattr(core_approval._time, "sleep", _sleep)
-        try:
-            res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
-        finally:
-            core_approval.open_answer_stream()
-        assert res.decision == "deny"
-        assert res.denial_kind == "approval_unavailable"
-        assert "answer stream closed" in res.reason
-        [record_path] = list(_cfg.APPROVALS_DIR.glob("*.json"))
-        assert json.loads(record_path.read_text())["state"] == "denied"
-
-
 class TestPreGrants:
     """A single-use pre-grant (a human already approved this exact call, ahead of
     time) is checked first in the ask branch, regardless of ``approval_mode``."""

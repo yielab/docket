@@ -158,74 +158,17 @@ that would be scope creep, not follow-through. One consequence worth stating pla
 never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` — see
 [Cost Optimization](#cost-optimization) and the [cost limits](README.md#known-limits).
 
-### docket exec: one agent, one turn, for an external caller
+### One door for a program
 
-`docket exec` (decision D-35) is a second, narrower entry point beside `docket run`: it runs **one agent,
-one turn loop, to completion**, in a workspace and `DOCKET_HOME` the *caller* supplies, then exits.
-It is not a pod and not a team — no Lead, no Implementer/Reviewer/Tester rotation — and it
-provisions nothing: the caller has already prepared an isolated checkout at a known revision and
-hands over a `DOCKET_HOME` of its own. It reuses `DocketDriver` unchanged — the same
-[RuntimeDriver port](#the-runtimedriver-port-decision-d-14) above, gaining its second caller ever —
-and the same `core/tools.py` chokepoint, policy hooks, audit and trace: no second execution path.
-
-stdout carries the wire contract only: newline-delimited `HarnessEvent` lines (docket's existing
-`core/trace.py` vocabulary, inside a versioned envelope) followed by exactly one `HarnessResult`
-line; every log goes to stderr. By default approvals are non-interactive
-(`ToolContext.approval_mode = "refuse"`, carried to the driver as the `DOCKET_APPROVAL_MODE` key
-of `run_turn`'s `env` dict -- an internal coordinate, not a variable an operator can export): a
-verdict that would otherwise block the calling thread ends the run immediately with `status:
-blocked` and a `denial_kind` of `approval_unavailable`, naming the tool, call id, policy id and
-reason. Under `--contract 1.1 --answers stdin` the run waits instead, and the caller answers (see
-below). Exit codes are the one
-place this CLI departs from its flat 0/1 convention (`specs/api/cli-interface.spec.md`): `0` the
-result is `ok`; `1` it ended `failed`, `blocked`, or `cancelled`; `2` refused before any turn
-began — for example a missing `DOCKET_LLM_BASE_URL`, a `DOCKET_HOME` that resolves to the
-operator's own default home, or `DOCKET_NO_TRACE=1` (`docket exec` refuses to run unobserved rather
-than run silently).
-
-The contract is versioned (every line carries a `v` field) and published. `--contract 1.0` is the
-default and is byte-identical to the original wire (`v` `1.0.0`). Its JSON
-Schema is generated from the Pydantic models in `core/harness.py` at
-[`docs/contracts/harness-v1/schema.json`](contracts/harness-v1/schema.json) and pinned
-byte-for-byte by a regenerate-and-diff test, with example transcripts at
-`tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,refused}.ndjson`. Full design reasoning
-is in [ADR 0001](adr/0001-harness-mode.md); the wire-level requirements are in
-[`specs/api/harness-mode.spec.md`](../specs/api/harness-mode.spec.md).
-
-**Contract 1.1** (`--contract 1.1`, `v` `1.1.0`, ADR 0017, Phase 35) is opt-in and is the contract an
-external supervisor integrates against. Its schema is
-[`docs/contracts/harness-v1.1/schema.json`](contracts/harness-v1.1/schema.json), and every line of
-its fixtures validates against that committed file. It adds, all under the one `exec` command:
-
-- **Process lifecycle.** A `bash` call emits `process_started` and `process_exited` events
-  (`pgid`, and either `exitCode` or `signal`), so a caller can see a live process group and signal it.
-- **Answers on stdin.** `--answers stdin` with `--answer-timeout S` makes approvals wait. The caller
-  writes one answer line per decision to stdin (`accept` or `decline`, or `cancel`), and a
-  `questionId` line answers a recipe run's question. Stdout stays NDJSON.
-- **Written files.** The result's `files` lists each path the run wrote or edited, plus, in a git
-  workspace, what `git status` reports. Paths are relative to the workspace.
-- **Token file and limits.** `--token-file PATH` writes the run token (mode 0600) before the first
-  model request. `--max-tokens N` bounds the turn's measured tokens, and `--policy FILE`
-  (repeatable) adds validated policies for the run.
-- **Recipe runs.** `--recipe NAME|DIR`, with `--verify CMD` and `--task` or `--task-file`, runs one
-  recipe in place for one task, and the result's `task` block lists its hops. It is mutually
-  exclusive with `--role`, and refuses `--max-tokens` and `--agent-id`. `requireVerify` is set, so an
-  Implementer hop with no verify command fails. A `--recipe` name is one of `docket pod recipes`
-  (for example `tdd`); a pod blueprint name such as `software` is not a recipe and is refused.
-- **Approvals on the result.** `approvals` lists each approval the run requested and its outcome
-  (`accepted`, `declined`, `timed_out` or `unanswered`). A denied approval still ends the run by its
-  turn's own outcome, so a caller reads `approvals`, not only `status`, to tell them apart.
-- **Consultation and approval packs.** `question_asked` events carry an operator-v1.1 question
-  (`kind`, `options`, optional `recommendation`); the caller answers with a `questionId` line
-  carrying `{"optionId": ...}`. `approval_requested` carries a `rationale` and three `options`
-  (`approve_once`, `approve_task`, `deny`); a `content.reason` on the answer is screened and audited.
-  A blocked consultation under the default `refuse` mode puts the question on the result.
-- **Evidence.** A recipe result's `task.evidence` is the evidence-v1 document for the task
-  ([schema](contracts/evidence-v1/schema.json)).
-
-> This is unrelated to [DEVELOPMENT-HARNESS.md](DEVELOPMENT-HARNESS.md), which documents the
-> *contributor*-side context harness — skill routing, hooks, token-efficient validation — for
-> people and agents working on docket's own codebase, not this execution mode.
+A program that plans work (a project manager, a CI job, an operator's script) does not spawn
+docket. It talks to a running `docket start --dispatch` over HTTP: it enqueues an addressable
+task on a pod, follows its hops, cancels, retries and diffs it, reads and applies the pod's
+configuration, and reads the corrections ledger. Those routes call the same `core/` functions the
+CLI uses, behind the same Bearer token, policy hooks and audit entries, and the program negotiates
+the version it needs from `apiVersion` in `GET /status.json`. The contract is
+[`specs/api/operator-api.spec.md`](../specs/api/operator-api.spec.md) and the read shapes are in
+[`specs/data/serve-read-api.spec.md`](../specs/data/serve-read-api.spec.md). `docket task add` and
+`docket run` are the same path for a person at a terminal.
 
 ### Configuration — one owner, one writer
 
@@ -754,9 +697,8 @@ Tester:      ✓ Behavior-only validation
 - [x] Memory distillation (`docket pod reset` distills first by default)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
 - [x] Hash-chained, tamper-evident audit log (`docket log verify`)
-- [x] `docket exec` — a versioned, non-interactive
-  single-agent entry point for an external caller-owned workspace and `DOCKET_HOME` (see
-  [docket exec](#docket-exec-one-agent-one-turn-for-an-external-caller) above)
+- [x] The operator API: addressable tasks and pod routes over HTTP for an external plan of record
+  (see [One door for a program](#one-door-for-a-program) above)
 - [x] The configuration contract: `docket pod show` names each effective value and the
   scope it came from (built-in, global, pod), and `docket setup` names every entry a loader
   skipped; per-pod `roles.json` and `policies/` resolve above the global layer (`--pod`)
@@ -880,7 +822,7 @@ characters, and a claim by the model rather than a fact) and three options: `app
 later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket task approve
 <task-id> --task`, Telegram `/approve <token> task`, the HTTP POST's `option` or the
 MCP `approvals_grant` `option`. `docket task approve|deny <task-id> --reason TEXT`, the HTTP approval POST's
-`reason` and the `exec` answer's `content.reason` record why, with an `actor`, in the audit entry.
+`reason` record why, with an `actor`, in the audit entry.
 The `consult` built-in (kind `read`) asks a typed question with options and an optional
 recommendation. In a pod hop it parks the task `waiting_input` and `answer_task` re-runs the same
 role with the answer in its message, bounded per task by `maxConsultationsPerTask`. The parked
@@ -1083,8 +1025,7 @@ Inspect the boundary or copy the lazy constructors from
 - [Security Model](SECURITY-SIMPLE.md) - Layered, convention-based security
 - [Commands Reference](commands.md) - All commands
 - [Agent Teams (Pods)](AGENT-TEAMS.md) - The canonical team model reference
-- [Decision records](adr/) - One reasoned architectural decision per file, including `docket exec`
-  (ADR 0001)
+- [Decision records](adr/) - One reasoned architectural decision per file
 - [specs/](../specs/) - RFC 2119 functional/API/data specifications; the exact, CI-validated
   behavioral contract for anything summarized in this document
 

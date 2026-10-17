@@ -261,8 +261,8 @@ Under Docker the jail is only as capable as its image, `DOCKET_SANDBOX_IMAGE` (d
   runs. `tests/integration/test_escape_matrix.py` gates every release on Linux and macOS (the
   macOS rows run in CI only).
 - **On Linux, a root holding a `.git` directory is refused.** Landlock cannot keep hooks and config
-  read-only inside a main checkout, so a jailed command there (for example `docket exec` in a
-  plain repository) exits 125 and runs nothing. Use a git worktree, or choose Docker with
+  read-only inside a main checkout, so a jailed command there (for example one rooted at a plain
+  repository) exits 125 and runs nothing. Use a git worktree, or choose Docker with
   `docket setup sandbox backend docker`; seatbelt and Docker run there, with the checkout's refs
   writable (it is your own checkout, and the agent commits on its branch).
 - Stdio MCP servers always start in the same jail.
@@ -336,7 +336,7 @@ docket status                          # Profile: lights-out, all requirements m
   destination shows what it was allowed to receive.
 - **A running `docket start` keeps the level it started with.** Export starts once per process,
   so a change — narrowing included — reaches a long-running `docket start --dispatch` only after it
-  restarts. A one-shot `docket run` or `docket exec` picks it up at once. `DOCKET_NO_EXPORT=1`
+  restarts. A one-shot `docket run` picks it up at once. `DOCKET_NO_EXPORT=1`
   turns export off for one process.
 - **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
   stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24's cut of the OpenTelemetry SDK stands
