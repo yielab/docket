@@ -442,9 +442,21 @@ def render_metrics() -> str:
     return "\n".join(lines)
 
 
-def render_health() -> str:
-    """Render the /health body: ``{"status":"ok"}\\n``."""
-    return '{"status":"ok"}\n'
+def render_health(dispatch_on: bool = False) -> str:
+    """Render the /health body: status, API version and the dispatch block."""
+    with _SWEEP_LOCK:
+        inflight = sorted(_sweep_inflight)
+    body = {
+        "status": "ok",
+        "apiVersion": SERVE_API_VERSION,
+        "dispatch": {
+            "on": dispatch_on,
+            "inflight": inflight,
+            "stopping": _sweep_stop.is_set(),
+            "workers": cfg.DISPATCH_SWEEP_WORKERS,
+        },
+    }
+    return json.dumps(body, separators=(",", ":")) + "\n"
 
 
 def render_status() -> str:
@@ -1025,7 +1037,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         elif path == "/metrics":
             self._send((render_metrics() + "\n").encode("utf-8"), "text/plain; version=0.0.4")
         elif path == "/health":
-            self._send(render_health().encode("utf-8"), "application/json")
+            self._send(render_health(self.dispatch_on).encode("utf-8"), "application/json")
         elif path == "/approvals":
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)
