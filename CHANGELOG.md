@@ -45,10 +45,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shared with the CLI.
 - **`GET /pods/<p>/corrections?since=` (P43-9).** Reads the corrections ledger by cursor; `since`
   is normalised to UTC (a naive timestamp is `400`), `next` is UTC `Z`.
+- **Cancel, retry and diff over HTTP (P43-10).** `POST /tasks/<pod>/<id>/cancel` (optional
+  `reason`), `POST .../retry` and `GET .../diff` (`{task, branch, baseCommit, head, patch,
+  untracked, worktreePresent}`: the branch patch from the codebase, so it survives worktree
+  removal; `409` with `reason` for a task that ran in place). The cancel decision moved to
+  `core.dispatch.cancel_task`; `docket task diff` prints the branch patch and takes `--json`.
+- **A daemon a supervisor can run (P43-11).** The dispatch sweep stops between tasks on the first
+  stop signal and resumes stale claims on every sweep; `POST /tasks/<pod>` starts that pod's
+  sweep when dispatch is on; `docket start --bind <addr>` sets the listen address; `/health`
+  reports `apiVersion` and a `dispatch` block (`on`, `inflight`, `stopping`, `workers`).
 
 ### Changed
 
 - A `POST /tasks/<pod>` that creates a task answers `201` (was `200`).
+- `docket task diff` shows the task branch's commits against its base, not the worktree's
+  uncommitted changes (`_pin_implementer_tree` commits every real run).
 
 ### Fixed
 

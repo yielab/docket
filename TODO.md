@@ -286,7 +286,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-10 — cancel, retry and diff over HTTP
 
-- **Status:** TODO · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-17 (`42464f26`, merged `bb144bd7`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** the live-run cancel lives in `cli/_task.py::_cancel_live_runs`; no HTTP route
   cancels, retries or diffs.
 - **Goal:** `core/dispatch.py::cancel_task(project, task_id, *, channel, actor, reason="")`
@@ -314,7 +314,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ### P43-11 — a daemon a supervisor can run
 
-- **Status:** TODO · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-17 (`c342625a`..`beb500b1`, merged `d693578c`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** measurement 3 (ADR 0027): the first stop signal waited 91 s for a whole sweep;
   the sweep never passes `resume`; `--bind` is not a CLI flag; a posted task waits for the next
   refresh.
