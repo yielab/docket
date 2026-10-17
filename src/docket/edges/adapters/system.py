@@ -1393,6 +1393,56 @@ def git_diff(path: str, base: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
+DIFF_MAX_CHARS = 500_000
+_DIFF_TIMEOUT = 30
+
+
+def git_diff_range(repo_dir: str, base: str, ref: str) -> str | None:
+    """``git diff <base>..<ref>`` in *repo_dir*, cut at ``DIFF_MAX_CHARS`` with a trailing marker
+    line; ``None`` when git is unavailable, *repo_dir* is not a repo or a ref is unknown."""
+    if not git_available():
+        return None
+    try:
+        result = _git_run(repo_dir, ["diff", f"{base}..{ref}"], _DIFF_TIMEOUT)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    patch = result.stdout
+    if len(patch) > DIFF_MAX_CHARS:
+        patch = f"{patch[:DIFF_MAX_CHARS]}\n[diff truncated at {DIFF_MAX_CHARS} characters]\n"
+    return patch
+
+
+def git_untracked(worktree: str) -> list[str]:
+    """Paths git reports as untracked (``??``) in *worktree*, sorted; ``[]`` on a missing binary,
+    non-repo directory or timeout."""
+    if not git_available():
+        return []
+    try:
+        result = _git_run(
+            worktree, ["status", "--porcelain", "--untracked-files=all"], _QUERY_TIMEOUT
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+    if result.returncode != 0:
+        return []
+    return sorted(line[3:] for line in result.stdout.splitlines() if line.startswith("?? "))
+
+
+def git_rev_parse(cwd: str, ref: str) -> str | None:
+    """The commit *ref* names in *cwd*, else ``None`` (no repo, unknown ref, no git)."""
+    if not git_available():
+        return None
+    try:
+        result = _git_run(
+            cwd, ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], _QUERY_TIMEOUT
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    return result.stdout.strip() or None if result.returncode == 0 else None
+
+
 def git_diff_names(cwd: str, base: str, head: str) -> list[str]:
     """Paths changed between `base` and `head` (``git diff --name-only``), sorted; ``[]`` on a
     missing binary, non-repo directory, unknown ref, or timeout."""

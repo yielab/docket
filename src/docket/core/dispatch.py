@@ -111,6 +111,10 @@ class DispatchError(Exception):
     """A pod cannot be dispatched (no pod, no lead, …)."""
 
 
+class TaskNotFoundError(DispatchError):
+    """The pod has no such task, or the thing asked about (a task branch) is gone."""
+
+
 class TaskRestrictionError(DispatchError):
     """An enqueue asked for a restriction that would widen the pod's limits."""
 
@@ -3931,7 +3935,9 @@ def retry_task(project: str, task_id: str) -> bool:
     return found
 
 
-def cancel_parked_task(project: str, task_id: str, *, channel: str, actor: str = "") -> str:
+def cancel_parked_task(
+    project: str, task_id: str, *, channel: str, actor: str = "", reason: str = ""
+) -> str:
     """Cancel a task parked in ``waiting_input`` or ``waiting_approval``: it ends ``cancelled``,
     its question or approval is cleared (a pending approval record is denied) and no hop runs.
     Audited ``task.cancel``. Returns the prior status, or ``""`` when the task is not parked."""
@@ -3970,8 +3976,124 @@ def cancel_parked_task(project: str, task_id: str, *, channel: str, actor: str =
         _cfg.workspace_dir(_pod.member_id(project, "lead")),
         tasks_after if isinstance(tasks_after, list) else [],
     )
-    _audit.audit_log("task.cancel", f"{project}/{task_id}: was={prior} channel={channel}")
+    _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, reason))
     return prior
+
+
+def _cancel_detail(project: str, task_id: str, was: str, channel: str, reason: str) -> str:
+    detail = f"{project}/{task_id}: was={was} channel={channel}"
+    return f"{detail} reason={reason}" if reason else detail
+
+
+_LIVE_RUN_STATES = ("queued", "running")
+
+
+@dataclass(frozen=True)
+class TaskCancelOutcome:
+    """What ``cancel_task`` found and did: the task's status after, the runs it asked to stop,
+    the parked state it cancelled from, whether a stale claim was settled, and the lines to show."""
+
+    status: str
+    cancelled_runs: tuple[str, ...] = ()
+    parked_from: str = ""
+    reclaimed: bool = False
+    messages: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+    @property
+    def cancelled(self) -> bool:
+        """True when something was in flight and is now stopping, cancelled or settled."""
+        return bool(self.cancelled_runs or self.parked_from or self.reclaimed)
+
+
+def _task_record(project: str, task_id: str) -> dict[str, Any] | None:
+    return next((t for t in read_tasks(project) if t.get("id") == task_id), None)
+
+
+def _live_run_ids(project: str, task_id: str, status: object) -> list[str]:
+    """Ids of the pod's queued or running runs that carry the task: one that lists it, or an
+    in-flight one (it names its tasks only when it finishes) while the task is running."""
+    ids: list[str] = []
+    for record in _runs.list_runs(project):
+        if record.get("state") not in _LIVE_RUN_STATES:
+            continue
+        carried = [str(t) for t in record.get("taskIds") or []]
+        if task_id in carried or (not carried and status == "running"):
+            ids.append(str(record["id"]))
+    return ids
+
+
+def cancel_task(
+    project: str, task_id: str, *, channel: str, actor: str = "", reason: str = ""
+) -> TaskCancelOutcome:
+    """Stop whatever holds *task_id*: its live runs, its parked state, or a stale ``running``
+    claim. One ``task.cancel`` audit entry per call that cancelled; raises ``TaskNotFoundError``."""
+    task = _task_record(project, task_id)
+    if task is None:
+        raise TaskNotFoundError(f"task {task_id!r} not found in pod {project!r}")
+    stopped: list[str] = []
+    messages: list[str] = []
+    warnings: list[str] = []
+    for run_id in _live_run_ids(project, task_id, task.get("status")):
+        result = _runs.cancel_run(run_id)
+        if result.ok:
+            stopped.append(run_id)
+            messages.append(result.message)
+        else:
+            warnings.append(result.message)
+    parked = cancel_parked_task(project, task_id, channel=channel, actor=actor, reason=reason)
+    if stopped and not parked:
+        _audit.audit_log(
+            "task.cancel", _cancel_detail(project, task_id, "running", channel, reason)
+        )
+    reclaimed = False
+    current = _task_record(project, task_id) or {}
+    if current.get("status") == "running":
+        reclaim_stale_running(project)
+        current = _task_record(project, task_id) or {}
+        reclaimed = current.get("status") != "running"
+    return TaskCancelOutcome(
+        status="cancelled" if stopped or parked else str(current.get("status", "unknown")),
+        cancelled_runs=tuple(stopped),
+        parked_from=parked,
+        reclaimed=reclaimed,
+        messages=tuple(messages),
+        warnings=tuple(warnings),
+    )
+
+
+def task_diff(project: str, task_id: str) -> dict[str, Any]:
+    """What the task's branch changed against the commit it started from, read from the codebase
+    repository (the branch outlives its worktree). Raises ``TaskNotFoundError`` for an unknown
+    task or a deleted branch and ``DispatchError`` for a task that ran in place."""
+    task = _task_record(project, task_id)
+    if task is None:
+        raise TaskNotFoundError(f"task {task_id!r} not found in pod {project!r}")
+    record = task.get("worktree")
+    branch = str(record.get("branch") or "") if isinstance(record, dict) else ""
+    if not isinstance(record, dict) or not branch:
+        raise DispatchError("task ran in place")
+    codebase = str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
+    base = str(record.get("baseCommit") or "")
+    head = _sys.git_rev_parse(codebase, branch) if codebase else None
+    patch = _sys.git_diff_range(codebase, base, branch) if head and base else None
+    if head is None or patch is None:
+        raise TaskNotFoundError(f"branch {branch!r} of task {task_id!r} no longer exists")
+    wt_dir = str(record.get("dir") or "")
+    present = bool(wt_dir) and not record.get("prunedAt") and Path(wt_dir).is_dir()
+    if present:
+        _sys.trust_worktree(
+            wt_dir, str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
+        )
+    return {
+        "task": task_id,
+        "branch": branch,
+        "baseCommit": base,
+        "head": head,
+        "patch": patch,
+        "untracked": _sys.git_untracked(wt_dir) if present else [],
+        "worktreePresent": present,
+    }
 
 
 def unblock_pod(project: str) -> int:

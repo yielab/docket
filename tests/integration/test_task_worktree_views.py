@@ -59,7 +59,8 @@ def seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return {"id": task["id"], "wt": wt, "base": base}
 
 
-def test_task_diff_prints_the_uncommitted_change_against_the_base(seeded: dict[str, Any]) -> None:
+def test_task_diff_prints_the_branch_change_against_the_base(seeded: dict[str, Any]) -> None:
+    _git(seeded["wt"], "commit", "-qam", "bump")
     result = _runner.invoke(app, ["task", "diff", seeded["id"], "--pod", "demo"])
 
     assert result.exit_code == 0, result.output
@@ -76,6 +77,7 @@ def test_task_diff_reads_the_recorded_repository_not_a_rewritten_git_file(
     assert dirs is not None
     other = tmp_path / "other"
     other.mkdir()
+    _git(wt, "commit", "-qam", "bump")
     _git(other, "init", "-q")
     (other / "calc.py").write_text("planted\n")
     _git(other, "add", ".")
