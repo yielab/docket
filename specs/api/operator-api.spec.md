@@ -1,11 +1,11 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.1.0
+**Version**: 5.2.0
 **Status**: Partially implemented (Phase 43, ADR 0027). Wave 109 shipped the task fields, the task
 routes of P43-1 and the hop events; every other route is planned until the card that owns it
 closes (the route table's Status column). `SERVE_API_VERSION` stays `"4"` until
 Wave 111 closes.
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -57,9 +57,9 @@ validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malfor
 | `POST /tasks/<pod>/<id>/cancel` | `dispatch.cancel_task` (new, moved from `cli/_task.py`) | P43-10 | Planned |
 | `POST /tasks/<pod>/<id>/retry` | `dispatch.retry_task` | P43-10 | Planned |
 | `GET /tasks/<pod>/<id>/diff` | `dispatch.task_diff` (new) over `edges/adapters/system.py` | P43-10 | Planned |
-| `GET /pods` | `dispatch.dispatchable_pods` | P43-6 | Planned |
-| `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Planned |
-| `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Planned |
+| `GET /pods` | `dispatch.dispatchable_pods` | P43-6 | Implemented (Wave 110) |
+| `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Implemented (Wave 110) |
+| `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Implemented (Wave 110) |
 | `POST /pods/<p>/apply` | `pod_apply.plan_apply` / `classify_directory` / `apply` | P43-8 | Planned |
 | `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Planned |
 | `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Planned |
@@ -213,7 +213,9 @@ hop marker and the `tool_result`/`error` closing record stay as they are.
 ### Pod answers
 
 `GET /pods` (`200`): `{"pods": [{"name": "fab-dev", "codebase": "/srv/fabulada", "members": 2,
-"profile": "lights-out", "queue": {"pending": 1, "running": 1}}]}`.
+"profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
+"waitingInput": 0, "failed": 0, "completed": 4}}]}`; `queue` carries the counts `status --json` prints
+under `tasks`.
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`,
 unchanged keys: `members` with `role`, `model`, `modelSource`; `settings`; `pipeline`;
@@ -290,6 +292,12 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.2.0 (2026-10-17)
+
+- `GET /pods`, `GET /pods/<p>` and `POST /pods` with `ensure` implemented (P43-6). The pod report
+  is `core/pod_report.py`, shared with `docket pod show --json`. `repoConfigDir` is
+  `<codebase>/.docket` until the multi-team directory function replaces it.
 
 ### Version 5.1.0 (2026-10-14)
 

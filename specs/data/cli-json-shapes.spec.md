@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.33.0
+**Version**: 1.34.0
 **Status**: Complete
-**Last Updated**: 2026-10-14
+**Last Updated**: 2026-10-17
 
 ## Purpose
 
@@ -460,6 +460,9 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.34.0 (2026-10-17)
+- `docket pod show --json` is built by `core/pod_report.py` (moved from `cli/_pod_show.py`); the shape is unchanged, and `GET /pods/<p>` returns it plus `profile`, `pipelineSource`, `repoConfigDir`.
 
 ### Version 1.33.0 (2026-10-14)
 - The task record keys an addressable enqueue adds (`externalRef` ... `restrictions`), as `GET /tasks/<pod>[/<id>]` returns them (P43-1).
