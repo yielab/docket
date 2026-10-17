@@ -61,7 +61,7 @@ validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malfor
 | `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Implemented (Wave 110) |
 | `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Implemented (Wave 110) |
 | `POST /pods/<p>/apply` | `pod_apply.apply_directory` (plan, `review_decision`, apply) | P43-8 | Implemented (Wave 110) |
-| `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Planned |
+| `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Implemented (Wave 110) |
 | `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Planned |
 
 The CLI keeps symmetry: `docket task add` gains `--external-ref`, `--idempotency-key`,
@@ -128,7 +128,7 @@ Query parameters:
 |---|---|---|
 | `GET /tasks/<pod>` | `externalRef` | exact match |
 | `GET /tasks/<pod>` | `status` | one task status, the enum of `cli-json-shapes.spec.md` |
-| `GET /pods/<p>/corrections` | `since` | ISO timestamp; records with `ts > since`, append order |
+| `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
 
 ## Output
 
@@ -305,6 +305,13 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   `pod_apply.repo_config_dir` (`<codebase>/.docket/teams/<pod>` when it exists, else `<codebase>/.docket`).
 - `POST /pods/<p>/apply` implemented (P43-8): the review rule off a terminal, `reviewCode` and
   `runs` on `409`, `dryRun`, `pod.apply` audited with `channel=http`.
+- `GET /pods/<p>/corrections?since=` reads the corrections
+  ledger (P43-9) in append order, keeping records with `ts > since` (`corrections.read(project,
+  since=)`). `since` is any ISO-8601 timestamp with an offset, normalised to UTC before the
+  comparison; a naive `since` (no offset) is `400`, as is one that does not parse. `next` is
+  the last returned record's `ts` in UTC with a `Z` suffix, else the normalised `since` in
+  UTC `Z`, else `""`. The route answers `404` for a pod with no Lead and `401` without the
+  bearer token.
 
 ### Version 5.1.0 (2026-10-14)
 
