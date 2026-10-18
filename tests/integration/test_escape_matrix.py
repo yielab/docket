@@ -364,7 +364,7 @@ def test_a_worktree_config_cannot_make_host_git_execute_code(
     _run(backend, wt, attack)
     task = task_tree.task
     _dispatch._task_worktree_dir(task)
-    _dispatch._implementer_diff_probe("proj-implementer-1", "implementer", task)
+    _dispatch._hop_diff_probe("proj-implementer-1", "implementer", task)
     assert not ran.exists(), "host git ran a core.fsmonitor the jail wrote into config.worktree"
     (gitdir / "config.worktree").write_text(f"[core]\n\tfsmonitor = {script}\n")
     subprocess.run(["git", "-C", str(wt), "status"], capture_output=True, timeout=30)
@@ -391,7 +391,7 @@ def test_a_rewritten_dot_git_file_never_makes_dispatch_execute_anything(
     if backend == "docker" or backend == "seatbelt":
         assert not rewritten, "the .git pointer file must be read-only in this backend"
     _dispatch._task_worktree_dir(task)
-    _files, _ref, evidence = _dispatch._implementer_diff_probe(
+    _files, _ref, evidence, _diff = _dispatch._hop_diff_probe(
         "proj-implementer-1", "implementer", task
     )
     assert not ran.exists(), "dispatch's host-side git executed what the jail wrote"
@@ -510,7 +510,7 @@ def test_a_rewritten_commondir_never_makes_dispatch_execute_anything(
     _dispatch._task_worktree_dir(task_tree.task)
     _run(backend, wt, attack)
     rewritten = (gitdir / "commondir").read_text().strip() == str(evil)
-    _dispatch._implementer_diff_probe("proj-implementer-1", "implementer", task_tree.task)
+    _dispatch._hop_diff_probe("proj-implementer-1", "implementer", task_tree.task)
     assert not ran.exists(), "dispatch's host-side git followed a commondir the jail rewrote"
     if rewritten:
         subprocess.run(["git", "-C", str(wt), "status"], capture_output=True, timeout=30)
