@@ -46,7 +46,7 @@
 > | --- | --- | --- |
 > | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff — **closed 2026-10-18** | — |
 > | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields — **closed 2026-10-18** | 112 merged |
-> | 114 | P44-7 pod memory store · P44-9 `cache_control` | 113 merged |
+> | 114 | P44-7 pod memory store · P44-9 `cache_control` — **opened 2026-10-18** | 113 merged |
 > | 115 | P44-8 memory operator controls · phase close (bench + paid real run) | 114 merged |
 
 ### P44-1 — a replay bench over the four measured steps
@@ -226,7 +226,7 @@
 
 ### P44-7 — pod memory: store, parse, verify, render
 
-- **Status:** TODO (Wave 114) · **Size:** M · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@wave-114) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0028 point 7 and evidence: MEMORY.md is never filled in a pod task and the
   daily-log pipeline has no writer there.
 - **Goal:** `core/pod_memory.py` over `edges/store.py` (`memory.json` per pod): typed entries
@@ -248,7 +248,7 @@
 
 ### P44-9 — `cache_control` for Anthropic models
 
-- **Status:** TODO (Wave 114) · **Size:** S · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@wave-114) · **Size:** S · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: 0 % cache over 11 calls for the Anthropic critic.
 - **Goal:** for a provider/model the catalog marks as Anthropic, the request marks
   `cache_control` at the end of the stable prefix (system) and on the last message; other

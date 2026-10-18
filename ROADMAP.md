@@ -11,7 +11,7 @@ phase records, wave narratives and this file's older sections are archived verba
 
 **Last updated: 2026-10-18.** Phase 44 (context in layers and a budget that counts new tokens,
 D-64, [ADR 0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md)) is
-**active**: Waves 112-113 closed 2026-10-18, Wave 114 next. Every phase 0–43 is complete (Phase 43 closed 2026-10-17, D-63, ADR 0027;
+**active**: Waves 112-113 closed and Wave 114 opened 2026-10-18. Every phase 0–43 is complete (Phase 43 closed 2026-10-17, D-63, ADR 0027;
 twelve cards over Waves 109-111, measured first; board archived). No item is
 carried: Wave 108 (no phase, closed 2026-10-13) closed the last carried items of every phase — a
 parked task can be cancelled, host-side git trusts only the recorded git dirs, every jail narrows
