@@ -42,12 +42,34 @@
 > real run at the phase close is the measure. Integration moved the request measurement into the
 > adapter (P44-10 had mirrored the wire encoders in core) and dropped a stale checkout note.
 >
+> **Real rerun 2026-10-18 (paid, maintainer-approved).** The same three tasks re-sent through
+> `POST /tasks/<pod>` (same description, pipeline, baseRef, `network: none`) on develop
+> `e187be8a`/`c4a488d5`, pods re-rendered by `pod update`. Measured, per step, sent (input) /
+> counted (input - cached + output) / largest request, against the 03:38 run:
+>
+> | Step (model) | Before: sent / counted / largest | After: sent / counted / largest | Ended |
+> | --- | --- | --- | --- |
+> | critic (Sonnet 5.5, Anthropic cache) | 96,957 / 101,292 / 12,184 | 19,807 (0.20) / 7,842 / 6,901 | verdict REJECT (before: over budget, verdict discarded) |
+> | researcher (GPT-5.6) | 77,713 / 18,641 / 13,950 | 33,313 (0.43) / 15,565 / ~8,067 | ok; its rework parked a consultation (no network) |
+> | implementer-b red (local) | 83,258 / 84,340 / 16,319 | 63,852 (0.77) / 31,686 / 8,203 (first run of 3) | wrote the failing test; `npm` refused by the jail, probes parked, denied |
+> | implementer-a write (Gemini Flash) | 100,352 / 101,248 / 25,806 | 80,346 (0.80) / 39,313 / 5,178 | `max_iterations=20`, nothing written |
+>
+> No step reached the budget; the critic now keeps a verdict. The two implementers do not send
+> under half: their trajectories grew (12 and 20 calls against 8 and 5) while every request
+> shrank to a fifth to a third. The first write rerun found a defect, fixed as `c4a488d5`: K=2
+> alone made a one-call-per-round model re-read a README until the no-progress stop. Found, not
+> fixed (maintainer decisions): the jail reads no toolchain under the operator's home (`npm`/`npx`
+> from `~/.nvm` exit 126), so no JS gate runs jailed on this host; `2>/dev/null` makes a jailed
+> `ls` ask and the verdict blames `ls` (the jail itself grants `/dev/null`); a condensation
+> notice says "call <tool> again if needed", which still invites the re-read once results pass
+> 6,000 characters.
+>
 > | Wave | Cards | Depends on |
 > | --- | --- | --- |
 > | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff — **closed 2026-10-18** | — |
 > | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields — **closed 2026-10-18** | 112 merged |
 > | 114 | P44-7 pod memory store · P44-9 `cache_control` — **closed 2026-10-18** | 113 merged |
-> | 115 | P44-8 memory operator controls — **closed 2026-10-18** · phase close (paid real run of the four steps) **pending** | 114 merged |
+> | 115 | P44-8 memory operator controls — **closed 2026-10-18** · phase close: real run **done 2026-10-18**, acceptance partly met (see above), close **awaiting the maintainer** | 114 merged |
 
 ### P44-1 — a replay bench over the four measured steps
 
@@ -290,9 +312,7 @@
   Implementer..." (SOUL says it); recipe roles using `${codebaseOrConfigured}` (secure-build
   security-vetter) still render a path; `cli/_agents._create_workspace` (standalone agents)
   still writes HEARTBEAT/promise text; `repo_map.SKIPPED_DIRS` mirrors `toolbox.SKIPPED_DIRS`
-  (pinned by an equality test); a condensation notice carries the call's full path; the task's
-  top-level `usage` lacks `cached`/`cacheWrite` (only `byModel` has them); pod read routes do
-  not carry `tokenBudget`.
+  (pinned by an equality test); a condensation notice carries the call's full path; pod read routes do not carry `tokenBudget`.
 - **Found in Wave 112 (Phase 44).** The prospective budget check compares the whole calibrated
   input estimate plus reserve against the counted budget, so a heavily cached step is refused
   early; discount by the previous call's cache reads if a real run is refused with room left.
