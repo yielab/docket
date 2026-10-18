@@ -201,6 +201,15 @@ class TestEstimateFallback:
         est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
         assert est == pytest.approx(0.1 * in_rate + 0.9 * cache_read_rate)
 
+    def test_estimate_cost_usd_does_not_charge_cache_writes_twice(self) -> None:
+        """Cache writes are part of input and are priced once, at the cache-write rate."""
+        totals = _utils.CostTotals(input_tokens=1_000_000, cache_read=500_000, cache_write=300_000)
+        price = _mp.price_for("anthropic/claude-haiku-4-5")
+        assert price is not None
+        in_rate, _out, cache_read_rate, cache_write_rate = price
+        est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
+        assert est == pytest.approx(0.2 * in_rate + 0.5 * cache_read_rate + 0.3 * cache_write_rate)
+
     def test_estimate_cost_usd_unknown_model_returns_none(self) -> None:
         totals = _utils.CostTotals(input_tokens=1000, output_tokens=1000)
         assert _utils.estimate_cost_usd("some-vendor/unknown-model", totals) is None
