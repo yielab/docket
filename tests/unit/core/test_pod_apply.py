@@ -228,6 +228,40 @@ class TestClassifyDirectory:
         assert ("allow-commands", "allowCommands", "make") in got
         assert ("network", "network", "open") in got
 
+    @pytest.mark.parametrize(
+        ("step", "expected"),
+        [
+            ("  - build: implementer\n    verify: make check\n", ("verify", "build", "make check")),
+            (
+                "  - build: implementer\n    gate: {external: ./ci.sh}\n",
+                ("gate", "build", "./ci.sh"),
+            ),
+            (
+                "  - id: build\n    role: implementer\n    gate: {type: mechanical, command: make check}\n",
+                ("verify", "build", "make check"),
+            ),
+            (
+                "  - id: fan\n    parallel:\n      - id: lint\n        role: implementer\n"
+                "        gate: {external: ./lint.sh}\n",
+                ("gate", "lint", "./lint.sh"),
+            ),
+        ],
+        ids=["short-verify", "short-external", "canonical-mechanical", "inside-parallel"],
+    )
+    def test_a_gate_command_is_a_run_item(
+        self, tmp_path: Path, step: str, expected: tuple[str, str, str]
+    ) -> None:
+        root = _repo_dir(tmp_path, {"pipeline.yaml": "name: p\nsteps:\n" + step})
+        review = _pod_apply.classify_directory(root)
+        assert expected in {(i.kind, i.name, i.runs) for i in review.runs}
+
+    def test_a_gate_without_a_command_runs_nothing(self, tmp_path: Path) -> None:
+        root = _repo_dir(
+            tmp_path,
+            {"pipeline.yaml": "name: p\nsteps:\n  - build: implementer\n    verify: true\n"},
+        )
+        assert _pod_apply.classify_directory(root).runs == ()
+
     def test_policies_and_restricting_roles_are_adds_only(self, tmp_path: Path) -> None:
         root = _repo_dir(
             tmp_path,

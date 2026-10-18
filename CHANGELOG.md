@@ -73,6 +73,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A repository's gate commands need the review code too.** `docket init`, `docket pod update`
+  and `POST /pods/<p>/apply` asked the operator only for a pipeline's `run:` steps, so a
+  `.docket/` could run any command through `verify: <cmd>` or `gate: {external: <cmd>}` with no
+  review (ADR 0024 §6 already named verify commands). Both now appear under "Runs on this
+  machine" as `verify command` and `external gate`, inside `parallel` groups too, and a
+  repository already reviewed asks again once. The refusal also says "1 command that needs".
+
 - **A budget names the models it cannot price instead of counting them as $0.** A model with no
   catalog price added nothing to the budget estimate, so `budgetUsd` stopped nothing on it (a
   real run spent 175k tokens on gateway models and reported $0 against a $3 cap). Docket still

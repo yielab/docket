@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.30.1
+**Version**: 1.31.0
 **Status**: Implemented
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -379,7 +379,10 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
 12. **A repository's commands need the operator's OK (ADR 0024 §6, D-59).** Before provisioning
     anything, `docket init` **MUST** classify a `.docket/` (or a `--recipe` given as a directory
     or resolved from the operator's own recipes) with `core.pod_apply.classify_directory` into
-    *adds* and *runs on this machine*: pipeline `run:` steps, MCP server commands, plugins, a
+    *adds* and *runs on this machine*: pipeline `run:` steps, a step gate's command (`verify:
+    <command>`, `gate: {external: <command>}`, the canonical `mechanical`/`external` gate with a
+    `command`, inside a `parallel` group too; a `verify: true` that defers to the member's
+    `verifyCmd` runs nothing the repository wrote), MCP server commands, plugins, a
     `network: open` setting, `allowCommands`, and a role overlay that removes a built-in role's
     denied tool. A shipped recipe resolved by name **MUST** be exempt. When the second group is
     non-empty and the repository's remembered review (`core.reviewed_repos`, `reviewed-repos.json`
@@ -617,6 +620,13 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.31.0 (2026-10-18)
+
+- Requirement 12: a step gate's command (`verify: <cmd>`, `gate: {external: <cmd>}`, also in a
+  `parallel` group) is a run-on-this-machine item, as ADR 0024 §6 always said ("verify
+  commands"). `classify_directory` counted only `run:` steps, so a repository could run a
+  command through a gate with no review code (found by the 2026-10-17 Fabulada onboarding, K5).
 
 ### Version 1.30.1 (2026-10-17)
 

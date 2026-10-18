@@ -938,6 +938,10 @@ def _run_steps(steps: list[Any]) -> list[RunItem]:
         if step.run is not None:
             env = "".join(f" {k}={v}" for k, v in sorted((step.env or {}).items()))
             found.append(RunItem("pipeline-step", step.id, f"{step.run}{env}"))
+        command = getattr(step.gate, "command", None)
+        if command:
+            kind = "gate" if step.gate.type == "external" else "verify"
+            found.append(RunItem(kind, step.id, command))
         found.extend(_run_steps(step.parallel or []))
     return found
 

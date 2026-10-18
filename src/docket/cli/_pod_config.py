@@ -84,6 +84,7 @@ _RUN_LABELS = {
     "network": "network",
     "role-loosens": 'role "{}"',
     "verify": 'verify command "{}"',
+    "gate": 'external gate "{}"',
 }
 
 

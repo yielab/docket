@@ -167,6 +167,25 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
         assert "sh scripts/migrate.sh" in result.output
         assert "docket init --accept " in result.output
 
+    @pytest.mark.parametrize(
+        ("gate", "label"),
+        [
+            ("verify: make check", 'verify command "build"'),
+            ("gate: {external: ./ci.sh}", 'external gate "build"'),
+        ],
+    )
+    def test_a_gate_command_alone_needs_the_code(
+        self, tmp_path: Path, gate: str, label: str
+    ) -> None:
+        code = tmp_path / "code"
+        (code / ".docket").mkdir(parents=True)
+        (code / ".docket" / "pipeline.yaml").write_text(
+            f"name: p\nsteps:\n  - build: implementer\n    {gate}\n"
+        )
+        result = runner.invoke(app, ["init", "demo", str(code)])
+        assert result.exit_code == 2 and not _pod_exists()
+        assert label in result.output and "docket init --accept " in result.output
+
     def test_accept_with_the_printed_code_creates_the_pod_and_audits(self, tmp_path: Path) -> None:
         from docket.core.audit import read_audit
 
