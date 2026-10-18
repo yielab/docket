@@ -91,6 +91,7 @@ class TestHandoffArtifactModel:
         # Every other field is covered — a budgeting consumer can shed all of
         # them and still be left with a valid (if minimal) artifact.
         assert set(_handoff.HandoffArtifact.DROP_ORDER) == {
+            "diff",
             "notes",
             "diff_ref",
             "files_changed",

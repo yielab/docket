@@ -1,8 +1,8 @@
 """The real `files_changed`/`diff_ref` producer for an Implementer hop's artifact.
 
 `HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed fields
-(`core/handoff.py`'s module docstring documents the seam). Covers: TestImplementerDiffProbeUnit
-(`_implementer_diff_probe` in isolation, with `edges/adapters/system.py`'s git calls
+(`core/handoff.py`'s module docstring documents the seam). Covers: TestHopDiffProbeUnit
+(`_hop_diff_probe` in isolation, with `edges/adapters/system.py`'s git calls
 monkeypatched out); TestDispatchPopulatesRealDiff (end to end through a real `dispatch_pod`
 claim against a real git repo: the hop's artifact carries the actual changed file and the
 task worktree's branch); and TestDegradePaths (the three ways this must degrade to an empty,
@@ -27,22 +27,32 @@ from docket.edges.adapters import system as _sys
 
 SUBJECT = "docket.core"
 
-# ── TestImplementerDiffProbeUnit: _implementer_diff_probe in isolation ──────
+# ── TestHopDiffProbeUnit: _hop_diff_probe in isolation ──────
 
 
-class TestImplementerDiffProbeUnit:
-    def test_non_implementer_role_never_touches_git(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        def boom(*_a: Any, **_k: Any) -> Any:
-            raise AssertionError("a non-implementer hop must never probe git")
+class TestHopDiffProbeUnit:
+    def test_non_implementer_role_on_a_non_repo_gets_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: False)
+        assert _dispatch._hop_diff_probe("demo-lead", "lead", {}) == ([], None, None, "")
+        assert _dispatch._hop_diff_probe("demo-reviewer", "reviewer", {}) == ([], None, None, "")
 
-        monkeypatch.setattr(_sys, "git_available", boom)
-        monkeypatch.setattr(_fleet, "meta_get", boom)
-        assert _dispatch._implementer_diff_probe("demo-lead", "lead", {}) == ([], None, None)
-        assert _dispatch._implementer_diff_probe("demo-reviewer", "reviewer", {}) == (
-            [],
-            None,
-            None,
-        )
+    def test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: True)
+        monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: ["notes/"])
+        monkeypatch.setattr(_sys, "git_diff", lambda _cwd, _base: "")
+        monkeypatch.setattr(_sys, "git_new_files_text", lambda _cwd, _limit: "--- new file: n\nx\n")
+        result = _dispatch._hop_diff_probe("demo-researcher", "researcher", {})
+        assert result == (["notes/"], None, None, "--- new file: n\nx\n")
+        same = _dispatch._hop_diff_probe("demo-critic", "critic", {}, "--- new file: n\nx\n")
+        assert same == ([], None, None, "")
 
     def test_missing_git_binary_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
@@ -54,8 +64,8 @@ class TestImplementerDiffProbeUnit:
             raise AssertionError("must not call git_is_repo when git is unavailable")
 
         monkeypatch.setattr(_sys, "git_is_repo", boom)
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", {})
-        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
+        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", {})
+        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
     def test_non_repo_cwd_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
@@ -69,8 +79,8 @@ class TestImplementerDiffProbeUnit:
 
         monkeypatch.setattr(_sys, "git_changed_files", boom)
         monkeypatch.setattr(_sys, "git_current_branch", boom)
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", {})
-        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
+        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", {})
+        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
     def test_real_probe_resolves_task_worktree_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
         meta = {"codebase": "/src/demo"}
@@ -89,8 +99,8 @@ class TestImplementerDiffProbeUnit:
         monkeypatch.setattr(_sys, "git_changed_files", lambda cwd: ["a.py", "b.py"])
         monkeypatch.setattr(_sys, "git_current_branch", lambda cwd: "pc/demo-implementer")
 
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", task)
-        files_changed, diff_ref, evidence = result
+        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", task)
+        files_changed, diff_ref, evidence, _diff = result
         assert (files_changed, diff_ref) == (["a.py", "b.py"], "pc/demo-implementer")
         # The commit/diffStat producers are real git calls against a nonexistent path here
         # (unmocked) -- they degrade to None rather than raising; the base is the recorded one.
@@ -110,8 +120,8 @@ class TestImplementerDiffProbeUnit:
         monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: True)
         monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: [])
         monkeypatch.setattr(_sys, "git_current_branch", lambda _cwd: "")
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", {})
-        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
+        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", {})
+        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
 
 # ── shared pod-seeding helpers (mirrors test_handoff_artifacts.py) ───────

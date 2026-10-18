@@ -170,7 +170,7 @@ class HopResult:
     # ``_evaluate_mechanical_gate``. ``_hop_record``/``_hop_from_record`` round-trip this
     # key; a record with no ``verify`` key at all defaults to ``None`` on read.
     verify: dict[str, Any] | None = None
-    # Real git evidence for an Implementer hop, from ``_implementer_diff_probe``:
+    # Real git evidence for an Implementer hop, from ``_hop_diff_probe``:
     # ``{"commit", "baseCommit", "diffStat"}``, or ``None`` for a non-Implementer hop or one
     # whose member checkout is not a git repository. Each inner field independently degrades
     # to ``None`` rather than raising. Round-tripped by ``_hop_record``/``_hop_from_record``
@@ -1218,25 +1218,25 @@ def _task_worktree_dir(task: dict[str, Any]) -> str:
     return wt_dir
 
 
-def _implementer_diff_probe(
-    member_id: str, role: str, task: dict[str, Any]
-) -> tuple[list[str], str | None, dict[str, Any] | None]:
-    """Real ``files_changed``/``diff_ref``/``evidence`` for an Implementer hop (every other
-    role gets ``([], None, None)``); resolves the same working tree the verify gate uses via
-    ``core.pod.resolve_member_cwd`` so the two can never disagree. ``evidence`` is
-    ``HopResult.evidence``'s ``{"commit", "baseCommit", "diffStat"}`` shape, with each field
-    independently ``None`` (never raising) when git is missing, the checkout is not a repo,
-    or no base commit can be resolved. ``baseCommit`` is the task worktree's recorded creation
-    commit; an in-place task falls back to the merge-base with the codebase's current branch.
-    ``commit`` is ``_pin_implementer_tree``'s. See pod-dispatch.spec.md, "Hop evidence"."""
-    if role != "implementer":
-        return [], None, None
+def _hop_diff_probe(
+    member_id: str, role: str, task: dict[str, Any], prior_diff: str = ""
+) -> tuple[list[str], str | None, dict[str, Any] | None, str]:
+    """``(files_changed, diff_ref, evidence, diff)`` for a hop; ``diff_ref``/``evidence`` are the
+    Implementer's, and a non-Implementer hop whose diff equals *prior_diff* changed nothing.
+    See pod-dispatch.spec.md, "Implementer diff producer" and "Hop evidence"."""
+    implementer = role == "implementer"
     task_dir = _task_worktree_dir(task)
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
     cwd = _pod.resolve_member_cwd(member_id, task_dir, member_codebase)
     if not _sys.git_available() or not _sys.git_is_repo(cwd):
-        return [], None, {"commit": None, "baseCommit": None, "diffStat": None}
+        empty = {"commit": None, "baseCommit": None, "diffStat": None} if implementer else None
+        return [], None, empty, ""
     files_changed = _sys.git_changed_files(cwd)
+    diff = _tree_diff(cwd) if files_changed else ""
+    if not implementer:
+        if not diff or diff == prior_diff:
+            return [], None, None, ""
+        return files_changed, None, None, diff
     diff_ref = _sys.git_current_branch(cwd) or None
     commit = _pin_implementer_tree(cwd, task, in_worktree=bool(task_dir))
     recorded = task.get("worktree")
@@ -1248,7 +1248,15 @@ def _implementer_diff_probe(
         base_commit = _sys.git_merge_base(cwd, base_branch) if base_branch else None
     diff_stat = _sys.git_diff_stat(cwd, base_commit, commit) if base_commit and commit else None
     evidence = {"commit": commit, "baseCommit": base_commit, "diffStat": diff_stat}
-    return files_changed, diff_ref, evidence
+    return files_changed, diff_ref, evidence, "" if diff == prior_diff else diff
+
+
+def _tree_diff(cwd: str) -> str:
+    """The tree's uncommitted tracked changes plus the content of its new files, capped at
+    ``HANDOFF_DIFF_MAX_CHARS`` with a marker; ``""`` when git can say nothing."""
+    limit = _cfg.HANDOFF_DIFF_MAX_CHARS
+    text = (_sys.git_diff(cwd, "HEAD") or "") + _sys.git_new_files_text(cwd, limit)
+    return _handoff.cap_diff(text, limit)
 
 
 def _pin_implementer_tree(cwd: str, task: dict[str, Any], *, in_worktree: bool) -> str | None:
@@ -2133,6 +2141,7 @@ def _build_hop_result(
     hop_error: str,
     attempt: int,
     first_ts: str = "",
+    prior: list[HopResult] | None = None,
 ) -> HopResult:
     """Build this hop's persisted record and handoff artifact. The verdict is parsed once,
     guarded on ``hop_ok`` (not ``run_res.ok``) since a ``pre_output`` block can fail an
@@ -2145,8 +2154,14 @@ def _build_hop_result(
     files_changed: list[str] = []
     diff_ref: str | None = None
     evidence: dict[str, Any] | None = None
+    diff = ""
     if hop_ok:
-        files_changed, diff_ref, evidence = _implementer_diff_probe(member_id, role, ctx.task)
+        prior_diff = next(
+            (h.artifact.diff for h in reversed(prior or []) if h.artifact and h.artifact.diff), ""
+        )
+        files_changed, diff_ref, evidence, diff = _hop_diff_probe(
+            member_id, role, ctx.task, prior_diff
+        )
     # A hop's raw text carrying a parseable TaskBrief (ADR 0016 §4) is never limited to
     # the Lead role by construction -- any hop's reply can end in one -- but is `None`
     # for the overwhelming majority that never emit one, `_handoff.parse_brief` failing
@@ -2157,6 +2172,7 @@ def _build_hop_result(
         verdict=verdict,
         files_changed=files_changed,
         diff_ref=diff_ref,
+        diff=diff,
         brief=brief,
     )
     served = run_res.model
@@ -2867,7 +2883,17 @@ def _execute_unit(
     hop_output, hop_ok, hop_error = _apply_output_guardrails(ctx, role, run_res)
 
     hop = _build_hop_result(
-        ctx, node, role, member_id, run_res, hop_output, hop_ok, hop_error, attempt, hop_first_ts
+        ctx,
+        node,
+        role,
+        member_id,
+        run_res,
+        hop_output,
+        hop_ok,
+        hop_error,
+        attempt,
+        hop_first_ts,
+        prior_snapshot,
     )
 
     early_outcome = _persist_hop_and_trace(
