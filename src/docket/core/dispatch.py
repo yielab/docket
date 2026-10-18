@@ -49,6 +49,7 @@ from docket.core import pod as _pod
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import profile as _profile
+from docket.core import repo_map as _repo_map
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
 from docket.core import secrets as _secrets
@@ -1019,6 +1020,8 @@ def _hop_message(
     from docket.core import context as _ctx
 
     desc = str(task.get("description", "")).strip()
+    worktree = "" if role == "lead" else _task_worktree_dir(task)
+    root_block = _repo_map.task_root_block(worktree, project, role)
     if role == "lead":
         if step_instructions:
             lead_instruction = step_instructions
@@ -1028,6 +1031,8 @@ def _hop_message(
                 _archetypes.resolve_hop_instruction(lead_archetype) if lead_archetype else ""
             )
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
+        if root_block:
+            message = f"{message}\n\n{root_block}"
         answers_block = _render_operator_answers(task)
         if answers_block:
             message = f"{message}\n\n## Operator answers\n{answers_block}"
@@ -1050,11 +1055,10 @@ def _hop_message(
     # budget" a real, checkable property rather than an aspiration: the two
     # pieces that are never shed are accounted for before anything
     # sheddable is given a share.
-    total_budget = _ctx.budget_for_role(role, project=project)
-    reserved_tokens = _ctx.estimate_tokens(desc) + _ctx.estimate_tokens(instructions)
-    carryover_budget = max(total_budget - reserved_tokens, 0)
+    reserved_tokens = sum(_ctx.estimate_tokens(t) for t in (desc, instructions, root_block))
+    carryover_budget = max(_ctx.budget_for_role(role, project=project) - reserved_tokens, 0)
 
-    lines = [f"Task: {desc}", ""]
+    lines = [f"Task: {desc}", ""] + ([root_block, ""] if root_block else [])
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
 
     gate_failed_hop = rework_hop if _is_gate_failure_carryover(rework_hop) else None

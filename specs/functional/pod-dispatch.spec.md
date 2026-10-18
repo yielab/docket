@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.54.0
+**Version**: 6.55.0
 **Status**: Complete. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
 produced: `HandoffArtifact.diff`, a capped diff of the hop's tracked changes plus the content of
 its new files, rendered once after the summary — see "Structured handoff artifacts" and
@@ -1981,6 +1981,19 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    carry the operator's latest answer (`Operator answer:`), rendered like the Lead's operator
    answers, because it is what the human decided. A forward route, a backward `pass` route, an
    unrouted gate and a verdict rework **MUST** compose byte-identical messages to before.
+10. **Task root and repository map (P44-6, ADR 0028 sections 1 and 5).** The hop message **MUST**
+    name the directory the hop's tools are rooted in, as a `Working directory: <path>` line
+    followed by a derived repository map, placed right after the task description (the Lead's
+    message after its description too) and ahead of every prior artifact. The root is the task's
+    recorded worktree when it has one, else the pod's codebase or working directory (the same
+    root `edges/adapters/docket_runtime.py::_resolve_roots` gives the tools). The map
+    (`core/repo_map.py::render_repo_map`) is derived from `git ls-files` through
+    `edges/adapters/system.py::git_ls_files`: relative directories with their file counts, the
+    deepest directory depth (3, 2, then 1) that fits `config.REPO_MAP_MAX_CHARS`, skipping the
+    directories the built-in `glob`/`grep` skip. A root that is not a git repository gets the
+    `Working directory` line and no map. The block is never shed by the budget compiler; its
+    estimated tokens are reserved before the carryover budget is computed. A pod's system prompt
+    carries neither the root nor the map, so it is identical between tasks.
 
 ### Task status vocabulary
 
@@ -2321,6 +2334,13 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.55.0 (2026-10-18)
+
+- **The task message names its root and carries a repository map** (requirement 10 of "Bounded
+  hop prompts", ADR 0028 sections 1 and 5, P44-6). The roots moved out of the system prompt, which
+  is now identical between tasks of one member; `_hop_message` composes `Working directory: <root>`
+  plus `render_repo_map(root)` after the task description, for every role including the Lead.
 
 ### Version 6.54.0 (2026-10-18)
 

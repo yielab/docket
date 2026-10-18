@@ -124,12 +124,12 @@ class TestSeedContractWorkdir:
         assert "heartbeat.md" in text
         assert _mem._CONTRACT_MARKER in (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text()
 
-    def test_workdir_memory_md_has_working_directory_not_repo(self, tmp_path: Path) -> None:
-        _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo", stack="n/a")
+    def test_workdir_memory_md_names_no_path(self, tmp_path: Path) -> None:
+        _mem.seed_contract(tmp_path, project="demo", work_dir="/srv/work/demo", stack="n/a")
         text = (tmp_path / _mem.MEMORY_FILE).read_text()
-        assert "## Working directory" in text
-        assert "/home/user/work/demo" in text
-        assert "## Repo" not in text
+        assert "/srv/work/demo" not in text
+        assert "## Repo" not in text and "## Working directory" not in text
+        assert "- stack: n/a" in text
 
     def test_workdir_daily_log_mentions_working_directory(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo")

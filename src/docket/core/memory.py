@@ -258,9 +258,7 @@ def heartbeat_seed(name: str) -> str:
     )
 
 
-def _memory_md_seed(*, project: str, codebase: str, stack: str, work_dir: str = "") -> str:
-    cb = codebase.strip()
-    wd = work_dir.strip()
+def _memory_md_seed(*, project: str, stack: str) -> str:
     lines = [
         f"# MEMORY.md — {project}",
         "",
@@ -274,19 +272,9 @@ def _memory_md_seed(*, project: str, codebase: str, stack: str, work_dir: str = 
         'this is the answer to "what is this project about"._',
         "",
     ]
-    # A `workdir`-kind pod blueprint has no codebase — this branch never
-    # fires for a caller passing only `codebase` (or neither).
-    if wd:
-        lines.append("## Working directory")
-        lines.append(f"- path: `{wd}`")
-    else:
-        lines.append("## Repo")
-        if cb:
-            lines.append(f"- codebase: `{cb}`")
     if stack.strip():
-        lines.append(f"- stack: {stack.strip()}")
+        lines += ["## Stack", f"- stack: {stack.strip()}", ""]
     lines += [
-        "",
         "## Architecture",
         "_Fill on first run: entry points, key modules, how it fits together._",
         "",
@@ -306,8 +294,7 @@ def _daily_seed(
         "passes on turn one. Append real session outcomes below._",
         "",
     ]
-    # See _memory_md_seed's note: work_dir is the workdir-blueprint case; a
-    # caller passing only codebase (or neither) takes the elif/nothing path.
+    # work_dir is the workdir-blueprint case; codebase alone takes the elif.
     if work_dir.strip():
         lines.append(f"- Working directory: `{work_dir.strip()}`")
     elif codebase.strip():
@@ -365,7 +352,7 @@ def seed_contract(
     mem_md = memory_md_path(ws)
     if not mem_md.exists():
         mem_md.write_text(
-            _memory_md_seed(project=project, codebase=codebase, stack=stack, work_dir=work_dir),
+            _memory_md_seed(project=project, stack=stack),
             encoding="utf-8",
         )
     with contextlib.suppress(OSError):

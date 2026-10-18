@@ -130,3 +130,31 @@ def test_git_changed_files_handles_timeout(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(subprocess, "run", raise_timeout)
     assert system.git_changed_files("/tmp/repo") == []
+
+
+# ── git ls-files ────────────────────────────────────────────────────────────────
+
+
+def test_git_ls_files_splits_on_nul_and_sorts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(system, "git_available", lambda: True)
+    seen: list[list[str]] = []
+
+    def fake_run(cwd: str, args: list[str], timeout: float, *a: Any, **k: Any) -> _FakeCompleted:
+        seen.append(args)
+        return _FakeCompleted(0, "src/b.py\0a dir/x.py\0\0")
+
+    monkeypatch.setattr(system, "_git_run", fake_run)
+
+    assert system.git_ls_files("/repo") == ["a dir/x.py", "src/b.py"]
+    assert seen == [["ls-files", "-z"]]
+
+
+def test_git_ls_files_is_none_outside_a_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(system, "git_available", lambda: True)
+    monkeypatch.setattr(system, "_git_run", lambda *a, **k: _FakeCompleted(128, ""))
+    assert system.git_ls_files("/not-a-repo") is None
+
+
+def test_git_ls_files_is_none_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(system, "git_available", lambda: False)
+    assert system.git_ls_files("/repo") is None
