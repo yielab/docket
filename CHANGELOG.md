@@ -112,6 +112,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A quoted heredoc's body is data, not commands (W116-1).** The classifier read every line of
+  a heredoc body as a command, so a `python3 - <<'EOF'` script holding a backtick, `${`, an
+  apostrophe or `=>` asked for approval. With a quoted delimiter (`<<'EOF'`, `<<"EOF"`,
+  `<<\EOF`) the shell expands nothing, so the body is cut before classification; the high-risk
+  classes still read the full text. An unquoted heredoc, one fed to a shell (`bash`, `sh`,
+  `source /dev/stdin`, ...) and one that never closes still ask. Found by a real task that parked
+  on exactly this script.
+- **A refused redirect names the rule, not the binary (W116-2).** Inside the jail an output
+  redirect that could not be placed was reported as `'cat' is not on the curated allowlist`,
+  with `cat` on the list. The reason now says `output redirect to <target> is outside the
+  workspace` or `output redirect after cd cannot be placed`, and a `cd` to a literal path inside
+  the workspace is followed when placing a later relative redirect, unless the `cd` itself runs
+  in a pipeline or subshell.
+- **`block-destructive` gates a write to `.env` or `.ssh/`, not two words in one call
+  (W116-3).** The old `.env\b.*write` alternatives matched across a whole rendered bash command
+  (newlines are escaped), so a script holding `.write(s)` and, fifteen lines on, `process.env`
+  parked a task. They now fire on a redirect, `tee`/`cp`/`mv`, `sed -i` or the `write`/`edit`
+  tool targeting such a path. **Operator step:** docket never overwrites an installed policy, so
+  replace `~/.docket/policies/block-destructive.yaml` with the shipped template for the fix to
+  take effect.
+- **The roles that write are told to write with `write` and `edit` (W116-4).** The Implementer
+  and Writer bodies and the `bash` tool description now say: create or change files with
+  `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use
+  `bash` to run things. `POD_TEMPLATE_VERSION` 4 to 5, so `pod update` reports existing members
+  stale.
+- **Redaction keeps a trace payload valid JSON (W116-5).** Secret-shaped strings were replaced
+  in the serialized payload, where one pattern ate the closing quote and brace, so the record
+  fell back to `{"text": ...}` and a parked hop's `hop_finished` lost its structured `usage`.
+  Strings are now redacted inside the parsed value.
+- **`inputExpiryHours` reaches the questions it promises to expire (W116-6).** The pod setting
+  had a writer, a display and a documented promise, and no reader on the dispatch path, so a
+  parked consultation waited forever. A question parked without its own deadline now expires
+  after the pod's `inputExpiryHours` (default 72 h) to `blocked`/`input_expired`; an `input`
+  step's `expiresHours` still wins.
+- **Every pending approval records `expiresAt` (W116-7).** A pre-hop gate approval stored no
+  deadline, showed `expiresAt: null` and was denied 15 minutes later by a fallback in the
+  sweep. The record now carries `created + APPROVAL_TIMEOUT` unless the creator gave one, the
+  sweep reads only that field, and a client re-attaching after a restart can tell how long it
+  has.
 - **A research or content team's work reaches the task branch.** Only the Implementer's hop
   committed the tree it left, so a pipeline without one (researcher, then critic) ended `done`
   with the report untracked and the branch at its base. In a task worktree, any hop that hands

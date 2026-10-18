@@ -35,7 +35,9 @@ integrator orders them on merge).
   **Never call a real model endpoint.** A hop in a test runs against the stub server in
   `tests/integration/llm_stub.py` (fixture `llm_server`); the keyless provider document is
   `tests/conftest.py::register_local_provider`.
-- **Commands.** `env -u VIRTUAL_ENV uv run ...` for everything. `grep` is ripgrep here; use
+- **Commands.** `env -u VIRTUAL_ENV uv run ...` for everything, and `uv run --extra mcp` for
+  `mypy src` and `scripts/gen_cli_docs.py --check` (a fresh worktree lacks `anyio` and `click`
+  otherwise; every batch A worker hit this). `grep` is ripgrep here; use
   `command grep` for literal greps over the diff. Never `pkill`/`killall` anything: sibling
   workers run suites at the same time, and a live `docket start` is running on this machine.
 - **Never `git stash`, in any form** (no `stash push`, no tagged stash). Set work aside with a
