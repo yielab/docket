@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.57.0
+**Version**: 6.58.0
 **Status**: Complete. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
 produced: `HandoffArtifact.diff`, a capped diff of the hop's tracked changes plus the content of
 its new files, rendered once after the summary — see "Structured handoff artifacts" and
@@ -750,8 +750,11 @@ was seeded once at binding time.)*
    Lead's stored meta) is a distinct state from a stored `"wait"` — see "Parked approvals" below
    for what it resolves to. `approvalExpiryHours` (int `>= 1`, default `24`) and
    `inputExpiryHours` (int `>= 1`, default `72`) are two further keys on the same model,
-   likewise writable through `pod show`/`set`/`unset`; `inputExpiryHours` is read only by the
-   `input`-step execution this spec's "Parked approvals" section does not itself cover.
+   likewise writable through `pod show`/`set`/`unset`; `inputExpiryHours` is the default
+   deadline of every parked question: `_finalize_task` reads it when a task settles
+   `waiting_input` and `_apply_result` stamps `expiresAt` (now plus the hours) on a question that
+   has none. An `input` step's own `expiresHours` wins and is never overwritten. Expiry blocks the
+   task `input_expired` (operator-loop.spec.md area 7), never `failed`.
 4. `PodSettings` also carries `pipeline` (`str | None`, a 64-character lowercase hex sha256
    digest): the hash of this pod's bound pipeline copy (`core.pod.bound_pipeline_path`), or
    unset. Unlike the scalar keys, `set pipeline <value>` does not accept an arbitrary
@@ -2339,6 +2342,12 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.58.0 (2026-10-18)
+
+- `inputExpiryHours` reaches the questions it promises to expire: a parked question without an
+  `expiresAt` (a consultation) is stamped now plus the pod's `inputExpiryHours` when the task
+  settles `waiting_input`; a step's `expiresHours` still wins. It was set, shown and never read.
 
 ### Version 6.57.0 (2026-10-18)
 
