@@ -117,6 +117,13 @@ class TestMessageHelpers:
     def test_usage_totals(self) -> None:
         assert TokenUsage(input_tokens=10, output_tokens=5).total_tokens == 15
 
+    def test_counted_tokens_exclude_cache_reads(self) -> None:
+        usage = TokenUsage(input_tokens=30_000, output_tokens=40, cached_tokens=25_000)
+        assert usage.counted_tokens == 5_040
+
+    def test_counted_tokens_never_go_negative_on_an_inconsistent_report(self) -> None:
+        assert TokenUsage(input_tokens=10, cached_tokens=50, output_tokens=0).counted_tokens == 0
+
 
 class TestWireEncoding:
     def test_minimal_payload_shape(self) -> None:
@@ -274,6 +281,29 @@ class TestWireDecoding:
             }
         )
         assert res.usage.cached_tokens == 80
+
+    @pytest.mark.parametrize(
+        "usage",
+        [
+            {"prompt_tokens_details": {"cached_tokens": 80, "cache_write_tokens": 15}},
+            {"prompt_tokens_details": {"cached_tokens": 80}, "cache_creation_input_tokens": 15},
+        ],
+    )
+    def test_cache_writes_when_reported(self, usage: dict[str, Any]) -> None:
+        res = adapter.decode_response(
+            {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 2, **usage},
+            }
+        )
+        assert res.usage.cache_write_tokens == 15
+        assert res.usage.counted_tokens == 100 - 80 + 2
+
+    def test_cache_writes_default_to_zero(self) -> None:
+        res = adapter.decode_response(
+            {"choices": [{"message": {"content": "ok"}}], "usage": {"prompt_tokens": 9}}
+        )
+        assert res.usage.cache_write_tokens == 0
 
     def test_length_finish_reason_marks_truncation(self) -> None:
         res = adapter.decode_response(

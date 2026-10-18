@@ -1,6 +1,6 @@
 # Cost Tracking Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
 scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). Cost reporting resolves
 Docket's own `DocketDriver` and session store. See requirements 2-4 below.
@@ -87,7 +87,9 @@ pod-dispatch.spec.md).
    `core/runtime_driver.py`'s `TurnResult.cost_usd` docstring), so this is the **only** case in
    production. The budget gate falls
    back to a token-count × pricing-table estimate (`core/utils.estimate_cost_usd`) so a real
-   cap can still trip. This estimate is used **only** for gating and warning displays — it is
+   cap can still trip. The estimate prices `input_tokens - cache_read` at the input rate and
+   `cache_read` at the cache-read rate, because an endpoint's input count already contains its
+   cache reads; a cached token is never charged at both rates. This estimate is used **only** for gating and warning displays — it is
    always rendered clearly labelled (`core/dispatch.py`'s literal label string is `~$X.XX
    (estimated — no cost recorded)`) and **MUST NOT** be mixed into, or
    presented as, recorded spend; `docket status --all --json`'s recorded `costUsd` fields are
@@ -213,6 +215,12 @@ $ docket run --resume
   **MUST NOT** be summed into, or presented as, recorded spend.
 
 ## Changelog
+
+### Version 1.10.0 (2026-10-18)
+
+- `estimate_cost_usd` stopped charging cache reads twice: the pod estimate priced the whole
+  input count at the input rate and the cached part again at the cache-read rate. A call with
+  1M input tokens of which 900k were cached is now `0.1M x input + 0.9M x cache-read`.
 
 ### Version 1.9.0 (2026-10-18)
 
