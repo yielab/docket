@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, NamedTuple
 
 import docket.config as cfg
 from docket.core import provider as _provider
@@ -349,16 +349,27 @@ def policy_agent_ids() -> list[str]:
     return list(project_ids())
 
 
-def reapply_role_policy() -> int:
-    """Re-resolve every agent against the live role policy. Returns count of agents updated."""
+class RoleRepoint(NamedTuple):
+    """One agent ``reapply_role_policy`` moved to another model."""
+
+    agent_id: str
+    pod: str
+    role: str
+    before: str
+    after: str
+
+
+def reapply_role_policy() -> list[RoleRepoint]:
+    """Re-resolve every agent against the live role policy; returns each agent it moved."""
     from docket.core import fleet as _fleet
     from docket.core import pod as _pod
 
     role_models, _, _ = load_registry()
-    changed = 0
+    changed: list[RoleRepoint] = []
     for aid in policy_agent_ids():
         role = agent_role(aid)
-        target = resolve_role_model(role, role_models, project=_pod.pod_of(aid) or "")
+        pod = _pod.pod_of(aid) or ""
+        target = resolve_role_model(role, role_models, project=pod)
         current = _fleet.meta_get(aid, "model", "")
         if target == current:
             continue
@@ -366,7 +377,7 @@ def reapply_role_policy() -> int:
             _fleet.set_model_both(aid, target)
         except KeyError:
             _fleet.meta_set(aid, "model", target)
-        changed += 1
+        changed.append(RoleRepoint(aid, pod, role, current, target))
     return changed
 
 

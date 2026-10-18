@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A provider preset names the pods it moves.** The role table is the fleet's, so `docket setup
+  provider add` with a preset re-pointed the policy-following members of every pod, other teams
+  included, and said only which model each role now resolves to. It now prints each moved pod and
+  role with the model before and after, and the `--no-preset` command that registers without
+  moving them; `setup model set|preset|reset` print the same lines.
+
 - **`pod update` says why a setting is skipped.** A `pod.yaml` setting equal to the pod's
   default planned a bare `[skip]`; the plan line now reads `[skip] setting: approvalMode (already
   the default)` and `--json` carries it as the item's `note`.

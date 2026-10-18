@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.12.0
+**Version**: 2.13.0
 **Status**: Complete
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -579,7 +579,8 @@ one writer.
 provider's environment variable, else a hidden prompt on a terminal; off a terminal with none it
 exits 1 naming `--credential`), probe `<url>/models` with it and classify the result
 (model-profiles.spec.md "Provider readiness" 3), register the provider, then apply the provider's
-preset unless `--no-preset` and print which role resolves to what. `add <file.yaml>` registers a
+preset unless `--no-preset` and print which role resolves to what, plus each pod whose members the
+preset moved (model-profiles.spec.md "Provider catalog" 3). `add <file.yaml>` registers a
 `kind: provider` document. `list [--json]`, `show <name> [--json]`, `remove <name> [--yes]`
 (confirms on a terminal; off one it exits 1 naming `--yes`), `export <name> [<file>]`,
 `rotate <name> [--credential KEY]`.
@@ -981,6 +982,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.13.0 (2026-10-18)
+
+- `setup provider add` names the pods and roles a preset moved and the `--no-preset` command.
 
 ### Version 2.12.0 (2026-10-17)
 - Declared version `0.2.0-beta.6`. Ten commands: `exec` and `setup harness` are removed with the harness, and its three-code exit table is gone; a retired name is an ordinary unknown command (exit 2).

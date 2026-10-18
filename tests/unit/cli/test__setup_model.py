@@ -236,6 +236,36 @@ class TestProviderAdd:
         assert "lead" in result.stdout
         assert _mp.resolve_role_model("lead").startswith("anthropic/")
 
+    def test_a_preset_names_the_pods_and_roles_it_moved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _home(tmp_path, monkeypatch)
+        self._reachable(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        ws = home / "workspaces" / "projects" / "shop-implementer"
+        ws.mkdir(parents=True)
+        (ws / ".docket-meta.json").write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "kind": "project",
+                    "scope": "project",
+                    "role": "implementer",
+                    "pod": "shop",
+                    "model": "local/local-model",
+                }
+            )
+        )
+
+        result = _runner.invoke(
+            app, ["setup", "provider", "add", "anthropic", "--credential", "fake-ant-" + "x" * 40]
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        out = " ".join(result.output.split())
+        assert "pod shop: implementer local/local-model -> anthropic/" in out
+        assert "--no-preset" in out
+
     def test_no_preset_leaves_the_role_rows_alone(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

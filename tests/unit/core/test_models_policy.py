@@ -218,5 +218,7 @@ class TestReapplyRolePolicy:
             },
         )
 
-        assert _mp.reapply_role_policy() == 1
+        assert _mp.reapply_role_policy() == [
+            _mp.RoleRepoint(aid, "demo", "security-vetter", _cfg.DEFAULT_MODEL, "local/local-model")
+        ]
         assert _fleet.meta_get(aid, "model", "") == "local/local-model"
