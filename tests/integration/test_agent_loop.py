@@ -2918,3 +2918,41 @@ class TestCountedTokenBudget:
         assert result.ok, result.error
         task_fits = [fit["estimatedInputTokens"] for fit in _request_fits(ctx, session_key)]
         assert task_fits == [100, 400, 100]
+
+
+# ── old tool results are condensed in the request, never in the record ────────
+
+
+class TestHistoryCondensation:
+    def test_old_results_become_notices_and_the_record_keeps_every_byte(
+        self, ctx: ToolContext
+    ) -> None:
+        reg = ToolRegistry()
+        reg.register(
+            _Tool(
+                name="read",
+                description="Read a file.",
+                parameters={"type": "object", "properties": {"path": {"type": "string"}}},
+                handler=lambda args, c: ToolOutcome(
+                    ok=True, content="\n".join(f"{i}\t{args['path']} row" for i in range(60))
+                ),
+                kind="read",
+            )
+        )
+        backend = ScriptedBackend(
+            [_tool_call_response(f"c{n}", "read", f'{{"path":"f{n}.py"}}') for n in range(6)]
+            + [_final("done")]
+        )
+        session_key = "agent:condense:default"
+
+        result = _loop.run_agent_turn(backend, reg, ctx, session_key, "work")
+
+        assert result.ok, result.error
+        keep = _session.HISTORY_KEEP_FULL_RESULTS
+        sent = [m for m in backend.calls[-1] if m.role == "tool"]
+        assert len(sent) == 6
+        assert sum(m.content.startswith("[read f") for m in sent) == 6 - keep
+        assert all("row" in m.content and not m.content.startswith("[") for m in sent[-keep:])
+        stored = [m for m in _session.load_messages(session_key) if m.role == "tool"]
+        assert len(stored) == 6
+        assert all(not m.content.startswith("[") for m in stored)
