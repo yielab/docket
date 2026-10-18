@@ -166,6 +166,7 @@ class TestPodShowTextUnchangedWithNoPodScope:
     def test_implementer_text_matches_the_base_exactly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
         _seed(tmp_path, monkeypatch)
         text = _explain_text(pod.member_id("demo", "implementer"), capsys)
         assert (
@@ -177,6 +178,7 @@ class TestPodShowTextUnchangedWithNoPodScope:
     def test_reviewer_text_matches_the_base_exactly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
         _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
         text = _explain_text(pod.member_id("demo", "reviewer"), capsys)
         assert "  Tools allowed: consult, fetch, glob, grep, read, skill\n" in text
@@ -190,6 +192,7 @@ class TestPodShowScopeLabels:
     def test_pod_overlay_shadowed_role_policy_server_and_denial(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
         _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
 
         # The pod's own overlay shadows the built-in `reviewer` archetype.

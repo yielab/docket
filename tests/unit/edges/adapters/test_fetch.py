@@ -22,6 +22,7 @@ import docket.config as _cfg
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import fetch as _fetch
+from docket.edges.adapters import toolbox
 
 SUBJECT = "docket.edges.adapters.fetch"
 
@@ -158,6 +159,15 @@ class TestResponseSizeCap:
         assert out.ok
         assert "[truncated" not in out.content
 
+    def test_result_text_passes_through_the_announced_tool_output_limit(
+        self, server: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _allow(monkeypatch, server)
+        monkeypatch.setattr(toolbox, "MAX_OUTPUT_CHARS", 100, raising=True)
+        out = _fetch.fetch_url(f"{server}/big")
+        assert out.ok and "more characters]" in out.content
+        assert len(out.content) <= 100 + 60
+
 
 class TestTimeout:
     def test_a_dripping_response_fails_at_the_deadline(
@@ -242,11 +252,29 @@ class TestHTTPErrors:
 class TestGatedExactlyLikeABuiltin:
     """The registration itself must not create a second execution path."""
 
-    def test_fetch_is_registered_as_a_read_kind_tool(self) -> None:
+    def test_fetch_is_registered_as_a_read_kind_tool(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
         tool = builtin_registry().get("fetch")
         assert tool is not None
         assert tool.kind == "read"
         assert tool.required_args == ("url",)
+
+    def test_an_empty_allowlist_leaves_fetch_out_of_the_offered_tools(self) -> None:
+        registry = builtin_registry()
+        assert "fetch" not in registry.names()
+        assert "fetch" not in [spec.name for spec in registry.specs()]
+
+    def test_a_configured_allowlist_offers_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
+        assert "fetch" in builtin_registry().names()
+
+    def test_a_call_to_an_unoffered_fetch_is_refused_like_an_unknown_tool(self) -> None:
+        ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
+        call = ToolCall(
+            id="c1", name="fetch", arguments=json.dumps({"url": "http://example.test/ok"})
+        )
+        res = dispatch_tool(call, ctx, builtin_registry())
+        assert res.denied and not res.executed
 
     def test_dispatch_tool_reaches_the_real_handler(
         self, server: str, monkeypatch: pytest.MonkeyPatch
@@ -258,14 +286,19 @@ class TestGatedExactlyLikeABuiltin:
         assert res.ok and res.executed
         assert "hello world" in res.content
 
-    def test_missing_url_argument_is_denied_before_any_side_effect(self) -> None:
+    def test_missing_url_argument_is_denied_before_any_side_effect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
         ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
         call = ToolCall(id="c1", name="fetch", arguments="{}")
         res = dispatch_tool(call, ctx, builtin_registry())
         assert res.denied and not res.executed
         assert "url" in res.reason
 
-    def test_a_pre_tool_call_policy_gates_fetch_exactly_like_a_builtin(self) -> None:
+    def test_a_pre_tool_call_policy_gates_fetch_exactly_like_a_builtin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A `pre_tool_call` policy denies a fetch call before the handler ever runs -- proof `fetch` runs through the existing gate (`evaluate_tool_call`) rather than around it."""
         _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
         doc = {
@@ -278,6 +311,7 @@ class TestGatedExactlyLikeABuiltin:
             "message": "fetch disabled by policy",
         }
         (_cfg.POLICIES_DIR / "no-fetch-test.json").write_text(json.dumps(doc), encoding="utf-8")
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("example.test",), raising=True)
 
         ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
         call = ToolCall(
