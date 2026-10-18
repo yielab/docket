@@ -56,7 +56,9 @@
   The real `session.json` files and the matching trace `llm_call` records are copied, read-only,
   into gitignored `internal-docs/context-replay/` (never a credential file).
 - **Acceptance:** run on the real copies, the baseline reproduces the measured table (369,263
-  counted, 25,806 largest request, three steps over budget); run on the anonymized fixtures it
+  counted; 25,806 largest request; per step 101,248 / 84,340 / 101,292 / 82,383; two steps over
+  the budget and one refused by the prospective check at 84,340 + 12,730 + 4,096 reserve); run on
+  the anonymized fixtures it
   gives the same counted totals; a grep of the fixtures for the private project's names, `/home/`
   and any key-shaped string prints nothing. Oracle: the recorded usage in the sessions.
 - **RED test:** the bench test asserting the four-step baseline totals fails (no script).
