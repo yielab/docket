@@ -450,6 +450,19 @@ class TestMemberSync:
         assert status is not None
         assert status.stale is True
 
+    def test_a_member_stamped_with_the_previous_template_version_is_stale(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        _pod._fleet.meta_set("demo-lead", "templateVersion", "4")
+
+        status = _pp.member_sync_status("demo-lead")
+
+        assert _pp.POD_TEMPLATE_VERSION == 5
+        assert status is not None
+        assert status.stale is True
+
     def test_resync_rewrites_stale_files_and_stamps_the_version(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -500,7 +513,7 @@ class TestMemberSync:
         assert "promise" not in (ws / "SOUL.md").read_text()
         assert "HEARTBEAT" not in (ws / "AGENTS.md").read_text()
         assert (ws / "MEMORY.md").read_bytes() == memory_before
-        assert _meta(home, "demo-implementer")["templateVersion"] == "4"
+        assert _meta(home, "demo-implementer")["templateVersion"] == str(_pp.POD_TEMPLATE_VERSION)
 
     def test_resync_never_touches_instructions_md(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

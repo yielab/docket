@@ -1021,7 +1021,8 @@ def builtin_registry() -> ToolRegistry:
                 "requires human approval. If sandboxing is enabled for this agent, an "
                 "approved command additionally runs inside the strongest exec jail (landlock, "
                 "seatbelt or docker) available on the host; otherwise it runs directly in "
-                "the workspace."
+                "the workspace. Create or change files with `write`/`edit`, not `cat >`, "
+                "heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things."
             ),
             parameters={
                 "type": "object",

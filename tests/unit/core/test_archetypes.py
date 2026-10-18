@@ -482,3 +482,16 @@ class TestNormalizeRole:
 
         with pytest.raises(ArchetypeError):
             normalize_role(short, tmp_path)
+
+
+class TestRolesThatWritePreferTheFileTools:
+    """The implementer and the writer are told to change files with write/edit, not bash."""
+
+    @pytest.mark.parametrize("name", ["implementer", "writer"])
+    def test_rendered_soul_prefers_write_and_edit_over_bash(self, name: str) -> None:
+        arch = {**BUILTIN_ARCHETYPES, **STARTER_ARCHETYPES}[name]
+        soul = render(arch.soul_template, {**_SAMPLE_VARIABLES, "role": name})
+
+        assert "`write`/`edit`" in soul
+        assert "heredocs" in soul
+        assert "`read`/`grep`/`glob`" in soul
