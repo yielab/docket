@@ -1045,3 +1045,14 @@ class TestRefusedCallsAreAudited:
         )
         assert ok.ok and not missing.ok
         assert self._refused() == []
+
+
+class TestBashDescriptionPrefersTheFileTools:
+    """The bash schema description steers file changes to write/edit."""
+
+    def test_description_names_write_and_edit_over_heredocs(self) -> None:
+        tool = core_tools.builtin_registry().get("bash")
+
+        assert tool is not None
+        assert "`write`/`edit`" in tool.description
+        assert "heredocs" in tool.description

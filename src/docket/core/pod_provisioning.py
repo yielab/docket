@@ -41,7 +41,7 @@ from docket.edges.adapters import system as _sys
 # core/archetypes.py's Red Lines templates).
 # v4: SOUL.md names no path, AGENTS.md carries the shared method and no private-file
 # reads, and no template asks for a completion promise.
-POD_TEMPLATE_VERSION = 4
+POD_TEMPLATE_VERSION = 5
 
 # Per-task git worktrees live under this directory of the Implementer's workspace.
 TASK_WORKTREES_DIRNAME = "tasks"
