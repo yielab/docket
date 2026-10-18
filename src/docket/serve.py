@@ -60,6 +60,14 @@ def _utc_timestamp() -> str:
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
+    """*task* plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
+    from docket.core import dispatch as _dispatch
+
+    left = _dispatch._task_token_budget(task)
+    return {**task, "tokenBudget": cfg.AGENT_LOOP_TOKEN_BUDGET if left is None else max(0, left)}
+
+
 def _last_activity_or_never(agent_id: str) -> str:
     """Like utils.last_activity but returns 'never' (cmd_snapshot's sentinel)."""
     val = utils.last_activity(agent_id)
@@ -1126,7 +1134,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
             tasks = self._filter_tasks(_dispatch.read_tasks(project), query)
             if tasks is None:
                 return
-            self._send(json.dumps({"tasks": tasks}).encode("utf-8"), "application/json")
+            listed = [_with_token_budget(task) for task in tasks]
+            self._send(json.dumps({"tasks": listed}).encode("utf-8"), "application/json")
         elif path.startswith("/pods/") and path.endswith("/corrections"):
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)
@@ -1288,7 +1297,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
         for task in _dispatch.read_tasks(project):
             if task.get("id") == task_id:
-                self._send(json.dumps(task).encode("utf-8"), "application/json")
+                body = json.dumps(_with_token_budget(task))
+                self._send(body.encode("utf-8"), "application/json")
                 return
         self._send_json_error(f"no task '{task_id}' in pod '{project}'", 404)
 

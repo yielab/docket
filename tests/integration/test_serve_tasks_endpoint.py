@@ -22,6 +22,7 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
+from docket.edges import store as _store
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.config"
@@ -152,7 +153,10 @@ class TestQueueShapeMatchesReadTasks:
             srv.shutdown()
 
         assert status == 200
-        assert body["tasks"] == expected
+        assert all("tokenBudget" in task for task in body["tasks"])
+        assert [
+            {k: v for k, v in t.items() if k != "tokenBudget"} for t in body["tasks"]
+        ] == expected
         for task in body["tasks"]:
             assert task["status"] == "pending"
             assert task["priority"] == "normal"
@@ -374,3 +378,40 @@ class TestPostEnqueueSweep:
         _post(f"{url}/tasks/demo", {"description": "go"}, token)
 
         assert submitted == []
+
+
+class TestTokenBudget:
+    def test_an_uncapped_task_reports_the_configured_turn_budget(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        monkeypatch.setattr(_cfg, "AGENT_LOOP_TOKEN_BUDGET", 4321)
+        url, token = live_server
+        _status, created = _post(f"{url}/tasks/demo", {"description": "x"}, token)
+        status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+        assert status == 200
+        assert record["tokenBudget"] == 4321
+        _status, listed = _get(f"{url}/tasks/demo", token)
+        assert [t["tokenBudget"] for t in listed["tasks"]] == [4321]
+
+    def test_a_capped_task_reports_what_its_cap_has_left(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        url, token = live_server
+        _status, created = _post(
+            f"{url}/tasks/demo", {"description": "x", "maxTokens": 1000}, token
+        )
+        status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+        assert status == 200
+        assert record["tokenBudget"] == 1000
+
+        def _spend(doc: dict) -> dict:  # type: ignore[type-arg]
+            for task in doc["tasks"]:
+                if task["id"] == created["task"]:
+                    task["hops"] = [{"role": "lead", "usage": {"input": 1500, "output": 10}}]
+            return doc
+
+        _store.read_modify_write(_dispatch.pod_task_list_path("demo"), _spend)
+        _status, spent = _get(f"{url}/tasks/demo/{created['task']}", token)
+        assert spent["tokenBudget"] == 0
