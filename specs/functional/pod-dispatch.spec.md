@@ -2337,6 +2337,9 @@ run is needed to observe this; a later `docket run` — with or without `--resum
 
 ### Version 6.55.0 (2026-10-18)
 
+- The downstream checkout note is gone: it repeated the worktree the task block already names
+  and pointed at an origin codebase path the prompt no longer carries. A verdict-gated
+  downstream hop keeps only its verdict-marker line.
 - **The task message names its root and carries a repository map** (requirement 10 of "Bounded
   hop prompts", ADR 0028 sections 1 and 5, P44-6). The roots moved out of the system prompt, which
   is now identical between tasks of one member; `_hop_message` composes `Working directory: <root>`

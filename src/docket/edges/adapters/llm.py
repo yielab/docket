@@ -131,6 +131,24 @@ def build_payload(
     return payload
 
 
+_REQUEST_PART_BY_ROLE = {
+    "system": "system",
+    "user": "user",
+    "assistant": "assistant",
+    "tool": "toolResults",
+}
+
+
+def request_part_bytes(payload: dict[str, Any]) -> dict[str, int]:
+    """Bytes of each part of an encoded request body; trace-store requirement 28."""
+    sizes = dict.fromkeys(("system", "tools", "toolResults", "assistant", "user"), 0)
+    for message in payload.get("messages", []):
+        sizes[_REQUEST_PART_BY_ROLE[message["role"]]] += len(json.dumps(message).encode("utf-8"))
+    for tool in payload.get("tools", []):
+        sizes["tools"] += len(json.dumps(tool).encode("utf-8"))
+    return sizes
+
+
 # ── wire decoding ─────────────────────────────────────────────────────────────
 
 
@@ -451,6 +469,7 @@ class OpenAIChatClient:
             model=self.endpoint.model_id,
             provider=self.endpoint.provider,
             latency_ms=_elapsed_ms(),
+            request_bytes=request_part_bytes(payload),
         )
 
 

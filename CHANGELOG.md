@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Measurable without reconstruction (P44-10).** Each `llm_call` trace event carries `request`,
+  the request's size by part (system, tools, tool results, assistant, user) in bytes and estimated
+  tokens, counted by the adapter from the body it sent; a task's `byModel` carries `cached` and
+  `cacheWrite`; task reads carry `tokenBudget`, the per-step budget docket enforces (API 5,
+  additive).
 - **A replay bench for context and budget work (Phase 44, P44-1, ADR 0028).**
   `scripts/maint/context_replay.py` reports calls, sent, cached and counted tokens per recorded
   step under the old and new budget rule, re-projects requests through named policies (an
@@ -78,6 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A step no longer re-sends every earlier tool result (P44-4).** Results older than the last
+  two become one-line notices and large old `write`/`edit` arguments become character counts, in
+  the request only (`session.json` keeps every byte). With bounded tool output, the replay bench
+  estimates 0.25 / 0.49 / 0.63 / 0.37 of today's sent tokens on four recorded steps.
+- **The prompt in layers, stable first (P44-6).** The system prompt is byte-identical between
+  tasks of one member: no roots, no HEARTBEAT.md or TOOLS.md, MEMORY.md only when it holds
+  more than its template. The working directory and a repository map arrive in the task message;
+  member templates carry one short method block and no private-file reads, absolute paths or
+  completion promise (`POD_TEMPLATE_VERSION` 4, applied by `docket pod update`). The downstream
+  checkout note that pointed at an origin path the prompt no longer carries is gone.
 - **The turn budget counts new tokens (P44-2).** Counted = input minus cache reads plus output;
   a paid final reply that crosses the budget is kept; a model with no registered output bound
   reserves `DEFAULT_MAX_OUTPUT_TOKENS` (4096) so the prospective check runs; input estimates are

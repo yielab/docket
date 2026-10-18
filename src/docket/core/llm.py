@@ -162,6 +162,9 @@ class ChatResponse:
     model: str = ""
     provider: str = ""
     latency_ms: int = 0
+    #: Bytes of each request part as the adapter encoded them (system, tools, toolResults,
+    #: assistant, user); empty when the backend does not measure its request.
+    request_bytes: dict[str, int] = field(default_factory=dict)
 
     @property
     def tool_calls(self) -> list[ToolCall]:

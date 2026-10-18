@@ -187,8 +187,10 @@ This specification does NOT cover:
 
 ### Request breakdown
 
-28. An `llm_call` record **MUST** carry `request` whenever its caller supplies the exchange's
-    request messages (both live call sites do). `request` **MUST** hold exactly the keys
+28. An `llm_call` record **MUST** carry `request` whenever the backend measured its request: the
+    OpenAI-compatible adapter (`edges/adapters/llm.py::request_part_bytes`, the only module that
+    knows the wire format) counts the body it actually sent and returns it on
+    `ChatResponse.request_bytes`; a backend that does not measure leaves the key out. `request` **MUST** hold exactly the keys
     `system`, `tools`, `toolResults`, `assistant` and `user`, each an object `{"bytes": int,
     "estTokens": int}`. `bytes` is the UTF-8 length of the JSON encoding, as the transport
     serialises it, of each object in that part: `system` counts the messages with role `system`,
@@ -349,7 +351,8 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 
 - Requirement 28 (P44-10, ADR 0028 point 8): an `llm_call` record carries `request`, the request's
   size by part (`system`, `tools`, `toolResults`, `assistant`, `user`) in bytes and estimated
-  tokens. Additive; no existing `llm_call` key changes.
+  tokens. Additive; no existing `llm_call` key changes. The adapter that encodes the request measures it (one encoder;
+  core never mirrors the wire format).
 
 ### Version 1.8.1 (2026-10-17)
 

@@ -1843,25 +1843,13 @@ def _compose_hop(
     if role != "lead":
         pipeline_worktree = _task_worktree_dir(ctx.task)
         if pipeline_worktree:
-            if role == "implementer":
+            # The task block already names the checkout as the working directory.
+            checkout_note = ""
+            if role != "implementer" and isinstance(node.gate, _pipeline.VerdictGate):
                 checkout_note = (
-                    "\nYour working checkout for this task: "
-                    f"`{pipeline_worktree}`. Make every change there, not in the origin "
-                    "codebase path named elsewhere in your instructions.\n"
+                    "\nYour final reply must still contain one distinct recognized verdict marker "
+                    "at the start of a complete line; reasons may come before or after it.\n"
                 )
-            else:
-                checkout_note = (
-                    "\nEffective implementation checkout for this downstream hop: "
-                    f"`{pipeline_worktree}`. Inspect and test this checkout, not the origin "
-                    "codebase; keep your role's existing tool permissions."
-                )
-                if isinstance(node.gate, _pipeline.VerdictGate):
-                    checkout_note += (
-                        " Your final reply must still contain one distinct recognized "
-                        "verdict marker at the start of a complete line; reasons may "
-                        "come before or after it."
-                    )
-                checkout_note += "\n"
             message += checkout_note
             composition.total_bytes += len(checkout_note.encode("utf-8"))
     _trace_locked(
