@@ -112,6 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`2>/dev/null` no longer asks for approval.** An output redirect to exactly `/dev/null`
+  counts as placed, jailed or not, with or without the turn's roots. A jailed `ls x 2>/dev/null`
+  had asked, with a reason blaming `ls`.
+
 - **Condensed history no longer makes a step re-read what it just read.** Old tool results
   stay whole while all whole results fit in 6,000 characters; only past that do they become
   one-line notices. The Phase 44 rerun found a model making one call per round re-reading a

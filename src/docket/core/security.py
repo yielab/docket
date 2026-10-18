@@ -71,6 +71,9 @@ _INPUT_REDIRECT_OPS: frozenset[str] = frozenset({"<", "<<", "<<<", "<>"})
 # prefix, a glob) is not the path docket would resolve, so it cannot be placed.
 _UNPLACEABLE_TARGET_CHARS: frozenset[str] = frozenset("$~*?[{")
 
+# Writing to it discards the output, so no root is needed to place it (`2>/dev/null`).
+_DISCARD_TARGET = "/dev/null"
+
 # After one of these runs, a later relative redirect target no longer resolves
 # against the workspace root the `bash` tool started in.
 _DIRECTORY_CHANGERS: frozenset[str] = frozenset({"cd", "pushd", "popd"})
@@ -296,16 +299,21 @@ def _split_segments(command: str) -> list[_Segment]:
 def _redirects_stay_inside(
     segment: _Segment, roots: tuple[Path, ...], changed_directory: bool
 ) -> bool:
-    """True when every output redirect of *segment* names a path resolving inside *roots*
-    (relative to ``roots[0]``, the ``bash`` tool's cwd; symlinks followed). False for no roots,
-    a target the shell would rewrite, an operator without a target, or an earlier ``cd``."""
-    if not roots or changed_directory or len(segment.targets) != segment.redirects:
+    """True when every output redirect names ``/dev/null`` or a path inside *roots* (relative
+    to ``roots[0]``, symlinks followed). False for a path with no roots, a target the shell would
+    rewrite, an operator without a target, or an earlier ``cd``."""
+    if len(segment.targets) != segment.redirects:
+        return False
+    placed = [target for target in segment.targets if target != _DISCARD_TARGET]
+    if not placed:
+        return True
+    if not roots or changed_directory:
         return False
     try:
         bounds = [root.resolve() for root in roots]
     except OSError:
         return False
-    for target in segment.targets:
+    for target in placed:
         if not target or _UNPLACEABLE_TARGET_CHARS & set(target):
             return False
         candidate = Path(target) if os.path.isabs(target) else roots[0] / target

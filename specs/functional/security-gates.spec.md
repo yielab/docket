@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.59.0
+**Version**: 0.60.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -96,8 +96,10 @@ are owned here, not there.
    no `$`, `~`, glob or brace the shell would rewrite first; no operator without a target — the
    redirect is the `write` tool by another name (the file tools are confined to the same roots,
    and every role that may not write is denied `bash`) and **MUST** be allowed, for `echo` and
-   for a pod's extra bins alike. Without roots (`docket pod check`, dispatch's verify command)
-   every prior verdict stands. Every output-redirect spelling counts: `>`, `>>`, `>|`, `&>`,
+   for a pod's extra bins alike. A target written exactly `/dev/null` discards the output and
+   **MUST** count as placed with or without roots, jailed or not (`ls x 2>/dev/null`); every
+   jail already grants it (`DEFAULT_RW_FILES`). Without roots (`docket pod check`, dispatch's
+   verify command) every other prior verdict stands. Every output-redirect spelling counts: `>`, `>>`, `>|`, `&>`,
    `&>>` and `>&` to a path; `2>&1` copies a descriptor and opens nothing. `pytest` and `python`
    are on `SAFE_BINS` beside `python3`: the bare test runner runs the same code
    `python3 -m pytest` does, so asking on one spelling only was a trap, not a gate.
@@ -148,8 +150,8 @@ are owned here, not there.
    `SAFE_BINS`/`extra_bins` is `allow`ed instead of asking. Unchanged in both modes: the
    not-statically-analysable `ask` (command substitution, `eval`, `exec`, unparseable text), every
    high-risk class (`ask`, argument-aware), the empty-command `deny`, and redirect containment
-   (an output redirect whose targets do not all resolve inside `roots` still asks, for every
-   binary when jailed). With `jailed=False` (the default, and every host-side caller such as
+   (an output redirect whose targets do not all resolve inside `roots` or name `/dev/null`
+   still asks, for every binary when jailed). With `jailed=False` (the default, and every host-side caller such as
    dispatch's `run:` steps and `docket pod check`) every verdict is byte-identical to before.
    `policy` hooks apply in both modes.
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
@@ -1825,6 +1827,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.60.0 (2026-10-18)
+
+- Tool-approval gates requirement 1: an output redirect to exactly `/dev/null` counts as placed, with
+  or without roots. The Phase 44 real rerun saw a jailed `ls x 2>/dev/null` ask for approval
+  with the reason "'ls' is not on the curated allowlist", although the jail grants `/dev/null`
+  and the write discards everything.
 
 ### Version 0.59.0 (2026-10-18)
 
