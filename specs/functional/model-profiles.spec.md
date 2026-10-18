@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -330,6 +330,16 @@ feasibility spike remains in ROADMAP and Git history.
    fails the validation `core.provider.load_provider_document` applies to a file on disk — naming
    the file, the provider's name and the failing field — the same way a malformed
    `docket-roles.json` overlay entry is named, and carry the same list under `--json`.
+8. **Prompt-cache markers.** For a model whose id, after any `<vendor>/` prefix, starts with
+   `claude` (the `anthropic` provider and `anthropic/...` through a gateway),
+   `edges/adapters/llm.py::build_payload` **MUST** encode the system message's `content` and the
+   last message's `content` (a `tool` message included) as one text part
+   `[{"type": "text", "text": <content>, "cache_control": {"type": "ephemeral"}}]`; a message whose
+   content is empty or null (an assistant turn that only calls tools) **MUST** be left unmarked,
+   because the provider refuses a marker on an empty text block, and a single message that is both
+   first and last carries one marker. For every other model the request body **MUST** be
+   byte-identical to the unmarked encoding. `request_part_bytes` counts the encoded parts as
+   sent. No catalog field decides this: the model id does.
 
 ### Pricing
 
@@ -482,6 +492,13 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.5.0 (2026-10-18)
+
+- "Provider catalog" requirement 8: an Anthropic model's request marks `cache_control` on the
+  system message and on the last message, so a provider cache can hit across the requests of a
+  turn and across two tasks of one member (ADR 0028 section 6). Any other model's request is
+  byte-unchanged. An Anthropic critic measured 0 % cache over 11 calls without the markers.
 
 ### Version 3.4.0 (2026-10-18)
 
