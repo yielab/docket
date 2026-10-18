@@ -199,6 +199,7 @@ class _Segment:
     tokens: list[str]
     redirects: int  # output redirect operators attached to this invocation
     targets: tuple[str, ...]  # the token after each one; fewer than ``redirects`` when one had none
+    subshell: bool = False  # joined to a neighbour by ``|`` or ``&``, so it runs in a subshell
 
     @property
     def redirected(self) -> bool:
@@ -244,6 +245,86 @@ def _logical_lines(command: str) -> list[str]:
     return [line for line in lines if line.strip()]
 
 
+_HEREDOC_OP = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z0-9_.-]+))")
+_SHELL_BINS: frozenset[str] = frozenset(
+    {"bash", "sh", "zsh", "dash", "ksh", "ash", "fish", "csh", "tcsh", "source", "."}
+)
+
+
+def _heredocs_on(line: str) -> list[tuple[str, bool, bool]]:
+    """The ``(word, quoted, strip_tabs)`` of every ``<<`` heredoc opened on *line*; a ``<<``
+    inside quotes, or the ``<<<`` here-string, is not one."""
+    found: list[tuple[str, bool, bool]] = []
+    quote = ""
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if ch == "\\" and quote != "'":
+            i += 2
+            continue
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif line.startswith("<<<", i):
+            i += 3
+            continue
+        elif line.startswith("<<", i):
+            m = _HEREDOC_OP.match(line, i)
+            if m:
+                word = m.group(2) if m.group(2) is not None else m.group(3)
+                quoted = word is not None or bool(m.group(4))
+                found.append((word if word is not None else m.group(5), quoted, bool(m.group(1))))
+                i = m.end()
+                continue
+        i += 1
+    return found
+
+
+def _line_runs_a_shell(line: str) -> bool:
+    """True when any segment of *line* runs a shell (or cannot be read), so a heredoc body on
+    it may be commands."""
+    try:
+        for segment in _split_segments(line):
+            effective = _unwrap(segment.tokens)
+            if effective is None or os.path.basename(effective[0]) in _SHELL_BINS:
+                return True
+    except ValueError:
+        return True
+    return False
+
+
+def _cut_quoted_heredocs(text: str) -> tuple[str, str | None]:
+    """Remove the body and closing line of every quoted-delimiter heredoc not fed to a shell.
+    The second item is a refusal reason when a quoted heredoc never closes."""
+    lines = text.split("\n")
+    out: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        out.append(line)
+        idx += 1
+        pending = _heredocs_on(line)
+        if not pending:
+            continue
+        keep = _line_runs_a_shell(line)
+        for word, quoted, strip in pending:
+            body_start = idx
+            while idx < len(lines):
+                candidate = lines[idx].rstrip("\r")
+                if (candidate.lstrip("\t") if strip else candidate) == word:
+                    break
+                idx += 1
+            closed = idx < len(lines)
+            if quoted and not keep:
+                if not closed:
+                    return text, f"heredoc {word!r} has no closing delimiter"
+            else:
+                out.extend(lines[body_start : idx + 1 if closed else idx])
+            idx += 1 if closed else 0
+    return "\n".join(out), None
+
+
 def _split_segments(command: str) -> list[_Segment]:
     """Split a shell command into per-invocation token lists, plus the output redirects attached
     to each -- kept internal, used only by ``classify_command``."""
@@ -259,11 +340,14 @@ def _split_segments(command: str) -> list[_Segment]:
     redirects = 0
     targets: list[str] = []
     expecting_target = duplicating = False
+    prev_sep = ""
     for token in tokens:
         if token in _COMMAND_SEPARATORS:
             if current:
-                segments.append(_Segment(current, redirects, tuple(targets)))
+                sub = prev_sep in ("|", "&") or token in ("|", "&")
+                segments.append(_Segment(current, redirects, tuple(targets), sub))
             current, redirects, targets, expecting_target = [], 0, [], False
+            prev_sep = token
             continue
         # Redirections attach to the current invocation rather than starting a
         # new one, but the target is not a binary -- drop the operator and let
@@ -282,7 +366,7 @@ def _split_segments(command: str) -> list[_Segment]:
                 targets.append(token)
         current.append(token)
     if current:
-        segments.append(_Segment(current, redirects, tuple(targets)))
+        segments.append(_Segment(current, redirects, tuple(targets), prev_sep in ("|", "&")))
 
     cleaned: list[_Segment] = []
     for segment in segments:
@@ -292,38 +376,59 @@ def _split_segments(command: str) -> list[_Segment]:
         ):
             idx += 1
         if idx < len(segment.tokens):
-            cleaned.append(_Segment(segment.tokens[idx:], segment.redirects, segment.targets))
+            cleaned.append(
+                _Segment(segment.tokens[idx:], segment.redirects, segment.targets, segment.subshell)
+            )
     return cleaned
 
 
 def _redirects_stay_inside(
-    segment: _Segment, roots: tuple[Path, ...], changed_directory: bool
-) -> bool:
-    """True when every output redirect names ``/dev/null`` or a path inside *roots* (relative
-    to ``roots[0]``, symlinks followed). False for a path with no roots, a target the shell would
-    rewrite, an operator without a target, or an earlier ``cd``."""
+    segment: _Segment, roots: tuple[Path, ...], base: Path | None
+) -> str | None:
+    """None when every output redirect names ``/dev/null`` or a path inside *roots* (relative to
+    *base*, symlinks followed); otherwise the reason it cannot be placed. A *base* of None
+    means an earlier ``cd`` the classifier could not follow."""
     if len(segment.targets) != segment.redirects:
-        return False
+        return "output redirect has no target"
     placed = [target for target in segment.targets if target != _DISCARD_TARGET]
     if not placed:
-        return True
-    if not roots or changed_directory:
-        return False
+        return None
+    if roots and base is None:
+        return "output redirect after cd cannot be placed"
     try:
         bounds = [root.resolve() for root in roots]
     except OSError:
-        return False
+        return f"output redirect to {placed[0]} is outside the workspace"
     for target in placed:
-        if not target or _UNPLACEABLE_TARGET_CHARS & set(target):
-            return False
-        candidate = Path(target) if os.path.isabs(target) else roots[0] / target
+        outside = f"output redirect to {target} is outside the workspace"
+        if not roots or base is None or not target:
+            return outside
+        if _UNPLACEABLE_TARGET_CHARS & set(target):
+            return f"output redirect to {target} cannot be placed (the shell rewrites it)"
+        candidate = Path(target) if os.path.isabs(target) else base / target
         try:
             resolved = candidate.resolve()
         except (OSError, RuntimeError):
-            return False
+            return outside
         if not any(resolved.is_relative_to(bound) for bound in bounds):
-            return False
-    return True
+            return outside
+    return None
+
+
+def _followed_directory(effective: list[str], base: Path | None, follow: bool) -> Path | None:
+    """Where a ``cd`` leaves the working directory: the literal target resolved against *base*,
+    or None when it cannot be followed."""
+    if not follow or base is None or effective[0] != "cd" or len(effective) != 2:
+        return None
+    target = effective[1]
+    if not target or target == "-" or target.startswith("~") or "`" in target:
+        return None
+    if _UNPLACEABLE_TARGET_CHARS & set(target):
+        return None
+    try:
+        return (Path(target) if os.path.isabs(target) else base / target).resolve()
+    except (OSError, RuntimeError):
+        return None
 
 
 # Command wrappers: the wrapper is allowlisted, the command it runs is what gets classified.
@@ -466,6 +571,14 @@ def classify_command(
     if not text:
         return CommandVerdict("deny", "empty command")
 
+    full_text = text
+    text, unclosed = _cut_quoted_heredocs(text)
+    if unclosed is not None:
+        return CommandVerdict("ask", unclosed)
+    text = text.strip()
+    if not text:
+        return CommandVerdict("deny", "no binary found in command")
+
     lowered = text.lower()
     for marker in _OPAQUE_MARKERS:
         if marker in lowered:
@@ -480,7 +593,7 @@ def classify_command(
     if not segments:
         return CommandVerdict("deny", "no binary found in command")
 
-    risk = match_high_risk(text)
+    risk = match_high_risk(full_text)
     if risk is not None:
         return CommandVerdict(
             "ask",
@@ -489,7 +602,8 @@ def classify_command(
             risk_class=risk.name,
         )
 
-    changed_directory = False
+    follow = "(" not in text and "||" not in text
+    base: Path | None = roots[0].resolve() if roots else None
     for segment in segments:
         effective = _unwrap(segment.tokens)
         if effective is None:
@@ -509,19 +623,16 @@ def classify_command(
         )
         if jailed and off_allowlist:
             off_allowlist = False
-        if (
-            not off_allowlist
-            and segment.redirected
-            and redirect_sensitive
-            and not _redirects_stay_inside(segment, roots, changed_directory)
-        ):
-            off_allowlist = True
         if off_allowlist:
             return CommandVerdict(
                 "ask", f"{bin_name!r} is not on the curated allowlist", bin_name=bin_name
             )
+        if segment.redirected and redirect_sensitive:
+            refusal = _redirects_stay_inside(segment, roots, base)
+            if refusal is not None:
+                return CommandVerdict("ask", refusal, bin_name=bin_name)
         if bin_name in _DIRECTORY_CHANGERS:
-            changed_directory = True
+            base = _followed_directory(effective, base, follow and not segment.subshell)
 
     return CommandVerdict(
         "allow",
