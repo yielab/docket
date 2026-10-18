@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The operator controls pod memory (P44-8).** `docket pod memory list [--status] [--json]`,
+  `approve`, `refuse --reason`, `revert` and `reset [--yes]`, each audited; `docket inbox` lists
+  pending memory entries under "Needs you" with the command that approves or refuses each one.
 - **Pod memory (P44-7, ADR 0028 point 7).** A step's reply may end with a `## Memory` section of
   typed facts (`generated`, `command`, `pitfall`, `convention`). docket verifies each one itself:
   a `generated` path that exists at the task's commit and a `command` whose exit status is in the
