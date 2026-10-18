@@ -38,6 +38,7 @@ _ARGS: dict[tuple[str, ...], list[str]] = {
     ("task", "list"): [],
     ("task", "show"): ["{task}"],
     ("pod", "show"): [],
+    ("pod", "memory", "list"): [],
     ("setup", "provider", "list"): [],
     ("setup", "provider", "show"): ["loopback"],
     ("setup", "model", "list"): [],

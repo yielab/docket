@@ -21,6 +21,7 @@ from docket.core.operator_contract import ApprovalView, InboxView, TaskView
 from docket.edges import store as _store
 
 APPROVED_READY = "approved_ready"
+NEEDS_MEMORY = "needs_memory_approval"
 
 _TASK_STATES = {
     "waiting_approval": ("needs_approval", "docket task approve {id}"),
@@ -74,11 +75,34 @@ def _as_dict(item: TaskView | ApprovalView, *, ready: bool = False) -> dict[str,
     return row
 
 
-def _json_view(view: InboxView, ready: list[TaskView]) -> dict[str, Any]:
+def _memory_command(item: _inbox.MemoryItem) -> str:
+    return f"docket pod memory approve {item.id} --pod {item.pod}"
+
+
+def _memory_dict(item: _inbox.MemoryItem) -> dict[str, Any]:
+    return {
+        "kind": "memory",
+        "pod": item.pod,
+        "id": item.id,
+        "entryKind": item.kind,
+        "subject": item.subject,
+        "note": item.note,
+        "reason": item.reason,
+        "task": item.task,
+        "state": NEEDS_MEMORY,
+        "command": _memory_command(item),
+    }
+
+
+def _json_view(
+    view: InboxView, ready: list[TaskView], memory: list[_inbox.MemoryItem]
+) -> dict[str, Any]:
     body: dict[str, Any] = view.model_dump(by_alias=True, mode="json")
-    body["needsYou"] = [_as_dict(i) for i in view.needs_you] + [
-        _as_dict(t, ready=True) for t in ready
-    ]
+    body["needsYou"] = (
+        [_as_dict(i) for i in view.needs_you]
+        + [_as_dict(t, ready=True) for t in ready]
+        + [_memory_dict(m) for m in memory]
+    )
     for key, items in (
         ("failed", view.failed),
         ("doneSince", view.done_since),
@@ -102,6 +126,15 @@ def _say(text: str) -> None:
 def _block(prefix: str, text: str) -> str:
     """`prefix` before the first line; every later line aligned under the text after it."""
     return prefix + text.replace("\n", "\n" + " " * len(prefix))
+
+
+def _render_memory(item: _inbox.MemoryItem) -> None:
+    _say(f"  memory {item.id}  pod={item.pod}  {item.kind}")
+    _say(_block("    ", f"{item.subject}: {item.note}"))
+    if item.reason:
+        _say(_block("    why held: ", item.reason))
+    _say(f"    approve: {_memory_command(item)}")
+    _say(f'    refuse:  docket pod memory refuse {item.id} --pod {item.pod} --reason "<why>"')
 
 
 def _render_item(item: TaskView | ApprovalView, *, ready: bool = False) -> None:
@@ -155,8 +188,9 @@ def cmd_inbox(
     if not peek and since is None and view.next:
         _write_cursor(view.next)
     ready = _approved_ready_tasks()
+    memory = _inbox.pending_memory()
     if json_out:
-        _contract.emit_json(_json_view(view, ready))
+        _contract.emit_json(_json_view(view, ready, memory))
         return
     ui.header("Inbox")
     sections: list[tuple[str, list[tuple[TaskView | ApprovalView, bool]]]] = [
@@ -168,11 +202,14 @@ def cmd_inbox(
         ("Done", [(i, False) for i in view.done_since]),
         ("Running", [(i, False) for i in view.running]),
     ]
-    if not any(items for _, items in sections):
+    if not memory and not any(items for _, items in sections):
         ui.dim("Nothing needs you.")
         return
     for title, items in sections:
-        if items:
+        if items or (memory and title == "Needs you"):
             ui.section(title)
             for item, is_ready in items:
                 _render_item(item, ready=is_ready)
+            if title == "Needs you":
+                for entry in memory:
+                    _render_memory(entry)
