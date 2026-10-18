@@ -10,7 +10,7 @@ and `HandoffArtifact.brief` never being shed by a token-budgeted consumer (it is
 from __future__ import annotations
 
 from docket.core import context as _ctx
-from docket.core.handoff import HandoffArtifact, parse_brief, render_brief
+from docket.core.handoff import HandoffArtifact, cap_diff, parse_brief, render_brief
 from docket.core.operator_contract import TaskBrief
 
 SUBJECT = "docket.core.handoff"
@@ -168,3 +168,22 @@ class TestHandoffArtifactBrief:
         # it is excluded from DROP_ORDER and `render()` always includes it when set.
         assert "Objective: add a widget" in compiled.text
         assert set(compiled.dropped_fields) == {"notes", "diff_ref", "files_changed", "verdict"}
+
+
+class TestDiff:
+    def test_render_puts_the_diff_once_right_after_the_summary(self) -> None:
+        art = HandoffArtifact(summary="done", diff="--- new file: n.md\nbody\n", verdict="approve")
+        assert art.render() == "done\nDiff:\n--- new file: n.md\nbody\n\nVerdict: approve"
+        assert art.render().count("body") == 1
+
+    def test_no_diff_renders_the_summary_unchanged(self) -> None:
+        assert HandoffArtifact(summary="done").render() == "done"
+
+    def test_dropped_diff_resets_to_empty(self) -> None:
+        assert HandoffArtifact(summary="s", diff="d").dropped("diff").diff == ""
+
+    def test_cap_diff_leaves_a_fitting_text_alone(self) -> None:
+        assert cap_diff("abc", 3) == "abc"
+
+    def test_cap_diff_cuts_and_says_how_much_is_missing(self) -> None:
+        assert cap_diff("abcdef", 4) == "abcd\n[diff cut at 4 characters; 2 more not shown]"

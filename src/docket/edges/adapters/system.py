@@ -25,6 +25,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from stat import S_ISREG
 from typing import Literal
 
 import docket.config as _cfg
@@ -1073,7 +1074,7 @@ def git_available() -> bool:
 def git_current_branch(cwd: str) -> str:
     """Return the current git branch for `cwd`, or '' if not a repo or unavailable; degrades
     gracefully on a missing binary, non-repo directory, or timeout. The ``diff_ref`` producer for an
-    Implementer hop's ``HandoffArtifact`` (`core/dispatch.py`'s `_implementer_diff_probe`)."""
+    Implementer hop's ``HandoffArtifact`` (`core/dispatch.py`'s `_hop_diff_probe`)."""
     if not git_available():
         return ""
     try:
@@ -1412,6 +1413,36 @@ def git_diff_range(repo_dir: str, base: str, ref: str) -> str | None:
     if len(patch) > DIFF_MAX_CHARS:
         patch = f"{patch[:DIFF_MAX_CHARS]}\n[diff truncated at {DIFF_MAX_CHARS} characters]\n"
     return patch
+
+
+def git_new_files_text(cwd: str, limit: int) -> str:
+    """Each new untracked file's content under a ``--- new file: <path>`` line, path order, read up
+    to about `limit` characters; a symlink, non-regular or binary file gets a note, not content.
+    ``""`` on no git, no repo or no new file."""
+    parts: list[str] = []
+    size = 0
+    for _code, path in sorted(c for c in git_worktree_changes(cwd) if c[0] == "??"):
+        if size > limit:
+            break
+        rel = os.path.relpath(path, cwd)
+        body = _read_new_file(path, limit - size + 1)
+        parts.append(f"--- new file: {rel}\n{body}")
+        size += len(parts[-1])
+    return "".join(part if part.endswith("\n") else part + "\n" for part in parts)
+
+
+def _read_new_file(path: str, limit: int) -> str:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return "(not a regular file; content not shown)"
+    with os.fdopen(fd, "rb") as handle:
+        if not S_ISREG(os.fstat(handle.fileno()).st_mode):
+            return "(not a regular file; content not shown)"
+        data = handle.read(max(limit, 1))
+    if b"\0" in data:
+        return "(binary file; content not shown)"
+    return data.decode("utf-8", errors="replace")
 
 
 def git_untracked(worktree: str) -> list[str]:

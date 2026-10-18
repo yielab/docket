@@ -4,7 +4,7 @@
 hop otherwise has nothing to reason about except opaque prior-hop text — no
 notion of which part of a reply is a one-line verdict, which is the file list
 a code change touched, or which fields are safe to shed first once a token
-budget gets tight. The shape (``summary``, ``files_changed``, ``diff_ref``,
+budget gets tight. The shape (``summary``, ``files_changed``, ``diff_ref``, ``diff``,
 ``verdict``, ``notes``) plus a declared drop order gives a size-constrained
 consumer (``core/context.py``'s token-budget compiler) an order to shed
 fields in without inventing one itself.
@@ -25,9 +25,8 @@ other field at its default).
   hop gated by a ``VerdictGate`` (Reviewer/Tester, or any verdict-gated
   archetype). ``None`` for every other hop: Lead, a ``MechanicalGate``- or
   ``ApprovalGate``-gated hop, or an unparseable verdict.
-- ``files_changed`` / ``diff_ref`` — populated for an **Implementer** hop
-  via a real git probe:
-  ``core/dispatch.py``'s ``_implementer_diff_probe`` resolves the member's
+- ``files_changed`` / ``diff_ref`` / ``diff`` — populated via a real git probe:
+  ``core/dispatch.py``'s ``_hop_diff_probe`` resolves the member's
   working tree the same way the mechanical verify gate does (worktree →
   shared codebase → the member's own workspace dir, via
   ``core.pod.resolve_member_cwd``) and, when that tree is a real git
@@ -35,11 +34,13 @@ other field at its default).
   ``edges/adapters/system.py``'s ``git_changed_files``/``git_current_branch``.
   ``files_changed`` is the working tree's uncommitted changes (staged,
   unstaged, untracked — not a diff against a fixed base ref); ``diff_ref`` is
-  the member's current branch name, a reference a caller can hand to
-  ``git diff``/``git log`` against the pod's base branch. Both stay at their
-  empty default for every non-Implementer hop, a ``workdir`` (non-codebase)
-  pod, a workspace that is not a git repository, or a host with no ``git``
-  binary — an honest degrade, never an exception, never a crash mid-dispatch.
+  the member's current branch name (Implementer hops only), a reference a caller
+  can hand to ``git diff``/``git log`` against the pod's base branch. ``diff`` is
+  the text of what the hop wrote (tracked changes plus new files' content), capped
+  by ``cap_diff``, for any role whose hop changed the tree. All stay at their
+  empty default for a ``workdir`` (non-codebase) pod, a workspace that is not a
+  git repository, or a host with no ``git`` binary — an honest degrade, never an
+  exception, never a crash mid-dispatch.
 - ``notes`` — free-form and **reserved**: the schema carries it (and
   ``DROP_ORDER`` accounts for it) so a future producer never needs a schema
   migration, but nothing in dispatch writes it today. Always ``""`` unless a
@@ -90,6 +91,15 @@ def parse_brief(text: str) -> TaskBrief | None:
         return None
 
 
+def cap_diff(text: str, limit: int) -> str:
+    """*text* cut at *limit* characters, with a closing marker line that says how much was
+    left out; unchanged when it fits."""
+    if len(text) <= limit:
+        return text
+    omitted = len(text) - limit
+    return f"{text[:limit]}\n[diff cut at {limit} characters; {omitted} more not shown]"
+
+
 def _render_brief_section(lines: list[str], title: str, items: list[str]) -> None:
     if not items:
         return
@@ -130,6 +140,9 @@ class HandoffArtifact(BaseModel):
     summary: str
     files_changed: list[str] = Field(default_factory=list)
     diff_ref: str | None = None
+    #: What a hop that changed the tree wrote: tracked changes plus new files' content, capped
+    #: (``cap_diff``). First in ``DROP_ORDER``; ``""`` when the hop changed nothing.
+    diff: str = ""
     verdict: str | None = None
     #: Free-form and reserved: the schema and DROP_ORDER account for it
     #: so a future producer needs no migration, but dispatch writes nothing
@@ -141,10 +154,17 @@ class HandoffArtifact(BaseModel):
     brief: TaskBrief | None = None
 
     #: Least-valuable-first shedding order for a token-budgeted consumer.
-    DROP_ORDER: ClassVar[tuple[str, ...]] = ("notes", "diff_ref", "files_changed", "verdict")
+    DROP_ORDER: ClassVar[tuple[str, ...]] = (
+        "diff",
+        "notes",
+        "diff_ref",
+        "files_changed",
+        "verdict",
+    )
 
     #: The "reset to empty" value for each droppable field — used by ``dropped()``.
     _EMPTY_VALUES: ClassVar[dict[str, Any]] = {
+        "diff": "",
         "notes": "",
         "diff_ref": None,
         "files_changed": [],
@@ -171,6 +191,8 @@ class HandoffArtifact(BaseModel):
         never reorders itself based on data.
         """
         lines = [self.summary]
+        if self.diff:
+            lines.append(f"Diff:\n{self.diff}")
         if self.brief is not None:
             lines.append(f"Brief:\n{render_brief(self.brief)}")
         if self.verdict is not None:

@@ -218,8 +218,14 @@ class TestCompileArtifact:
         assert compiled.original_tokens == compiled.tokens
 
     def test_fields_are_shed_in_declared_drop_order(self) -> None:
-        """notes -> diff_ref -> files_changed -> verdict, one at a time, stopping the moment the render fits -- pinned against `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this test breaks (loudly) if the order is ever changed there."""
-        assert HandoffArtifact.DROP_ORDER == ("notes", "diff_ref", "files_changed", "verdict")
+        """diff -> notes -> diff_ref -> files_changed -> verdict, one at a time, stopping the moment the render fits -- pinned against `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this test breaks (loudly) if the order is ever changed there."""
+        assert HandoffArtifact.DROP_ORDER == (
+            "diff",
+            "notes",
+            "diff_ref",
+            "files_changed",
+            "verdict",
+        )
 
         art = HandoffArtifact(
             summary="s",
@@ -227,15 +233,16 @@ class TestCompileArtifact:
             files_changed=["a.py", "b.py"],
             diff_ref="/repo/worktree",
             notes="took two tries",
+            diff="--- new file: a.py\nprint(1)\n",
         )
         full = art.render()
         # Budget that fits everything except the full render -- forces at
         # least one field to be shed.
         budget = _ctx.estimate_tokens(full) - 1
         compiled = _ctx.compile_artifact(art, budget_tokens=budget)
-        assert compiled.dropped_fields == ("notes",)
-        assert "Notes:" not in compiled.text
-        assert "Verdict: approve" in compiled.text  # least-valuable shed first, only
+        assert compiled.dropped_fields == ("diff",)
+        assert "Diff:" not in compiled.text
+        assert "Notes: took two tries" in compiled.text  # least-valuable shed first, only
 
     def test_sheds_every_droppable_field_before_touching_summary(self) -> None:
         art = HandoffArtifact(
@@ -244,12 +251,13 @@ class TestCompileArtifact:
             files_changed=["a.py"],
             diff_ref="/repo",
             notes="n",
+            diff="d",
         )
         # A budget that only the bare summary fits -- every droppable field
         # must go, in order, none of them left behind.
         budget = _ctx.estimate_tokens(art.summary)
         compiled = _ctx.compile_artifact(art, budget_tokens=budget)
-        assert compiled.dropped_fields == ("notes", "diff_ref", "files_changed", "verdict")
+        assert compiled.dropped_fields == ("diff", "notes", "diff_ref", "files_changed", "verdict")
         assert compiled.text == art.summary
         assert compiled.summary_truncated is False
 
