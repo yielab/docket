@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.56.0
+**Version**: 6.57.0
 **Status**: Complete. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
 produced: `HandoffArtifact.diff`, a capped diff of the hop's tracked changes plus the content of
 its new files, rendered once after the summary — see "Structured handoff artifacts" and
@@ -1684,6 +1684,11 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 8. The next hop's message **MUST** carry the diff once, from the artifact's `render()` (so the
    per-hop token budget sheds it first); it **MUST NOT** carry the list of files the previous
    hop read.
+9. In a task worktree, a non-Implementer hop that hands on a `diff` (requirement 7) **MUST**
+   commit the tree on the task branch, as the Implementer's pin does (`git add -A`, message
+   `<task subject>` then `docket task <id>, <role> hop`), so a pipeline with no Implementer (a
+   research or content team) leaves its work on the branch. Its `diff_ref` and `evidence` stay
+   `None`; in place, nothing is committed for it.
 
 ### Hop evidence (ROADMAP Phase 35, ADR 0017, card P35-4)
 
@@ -2334,6 +2339,13 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.57.0 (2026-10-18)
+
+- A non-Implementer hop's work in a task worktree is committed on the task branch (requirement 9
+  of "Implementer diff producer"). A real research task (researcher, then critic) ended `done`
+  with the researcher's report untracked and the branch at its base, so an external verifier
+  refused it as empty.
 
 ### Version 6.56.0 (2026-10-18)
 
