@@ -474,6 +474,30 @@ class TestApprovalTokenIsNotAPath:
         assert _approval.approval_get(pending)["state"] == "pending"
 
 
+class TestEveryApprovalRecordsItsDeadline:
+    def test_default_deadline_is_created_plus_timeout(self, approvals_dir: Path) -> None:
+        """A creator that names no deadline still gets created + APPROVAL_TIMEOUT."""
+        rec = _approval.approval_get(_approval.approval_create("projX", "implementer", "x"))
+        created = _dt.datetime.strptime(rec["created"][:19], "%Y-%m-%dT%H:%M:%S")
+        expires = _dt.datetime.strptime(rec["expiresAt"][:19], "%Y-%m-%dT%H:%M:%S")
+        assert expires - created == _dt.timedelta(seconds=_cfg.APPROVAL_TIMEOUT)
+
+    def test_given_deadline_is_kept(self, approvals_dir: Path) -> None:
+        """An explicit expires_at is stored verbatim."""
+        token = _approval.approval_create(
+            "projX", "implementer", "x", expires_at="2031-01-01T00:00:00Z"
+        )
+        assert _approval.approval_get(token)["expiresAt"] == "2031-01-01T00:00:00Z"
+
+    def test_approvals_view_carries_the_deadline(self, live_server: tuple[str, str]) -> None:
+        """GET /approvals shows the same expiresAt the record holds."""
+        url, token = live_server
+        apr = _approval.approval_create("projV", "implementer", "x")
+        _, body = _get(f"{url}/approvals", token)
+        row = next(r for r in body["pending"] if r["token"] == apr)
+        assert row["expiresAt"] == _approval.approval_get(apr)["expiresAt"]
+
+
 class TestExpiryStillFailCloses:
     def test_expired_not_in_pending_list(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
@@ -491,6 +515,7 @@ class TestExpiryStillFailCloses:
         rec = _approval.approval_get(apr_token)
         old = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=_cfg.APPROVAL_TIMEOUT + 1)
         rec["created"] = old.strftime("%Y-%m-%dT%H:%M:%SZ")
+        rec["expiresAt"] = rec["created"]
         _store.write_json(_approval_path(apr_token), rec)
 
         swept = _approval.approval_sweep_expired()
