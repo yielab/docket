@@ -27,6 +27,52 @@ class _FakeCompleted:
         self.stderr = ""
 
 
+# ── git_new_files_text ────────────────────────────────────────────────────────
+
+
+class TestGitNewFilesText:
+    def _changes(self, monkeypatch: pytest.MonkeyPatch, *paths: Path) -> None:
+        monkeypatch.setattr(
+            _sys, "git_worktree_changes", lambda _cwd: [("??", str(p)) for p in paths]
+        )
+
+    def test_gives_each_new_file_under_a_header_in_path_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "b.md").write_text("second\n")
+        (tmp_path / "a.md").write_text("first")
+        self._changes(monkeypatch, tmp_path / "b.md", tmp_path / "a.md")
+        text = _sys.git_new_files_text(str(tmp_path), 1000)
+        assert text == "--- new file: a.md\nfirst\n--- new file: b.md\nsecond\n"
+
+    def test_a_symlink_and_a_binary_file_show_a_note_not_their_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        secret = tmp_path / "secret.txt"
+        secret.write_text("TOP-SECRET")
+        link = tmp_path / "link"
+        link.symlink_to(secret)
+        blob = tmp_path / "blob.bin"
+        blob.write_bytes(b"\x00\x01TOP-SECRET")
+        self._changes(monkeypatch, link, blob)
+        text = _sys.git_new_files_text(str(tmp_path), 1000)
+        assert "TOP-SECRET" not in text
+        assert "not a regular file" in text and "binary file" in text
+
+    def test_reading_stops_once_the_limit_is_gathered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in ("a", "b", "c"):
+            (tmp_path / name).write_text(name * 100)
+        self._changes(monkeypatch, tmp_path / "a", tmp_path / "b", tmp_path / "c")
+        text = _sys.git_new_files_text(str(tmp_path), 50)
+        assert "--- new file: a" in text and "--- new file: c" not in text
+
+    def test_no_new_file_gives_an_empty_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._changes(monkeypatch)
+        assert _sys.git_new_files_text("/nowhere", 10) == ""
+
+
 # ── git_head_sha ──────────────────────────────────────────────────────────────
 
 

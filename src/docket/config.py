@@ -124,6 +124,8 @@ TRACE_RETENTION_S = TRACE_RETENTION_DAYS * 86400
 # runaway context, not a billing figure (see core/session.py's real measured
 # counts for the turn loop's own message history, a separate concern).
 CONTEXT_BYTES_PER_TOKEN = max(1, int(os.environ.get("CONTEXT_BYTES_PER_TOKEN", "4")))
+# Cap, in characters, on the diff a writing hop hands the next hop (``HandoffArtifact.diff``).
+HANDOFF_DIFF_MAX_CHARS = 8000
 # CONTEXT_TOKEN_BUDGET_DEFAULT: the floor `core/identity.py` resolves to when
 # no explicit CONTEXT_TOKEN_BUDGET override is set and the resolved model
 # window is absent/unregistered -- named separately from CONTEXT_TOKEN_BUDGET
