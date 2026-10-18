@@ -70,15 +70,6 @@ def memory_md_path(ws: Path) -> Path:
     return ws / MEMORY_FILE
 
 
-def last_activity(ws: Path) -> str:
-    """Most recent daily-log date (``YYYY-MM-DD``) for *ws*, or ``—``."""
-    mem = memory_dir(ws)
-    if not mem.is_dir():
-        return "—"
-    logs = sorted(mem.glob("*.md"))
-    return logs[-1].stem if logs else "—"
-
-
 # --- contract file bodies -----------------------------------------------------
 
 

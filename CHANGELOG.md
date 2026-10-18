@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pod memory (P44-7, ADR 0028 point 7).** A step's reply may end with a `## Memory` section of
+  typed facts (`generated`, `command`, `pitfall`, `convention`). docket verifies each one itself:
+  a `generated` path that exists at the task's commit and a `command` whose exit status is in the
+  task's trace are accepted; `pitfall` and `convention`, and everything from a task that called
+  `fetch`, wait for the operator; instructions, URLs and override wording are refused. Accepted
+  facts are stored once per pod and reach every later prompt of that pod last, behind an
+  untrusted-data frame. Every change is traced (`memory_update`) and audited.
+- **Prompt-cache markers for Anthropic models (P44-9).** A request to a model whose id starts with
+  `claude` (directly or behind a gateway) marks `cache_control` on the system message and the last
+  message; every other model's request is byte-unchanged.
 - **Measurable without reconstruction (P44-10).** Each `llm_call` trace event carries `request`,
   the request's size by part (system, tools, tool results, assistant, user) in bytes and estimated
   tokens, counted by the adapter from the body it sent; a task's `byModel` carries `cached` and
@@ -67,6 +77,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The per-member daily-log pipeline (P44-7).** Daily logs under `memory/`, their seeding at
+  provisioning and their distillation into MEMORY.md are gone: nothing wrote them in a pod task.
+  `docket pod reset` resets the ledger and the member's templates and no longer distills or
+  clears memory; `--no-distill-first` is gone. `lastActivity` now reads the agent's newest session.
 - **`docket exec`, `docket setup harness` and the harness contract (P43-12, ADR 0027).** The
   command, the contracts 1.0 to 1.2 (schemas, fixtures, `--recipe` runs, the stdin answer
   stream, the in-place ephemeral pod, the `harness` approval channel) and their docs and tests
