@@ -479,6 +479,7 @@ class TestExpirySweepDenies:
         token = _ap.approval_create("someproj", "programmer", "rm -rf /tmp/x")
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
+        rec["expiresAt"] = rec["created"]
         _cfg.APPROVALS_DIR.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
         swept = _ap.approval_sweep_expired()
@@ -489,6 +490,7 @@ class TestExpirySweepDenies:
         token = _ap.approval_create("someproj", "programmer", "rm -rf /tmp/x")
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
+        rec["expiresAt"] = rec["created"]
         _cfg.APPROVALS_DIR.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
         _ap.approval_sweep_expired()
@@ -510,6 +512,7 @@ class TestExpirySweepDenies:
 
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
+        rec["expiresAt"] = rec["created"]
         _cfg.APPROVALS_DIR.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
         swept = _ap.approval_sweep_expired()
