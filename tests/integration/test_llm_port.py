@@ -180,6 +180,94 @@ class TestWireEncoding:
         full = adapter.build_payload(ENDPOINT, [llm.user("hi")], max_tokens=64, temperature=0.2)
         assert full["max_tokens"] == 64 and full["temperature"] == 0.2
 
+    def test_non_anthropic_payload_is_byte_identical_to_the_unmarked_encoding(self) -> None:
+        """A model that is not Anthropic gets the plain string-content body."""
+        spec = ToolSpec(name="bash", description="run", parameters={"type": "object"})
+        call = ToolCall(id="c1", name="bash", arguments="{}")
+        messages = [
+            llm.system("sys"),
+            llm.user("hi"),
+            llm.assistant(tool_calls=[call]),
+            llm.tool_result(call, "out"),
+        ]
+        for model_id in ("gpt-5", "openai/gpt-5", "qwen3", "x/not-claude-3", "clau"):
+            endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id=model_id)
+            body = json.dumps(adapter.build_payload(endpoint, messages, [spec], 64, 0.2))
+            assert body == json.dumps(
+                {
+                    "model": model_id,
+                    "messages": [
+                        {"role": "system", "content": "sys"},
+                        {"role": "user", "content": "hi"},
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "c1",
+                                    "type": "function",
+                                    "function": {"name": "bash", "arguments": "{}"},
+                                }
+                            ],
+                        },
+                        {"role": "tool", "content": "out", "tool_call_id": "c1", "name": "bash"},
+                    ],
+                    "stream": False,
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "run",
+                                "parameters": {"type": "object"},
+                            },
+                        }
+                    ],
+                    "tool_choice": "auto",
+                    "max_tokens": 64,
+                    "temperature": 0.2,
+                }
+            )
+
+    @pytest.mark.parametrize("model_id", ["claude-sonnet-5-5", "anthropic/claude-opus-4"])
+    def test_anthropic_request_marks_the_system_and_the_last_message(self, model_id: str) -> None:
+        marker = {"type": "ephemeral"}
+        call = ToolCall(id="c1", name="bash", arguments="{}")
+        endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id=model_id)
+        messages = adapter.build_payload(
+            endpoint,
+            [
+                llm.system("sys"),
+                llm.user("hi"),
+                llm.assistant(tool_calls=[call]),
+                llm.tool_result(call, "out"),
+            ],
+        )["messages"]
+        assert messages[0]["content"] == [{"type": "text", "text": "sys", "cache_control": marker}]
+        assert messages[1]["content"] == "hi"
+        assert messages[2]["content"] is None
+        assert messages[3]["content"] == [{"type": "text", "text": "out", "cache_control": marker}]
+        assert messages[3]["tool_call_id"] == "c1" and messages[3]["name"] == "bash"
+        assert json.dumps(messages).count("cache_control") == 2
+
+    def test_anthropic_marker_skips_empty_content_and_never_doubles_up(self) -> None:
+        endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="claude-haiku-4")
+        alone = adapter.build_payload(endpoint, [llm.system("sys")])["messages"]
+        assert json.dumps(alone).count("cache_control") == 1
+        call = ToolCall(id="c1", name="bash", arguments="{}")
+        empty = adapter.build_payload(endpoint, [llm.system("sys"), llm.tool_result(call, "")])
+        assert empty["messages"][1]["content"] == ""
+        assert json.dumps(empty).count("cache_control") == 1
+
+    def test_request_part_bytes_counts_the_marked_parts(self) -> None:
+        plain = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="gpt-5")
+        marked = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="claude-sonnet-5-5")
+        messages = [llm.system("sys"), llm.user("hi")]
+        before = adapter.request_part_bytes(adapter.build_payload(plain, messages))
+        after = adapter.request_part_bytes(adapter.build_payload(marked, messages))
+        assert after["system"] > before["system"]
+        assert after["user"] > before["user"]
+
     def test_request_estimate_uses_wire_payload_and_accounts_for_tools(self) -> None:
         client = adapter.OpenAIChatClient(ENDPOINT)
         spec = ToolSpec(

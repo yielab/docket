@@ -107,6 +107,18 @@ def _encode_tool(spec: ToolSpec) -> dict[str, Any]:
     }
 
 
+def _is_anthropic(model_id: str) -> bool:
+    return model_id.rsplit("/", 1)[-1].lower().startswith("claude")
+
+
+def _mark_cacheable(message: dict[str, Any]) -> None:
+    """Turn a message's non-empty text content into one ephemeral cache-marked part."""
+    content = message.get("content")
+    if isinstance(content, str) and content:
+        part = {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        message["content"] = [part]
+
+
 def build_payload(
     endpoint: Endpoint,
     messages: Sequence[ChatMessage],
@@ -116,9 +128,14 @@ def build_payload(
 ) -> dict[str, Any]:
     """Build the request body. Split out from the POST so tests can assert on
     the exact wire shape without a socket."""
+    encoded = [_encode_message(m) for m in messages]
+    if _is_anthropic(endpoint.model_id) and encoded:
+        if encoded[0]["role"] == "system":
+            _mark_cacheable(encoded[0])
+        _mark_cacheable(encoded[-1])
     payload: dict[str, Any] = {
         "model": endpoint.model_id,
-        "messages": [_encode_message(m) for m in messages],
+        "messages": encoded,
         "stream": False,
     }
     if tools:
