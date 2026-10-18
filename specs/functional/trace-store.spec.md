@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -97,6 +97,11 @@ This specification does NOT cover:
    `_TOKEN`, `_SECRET` or `_PASSWORD`; values longer than 8 characters), after the regex pass,
    so a credential that does not match any generic shape -- stored, or exported in the shell and
    never stored -- is still scrubbed by its own value.
+9a. `trace_event` **MUST** parse the payload as JSON first and apply `redact` to every string
+   value of the parsed document (nested dicts and lists included), then serialize, so redaction
+   never changes whether a payload is structured: a secret-shaped substring inside a string value
+   is replaced and every sibling field survives intact. Only a payload that does not parse is
+   redacted as a whole string and wrapped as `{"text": ...}` (requirement 1).
 9. `redact` **MUST NOT** raise for any input, including a secrets-store read failure — a
    redaction fault degrades to "no stored-value scrubbing this call", never a lost or blocked
    trace write.
@@ -346,6 +351,13 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.11.0 (2026-10-18)
+
+- Redaction runs on the parsed payload's string values, not on the serialized text (requirement
+  9a). The generic `NAME_TOKEN=<value>` pattern consumed the closing quote, comma and brace of a
+  serialized payload, so the result no longer parsed and the record fell back to
+  `{"text": ...}`, losing a structured `hop_finished` and its `usage`.
 
 ### Version 1.10.0 (2026-10-18)
 

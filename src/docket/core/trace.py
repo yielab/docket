@@ -178,6 +178,17 @@ def redact(text: str) -> str:
     return text
 
 
+def _redact_value(value: Any) -> Any:
+    """Redact every string in a parsed JSON value, leaving its structure intact."""
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {k: _redact_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(v) for v in value]
+    return value
+
+
 def _epoch_from_iso(ts: str) -> float | None:
     """Parse the leading 'YYYY-MM-DDTHH:MM:SS' of *ts* as a UTC epoch."""
     try:
@@ -257,11 +268,10 @@ def trace_event(
     if event_type not in EVENT_TYPES:
         return "rejected"
 
-    redacted = redact(payload)
     try:
-        payload_obj: Any = json.loads(redacted)
+        payload_obj: Any = _redact_value(json.loads(payload))
     except json.JSONDecodeError:
-        payload_obj = {"text": redacted}
+        payload_obj = {"text": redact(payload)}
 
     record: dict[str, Any] = {
         "ts": _now_iso(),
