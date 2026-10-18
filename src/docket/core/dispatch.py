@@ -1690,6 +1690,61 @@ def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
     )
 
 
+def _hop_model(node: _orch.PlannedUnit, member_id: str) -> str:
+    """The model this hop runs: the step's own ``model`` (resolved), else the member's."""
+    if node.model:
+        try:
+            return _models_policy.resolve_step_model(node.model)
+        except ValueError:
+            return node.model
+    return str(_fleet.meta_get(member_id, "model", "") or _cfg.DEFAULT_MODEL)
+
+
+def _unpriced(model: str) -> bool:
+    """A model the budget estimate cannot price; a local provider costs nothing, so never."""
+    provider = model.split("/", 1)[0]
+    return (
+        not _models_policy.is_local_provider(provider) and _models_policy.price_for(model) is None
+    )
+
+
+def _warn_unpriced_hop(ctx: _UnitContext, role: str, model: str) -> None:
+    """Under a budget, an unpriced model adds nothing to the estimate, so the cap cannot stop
+    this hop's spend: trace a ``budget_warning`` and let the hop run (cost-tracking.spec.md)."""
+    if ctx.cap <= 0.0 or not _unpriced(model):
+        return
+    reason = f"pod budget ${ctx.cap:.2f} cannot stop this hop: {model} has no price"
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "budget_warning",
+        _json.dumps({"action": "unpriced_model", "status": "unenforced", "reason": reason}),
+    )
+
+
+def unpriced_budget_models(project: str) -> list[str]:
+    """The models a budgeted pod runs that its cap cannot price: its members' models and its
+    pipeline's step models. Empty when the pod has no budget."""
+    if pod_budget(project) <= 0.0:
+        return []
+    ids = [a.id for a in _fleet.list_agents()]
+    models = {
+        str(_fleet.meta_get(mid, "model", "") or _cfg.DEFAULT_MODEL)
+        for mid, _role, _idx in _pod.members_of(ids, project)
+    }
+    steps = list(effective_pipeline(project, None).steps)
+    while steps:
+        step = steps.pop()
+        steps.extend(step.parallel or [])
+        if step.model:
+            try:
+                models.add(_models_policy.resolve_step_model(step.model))
+            except ValueError:
+                models.add(step.model)
+    return sorted(m for m in models if _unpriced(m))
+
+
 def _gate_pre_hop_approval(
     ctx: _UnitContext,
     role: str,
@@ -1818,13 +1873,7 @@ def _compose_hop(
         "tool_call",
         _json.dumps({"hop": role, "agent": member_id}),
     )
-    planned_model = ""
-    if node.model:
-        try:
-            planned_model = _models_policy.resolve_step_model(node.model)
-        except ValueError:
-            planned_model = node.model
-    planned_model = planned_model or _fleet.meta_get(member_id, "model", "") or _cfg.DEFAULT_MODEL
+    planned_model = _hop_model(node, member_id)
     _trace_locked(
         ctx.project,
         ctx.session_id,
@@ -2797,6 +2846,7 @@ def _execute_unit(
     budget_outcome = _gate_budget(ctx, role)
     if budget_outcome is not None:
         return budget_outcome
+    _warn_unpriced_hop(ctx, role, _hop_model(node, member_id))
 
     approval_outcome = _gate_pre_hop_approval(
         ctx, role, node, check_approval=check_approval, index_for_context=index_for_context

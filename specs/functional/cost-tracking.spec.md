@@ -1,10 +1,10 @@
 # Cost Tracking Specification
 
-**Version**: 1.8.1
+**Version**: 1.9.0
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
 scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). Cost reporting resolves
 Docket's own `DocketDriver` and session store. See requirements 2-4 below.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -106,7 +106,18 @@ pod-dispatch.spec.md).
    results, which still report only recorded spend (see "Cost reporting" above) — a known,
    unfixed instance of the same blind spot this requirement closes for the two human-facing
    warnings above.
-6. **Known scope limit (unchanged by R-5):** enforcement exists only where docket itself is in
+6. **Implemented — a model the estimate cannot price is named, not counted as $0.** A model
+   with no catalog price and no `local` provider adds nothing to requirement 4's estimate, so a
+   cap cannot stop its spend. Docket warns and does not refuse (the operator's choice,
+   2026-10-18): before each hop of a pod with a cap, a hop whose model (the step's own `model`,
+   else the member's) is unpriced emits a `budget_warning` trace event with `action:
+   "unpriced_model"`, `status: "unenforced"` and a `reason` naming the cap and the model, and the
+   hop runs. `core.dispatch.unpriced_budget_models(project)` lists such models across the pod's
+   members and its pipeline's steps (empty without a cap); `docket pod show [--json]`, `GET
+   /pods/<p>` (`budgetUnpriced`) and `docket status [--json]` (a `Budget` row, `budgetUnpriced`
+   only when non-empty) show it. Known gap: the estimate still prices every token of a member at
+   the member's own model, so a step `model:` override is checked here but not priced.
+7. **Known scope limit (unchanged by R-5):** enforcement exists only where docket itself is in
    the execution path — the pod-dispatch lane. A budget cap set on a non-pod agent, or spend
    from a Telegram session / any driver use outside dispatch, is still entirely ungated
    (per D-9/the "docket orchestrates hops" principle in ROADMAP §4.5) — there is no code path
@@ -202,6 +213,13 @@ $ docket run --resume
   **MUST NOT** be summed into, or presented as, recorded spend.
 
 ## Changelog
+
+### Version 1.9.0 (2026-10-18)
+
+- New "Enforcement, warnings, and pause" requirement 6: a budgeted pod's unpriced model is named
+  (`budget_warning` `unpriced_model` per hop, `budgetUnpriced` in `pod show`, `GET /pods/<p>`
+  and `status`) instead of silently gating at $0. Found by a real run whose gateway models had
+  no price: 175k tokens reported $0 and a $3 cap stopped nothing. The scope limit is now 7.
 
 ### Version 1.8.1 (2026-10-08)
 

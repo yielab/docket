@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.34.1
+**Version**: 1.35.0
 **Status**: Complete
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -106,7 +106,8 @@ resolved model (the default when the metadata names none), as the text report do
   "outcomes":    "{ success, failure, aborted, meanMs | null, p95Ms | null }",
   "lastRun":     "{ id, state, finishedAt } | null",
   "running":     "boolean (docket start is running)",
-  "commands":    "{ allowed, date, code, changed } (only when the operator allowed the repository's commands)"
+  "commands":    "{ allowed, date, code, changed } (only when the operator allowed the repository's commands)",
+  "budgetUnpriced": "[string] (only when the pod has budgetUsd and runs a model with no price)"
 }
 ```
 
@@ -249,6 +250,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
   },
   "pipeline":     { "source": "string" },
   "network":      { "mode": "open | none", "scope": "default | global | pod" },
+  "budgetUnpriced": ["string (a model the budget cannot price; empty without budgetUsd)"],
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
   "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
@@ -453,6 +455,10 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.35.0 (2026-10-18)
+- `docket pod show --json` (and so `GET /pods/<p>`) gains `budgetUnpriced`; `docket status
+  --json` gains it when non-empty (cost-tracking.spec.md 1.9.0, requirement 6).
 
 ### Version 1.34.1 (2026-10-17)
 - The `docket setup harness --json` section is deleted with the command.
