@@ -47,7 +47,7 @@
 > | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff — **closed 2026-10-18** | — |
 > | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields — **closed 2026-10-18** | 112 merged |
 > | 114 | P44-7 pod memory store · P44-9 `cache_control` — **closed 2026-10-18** | 113 merged |
-> | 115 | P44-8 memory operator controls — **opened 2026-10-18** · phase close (bench + paid real run) | 114 merged |
+> | 115 | P44-8 memory operator controls — **closed 2026-10-18** · phase close (paid real run of the four steps) **pending** | 114 merged |
 
 ### P44-1 — a replay bench over the four measured steps
 
@@ -264,7 +264,7 @@
 
 ### P44-8 — pod memory: operator controls
 
-- **Status:** IN-PROGRESS (@wave-115) · **Size:** S · **Model:** Sonnet
+- **Status:** DONE 2026-10-18 (`357ca9bd`) · **Size:** S · **Model:** Sonnet
 - **Trigger:** ADR 0028 point 7: pending entries need approval; every change must be visible
   and revertible.
 - **Goal:** pending `pitfall`/`convention` entries appear in `docket inbox` and are approved or
@@ -278,6 +278,10 @@
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phase 43 (not cards; triage when a trigger fires)
 
+- **Found in Wave 115 (Phase 44).** Pending memory entries show in `docket inbox` (text and
+  `--json`) but not in `GET /inbox`, MCP `inbox`, notifications or Telegram `/status`: that needs
+  an operator-v1 inbox contract bump and `notify.py`/`telegram.py` edits (operator-loop item 7's
+  "`GET /inbox` equals `inbox --json`" was already broken by approved-ready tasks).
 - **Found in Wave 114 (Phase 44).** `core/telemetry.py` has no structural key for
   `memory_update` (the generic handler serves it); members stamped `POD_TEMPLATE_VERSION` 4 before
   P44-7's method line show stale to `pod update` by text comparison (v4 never shipped);
