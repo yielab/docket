@@ -59,7 +59,9 @@
 > shrank to a fifth to a third. The first write rerun found a defect, fixed as `c4a488d5`: K=2
 > alone made a one-call-per-round model re-read a README until the no-progress stop. Found, not
 > fixed (maintainer decisions): the jail reads no toolchain under the operator's home (`npm`/`npx`
-> from `~/.nvm` exit 126), so no JS gate runs jailed on this host; `2>/dev/null` makes a jailed
+> from `~/.nvm` exit 126; `python3 -m pytest` finds pytest only in the user site
+> `~/.local/lib/python3.*/site-packages`, so a Python gate fails like a failing test), so no JS
+> or user-site Python gate runs jailed on this host, and the agent retries what cannot load; `2>/dev/null` makes a jailed
 > `ls` ask and the verdict blames `ls` (the jail itself grants `/dev/null`); a condensation
 > notice says "call <tool> again if needed", which still invites the re-read once results pass
 > 6,000 characters.
