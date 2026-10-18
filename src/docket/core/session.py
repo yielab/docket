@@ -33,6 +33,7 @@ from docket.core.runtime_driver import FailureKind, TurnResult
 from docket.edges import store as _store
 
 __all__ = [
+    "HISTORY_FULL_RESULTS_CHARS",
     "HISTORY_KEEP_FULL_RESULTS",
     "CompactionPlan",
     "CompactionResult",
@@ -61,6 +62,8 @@ SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], Tur
 
 #: Tool results newer than this many stay whole in a built request.
 HISTORY_KEEP_FULL_RESULTS = 2
+#: Older results also stay whole while all whole results fit in this many characters.
+HISTORY_FULL_RESULTS_CHARS = 6_000
 
 _SESSION_FILENAME = "session.json"
 _COMPACTED_SUMMARY_PREFIX = "[compacted summary of "
@@ -312,13 +315,21 @@ def _condense_call(call: ToolCall) -> ToolCall:
 
 
 def condense_history(
-    messages: Sequence[ChatMessage], keep: int = HISTORY_KEEP_FULL_RESULTS
+    messages: Sequence[ChatMessage],
+    keep: int = HISTORY_KEEP_FULL_RESULTS,
+    budget: int = HISTORY_FULL_RESULTS_CHARS,
 ) -> list[ChatMessage]:
-    """The request projection of *messages*: tool results older than the last *keep* become
-    one-line notices and their large ``write``/``edit`` arguments become counts. Pure and
-    deterministic; the stored history is never changed."""
-    answered = [m.tool_call_id for m in messages if m.role == "tool"]
-    old = set(answered[: max(0, len(answered) - max(1, keep))])
+    """The request projection: the last *keep* tool results and older ones that still fit
+    *budget* characters stay whole; the rest become notices and their large ``write``/``edit``
+    arguments counts. Pure and deterministic; the stored history is never changed."""
+    results = [m for m in messages if m.role == "tool"]
+    keep = max(1, keep)
+    whole = sum(len(m.content) for m in results[-keep:])
+    cut = max(0, len(results) - keep)
+    while cut and whole + len(results[cut - 1].content) <= budget:
+        cut -= 1
+        whole += len(results[cut].content)
+    old = {m.tool_call_id for m in results[:cut]}
     calls = {c.id: c for m in messages for c in m.tool_calls}
     out: list[ChatMessage] = []
     for m in messages:

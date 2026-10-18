@@ -2986,7 +2986,10 @@ class TestHistoryCondensation:
                 description="Read a file.",
                 parameters={"type": "object", "properties": {"path": {"type": "string"}}},
                 handler=lambda args, c: ToolOutcome(
-                    ok=True, content="\n".join(f"{i}\t{args['path']} row" for i in range(60))
+                    ok=True,
+                    content="\n".join(f"{i}\t{args['path']} row" for i in range(60))
+                    + "\n"
+                    + "x" * (_session.HISTORY_FULL_RESULTS_CHARS // 2),
                 ),
                 kind="read",
             )
