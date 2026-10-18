@@ -462,6 +462,49 @@ def test_uncommitted_work_is_committed_on_the_task_branch(
     assert (repo / "notes.txt").read_text() == "new\n"
 
 
+class _LeadWritesRunner:
+    """The Lead, a role that is not the Implementer, writes a file and leaves it untracked."""
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> TurnResult:
+        if agent_id.endswith("-lead"):
+            root = Path(_dispatch.read_tasks("demo")[0]["worktree"]["dir"])
+            (root / "research").mkdir(exist_ok=True)
+            (root / "research" / "notes.md").write_text("findings\n")
+        return TurnResult(True, "done", 0.0, {})
+
+
+def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A research pipeline has no Implementer; its writer's file must still reach the branch."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _bind_pipeline("name: write\nsteps:\n  - id: lead\n    role: lead\n")
+    _dispatch.enqueue_task("demo", "Write the notes", channel="cli")
+
+    (res,) = _dispatch.dispatch_pod("demo", runner=_LeadWritesRunner(), max_tasks=1)
+
+    assert res.status == "done", res.reason
+    task = _dispatch.read_tasks("demo")[0]
+    record = task["worktree"]
+    head = _git(repo, "rev-parse", record["branch"])
+    assert head != record["baseCommit"]
+    assert _git(repo, "show", f"{head}:research/notes.md") == "findings"
+    assert "lead hop" in _git(repo, "log", "-1", "--format=%b", record["branch"])
+    assert _git(Path(record["dir"]), "status", "--porcelain") == ""
+    (hop,) = task["hops"]
+    assert hop["artifact"]["files_changed"] == ["research/"]
+    assert hop["evidence"] is None
+
+
 def test_an_unmerged_pinned_task_survives_prune_without_force(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

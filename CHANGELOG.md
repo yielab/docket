@@ -112,6 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A research or content team's work reaches the task branch.** Only the Implementer's hop
+  committed the tree it left, so a pipeline without one (researcher, then critic) ended `done`
+  with the report untracked and the branch at its base. In a task worktree, any hop that hands
+  on a diff now commits it on the task branch.
 - **`2>/dev/null` no longer asks for approval.** An output redirect to exactly `/dev/null`
   counts as placed, jailed or not, with or without the turn's roots. A jailed `ls x 2>/dev/null`
   had asked, with a reason blaming `ls`.

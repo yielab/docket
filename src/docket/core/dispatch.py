@@ -1241,9 +1241,11 @@ def _hop_diff_probe(
     if not implementer:
         if not diff or diff == prior_diff:
             return [], None, None, ""
+        if task_dir:
+            _pin_hop_tree(cwd, task, role, in_worktree=True)
         return files_changed, None, None, diff
     diff_ref = _sys.git_current_branch(cwd) or None
-    commit = _pin_implementer_tree(cwd, task, in_worktree=bool(task_dir))
+    commit = _pin_hop_tree(cwd, task, role, in_worktree=bool(task_dir))
     recorded = task.get("worktree")
     base_commit: str | None = None
     if task_dir and isinstance(recorded, dict):
@@ -1264,14 +1266,14 @@ def _tree_diff(cwd: str) -> str:
     return _handoff.cap_diff(text, limit)
 
 
-def _pin_implementer_tree(cwd: str, task: dict[str, Any], *, in_worktree: bool) -> str | None:
-    """Pin the tree an Implementer hop left in a commit and return its sha, ``None`` on failure:
-    committed on the task branch in a task worktree, a branchless snapshot in place. An agent
-    normally leaves its work uncommitted, and HEAD alone would then be the base commit."""
+def _pin_hop_tree(cwd: str, task: dict[str, Any], role: str, *, in_worktree: bool) -> str | None:
+    """Pin the tree a hop left in a commit and return its sha, ``None`` on failure: committed on
+    the task branch in a task worktree, a branchless snapshot in place. An agent normally leaves
+    its work uncommitted, and the task branch would then stay at its base commit."""
     task_id = str(task.get("id") or "")
     first_line = str(task.get("description") or "").strip().split("\n", 1)[0].strip()
     subject = first_line[:72] or f"docket task {task_id}"
-    message = f"{subject}\n\ndocket task {task_id}, implementer hop"
+    message = f"{subject}\n\ndocket task {task_id}, {role} hop"
     if in_worktree:
         return _sys.git_commit_all(cwd, message)
     return _sys.git_snapshot_commit(cwd, message)
