@@ -3,7 +3,7 @@
 `core/archetypes.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
 called once per turn by `core/agent_loop.py`) make a Reviewer structurally *unable* to edit code,
 not just told not to via SOUL.md prose. `core/identity.py`'s `compose_agent_prompt` reads
-SOUL.md, resolved project roots, and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state
+SOUL.md, the member's AGENTS.md and bounded MEMORY.md state
 into one runtime-safe prompt, without replaying manual private-file instructions or widening roots.
 
 The load-bearing test is `TestReviewerCannotDispatchAWrite`'s dispatch-level-denial test: it
@@ -402,7 +402,7 @@ class TestSystemPromptForAgent:
 
         assert "CUSTOM-AGENT-RULE-WITHOUT-HEADINGS" in prompt
 
-    def test_private_workspace_state_is_loaded_in_priority_order(self) -> None:
+    def test_layers_run_stable_first_and_private_state_is_read_only(self) -> None:
         ws = _write_meta("context-agent")
         (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
         (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
@@ -419,53 +419,53 @@ class TestSystemPromptForAgent:
         assert "Return the completed task result" in prompt
         assert "Docket owns turn durability" in prompt
         assert prompt.rstrip().endswith("# End runtime-loaded Docket workspace state")
+        assert "ACTIVE-CHECKPOINT" not in prompt and "TOOL-NOTES" not in prompt
         ordered = [
             prompt.index(name)
-            for name in ("ACTIVE-CHECKPOINT", "AGENT-RULES", "TOOL-NOTES", "DURABLE-MEMORY")
+            for name in (
+                "identity",
+                "AGENT-RULES",
+                "Docket live runtime contract",
+                "DURABLE-MEMORY",
+            )
         ]
         assert ordered == sorted(ordered)
 
-        (ws / "HEARTBEAT.md").write_text("UPDATED-CHECKPOINT\n")
+        (ws / "MEMORY.md").write_text("UPDATED-MEMORY\n")
         refreshed = _identity.compose_agent_prompt("context-agent").text
-        assert "UPDATED-CHECKPOINT" in refreshed
-        assert "ACTIVE-CHECKPOINT" not in refreshed
+        assert "UPDATED-MEMORY" in refreshed
+        assert "DURABLE-MEMORY" not in refreshed
 
-    def test_oversized_low_priority_state_is_visibly_truncated(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_oversized_memory_is_visibly_truncated(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 350, raising=True)
         ws = _write_meta("bounded-context-agent")
         (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
         (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
-        (ws / "HEARTBEAT.md").write_text("KEEP-ACTIVE-ACTION\n")
         (ws / "AGENTS.md").write_text("KEEP-AGENT-RULE\n")
         (ws / "MEMORY.md").write_text("memory-detail-" * 1000)
 
         prompt = _identity.compose_agent_prompt("bounded-context-agent").text
 
-        assert "KEEP-ACTIVE-ACTION" in prompt
         assert "KEEP-AGENT-RULE" in prompt
         assert "[... MEMORY.md truncated:" in prompt
         assert _context.estimate_tokens(prompt) <= _cfg.CONTEXT_TOKEN_BUDGET
 
-    def test_oversized_soul_does_not_erase_heartbeat_or_tools(self) -> None:
+    def test_oversized_soul_does_not_erase_the_contract_or_memory(self) -> None:
         """A SOUL.md alone larger than the whole budget must not blank every section."""
         ws = _write_meta("bloated-soul-agent")
         (ws / "SOUL.md").write_text("SOUL-HEAD-MARKER\n" + ("s" * 30_000) + "\nSOUL-TAIL-MARKER\n")
-        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
-        (ws / "TOOLS.md").write_text("Run the verify gate: VERIFY-GATE-LINE\n")
+        (ws / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
 
         prompt = _identity.compose_agent_prompt("bloated-soul-agent").text
 
-        assert "ACTIVE-LEDGER-LINE" in prompt
-        assert "VERIFY-GATE-LINE" in prompt
+        assert "DURABLE-MEMORY-LINE" in prompt
         assert "Docket live runtime contract" in prompt
         assert "[... SOUL.md truncated:" in prompt
         assert "SOUL-HEAD-MARKER" in prompt
         assert "SOUL-TAIL-MARKER" in prompt
 
-    def test_small_workspace_composes_byte_identically_to_base(self) -> None:
-        """Ordinary-sized files never trigger the new truncation/omission machinery."""
+    def test_small_workspace_composes_without_truncation_markers(self) -> None:
+        """Ordinary-sized files never trigger the truncation/omission machinery."""
         ws = _write_meta("modest-agent")
         (ws / "SOUL.md").write_text("# SOUL.md\nYou are the Implementer.\n")
         (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
@@ -477,14 +477,10 @@ class TestSystemPromptForAgent:
 
         assert "[... " not in prompt
         assert "omitted:" not in prompt
-        for marker in (
-            "You are the Implementer",
-            "ACTIVE-LEDGER-LINE",
-            "AGENT-RULE-LINE",
-            "VERIFY-GATE-LINE",
-            "DURABLE-MEMORY-LINE",
-        ):
+        for marker in ("You are the Implementer", "AGENT-RULE-LINE", "DURABLE-MEMORY-LINE"):
             assert marker in prompt
+        for absent in ("ACTIVE-LEDGER-LINE", "VERIFY-GATE-LINE"):
+            assert absent not in prompt
 
     def test_a_persona_in_meta_never_reaches_the_prompt(self) -> None:
         ws = _write_meta("persona-agent", persona={"name": "Orion", "emoji": "x"})
@@ -531,7 +527,7 @@ class TestSystemPromptForAgent:
         (ws / "INSTRUCTIONS.md").write_text(
             "INSTR-HEAD-MARKER\n" + ("i" * 30_000) + "\nINSTR-TAIL-MARKER\n"
         )
-        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
 
         composition = _identity.compose_agent_prompt("bloated-instructions-agent")
 
@@ -539,7 +535,7 @@ class TestSystemPromptForAgent:
         assert "[... INSTRUCTIONS.md truncated:" in composition.text
         assert "INSTR-HEAD-MARKER" in composition.text
         assert "INSTR-TAIL-MARKER" in composition.text
-        assert "ACTIVE-LEDGER-LINE" in composition.text
+        assert "DURABLE-MEMORY-LINE" in composition.text
 
 
 # An opt-in PodSettings.projectInstructions reads relative paths from the codebase
@@ -709,7 +705,7 @@ class TestProjectInstructionsSection:
             projectInstructions="AGENTS.md",
         )
         (ws / "SOUL.md").write_text("SOUL-MARKER\n")
-        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
 
         composition = _identity.compose_agent_prompt("demo-bloated-lead", project_roots=(codebase,))
 
@@ -717,7 +713,7 @@ class TestProjectInstructionsSection:
         assert "[... projectInstructions truncated:" in composition.text
         assert "PI-HEAD-MARKER" in composition.text
         assert "PI-TAIL-MARKER" in composition.text
-        assert "ACTIVE-LEDGER-LINE" in composition.text
+        assert "DURABLE-MEMORY-LINE" in composition.text
 
 
 class TestRunAgentTurnComposesTheSystemPrompt:
@@ -745,7 +741,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert "You are the Implementer" in sent[0].content
         assert "Docket live runtime contract" in sent[0].content
         assert "Resume rules live here" not in sent[0].content
-        assert str(roots) in sent[0].content
+        assert str(roots) not in sent[0].content
         assert sent[-1].role == "user"
 
     def test_no_identity_files_means_no_system_message(self, tmp_path: Path) -> None:
@@ -787,8 +783,8 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         """One `prompt_composed` trace event per turn, naming each section's fit."""
         ws = _write_meta("traced-agent")
         (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
-        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
-        (ws / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
+        (ws / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
+        (ws / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
         roots = tmp_path / "code4"
         roots.mkdir()
         ctx = ToolContext(
@@ -816,7 +812,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
 
         assert len(events) == 1
         names = {section["name"] for section in events[0]["sections"]}
-        assert {"SOUL.md", "HEARTBEAT.md", "TOOLS.md"} <= names
+        assert {"SOUL.md", "AGENTS.md", "MEMORY.md"} <= names
         for section in events[0]["sections"]:
             assert section["status"] in {"full", "truncated", "omitted"}
             assert isinstance(section["bytes"], int)

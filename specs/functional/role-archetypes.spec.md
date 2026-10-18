@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.23.2
+**Version**: 1.24.0
 **Status**: Implemented. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
 takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
 `resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
@@ -181,11 +181,11 @@ This specification does NOT cover:
 
 1. The four legacy pod roles (`lead`, `implementer`, `reviewer`, `tester`) **MUST** ship as
    built-in archetypes (`core/archetypes.py`'s `BUILTIN_ARCHETYPES`) whose rendered SOUL.md and
-   AGENTS.md are **byte-identical** to the pre-W-6 hand-written generators, for any
-   project/codebase/stack/description input. This is enforced by
+   AGENTS.md are **byte-identical** to a frozen baseline, for any
+   project/codebase/stack/description input (the pre-W-6 generators, changed only by deliberate,
+   spec'd removals: P26-9 and P44-6). This is enforced by
    `tests/integration/test_pod_role_workspace_parity.py`, which embeds a frozen, independent
-   copy of the pre-W-6 generator functions and diffs them against the live archetype-driven
-   renderer.
+   copy of that baseline and diffs it against the live archetype-driven renderer.
 2. The four legacy archetypes resolve their model through their own name's row — see
    "Role→model policy integration" below. Their `modelClass` **MUST** match that row's class
    (`lead`/`reviewer`/`tester` = cheap, `implementer` = strong). There is no `policyRole` field;
@@ -241,7 +241,17 @@ This specification does NOT cover:
    starter template's generated text changes (as this requirement's own fix did, v2 → v3), so
    `docket setup` can in principle detect a pod member provisioned from a stale template — see
    workspace-structure.spec.md for what currently consumes that marker.
-5. **Known gap, out of this requirement's scope:** the standalone (non-pod) project-agent
+5. **Prompt layers (P44-6, ADR 0028 section 1).** A built-in or starter `soulTemplate`/
+   `agentsTemplate` **MUST NOT** contain an absolute path (the codebase and working directory
+   reach the model in the task message), `HEARTBEAT`, `memory/` or `promise`: nothing reads a
+   completion promise, and a member's private files are read-only and off-limits to tools.
+   The shared `## Method` block in every `agentsTemplate` states the strategy in four short
+   lines: start from what the task message delivers (the working directory, the repository map,
+   the previous step's work), never re-read what it carries, find code with `grep` for a
+   concrete name and `read` by ranges, and never list the whole tree. A step prompt adds only its
+   own output contract. Both templates render to the same bytes for two tasks of one member, so
+   the system prompt carries no task data. `POD_TEMPLATE_VERSION` is 4.
+6. **Known gap, out of this requirement's scope:** the standalone (non-pod) project-agent
    AGENTS.md generator (`cli/_agents.py`) carries its own,
    separately hand-written copy of the same instruction this requirement removes from
    `core/archetypes.py`'s pod-member templates. They are a different code path (not archetype-
@@ -667,6 +677,18 @@ docket pod validate ./producer.yaml
   that could not pass `docket pod update` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.24.0 (2026-10-18)
+
+- **Templates for the layered prompt (requirement 5 of "Generated instructions agree with the
+  runtime contract", ADR 0028 section 1, P44-6).** `SOUL.md` loses its `## Codebase` and
+  `## Working Directory` sections and the implementer's "know ${codebaseOrIt} deeply" line;
+  `AGENTS.md` loses `## Session Startup` (private-file reads the runtime already did) and gains the
+  shared `## Method` strategy block; the implementer and writer lose `<promise>DONE</promise>`,
+  which nothing reads; the reviewer is told to review the diff the message delivers.
+  `POD_TEMPLATE_VERSION` 3 to 4, so `docket pod update` regenerates members and never touches
+  `MEMORY.md`. The frozen baseline in `test_pod_role_workspace_parity.py` was updated by hand, as
+  in P26-9. The `${codebase*}`/`${workDir}` variables stay guaranteed for recipe roles.
 
 ### Version 1.23.2 (2026-10-08)
 

@@ -11,6 +11,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import identity as I
+from docket.core import memory as _mem
 from docket.core import pod as _pod
 from docket.core.models import AgentMeta
 from docket.edges import store as _store
@@ -63,9 +64,9 @@ class TestSoulHasNoPersonaBlock:
 
 
 class TestRuntimeWorkspaceContextReporting:
-    """Every available section gets a fit report; a crowded one never erases the rest."""
+    """Only MEMORY.md composes as workspace state, and only when it holds more than its template."""
 
-    def test_every_available_section_reports_full_with_room_to_spare(self, tmp_path: Path) -> None:
+    def test_memory_reports_full_with_room_to_spare(self, tmp_path: Path) -> None:
         (tmp_path / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
         (tmp_path / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
         (tmp_path / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
@@ -73,47 +74,51 @@ class TestRuntimeWorkspaceContextReporting:
 
         text, sections = I._runtime_workspace_context(tmp_path, "")
 
-        assert [s.name for s in sections] == [
-            "HEARTBEAT.md",
-            "AGENTS.md",
-            "TOOLS.md",
-            "MEMORY.md",
-        ]
-        assert all(s.status == "full" for s in sections)
-        assert "ACTIVE-LEDGER-LINE" in text
-        assert "VERIFY-GATE-LINE" in text
+        assert [s.name for s in sections] == ["MEMORY.md"]
+        assert sections[0].status == "full"
+        assert "DURABLE-MEMORY-LINE" in text
+        for absent in ("ACTIVE-LEDGER-LINE", "VERIFY-GATE-LINE", "AGENT-RULE-LINE"):
+            assert absent not in text
 
-    def test_a_section_that_cannot_fit_does_not_erase_the_ones_behind_it(
+    def test_a_memory_file_that_is_only_its_template_composes_nothing(self, tmp_path: Path) -> None:
+        seed = _mem._memory_md_seed(project="demo", stack="Python")
+        (tmp_path / "MEMORY.md").write_text(seed)
+
+        text, sections = I._runtime_workspace_context(tmp_path, "")
+
+        assert (text, sections) == ("", ())
+
+    def test_a_v3_seed_with_its_path_line_is_still_only_template(self) -> None:
+        v3_seed = (
+            "# MEMORY.md \u2014 demo\n\n_Long-term curated memory._\n\n"
+            "## What this project is\n_One paragraph._\n\n## Repo\n"
+            "- codebase: `/srv/demo`\n- stack: Python\n\n## Architecture\n_Fill._\n"
+        )
+        assert not I.memory_has_content(v3_seed)
+        assert I.memory_has_content(v3_seed + "The billing service retries twice.\n")
+
+    def test_an_oversized_memory_is_truncated_visibly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 130, raising=True)
-        (tmp_path / "HEARTBEAT.md").write_text("## Ledger\n" + ("L" * 800) + "\n")
-        (tmp_path / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
-        (tmp_path / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
-        (tmp_path / "MEMORY.md").write_text("DURABLE-MEMORY-LINE\n")
+        (tmp_path / "MEMORY.md").write_text("## Facts\n" + ("M" * 800) + "\n")
 
-        _text, sections = I._runtime_workspace_context(tmp_path, "")
+        text, sections = I._runtime_workspace_context(tmp_path, "")
 
-        # HEARTBEAT alone exceeds the whole budget, so it is truncated -- but that
-        # must not stop AGENTS/TOOLS/MEMORY from each getting their own report.
-        reported = [s.name for s in sections]
-        assert reported == ["HEARTBEAT.md", "AGENTS.md", "TOOLS.md", "MEMORY.md"]
-        assert sections[0].status == "truncated"
-        assert all(s.status == "omitted" for s in sections[1:])
+        assert [s.status for s in sections] == ["truncated"]
+        assert "[... MEMORY.md truncated:" in text
 
-    def test_omitted_sections_leave_a_one_line_marker_when_room_allows(
+    def test_an_omitted_memory_leaves_a_one_line_marker(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Even when the whole framed block cannot fit, each section still gets a marker."""
-        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 70, raising=True)
-        (tmp_path / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
-        (tmp_path / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
+        """Even when the whole framed block cannot fit, the section still gets a marker."""
+        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 50, raising=True)
+        (tmp_path / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
 
         text, sections = I._runtime_workspace_context(tmp_path, "")
 
         assert all(s.status == "omitted" for s in sections)
-        assert "[... HEARTBEAT.md omitted:" in text
-        assert "[... AGENTS.md omitted:" in text
+        assert "[... MEMORY.md omitted:" in text
 
 
 class TestResolveStaticContextBudget:
@@ -165,6 +170,7 @@ class TestComposeAgentPromptIsWindowAware:
         (ws / "SOUL.md").write_text("SOUL-HEAD-MARKER\n" + ("s" * 30_000) + "\nSOUL-TAIL-MARKER\n")
         (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
         (ws / "TOOLS.md").write_text("Run the verify gate: VERIFY-GATE-LINE\n")
+        (ws / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
         return ws
 
     def test_red_at_16k_the_oversized_soul_is_still_truncated(self) -> None:
@@ -179,8 +185,9 @@ class TestComposeAgentPromptIsWindowAware:
         assert "[... SOUL.md truncated:" in composition.text
         assert "SOUL-HEAD-MARKER" in composition.text
         assert "SOUL-TAIL-MARKER" in composition.text
-        assert "ACTIVE-LEDGER-LINE" in composition.text
-        assert "VERIFY-GATE-LINE" in composition.text
+        assert "DURABLE-MEMORY-LINE" in composition.text
+        assert "ACTIVE-LEDGER-LINE" not in composition.text
+        assert "VERIFY-GATE-LINE" not in composition.text
         assert composition.budget_tokens == _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
         assert composition.budget_source == "default"
 
@@ -196,8 +203,7 @@ class TestComposeAgentPromptIsWindowAware:
         assert "[... SOUL.md truncated:" not in composition.text
         assert "[... SOUL.md omitted:" not in composition.text
         assert "s" * 30_000 in composition.text
-        assert "ACTIVE-LEDGER-LINE" in composition.text
-        assert "VERIFY-GATE-LINE" in composition.text
+        assert "DURABLE-MEMORY-LINE" in composition.text
         assert composition.budget_source == "window"
         assert all(s.status == "full" for s in composition.sections)
 

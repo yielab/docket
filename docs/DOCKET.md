@@ -513,7 +513,7 @@ Total: 150K+ tokens per turn, growing across projects
 **After docket:**
 ```
 The pod's Lead reads:
-- its composed prompt: SOUL.md, its startup contract, and bounded MEMORY.md and HEARTBEAT.md
+- its composed prompt: SOUL.md, AGENTS.md, its startup contract, and bounded MEMORY.md
 The Implementer reads:
 - only the workspace files it touches
 ────────────────────────────────────

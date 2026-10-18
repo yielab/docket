@@ -1,9 +1,9 @@
 """The paths a member is *told* to work in must be inside the roots it is *gated* against.
 
-A pod member learns where the code lives from docket-written files
-(``SOUL.md``, ``WORKFLOW_AUTO.md``, ``TOOLS.md``); its tool calls are
-separately contained by ``docket_runtime._resolve_roots``. A dispatched task's own
-worktree reaches the driver as the pipeline root instead, and the hop message names it.
+A pod member learns where the code lives from the hop message and from ``WORKFLOW_AUTO.md``/
+``TOOLS.md``; ``SOUL.md`` and ``AGENTS.md`` name no path. Its tool calls are separately
+contained by ``docket_runtime._resolve_roots``; a task's worktree reaches the driver as the
+pipeline root instead, and the hop message names it.
 
 When those two disagree the failure is silent and expensive: every read
 of the advertised path is refused, the model retries other spellings, the
@@ -96,19 +96,28 @@ def _provision(member: PodMember, codebase: Path) -> None:
 # ── the invariant ──────────────────────────────────────────────────────────────
 
 
-def test_implementer_soul_names_a_path_inside_its_own_roots(repo: Path) -> None:
-    """The Codebase in the system prompt must be readable by the tools it is given."""
+def test_soul_and_agents_name_no_path(repo: Path) -> None:
+    """The system prompt carries no root, so it cannot disagree with the tools' roots."""
     member = _make_member("implementer")
     _provision(member, repo)
 
-    roots = _roots_for(member.member_id)
-    soul = (_cfg.workspace_dir(member.member_id) / "SOUL.md").read_text()
-    codebase_line = soul.split("## Codebase\n", 1)[1].split("\n", 1)[0].strip()
+    ws = _cfg.workspace_dir(member.member_id)
+    for name in ("SOUL.md", "AGENTS.md"):
+        assert not re.search(r"(^|[\s`(])/[\w.-]+/", (ws / name).read_text()), name
 
-    assert _inside(Path(codebase_line), roots), (
-        f"SOUL.md tells the implementer its codebase is {codebase_line}, "
-        f"but dispatch_tool will refuse every path outside {roots}"
-    )
+
+@pytest.mark.parametrize("role", ["lead", "implementer", "reviewer", "tester"])
+def test_the_task_message_names_a_path_inside_the_members_roots(repo: Path, role: str) -> None:
+    """The hop message's `Working directory` is a root the tools will accept."""
+    from docket.core import repo_map
+
+    member = _make_member(role)
+    _provision(member, repo)
+
+    block = repo_map.task_root_block("", member.project, role)
+
+    named = Path(block.split("Working directory: ", 1)[1].split("\n", 1)[0])
+    assert _inside(named, _roots_for(member.member_id))
 
 
 def test_implementer_startup_contract_names_a_path_inside_its_own_roots(repo: Path) -> None:
@@ -127,29 +136,24 @@ def test_implementer_startup_contract_names_a_path_inside_its_own_roots(repo: Pa
     assert not outside, f"startup contract points outside the allowed roots {roots}: {outside}"
 
 
-def test_implementer_tools_md_agrees_with_soul(repo: Path) -> None:
-    """TOOLS.md and SOUL.md name the same project root."""
+def test_implementer_tools_md_names_a_root_inside_its_own_roots(repo: Path) -> None:
+    """TOOLS.md's project root is a path the tools will accept."""
     member = _make_member("implementer")
     _provision(member, repo)
 
-    ws = _cfg.workspace_dir(member.member_id)
-    tools = (ws / "TOOLS.md").read_text()
-    soul = (ws / "SOUL.md").read_text()
+    tools = (_cfg.workspace_dir(member.member_id) / "TOOLS.md").read_text()
     project_root = tools.split("Project root:", 1)[1].split("\n", 1)[0].strip().strip("`")
-    codebase_line = soul.split("## Codebase\n", 1)[1].split("\n", 1)[0].strip()
 
-    assert codebase_line == project_root
+    assert _inside(Path(project_root), _roots_for(member.member_id))
 
 
-def test_implementer_is_told_the_codebase_and_has_no_member_worktree(repo: Path) -> None:
-    """The per-task worktree is made at claim, so provisioning names only the codebase."""
+def test_implementer_has_no_member_worktree(repo: Path) -> None:
+    """The per-task worktree is made at claim, so provisioning records only the codebase."""
     member = _make_member("implementer")
     _provision(member, repo)
 
-    ws = _cfg.workspace_dir(member.member_id)
-    raw = json.loads((ws / _cfg.META_FILE).read_text())
+    raw = json.loads((_cfg.workspace_dir(member.member_id) / _cfg.META_FILE).read_text())
     assert "worktreeDir" not in raw
-    assert f"## Codebase\n{repo}\n" in (ws / "SOUL.md").read_text()
     assert raw["codebase"] == str(repo)
 
 
@@ -158,27 +162,14 @@ def test_implementer_is_told_the_codebase_and_has_no_member_worktree(repo: Path)
 
 @pytest.mark.parametrize("role", ["lead", "reviewer", "tester"])
 def test_other_roles_are_told_the_codebase(repo: Path, role: str) -> None:
-    """Every role is told the plain codebase."""
+    """Every role's startup contract names the plain codebase."""
     member = _make_member(role)
     _provision(member, repo)
 
     ws = _cfg.workspace_dir(member.member_id)
-    soul = (ws / "SOUL.md").read_text()
-    assert f"## Codebase\n{repo}\n" in soul
     contract = (ws / _mem.REQUIRED_STARTUP_FILE).read_text()
     assert f"`{repo}`" in contract
     assert _inside(Path(str(repo)), _roots_for(member.member_id))
-
-
-def test_implementer_without_a_git_repo_is_unchanged(tmp_path: Path) -> None:
-    """A non-repo codebase is named as it is."""
-    codebase = tmp_path / "plain"
-    codebase.mkdir()
-    member = _make_member("implementer", project="plainapp")
-    _provision(member, codebase)
-
-    ws = _cfg.workspace_dir(member.member_id)
-    assert f"## Codebase\n{codebase}\n" in (ws / "SOUL.md").read_text()
 
 
 # ── the second writer of that path: `docket setup --fix`'s contract heal ────────────
