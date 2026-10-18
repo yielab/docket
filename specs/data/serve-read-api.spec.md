@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.10.1
+**Version**: 3.10.2
 **Status**: Stable
 **Last Updated**: 2026-10-18
 
@@ -789,6 +789,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.10.2 (2026-10-18)
+
+- Approval view: `expiresAt` is always present on a pending approval (`created + APPROVAL_TIMEOUT`
+  when the creator gave none), never `null`.
 
 ### Version 3.10.1 (2026-10-18)
 
