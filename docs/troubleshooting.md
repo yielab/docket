@@ -103,7 +103,7 @@ cached/re-sent context grows — the same shape of problem any long-lived chat s
 
 #### 1. **Reset Agent Sessions**
 ```bash
-# Reset a pod member's session: distills memory, clears context, rebuilds workspace
+# Reset a pod member: clears its ledger and rebuilds its workspace files
 docket pod reset <agent-id>
 ```
 
@@ -471,8 +471,8 @@ docket setup
 # ✓ myproject-implementer: seeded WORKFLOW_AUTO.md (codebase /home/user/code/myproject)
 ```
 
-If HEARTBEAT.md itself looks wrong (not just the startup file), reset it; memory is distilled
-into MEMORY.md first:
+If HEARTBEAT.md itself looks wrong (not just the startup file), reset it; `MEMORY.md` is left
+as it is:
 
 ```bash
 docket pod reset <agent-id>

@@ -37,7 +37,6 @@ from docket.core import pod_report as _report
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 from docket.edges import store
-from docket.edges.adapters import docket_runtime as _dr
 
 # Names this module's callers and tests reach on `docket.cli._pod`; the implementations
 # live in core/pod_provisioning.py.
@@ -384,70 +383,31 @@ def cmd_remove(
     _contract.next_step("docket pod show")
 
 
-def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
-    """Distill ``memory/*.md`` into MEMORY.md through one driver turn. Callers gate their
-    destructive step on ``.ok`` so a failed distillation deletes nothing."""
-    raw = store.read_json(_cfg.meta_path(agent_id))
-    ui.info("Distilling memory before proceeding (one driver-backed turn)...")
-    result = _mem.distill_memory(
-        ws,
-        label=str(raw.get("name", agent_id)),
-        agent_id=agent_id,
-        session_key=str(raw.get("sessionKey", "")),
-        driver=_dr.default_driver().run_turn,
-    )
-    if not result.ok:
-        kind = f" ({result.failure_kind})" if result.failure_kind else ""
-        ui.error(
-            f"Distillation failed{kind}: {result.error or 'unknown error'}", "Nothing was deleted"
-        )
-    elif result.skipped:
-        ui.info("No memory logs to distill.")
-    else:
-        ui.success(
-            f"Distilled {result.logs_distilled} log(s) into MEMORY.md; "
-            f"original(s) archived under memory/{_mem.DISTILLED_ARCHIVE_DIRNAME}/."
-        )
-    return result
-
-
-def _clear_memory(agent_id: str, ws: Path, *, keep_memory_md: bool) -> int:
-    """Delete ``memory/*.md``, clear MEMORY.md (unless just distilled) and reset the ledger."""
-    removed = 0
-    mem_dir = ws / "memory"
-    if mem_dir.is_dir():
-        for f in mem_dir.glob("*.md"):
-            f.unlink()
-            removed += 1
-    memory_md = ws / "MEMORY.md"
-    if not keep_memory_md and memory_md.is_file():
-        memory_md.write_text("# MEMORY.md\n\n_Cleared by docket pod reset._\n", encoding="utf-8")
-        memory_md.chmod(0o600)
+def _reset_ledger(agent_id: str, ws: Path) -> None:
+    """Replace the member's HEARTBEAT.md with a fresh ledger."""
     raw = store.read_json(_cfg.meta_path(agent_id))
     hb = ws / _mem.HEARTBEAT_FILE
     hb.write_text(_mem.heartbeat_seed(str(raw.get("name", agent_id))), encoding="utf-8")
     hb.chmod(0o600)
-    return removed
 
 
 def reset_member(project: str, member_id: str, *, yes: bool) -> None:
-    """Distill a member's memory, clear it and rebuild SOUL/AGENTS/TOOLS from its metadata.
-    A failed distillation aborts before anything is touched."""
+    """Reset a member's ledger and rebuild SOUL/AGENTS/TOOLS from its metadata. MEMORY.md,
+    memory/ and the pod's memory.json are left as they are."""
     _require_member(project, member_id)
-    if not _contract.confirm(f"Reset {member_id}: memory is distilled, then cleared", yes=yes):
+    if not _contract.confirm(
+        f"Reset {member_id}: ledger cleared, workspace files rebuilt", yes=yes
+    ):
         ui.warn("Aborted.")
         raise typer.Exit(1)
     ws = _cfg.workspace_dir(member_id)
-    result = _run_distillation(member_id, ws)
-    if not result.ok:
-        raise typer.Exit(1)
-    removed = _clear_memory(member_id, ws, keep_memory_md=not result.skipped)
+    _reset_ledger(member_id, ws)
     for name, text in _pp.rendered_member_files(member_id).items():
         (ws / name).write_text(text, encoding="utf-8")
         (ws / name).chmod(0o600)
     _fleet.meta_set(member_id, "templateVersion", str(POD_TEMPLATE_VERSION))
-    audit_log("pod.reset", f"{project} member={member_id} logs={removed}")
-    ui.success(f"Reset {member_id}: {removed} memory log(s) cleared, workspace files rebuilt")
+    audit_log("pod.reset", f"{project} member={member_id}")
+    ui.success(f"Reset {member_id}: ledger cleared, workspace files rebuilt")
 
 
 @pod_app.command("reset")
@@ -456,7 +416,7 @@ def cmd_reset(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
     pod_name: str | None = pod_option(),
 ) -> None:
-    """Distill a member's memory, then clear it and rebuild its workspace files.
+    """Reset a member's ledger and rebuild its workspace files from its metadata.
 
     Example: docket pod reset demo-implementer"""
     reset_member(_pod_name(pod_name), member, yes=yes)

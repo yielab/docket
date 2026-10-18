@@ -43,9 +43,9 @@ This specification does NOT cover:
   token-estimation and per-role budget primitives (`estimate_tokens`, `budget_for_role`) but
   implements its own compaction strategy, documented below, because a list of chat messages is
   not a `HandoffArtifact`
-- Memory distillation's own store (`core/memory.py`'s `distill_memory`, ROADMAP Phase 17 C-2) —
-  session compaction follows the same fail-closed call pattern (decision D-18) but is a separate
-  code path over separate data (turn history, not daily memory logs)
+- Pod memory (`core/pod_memory.py`) — a separate store with its own rules (workspace-structure.spec.md
+  "Pod memory"); the daily-log distillation that session compaction once mirrored was removed
+  (ADR 0028 point 7). Compaction keeps the fail-closed call pattern (decision D-18)
 
 ## Requirements
 
@@ -116,7 +116,7 @@ This specification does NOT cover:
     backend, or implement a vendor client.
 18. If the summarisation call fails, or replies with nothing usable, compaction **MUST** leave
     the session's stored history completely unchanged and report failure — mirroring the
-    fail-closed contract memory distillation already gives `maintain clean`/`reset`.
+    fail-closed call pattern decision D-18 set for docket's self-originated model calls.
 19. Compaction **MUST NOT** ever persist a candidate result that would contain an orphaned tool
     call or tool result, even if that would require refusing to persist an otherwise-valid
     summarisation.

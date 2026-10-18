@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -76,7 +76,7 @@ This specification does NOT cover:
    `approval_required`, `approval_resumed`, `approval_task_denied`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
    `verdict_unparseable`, `step_skipped`, `command_step`, `route_taken`, `llm_call`,
-   `hop_started`, `hop_finished`, `error`, `session_end`. Adding a member **MUST** be a one-line
+   `hop_started`, `hop_finished`, `memory_update`, `error`, `session_end`. Adding a member **MUST** be a one-line
    change to this frozenset; removing one is a breaking change to every consumer enumerated in
    Scope above.
 
@@ -346,6 +346,13 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.10.0 (2026-10-18)
+
+- `memory_update` joins `EVENT_TYPES` (requirement 6; P44-7, ADR 0028 point 7). `core/pod_memory.py`
+  writes one per entry it adds, decides or removes: payload `{"action", "entry", "kind", "status",
+  "reason", "task"}`, where `action` is `accepted`, `pending`, `refused`, `approved`, `reverted`
+  or `reset`. The entry's note and subject never enter the event. Additive.
 
 ### Version 1.9.0 (2026-10-18)
 

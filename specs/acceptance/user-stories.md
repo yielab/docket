@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.5.2
+**Version**: 1.6.0
 **Status**: Active
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-18
 
 ## Overview
 
@@ -86,18 +86,17 @@ story-to-test coverage: a criterion without a backing test is simply left unchec
 The numbered reset levels were retired. The surface is `docket pod reset <member>`.
 
 **Acceptance Criteria:**
-- [ ] `pod reset` clears the member's memory logs, MEMORY.md, and HEARTBEAT.md
+- [ ] `pod reset` resets the member's HEARTBEAT.md and leaves MEMORY.md, `memory/` and the
+      pod's memory alone
 - [ ] `pod reset` regenerates SOUL.md, AGENTS.md, and TOOLS.md from `.docket-meta.json`
-- [ ] `pod reset` distills pending logs into MEMORY.md first (one driver-backed turn) and
-      archives the originals
-- [ ] A failed distillation aborts the delete: nothing is touched
+- [ ] `pod reset` calls no model
 - [ ] `pod reset` asks for confirmation on a TTY and needs `--yes` off one; a non-interactive
       call without it is cancelled, not applied
 - [ ] Reset preserves identity (`.docket-meta.json`, including codebase path and session
       key, and fleet registration)
 
 **Definition of Done:**
-- `pod reset` tested, including the distill-first abort path
+- `pod reset` tested, including that no memory file is touched
 - User documentation lists the verb (`docket pod reset --help`, docs/commands.md)
 
 ### Story: AGT-003 - Monitor Agent Costs
@@ -283,9 +282,9 @@ Then I should see the member's effective configuration
 And the session key should be "agent:testapp:default"
 
 When I run "docket pod reset testapp-lead --pod testapp" in a terminal and confirm
-Then pending memory logs should be distilled into MEMORY.md and archived
-And the daily memory logs should be cleared
-But SOUL.md should remain unchanged
+Then the member's HEARTBEAT.md should be reset
+And MEMORY.md and the pod's memory should remain unchanged
+And SOUL.md should be rebuilt from the member's metadata
 
 When I run "docket pod delete --pod testapp"
 And I confirm the deletion
@@ -403,6 +402,10 @@ card that will make it true — none exists for these).
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.6.0 (2026-10-18)
+- AGT-002 and the reset scenario follow `pod reset` no longer distilling or clearing memory
+  (P44-7, ADR 0028 point 7).
 
 ### Version 1.5.2 (2026-10-08)
 

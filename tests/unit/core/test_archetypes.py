@@ -203,6 +203,11 @@ class TestTemplatesCarryNoPathAndNoDeadSignals:
             assert "## Method" in agents, name
             assert "grep" in agents and "never list the whole tree" in agents.lower(), name
 
+    def test_the_method_block_names_the_memory_section_grammar(self) -> None:
+        for name, (_soul, agents) in self._rendered().items():
+            assert "`## Memory`" in agents, name
+            assert "- <kind>: <path or command> -- <fact>" in agents, name
+
     def test_the_method_block_is_short(self) -> None:
         agents = self._rendered()["implementer"][1]
         method = agents.split("## Method", 1)[1].split("## Red Lines", 1)[0]

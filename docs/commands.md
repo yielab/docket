@@ -231,7 +231,7 @@ Example: docket pod remove demo-reviewer
 
 **Usage:** `docket pod reset`
 
-Distill a member's memory, then clear it and rebuild its workspace files.
+Reset a member's ledger and rebuild its workspace files from its metadata.
 
 Example: docket pod reset demo-implementer
 
@@ -886,8 +886,7 @@ No command emits any other exit code today.
 | `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket setup --fix` flags older agents for rebuild past a bump | `4` |
 | `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards behind the prompt budget | `4` |
 | `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); prompt composition truncates past it | `6000` |
-| `DISTILL_TIMEOUT_S` | Wall-clock bound on the one driver-backed distillation turn `docket pod reset` runs | `120` |
-| `DISTILL_MAX_INPUT_BYTES` | How much daily-log content goes into a distillation turn's prompt | `49152` (48 KiB) |
+| `DISTILL_TIMEOUT_S` | Wall-clock bound on the one driver-backed summarising turn session compaction runs | `120` |
 | `DISPATCH_RETRIES_DEFAULT` | Retry attempts after the first try for a retryable dispatch-hop failure (timeout/`daemon_error` only), for any role with no per-role override | `2` |
 | `DISPATCH_RETRIES_LEAD`, `DISPATCH_RETRIES_IMPLEMENTER`, `DISPATCH_RETRIES_REVIEWER`, `DISPATCH_RETRIES_TESTER` | Per-role override of `DISPATCH_RETRIES_DEFAULT` | same as `DISPATCH_RETRIES_DEFAULT` |
 | `DISPATCH_RETRY_BACKOFF_S` | Linear backoff base between retries — attempt N waits N times this many seconds | `2` |
@@ -941,7 +940,7 @@ There is **no** environment kill switch for the audit log — a prior `DOCKET_NO
 Use bash loops for batch operations:
 
 ```bash
-# Reset every member of a pod (each distills its memory first)
+# Reset every member of a pod (rebuilds each member's files)
 for id in $(docket pod show --json | jq -r '.members[].id'); do docket pod reset "$id" --yes; done
 
 # Cheaper models fleet-wide: change the policy once — every

@@ -1122,7 +1122,7 @@ def test_full_workflow_against_real_local_model(tmp_path: Path) -> None:
     assert "Real model endpoint:" in result.stdout
     assert "pre-existing regressions fail for the intended checkout defects" in result.stdout
     assert "realistic checkout fixture committed before worktree provisioning" in result.stdout
-    assert "memory logs distilled and archived" in result.stdout
+    assert "operator MEMORY.md seeded with the current checkout decisions" in result.stdout
     assert "current durable decisions crossed the Lead handoff" in result.stdout
     assert "hidden checkout acceptance passed" in result.stdout
     assert "waiting_approval -> granted -> resumed" in result.stdout
@@ -1133,8 +1133,7 @@ def test_full_workflow_against_real_local_model(tmp_path: Path) -> None:
         ).read_text()
     )
     assert Path(task_list["tasks"][0]["worktree"]["dir"], "src", "checkout.py").is_file()
-    assert list(
-        (
-            world / ".docket" / "workspaces" / "projects" / "smoke-lead" / "memory" / ".distilled"
-        ).glob("*/*.md")
+    assert (
+        "cobalt-7"
+        in (world / ".docket" / "workspaces" / "projects" / "smoke-lead" / "MEMORY.md").read_text()
     )

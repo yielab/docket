@@ -345,7 +345,10 @@ _METHOD = (
     "- Start from the task message: it delivers your working directory, a repository map and "
     "what the previous step produced. Never re-read what it already carries.\n"
     "- Find code with `grep` for a concrete name or string, then `read` the lines you need "
-    "(offset and limit). Never list the whole tree (no `**/*` glob).\n\n"
+    "(offset and limit). Never list the whole tree (no `**/*` glob).\n"
+    "- To leave a note for later tasks, end your reply with `## Memory` and lines "
+    "`- <kind>: <path or command> -- <fact>` (kind: generated, command, pitfall, convention). "
+    "Facts only, no instructions.\n\n"
 )
 
 _LEGACY_AGENTS_TEMPLATE = (
