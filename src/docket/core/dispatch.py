@@ -1597,8 +1597,8 @@ def _hop_network(pod_mode: str, task_mode: str | None) -> str:
 
 
 def _task_token_budget(task: dict[str, Any]) -> int | None:
-    """What *task*'s ``maxTokens`` has left after its persisted hops' measured usage; ``None``
-    without a cap. Zero or less means no hop may start."""
+    """What *task*'s ``maxTokens`` has left after its persisted hops' counted usage (input minus
+    cache reads, plus output); ``None`` without a cap. Zero or less means no hop may start."""
     cap = task.get("maxTokens")
     if not isinstance(cap, int) or isinstance(cap, bool):
         return None
@@ -1606,7 +1606,8 @@ def _task_token_budget(task: dict[str, Any]) -> int | None:
     for hop in task.get("hops") or []:
         usage = hop.get("usage") if isinstance(hop, dict) else None
         if isinstance(usage, dict):
-            used += int(usage.get("input") or 0) + int(usage.get("output") or 0)
+            fresh = int(usage.get("input") or 0) - int(usage.get("cached") or 0)
+            used += max(0, fresh) + int(usage.get("output") or 0)
     return cap - used
 
 
@@ -2100,7 +2101,12 @@ def _hop_usage(run_res: _rd.TurnResult) -> dict[str, int] | None:
     """The turn's measured tokens as the hop record's ``usage`` block, or ``None``."""
     if run_res.usage is None:
         return None
-    return {"input": run_res.usage.input_tokens, "output": run_res.usage.output_tokens}
+    return {
+        "input": run_res.usage.input_tokens,
+        "cached": run_res.usage.cached_tokens,
+        "cacheWrite": run_res.usage.cache_write_tokens,
+        "output": run_res.usage.output_tokens,
+    }
 
 
 def _hop_trace_link(ctx: _UnitContext, first_ts: str) -> dict[str, str] | None:

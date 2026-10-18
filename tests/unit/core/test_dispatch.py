@@ -1462,6 +1462,30 @@ class TestTaskRestrictionHelpers:
 
         assert _dispatch._task_token_budget(task) == 600
 
+    def test_token_budget_does_not_count_cache_reads(self) -> None:
+        hop = {"usage": {"input": 30_000, "cached": 25_000, "cacheWrite": 0, "output": 100}}
+        task = {"maxTokens": 10_000, "hops": [hop, hop]}
+
+        assert _dispatch._task_token_budget(task) == 10_000 - 2 * 5_100
+
+    def test_hop_usage_carries_the_cache_split(self) -> None:
+        result = _rd.TurnResult(
+            True,
+            "ok",
+            0.0,
+            {},
+            usage=TokenUsage(
+                input_tokens=900, output_tokens=40, cached_tokens=700, cache_write_tokens=50
+            ),
+        )
+
+        assert _dispatch._hop_usage(result) == {
+            "input": 900,
+            "cached": 700,
+            "cacheWrite": 50,
+            "output": 40,
+        }
+
     def test_token_budget_goes_non_positive_when_spent(self) -> None:
         task = {"maxTokens": 100, "hops": [{"usage": {"input": 90, "output": 20}}]}
 

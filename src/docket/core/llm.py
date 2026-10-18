@@ -127,15 +127,22 @@ class TokenUsage:
     (``core/context.py``'s budgets). Keep this distinction in any
     user-facing wording: never call an estimate a measurement. ``cached_tokens`` is a subset of
     ``input_tokens`` where the endpoint reports one, and 0 where it does not — meaning "not
-    reported", never "definitely no cache hit"."""
+    reported", never "definitely no cache hit"; ``cache_write_tokens`` is a subset too."""
 
     input_tokens: int = 0
     output_tokens: int = 0
     cached_tokens: int = 0
+    cache_write_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
+        """Input plus output, for display and truthiness only; budgets use ``counted_tokens``."""
         return self.input_tokens + self.output_tokens
+
+    @property
+    def counted_tokens(self) -> int:
+        """New tokens: input minus cache reads, plus output. What every budget compares."""
+        return max(0, self.input_tokens - self.cached_tokens) + self.output_tokens
 
 
 @dataclass

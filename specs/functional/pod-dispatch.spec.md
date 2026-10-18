@@ -628,8 +628,8 @@ was seeded once at binding time.)*
    documents to the driver (security-gates.spec.md "Task restrictions"); a policy document that
    is not valid or whose action is not `block` **MUST** refuse the hop before it starts
    (`dispatch_refused`).
-8. A task's `maxTokens` **MUST** bound its measured usage: a hop runs with
-   `token_budget = maxTokens - sum(input + output of the task's persisted hops)`
+8. A task's `maxTokens` **MUST** bound its counted usage: a hop runs with
+   `token_budget = maxTokens - sum(input - cached + output of the task's persisted hops)`
    (`_task_token_budget`, read from the queue record so a sibling's or earlier hop's usage
    counts). A hop that would start with `<= 0` left **MUST NOT** run; the task fails with
    `failureKind: "budget"` and reason naming the cap. A hop the turn loop stops on its
@@ -1765,7 +1765,7 @@ document (`evidence.py`, `docs/contracts/`) are unchanged.*
    is the `hop_started` keys, with `attempt` set to the hop's total tries (`HopResult.attempts`),
    and these additional keys: `ok` (the hop's outcome), `verdict` (`HopResult.artifact.verdict`,
    or `null`), `gate` (the mechanical gate's `pass`/`fail` from its exit code, an external gate's
-   `label`, or `null` for a hop with no `verify`), `usage` (`HopResult.usage`, `{input, output}`,
+   `label`, or `null` for a hop with no `verify`), `usage` (`HopResult.usage`, `{input, cached, cacheWrite, output}`,
    or `null`), `durationMs` (the hop's trace window, `HopResult.trace` `lastTs` minus `firstTs`,
    in milliseconds at the trace's one-second precision; `null` when tracing is off) and `error`
    (`HopResult.error`, `""` when none).

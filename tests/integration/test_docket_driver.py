@@ -403,7 +403,7 @@ class TestRunTurn:
         (ws / "module.py").write_text("VALUE = 'broken'\n")
 
         class BudgetBackend:
-            context_window_tokens = 16_384
+            context_window_tokens = 100_000
             max_output_tokens = 4_000
 
             def __init__(self) -> None:
@@ -418,7 +418,7 @@ class TestRunTurn:
                 max_tokens: int | None = None,
                 temperature: float | None = None,
             ) -> int:
-                return 7_000 if tools else 1_000
+                return 44_000 if tools else 1_000
 
             def complete(
                 self,

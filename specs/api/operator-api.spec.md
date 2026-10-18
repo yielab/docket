@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.4.1
+**Version**: 5.5.0
 **Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
 **Last Updated**: 2026-10-18
 
@@ -80,7 +80,7 @@ call the same core functions (P43-10); `docket start` gains `--bind` (P43-11).
 | `baseRef` | string | a branch name or commit the task worktree starts from (`git worktree add -b <task-branch> <dir> <baseRef>`); unset means the codebase's HEAD as today. Validated at claim, not at enqueue: an unresolvable ref fails the task before any hop with `failureKind: "base_ref"` |
 | `pipeline` | string | the name of a pod-local pipeline (`<pod config dir>/pipelines/<name>.yaml`) or a shipped methodology recipe (`docket pod recipes`); unset means the pod's effective pipeline. Resolved at claim; an unknown name fails the task before any hop with `failureKind: "pipeline"` |
 | `gate` | object | `{"command": string, "timeoutS"?: int, "map"?: {exit code: label}}` -- an `ExternalGate` (ADR 0025) added **after** the last implementer step's own gate, with the same labels and `on:` routing. It never replaces a gate the pipeline declares |
-| `maxTokens` | int > 0 | a budget over the task's measured usage (`input + output` summed over hops); each hop runs with `token_budget = maxTokens - used so far`; a hop that would start with nothing left fails the task with `failureKind: "budget"` |
+| `maxTokens` | int > 0 | a budget over the task's counted usage (`input - cached + output` summed over hops; a cache read is not counted); each hop runs with `token_budget = maxTokens - used so far`; a hop that would start with nothing left fails the task with `failureKind: "budget"` |
 | `restrictions` | object | see below. Anything that would widen is `422` |
 
 `restrictions`:
@@ -163,7 +163,7 @@ The same body with an `idempotencyKey` already in the queue (`200`):
             "byModel": {"local/local-model": {"input": 48000, "output": 3000},
                         "anthropic/claude-sonnet-4-6": {"input": 13230, "output": 1120}}},
   "hops": [{"role": "implementer", "stepId": "implementer", "model": "local/local-model",
-            "provider": "local", "usage": {"input": 40950, "output": 1425}, "ok": true, "...": "..."}]
+            "provider": "local", "usage": {"input": 40950, "cached": 36000, "cacheWrite": 0, "output": 1425}, "ok": true, "...": "..."}]
 }
 ```
 
@@ -203,7 +203,7 @@ Two typed records join `trace-store.spec.md`'s `EVENT_TYPES`, written in the tas
  "payload": {"task": "task-5d0c...", "step": "implementer", "role": "implementer",
              "member": "fab-dev-implementer", "model": "local/local-model",
              "provider": "local", "cycle": 0, "attempt": 1, "ok": true,
-             "verdict": null, "gate": "pass", "usage": {"input": 40950, "output": 1425},
+             "verdict": null, "gate": "pass", "usage": {"input": 40950, "cached": 36000, "cacheWrite": 0, "output": 1425},
              "durationMs": 94012, "error": ""}}
 ```
 
@@ -299,6 +299,14 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.5.0 (2026-10-18)
+
+- A hop's `usage` carries `cached` (the part of `input` served from a cache) and `cacheWrite` (the
+  part of `input` written to one; 0 where the endpoint does not report it) beside `input` and
+  `output`. Additive: a consumer that reads `input` and `output` is unaffected. A task's
+  `maxTokens` counts `input - cached + output` over its hops; the task's own `usage` keys are
+  unchanged.
 
 ### Version 5.4.1 (2026-10-18)
 

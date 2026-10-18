@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core.llm import ChatResponse
 from docket.core.tools import Tool as _Tool
@@ -91,11 +92,18 @@ class TestResolveContextBounds:
         assert (window, reserve, max_tokens) == (1_000, 200, 200)
 
     def test_non_positive_or_missing_backend_values_are_ignored(self) -> None:
-        """A non-positive or absent backend value never fills the gap."""
+        """A non-positive or absent backend value never fills the gap; the reserve defaults."""
         backend = _FakeBoundsBackend(context_window_tokens=0, max_output_tokens=-5)
         cfg = _loop.LoopConfig()
         window, reserve, max_tokens = _loop._resolve_context_bounds(backend, cfg)
-        assert (window, reserve, max_tokens) == (None, 0, None)
+        assert (window, reserve, max_tokens) == (None, _cfg.DEFAULT_MAX_OUTPUT_TOKENS, None)
+
+    def test_an_unbounded_backend_reserves_the_default_without_sending_a_limit(self) -> None:
+        """No registered output bound means a positive reserve and no request max_tokens."""
+        backend = _FakeBoundsBackend(context_window_tokens=8_000, max_output_tokens=None)
+        _window, reserve, max_tokens = _loop._resolve_context_bounds(backend, _loop.LoopConfig())
+        assert reserve == _cfg.DEFAULT_MAX_OUTPUT_TOKENS > 0
+        assert max_tokens is None
 
 
 # ── _resolve_trace_coordinates ───────────────────────────────────────────────
