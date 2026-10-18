@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.35.0
+**Version**: 1.36.0
 **Status**: Complete
 **Last Updated**: 2026-10-18
 
@@ -147,7 +147,10 @@ The `InboxView` shape `GET /inbox` returns (`needsYou`, `failed`, `doneSince`, `
 (`needs_approval | needs_answer | blocked | failed | done | running | approved_ready`) and
 `command` (the one `docket ...` command that moves it forward). A pending task whose approval
 was granted is listed in `needsYou` with `state: "approved_ready"` and `command: "docket run
---pod <pod>"`. The output is plain JSON with no escape codes.
+--pod <pod>"`. A pending pod-memory entry is listed in `needsYou` as `{"kind": "memory", "pod",
+"id", "entryKind", "subject", "note", "reason", "task", "state": "needs_memory_approval",
+"command": "docket pod memory approve <id> --pod <pod>"}`; `GET /inbox` does not carry it. The
+output is plain JSON with no escape codes.
 
 ### `docket task list --json`
 
@@ -390,6 +393,12 @@ one `Project instr.:` line reporting `projectInstructions` (`AGENTS.md (default)
 `Exporters:` block listing each `name dialect state (scope)` (or `none enabled`), and,
 when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
 
+### `docket pod memory list --json`
+
+An array, oldest first, of `{id, kind, path | command, note, status, reason, provenance}` (and
+`exit` on a `command` entry) exactly as `memory.json` stores them (workspace-structure.spec.md
+"Pod memory"); `[]` when the pod has none. `--status` filters it.
+
 ### `docket pod update --json` / `pod roles --json` / `pod policies --json` / `pod recipes --json`
 
 ```json
@@ -455,6 +464,11 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.36.0 (2026-10-18)
+
+- `docket pod memory list --json` is new, and `inbox --json` `needsYou` can carry a `memory`
+  item (P44-8).
 
 ### Version 1.35.0 (2026-10-18)
 - `docket pod show --json` (and so `GET /pods/<p>`) gains `budgetUnpriced`; `docket status

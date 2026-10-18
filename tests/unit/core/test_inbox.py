@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
@@ -195,3 +196,42 @@ class TestEmptyInbox:
         assert view.done_since == []
         assert view.running == []
         assert view.next is None
+
+
+class TestPendingMemory:
+    @staticmethod
+    def _entries(project: str, *rows: tuple[str, str, str]) -> None:
+        entries = [
+            {
+                "id": f"mem-{i}",
+                "kind": kind,
+                "path": subject,
+                "note": "A fact.",
+                "status": status,
+                "reason": "awaits operator approval",
+                "provenance": {"task": "t1", "date": "2026-10-18", "commit": ""},
+            }
+            for i, (kind, subject, status) in enumerate(rows)
+        ]
+        path = _cfg.pod_memory_path(project)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _store.write_json(path, {"entries": entries})
+
+    def test_only_pending_entries_of_every_pod_are_listed_with_their_pod(self) -> None:
+        _pod.build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
+        _pod.build_pod("beta", ("lead", "implementer"), codebase="/src/beta")
+        self._entries("alpha", ("pitfall", "a.py", "pending"), ("generated", "dist", "accepted"))
+        self._entries("beta", ("convention", ".", "pending"), ("pitfall", "b.py", "refused"))
+
+        items = _inbox.pending_memory()
+
+        assert [(m.pod, m.id, m.kind, m.subject, m.task) for m in items] == [
+            ("alpha", "mem-0", "pitfall", "a.py", "t1"),
+            ("beta", "mem-0", "convention", ".", "t1"),
+        ]
+
+    def test_a_pod_without_memory_adds_nothing_and_the_view_is_unchanged(self) -> None:
+        _pod.build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
+
+        assert _inbox.pending_memory() == []
+        assert _inbox.build_inbox(now=_NOW).needs_you == []

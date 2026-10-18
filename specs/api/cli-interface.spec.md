@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.14.0
+**Version**: 2.15.0
 **Status**: Complete
 **Last Updated**: 2026-10-18
 
@@ -69,6 +69,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | Argument | Applies to | Rules |
 |----------|------------|-------|
 | `<ref>` | `task show|diff|trace|approve|deny|answer|retry|cancel` | A full task id, the short id `task list` prints, a unique prefix, or a run id (`core/task_ref.py`); never omitted, never picked from a menu |
+| `ID` | `pod memory approve|refuse|revert` | A memory entry id as `pod memory list` prints it (`mem-` and ten hex characters); unknown to the resolved pod exits 1 |
 | `MEMBER` | `pod show|remove|reset`, `pod set|unset --member` | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; a member of the resolved pod |
 | `KEY VALUE` | `pod set|unset` | A `PodSettings` key, or `verify` with `--member` |
 | `location` | `init` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
@@ -381,7 +382,7 @@ ends `failed`, the pod is unknown or no endpoint is configured, `2` on an unknow
 #### docket pod
 
 **Purpose**: The pod: its roster, its settings and its configuration of record
-**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|update|export|validate|plan|check|recipes|roles|policies> [args] [--pod <p>]`
+**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|update|export|validate|plan|check|recipes|roles|policies|memory> [args] [--pod <p>]`
 
 A real Typer sub-app (`cli/_pod.py::pod_app`): every verb declares its arguments and options, a
 bare `docket pod` prints help, an unknown verb or flag is a usage error (exit 2), and every leaf's
@@ -405,6 +406,16 @@ Each state-changing verb ends with one `Next:` line on stderr.
   implementer's `verifyCmd` (pod-blueprints.spec.md "Pod settings: set and unset").
 - `delete [--confirm NAME]`: destroy the pod. The name is typed on a terminal; off one,
   `--confirm NAME` is required. A member id is refused; there is no picker.
+- `memory <list|approve|refuse|revert|reset>`: the operator's controls over the pod's learned
+  memory (workspace-structure.spec.md "Pod memory"), a sub-group of `pod`, not a top-level
+  command. `memory list [--status accepted|pending|refused] [--json]` prints every entry (id,
+  kind, status, subject, note, reason) and is read-only; `memory approve ID` accepts a pending
+  entry; `memory refuse ID --reason TEXT` refuses a pending one; `memory revert ID` takes an
+  accepted one out of every prompt (it stays as a refusal); `memory reset [--yes]` removes every
+  entry after confirmation (off a terminal, `--yes` is required, else exit 1). An unknown id or
+  an entry in the wrong state prints one line naming it and exits 1; an unknown `--status` exits
+  1. Each state-changing leaf ends with a `Next:` line and is audited as `pod.memory.<action>`
+  with actor `cli`.
 
 **Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
 removal; missing confirmation), `2` on a usage error.
@@ -982,6 +993,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.15.0 (2026-10-18)
+
+- `pod memory list|approve|refuse|revert|reset` (P44-8): the operator's controls over a pod's
+  learned memory, a sub-group of `pod`; the eleven top-level commands are unchanged.
 
 ### Version 2.14.0 (2026-10-18)
 

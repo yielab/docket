@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import hashlib as _hashlib
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import pod_apply as _pod_apply
+from docket.core import pod_memory as _pod_memory
 from docket.core import pod_provisioning as _pp
 from docket.core import pod_report as _report
 from docket.core import schedule as _sched
@@ -477,6 +479,119 @@ def cmd_delete(
         raise typer.Exit(1)
     _delete_pod(project, members)
     _contract.next_step("docket init")
+
+
+memory_app = typer.Typer(
+    name="memory",
+    help="What this pod has learned about its repository: review, approve, revert, reset.",
+    no_args_is_help=True,
+)
+pod_app.add_typer(memory_app)
+
+_MEMORY_STATUSES = ("accepted", "pending", "refused")
+
+
+def _memory_pod(pod_name: str | None) -> str:
+    project = _pod_name(pod_name)
+    _require_members(project)
+    return project
+
+
+def _memory_decide(project: str, decide: Callable[[], _pod_memory.MemoryEntry]) -> None:
+    try:
+        decide()
+    except _pod_memory.PodMemoryError as ex:
+        ui.error(str(ex), f"See: docket pod memory list --pod {project}")
+        raise typer.Exit(1) from ex
+
+
+@memory_app.command("list")
+def cmd_memory_list(
+    status: str | None = typer.Option(
+        None, "--status", help="Only entries that are accepted, pending or refused"
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """List the pod's memory entries with their status and why.
+
+    Example: docket pod memory list --status pending"""
+    project = _memory_pod(pod_name)
+    if status is not None and status not in _MEMORY_STATUSES:
+        ui.error(f"Unknown status '{status}'", f"Use one of: {', '.join(_MEMORY_STATUSES)}")
+        raise typer.Exit(1)
+    entries = _pod_memory.list_entries(project, status)
+    if json_out:
+        _contract.emit_json([e.to_dict() for e in entries])
+        return
+    if not entries:
+        ui.dim(f"No memory entries in pod '{project}'.")
+        return
+    ui.table(
+        [[e.id, e.status, e.kind, e.subject, e.note, e.reason] for e in entries],
+        ["ID", "STATUS", "KIND", "SUBJECT", "NOTE", "WHY"],
+    )
+
+
+@memory_app.command("approve")
+def cmd_memory_approve(
+    entry_id: str = typer.Argument(..., metavar="ID", help="A pending entry id"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Accept a pending entry; the pod's next prompt carries it.
+
+    Example: docket pod memory approve mem-0123456789"""
+    project = _memory_pod(pod_name)
+    _memory_decide(project, lambda: _pod_memory.approve(project, entry_id, actor="cli"))
+    ui.success(f"Approved {entry_id}")
+    _contract.next_step(f"docket pod memory list --pod {project}")
+
+
+@memory_app.command("refuse")
+def cmd_memory_refuse(
+    entry_id: str = typer.Argument(..., metavar="ID", help="A pending entry id"),
+    reason: str = typer.Option(..., "--reason", help="Why it is refused"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Refuse a pending entry; the same fact is not stored again.
+
+    Example: docket pod memory refuse mem-0123456789 --reason stale"""
+    project = _memory_pod(pod_name)
+    _memory_decide(project, lambda: _pod_memory.refuse(project, entry_id, reason, actor="cli"))
+    ui.success(f"Refused {entry_id}")
+    _contract.next_step(f"docket pod memory list --pod {project}")
+
+
+@memory_app.command("revert")
+def cmd_memory_revert(
+    entry_id: str = typer.Argument(..., metavar="ID", help="An accepted entry id"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Take an accepted entry out of every prompt; it stays as a refusal.
+
+    Example: docket pod memory revert mem-0123456789"""
+    project = _memory_pod(pod_name)
+    _memory_decide(project, lambda: _pod_memory.revert(project, entry_id, actor="cli"))
+    ui.success(f"Reverted {entry_id}")
+    _contract.next_step(f"docket pod memory list --pod {project}")
+
+
+@memory_app.command("reset")
+def cmd_memory_reset(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Remove every memory entry of the pod after confirmation.
+
+    Example: docket pod memory reset --yes"""
+    project = _memory_pod(pod_name)
+    count = len(_pod_memory.list_entries(project))
+    if not _contract.confirm(f"Remove all {count} memory entries of pod {project}", yes=yes):
+        ui.warn("Aborted.")
+        raise typer.Exit(1)
+    removed = _pod_memory.reset(project, actor="cli")
+    ui.success(f"Removed {removed} memory entries from pod '{project}'")
+    _contract.next_step(f"docket pod memory list --pod {project}")
 
 
 def _regenerate_member_tools(member_id: str, project: str) -> None:

@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.21.0
+**Version**: 1.22.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`. There are no shared agents: no workspace is provisioned outside a pod. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
@@ -178,9 +178,14 @@ whole pod and every member that reads it.
 8. `core/pod_memory.py` **MUST** expose the operator's side as a typed API: `list_entries`,
    `approve` (pending to accepted), `refuse` (pending to refused, with a reason), `revert`
    (accepted to refused, so the same fact is not accepted again) and `reset` (remove every
-   entry). Each audits and traces like requirement 7. No command or inbox item calls them in
-   this version.
+   entry). Each audits and traces like requirement 7. `approve`, `refuse`, `revert` and `reset`
+   raise `PodMemoryError` for an unknown id or an entry in the wrong state.
 9. `docket pod reset <member>` **MUST NOT** read or change `memory.json`, `MEMORY.md` or `memory/`.
+10. **The operator's side** is `docket pod memory` (cli-interface.spec.md) and the inbox
+    (operator-loop.spec.md area 5, item 11); every action calls the requirement 8 API with
+    `actor="cli"`, so the entry moves and the audit and trace record are written by the one
+    writer. An approved entry reaches the pod's next composed prompt (requirement 6); a reverted
+    one leaves it and stays as a refusal.
 
 ### No shared agents
 
@@ -324,6 +329,12 @@ docket setup [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.22.0 (2026-10-18)
+
+- **Pod memory operator controls (P44-8).** Requirement 10: `docket pod memory
+  list|approve|refuse|revert|reset` and the inbox call the requirement 8 API; requirement 8 no
+  longer says nothing calls it.
 
 ### Version 1.21.0 (2026-10-18)
 
