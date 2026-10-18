@@ -734,5 +734,13 @@
     "heading": "◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — COMPLETE (opened 2026-10-14, closed 2026-10-17)",
     "bytes": 28325,
     "sha256": "6df4ab17d1bc9fd700f837be9d81e9f160976abd8efa409e8dccb9b1955169f3"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ CLOSED — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028)",
+    "bytes": 21773,
+    "sha256": "605ca1254ae4927e1da65be97584f194484143c1e92fd63b9eb98fc890abc3b6"
   }
 ]
