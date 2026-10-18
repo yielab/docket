@@ -558,19 +558,9 @@ def _iso_after(stamp: str, seconds: float) -> str:
 
 
 def _expiry_deadline(data: dict[str, Any]) -> float | None:
-    """A pending record's own ``expiresAt`` wins when present (a parked call may carry
-    one); otherwise fall back to ``created + APPROVAL_TIMEOUT``, unchanged from before
-    pre-grants existed."""
+    """A pending record's own ``expiresAt`` epoch seconds, or ``None`` when absent."""
     expires_at = data.get("expiresAt")
-    if expires_at:
-        return _parse_iso(str(expires_at))
-    created_str = str(data.get("created", ""))
-    if not created_str:
-        return None
-    created_ts = _parse_iso(created_str)
-    if created_ts is None:
-        return None
-    return created_ts + _cfg.APPROVAL_TIMEOUT
+    return _parse_iso(str(expires_at)) if expires_at else None
 
 
 def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
@@ -598,8 +588,7 @@ def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
 
 
 def approval_sweep_expired() -> int:
-    """Expire pending approvals past their deadline (own ``expiresAt``, else
-    ``APPROVAL_TIMEOUT``) via ``_resolve_timeout_as_denied``, and separately prune
+    """Expire pending approvals past their deadline (their ``expiresAt``) via ``_resolve_timeout_as_denied``, and separately prune
     unconsumed pre-grants past theirs -- both resolved to **denied** (fail-closed)."""
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
