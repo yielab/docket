@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.60.0
+**Version**: 0.61.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -667,6 +667,14 @@ tool call to take.**
    treated as a contract, not an implementation detail — every shipped `pre_tool_call` pattern is
    matched against its output, and `tests/integration/test_pre_tool_call_policy.py::TestRenderToolCallShape`
    pins it.
+
+   > **Since 0.61.0 the `.env`/`.ssh/` alternatives match a write target, not two words.** The
+   > render of a bash call is `bash command="..."` with newlines escaped, so `.*` between a verb
+   > and a path spans a whole script. The alternatives are anchored to the target instead: a
+   > redirect (`>`/`>>`) whose path ends in `.env`, `tee`/`cp`/`mv`/`sed -i` with a path argument
+   > ending in `.env` in the same command segment, `.ssh/` after the same verbs or a redirect,
+   > and `^(write|edit) path="...(.env|.ssh/...)"`. `grep -r process.env src/` and a script that
+   > merely contains `.write(` and `process.env` do not fire.
 
    > **Two `block-destructive.json` alternatives were verified, not assumed, against this
    > render.** `\.env\b.*write` and `\.ssh\/\s*write` require the path text to appear *before*
@@ -1831,6 +1839,16 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.61.0 (2026-10-18)
+
+- Policy engine on the live path requirement 1: the `.env` and `.ssh/` alternatives of the shipped
+  `block-destructive` policy fire when a call *targets* such a path (a redirect to it, `tee`, `cp`
+  or `mv` onto it, `sed -i` on it, the `write`/`edit` tool with that path), not when the words
+  merely appear in one call. A bash command's newlines are escaped in the render, so the old
+  `.env\b.*write` spanned a whole heredoc: a script holding `.write(s)` and, fifteen lines on,
+  `process.env` parked a development team's task. An installed copy is never overwritten
+  (`install_policies`); the operator replaces `block-destructive.yaml` in their policies directory.
 
 ### Version 0.60.0 (2026-10-18)
 

@@ -3,6 +3,6 @@ name: block-destructive
 description: Gate destructive shell commands behind explicit approval
 appliesTo: ["*"]
 when:
-  matches: '\brm\s+-[rf]|\bdrop\s+table|\btruncate\s+table|\bgit\s+push\s+--force|\bsystemctl\s+(stop|disable)|\bdd\s+if=|\bshred\b|\bmkfs\b|\bkillall\b|\brmdir\s+-p|chmod\s+[0-7]{3,4}\s+[/~]|chown\s+.*\s+[/~]|(?:\.env\b.*write|write.*\.env\b)|(?:\.ssh\/\s*write|write.*\.ssh\/)'
+  matches: '\brm\s+-[rf]|\bdrop\s+table|\btruncate\s+table|\bgit\s+push\s+--force|\bsystemctl\s+(stop|disable)|\bdd\s+if=|\bshred\b|\bmkfs\b|\bkillall\b|\brmdir\s+-p|chmod\s+[0-7]{3,4}\s+[/~]|chown\s+.*\s+[/~]|>>?\s*\\?[\x22\x27]?(?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|\b(?:tee|cp|mv)\b(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|\bsed\b(?=[^|;&]*?\s-(?:[a-zA-Z]*i|-in-place))(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|^(?:write|edit)\s+path=\x22(?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|>>?\s*\\?[\x22\x27]?(?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/|\b(?:tee|cp|mv)\b(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/|\bsed\b(?=[^|;&]*?\s-(?:[a-zA-Z]*i|-in-place))(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/|^(?:write|edit)\s+path=\x22(?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/'
 then: ask
 message: Destructive command requires operator approval before execution.
