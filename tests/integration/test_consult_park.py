@@ -6,6 +6,8 @@ Real dispatch over a scripted chat backend; nothing touches the real DOCKET_HOME
 
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,6 +96,8 @@ def _start(
     monkeypatch: pytest.MonkeyPatch,
     backend: _Backend,
     mode: Literal["wait", "park", "refuse"] = "park",
+    expiry_hours: int | None = None,
+    pipeline_yaml: str | None = None,
 ) -> _Run:
     workspace = tmp_path / "codebase"
     workspace.mkdir()
@@ -104,6 +108,18 @@ def _start(
     _fleet.meta_set(
         "demo-lead", "requireVerify", _pod.pod.PodSettings.coerce("requireVerify", "true")
     )
+    if expiry_hours is not None:
+        _fleet.meta_set(
+            "demo-lead",
+            "inputExpiryHours",
+            _pod.pod.PodSettings.coerce("inputExpiryHours", str(expiry_hours)),
+        )
+    if pipeline_yaml is not None:
+        digest = hashlib.sha256(pipeline_yaml.encode("utf-8")).hexdigest()
+        bound = _pod.pod.bound_pipeline_path("demo")
+        bound.parent.mkdir(parents=True, exist_ok=True)
+        bound.write_text(pipeline_yaml, encoding="utf-8")
+        _fleet.meta_set("demo-lead", "pipeline", digest)
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
     queued = _dispatch.enqueue_task("demo", "in-place task", channel="cli")
@@ -175,6 +191,58 @@ class TestPark:
         task = _task(run)
         assert task["status"] != "waiting_input"
         assert "approval_unavailable" in json.dumps(task["hops"])
+
+
+_ASK_EXPIRES_YAML = """\
+name: ask
+steps:
+  - id: lead
+    role: lead
+  - id: ask
+    input:
+      from: lead
+      expiresHours: 2
+  - id: implementer
+    role: implementer
+"""
+
+
+def _hours_from_now(stamp: str) -> float:
+    return (dt.datetime.fromisoformat(stamp) - dt.datetime.now(dt.UTC)).total_seconds() / 3600
+
+
+class TestParkedQuestionExpiry:
+    def test_a_parked_consultation_expires_after_the_pods_input_expiry_hours(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _Backend([_final("plan"), _consult()])
+        run = _start(tmp_path, monkeypatch, backend, expiry_hours=1)
+
+        assert _hours_from_now(_task(run)["question"]["expiresAt"]) == pytest.approx(1, abs=0.02)
+
+    def test_an_input_step_keeps_its_own_expires_hours(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _Backend([_final("plan")])
+        run = _start(
+            tmp_path, monkeypatch, backend, expiry_hours=1, pipeline_yaml=_ASK_EXPIRES_YAML
+        )
+
+        task = _task(run)
+        assert task["status"] == "waiting_input"
+        assert _hours_from_now(task["question"]["expiresAt"]) == pytest.approx(2, abs=0.02)
+
+    def test_the_sweep_blocks_an_expired_consultation_and_retry_reopens_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]), expiry_hours=1)
+        later = (dt.datetime.now(dt.UTC) + dt.timedelta(hours=2)).isoformat()
+
+        assert _answers.sweep_expired_questions(later) == 1
+        task = _task(run)
+        assert (task["status"], task["blockedReason"]) == ("blocked", "input_expired")
+        assert _dispatch.retry_task(run.project, run.task_id)
+        assert _task(run)["status"] == "pending"
 
 
 class TestAnswer:

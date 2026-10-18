@@ -3613,7 +3613,9 @@ def dispatch_task(
     return result
 
 
-def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
+def _apply_result(
+    task: dict[str, Any], res: TaskResult, *, input_expiry_hours: int | None = None
+) -> None:
     """Fold a TaskResult back onto the stored task dict (terminal state; pod-dispatch.spec.md,
     "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval``/``waiting_input``
     are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
@@ -3633,6 +3635,9 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
         task["pendingApprovalIndex"] = res.pending_approval_index
     elif res.status == "waiting_input":
         task["question"] = res.question
+        if res.question and not res.question.get("expiresAt") and input_expiry_hours:
+            deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=input_expiry_hours)
+            res.question["expiresAt"] = deadline.isoformat()
         if res.question and res.question.get("kind") in ("clarification", "decision"):
             task["consultations"] = int(task.get("consultations") or 0) + 1
     else:
@@ -3861,13 +3866,14 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     """Persist a task's terminal outcome (status/reason/hops/cost), clear its claim, and
     re-sync HEARTBEAT.md. The only trigger that ever *removes* a ledger entry --
     ``_claim_next_task``/``_persist_hop``/``_touch_claim`` only add or keep one current."""
+    expiry = _pod_settings(project).input_expiry_hours if res.status == "waiting_input" else None
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
         tasks = tasks_raw if isinstance(tasks_raw, list) else []
         for t in tasks:
             if t.get("id") == task_id:
-                _apply_result(t, res)
+                _apply_result(t, res, input_expiry_hours=expiry)
                 keys = ("input", "cached", "cacheWrite", "output")
                 usage: dict[str, Any] = {**dict.fromkeys(keys, 0), "byModel": {}}
                 for h in res.hops:
