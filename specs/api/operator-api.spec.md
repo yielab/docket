@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.5.0
+**Version**: 5.6.0
 **Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
 **Last Updated**: 2026-10-18
 
@@ -156,16 +156,25 @@ The same body with an `idempotencyKey` already in the queue (`200`):
   "externalRef": "TACK-412/attempt-2", "idempotencyKey": "TACK-412:2",
   "baseRef": "docket/fab-dev/task-91aa...", "pipeline": "tdd",
   "gate": {"command": "npm test -- --ci", "timeoutS": 600},
-  "maxTokens": 400000,
+  "maxTokens": 400000, "tokenBudget": 100000,
   "restrictions": {"deniedTools": ["fetch"], "network": "none", "policies": []},
   "worktree": {"dir": "...", "branch": "docket/fab-dev/task-5d0c...", "baseCommit": "a1b2c3d"},
   "usage": {"input": 61230, "output": 4120,
-            "byModel": {"local/local-model": {"input": 48000, "output": 3000},
-                        "anthropic/claude-sonnet-4-6": {"input": 13230, "output": 1120}}},
+            "byModel": {"local/local-model": {"input": 48000, "cached": 40000, "cacheWrite": 0, "output": 3000},
+                        "anthropic/claude-sonnet-4-6": {"input": 13230, "cached": 0, "cacheWrite": 2100, "output": 1120}}},
   "hops": [{"role": "implementer", "stepId": "implementer", "model": "local/local-model",
             "provider": "local", "usage": {"input": 40950, "cached": 36000, "cacheWrite": 0, "output": 1425}, "ok": true, "...": "..."}]
 }
 ```
+
+`tokenBudget` is the measured-token ceiling the next hop of the task would run under: the
+configured per-turn budget (`AGENT_LOOP_TOKEN_BUDGET`) for a task without `maxTokens`; for a task
+with one, what its cap has left after its persisted hops (`maxTokens` minus the hops' counted
+usage), never below 0. It is computed on read, from the same values `core/dispatch.py` applies, and
+is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod>/<id>` return.
+
+Each `byModel` entry sums its hops' `input`, `cached`, `cacheWrite` and `output`; the task's own
+top-level `input` and `output` are unchanged (`cached` and `cacheWrite` are per model only).
 
 `POST .../cancel` (`200`): `{"ok": true, "task": "...", "status": "cancelled"}`.
 `POST .../retry` (`200`): `{"ok": true, "task": "...", "status": "pending"}`.
@@ -299,6 +308,14 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.6.0 (2026-10-18)
+
+- Every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod>/<id>` return carries
+  `tokenBudget` (the per-turn ceiling, or what a task's `maxTokens` has left; see "Task answers").
+  Additive: no existing key changes.
+- A `byModel` entry carries `cached` and `cacheWrite` summed from its hops, beside `input` and
+  `output`. Additive; the top-level `usage` keys are unchanged.
 
 ### Version 5.5.0 (2026-10-18)
 

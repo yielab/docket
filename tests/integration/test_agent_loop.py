@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
+from tests.integration import llm_stub as _stub
 
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
@@ -33,6 +34,7 @@ from docket.core import trace as _trace
 from docket.core.llm import (
     ChatMessage,
     ChatResponse,
+    Endpoint,
     TokenUsage,
     ToolCall,
     ToolSpec,
@@ -42,6 +44,7 @@ from docket.core.session import append_messages as append_session_messages
 from docket.core.session import load_session
 from docket.core.tools import Tool as _Tool
 from docket.core.tools import ToolContext, ToolRegistry
+from docket.edges.adapters import llm as _llm_adapter
 from docket.edges.adapters.toolbox import ToolOutcome
 
 SUBJECT = "docket.core.agent_loop"
@@ -2566,6 +2569,53 @@ class TestTracing:
         assert tracefile.exists()
 
 
+_WIRE_PART_BY_ROLE = {
+    "system": "system",
+    "user": "user",
+    "assistant": "assistant",
+    "tool": "toolResults",
+}
+
+
+def _wire_parts(body: dict[str, Any]) -> dict[str, int]:
+    """Bytes of each request part, measured on the body the stub endpoint received."""
+    sizes = dict.fromkeys(("system", "tools", "toolResults", "assistant", "user"), 0)
+    for message in body["messages"]:
+        sizes[_WIRE_PART_BY_ROLE[message["role"]]] += len(json.dumps(message).encode("utf-8"))
+    for tool in body.get("tools", []):
+        sizes["tools"] += len(json.dumps(tool).encode("utf-8"))
+    return sizes
+
+
+class TestLlmCallRequestBreakdown:
+    def test_request_parts_match_the_bytes_the_endpoint_received(
+        self, ctx: ToolContext, registry: ToolRegistry, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [_stub._tool_call_response("echo", {"text": "hi"}, "c1"), _stub._final_response("ok")]
+        )
+        backend = _llm_adapter.OpenAIChatClient(
+            Endpoint(base_url=server.base_url, model_id="local-model")
+        )
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:default", "go")
+
+        assert result.ok
+        payloads = [e["payload"] for e in events if e["event_type"] == "llm_call"]
+        assert len(payloads) == len(server.requests) == 2
+        for payload, body in zip(payloads, server.requests, strict=True):
+            request = payload["request"]
+            assert set(request) == {"system", "tools", "toolResults", "assistant", "user"}
+            sent = _wire_parts(body)
+            assert {part: request[part]["bytes"] for part in request} == sent
+            for part in request.values():
+                assert part["estTokens"] == part["bytes"] // _cfg.CONTEXT_BYTES_PER_TOKEN
+        assert payloads[0]["request"]["tools"]["bytes"] > 0
+        assert payloads[1]["request"]["toolResults"]["bytes"] > 0
+        assert payloads[1]["request"]["assistant"]["bytes"] > 0
+
+
 class TestLlmCallTrace:
     def test_two_llm_call_records_with_measured_usage_and_no_cost(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -2685,8 +2735,11 @@ class TestLlmCallTrace:
             result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
         assert result.ok
         with_capture_path = [
-            json.dumps(e["payload"]) for e in events if e["event_type"] == "llm_call"
+            json.dumps({k: v for k, v in e["payload"].items() if k != "request"})
+            for e in events
+            if e["event_type"] == "llm_call"
         ]
+        assert all("request" in e["payload"] for e in events if e["event_type"] == "llm_call")
 
         # The pre-card call shape: `_trace_llm_call` invoked with no `messages` at all, as
         # every call site did before this card -- the capture path never runs.
