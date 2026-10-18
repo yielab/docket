@@ -49,6 +49,8 @@ def _legacy_member_soul(
             "## Role — Implementer\n"
             "- You implement the tasks the Lead assigns: read/write/edit the codebase in your "
             "working directory. Read a file before changing it.\n"
+            "- Create or change files with `write`/`edit`, not `cat >`, heredocs or `sed -i`; "
+            "inspect with `read`/`grep`/`glob`; use `bash` to run things.\n"
             "- Never push to main/master without HITL approval; never delete files "
             "without explicit instruction.\n"
         )
