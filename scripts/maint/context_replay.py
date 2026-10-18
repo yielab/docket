@@ -27,6 +27,8 @@ from typing import Any
 
 from docket import config
 from docket.core import orchestrator, pipeline
+from docket.core.llm import ChatMessage, ToolCall
+from docket.core.session import condense_history
 from docket.edges.adapters.toolbox import read_file, text_outcome
 
 Messages = list[dict[str, Any]]
@@ -68,9 +70,44 @@ def tool_output_policy(messages: Messages) -> Messages:
     return out
 
 
+PHASE44_KEEP = 2
+
+
+def condense_policy(keep: int) -> Policy:
+    """ADR 0028 point 4: the real ``condense_history`` over recorded messages, last *keep* whole."""
+
+    def policy(messages: Messages) -> Messages:
+        chat = [
+            ChatMessage(
+                m["role"],
+                str(m.get("content") or ""),
+                [ToolCall(c["id"], c["name"], c["arguments"]) for c in m.get("toolCalls") or []],
+                m.get("toolCallId", ""),
+                m.get("name", ""),
+            )
+            for m in messages
+        ]
+        return [
+            {
+                **m,
+                "content": c.content,
+                "toolCalls": [
+                    {"id": t.id, "name": t.name, "arguments": t.arguments} for t in c.tool_calls
+                ],
+            }
+            for m, c in zip(messages, condense_history(chat, keep), strict=True)
+        ]
+
+    return policy
+
+
 POLICIES: dict[str, Policy] = {
     "baseline": lambda messages: messages,
     "tool-output": tool_output_policy,
+    "condense-k1": condense_policy(1),
+    "condense-k2": condense_policy(2),
+    "condense-k3": condense_policy(3),
+    "phase44": lambda messages: condense_policy(PHASE44_KEEP)(tool_output_policy(messages)),
 }
 
 VERDICT_PATTERN = r"^\s*(APPROVE|REJECT|REQUEST-CHANGES|PASS|FAIL)\b"

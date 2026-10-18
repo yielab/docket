@@ -1,13 +1,13 @@
 # Session History Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
 compactor before each task-completion backend call. Wave 20 card W20-C4 gives every pod-dispatch
 pipeline step its own history key while preserving the task-wide trace identity. Wave 25 adds a
 bounded range mode so per-request fit can preserve the current task verbatim while compacting only
 older history or completed same-turn tool units.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -154,6 +154,27 @@ This specification does NOT cover:
     retaining the current user task verbatim; it **MUST NOT** introduce an in-memory-only history
     that differs from the durable record sent after reload.
 
+### Request projection
+
+29. `condense_history(messages, keep=HISTORY_KEEP_FULL_RESULTS)` **MUST** be a pure function: the
+    same messages always yield the same bytes, the input list and its messages are never changed,
+    and nothing is read from or written to disk. It is applied to the request only; the stored
+    history keeps every byte (`core/agent_loop.py::_TurnState.messages_for_durable` is its one
+    live caller).
+30. Of the answered `tool` messages, all but the last `keep` (at least 1) **MUST** have their
+    `content` replaced by `[<tool> <path|command|pattern|url>: N lines, M characters, omitted;
+    call <tool> again if needed]`, built from the matching call, unless the notice is not shorter
+    than the content. Each message keeps its role, `tool_call_id` and `name`. A result beginning
+    `ERROR:`, `REFUSED [` or `AWAITING APPROVAL:` stays whole up to 400 characters and is
+    otherwise cut to its first 400 with a count of the rest. User and system messages are never
+    changed.
+31. For a call whose result was condensed, the string arguments `content` (`write`),
+    `new_string` and `old_string` (`edit`) **MUST** be replaced by `[wrote <path>: N characters]`
+    (`[replaced <path>: N characters]` for `old_string`) when that is shorter; the other keys and
+    the call id are kept and the arguments remain a JSON object. Arguments that do not parse as a
+    JSON object are left as they are. A message that gains a result later changes only at that
+    message, so the request prefix before it is byte-identical between consecutive requests.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.session`)
@@ -167,6 +188,12 @@ class SessionRecord(BaseModel): ...           # sessionKey, created, updated, me
 
 # pure compaction planning
 def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage]]: ...
+
+# request projection (pure; requirements 29-31)
+HISTORY_KEEP_FULL_RESULTS = 2
+def condense_history(
+    messages: Sequence[ChatMessage], keep: int = HISTORY_KEEP_FULL_RESULTS,
+) -> list[ChatMessage]: ...
 def find_orphaned_tool_messages(messages: Sequence[ChatMessage]) -> list[int]: ...
 def find_unanswered_tool_calls(messages: Sequence[ChatMessage]) -> list[str]: ...
 
@@ -327,8 +354,22 @@ result = sess.compact_session(
   only keep or replace as a whole — never a boundary internal to one assistant/tool-call group.
 - Estimated and measured token figures **MUST** remain distinct fields, never merged.
 - A compaction summarizer **MUST NOT** be able to re-enter compaction, even with another key.
+- `condense_history` **MUST NOT** change what `load_messages` returns; it shapes a request only.
 
 ## Changelog
+
+### Version 1.6.0 (2026-10-18)
+
+- Request projection (requirements 29-31, ADR 0028 section 4): `condense_history` turns tool
+  results older than the last `HISTORY_KEEP_FULL_RESULTS` (2) into one-line notices and large
+  old `write`/`edit` arguments into character counts, applied only when a request is built.
+  K chosen on the replay bench (`context_replay.py`, committed fixtures, policy `phase44` =
+  tool output then condensation; sent tokens as a fraction of baseline, per step critic /
+  implementer-a / implementer-b / researcher, then total): K=1 0.58 / 0.20 / 0.44 / 0.33
+  (0.38), K=2 0.63 / 0.25 / 0.49 / 0.37 (0.43), K=3 0.65 / 0.29 / 0.56 / 0.40 (0.47). K=2 is
+  the largest that keeps every step under half where any K can: the critic's floor is its
+  system prompt and tool schemas (about 3,200 measured tokens), which no K reaches, and K=3
+  puts implementer-b over half. The provider cache loses only the last two messages.
 
 ### Version 1.5.0 (2026-09-26)
 

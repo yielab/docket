@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.37.0
+**Version**: 1.38.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -666,6 +666,12 @@ This specification does NOT cover:
     non-empty, read when the registry is built. With an empty allowlist `fetch` **MUST NOT** appear
     in `specs()`, so the model is not offered it, and a call naming it is refused as an unknown
     tool like any other unregistered name.
+84. `_TurnState.messages_for_durable` **MUST** project the durable history through
+    `session.condense_history` (requirements 29-31 of `session-history.spec.md`) before every
+    task request, preflight and finalization request, so the fit check measures what is sent.
+    The projection **MUST NOT** be written back: `session.json` and the compaction candidates are
+    built from the stored messages, and the newest `HISTORY_KEEP_FULL_RESULTS` tool results of
+    the request stay whole.
 
 ## Interface Contracts
 
@@ -858,6 +864,13 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.38.0 (2026-10-18)
+
+- History inside a step does not grow quadratically (requirement 84, ADR 0028 section 4):
+  `messages_for_durable` sends tool results older than the last two as one-line notices and old
+  large `write`/`edit` arguments as counts; the record is unchanged. Numbers and the choice of K
+  are in `session-history.spec.md` 1.6.0.
 
 ### Version 1.37.0 (2026-10-18)
 
