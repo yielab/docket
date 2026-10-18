@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.10.0
+**Version**: 3.10.1
 **Status**: Stable
 **Last Updated**: 2026-10-18
 
@@ -109,7 +109,7 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here** (3.5.0): a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
 | `agents[*].budgetUsd` | float \| null | `null` when no budget cap is set for the agent. |
-| `agents[*].lastActivity` | date string \| `"never"` | Date of the newest memory log file, or `"never"`. |
+| `agents[*].lastActivity` | date string \| `"never"` | Date (`YYYY-MM-DD`) of the agent's most recently updated session, or `"never"`. |
 | `totalCostUsd` | float | Sum of all agents' usage-derived cost estimates. |
 
 ### GET /metrics
@@ -789,6 +789,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.10.1 (2026-10-18)
+
+- `agents[*].lastActivity` reads the agent's newest session `updated` date: the daily memory
+  logs it read were removed with the pod-task daily-log pipeline (P44-7), which would have left
+  every agent at `"never"`.
 
 ### Version 3.10.0 (2026-10-18)
 

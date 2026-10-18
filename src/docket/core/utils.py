@@ -19,10 +19,11 @@ def project_ids() -> list[str]:
 
 
 def last_activity(agent_id: str) -> str:
-    """Return the most recent memory-log date (YYYY-MM-DD) or '—'."""
-    from docket.core import memory
+    """The date (YYYY-MM-DD) of *agent_id*'s most recently updated session, or '—'."""
+    from docket.edges.adapters import docket_runtime as _dr
 
-    return memory.last_activity(cfg.workspace_dir(agent_id))
+    stamps = [s.last_active for s in _dr.default_driver().list_sessions(agent_id) if s.last_active]
+    return max(stamps)[:10] if stamps else "—"
 
 
 def si_format(n: int) -> str:

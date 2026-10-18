@@ -10,6 +10,7 @@ drift is caught.
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import urllib.request
 from pathlib import Path
@@ -51,7 +52,18 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     ws = home / "workspaces" / "projects" / "myshop"
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
-    (ws / "memory" / "2026-06-20.md").write_text("# log\n")
+    session = home / "sessions" / "agent%3Amyshop%3Amyshop"
+    session.mkdir(parents=True)
+    (session / "session.json").write_text(
+        json.dumps(
+            {
+                "sessionKey": "agent:myshop:myshop",
+                "created": "2026-06-19T08:00:00Z",
+                "updated": "2026-06-20T09:30:00Z",
+                "messages": [],
+            }
+        )
+    )
     (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     repoint_docket_home(monkeypatch, home)
@@ -104,8 +116,8 @@ class TestBuildStatus:
     def test_last_activity_never_when_empty(
         self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Remove the memory log so last_activity falls back to the sentinel.
-        (fake_home / "workspaces" / "projects" / "myshop" / "memory" / "2026-06-20.md").unlink()
+        # Remove the agent's only session so last_activity falls back to the sentinel.
+        shutil.rmtree(fake_home / "sessions")
         assert serve.build_status()["agents"][0]["lastActivity"] == "never"
 
     def test_timestamp_format(self, fake_home: Path) -> None:
