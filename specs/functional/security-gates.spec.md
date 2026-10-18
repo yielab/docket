@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.57.0
+**Version**: 0.58.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -1081,7 +1081,8 @@ otherwise.
    (the same tradeoff the "High-risk action classes" section above already made for `git`/`npm`).
 2. **What this card ships instead: an inspectable path, not a closed gate.** `fetch`
    (`edges/adapters/fetch.py`'s `fetch_url`, registered in `core/tools.py`'s `builtin_registry()`
-   as a `kind="read"` tool) is a first-class, gated tool an agent can reach for instead of the
+   as a `kind="read"` tool only while `FETCH_ALLOWED_DOMAINS` is non-empty, P44-3) is a
+   first-class, gated tool an agent can reach for instead of the
    escape hatches above. It enforces, inside the handler itself (mechanism, not policy — the same
    discipline `toolbox.resolve_within` uses for file paths):
    - **A domain allowlist** (`config.FETCH_ALLOWED_DOMAINS`, exact hostnames, comma-separated,
@@ -1694,6 +1695,9 @@ $ git clone https://anywhere.example/repo.git
 - A default install (`FETCH_ALLOWED_DOMAINS` unset) **MUST** leave `fetch` unable to reach any
   host — the allowlist starts empty, not populated with a starter set, so "network egress is
   open" is never confused with "`fetch` reaches anywhere by default" (ROADMAP Phase 19 P19-11).
+  Since Phase 44 P44-3 it **MUST ALSO** not be offered to the model: `builtin_registry()` leaves
+  `fetch` out while the allowlist is empty (agent-loop requirement 83), so a default install
+  advertises no `fetch` tool at all.
 - The escape matrix (`tests/integration/test_escape_matrix.py`, subject `docket.jail`) **MUST**
   pass on every backend the host has (landlock, docker when its daemon answers, seatbelt on
   macOS; a missing backend skips with a reason) and runs in the `release-journey` CI job on
@@ -1799,6 +1803,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.58.0 (2026-10-18)
+
+- Network egress and the `fetch` tool (P44-3): `fetch` is registered only while
+  `FETCH_ALLOWED_DOMAINS` is non-empty, so a default install does not advertise it to the model.
+  Its returned text passes through the same announced truncation as every other built-in
+  (agent-loop requirement 82). The domain allowlist, redirect containment and gating are unchanged.
 
 ### Version 0.57.0 (2026-10-17)
 

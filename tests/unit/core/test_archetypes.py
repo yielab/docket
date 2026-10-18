@@ -309,6 +309,7 @@ class TestPodDeniedTools:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
         _write_lead_meta("acme", "fetch")
 
         narrowed = registry_for_role(builtin_registry(), "implementer", project="")

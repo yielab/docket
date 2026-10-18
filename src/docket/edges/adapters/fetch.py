@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 
 import docket.config as _cfg
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.edges.adapters.toolbox import ToolOutcome, text_outcome
 
 _USER_AGENT = "docket-fetch/1"
 # A caller's per-call timeout is clamped to this multiple of FETCH_TIMEOUT_S.
@@ -171,4 +171,4 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     if truncated:
         text += f"\n\n[truncated: response exceeded {_cfg.FETCH_MAX_RESPONSE_BYTES} bytes]"
     header = f"HTTP {status} {content_type}".rstrip()
-    return ToolOutcome(True, content=f"{header}\n\n{text}" if content_type else text)
+    return text_outcome(f"{header}\n\n{text}" if content_type else text)
