@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.7.0
+**Version**: 5.8.0
 **Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
 **Last Updated**: 2026-10-18
 
@@ -237,8 +237,13 @@ unchanged keys: `members` with `role`, `model`, `modelSource`; `settings`; `pipe
 ```json
 {"profile": {"name": "lights-out", "violations": [{"requirement": "network", "fix": "docket pod set network none"}]},
  "pipelineSource": "pod",
- "repoConfigDir": "/srv/fabulada/.docket/teams/fab-dev"}
+ "repoConfigDir": "/srv/fabulada/.docket/teams/fab-dev",
+ "readOnly": ["/opt/node-22"]}
 ```
+
+`readOnly` is the read-only jail grants a turn of this pod gets: the machine's
+(`docket setup sandbox read add`), kept only where the pod's `settings.readOnly` names them
+(`security-gates.spec.md` Exec sandbox requirement 14); `[]` when there are none.
 
 `POST /pods` with `ensure` on an existing pod (`200`): `{"ok": true, "created": false,
 "project": "fab-dev"}`; a new pod answers as today with `"created": true`.
@@ -309,6 +314,11 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.8.0 (2026-10-18)
+
+- `GET /pods/<p>` carries `readOnly`, the pod's effective read-only jail grants (the machine's
+  list narrowed by the pod's `readOnly` setting). Additive: no existing key changes.
 
 ### Version 5.7.0 (2026-10-18)
 

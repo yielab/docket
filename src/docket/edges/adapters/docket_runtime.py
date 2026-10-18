@@ -118,7 +118,11 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
 def _stdio_launch(ctx: ToolContext) -> _mcp.StdioLaunch:
     """How this turn starts stdio servers: its root, and its jail when the turn is isolated."""
     return _mcp.StdioLaunch(
-        cwd=str(ctx.roots[0]), sandbox=ctx.sandbox, network=ctx.network, roots=ctx.roots
+        cwd=str(ctx.roots[0]),
+        sandbox=ctx.sandbox,
+        network=ctx.network,
+        roots=ctx.roots,
+        read_only=ctx.read_only,
     )
 
 
@@ -429,7 +433,11 @@ def resolve_command_jail(project: str, label: str) -> tuple[_system.JailPolicy |
     if not want_sandbox:
         return None, None
     network_allowed, _ = _resolve_network(project, label, True, project=project)
-    return _system.JailPolicy(network=network_allowed, cache_dir=_ensure_pod_cache(project)), None
+    return _system.JailPolicy(
+        network=network_allowed,
+        cache_dir=_ensure_pod_cache(project),
+        read_only=_pod.effective_read_only(project),
+    ), None
 
 
 def _resolve_posture(
@@ -649,6 +657,7 @@ class DocketDriver:
             approval_expires_at=approval_expires_at,
             approval_timeout=approval_timeout,
             cache_dir=_jail_cache_dir(agent_id, want_sandbox),
+            read_only=_pod.effective_read_only(resolved_project) if want_sandbox else (),
             on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role

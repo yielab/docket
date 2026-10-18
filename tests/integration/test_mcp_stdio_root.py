@@ -121,6 +121,35 @@ def test_the_driver_passes_its_resolved_root_down(tmp_path: Path) -> None:
     assert got["launch"].roots[0] == code
 
 
+def test_an_isolated_turn_hands_the_read_only_grants_to_its_stdio_servers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fleet.set_sandbox_isolation("on")
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    tool = tmp_path / "toolchain"
+    tool.mkdir()
+    _fleet.add_read_only(str(tool))
+    code = tmp_path / "code"
+    code.mkdir()
+    _write_meta("impl-1", role="implementer", codebase=str(code))
+    got: dict[str, Any] = {}
+
+    def _loader(
+        registry: Any, role: str, project: str, launch: _mt.StdioLaunch | None = None
+    ) -> list[Any]:
+        got["launch"] = launch
+        return []
+
+    backend = _ScriptedBackend([_final("done")])
+    res = DocketDriver(backend_factory=lambda model: backend, mcp_loader=_loader).run_turn(
+        "impl-1", "agent:impl-1:default", "go", 30
+    )
+    assert res.ok, res.error
+    assert got["launch"].sandbox == "auto"
+    assert got["launch"].read_only == (tool.resolve(),)
+
+
 def test_the_default_loader_forwards_the_launch_and_omits_it_when_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

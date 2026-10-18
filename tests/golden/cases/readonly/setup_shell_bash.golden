@@ -11,7 +11,8 @@ _docket_verbs() {
     "setup") echo "profile shell provider model sandbox notify export mcp" ;;
     "setup provider") echo "add list show remove export rotate" ;;
     "setup model") echo "list set preset reset" ;;
-    "setup sandbox") echo "status on off backend network classes" ;;
+    "setup sandbox") echo "status on off backend network classes read" ;;
+    "setup sandbox read") echo "add remove" ;;
     "setup notify") echo "list show enable disable add remove export privacy test bind unbind flush" ;;
     "setup export") echo "list show enable disable test add remove export privacy preview" ;;
     "setup mcp") echo "list add remove" ;;
@@ -85,6 +86,9 @@ _docket_options() {
     "setup sandbox backend") echo "--help" ;;
     "setup sandbox network") echo "--help" ;;
     "setup sandbox classes") echo "--help" ;;
+    "setup sandbox read") echo "--help" ;;
+    "setup sandbox read add") echo "--help" ;;
+    "setup sandbox read remove") echo "--help" ;;
     "setup notify") echo "--help" ;;
     "setup notify list") echo "--json --help" ;;
     "setup notify show") echo "--json --help" ;;

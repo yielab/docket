@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.36.0
+**Version**: 1.37.0
 **Status**: Complete
 **Last Updated**: 2026-10-18
 
@@ -464,6 +464,13 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.37.0 (2026-10-18)
+
+- `setup sandbox --json` (and `setup sandbox status --json`) gains `readOnly`: the machine's
+  read-only jail grants, a list of resolved absolute paths, empty by default.
+- `podSettings` (and `pod show --json` `settings`) gains the `readOnly` key: `""` (every machine
+  grant), `"none"`, or the comma-joined paths the pod keeps.
 
 ### Version 1.36.0 (2026-10-18)
 

@@ -483,10 +483,15 @@ def _mount_reopened(roots: tuple[Path, ...]) -> list[str]:
     return out
 
 
-def landlock_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
+def landlock_argv(
+    roots: tuple[Path, ...],
+    command: str,
+    network: bool = True,
+    read_only: tuple[Path, ...] = (),
+) -> list[str]:
     """The argv running *command* under ``python -m docket.jail``: the roots (and their repository
-    dirs) read-write, nothing else of the host writable, the home unreadable. The first root is the cwd."""
-    return [*_landlock_prefix(roots, network), "/bin/sh", "-c", command]
+    dirs) read-write, *read_only* readable, nothing else of the host. The first root is the cwd."""
+    return [*_landlock_prefix(roots, network, read_only), "/bin/sh", "-c", command]
 
 
 _SEATBELT_READ = (
@@ -509,12 +514,15 @@ def _sbpl(path: str) -> str:
     return f'"{escaped}"'
 
 
-def seatbelt_profile(roots: tuple[Path, ...], network: bool = True) -> str:
-    """The fixed Seatbelt profile: deny by default, system paths and ``sys.prefix`` readable, the
-    roots (with their repository dirs) read-write, guarded git paths not writable."""
+def seatbelt_profile(
+    roots: tuple[Path, ...], network: bool = True, read_only: tuple[Path, ...] = ()
+) -> str:
+    """The fixed Seatbelt profile: deny by default, system paths, ``sys.prefix`` and *read_only*
+    readable, the roots (with their repository dirs) read-write, guarded git paths not writable."""
     rw, ro = _mount_dirs(roots)
     prefixes = (os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix))
-    read = list(dict.fromkeys((*_SEATBELT_READ, *prefixes)))
+    granted = (os.path.realpath(p) for p in read_only)
+    read = list(dict.fromkeys((*_SEATBELT_READ, *prefixes, *granted)))
     lines = [
         "(version 1)",
         "(deny default)",
@@ -539,23 +547,35 @@ def seatbelt_profile(roots: tuple[Path, ...], network: bool = True) -> str:
     return "\n".join(lines) + "\n"
 
 
-def seatbelt_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
+def seatbelt_argv(
+    roots: tuple[Path, ...],
+    command: str,
+    network: bool = True,
+    read_only: tuple[Path, ...] = (),
+) -> list[str]:
     """The argv running *command* under ``sandbox-exec -p <profile>``; the first root is the cwd."""
-    return [_SANDBOX_EXEC, "-p", seatbelt_profile(roots, network), "/bin/sh", "-c", command]
+    profile = seatbelt_profile(roots, network, read_only)
+    return [_SANDBOX_EXEC, "-p", profile, "/bin/sh", "-c", command]
 
 
 def seatbelt_command_argv(
-    roots: tuple[Path, ...], argv: list[str], network: bool = True
+    roots: tuple[Path, ...],
+    argv: list[str],
+    network: bool = True,
+    read_only: tuple[Path, ...] = (),
 ) -> list[str]:
     """The same jail as :func:`seatbelt_argv`, running *argv* directly (no shell)."""
-    return [_SANDBOX_EXEC, "-p", seatbelt_profile(roots, network), *argv]
+    return [_SANDBOX_EXEC, "-p", seatbelt_profile(roots, network, read_only), *argv]
 
 
 def landlock_command_argv(
-    roots: tuple[Path, ...], argv: list[str], network: bool = True
+    roots: tuple[Path, ...],
+    argv: list[str],
+    network: bool = True,
+    read_only: tuple[Path, ...] = (),
 ) -> list[str]:
     """The same jail as :func:`landlock_argv`, running *argv* directly (no shell)."""
-    return [*_landlock_prefix(roots, network), *argv]
+    return [*_landlock_prefix(roots, network, read_only), *argv]
 
 
 _GIT_WRITABLE_PARTS = ("objects", "refs", "logs")
@@ -606,6 +626,11 @@ def _landlock_git_mounts(root: Path, dirs: list[Path]) -> tuple[list[str], list[
     return rw, ro
 
 
+def _existing_resolved(paths: tuple[Path, ...]) -> list[Path]:
+    """*paths* resolved, skipping one gone from disk (docker would create it, owned by root)."""
+    return [p.resolve() for p in paths if p.exists()]
+
+
 def _landlock_mounts(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
     rw: list[str] = []
     ro: list[str] = []
@@ -620,8 +645,11 @@ def _landlock_mounts(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
     return rw, ro
 
 
-def _landlock_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
+def _landlock_prefix(
+    roots: tuple[Path, ...], network: bool, read_only: tuple[Path, ...] = ()
+) -> list[str]:
     rw, ro = _landlock_mounts(roots)
+    ro += [p for p in map(str, _existing_resolved(read_only)) if p not in ro]
     argv = [sys.executable, "-m", "docket.jail"]
     for path in rw:
         argv += ["--rw", path]
@@ -670,12 +698,14 @@ def docker_run_argv(
     command: str,
     env: dict[str, str] | None,
     network: bool = True,
+    read_only: tuple[Path, ...] = (),
 ) -> list[str]:
     """Build the ``docker run`` argv that jails *command* to *roots*: each root bind-mounted read-write,
     nothing else of the host visible. Runs as the caller's uid/gid so mounted files are not left root-owned.
     *env* injects only `ToolContext.env` (e.g. `DOCKET_SCRATCH_DIR`), never the full host environment --
     see ``specs/functional/security-gates.spec.md`` for why (env minimization) and the network-bridge rationale."""
-    return [*_docker_prefix(container_name, roots, env, network), "sh", "-c", command]
+    prefix = _docker_prefix(container_name, roots, env, network, read_only=read_only)
+    return [*prefix, "sh", "-c", command]
 
 
 def docker_command_argv(
@@ -684,9 +714,13 @@ def docker_command_argv(
     argv: list[str],
     env: dict[str, str] | None,
     network: bool = True,
+    read_only: tuple[Path, ...] = (),
 ) -> list[str]:
     """The same jail as :func:`docker_run_argv`, running *argv* directly with stdin kept open (``-i``)."""
-    return [*_docker_prefix(container_name, roots, env, network, interactive=True), *argv]
+    prefix = _docker_prefix(
+        container_name, roots, env, network, interactive=True, read_only=read_only
+    )
+    return [*prefix, *argv]
 
 
 def _docker_prefix(
@@ -695,6 +729,7 @@ def _docker_prefix(
     env: dict[str, str] | None,
     network: bool,
     interactive: bool = False,
+    read_only: tuple[Path, ...] = (),
 ) -> list[str]:
     argv = [
         "docker",
@@ -715,6 +750,8 @@ def _docker_prefix(
         argv += ["-v", f"{guarded}:{guarded}:ro"]
     for reopened in _mount_reopened(roots):
         argv += ["-v", f"{reopened}:{reopened}"]
+    for granted in _existing_resolved(read_only):
+        argv += ["-v", f"{granted}:{granted}:ro"]
     argv += ["-w", str(roots[0].resolve())]
     for key, value in (env or {}).items():
         argv += ["-e", f"{key}={value}"]
@@ -827,6 +864,7 @@ class JailPolicy:
     network: bool = True
     extra_rw: tuple[Path, ...] = ()
     cache_dir: Path | None = None
+    read_only: tuple[Path, ...] = ()
 
 
 _TMP_ENV_VARS = ("TMPDIR", "TMP", "TEMP")
@@ -869,10 +907,11 @@ def jail_launch(
     env: dict[str, str] | None = None,
     extra_rw: tuple[Path, ...] = (),
     cache_dir: Path | None = None,
+    read_only: tuple[Path, ...] = (),
 ) -> JailLaunch:
     """The one place a backend, the roots and *extra_rw* become a jailed shell command. The first
-    root is the cwd; *extra_rw* and *cache_dir* (home and caches) are writable beside the roots.
-    Raises ``ValueError`` for ``none``."""
+    root is the cwd; *extra_rw* and *cache_dir* (home and caches) are writable beside the roots,
+    *read_only* (the operator's toolchain grants) readable. Raises ``ValueError`` for ``none``."""
     all_roots = (*roots, *extra_rw)
     merged = {**git_identity_env(roots[0].resolve()), **(env or {})}
     if cache_dir is not None:
@@ -880,13 +919,14 @@ def jail_launch(
         merged = {**cache_environment(cache_dir), **merged}
     if backend == "docker":
         name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
-        return JailLaunch(docker_run_argv(name, all_roots, command, merged, network), None, name)
+        argv = docker_run_argv(name, all_roots, command, merged, network, read_only)
+        return JailLaunch(argv, None, name)
     if backend in ("landlock", "seatbelt"):
         tmp = jail_tmp_dir(roots, cache_dir)
         all_roots = (*all_roots, tmp)
         merged = {**tmp_environment(tmp), **merged}
         build = landlock_argv if backend == "landlock" else seatbelt_argv
-        return JailLaunch(build(all_roots, command, network), jailed_env(merged))
+        return JailLaunch(build(all_roots, command, network, read_only), jailed_env(merged))
     raise ValueError(f"no sandbox backend to launch under: {backend}")
 
 
@@ -967,6 +1007,7 @@ def run_command(
                 env=env,
                 extra_rw=jail.extra_rw,
                 cache_dir=jail.cache_dir,
+                read_only=jail.read_only,
             )
             container = launch.container
             proc = subprocess.Popen(

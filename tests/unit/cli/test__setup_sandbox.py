@@ -207,3 +207,62 @@ def test_recording_none_with_isolation_off_does_not_say_ok_for_a_cut_network(
 
     assert "jailed tool calls have no network" not in out
     assert "not enforced: isolation off" in out
+
+
+class TestReadOnlyGrants:
+    """`setup sandbox read add|remove` records the jail's read-only toolchain grants."""
+
+    def test_add_records_the_resolved_path_audits_it_and_status_lists_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        tool = tmp_path / "opt" / "node"
+        tool.mkdir(parents=True)
+
+        result = _runner.invoke(app, ["setup", "sandbox", "read", "add", str(tool)])
+
+        assert result.exit_code == 0, result.output
+        status = _runner.invoke(app, ["setup", "sandbox", "status", "--json"])
+        assert json.loads(status.stdout)["readOnly"] == [str(tool.resolve())]
+        assert "gates.read" in _cfg.AUDIT_LOG.read_text()
+
+    def test_remove_drops_the_grant(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        tool = tmp_path / "opt" / "node"
+        tool.mkdir(parents=True)
+        _runner.invoke(app, ["setup", "sandbox", "read", "add", str(tool)])
+
+        result = _runner.invoke(app, ["setup", "sandbox", "read", "remove", str(tool)])
+
+        assert result.exit_code == 0, result.output
+        status = _runner.invoke(app, ["setup", "sandbox", "status", "--json"])
+        assert json.loads(status.stdout)["readOnly"] == []
+
+    @pytest.mark.parametrize(
+        "kind", ["relative", "missing", "docket-home", "inside-home-dir", "home", "root"]
+    )
+    def test_a_path_that_would_expose_the_home_or_cannot_be_placed_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        target = {
+            "relative": "opt/node",
+            "missing": str(tmp_path / "nope"),
+            "docket-home": str(_cfg.DOCKET_HOME),
+            "inside-home-dir": str(_cfg.DOCKET_HOME / "workspaces"),
+            "home": str(home),
+            "root": "/",
+        }[kind]
+        if kind == "inside-home-dir":
+            (_cfg.DOCKET_HOME / "workspaces").mkdir(exist_ok=True)
+        fleet_before = _bytes(_cfg.FLEET_FILE)
+
+        result = _runner.invoke(app, ["setup", "sandbox", "read", "add", target])
+
+        assert result.exit_code == 1, result.output
+        assert _bytes(_cfg.FLEET_FILE) == fleet_before

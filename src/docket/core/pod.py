@@ -283,6 +283,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "maxConsultationsPerTask": "max_consultations_per_task",
     "network": "network",
     "profile": "profile",
+    "readOnly": "read_only",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -386,6 +387,10 @@ class PodSettings(BaseModel):
     # off the network. It only ever narrows -- see ``effective_network``.
     network: str = Field("open", alias="network")
 
+    # '' (every machine read-only jail grant), 'none', or the comma-joined grants this pod keeps.
+    # It only ever narrows: ``coerce`` refuses a path the machine has not granted.
+    read_only: str = Field("", alias="readOnly")
+
     # 'attended' (the default) or 'lights-out' (core/profile.py): a pod may only move toward
     # stricter than the fleet's recorded profile -- ``coerce`` refuses a weaker write.
     profile: str = Field("attended", alias="profile")
@@ -427,6 +432,7 @@ class PodSettings(BaseModel):
         "maxConsultationsPerTask",
         "network",
         "profile",
+        "readOnly",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
@@ -564,6 +570,19 @@ class PodSettings(BaseModel):
             raise ValueError("must be 'none' or 'open'")
         return name
 
+    @field_validator("read_only", mode="before")
+    @classmethod
+    def _parse_read_only(cls, value: Any) -> str:
+        """``''``, ``none``, or absolute paths, comma-joined and deduplicated."""
+        text = str(value or "").strip()
+        if text.lower() == "none":
+            return "none"
+        paths = dict.fromkeys(p.strip() for p in text.split(",") if p.strip())
+        for path in paths:
+            if not Path(path).is_absolute():
+                raise ValueError(f"{path!r} is not an absolute path")
+        return ",".join(paths)
+
     @field_validator("profile", mode="before")
     @classmethod
     def _parse_profile(cls, value: Any) -> str:
@@ -636,6 +655,16 @@ class PodSettings(BaseModel):
                 "profile: 'attended' is weaker than the fleet's lights-out profile; "
                 "a pod can only move toward stricter (docket setup profile attended first)"
             )
+        if key == "readOnly" and settings.read_only not in ("", "none"):
+            granted = {str(p) for p in _fleet.get_read_only_paths()}
+            kept = [str(Path(p).resolve()) for p in settings.read_only.split(",")]
+            missing = [p for p in kept if p not in granted]
+            if missing:
+                raise PodSettingsError(
+                    f"readOnly: {missing[0]} is not a machine grant; a pod only narrows them "
+                    f"(docket setup sandbox read add {missing[0]} first)"
+                )
+            return ",".join(dict.fromkeys(kept))
         return cast(
             "float | int | str", cls._stored_form(getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
         )
@@ -668,6 +697,22 @@ def effective_network(project: str | None) -> tuple[str, str]:
         except PodSettingsError:
             return "none", "pod"
     return ("none" if global_none else "open"), "default"
+
+
+def effective_read_only(project: str | None) -> tuple[Path, ...]:
+    """The read-only jail grants of a turn in *project*: the machine's, kept only where the pod's
+    ``readOnly`` names them; unreadable pod settings fail closed to none."""
+    granted = _fleet.get_read_only_paths()
+    if project is None:
+        return granted
+    try:
+        chosen = PodSettings.load_for(project).read_only
+    except PodSettingsError:
+        return ()
+    if chosen == "":
+        return granted
+    kept = set(chosen.split(",")) if chosen != "none" else set()
+    return tuple(p for p in granted if str(p) in kept)
 
 
 # The docket-owned copy of a pod's bound pipeline file lives at this fixed name in the

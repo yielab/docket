@@ -415,6 +415,28 @@ class TestJailLaunch:
         with pytest.raises(ValueError):
             _sys.jail_launch((tmp_path,), "true", "none")
 
+    def test_a_read_only_grant_is_ro_for_landlock_never_rw(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_sys, "git_dirs", lambda root: [])
+        tool = tmp_path / "toolchain"
+        tool.mkdir()
+        launch = _sys.jail_launch((tmp_path / "w",), "true", "landlock", read_only=(tool,))
+        ro = [launch.argv[i + 1] for i, a in enumerate(launch.argv) if a == "--ro"]
+        rw = [launch.argv[i + 1] for i, a in enumerate(launch.argv) if a == "--rw"]
+        assert str(tool.resolve()) in ro
+        assert str(tool.resolve()) not in rw
+
+    def test_a_read_only_grant_is_a_ro_bind_mount_for_docker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_sys, "git_dirs", lambda root: [])
+        tool, gone = tmp_path / "toolchain", tmp_path / "gone"
+        tool.mkdir()
+        launch = _sys.jail_launch((tmp_path,), "true", "docker", read_only=(tool, gone))
+        assert f"{tool.resolve()}:{tool.resolve()}:ro" in launch.argv
+        assert not any(str(gone) in a for a in launch.argv)
+
 
 class TestVerifyUnderJail:
     def test_no_usable_backend_runs_nothing(
@@ -474,6 +496,15 @@ class TestSeatbeltBackend:
         )
         assert _sys.seatbelt_profile(roots, False) == (_PROFILE_HEAD + body + "(deny network*)\n")
         assert _sys.seatbelt_profile(roots, True) == (_PROFILE_HEAD + body + "(allow network*)\n")
+
+    def test_a_read_only_grant_is_readable_and_never_writable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_profile_env(monkeypatch)
+        profile = _sys.seatbelt_profile((Path("/w/a"),), False, read_only=(Path("/h/tool"),))
+        read_rule = next(line for line in profile.splitlines() if '(subpath "/usr")' in line)
+        assert '(subpath "/h/tool")' in read_rule and "file-write" not in read_rule
+        assert profile.count('"/h/tool"') == 1
 
     def test_paths_are_quoted_for_the_profile_language(
         self, monkeypatch: pytest.MonkeyPatch
