@@ -345,3 +345,14 @@ class TestPodExportIntoTeams:
         assert not (code / ".docket" / "pod.yaml").exists()
         assert sorted(p.name for p in sibling.iterdir()) == ["pod.yaml"]
         assert (sibling / "pod.yaml").read_bytes() == before
+
+
+def test_a_skipped_default_setting_says_why_on_its_plan_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_pod(tmp_path, monkeypatch)
+    recipe = tmp_path / "recipe"
+    recipe.mkdir()
+    (recipe / "pod.yaml").write_text("settings:\n  approvalMode: wait\n")
+    result = _pod_run("update", str(recipe), "--pod", "demo", "--dry-run")
+    assert "[skip] setting: approvalMode (already the default)" in result.output

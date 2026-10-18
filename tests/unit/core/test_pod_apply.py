@@ -416,3 +416,18 @@ class TestPodLocalPipelines:
         results = _config_docs.validate_path(root)
         assert [(r.path.name, r.error) for r in results] == [("fast.yaml", None)]
 
+
+class TestSkippedSettingsSayWhy:
+    """A setting the pod already holds by default plans ``skip`` with the reason."""
+
+    def test_a_default_value_is_noted_and_a_set_one_is_not(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
+        root = _repo_dir(tmp_path, {"pod.yaml": "settings:\n  approvalMode: wait\n"})
+        [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
+        assert (item.action, item.note) == ("skip", "already the default")
+        root = _repo_dir(tmp_path / "b", {"pod.yaml": "settings:\n  maxReworkCycles: 4\n"})
+        _pod_apply.apply(_pod_apply.plan_apply("demo", root), channel="cli")
+        [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
+        assert (item.action, item.note) == ("skip", "")
