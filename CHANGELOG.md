@@ -123,6 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A condensed result no longer invites a re-read.** Its notice says the result was already
   seen and asks for a new call only for exact text still needed; "call <tool> again if needed"
   had read as an invitation.
+- **A jailed command that cannot execute says why.** A `bash` call that exits 126 inside the
+  jail reports that the jail could not execute it, that a retry will not help, and that the
+  operator grants a toolchain with `docket setup sandbox read add <path>`. In the Phase 44
+  rerun an implementer retried `npm`/`npx` after each 126 without learning why.
 - **A step no longer re-sends every earlier tool result (P44-4).** Results older than the last
   two become one-line notices and large old `write`/`edit` arguments become character counts, in
   the request only (`session.json` keeps every byte). With bounded tool output, the replay bench
