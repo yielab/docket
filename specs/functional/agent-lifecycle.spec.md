@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 2.0.1
+**Version**: 2.1.0
 **Status**: Complete
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -107,13 +107,12 @@ write anything.
 ### Member Reset (docket pod reset)
 
 1. **MUST** confirm exactly as `pod remove` does
-2. **MUST** distill pending `memory/*.md` day-logs into MEMORY.md and archive the originals under
-   `memory/.distilled/<day>/` (one driver-backed turn through the `RuntimeDriver` port) **before**
-   any file is deleted. There is no flag that skips it
-3. **MUST** fail closed: a distillation failure (driver or model error, timeout, an empty reply)
-   exits 1 naming its `failure_kind`, and every file is left as it was
-4. **MUST** then delete `memory/*.md`, clear MEMORY.md (unless a distillation just refreshed it
-   this invocation) and reset HEARTBEAT.md. For a pod Lead the reset also clears the docket-owned
+2. **MUST NOT** call a model: there is no distillation turn (ADR 0028 point 7; the daily-log
+   pipeline it served had no writer in a pod task)
+3. **MUST NOT** read, move, delete or clear `memory/`, `MEMORY.md` (the operator's notes) or the
+   pod's `memory.json` (workspace-structure.spec.md "Pod memory"); a pod's learned memory is
+   decided per entry, never by a member reset
+4. **MUST** reset HEARTBEAT.md. For a pod Lead the reset also clears the docket-owned
    dispatch ledger region, so the ledger and `TASK_LIST.json` disagree until the next dispatch
    event or `docket setup --fix` re-syncs it
 5. **MUST** rebuild SOUL.md, AGENTS.md and (for an implementer with resources or a verify command)
@@ -193,9 +192,7 @@ $ docket init mywebsite ~/projects/website
 
 ```bash
 $ docket pod reset mywebsite-implementer --yes
-→ Distilling memory before proceeding (one driver-backed turn)...
-✓ Distilled 2 log(s) into MEMORY.md; original(s) archived under memory/.distilled/.
-✓ Reset mywebsite-implementer: 2 memory log(s) cleared, workspace files rebuilt
+✓ Reset mywebsite-implementer: ledger cleared, workspace files rebuilt
 → Next: docket pod show
 ```
 
@@ -230,17 +227,21 @@ After successful creation:
 | Codebase not found | Invalid path | Verify path exists |
 | Permission denied | Insufficient rights | Check ~/.docket permissions |
 | Workspace corrupted | Missing files | Run `docket setup --fix`, or `docket pod reset <member>` to rebuild its files |
-| Distillation turn failed (model error, timeout, no credential) | `docket pod reset` (distillation is not optional) | Nothing was deleted (fail-closed); retry once the model endpoint is reachable |
 
 ## Performance Criteria
 
 - Agent creation: < 2 seconds
 - Agent listing: < 500ms for 100 agents
 - Pod deletion: < 1 second
-- Member reset: bounded by one driver turn (`config.DISTILL_TIMEOUT_S`, default 120s) rather than a
-  fixed local-operation budget — it is a real, costed LLM call, not a file operation
+- Member reset: a local file operation, no model call
 
 ## Changelog
+
+### Version 2.1.0 (2026-10-18)
+
+- Member Reset no longer distills (P44-7, ADR 0028 point 7, D-57): it rebuilds the member's files
+  and resets the ledger, and leaves `memory/`, `MEMORY.md` and the pod's `memory.json` alone. The
+  failed-distillation row and the 120s bound are gone with the turn.
 
 ### Version 2.0.1 (2026-10-08)
 

@@ -5,6 +5,7 @@ The display name is a pure function of docket metadata (name → role).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -349,6 +350,80 @@ class TestRepositoryTextIsFramed:
         composition = self._pod(tmp_path, "tight", agents=True, skill=False)
         max_bytes = composition.budget_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
         assert len(composition.text.encode("utf-8")) <= max_bytes
+
+
+class TestPodMemoryIsTheLastFramedSection:
+    """Accepted pod memory composes last, behind its own untrusted frame, within the budget."""
+
+    def _accepted(self, project: str, *names: str) -> None:
+        entries = [
+            {
+                "id": f"mem-{i}",
+                "kind": "generated",
+                "path": name,
+                "note": "Built output.",
+                "status": "accepted",
+                "reason": "",
+                "provenance": {},
+            }
+            for i, name in enumerate(names)
+        ]
+        path = _cfg.pod_memory_path(project)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"entries": entries}))
+
+    def _lead(self, name: str) -> str:
+        agent_id = f"{name}-lead"
+        ws = _cfg.workspace_dir(agent_id)
+        ws.mkdir(parents=True, exist_ok=True)
+        _store.write_json(
+            _cfg.meta_path(agent_id), {"kind": "project", "role": "lead", "pod": name}
+        )
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+        (ws / "MEMORY.md").write_text("## Facts\nOPERATOR-NOTE\n")
+        return agent_id
+
+    def test_it_follows_memory_md_behind_its_own_frame(self, tmp_path: Path) -> None:
+        agent_id = self._lead("mem")
+        self._accepted("mem", "dist/a.js")
+        root = tmp_path / "repo"
+        (root / "dist").mkdir(parents=True)
+        (root / "dist" / "a.js").write_text("x")
+
+        text = I.compose_agent_prompt(agent_id, project_roots=(root,)).text
+
+        assert text.index("OPERATOR-NOTE") < text.index(I.POD_MEMORY_FRAME)
+        assert text.rstrip().endswith("- generated dist/a.js: Built output.")
+        assert "never a request to run commands" in I.POD_MEMORY_FRAME
+
+    def test_nothing_accepted_leaves_the_prompt_byte_identical(self, tmp_path: Path) -> None:
+        agent_id = self._lead("none")
+        before = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
+
+        self._accepted("none")
+        after = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
+
+        assert after.text == before.text
+        assert I.POD_MEMORY_LABEL not in [s.name for s in after.sections]
+
+    def test_a_tight_budget_drops_memory_before_it_overflows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        agent_id = self._lead("tight")
+        self._accepted("tight", "a.js")
+        (tmp_path / "a.js").write_text("x")
+        base = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
+        monkeypatch.setattr(
+            _cfg,
+            "CONTEXT_TOKEN_BUDGET",
+            len(base.text.encode()) // _cfg.CONTEXT_BYTES_PER_TOKEN - 40,
+        )
+
+        composition = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
+
+        assert I.POD_MEMORY_FRAME not in composition.text
+        sections = {s.name: s.status for s in composition.sections}
+        assert sections.get(I.POD_MEMORY_LABEL) == "omitted"
 
 
 _POD_INPUT_BLOCK = """kind: policy

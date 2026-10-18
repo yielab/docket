@@ -1315,6 +1315,27 @@ def git_read_blob(cwd: str, rev: str, rel: str) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def git_path_exists_at(cwd: str, rev: str, rel: str) -> bool:
+    """Whether repository path *rel* (a file or a directory) exists at commit *rev* (a full sha),
+    asked host-side like ``git_read_blob``; ``False`` for a malformed *rev* or *rel* and when
+    git is unavailable."""
+    if not _FULL_SHA.match(rev) or not _repo_rel_path_ok(rel) or not git_available():
+        return False
+    env, refused = _trusted_git_env(cwd, None)
+    if refused is not None:
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "cat-file", "-e", f"{rev}:{rel}"],
+            capture_output=True,
+            timeout=_QUERY_TIMEOUT,
+            env=env,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
+
+
 def git_list_tree_dirs(cwd: str, rev: str, rel: str) -> list[str] | None:
     """Names of the subdirectories directly under *rel* at commit *rev*, sorted, read like
     ``git_read_blob``; ``None`` when *rel* is absent at *rev* or not a directory."""

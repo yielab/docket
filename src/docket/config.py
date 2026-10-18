@@ -142,15 +142,18 @@ CONTEXT_TOKEN_BUDGET = int(
 )
 
 
-# DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: bound the one driver-backed
-# distillation turn `docket pod reset` runs (docket's first self-originated LLM
-# call). DISTILL_MAX_INPUT_BYTES bounds how much daily-log content goes into
-# that turn's prompt, using the same bytes estimator as the rest of this
-# file's context guards; it is a safety cap on the prompt docket composes,
-# not token-accurate budgeting (the per-role token-budget compiler in
-# core/context.py owns real budgeting).
+# DISTILL_TIMEOUT_S bounds the one driver-backed summarising turn that session
+# compaction runs (core/session.py), docket's self-originated LLM call.
 DISTILL_TIMEOUT_S = int(os.environ.get("DISTILL_TIMEOUT_S", "120"))
-DISTILL_MAX_INPUT_BYTES = int(os.environ.get("DISTILL_MAX_INPUT_BYTES", str(48 * 1024)))
+
+# Pod memory (core/pod_memory.py, workspace-structure.spec.md "Pod memory"): bounds on what a
+# pod keeps and what a prompt carries. Accepted and undecided entries are capped apart so a
+# flood of pending ones can never push an accepted one out.
+POD_MEMORY_MAX_ACCEPTED = 40
+POD_MEMORY_MAX_UNDECIDED = 40
+POD_MEMORY_MAX_PER_TASK = 8
+POD_MEMORY_NOTE_MAX_CHARS = 200
+POD_MEMORY_RENDER_MAX_BYTES = 3000
 
 # Per-role retry budget for a *retryable* TurnResult failure (timeout or
 # daemon_error only — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS; a non-zero
@@ -302,6 +305,12 @@ def pod_cache_dir(project: str) -> Path:
 
     Created 0700 beside the scratch directory at provisioning; removed with the pod."""
     return PODS_DIR / project / "cache"
+
+
+def pod_memory_path(project: str) -> Path:
+    """The pod's learned memory (``core/pod_memory.py``); created by the first recorded entry
+    and removed with the pod's runtime directory."""
+    return PODS_DIR / project / "memory.json"
 
 
 def pod_config_dir(project: str) -> Path:

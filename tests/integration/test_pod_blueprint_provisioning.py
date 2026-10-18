@@ -103,7 +103,7 @@ class TestBuiltinBlueprintsProvision:
                 ".docket-meta.json",
             ):
                 assert (ws / f).is_file(), f"{mid}: missing {f}"
-            assert list((ws / "memory").glob("*.md")), f"{mid}: no daily log seeded"
+            assert not list((ws / "memory").glob("*.md")), f"{mid}: a daily log was seeded"
 
             meta = _meta(oc_dir, mid)
             assert meta["blueprint"] == blueprint_name

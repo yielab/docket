@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.39.0
+**Version**: 1.40.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -208,7 +208,7 @@ This specification does NOT cover:
     (its method and tool strategy; the generated `## Session Startup` section is omitted from the
     projection) composed immediately after `INSTRUCTIONS.md` and ahead of everything else, and one authoritative runtime projection of Docket's generated
     startup contract. Layers run stable first: `SOUL.md`, `INSTRUCTIONS.md`, `AGENTS.md`, the
-    contract, repository text, then `MEMORY.md` last. `INSTRUCTIONS.md` **MUST NOT** be written, regenerated, or quarantined by
+    contract, repository text, `MEMORY.md`, then the pod's accepted memory last (below). `INSTRUCTIONS.md` **MUST NOT** be written, regenerated, or quarantined by
     Docket at any point (provisioning, `sync`, `set-verify`, `doctor --fix`) — it is the durable
     home for operator instructions precisely because nothing on this path ever overwrites it.
     After the runtime contract, an **opt-in** section
@@ -250,6 +250,14 @@ This specification does NOT cover:
     `TurnResult.repo_files`. With no task worktree (a plain turn), no
     `baseCommit` or no recorded git dirs, composition is byte-identical to before. Pod-scope and
     global skills are not repository files and are unchanged. This applies to every run.
+    **Pod memory (P44-7, ADR 0028 point 7).** The last section is the pod's accepted
+    `memory.json` entries (workspace-structure.spec.md "Pod memory"): `# Pod memory (untrusted)`
+    frame, then one line per entry (`- <kind> <path or command>: <note>`, a command with its exit
+    status), oldest first, capped at `config.POD_MEMORY_RENDER_MAX_BYTES` by dropping the oldest
+    whole entries and by the room left after every section above it. An entry whose path no longer
+    exists under `project_roots[0]` is left out. No pod or no accepted
+    entry composes no section and the prompt is byte-identical to before. It is reported as
+    `podMemory` in `prompt_composed`.
     Right after the project-instructions section, an optional `# Skills` index (P31-6, ADR 0013 §3 rule 8) lists every skill
     `core.skills.discover_skills(project, project_roots[0])` resolves — three scopes, nearest
     wins by name: a codebase's own `.docket/skills/`, this pod's own `config/skills/` (a
@@ -868,6 +876,13 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.40.0 (2026-10-18)
+
+- Pod memory in the system tail (requirement 30, ADR 0028 point 7, P44-7): accepted entries of the
+  pod's `memory.json` compose as the last section behind their own untrusted frame, never in
+  docket's voice, capped, with entries whose path is gone omitted; `prompt_composed` reports it as
+  `podMemory`. A prompt for a pod with no accepted entry is byte-identical to 1.39.0.
 
 ### Version 1.39.0 (2026-10-18)
 

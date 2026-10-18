@@ -46,6 +46,7 @@ from docket.core import operator_contract as _oc
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
+from docket.core import pod_memory as _pod_memory
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import profile as _profile
@@ -3885,6 +3886,7 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     _mem.sync_dispatch_tasks(
         _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
     )
+    _pod_memory.record_task_memory(project, task_id, res)
 
 
 def _sweep_stale_claims(project: str) -> None:

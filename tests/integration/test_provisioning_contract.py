@@ -8,7 +8,6 @@ codebase path.
 
 from __future__ import annotations
 
-import datetime as _dt
 import re
 from pathlib import Path
 
@@ -47,7 +46,6 @@ class TestSeedContract:
         _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo", stack="Python")
         assert (tmp_path / _mem.REQUIRED_STARTUP_FILE).is_file()
         assert (tmp_path / _mem.MEMORY_FILE).is_file()
-        assert (tmp_path / _mem.today_memory_relpath()).is_file()
 
     def test_workflow_auto_anchors_codebase_and_wrong_dir_note(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo", stack="Go")
@@ -58,30 +56,25 @@ class TestSeedContract:
         assert not re.search(r"memory/\d{4}-\d{2}-\d{2}\.md", text)
         assert "memory/YYYY-MM-DD.md" in text
 
-    def test_daily_matches_runtime_regex(self, tmp_path: Path) -> None:
+    def test_it_seeds_an_empty_memory_dir_and_no_daily_log(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo")
-        rel = _mem.today_memory_relpath()
-        assert re.fullmatch(r"memory/\d{4}-\d{2}-\d{2}\.md", rel)
-        assert (tmp_path / rel).is_file()
+        assert (tmp_path / "memory").is_dir()
+        assert list((tmp_path / "memory").iterdir()) == []
 
     def test_does_not_clobber_existing_daily_or_memory(self, tmp_path: Path) -> None:
         (tmp_path / "memory").mkdir()
-        daily = tmp_path / _mem.today_memory_relpath()
-        daily.write_text("real work logged today\n")
-        (tmp_path / _mem.MEMORY_FILE).write_text("curated by the agent\n")
+        daily = tmp_path / "memory" / "2026-01-02.md"
+        daily.write_text("real work logged earlier\n")
+        (tmp_path / _mem.MEMORY_FILE).write_text("curated by the operator\n")
         _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo")
-        assert daily.read_text() == "real work logged today\n"
-        assert (tmp_path / _mem.MEMORY_FILE).read_text() == "curated by the agent\n"
+        assert daily.read_text() == "real work logged earlier\n"
+        assert (tmp_path / _mem.MEMORY_FILE).read_text() == "curated by the operator\n"
 
     def test_refreshes_workflow_auto(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", codebase="/old/path")
         _mem.seed_contract(tmp_path, project="demo", codebase="/new/path")
         text = (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text()
         assert "/new/path" in text and "/old/path" not in text
-
-    def test_seeds_with_specific_day(self, tmp_path: Path) -> None:
-        _mem.seed_contract(tmp_path, project="demo", codebase="/src", day=_dt.date(2026, 1, 2))
-        assert (tmp_path / "memory" / "2026-01-02.md").is_file()
 
     def test_workflow_auto_carries_resume_and_durability_contract(self, tmp_path: Path) -> None:
         # The runtime-forced re-read file must tell a just-reset agent to resume an
@@ -130,13 +123,6 @@ class TestSeedContractWorkdir:
         assert "/srv/work/demo" not in text
         assert "## Repo" not in text and "## Working directory" not in text
         assert "- stack: n/a" in text
-
-    def test_workdir_daily_log_mentions_working_directory(self, tmp_path: Path) -> None:
-        _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo")
-        rel = _mem.today_memory_relpath()
-        text = (tmp_path / rel).read_text()
-        assert "Working directory" in text
-        assert "/home/user/work/demo" in text
 
     def test_contract_ok_true_for_workdir_seed(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo")
