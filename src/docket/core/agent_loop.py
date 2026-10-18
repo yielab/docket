@@ -62,14 +62,17 @@ reported as ``AgentLoopResult.stop_reason``:
   (``LoopConfig.wall_clock_timeout_s``). This does not interrupt an in-flight
   HTTP call already underway; ``ChatBackend.complete``'s own per-request
   timeout is the last-resort safety net for a single hung call.
-- ``token_budget`` — cumulative *measured* usage (``core.llm.TokenUsage``,
-  real counts) exceeded ``LoopConfig.token_budget``. Never the bytes/divisor
-  estimate ``core/context.py``/``core/session.py`` use for compaction — see
-  ``core/session.py``'s "Budgeting honesty" section, which this mirrors. When
-  the endpoint supplies a positive maximum-output reserve, the loop combines
-  prior measured usage with the next request estimate and that reserve before
-  transport. If an ordinary tool-enabled round no longer fits, it offers at
-  most one explicit tool-free terminal response that itself must fit.
+- ``token_budget`` — cumulative *counted* usage (``TokenUsage.counted_tokens``:
+  real input minus cache reads, plus output) exceeded ``LoopConfig.token_budget``
+  on a reply that still wants tools; a reply with none is already paid and is
+  kept. Never the bytes/divisor estimate ``core/context.py``/``core/session.py``
+  use for compaction — see ``core/session.py``'s "Budgeting honesty" section,
+  which this mirrors. The loop combines prior counted usage with the next
+  request estimate (scaled by the last measured/estimated ratio, never below
+  1) and the output reserve (``config.DEFAULT_MAX_OUTPUT_TOKENS`` when the
+  endpoint registers none) before transport. If an ordinary tool-enabled round
+  no longer fits, it offers at most one explicit tool-free terminal response
+  that itself must fit.
 - ``truncated`` — the endpoint stopped for length, not because it was done
   (``ChatResponse.truncated``). A length-truncated reply can carry a
   *partial* tool call, and partial arguments are exactly what a gate cannot
@@ -145,6 +148,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -270,6 +274,7 @@ def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
         input_tokens=current.input_tokens + delta.input_tokens,
         output_tokens=current.output_tokens + delta.output_tokens,
         cached_tokens=current.cached_tokens + delta.cached_tokens,
+        cache_write_tokens=current.cache_write_tokens + delta.cache_write_tokens,
     )
 
 
@@ -278,6 +283,7 @@ def _usage_delta(current: TokenUsage, previous: TokenUsage) -> TokenUsage:
         input_tokens=current.input_tokens - previous.input_tokens,
         output_tokens=current.output_tokens - previous.output_tokens,
         cached_tokens=current.cached_tokens - previous.cached_tokens,
+        cache_write_tokens=current.cache_write_tokens - previous.cache_write_tokens,
     )
 
 
@@ -651,7 +657,9 @@ def _resolve_context_bounds(
     request_max_tokens = cfg.max_tokens
     if request_max_tokens is None and isinstance(backend_output, int) and backend_output > 0:
         request_max_tokens = backend_output
-    output_reserve = request_max_tokens if request_max_tokens is not None else 0
+    output_reserve = (
+        request_max_tokens if request_max_tokens is not None else _cfg.DEFAULT_MAX_OUTPUT_TOKENS
+    )
     return context_window, output_reserve, request_max_tokens
 
 
@@ -872,6 +880,8 @@ class _TurnState:
     finalization_attempted: bool = False
     consecutive_denial_kinds: list[ToolDenialKind] = field(default_factory=list)
     progress: _ProgressDetector | None = None
+    calibration: float = 1.0
+    pending_raw_estimate: int = 0
 
     @classmethod
     def create(
@@ -971,13 +981,15 @@ class _TurnState:
         *,
         purpose: str,
     ) -> tuple[int, str]:
-        estimated_input = _estimate_input_tokens(
+        raw_estimate = _estimate_input_tokens(
             self.backend,
             request_messages,
             request_tools,
             self.request_max_tokens,
             self.cfg.temperature,
         )
+        self.pending_raw_estimate = raw_estimate
+        estimated_input = math.ceil(raw_estimate * self.calibration)
         if self.context_window is None:
             _trace_request_fit(
                 self.project,
@@ -1031,14 +1043,14 @@ class _TurnState:
 
     def effective_measured_tokens(self) -> int:
         pending = _usage_delta(self.summary_usage, self.accounted_summary_usage)
-        return self.total_usage.total_tokens + pending.total_tokens
+        return self.total_usage.counted_tokens + pending.counted_tokens
+
+    def calibrate(self, measured_input: int) -> None:
+        """Scale later estimates by ``max(1, measured / estimated)`` of the latest call."""
+        if measured_input > 0 and self.pending_raw_estimate > 0:
+            self.calibration = max(1.0, measured_input / self.pending_raw_estimate)
 
     def prospective_budget_error(self, estimated_input: int, *, purpose: str) -> str:
-        # Without an endpoint/config output bound, Docket cannot honestly
-        # reserve a completion. Preserve the existing measured post-response
-        # guard instead of inventing a model-specific output allowance.
-        if self.output_reserve <= 0:
-            return ""
         measured_tokens = self.effective_measured_tokens()
         remaining = self.cfg.token_budget - measured_tokens
         prospective = estimated_input + self.output_reserve
@@ -1465,13 +1477,13 @@ class _TurnState:
                 error=f"exceeded wall_clock_timeout_s={self.cfg.wall_clock_timeout_s}",
                 failure_kind="timeout",
             )
-        if self.total_usage.total_tokens > self.cfg.token_budget:
+        if self.total_usage.counted_tokens > self.cfg.token_budget:
             return 0, self.done(
                 ok=False,
                 stop_reason="token_budget",
                 error=(
                     f"exceeded token_budget={self.cfg.token_budget} "
-                    f"(used {self.total_usage.total_tokens})"
+                    f"(used {self.total_usage.counted_tokens})"
                 ),
                 failure_kind="invalid_output",
             )
@@ -1557,7 +1569,7 @@ class _TurnState:
             status=final_status,
             reason=final_reason,
             token_budget=self.cfg.token_budget,
-            measured_tokens_used=self.total_usage.total_tokens,
+            measured_tokens_used=self.total_usage.counted_tokens,
             normal_estimated_input_tokens=normal_estimated_input,
             finalization_estimated_input_tokens=final_estimated_input,
             output_reserve_tokens=self.output_reserve,
@@ -1622,6 +1634,7 @@ class _TurnState:
         self.last_raw = response.raw
         self.last_model, self.last_provider = response.model, response.provider
         self.total_usage = _accumulate(self.total_usage, response.usage)
+        self.calibrate(response.usage.input_tokens)
         if self.cancellation_requested():
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(self.session_key, [], usage=response.usage)
@@ -1661,7 +1674,8 @@ class _TurnState:
                 ),
             )
 
-        if self.total_usage.total_tokens > self.cfg.token_budget:
+        assistant_msg = response.message
+        if assistant_msg.tool_calls and self.total_usage.counted_tokens > self.cfg.token_budget:
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(self.session_key, [], usage=response.usage)
             return (
@@ -1672,14 +1686,13 @@ class _TurnState:
                     stop_reason="token_budget",
                     error=(
                         f"exceeded token_budget={self.cfg.token_budget} "
-                        f"(used {self.total_usage.total_tokens}); response was not persisted "
+                        f"(used {self.total_usage.counted_tokens}); response was not persisted "
                         "and its tool calls were not dispatched"
                     ),
                     failure_kind="invalid_output",
                 ),
             )
 
-        assistant_msg = response.message
         if finalizing and assistant_msg.tool_calls:
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(self.session_key, [], usage=response.usage)

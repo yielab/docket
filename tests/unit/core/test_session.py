@@ -190,6 +190,17 @@ class TestMeasuredUsage:
         assert record.usage.cached_tokens == 4
         assert record.usage.turns == 2
 
+    def test_cache_writes_accumulate(self) -> None:
+        _sess.append_messages(
+            "agent:x:default", [user("hi")], usage=TokenUsage(input_tokens=10, cache_write_tokens=6)
+        )
+        record = _sess.append_messages(
+            "agent:x:default", [], usage=TokenUsage(input_tokens=10, cache_write_tokens=2)
+        )
+
+        assert record.usage.cache_write_tokens == 8
+        assert record.usage.model_dump(by_alias=True)["cacheWriteTokens"] == 8
+
     def test_no_usage_argument_leaves_totals_unchanged(self) -> None:
         _sess.append_messages("agent:x:default", [user("hi")], usage=TokenUsage(input_tokens=10))
         _sess.append_messages("agent:x:default", [assistant("hello")])  # no usage

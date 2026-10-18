@@ -366,10 +366,14 @@ VERIFY_EVIDENCE_TAIL_CHARS = 4000
 # DEFAULT_TIMEOUT already resolves — so this default only matters for a bare
 # run_agent_turn() call with no explicit LoopConfig.
 AGENT_LOOP_WALL_CLOCK_TIMEOUT_S = float(os.environ.get("AGENT_LOOP_WALL_CLOCK_TIMEOUT_S", "300"))
-# AGENT_LOOP_TOKEN_BUDGET: hard cap on one turn's cumulative *measured* token
-# usage (core.llm.TokenUsage's real counts — never the bytes/divisor estimate
-# core/context.py uses elsewhere; see core/session.py's "Budgeting honesty").
+# AGENT_LOOP_TOKEN_BUDGET: hard cap on one turn's cumulative *counted* token
+# usage (core.llm.TokenUsage.counted_tokens: input - cache reads + output, real
+# counts — never the bytes/divisor estimate core/context.py uses elsewhere; see
+# core/session.py's "Budgeting honesty").
 AGENT_LOOP_TOKEN_BUDGET = int(os.environ.get("AGENT_LOOP_TOKEN_BUDGET", "100000"))
+# DEFAULT_MAX_OUTPUT_TOKENS: the output reserve for a model that registers no
+# maximum output, so the window and cumulative-budget checks always run.
+DEFAULT_MAX_OUTPUT_TOKENS = 4096
 # AGENT_LOOP_REQUEST_TIMEOUT_S: per-HTTP-call timeout passed to
 # ChatBackend.complete(), capped against whatever wall-clock budget remains.
 AGENT_LOOP_REQUEST_TIMEOUT_S = int(os.environ.get("AGENT_LOOP_REQUEST_TIMEOUT_S", "120"))

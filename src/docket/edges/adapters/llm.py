@@ -181,10 +181,12 @@ def _decode_usage(raw: Any) -> TokenUsage:
 
     details = raw.get("prompt_tokens_details")
     cached = _as_int(details.get("cached_tokens")) if isinstance(details, dict) else 0
+    written = _as_int(details.get("cache_write_tokens")) if isinstance(details, dict) else 0
     return TokenUsage(
         input_tokens=_as_int(raw.get("prompt_tokens")),
         output_tokens=_as_int(raw.get("completion_tokens")),
         cached_tokens=cached,
+        cache_write_tokens=written or _as_int(raw.get("cache_creation_input_tokens")),
     )
 
 
