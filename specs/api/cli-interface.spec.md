@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.13.0
+**Version**: 2.14.0
 **Status**: Complete
 **Last Updated**: 2026-10-18
 
@@ -397,9 +397,9 @@ Each state-changing verb ends with one `Next:` line on stderr.
   one line and exits 1; a second Lead is refused.
 - `remove MEMBER [--yes]`: remove one member. Confirms on a terminal; off one it exits 1 naming
   `--yes`. The Lead is refused ("delete the pod instead").
-- `reset MEMBER [--yes]`: distill the member's memory, clear it and rebuild its workspace files
-  from metadata; a failed distillation exits 1 with nothing deleted (agent-lifecycle.spec.md
-  "Member Reset").
+- `reset MEMBER [--yes]`: rebuild the member's workspace files from metadata and reset its
+  ledger; no model call, and `MEMORY.md`, `memory/` and the pod's memory are left alone
+  (agent-lifecycle.spec.md "Member Reset").
 - `set KEY VALUE [--member ID]` / `unset KEY [--member ID]`: the one writer of every
   `PodSettings` key (`budgetUsd` included); `verify` with `--member` writes or clears an
   implementer's `verifyCmd` (pod-blueprints.spec.md "Pod settings: set and unset").
@@ -407,7 +407,7 @@ Each state-changing verb ends with one `Next:` line on stderr.
   `--confirm NAME` is required. A member id is refused; there is no picker.
 
 **Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
-removal; missing confirmation; failed distillation), `2` on a usage error.
+removal; missing confirmation), `2` on a usage error.
 
 **`pod update`**
 **Purpose**: Install configuration onto the pod, or re-sync its instructions (`apply` was this
@@ -982,6 +982,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.14.0 (2026-10-18)
+
+- `pod reset MEMBER` no longer distills or clears memory (P44-7); see agent-lifecycle.spec.md
+  2.1.0. The help line and `Return` lose the distillation case.
 
 ### Version 2.13.0 (2026-10-18)
 
