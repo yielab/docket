@@ -17,15 +17,247 @@
 > resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
 > reading the diff and assuming.
 
-## ◇ NO ACTIVE WAVE — Wave 111 closed 2026-10-17: Phase 43 complete
+## ◆ ACTIVE — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028)
 
-> Phase 43 (the team runtime behind an external plan of record, D-63,
-> [ADR 0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md)) closed 2026-10-17:
-> twelve cards over Waves 109-111, archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
-> Wave 111 merged from base `4262f40c`: `bb144bd7` (P43-10), `d693578c` (P43-11), `b5d024ba` (P43-12),
-> then the rollup. `docket exec` is gone, the serve API is version 5 and `0.2.0-beta.6` is declared
-> but not tagged (the release is a maintainer action). No phase is planned; the follow-ups with named
-> triggers stay in the section below.
+> Measured first: four real steps on 2026-10-18 counted 369,263 tokens; three stopped on the
+> 100k budget and a finished critic verdict was discarded. Evidence and the decision:
+> [ADR 0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md). Packets:
+> [.agents/handoffs/phase-44-worker-packets.md](.agents/handoffs/phase-44-worker-packets.md).
+> **Phase acceptance:** on the replay bench every step *sends* under half today's input tokens,
+> none reaches the budget under the new count, the critic's verdict is kept; then one real run of
+> the same four steps (maintainer-approved, paid).
+>
+> | Wave | Cards | Depends on |
+> | --- | --- | --- |
+> | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff | — |
+> | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields | 112 merged |
+> | 114 | P44-7 pod memory store · P44-9 `cache_control` | 113 merged |
+> | 115 | P44-8 memory operator controls · phase close (bench + paid real run) | 114 merged |
+
+### P44-1 — a replay bench over the four measured steps
+
+- **Status:** IN-PROGRESS (@wave-112) · **Size:** M · **Model:** Sonnet
+- **Trigger:** ADR 0028 "Acceptance for the phase": no change in this phase can claim a saving
+  without before/after numbers, and no paid call may be used to get them.
+- **Goal:** `scripts/maint/context_replay.py` reads session files (a directory argument) and
+  prints, per step and in total: calls, sent input tokens, cached tokens, largest request,
+  counted tokens under the current rule (`input + output`) and under the new rule (`input -
+  cached + output`), whether the 100k budget is reached, and whether the final reply carries a
+  verdict line. A `--policy` hook list re-projects each recorded request (bytes, scaled per call
+  by the recorded measured/estimated ratio, labelled as an estimate). `--anonymize OUT` writes a
+  shape-preserving copy: message structure, roles, tool names, argument keys, byte lengths,
+  usage and the verdict line kept; every path segment and text replaced by a deterministic
+  same-length placeholder (so a repeated absolute prefix stays repeated).
+- **Non-goals:** the new policies themselves (P44-2..6 own them; their cards wire their hook);
+  committing a real session.
+- **Files:** new `scripts/maint/context_replay.py`, new `tests/fixtures/context-replay/v1/`
+  (four anonymized steps: session plus its `llm_call` records), new test per
+  `specs/test-framework.md` §"Lanes and placement".
+  The real `session.json` files and the matching trace `llm_call` records are copied, read-only,
+  into gitignored `internal-docs/context-replay/` (never a credential file).
+- **Acceptance:** run on the real copies, the baseline reproduces the measured table (369,263
+  counted, 25,806 largest request, three steps over budget); run on the anonymized fixtures it
+  gives the same counted totals; a grep of the fixtures for the private project's names, `/home/`
+  and any key-shaped string prints nothing. Oracle: the recorded usage in the sessions.
+- **RED test:** the bench test asserting the four-step baseline totals fails (no script).
+- **Spec:** `specs/test-framework.md` only if the lane table needs the new fixture directory.
+
+### P44-2 — the budget counts new tokens and accepts a paid final reply
+
+- **Status:** IN-PROGRESS (@wave-112) · **Size:** M · **Model:** Sonnet
+- **Trigger:** ADR 0028 evidence: cache reads count at full weight (`TokenUsage.total_tokens`);
+  the critic's `finish_reason=stop` reply was discarded 1,292 tokens over; no prospective check
+  without a registered output bound; estimate 1.8x short; pod dollar estimate charges cache twice.
+- **Goal:** `TokenUsage` gains `cache_write_tokens` and `counted_tokens` (`input - cached +
+  output`); every budget comparison in the loop uses `counted_tokens`; a reply with no tool calls
+  is accepted even when it crosses the budget (the turn ends `ok`); a backend with no output bound
+  gets `config.DEFAULT_MAX_OUTPUT_TOKENS` as reserve; after the first call the input estimate is
+  scaled by `max(1, measured/estimated)`; the adapter parses cache writes where the endpoint
+  reports them; a hop's `usage` carries `input`, `cached`, `cacheWrite`, `output`;
+  `_task_token_budget` uses the same count; `estimate_cost_usd` prices `input - cache_read` at the
+  input rate.
+- **Non-goals:** retried attempts in the budget (deferred, ADR 0028); trace/API fields (P44-10);
+  any limit change.
+- **Files/functions:** `core/llm.py::TokenUsage`; `core/agent_loop.py::_accumulate`,
+  `_usage_delta`, `_resolve_context_bounds`, `_estimate_input_tokens` (calibration state on
+  `_TurnState`), `_TurnState.effective_measured_tokens`, `prospective_budget_error`,
+  `check_iteration_bounds`, `call_backend_and_handle_response`; `edges/adapters/llm.py` usage
+  parser; `core/session.py` usage model; `core/dispatch.py::_hop_usage`, `_task_token_budget`
+  only; `core/utils.py::estimate_cost_usd`; `config.py` (one constant).
+- **Acceptance:** a stub backend reporting 30k input of which 25k cached, four calls, budget 20k:
+  the turn is not stopped (counted 4 x 5k + output); a final no-tool reply that crosses the
+  budget is persisted and returned `ok`; a tool-calling reply that crosses it is still refused;
+  a backend with no `max_output_tokens` traces `request_fit` with a positive reserve; the dollar
+  estimate for 1M input of which 900k cached equals `0.1M x in + 0.9M x cache_read`.
+- **RED test:** `tests/unit/core/test_agent_loop.py` — final reply over budget is accepted
+  (fails today with `stop_reason=token_budget`).
+- **Spec:** `agent-loop.spec.md` (budget requirements), `cost-tracking.spec.md`,
+  `operator-api.spec.md` (hop `usage` keys, additive).
+
+### P44-3 — tool output has a budget
+
+- **Status:** IN-PROGRESS (@wave-112) · **Size:** S · **Model:** Haiku
+- **Trigger:** ADR 0028 evidence: `glob **/*` 41,964 characters (78 % repeated prefix) re-sent
+  four times; `read` whole-file 12,475 characters; `fetch` up to 200k bytes and offered with an
+  empty allowlist (seven refused calls).
+- **Goal:** `glob`/`grep` print paths relative to the first root, sort by path, skip
+  `SKIPPED_DIRS` (`.git`, `node_modules`, `.venv`, `dist`, `build`, `target`, `vendor`,
+  `__pycache__`), and pass through `_truncate`; `read` with no offset/limit returns the first
+  `READ_DEFAULT_LINES` lines numbered, plus `[lines 1-N of M; call read with offset=N+1 for
+  more]`; `fetch` output passes through `_truncate`; `builtin_registry` does not register `fetch`
+  while `FETCH_ALLOWED_DOMAINS` is empty; the `read`/`glob`/`grep` descriptions state the rules
+  (relative paths, ranges, search before listing).
+- **Non-goals:** `.gitignore` parsing; changing `TOOL_MAX_OUTPUT_CHARS`.
+- **Files/functions:** `edges/adapters/toolbox.py::glob_files`, `grep_files`, `read_file`;
+  `edges/adapters/fetch.py::fetch_url` (tail only); `core/tools.py::builtin_registry` and the
+  `read`/`glob`/`grep`/`fetch` tool descriptions only.
+- **Acceptance:** a temp tree with 2,000 files under `src/` and a `node_modules/`: `glob **/*`
+  output starts with `src/`, contains no root prefix and no `node_modules`, is sorted, and is at
+  most `TOOL_MAX_OUTPUT_CHARS` plus the marker; `read` of a 1,000-line file returns
+  `READ_DEFAULT_LINES` numbered lines and the remaining-lines footer; an `edit` whose
+  `old_string` was copied from that window (without numbers) applies; `builtin_registry().specs()`
+  has no `fetch` with an empty allowlist and has it with one domain.
+- **RED test:** `tests/unit/edges/adapters/test_toolbox.py` — glob prints relative paths.
+- **Spec:** `agent-loop.spec.md` (built-in tools), `security-gates.spec.md` (fetch offering).
+
+### P44-5 — every writing hop delivers what it produced
+
+- **Status:** IN-PROGRESS (@wave-112) · **Size:** S · **Model:** Sonnet
+- **Trigger:** ADR 0028 evidence: the critic re-read and re-sent the researcher's note nine
+  times (~30k tokens) because `_implementer_diff_probe` serves the `implementer` role only and
+  `diff_ref` is a branch name.
+- **Goal:** the probe runs for every role whose hop changed the tree; the artifact carries a
+  capped `diff` (tracked changes plus the content of new files, `HANDOFF_DIFF_MAX_CHARS`, with a
+  marker when cut); `diff` is first in `DROP_ORDER`; the next hop's message renders it once,
+  after the summary.
+- **Non-goals:** the list of files a hop read; changing verdict parsing or gates.
+- **Files/functions:** `core/dispatch.py::_implementer_diff_probe` (renamed `_hop_diff_probe`),
+  `_build_hop_result`; `core/handoff.py::HandoffArtifact` (field, `DROP_ORDER`, `render`);
+  `edges/adapters/system.py` (one helper for new-file content if needed).
+- **Acceptance:** a two-step pipeline (researcher writes `notes/x.md`, critic reviews) on the
+  stub endpoint in a temp home: the critic's first request contains the note's content once;
+  a 50k-character note is cut at the cap with the marker; a read-only hop that changed nothing
+  adds no `diff`. Oracle: the critic's recorded first request.
+- **RED test:** `tests/integration/` — critic's first request contains the researcher's note
+  (fails today: only the summary is passed).
+- **Spec:** `pod-dispatch.spec.md` ("Hop evidence", handoff).
+
+### P44-4 — history inside a step does not grow quadratically
+
+- **Status:** TODO (Wave 113) · **Size:** M · **Model:** Sonnet
+- **Trigger:** ADR 0028 evidence: 64 % of counted tokens were old tool results re-sent; the
+  bench (P44-1) gives K=1 -53 %, K=2 -39 %.
+- **Goal:** when a request is built, tool results older than the last `K` results become a
+  one-line notice naming the tool, the path or command and the size; large `write`/`edit`
+  arguments in old assistant messages become `[wrote <path>: N characters]`; errors stay short,
+  the newest result stays whole; the projection is deterministic and never touches
+  `session.json`; K is chosen with the bench and recorded with its numbers; the bench gains the
+  `condense` policy hook calling the real function.
+- **Non-goals:** changing compaction; summarising with a model.
+- **Files/functions:** a new pure function in `core/session.py` or `core/context.py`, called
+  from `core/agent_loop.py::_TurnState.messages_for_durable` (or the single request-building
+  point the worker locates); `scripts/maint/context_replay.py` hook table.
+- **Acceptance:** a session of six read results: the request holds K whole results and six-K
+  notices; two consecutive requests share a byte-identical prefix up to the newest notice;
+  `session.json` is unchanged; on the bench the step that re-sent `glob` four times sends it once.
+- **RED test:** request built after six tool results contains six full results (today).
+- **Spec:** `session-history.spec.md`, `agent-loop.spec.md`.
+
+### P44-6 — the prompt in layers, stable first
+
+- **Status:** TODO (Wave 113) · **Size:** M · **Model:** Sonnet
+- **Trigger:** ADR 0028 evidence: roots in the middle of the system prompt, HEARTBEAT's per-task
+  block after them, member files contradicting the live contract, `<promise>DONE</promise>` with
+  no reader, a `glob **/*` to discover the tree.
+- **Goal:** `_runtime_startup_contract` carries no roots; the roots and a derived repository map
+  (directories with file counts from `git ls-files`, relative, capped) go in the task message;
+  HEARTBEAT.md and TOOLS.md are not composed in a pod task; MEMORY.md is composed only when it
+  holds more than its template; the archetype templates lose every instruction the contract
+  forbids, the absolute codebase paths and `<promise>DONE</promise>`, and gain one shared
+  strategy block (start from what was delivered and the map, `grep` for concrete symbols, read
+  by ranges, never list the whole tree, never re-read what the message carries); step prompts
+  add only their own output contract; `POD_TEMPLATE_VERSION` 4 so `docket pod update`
+  regenerates members without touching MEMORY.md.
+- **Non-goals:** pod memory (P44-7); `cache_control` (P44-9).
+- **Files/functions:** `core/identity.py::compose_system_prompt`, `_runtime_startup_contract`,
+  `_runtime_workspace_context`, `_RUNTIME_CONTEXT_FILES`; `core/archetypes.py` templates;
+  `core/pod_provisioning.py::POD_TEMPLATE_VERSION`; `core/dispatch.py::_hop_message`;
+  `edges/adapters/system.py` (`git ls-files` helper); a new `core/repo_map.py`.
+- **Acceptance:** two tasks of the same member in different worktrees compose byte-identical
+  system prompts and tool schemas; the task message names the worktree root and holds the map;
+  a pod-task prompt contains no HEARTBEAT text; no template contains `HEARTBEAT`, `memory/`,
+  `promise` or an absolute path; `pod update` on a v3 member rewrites SOUL/AGENTS and leaves
+  MEMORY.md byte-identical.
+- **RED test:** two tasks' system prompts differ today (roots).
+- **Spec:** `workspace-structure.spec.md`, `role-archetypes.spec.md`, `agent-loop.spec.md`.
+
+### P44-10 — measurable without reconstruction
+
+- **Status:** TODO (Wave 113) · **Size:** S · **Model:** Haiku
+- **Trigger:** ADR 0028 point 8: the measured table had to be rebuilt by hand from sessions.
+- **Goal:** each `llm_call` trace event carries `request` = bytes and estimated tokens for
+  system, tools, tool results, assistant text and user; the task's `byModel` carries `input`,
+  `cached`, `cacheWrite`, `output` (and `reasoning` when reported); `GET /tasks/<pod>/<id>` and
+  the pod read routes report `tokenBudget` (the per-step budget docket enforces).
+- **Non-goals:** a new route; changing `hop_finished`'s existing fields.
+- **Files/functions:** `core/agent_loop.py::_trace_llm_call`; `core/dispatch.py::_finalize_task`
+  (`byModel` only); `serve.py` (the field); `trace-store` event schema.
+- **Acceptance:** a stub run's `llm_call` payload has the five parts summing to the request's
+  bytes; `byModel` sums equal the hops' usage; the API field equals the configured budget.
+- **RED test:** `llm_call` payload has no `request` today.
+- **Spec:** `trace-store.spec.md`, `operator-api.spec.md` (additive, API 5).
+
+### P44-7 — pod memory: store, parse, verify, render
+
+- **Status:** TODO (Wave 114) · **Size:** M · **Model:** Sonnet
+- **Trigger:** ADR 0028 point 7 and evidence: MEMORY.md is never filled in a pod task and the
+  daily-log pipeline has no writer there.
+- **Goal:** `core/pod_memory.py` over `edges/store.py` (`memory.json` per pod): typed entries
+  (`generated`, `command`, `pitfall`, `convention`), provenance, dedupe, count cap; a parser for a
+  hop's trailing memory section; `pre_input` screening; automatic acceptance of verifiable
+  `generated`/`command` entries (path at the task commit, exit status in the task trace), pending
+  state for the rest; no automatic entry from a hop that called `fetch`; render into the system
+  tail under the repository frame, entries whose path is gone omitted; `memory_update` trace and
+  audit entry; the pod-task daily-log seeding and distillation deleted (D-57).
+- **Non-goals:** operator commands and inbox approval (P44-8).
+- **Files/functions:** new `core/pod_memory.py`; `core/dispatch.py::_finalize_task` (one call);
+  `core/identity.py` (render tail); `core/memory.py` (deletions).
+- **Acceptance:** a hop ending with two `generated` entries (one existing path, one missing) and
+  one `pitfall`: one accepted, one refused, one pending; the next task's system prompt carries the
+  accepted entry under the untrusted frame; an entry with imperative free text is refused; a hop
+  that called `fetch` stores everything pending.
+- **RED test:** accepted entry absent from the next task's prompt (today).
+- **Spec:** `workspace-structure.spec.md`, `agent-loop.spec.md`, `trace-store.spec.md`.
+
+### P44-9 — `cache_control` for Anthropic models
+
+- **Status:** TODO (Wave 114) · **Size:** S · **Model:** Sonnet
+- **Trigger:** ADR 0028 evidence: 0 % cache over 11 calls for the Anthropic critic.
+- **Goal:** for a provider/model the catalog marks as Anthropic, the request marks
+  `cache_control` at the end of the stable prefix (system) and on the last message; other
+  dialects are byte-unchanged.
+- **Non-goals:** changing the dialect set.
+- **Files/functions:** `edges/adapters/llm.py` request builder; the catalog flag in
+  `core/provider.py` if one is needed.
+- **Acceptance:** a captured request for an Anthropic model carries two markers; an OpenAI model's
+  request is byte-identical to today. **Integrator, after merge and with maintainer approval:**
+  one real call through the gateway shows `cached > 0` on the second request.
+- **RED test:** captured Anthropic request has no `cache_control` (today).
+- **Spec:** `agent-loop.spec.md` or the provider spec the worker locates.
+
+### P44-8 — pod memory: operator controls
+
+- **Status:** TODO (Wave 115) · **Size:** S · **Model:** Sonnet
+- **Trigger:** ADR 0028 point 7: pending entries need approval; every change must be visible
+  and revertible.
+- **Goal:** pending `pitfall`/`convention` entries appear in `docket inbox` and are approved or
+  refused there (audited); `docket pod memory list|revert <id>|reset` (confirmed, audited).
+- **Files/functions:** `core/inbox.py`, `cli/_pod.py`, `core/pod_memory.py` (API only).
+- **Acceptance:** approve moves an entry to accepted and into the next prompt; revert removes it
+  with an audit entry; reset empties `memory.json` after confirmation; goldens for `pod --help`
+  regenerated and explained.
+- **RED test:** `docket pod memory list` is an unknown command (today).
+- **Spec:** `operator-loop.spec.md`, `cli-interface.spec.md`.
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phase 43 (not cards; triage when a trigger fires)
 

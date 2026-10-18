@@ -9,7 +9,9 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-17.** Every phase 0–43 is complete (Phase 43 closed 2026-10-17, D-63, ADR 0027;
+**Last updated: 2026-10-18.** Phase 44 (context in layers and a budget that counts new tokens,
+D-64, [ADR 0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md)) is
+**active**: Wave 112 opened 2026-10-18. Every phase 0–43 is complete (Phase 43 closed 2026-10-17, D-63, ADR 0027;
 twelve cards over Waves 109-111, measured first; board archived). No item is
 carried: Wave 108 (no phase, closed 2026-10-13) closed the last carried items of every phase — a
 parked task can be cancelled, host-side git trusts only the recorded git dirs, every jail narrows
@@ -53,6 +55,7 @@ until the project drops its beta warning.
 | 42 | Lights-out profile and external verification gate | D-61 · [0025](docs/adr/0025-lights-out-profile-and-external-gate.md) | 2026-10-13 |
 | — | Harness contract 1.2: `docket exec` runs on the operator's own setup (no phase) | D-62 · [0026](docs/adr/0026-harness-uses-the-operators-setup.md) | 2026-10-13 |
 | 43 | The team runtime behind an external plan of record: addressable tasks, HTTP lifecycle, pods over HTTP, `.docket/teams/`, one door (API 5, `exec` deleted) | D-63 · [0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md) | **complete** 2026-10-17: Wave 109 (the task, P43-1..5) 2026-10-14, Wave 110 (the pod, P43-6..9) and Wave 111 (the daemon and the command, P43-10..12) 2026-10-17; `exec` deleted, API 5, `0.2.0-beta.6` declared |
+| 44 | Context in layers and a budget that counts new tokens: replay bench, new-token budget, bounded tool output, condensed history, delivered handoffs, cache-ordered prompt, governed pod memory | D-64 · [0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md) | **active**: Wave 112 (P44-1, 2, 3, 5) opened 2026-10-18; Waves 113-114 planned |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -203,7 +206,7 @@ address exactly those.
 
 ---
 
-## 6. Decisions (D-1…D-63)
+## 6. Decisions (D-1…D-64)
 
 > Every decision is answered; a row stays because a decision outlives its phase. Rows D-1…D-24 were
 > taken in phases archived in `docs/cycles-ended/roadmap-phases.md`, and some name a daemon docket
@@ -273,6 +276,7 @@ address exactly those.
 | D-61 | docket, an orchestrator and an independent verifier are meant to run a lights-out factory at L3/L4/L5, each usable alone. What does docket add so an operator can run it unattended safely, without naming the verifier and without changing a fresh install? | Phase 42 | **Answered 2026-10-13 (ADR 0025, accepted with amendments):** an external gate (command + exit map, four labels routed by `on:`, reasons via `DOCKET_GATE_REASONS_FILE`), the gate's output carried into rework, repository instructions read from `baseCommit` on every run, a refuse-don't-degrade `lights-out` profile for pod dispatch, evidence `1.1.0` (`gate`, `directives`). Cut with triggers: `exec` gate/profile flags, override pack, risk/domain, corrections export, attempt ids and digests. |
 | D-62 | Tack is removing its model-provider layer: every harness it runs must use its own login and configuration. Harness mode cannot use docket's: it requires `DOCKET_LLM_BASE_URL`, hides the operator's setup behind a caller-owned `DOCKET_HOME`, requires `--model`, and offers no machine-readable readiness. | 2026-10-13 (no phase; harness contract 1.2, docket 0.2.0-beta.5) | **Answered 2026-10-13 (ADR 0026):** an opt-in contract `1.2` reads the operator's setup from the setup home (`DOCKET_SETUP_HOME` or `~/.docket`; three files, read-only, no lock) when `DOCKET_LLM_BASE_URL` is unset; `--model` defaults to the role's setup model, then the registry default, never a built-in anchor; a missing or unreadable credential refuses before any request; `docket setup harness --json` is the offline readiness; 1.0 and 1.1 unchanged. |
 | D-63 | Tack runs docket as a throwaway agent per attempt (`docket exec`) and gets none of the pod, roles, pipeline, gates or approvals; what must docket add so an external plan of record sends every piece of work to a long-lived pod through one door, without Tack working around docket? | Phase 43 | **Answered 2026-10-14 (ADR 0027, planned):** HTTP against `docket start --dispatch`, API version 5; a task carries `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens` and narrow-only `restrictions`; `hop_started`/`hop_finished` on the trace; cancel/retry/diff and pods (read, `ensure`, `apply`, corrections) over HTTP; `.docket/teams/<pod>/`; the daemon stops between tasks and resumes on every sweep; `exec` and harness contracts deleted outright (D-57; the maintainer chose beta.6 over one release later on 2026-10-14). Deferred with triggers: parallel tasks in a pod, warm workspace, SSE, statistics. Measured first: `npm ci` 6.5 s + build 15.5 s per worktree (829 MB), one llama.cpp slot queues (5/10.6 s for two), a stop signal waited 91 s for a whole sweep. |
+| D-64 | Four real steps stopped on a 100k token budget with no request over 26k: old tool results re-sent (64 %), the prefix repeated (25 %), cache reads counted at full weight, a finished verdict discarded. How does a step send what it needs once, and the budget count what is spent, without raising a limit? | Phase 44 | **Answered 2026-10-18 (ADR 0028):** context composed in layers stable-first with one owner each (roots and the repository map in the task message, TOOLS.md and HEARTBEAT out of a pod prompt); the budget counts `input - cache_read + output` and accepts a paid final reply; bounded `glob`/`grep`/`read`/`fetch`; deterministic condensation of results older than K; hop diffs delivered for every writing role; `cache_control` for Anthropic models after a real gateway check; one governed `memory.json` per pod (typed entries, mixed acceptance, untrusted frame, audited, revertible). |
 
 ---
 
