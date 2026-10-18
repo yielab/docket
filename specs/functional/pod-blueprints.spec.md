@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.31.0
+**Version**: 1.32.0
 **Status**: Implemented
 **Last Updated**: 2026-10-18
 
@@ -181,8 +181,15 @@ This specification does NOT cover:
    reads it live at claim time when a task names that pipeline (`pod-dispatch.spec.md`, "Pipeline
    order and participation" item 7), ahead of any recipe of the same name. The directory is never
    a pod's default pipeline: binding one stays `docket pod set pipeline <file>`.
-2. This version only **reads** the directory. `pod apply` and `pod export` do not yet carry it;
-   an operator places the files by hand.
+2. `docket pod update <dir>` **MUST** copy each `<dir>/pipelines/<name>.yaml` (or `.yml`) byte for
+   byte into that directory (0600), planned `add`/`replace`/`skip` by content as
+   `pipeline pipelines/<name>.yaml`, and `docket pod export` **MUST** write the pod's files back
+   to `pipelines/`. A file dispatch could not run **MUST** refuse the whole update before anything
+   is written: a pipeline that does not validate, a stem that is not a task pipeline name
+   (`dispatch.TASK_PIPELINE_NAME`), or two files naming the same pipeline. A file the directory
+   no longer carries stays in the pod, as a plugin does. Their commands are reviewed under
+   requirement 12, each item named `<pipeline>/<step id>`; `summarize_recipe` lists them as
+   `pipelines`, and `docket pod validate` checks them (config-format.spec.md).
 
 ### Pod settings: set and unset
 
@@ -379,7 +386,8 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
 12. **A repository's commands need the operator's OK (ADR 0024 §6, D-59).** Before provisioning
     anything, `docket init` **MUST** classify a `.docket/` (or a `--recipe` given as a directory
     or resolved from the operator's own recipes) with `core.pod_apply.classify_directory` into
-    *adds* and *runs on this machine*: pipeline `run:` steps, a step gate's command (`verify:
+    *adds* and *runs on this machine*: pipeline `run:` steps (in `pipeline.yaml` and in each
+    `pipelines/<name>.yaml`), a step gate's command (`verify:
     <command>`, `gate: {external: <command>}`, the canonical `mechanical`/`external` gate with a
     `command`, inside a `parallel` group too; a `verify: true` that defers to the member's
     `verifyCmd` runs nothing the repository wrote), MCP server commands, plugins, a
@@ -620,6 +628,13 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.32.0 (2026-10-18)
+
+- "Pod-local pipelines" item 2: `pod update` copies `pipelines/` into the pod and `export` writes
+  it back; an invalid file or a stem dispatch cannot resolve refuses the update. Requirement 12
+  reviews their commands (`<pipeline>/<step id>`). Was a Phase 43 follow-up (P43-3); the
+  Fabulada onboarding (K1) lost every step `model:` because the files did not travel.
 
 ### Version 1.31.0 (2026-10-18)
 

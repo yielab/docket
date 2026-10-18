@@ -618,7 +618,7 @@ class TaskRunRefusal(DispatchError):
     """A claimed task's own ``pipeline`` or ``gate`` cannot be honoured; the task settles failed."""
 
 
-_TASK_PIPELINE_NAME = _re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+TASK_PIPELINE_NAME = _re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
 def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
@@ -642,7 +642,7 @@ def _task_pipeline(
     name = task.get("pipeline")
     if name is None or name == "":
         return default_spec, "default"
-    if not isinstance(name, str) or not _TASK_PIPELINE_NAME.match(name):
+    if not isinstance(name, str) or not TASK_PIPELINE_NAME.match(name):
         raise TaskRunRefusal(f"pipeline {name!r} is not a valid pipeline name")
     found = _task_pipeline_file(project, name)
     if found is None:

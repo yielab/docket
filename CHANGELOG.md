@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A team's `pipelines/` travels with `docket pod update` and `docket pod export`.** A task that
+  names `pipeline: <name>` reads `<pod config>/pipelines/<name>.yaml`, but nothing put the file
+  there: `update` skipped the directory and `export` dropped it, so every hop ran with the
+  fleet's role table and lost its step `model:`. `update` now copies each file (validated; an
+  invalid file or a name dispatch cannot resolve refuses the update), `export` writes them back,
+  `pod validate` checks them, the recipe summary lists them, and their commands go through the
+  same review as `pipeline.yaml`'s, named `<pipeline>/<step>`.
+
 - **A repository's gate commands need the review code too.** `docket init`, `docket pod update`
   and `POST /pods/<p>/apply` asked the operator only for a pipeline's `run:` steps, so a
   `.docket/` could run any command through `verify: <cmd>` or `gate: {external: <cmd>}` with no

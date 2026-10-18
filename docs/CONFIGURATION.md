@@ -667,7 +667,7 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 ### 3.10 Start from a recipe
 
 A recipe is a directory in the same shape as a repository's `.docket/` (§3.11): `pod.yaml`,
-`roles/`, `pipeline.yaml`, `policies/`, `plugins/`, `skills/`, every part optional. **What a recipe
+`roles/`, `pipeline.yaml`, `pipelines/`, `policies/`, `plugins/`, `skills/`, every part optional. **What a recipe
 brings is derived from what the directory holds, never declared**: `docket pod validate <dir>`,
 `docket pod update --dry-run`, `docket init --recipe` and `docket pod recipes` all print the
 same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). Eighteen
@@ -697,8 +697,9 @@ A name resolves in three places, nearest wins: a directory path as given, then y
 
 `apply` copies the directory's roles into this pod's own overlay (`config/roles.json`),
 validates and binds its `pipeline.yaml` as the pod's default (§3.5), adds the `members` its
-`pod.yaml` names, copies its policy pack into this pod's own `config/policies/` (§3.6) and its
-skills into `config/skills/` (§3.13) — the same steps you would otherwise do by hand, scoped to
+`pod.yaml` names, copies its policy pack into this pod's own `config/policies/` (§3.6), its
+skills into `config/skills/` (§3.13) and each `pipelines/<name>.yaml` into `config/pipelines/`,
+where a task that names `pipeline: <name>` finds it — the same steps you would otherwise do by hand, scoped to
 this pod alone, validated as a whole before anything is written. `--dry-run` shows the plan;
 re-running is idempotent (an applied recipe plans every item `skip`). Every apply records the
 directory as the pod's `configSource` (§3.11), the all-`skip` one included.
