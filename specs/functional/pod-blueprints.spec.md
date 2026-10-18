@@ -635,21 +635,21 @@ $ docket init myproj --blueprint wizard-pod
 ### Version 1.33.0 (2026-10-18)
 
 - Requirement 5: a setting skipped because it equals the default says so on its plan line and in
-  the item's `note` (the field existed and nothing set it; found by the Fabulada onboarding, K4).
+  the item's `note` (the field existed and nothing set it; found by the 2026-10-17 onboarding, K4).
 
 ### Version 1.32.0 (2026-10-18)
 
 - "Pod-local pipelines" item 2: `pod update` copies `pipelines/` into the pod and `export` writes
   it back; an invalid file or a stem dispatch cannot resolve refuses the update. Requirement 12
   reviews their commands (`<pipeline>/<step id>`). Was a Phase 43 follow-up (P43-3); the
-  Fabulada onboarding (K1) lost every step `model:` because the files did not travel.
+  2026-10-17 onboarding (K1) lost every step `model:` because the files did not travel.
 
 ### Version 1.31.0 (2026-10-18)
 
 - Requirement 12: a step gate's command (`verify: <cmd>`, `gate: {external: <cmd>}`, also in a
   `parallel` group) is a run-on-this-machine item, as ADR 0024 §6 always said ("verify
   commands"). `classify_directory` counted only `run:` steps, so a repository could run a
-  command through a gate with no review code (found by the 2026-10-17 Fabulada onboarding, K5).
+  command through a gate with no review code (found by the 2026-10-17 onboarding, K5).
 
 ### Version 1.30.1 (2026-10-17)
 

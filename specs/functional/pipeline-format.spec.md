@@ -685,7 +685,7 @@ steps:
 
 - "Short form" item 4: a step with more than one of `verdict`/`verify`/`approval`/`gate` is a load
   error naming the step and the keys. The first key in that order won and the rest were dropped
-  with no error (found by the 2026-10-17 Fabulada onboarding, K6).
+  with no error (found by the 2026-10-17 onboarding, K6).
 
 ### Version 2.17.0 (2026-10-13)
 

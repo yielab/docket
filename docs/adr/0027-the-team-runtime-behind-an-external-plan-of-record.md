@@ -160,10 +160,10 @@ Read on `develop` at `e5c8c784` on 2026-10-14; every live run used a throwaway h
 | Lights-out vs research | `fetch` is a built-in handled in docket's process (`edges/adapters/fetch.py::fetch_url`, urllib), never through `jail_launch`; the jail covers `bash`, `verifyCmd`, `run:` steps and stdio MCP servers | `core/profile.py::lights_out_violations`, ADR 0024 |
 | Supervision | `/health`, a two-stage `_StopController`, `--token-file` and `bind=` on `run_serve` exist; the CLI exposes `--port` only; the sweep calls `dispatch_pod` without `resume` | `serve.py::_StopController`, `_sweep_one_pod`, `cli/_service.py` |
 
-**Measurement 1, the cost of a fresh worktree** (the Fabulada repository, Next.js, 488 packages):
+**Measurement 1, the cost of a fresh worktree** (a real Next.js repository, 488 packages):
 
 ```
-git -C <fabulada checkout> worktree add <scratch>/wt HEAD
+git -C <checkout> worktree add <scratch>/wt HEAD
 /usr/bin/time -f 'npm ci: %e s' npm ci --no-audit --no-fund     # 6.47 s (6.15 s second run)
 /usr/bin/time -f 'build: %e s' npm run build                     # 15.45 s
 du -sh node_modules                                              # 829M

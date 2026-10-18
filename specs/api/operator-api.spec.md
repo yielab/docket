@@ -138,13 +138,13 @@ Query parameters:
 `POST /tasks/<pod>` (new task, `201`):
 
 ```json
-{"ok": true, "created": true, "task": "task-5d0c...", "project": "fab-dev", "status": "pending"}
+{"ok": true, "created": true, "task": "task-5d0c...", "project": "web-dev", "status": "pending"}
 ```
 
 The same body with an `idempotencyKey` already in the queue (`200`):
 
 ```json
-{"ok": true, "created": false, "task": "task-5d0c...", "project": "fab-dev", "status": "running"}
+{"ok": true, "created": false, "task": "task-5d0c...", "project": "web-dev", "status": "running"}
 ```
 
 `GET /tasks/<pod>/<id>` returns the full task record of `pod-dispatch.spec.md` (the same object
@@ -154,11 +154,11 @@ The same body with an `idempotencyKey` already in the queue (`200`):
 {
   "id": "task-5d0c...", "status": "done", "priority": "normal",
   "externalRef": "TACK-412/attempt-2", "idempotencyKey": "TACK-412:2",
-  "baseRef": "docket/fab-dev/task-91aa...", "pipeline": "tdd",
+  "baseRef": "docket/web-dev/task-91aa...", "pipeline": "tdd",
   "gate": {"command": "npm test -- --ci", "timeoutS": 600},
   "maxTokens": 400000, "tokenBudget": 100000,
   "restrictions": {"deniedTools": ["fetch"], "network": "none", "policies": []},
-  "worktree": {"dir": "...", "branch": "docket/fab-dev/task-5d0c...", "baseCommit": "a1b2c3d"},
+  "worktree": {"dir": "...", "branch": "docket/web-dev/task-5d0c...", "baseCommit": "a1b2c3d"},
   "usage": {"input": 61230, "cached": 40000, "cacheWrite": 2100, "output": 4120,
             "byModel": {"local/local-model": {"input": 48000, "cached": 40000, "cacheWrite": 0, "output": 3000},
                         "anthropic/claude-sonnet-4-6": {"input": 13230, "cached": 0, "cacheWrite": 2100, "output": 1120}}},
@@ -184,7 +184,7 @@ The task's `usage` and each `byModel` entry sum their hops' `input`, `cached`, `
 
 ```json
 {
-  "task": "task-5d0c...", "branch": "docket/fab-dev/task-5d0c...", "baseCommit": "a1b2c3d",
+  "task": "task-5d0c...", "branch": "docket/web-dev/task-5d0c...", "baseCommit": "a1b2c3d",
   "head": "f00ba4", "patch": "diff --git a/src/app.ts b/src/app.ts\n...",
   "untracked": ["out/report.md"], "worktreePresent": true
 }
@@ -203,15 +203,15 @@ Two typed records join `trace-store.spec.md`'s `EVENT_TYPES`, written in the tas
 (`agent:<pod>:<task-id>`) and read through `GET /traces/<pod>?since=`:
 
 ```json
-{"ts": "...", "project": "fab-dev", "session_id": "agent:fab-dev:task-5d0c...",
+{"ts": "...", "project": "web-dev", "session_id": "agent:web-dev:task-5d0c...",
  "agent_role": "implementer", "event_type": "hop_started",
  "payload": {"task": "task-5d0c...", "step": "implementer", "role": "implementer",
-             "member": "fab-dev-implementer", "model": "local/local-model",
+             "member": "web-dev-implementer", "model": "local/local-model",
              "provider": "local", "cycle": 0, "attempt": 1}}
-{"ts": "...", "project": "fab-dev", "session_id": "agent:fab-dev:task-5d0c...",
+{"ts": "...", "project": "web-dev", "session_id": "agent:web-dev:task-5d0c...",
  "agent_role": "implementer", "event_type": "hop_finished",
  "payload": {"task": "task-5d0c...", "step": "implementer", "role": "implementer",
-             "member": "fab-dev-implementer", "model": "local/local-model",
+             "member": "web-dev-implementer", "model": "local/local-model",
              "provider": "local", "cycle": 0, "attempt": 1, "ok": true,
              "verdict": null, "gate": "pass", "usage": {"input": 40950, "cached": 36000, "cacheWrite": 0, "output": 1425},
              "durationMs": 94012, "error": ""}}
@@ -225,7 +225,7 @@ hop marker and the `tool_result`/`error` closing record stay as they are.
 
 ### Pod answers
 
-`GET /pods` (`200`): `{"pods": [{"name": "fab-dev", "codebase": "/srv/fabulada", "members": 2,
+`GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp", "members": 2,
 "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
 "waitingInput": 0, "failed": 0, "completed": 4}}]}`; `queue` carries the counts `status --json` prints
 under `tasks`.
@@ -237,7 +237,7 @@ unchanged keys: `members` with `role`, `model`, `modelSource`; `settings`; `pipe
 ```json
 {"profile": {"name": "lights-out", "violations": [{"requirement": "network", "fix": "docket pod set network none"}]},
  "pipelineSource": "pod",
- "repoConfigDir": "/srv/fabulada/.docket/teams/fab-dev",
+ "repoConfigDir": "/srv/webapp/.docket/teams/web-dev",
  "readOnly": ["/opt/node-22"]}
 ```
 
@@ -246,7 +246,7 @@ unchanged keys: `members` with `role`, `model`, `modelSource`; `settings`; `pipe
 (`security-gates.spec.md` Exec sandbox requirement 14); `[]` when there are none.
 
 `POST /pods` with `ensure` on an existing pod (`200`): `{"ok": true, "created": false,
-"project": "fab-dev"}`; a new pod answers as today with `"created": true`.
+"project": "web-dev"}`; a new pod answers as today with `"created": true`.
 
 `POST /pods/<p>/apply` (`200`): `{"ok": true, "project", "items", "dryRun": true|false}`, `items`
 being the `docket pod update --json` list (`cli-json-shapes.spec.md`); a dry run writes nothing.
@@ -265,7 +265,7 @@ nonexistent or relative `directory` is `400`, an unknown pod `404`. The apply is
 `GET /pods/<p>/corrections?since=2026-10-01T00:00:00Z` (`200`):
 
 ```json
-{"corrections": [{"ts": "2026-10-03T10:12:00Z", "project": "fab-dev", "kind": "review_rejected",
+{"corrections": [{"ts": "2026-10-03T10:12:00Z", "project": "web-dev", "kind": "review_rejected",
                   "taskId": "task-91aa...", "role": "reviewer", "text": "...", "source": "pipeline"}],
  "next": "2026-10-03T10:12:00Z"}
 ```
@@ -276,7 +276,7 @@ Unchanged keys plus, when `docket start` runs with `--dispatch`:
 
 ```json
 {"ok": true, "apiVersion": "5",
- "dispatch": {"on": true, "inflight": ["fab-dev"], "stopping": false, "workers": 4}}
+ "dispatch": {"on": true, "inflight": ["web-dev"], "stopping": false, "workers": 4}}
 ```
 
 ## Return

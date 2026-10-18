@@ -505,7 +505,7 @@ $ docket setup model
 - "Provider catalog" requirement 3: a preset that moves pod members names each pod and role with
   the model before and after, and `provider add` prints the `--no-preset` command.
   `reapply_role_policy` returns the moved agents instead of a count. A `provider add` with a
-  preset re-pointed every pod's roles in silence (found by the Fabulada onboarding, K2).
+  preset re-pointed every pod's roles in silence (found by the 2026-10-17 onboarding, K2).
 
 ### Version 3.3.1 (2026-10-17)
 

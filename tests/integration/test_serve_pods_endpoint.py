@@ -523,12 +523,12 @@ class TestEnsure:
 
     def test_the_adr_0027_body_creates_then_ensures(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        body = {"name": "fab-dev", "location": "/src/fab", "blueprint": "software", "ensure": True}
+        body = {"name": "web-dev", "location": "/src/web", "blueprint": "software", "ensure": True}
         first_status, first = _post(f"{url}/pods", body, token)
         status, again = _post(f"{url}/pods", body, token)
-        assert (first_status, first["created"], first["project"]) == (201, True, "fab-dev")
+        assert (first_status, first["created"], first["project"]) == (201, True, "web-dev")
         assert {m["role"] for m in first["members"]} == {"lead", "implementer"}
-        assert (status, again) == (200, {"ok": True, "created": False, "project": "fab-dev"})
+        assert (status, again) == (200, {"ok": True, "created": False, "project": "web-dev"})
 
     def test_the_v4_project_and_path_fields_are_gone(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
