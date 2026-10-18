@@ -49,7 +49,7 @@ ALLOW = (
     '"docket help" not in',  # a test asserting the removed word is absent
 )
 
-LIVE_POD_VERBS = "show|add|remove|reset|delete|set|unset|update|export|validate|plan|check|recipes|roles|policies"
+LIVE_POD_VERBS = "show|add|remove|reset|delete|set|unset|update|export|validate|plan|check|recipes|roles|policies|memory"
 OLD_POD_ACTIONS = (
     "config|add|info|delete|dispatch|answer|pregrant|roster|lead|maintain|apply|export|members"
     "|remove|reset|set-verify|queue|evidence|corrections|explain|worktrees|sync|delegate|list"

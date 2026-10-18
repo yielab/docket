@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 1.8.1
+**Version**: 1.9.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -200,6 +200,17 @@ of its own.
     bound agent's own scope (`_approval_scope`, unchanged from `telegram-integration.spec.md`
     requirement 3) by each item's `pod` field, `needsYou` first, then `failed`; it MUST NOT
     change the channel's inbound-only or plain-text constraints.
+11. **Pending pod memory.** `core.inbox.pending_memory() -> list[MemoryItem]` MUST return one item
+    per `pending` entry of every pod's `memory.json` (`core.pod_memory.list_entries`), oldest
+    first within a pod, carrying `pod`, `id`, `kind`, `subject`, `note`, `reason` and `task`. It
+    is not part of `InboxView` and not of the operator-v1 contract: `build_inbox`, `GET /inbox`,
+    `GET /metrics`, notifications and Telegram `/status` are unchanged. `docket inbox` MUST list
+    each item under `Needs you` as `memory <id>  pod=<pod>  <kind>`, its subject and note, why it is
+    held, the command `docket pod memory approve <id> --pod <pod>` and the refusal
+    `docket pod memory refuse <id> --pod <pod> --reason "<why>"`; `--json` MUST add it to
+    `needsYou` as `{kind: "memory", pod, id, entryKind, subject, note, reason, task, state:
+    "needs_memory_approval", command}`. It does not move `InboxView.next` and does not advance
+    the cursor.
 
 ### 6. Notifications
 
@@ -795,6 +806,12 @@ Each JSONL line is a JSON object with these fields:
   `GET /pods/<p>/corrections?since=` serves it (`operator-api.spec.md`).
 
 ## Changelog
+
+### Version 1.9.0 (2026-10-18)
+
+- Area 5 item 11 (P44-8): `docket inbox` lists a pod's pending memory entries under `Needs you`
+  with the approve and refuse commands; the operator-v1 contract and the HTTP, MCP and Telegram
+  surfaces are unchanged.
 
 ### Version 1.8.1 (2026-10-17)
 

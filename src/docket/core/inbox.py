@@ -8,6 +8,7 @@ store lives in this module, matching every other `core/` service.
 from __future__ import annotations
 
 import datetime as _dt
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -16,6 +17,7 @@ from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
+from docket.core import pod_memory as _pod_memory
 from docket.core.operator_contract import (
     ApprovalView,
     InboxView,
@@ -26,7 +28,7 @@ from docket.core.operator_contract import (
     a2a_state,
 )
 
-__all__ = ["build_inbox", "task_view"]
+__all__ = ["MemoryItem", "build_inbox", "pending_memory", "task_view"]
 
 _NEEDS_YOU_STATUSES = frozenset({"blocked"})
 
@@ -165,3 +167,33 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     return InboxView(
         needs_you=needs_you, failed=failed, done_since=done_since, running=running, next=latest
     )
+
+
+@dataclass(frozen=True)
+class MemoryItem:
+    """One pod-memory entry waiting for the operator; outside the operator-v1 contract."""
+
+    pod: str
+    id: str
+    kind: str
+    subject: str
+    note: str
+    reason: str
+    task: str
+
+
+def pending_memory() -> list[MemoryItem]:
+    """Every pending memory entry of every pod, oldest first within a pod."""
+    return [
+        MemoryItem(
+            pod=project,
+            id=entry.id,
+            kind=entry.kind,
+            subject=entry.subject,
+            note=entry.note,
+            reason=entry.reason,
+            task=entry.provenance.get("task", ""),
+        )
+        for project in _all_projects()
+        for entry in _pod_memory.list_entries(project, "pending")
+    ]
