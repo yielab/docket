@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.19.1
+**Version**: 1.20.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`. There are no shared agents: no workspace is provisioned outside a pod. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
@@ -72,7 +72,9 @@ covers the resulting file set for either workspace kind, not blueprint selection
      instructions apply only to an agent reading this file directly, outside Docket's turn loop —
      the live turn loop never sends this raw file to the model, composing a small read-only
      projection instead (`core/identity.py`)
-   - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written)
+   - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written). The seed
+     names no path: its stack line is the only fact it carries from provisioning. A live turn
+     composes it only when it holds text beyond that template (agent-loop.spec.md requirement 30)
    - `.docket-meta.json` — docket metadata (see data spec)
    - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning);
      `memory/.distilled/<YYYY-MM-DD>/` **MAY** additionally exist — an archive `docket pod reset`
@@ -254,6 +256,15 @@ docket setup [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.20.0 (2026-10-18)
+
+- **What a live turn composes (P44-6, ADR 0028 section 1).** `HEARTBEAT.md` and `TOOLS.md` stay
+  on disk as documented in requirement 1 but are no longer composed into a pod task's prompt, and
+  `MEMORY.md` composes only when it holds more than its template; `SOUL.md` and `AGENTS.md` name
+  no path. The `MEMORY.md` seed drops its `codebase:` and `path:` lines (absolute paths).
+  `docket pod update` re-renders `SOUL.md`/`AGENTS.md`/`TOOLS.md` for a member stamped
+  `templateVersion` 3 and leaves `MEMORY.md` byte-identical (it never rendered it).
 
 ### Version 1.19.1 (2026-10-08)
 

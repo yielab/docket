@@ -166,6 +166,49 @@ class TestGeneratedInstructionsAgreeWithRuntimeContract:
         assert offenders == {}
 
 
+class TestTemplatesCarryNoPathAndNoDeadSignals:
+    """The layered prompt: templates name no path, no private file and no completion promise,
+    and every AGENTS template carries the one shared method block."""
+
+    @staticmethod
+    def _rendered() -> dict[str, tuple[str, str]]:
+        out: dict[str, tuple[str, str]] = {}
+        for name, arch in {**BUILTIN_ARCHETYPES, **STARTER_ARCHETYPES}.items():
+            variables = {
+                **_SAMPLE_VARIABLES,
+                "role": name,
+                "memberId": f"demo-{name}",
+                "codebaseOrConfigured": "/srv/sample-codebase",
+                "codebaseOrIt": "/srv/sample-codebase",
+                "workDir": "/srv/sample-workdir",
+            }
+            out[name] = (
+                render(arch.soul_template, variables),
+                render(arch.agents_template, variables),
+            )
+        return out
+
+    def test_no_template_names_a_private_file_a_promise_or_a_path(self) -> None:
+        offenders = {
+            name: word
+            for name, texts in self._rendered().items()
+            for text in texts
+            for word in ("HEARTBEAT", "memory/", "promise", "/srv/", "/tmp/")
+            if word in text
+        }
+        assert offenders == {}
+
+    def test_every_agents_template_carries_the_shared_method(self) -> None:
+        for name, (_soul, agents) in self._rendered().items():
+            assert "## Method" in agents, name
+            assert "grep" in agents and "never list the whole tree" in agents.lower(), name
+
+    def test_the_method_block_is_short(self) -> None:
+        agents = self._rendered()["implementer"][1]
+        method = agents.split("## Method", 1)[1].split("## Red Lines", 1)[0]
+        assert len(method) < 520
+
+
 class TestFindOverlayProblems:
     """`find_overlay_problems`: what `docket setup` surfaces for a malformed
     `docket-roles.json` entry that `load_registry` silently skips."""

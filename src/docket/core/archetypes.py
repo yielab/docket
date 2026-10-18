@@ -51,7 +51,6 @@ from string import Template
 from typing import Any
 
 import docket.config as cfg
-from docket.core import memory as _mem
 from docket.core.tools import ToolKind, ToolRegistry
 from docket.edges import store as _store
 
@@ -292,7 +291,6 @@ _SOUL_HEAD = (
     "You belong to one project only. Respect the pod session-key boundary — "
     "no cross-project access.\n\n"
     "## Project\n${objective}\n\n"
-    "## Codebase\n${codebaseOrConfigured}\n\n"
     "## Stack\n${stack}\n\n"
 )
 
@@ -309,17 +307,16 @@ _LEAD_BODY = (
 
 _IMPLEMENTER_BODY = (
     "## Role — Implementer\n"
-    "- You run **inside** this project's workspace and know ${codebaseOrIt} "
-    "deeply. Read files before changing them.\n"
-    "- You implement the tasks the Lead assigns: read/write/edit the codebase.\n"
-    "- Signal completion with `<promise>DONE</promise>`.\n"
+    "- You implement the tasks the Lead assigns: read/write/edit the codebase in your "
+    "working directory. Read a file before changing it.\n"
     "- Never push to main/master without HITL approval; never delete files "
     "without explicit instruction.\n"
 )
 
 _REVIEWER_BODY = (
     "## Role — Reviewer (veto power)\n"
-    "- You review diffs for correctness, security, and requirement fit.\n"
+    "- You review the diff the task message delivers for correctness, security, and "
+    "requirement fit; read a file only for context the diff does not show.\n"
     "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
     "- **Marker convention:** start exactly one output line with `APPROVE` or "
     "`REQUEST-CHANGES` (case-insensitive) — dispatch scans all complete lines "
@@ -343,18 +340,16 @@ _TESTER_BODY = (
     "No marker or both distinct markers blocks the pipeline the same as a FAIL.\n"
 )
 
+_METHOD = (
+    "## Method\n"
+    "- Start from the task message: it delivers your working directory, a repository map and "
+    "what the previous step produced. Never re-read what it already carries.\n"
+    "- Find code with `grep` for a concrete name or string, then `read` the lines you need "
+    "(offset and limit). Never list the whole tree (no `**/*` glob).\n\n"
+)
+
 _LEGACY_AGENTS_TEMPLATE = (
-    "# AGENTS.md — ${project} · ${role}\n\n"
-    "## Session Startup\n"
-    "_Lean — re-sent every turn._\n"
-    "1. Read ${requiredStartupFile} — startup protocol + your codebase\n"
-    "   path (the runtime requires this after every context reset).\n"
-    f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
-    "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
-    "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
-    "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
-    "   later turn.\n\n"
-    "## Red Lines\n"
+    "# AGENTS.md — ${project} · ${role}\n\n" + _METHOD + "## Red Lines\n"
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
     "- Never push to main/master or delete files without HITL approval.\n"
@@ -459,22 +454,10 @@ _STARTER_SOUL_HEAD = (
     "You belong to one project only. Respect the pod session-key boundary — "
     "no cross-project access.\n\n"
     "## Objective\n${objective}\n\n"
-    "## Working Directory\n${workDir}\n\n"
-    "## Codebase\n${codebaseOrConfigured}\n\n"
 )
 
 _STARTER_AGENTS_TEMPLATE = (
-    "# AGENTS.md — ${project} · ${role}\n\n"
-    "## Session Startup\n"
-    "_Lean — re-sent every turn._\n"
-    "1. Read ${requiredStartupFile} — startup protocol + your working directory\n"
-    "   (the runtime requires this after every context reset).\n"
-    f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
-    "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
-    "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
-    "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
-    "   later turn.\n\n"
-    "## Red Lines\n"
+    "# AGENTS.md — ${project} · ${role}\n\n" + _METHOD + "## Red Lines\n"
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
     "- Never take an irreversible action outside your stated role without HITL approval.\n"
@@ -500,7 +483,6 @@ _WRITER_BODY = (
     "- You draft the pod's primary content deliverable from the material handed to you.\n"
     "- Match the requested tone/format exactly; don't invent facts not in your "
     "source material.\n"
-    "- Signal completion with `<promise>DONE</promise>`.\n"
 )
 
 _CRITIC_BODY = (

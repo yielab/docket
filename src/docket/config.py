@@ -126,6 +126,8 @@ TRACE_RETENTION_S = TRACE_RETENTION_DAYS * 86400
 CONTEXT_BYTES_PER_TOKEN = max(1, int(os.environ.get("CONTEXT_BYTES_PER_TOKEN", "4")))
 # Cap, in characters, on the diff a writing hop hands the next hop (``HandoffArtifact.diff``).
 HANDOFF_DIFF_MAX_CHARS = 8000
+# Cap, in characters, on the repository map a hop message carries (``core/repo_map.py``).
+REPO_MAP_MAX_CHARS = 1600
 # CONTEXT_TOKEN_BUDGET_DEFAULT: the floor `core/identity.py` resolves to when
 # no explicit CONTEXT_TOKEN_BUDGET override is set and the resolved model
 # window is absent/unregistered -- named separately from CONTEXT_TOKEN_BUDGET

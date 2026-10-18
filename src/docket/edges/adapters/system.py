@@ -1445,6 +1445,20 @@ def _read_new_file(path: str, limit: int) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def git_ls_files(cwd: str) -> list[str] | None:
+    """Tracked paths of the repository at *cwd*, repository-relative and sorted; ``None`` when
+    git is missing, *cwd* is not a repository, or the listing fails or times out."""
+    if not git_available():
+        return None
+    try:
+        result = _git_run(cwd, ["ls-files", "-z"], _QUERY_TIMEOUT)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return sorted(path for path in result.stdout.split("\0") if path)
+
+
 def git_untracked(worktree: str) -> list[str]:
     """Paths git reports as untracked (``??``) in *worktree*, sorted; ``[]`` on a missing binary,
     non-repo directory or timeout."""

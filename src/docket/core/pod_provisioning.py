@@ -39,7 +39,9 @@ from docket.edges.adapters import system as _sys
 # v3: built-in/starter AGENTS.md templates no longer instruct a private
 # HEARTBEAT.md write -- it contradicted the live runtime contract (see
 # core/archetypes.py's Red Lines templates).
-POD_TEMPLATE_VERSION = 3
+# v4: SOUL.md names no path, AGENTS.md carries the shared method and no private-file
+# reads, and no template asks for a completion promise.
+POD_TEMPLATE_VERSION = 4
 
 # Per-task git worktrees live under this directory of the Implementer's workspace.
 TASK_WORKTREES_DIRNAME = "tasks"
