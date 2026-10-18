@@ -309,6 +309,7 @@ _IMPLEMENTER_BODY = (
     "## Role — Implementer\n"
     "- You implement the tasks the Lead assigns: read/write/edit the codebase in your "
     "working directory. Read a file before changing it.\n"
+    "- Create or change files with `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things.\n"
     "- Never push to main/master without HITL approval; never delete files "
     "without explicit instruction.\n"
 )
@@ -486,6 +487,7 @@ _WRITER_BODY = (
     "- You draft the pod's primary content deliverable from the material handed to you.\n"
     "- Match the requested tone/format exactly; don't invent facts not in your "
     "source material.\n"
+    "- Create or change files with `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things.\n"
 )
 
 _CRITIC_BODY = (

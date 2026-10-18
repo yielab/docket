@@ -1,7 +1,7 @@
 # Role Archetypes Specification
 
-**Version**: 1.25.0
-**Status**: Implemented. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
+**Version**: 1.26.0
+**Status**: Implemented. **W116-4** tells the roles that write (implementer, writer) to create and change files with `write`/`edit` rather than `bash` — see "Per-role tool sets" requirement 8. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
 takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
 `resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
 `core/dispatch.py`'s `guardrail_block` trace payload carries the tripped policy's `action`
@@ -314,6 +314,11 @@ This specification does NOT cover:
    function runs on every turn's live agent-loop path, which must never crash over a
    hand-edited meta file; the write path (`PodSettings.coerce`) is what refuses a bad value
    before it can ever reach here.
+8. The implementer's and the writer's rendered `SOUL.md`, and the `bash` tool's schema description
+   (`core.tools.builtin_registry()`), **MUST** carry one sentence: create or change files with
+   `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash`
+   to run things. This is guidance, not enforcement: `bash` stays available to both roles and its
+   classification is unchanged.
 
 ### Hop instructions (P26-7)
 
@@ -681,6 +686,14 @@ docket pod validate ./producer.yaml
   that could not pass `docket pod update` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.26.0 (2026-10-18)
+
+- **W116-4: write with `write` and `edit`.** The implementer and writer SOUL bodies and the `bash`
+  tool description carry one sentence preferring `write`/`edit` for file changes and `bash` for
+  running things (measured: an implementer wrote files through bash heredocs four times, three
+  parked for approval). `POD_TEMPLATE_VERSION` 4 to 5, so `docket pod update` reports members
+  stamped 4 as stale.
 
 ### Version 1.25.0 (2026-10-18)
 
