@@ -18,6 +18,7 @@ import pytest
 import docket.config as _cfg
 from docket.core import policy as _policy
 from docket.core import security as _sec
+from docket.core.tools import render_tool_call
 
 SUBJECT = "docket.core.policy"
 
@@ -75,6 +76,53 @@ class TestHighRiskPayment:
         ).action
         # Should not trigger a high-risk gate.
         assert action != "require_approval"
+
+
+# ── block-destructive targets ────────────────────────────────────────────────
+
+
+_HEREDOC = (
+    "python3 - <<'EOF'\nimport os\nopen(p,'w').write(s)\n"
+    + "x = 1\n" * 12
+    + "const k = process.env.KEY\nEOF"
+)
+
+
+def _bd_hit(policies_dir: Path, tool: str, args: dict[str, str]) -> bool:
+    hit = _policy.policy_eval_detail("implementer", "pre_tool_call", render_tool_call(tool, args))
+    return hit.policy_id == "block-destructive"
+
+
+class TestBlockDestructiveTargets:
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "echo k=v > .env",
+            "cat >> config/.env",
+            "tee .env",
+            "sed -i s/a/b/ .env",
+            "cp x ~/.ssh/authorized_keys",
+            "mv key .ssh/id_rsa",
+        ],
+    )
+    def test_bash_write_to_the_path_is_gated(self, policies_dir: Path, command: str) -> None:
+        assert _bd_hit(policies_dir, "bash", {"command": command})
+
+    @pytest.mark.parametrize("tool", ["write", "edit"])
+    @pytest.mark.parametrize("path", [".env", "app/.env", "~/.ssh/authorized_keys"])
+    def test_write_tool_with_the_path_is_gated(
+        self, policies_dir: Path, tool: str, path: str
+    ) -> None:
+        assert _bd_hit(policies_dir, tool, {"path": path, "content": "x"})
+
+    @pytest.mark.parametrize(
+        "command", [_HEREDOC, "grep -r process.env src/", "cat .env", "ls ~/.ssh/"]
+    )
+    def test_two_words_in_one_call_are_not_gated(self, policies_dir: Path, command: str) -> None:
+        assert not _bd_hit(policies_dir, "bash", {"command": command})
+
+    def test_write_tool_content_naming_the_path_is_not_gated(self, policies_dir: Path) -> None:
+        assert not _bd_hit(policies_dir, "write", {"path": "a.py", "content": "load(.env)"})
 
 
 # ── high-risk-deploy ──────────────────────────────────────────────────────────
