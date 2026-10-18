@@ -1,10 +1,10 @@
 # Model Policy Specification
 
-**Version**: 3.3.1
+**Version**: 3.4.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -298,7 +298,10 @@ feasibility spike remains in ROADMAP and Git history.
    environment variable, else a hidden prompt on a terminal; api-keys.spec.md), probes
    `<baseUrl>/models` with it, and — unless `--no-preset` — applies the provider's preset (or, for
    a provider with none, points every role at its first model) and prints which role resolves to
-   what. `--no-preset` writes no role row.
+   what. `--no-preset` writes no role row. The role table is the fleet's, so a preset can move
+   members of every pod: when it moves any, `add` **MUST** print each pod with each moved role's
+   model before and after, and the `--no-preset` command that would have left them alone.
+   `setup model set`, `preset` and `reset` print the same per-pod lines without the hint.
 4. Removed (2026-10-03): there is no `fleet.json` `providers` → catalog migration
    (`migrate_fleet_providers` and `FleetConfig.providers` are deleted); `load_catalog()` reads
    only the built-in and global scopes, and a `providers` block left in `fleet.json` is ignored.
@@ -430,14 +433,14 @@ $ docket setup model
   ...
 
 $ docket setup model set implementer openai/gpt-4.1
-✓ implementer → openai/gpt-4.1
-
-→ Re-resolving policy-following agents...
-  1 agent(s) updated.
+ok implementer -> openai/gpt-4.1
+! Moved 1 agent(s) in 1 pod(s) to the new role models:
+  pod shop: implementer anthropic/claude-sonnet-4-6 -> openai/gpt-4.1
 ```
 
-The count line is printed only when at least one policy-following agent changed;
-`models_policy.reapply_role_policy` returns a count and `core/` never prints per-agent lines.
+The moved lines are printed only when at least one policy-following agent changed;
+`models_policy.reapply_role_policy` returns one `RoleRepoint` (agent, pod, role, before, after)
+per moved agent and `core/` never prints.
 
 ### Switching the whole fleet to a free/local preset
 
@@ -479,6 +482,13 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.4.0 (2026-10-18)
+
+- "Provider catalog" requirement 3: a preset that moves pod members names each pod and role with
+  the model before and after, and `provider add` prints the `--no-preset` command.
+  `reapply_role_policy` returns the moved agents instead of a count. A `provider add` with a
+  preset re-pointed every pod's roles in silence (found by the Fabulada onboarding, K2).
 
 ### Version 3.3.1 (2026-10-17)
 

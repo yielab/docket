@@ -231,7 +231,23 @@ def _select_custom(spec: _prov.ProviderSpec) -> None:
     updates["default"] = model
     _mp.write_registry(updates)
     audit_log("models.preset", f"provider={spec.name} model={model}")
-    _mp.reapply_role_policy()
+    report_repoints(_mp.reapply_role_policy(), provider=spec.name)
+
+
+def report_repoints(moved: list[_mp.RoleRepoint], *, provider: str = "") -> None:
+    """Name every pod and role a role-table change moved, grouped by pod. The role table is the
+    fleet's, so one write can move members of every pod; with *provider*, say how to avoid it."""
+    if not moved:
+        return
+    pods = sorted({m.pod for m in moved})
+    ui.warn(f"Moved {len(moved)} agent(s) in {len(pods)} pod(s) to the new role models:")
+    for pod in pods:
+        parts = [f"{m.role} {m.before or '-'} -> {m.after}" for m in moved if m.pod == pod]
+        _say(f"  pod {pod or '-'}: " + ", ".join(parts))
+    if provider:
+        _say(
+            f"  To register a provider without moving them: docket setup provider add {provider} --no-preset"
+        )
 
 
 def _roles_line() -> str:
@@ -309,7 +325,7 @@ def _register(
         return 0
     chosen = _preset_for(reg.spec)
     if chosen is not None:
-        apply_preset(chosen, quiet=True)
+        apply_preset(chosen, quiet=True, provider=reg.spec.name)
     else:
         _select_custom(reg.spec)
     ui.success(_roles_line())
@@ -567,7 +583,7 @@ def model_set(
     audit_log("models.set", f"role={key} {before}->{validated}")
     ui.success(f"{key} -> {validated}")
     if _mp.is_role(key):
-        _mp.reapply_role_policy()
+        report_repoints(_mp.reapply_role_policy())
     _contract.next_step("docket setup")
 
 
@@ -580,7 +596,7 @@ def _preset_rows() -> list[list[str]]:
     return rows
 
 
-def apply_preset(preset: str, *, quiet: bool = False) -> None:
+def apply_preset(preset: str, *, quiet: bool = False, provider: str = "") -> None:
     """Write a preset's role rows, re-resolve the agents and report the roles that matter."""
     table = _mp.preset_table()
     registered = _prov.load_catalog().get(preset)
@@ -603,7 +619,7 @@ def apply_preset(preset: str, *, quiet: bool = False) -> None:
         f"{r}:{before_roles.get(r, _cfg.DEFAULT_MODEL)}->{after[r]}" for r in _mp.ALL_ROLES
     )
     audit_log("models.preset", f"preset={preset} default:{before_default}->{std} roles:{changes}")
-    _mp.reapply_role_policy()
+    report_repoints(_mp.reapply_role_policy(), provider=provider)
     if quiet:
         return
     ui.success(f"Preset {preset} applied")
@@ -659,6 +675,6 @@ def model_reset(yes: bool = typer.Option(False, "--yes", help="Do not ask")) -> 
         for r in _mp.ALL_ROLES
     )
     audit_log("models.reset", f"default:{before_default}->{after_default} roles:{changes}")
-    _mp.reapply_role_policy()
+    report_repoints(_mp.reapply_role_policy())
     ui.success("Restored the built-in model policy")
     _contract.next_step("docket setup")
