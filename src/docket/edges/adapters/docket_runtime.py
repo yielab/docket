@@ -773,6 +773,7 @@ class DocketDriver:
             totals.input_tokens += record.usage.input_tokens
             totals.output_tokens += record.usage.output_tokens
             totals.cache_read += record.usage.cached_tokens
+            totals.cache_write += record.usage.cache_write_tokens
             totals.turns += record.usage.turns
         return UsageReport(totals=totals, by_day=[])
 

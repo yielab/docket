@@ -2324,8 +2324,11 @@ run is needed to observe this; a later `docket run` — with or without `--resum
 
 ### Version 6.54.0 (2026-10-18)
 
+- A hop's `usage` is `{input, cached, cacheWrite, output}` and a task's `maxTokens` counts
+  `input - cached + output` (ADR 0028 point 2; requirement 8 and the `hop_finished` usage keys
+  reworded with P44-2).
 - **Every writing hop delivers what it produced.** `HandoffArtifact` gains `diff` (first in
-  `DROP_ORDER`, rendered once after the summary); `_hop_diff_probe` is `_hop_diff_probe`
+  `DROP_ORDER`, rendered once after the summary); `_implementer_diff_probe` is renamed `_hop_diff_probe`
   and runs for every role, filling `files_changed` and `diff` (tracked changes plus the content of
   new files, `HANDOFF_DIFF_MAX_CHARS`, with a cut marker), with `diff_ref` and `evidence` still
   Implementer-only; a hop that changed nothing since an earlier hop's diff adds none. Red reason:
