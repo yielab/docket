@@ -37,7 +37,7 @@
 > | Wave | Cards | Depends on |
 > | --- | --- | --- |
 > | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff — **closed 2026-10-18** | — |
-> | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields | 112 merged |
+> | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields — **opened 2026-10-18** | 112 merged |
 > | 114 | P44-7 pod memory store · P44-9 `cache_control` | 113 merged |
 > | 115 | P44-8 memory operator controls · phase close (bench + paid real run) | 114 merged |
 
@@ -153,7 +153,7 @@
 
 ### P44-4 — history inside a step does not grow quadratically
 
-- **Status:** TODO (Wave 113) · **Size:** M · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@wave-113) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: 64 % of counted tokens were old tool results re-sent; the
   bench (P44-1) gives K=1 -53 %, K=2 -39 %.
 - **Goal:** when a request is built, tool results older than the last `K` results become a
@@ -174,7 +174,7 @@
 
 ### P44-6 — the prompt in layers, stable first
 
-- **Status:** TODO (Wave 113) · **Size:** M · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@wave-113) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: roots in the middle of the system prompt, HEARTBEAT's per-task
   block after them, member files contradicting the live contract, `<promise>DONE</promise>` with
   no reader, a `glob **/*` to discover the tree.
@@ -202,7 +202,7 @@
 
 ### P44-10 — measurable without reconstruction
 
-- **Status:** TODO (Wave 113) · **Size:** S · **Model:** Haiku
+- **Status:** IN-PROGRESS (@wave-113) · **Size:** S · **Model:** Haiku
 - **Trigger:** ADR 0028 point 8: the measured table had to be rebuilt by hand from sessions.
 - **Goal:** each `llm_call` trace event carries `request` = bytes and estimated tokens for
   system, tools, tool results, assistant text and user; the task's `byModel` carries `input`,
