@@ -122,3 +122,54 @@ integrator wires at merge: P44-3's output rules as a `--policy` hook in P44-1's 
   evidence shape unchanged for the implementer.
 - Render the diff in `HandoffArtifact.render` after the summary; `_hop_message`'s budget
   compiler sheds it first through `DROP_ORDER` (do not edit `_hop_message`).
+
+## Wave 113 (base: the Wave 112 rollup commit)
+
+Wave 112 shipped: `TokenUsage.counted_tokens`, hop usage `{input, cached, cacheWrite, output}`,
+bounded `glob`/`grep`/`read` (`READ_DEFAULT_LINES` 400 and `READ_DEFAULT_CHARS` 6,000, unpadded
+line numbers, chosen on the bench), `fetch` registered only with an allowlist, `HandoffArtifact.diff`
+for every writing hop, and the bench `scripts/maint/context_replay.py` with policies `baseline` and
+`tool-output` (run `--policy NAME` on `tests/fixtures/context-replay/v1`; the integrator runs it on
+the private copies).
+
+### P44-4 — condensation (Sonnet)
+
+- The single request-building point is `core/agent_loop.py::_TurnState.messages_for_durable`
+  (called from `fit_task_request` and the finalization path). Condense there, over the durable
+  list, never in `core/session.py`'s writers: `session.json` keeps every byte.
+- Keep each tool message and its `tool_call_id` (an endpoint rejects a result whose call is
+  missing); replace only its `content`. A condensed `write`/`edit` argument keeps the arguments
+  JSON valid: replace the large string value, keep the other keys.
+- The notice is a pure function of the message and its matching call (tool name, path or
+  command, line and character counts): the same input always yields the same bytes.
+- The task message (`_TurnState.task_message_index`) and every user message stay whole.
+- Bench: add `condense-k1`, `condense-k2`, `condense-k3` and a composed `phase44` (tool-output then
+  the chosen K) to `POLICIES`; choose K from the numbers and put the table in the
+  `session-history.spec.md` changelog entry.
+
+### P44-6 — prompt layers (Sonnet)
+
+- `core/identity.py::_runtime_startup_contract` stops rendering roots (tool restriction still
+  comes from `ToolContext.roots`; only the prompt text moves). `_RUNTIME_CONTEXT_FILES` loses
+  `HEARTBEAT.md` and `TOOLS.md` (every live turn is a pod hop since the harness was deleted;
+  confirm with `rg -n "run_turn\(" src` before relying on it). MEMORY.md composes only when it holds
+  text beyond its template.
+- The roots and the repository map go in `core/dispatch.py::_hop_message`'s task section, ahead of
+  the prior artifacts and outside their shedding: `Working directory: <root>` plus
+  `core/repo_map.py::render_repo_map(root)` (directories with file counts from a new
+  `edges/adapters/system.py::git_ls_files`, relative, capped by a config constant, skipping
+  `toolbox.SKIPPED_DIRS`).
+- Templates live in `core/archetypes.py` (search `promise>DONE`, `HEARTBEAT`, `memory/`,
+  `codebase`); the MEMORY.md template's seeded `codebase:` path line goes too (absolute path).
+  `POD_TEMPLATE_VERSION` 3 -> 4; prove with a test that `docket pod update` regenerates a v3
+  member and leaves MEMORY.md byte-identical.
+
+### P44-10 — measurement fields (Haiku)
+
+- `core/agent_loop.py::_trace_llm_call` already receives `messages`; add the tool specs it needs
+  and compute `request = {system, tools, toolResults, assistant, user}`, each
+  `{bytes, estTokens}` with `config.CONTEXT_BYTES_PER_TOKEN`. Edit no other function in that file.
+- `core/dispatch.py::_finalize_task` builds `byModel` (search `byModel`): add `cached` and
+  `cacheWrite` from the hop usage P44-2 shipped. Edit no other function in that file.
+- `tokenBudget`: the per-step budget comes from `edges/adapters/docket_runtime.py::_turn_token_budget`
+  and its config default; expose the effective value on the task read routes in `serve.py`.

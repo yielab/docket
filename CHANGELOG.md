@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A replay bench for context and budget work (Phase 44, P44-1, ADR 0028).**
+  `scripts/maint/context_replay.py` reports calls, sent, cached and counted tokens per recorded
+  step under the old and new budget rule, re-projects requests through named policies (an
+  estimate, labelled), and anonymizes recorded steps into shape-preserving fixtures
+  (`tests/fixtures/context-replay/v1`).
 - **An addressable task (Phase 43, P43-1, ADR 0027).** `POST /tasks/<pod>` and `docket task add`
   take `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens` and
   `restrictions`, stored verbatim on the task. A repeated `idempotencyKey` returns the queued task
@@ -73,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The turn budget counts new tokens (P44-2).** Counted = input minus cache reads plus output;
+  a paid final reply that crosses the budget is kept; a model with no registered output bound
+  reserves `DEFAULT_MAX_OUTPUT_TOKENS` (4096) so the prospective check runs; input estimates are
+  scaled by the last measured ratio; a hop's `usage` carries `input`, `cached`, `cacheWrite`,
+  `output` and a task's `maxTokens` uses the same count. The pod's dollar estimate no longer
+  charges cache reads or cache writes twice.
+- **Tool output has a budget (P44-3).** `glob`/`grep` print sorted, root-relative paths and skip
+  vendored directories; `read` returns a numbered window of at most 400 lines and 6,000
+  characters with a remaining-lines footer (window chosen on the replay bench); `glob`, `grep`,
+  `read` and `fetch` share the tool output cap; `fetch` is offered only while
+  `FETCH_ALLOWED_DOMAINS` is set, so a default install no longer lists it.
+- **Every writing hop delivers what it produced (P44-5).** The handoff carries a capped `diff`
+  (tracked changes plus new files' content, `HANDOFF_DIFF_MAX_CHARS`) for every role that changed
+  the tree, so a reviewer or critic no longer re-reads it with tools.
 - **A provider preset names the pods it moves.** The role table is the fleet's, so `docket setup
   provider add` with a preset re-pointed the policy-following members of every pod, other teams
   included, and said only which model each role now resolves to. It now prints each moved pod and

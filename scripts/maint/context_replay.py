@@ -15,8 +15,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
+import tempfile
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,11 +27,51 @@ from typing import Any
 
 from docket import config
 from docket.core import orchestrator, pipeline
+from docket.edges.adapters.toolbox import read_file, text_outcome
 
 Messages = list[dict[str, Any]]
 Policy = Callable[[Messages], Messages]
 
-POLICIES: dict[str, Policy] = {"baseline": lambda messages: messages}
+
+def _relative_listing(content: str, *, sort: bool) -> str:
+    """A recorded glob/grep result with the shared absolute prefix stripped, as the tool prints it."""
+    lines = content.splitlines()
+    paths = [line for line in lines if line.startswith("/")]
+    if len(paths) < 2:
+        return content
+    prefix = os.path.commonpath([line.split(":", 1)[0] for line in paths]).rstrip("/") + "/"
+    rebuilt = [line[len(prefix) :] if line.startswith(prefix) else line for line in lines]
+    return "\n".join(sorted(rebuilt) if sort else rebuilt)
+
+
+def _read_window(content: str) -> str:
+    """A recorded whole-file read re-rendered by the real ``read`` tool's default window."""
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "f").write_text(content, encoding="utf-8")
+        return read_file((Path(tmp),), "f").content
+
+
+def tool_output_policy(messages: Messages) -> Messages:
+    """ADR 0028 point 3 over recorded results: relative sorted listings, read window, one cap."""
+    out = []
+    for message in messages:
+        if message.get("role") != "tool":
+            out.append(message)
+            continue
+        content = str(message.get("content") or "")
+        name = message.get("name")
+        if name in ("glob", "grep"):
+            content = _relative_listing(content, sort=name == "glob")
+        elif name == "read":
+            content = _read_window(content)
+        out.append({**message, "content": text_outcome(content).content})
+    return out
+
+
+POLICIES: dict[str, Policy] = {
+    "baseline": lambda messages: messages,
+    "tool-output": tool_output_policy,
+}
 
 VERDICT_PATTERN = r"^\s*(APPROVE|REJECT|REQUEST-CHANGES|PASS|FAIL)\b"
 _GATE = pipeline.VerdictGate(pattern=VERDICT_PATTERN, pass_values=["approve"])

@@ -43,8 +43,9 @@ MAX_GLOB_RESULTS = 300
 SKIPPED_DIRS = frozenset(
     {".git", "node_modules", ".venv", "dist", "build", "target", "vendor", "__pycache__"}
 )
-# Lines `read` returns when no limit is given (agent-loop requirement 81).
+# The window `read` returns when no limit is given (agent-loop requirement 81).
 READ_DEFAULT_LINES = 400
+READ_DEFAULT_CHARS = 6000
 
 # How often `run_bash`'s cancellable wait loop re-checks the callback and the
 # overall deadline. Short enough that a separate process's cancellation
@@ -122,15 +123,30 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
 
     lines = text.splitlines()
     start = max(0, offset - 1)
-    window = lines[start : start + (limit or READ_DEFAULT_LINES)]
-    body = "\n".join(f"{n:>6}\t{line}" for n, line in enumerate(window, start=start + 1))
-    shown_end = start + len(window)
+    rows = [
+        f"{n}\t{line}"
+        for n, line in enumerate(lines[start : start + (limit or READ_DEFAULT_LINES)], start + 1)
+    ]
+    if not limit:
+        rows = _within_chars(rows, READ_DEFAULT_CHARS)
+    body = "\n".join(rows)
+    shown_end = start + len(rows)
     if shown_end < len(lines):
         body += (
             f"\n\n[lines {start + 1}-{shown_end} of {len(lines)}; "
             f"call read with offset={shown_end + 1} for more]"
         )
     return text_outcome(body)
+
+
+def _within_chars(rows: list[str], budget: int) -> list[str]:
+    """The leading *rows* whose joined length fits *budget*; never fewer than one."""
+    size = 0
+    for count, row in enumerate(rows):
+        size += len(row) + (1 if count else 0)
+        if size > budget and count:
+            return rows[:count]
+    return rows
 
 
 def write_file(roots: tuple[Path, ...], path: str, content: str) -> ToolOutcome:

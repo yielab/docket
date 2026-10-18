@@ -651,10 +651,11 @@ This specification does NOT cover:
     **MUST** be sorted by that printed path. A match with any path component named in
     `toolbox.SKIPPED_DIRS` (`.git`, `node_modules`, `.venv`, `dist`, `build`, `target`, `vendor`,
     `__pycache__`) **MUST** be omitted. `glob`'s most-recently-modified order is retired.
-81. `read` without a `limit` **MUST** return at most `toolbox.READ_DEFAULT_LINES` (400) lines,
-    starting at `offset` (line 1 when absent); an explicit `limit` is honoured as given. Every
-    returned line **MUST** be prefixed with its 1-indexed line number, right aligned to six
-    columns, then a tab. When lines remain after the returned window, the result **MUST** end with
+81. `read` without a `limit` **MUST** return at most `toolbox.READ_DEFAULT_LINES` (400) lines and
+    stop before the numbered window passes `toolbox.READ_DEFAULT_CHARS` (6,000) characters (at
+    least one line is always returned), starting at `offset` (line 1 when absent); an explicit
+    `limit` is honoured as given. Every returned line **MUST** be prefixed with its 1-indexed line
+    number, then a tab. When lines remain after the returned window, the result **MUST** end with
     `[lines F-L of M; call read with offset=L+1 for more]`, where F and L are the first and last
     returned line numbers and M is the file's line count. The numbers are presentation only: text
     copied from the window without them **MUST** match the file for `edit`.
@@ -863,7 +864,11 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
 - Built-in tool output budget (requirements 80-83, ADR 0028 section 3): `glob` and `grep` print
   root-relative, sorted paths and skip vendored and generated directories; `read` without
   `offset`/`limit` returns a numbered window of `READ_DEFAULT_LINES` lines with a remaining-lines
-  footer; `glob`, `grep`, `read` and `fetch` pass through the announced `_truncate`; `fetch` is
+  footer, and stops at `READ_DEFAULT_CHARS` (6,000) characters, with an unpadded line number
+  (chosen on the replay bench: a 400-line window with six-column numbers sent 7 % more on one
+  measured step and 3 % more on another, while 400 lines or 6,000 characters with compact numbers
+  sent 31 % less in total and more on no step); `glob`, `grep`, `read` and `fetch` pass through
+  the announced `_truncate`; `fetch` is
   registered only while `FETCH_ALLOWED_DOMAINS` is non-empty. Requirement 28's built-in set names
   `fetch` as before; it is offered only when an operator has configured an allowlist.
 

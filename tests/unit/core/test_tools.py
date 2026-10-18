@@ -408,13 +408,11 @@ class TestPathContainment:
 class TestBuiltinHandlers:
     def test_read_returns_content(self, workspace: Path) -> None:
         out = toolbox.read_file((workspace,), "notes.md")
-        assert out.ok and out.content.startswith(f"{1:>6}\talpha")
+        assert out.ok and out.content.startswith(f"{1}\talpha")
 
     def test_read_window(self, workspace: Path) -> None:
         out = toolbox.read_file((workspace,), "notes.md", offset=2, limit=1)
-        assert out.content == (
-            f"{2:>6}\tbeta\n\n[lines 2-2 of 3; call read with offset=3 for more]"
-        )
+        assert out.content == (f"{2}\tbeta\n\n[lines 2-2 of 3; call read with offset=3 for more]")
 
     def test_read_outside_the_root_fails_without_reading(self, workspace: Path) -> None:
         out = toolbox.read_file((workspace,), "/etc/passwd")
@@ -548,7 +546,7 @@ class TestBuiltinHandlers:
 
         monkeypatch.setattr(toolbox, "MAX_OUTPUT_CHARS", 1_000)
         out = toolbox.read_file((workspace,), "mid.txt")
-        numbered_length = len(f"{1:>6}\t{body}")
+        numbered_length = len(f"{1}\t{body}")
         assert out.ok and f"[truncated: {numbered_length - 1_000} more characters]" in out.content
 
 
@@ -576,7 +574,7 @@ class TestDispatchChokepoint:
     def test_allowed_call_executes(self, ctx: ToolContext) -> None:
         res = dispatch_tool(_call("read", '{"path": "notes.md"}'), ctx, builtin_registry())
         assert res.ok and res.executed and res.decision == "allow"
-        assert res.content.startswith(f"{1:>6}\talpha")
+        assert res.content.startswith(f"{1}\talpha")
 
     def test_gated_command_is_not_executed(self, ctx: ToolContext) -> None:
         """An `ask` verdict blocks on the real approval store (`_isolate_gates` above pins TOOL_APPROVAL_TIMEOUT to 0), so with nothing ever granting it, it resolves to a fail-closed deny before `dispatch_tool` returns."""

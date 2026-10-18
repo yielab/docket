@@ -336,14 +336,14 @@ class TestCapturedContentReachesTheWire:
         user = next(m for m in second if m["role"] == "user")
         assert "CANARY-TASK" in json.dumps(user)
         tool_part = next(m for m in second if m["role"] == "tool")["parts"][0]
-        assert tool_part["response"].startswith("     1\tCANARY-FILE-")
+        assert tool_part["response"].startswith("1\tCANARY-FILE-")
         assert len(tool_part["response"].split("…[truncated")[0]) == 100
         output = self._attr(chats[-1], "gen_ai.output.messages") or ""
         assert "CANARY-REPLY" in output
         assert self._attr(chats[-1], "gen_ai.system_instructions") is None
         tool_span = next(s for s in spans if s["name"] == "execute_tool read")
         result_text = self._attr(tool_span, "gen_ai.tool.call.result") or ""
-        assert result_text.startswith("     1\tCANARY-FILE-")
+        assert result_text.startswith("1\tCANARY-FILE-")
 
     def test_share_prompts_withholds_the_tool_turn(self) -> None:
         spans, wire = self._run("prompts-agent", None, share=["prompts"])
