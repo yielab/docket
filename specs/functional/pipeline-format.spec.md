@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.17.0
+**Version**: 2.18.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -36,7 +36,7 @@ edge the short form could already express keeps normalizing to the canonical `re
 byte-identical to before; every other `on:` shape that used to be refused as "not available yet"
 now loads. The canonical form itself, and everything this format's executor and CLI surface read
 beyond the new field, is unchanged.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -398,6 +398,9 @@ This specification does NOT cover:
      carries `until`, and `max` alone (without `until`) or `until` on a non-mechanical step **MUST**
      each be a load error naming the step. `until`/`max` **MUST NOT** be combined with an explicit
      `on:` sugar key on the same step.
+   - A step carrying more than one of `verdict`, `verify`, `approval` and `gate` **MUST** be a load
+     error naming the step and the keys (`step 'build': one gate per step (got verify, gate)`),
+     never one gate kept and the rest dropped.
    - A step carrying no sugar key beyond `instructions`/`timeout`/`retries` **MUST** get no `gate`
      at all — the target role's own contract applies, exactly as an `id`/`role` step with no
      `gate` does today.
@@ -677,6 +680,12 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.18.0 (2026-10-18)
+
+- "Short form" item 4: a step with more than one of `verdict`/`verify`/`approval`/`gate` is a load
+  error naming the step and the keys. The first key in that order won and the rest were dropped
+  with no error (found by the 2026-10-17 Fabulada onboarding, K6).
 
 ### Version 2.17.0 (2026-10-13)
 

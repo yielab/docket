@@ -201,3 +201,17 @@ def test_routing_pass_explicitly_satisfies_the_input_step_rule() -> None:
         "    gate: {external: verify}\n    on: {pass: stop, needs_human: ask}\n"
         "  - id: ask\n    input: {from: build}\n    on: {answered: {goto: build, max: 1}}\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("sugar", "named"),
+    [
+        ("    verify: true\n    gate: {external: ./ci.sh}\n", "verify, gate"),
+        ("    verdict: [APPROVE]\n    approval: ship it?\n", "verdict, approval"),
+        ("    verify: make check\n    verdict: [PASS]\n", "verdict, verify"),
+    ],
+    ids=["verify+external", "verdict+approval", "verify+verdict"],
+)
+def test_two_gates_on_one_short_step_are_refused_naming_both(sugar: str, named: str) -> None:
+    errors = _errors("name: p\nsteps:\n  - build: implementer\n" + sugar)
+    assert f"step 'build': one gate per step (got {named})" in errors
