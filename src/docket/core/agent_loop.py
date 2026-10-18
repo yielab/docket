@@ -172,7 +172,13 @@ from docket.core.llm import (
     user,
 )
 from docket.core.runtime_driver import FailureKind, TurnResult
-from docket.core.session import CompactionResult, append_messages, compact_session, load_messages
+from docket.core.session import (
+    CompactionResult,
+    append_messages,
+    compact_session,
+    condense_history,
+    load_messages,
+)
 from docket.core.tools import ToolContext, ToolDenialKind, ToolRegistry, ToolResult, dispatch_tool
 from docket.core.trace import trace_event
 
@@ -1247,7 +1253,10 @@ class _TurnState:
         return None
 
     def messages_for_durable(self, durable: list[ChatMessage]) -> list[ChatMessage]:
-        return [*([system(self.system_prompt)] if self.system_prompt else []), *durable]
+        return [
+            *([system(self.system_prompt)] if self.system_prompt else []),
+            *condense_history(durable),
+        ]
 
     def seed_task_message(self, message: str) -> None:
         """Append the incoming user message and record its durable position."""
