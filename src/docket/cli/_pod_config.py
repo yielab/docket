@@ -114,9 +114,8 @@ def render_review(review: _pod_apply.PlanReview) -> None:
 
 def _render_items(items: tuple[_pod_apply.ApplyItem, ...]) -> None:
     for item in items:
-        ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}")
-        if item.note:
-            ui.console.print(f"      {escape(item.name)}: {escape(item.note)}")
+        note = f" ({item.note})" if item.note else ""
+        ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}{escape(note)}")
 
 
 def render_apply_plan(plan: _pod_apply.ApplyPlan) -> None:

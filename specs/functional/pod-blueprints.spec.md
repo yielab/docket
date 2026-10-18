@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.32.0
+**Version**: 1.33.0
 **Status**: Implemented
 **Last Updated**: 2026-10-18
 
@@ -269,7 +269,10 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    plans and reports as `skip`; a member is only ever added, never replaced or removed; a role,
    policy, pipeline binding, or setting already present with different content plans as `replace`.
    Applying the same directory twice in a row **MUST** plan every item `skip` the second time and
-   write nothing. `--dry-run` **MUST** print the plan and write nothing.
+   write nothing. `--dry-run` **MUST** print the plan and write nothing. A setting that plans
+   `skip` because the pod holds that value by default **MUST** carry the note `already the
+   default`, printed on its plan line (`[skip] setting: approvalMode (already the default)`) and
+   returned as the item's `note`.
 6. A successful `apply` that wrote at least one item **MUST** write exactly one `pod.apply` audit
    entry naming every planned item and its action; an all-`skip` plan **MUST NOT** write a new
    audit entry. Every successful `apply` — an all-`skip` plan included — **MUST** also record this
@@ -628,6 +631,11 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.33.0 (2026-10-18)
+
+- Requirement 5: a setting skipped because it equals the default says so on its plan line and in
+  the item's `note` (the field existed and nothing set it; found by the Fabulada onboarding, K4).
 
 ### Version 1.32.0 (2026-10-18)
 

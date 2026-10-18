@@ -751,7 +751,8 @@ def _plan_settings(
             raise PodApplyError(str(exc)) from exc
         current_value, source = settings_now.value_and_source(key, project)
         if current_value == coerced:
-            items.append(ApplyItem(kind="setting", name=key, action="skip"))
+            note = "already the default" if source == "default" else ""
+            items.append(ApplyItem(kind="setting", name=key, action="skip", note=note))
             continue
         items.append(
             ApplyItem(kind="setting", name=key, action="replace" if source == "set" else "add")

@@ -73,6 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`pod update` says why a setting is skipped.** A `pod.yaml` setting equal to the pod's
+  default planned a bare `[skip]`; the plan line now reads `[skip] setting: approvalMode (already
+  the default)` and `--json` carries it as the item's `note`.
+
 - **A team's `pipelines/` travels with `docket pod update` and `docket pod export`.** A task that
   names `pipeline: <name>` reads `<pod config>/pipelines/<name>.yaml`, but nothing put the file
   there: `update` skipped the directory and `export` dropped it, so every hop ran with the
