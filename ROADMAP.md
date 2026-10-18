@@ -9,10 +9,14 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-18.** Phase 44 (context in layers and a budget that counts new tokens,
-D-64, [ADR 0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md)) is
-**active**: Waves 112-114 closed 2026-10-18; Wave 115 closed (P44-8); the phase close (a real run of the four measured steps) is pending. The gateway honours `cache_control` (verified 2026-10-18). Every phase 0–43 is complete (Phase 43 closed 2026-10-17, D-63, ADR 0027;
-twelve cards over Waves 109-111, measured first; board archived). No item is
+**Last updated: 2026-10-18.** Every phase 0–44 is complete. Phase 44 (context in layers and a
+budget that counts new tokens, D-64,
+[ADR 0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md)) closed
+2026-10-18: ten cards over Waves 112-115 and a paid real rerun; acceptance partly met (no step
+reaches the budget, the critic keeps its verdict; the implementers send 0.77 and 0.80 of before,
+a follow-up with a trigger on `TODO.md`); the rerun's four defects fixed the same day, including
+an operator-declared read-only toolchain grant for the jail; board archived. Phase 43 closed
+2026-10-17 (D-63, ADR 0027; twelve cards over Waves 109-111). No item is
 carried: Wave 108 (no phase, closed 2026-10-13) closed the last carried items of every phase — a
 parked task can be cancelled, host-side git trusts only the recorded git dirs, every jail narrows
 ref writes to the task's branch and gives each launch a private temp dir (the close's live run
@@ -55,7 +59,7 @@ until the project drops its beta warning.
 | 42 | Lights-out profile and external verification gate | D-61 · [0025](docs/adr/0025-lights-out-profile-and-external-gate.md) | 2026-10-13 |
 | — | Harness contract 1.2: `docket exec` runs on the operator's own setup (no phase) | D-62 · [0026](docs/adr/0026-harness-uses-the-operators-setup.md) | 2026-10-13 |
 | 43 | The team runtime behind an external plan of record: addressable tasks, HTTP lifecycle, pods over HTTP, `.docket/teams/`, one door (API 5, `exec` deleted) | D-63 · [0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md) | **complete** 2026-10-17: Wave 109 (the task, P43-1..5) 2026-10-14, Wave 110 (the pod, P43-6..9) and Wave 111 (the daemon and the command, P43-10..12) 2026-10-17; `exec` deleted, API 5, `0.2.0-beta.6` declared |
-| 44 | Context in layers and a budget that counts new tokens: replay bench, new-token budget, bounded tool output, condensed history, delivered handoffs, cache-ordered prompt, governed pod memory | D-64 · [0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md) | **active**: Waves 112 (P44-1, 2, 3, 5), 113 (P44-4, 6, 10) and 114 (P44-7, 9) closed 2026-10-18; Wave 115 planned |
+| 44 | Context in layers and a budget that counts new tokens: replay bench, new-token budget, bounded tool output, condensed history, delivered handoffs, cache-ordered prompt, governed pod memory | D-64 · [0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md) | 2026-10-18 |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).

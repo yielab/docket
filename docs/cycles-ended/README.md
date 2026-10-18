@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (65 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (66 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -118,6 +118,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | ⇢ STATUS AT A GLANCE — every phase, one line each | `roadmap-phases.md` | 54,219 |
 | Tracked decisions (not yet scheduled) | `roadmap-phases.md` | 3,415 |
 | Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19** | `roadmap-phases.md` | 4,538 |
+| ◆ CLOSED — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028) | `todo-waves.md` | 21,773 |
 <!-- archive-index:end -->
 
 ## Handoffs
