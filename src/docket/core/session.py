@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
+import json
 import os
 from collections.abc import Callable, Sequence
 from contextvars import ContextVar
@@ -32,6 +33,7 @@ from docket.core.runtime_driver import FailureKind, TurnResult
 from docket.edges import store as _store
 
 __all__ = [
+    "HISTORY_KEEP_FULL_RESULTS",
     "CompactionPlan",
     "CompactionResult",
     "MeasuredUsage",
@@ -41,6 +43,7 @@ __all__ = [
     "StoredToolCall",
     "append_messages",
     "compact_session",
+    "condense_history",
     "find_orphaned_tool_messages",
     "find_unanswered_tool_calls",
     "group_atomic_units",
@@ -55,6 +58,9 @@ __all__ = [
 #: because this module must not depend on `core/memory.py` or `core/dispatch.py`
 #: for a plain structural type -- see the module docstring's fail-closed section.
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
+
+#: Tool results newer than this many stay whole in a built request.
+HISTORY_KEEP_FULL_RESULTS = 2
 
 _SESSION_FILENAME = "session.json"
 _COMPACTED_SUMMARY_PREFIX = "[compacted summary of "
@@ -225,6 +231,105 @@ def append_messages(
 
     result = _store.read_modify_write(path, _mutate)
     return SessionRecord.model_validate(result)
+
+
+# ── request projection ────────────────────────────────────────────────────────
+
+_ERROR_PREFIXES = ("ERROR:", "REFUSED [", "AWAITING APPROVAL:")
+_ERROR_KEEP_CHARS = 400
+_TARGET_CHARS = 80
+_BODY_ARGUMENTS = {
+    "write": {"content": "wrote"},
+    "edit": {"new_string": "wrote", "old_string": "replaced"},
+}
+
+
+def _call_arguments(call: ToolCall) -> dict[str, Any] | None:
+    try:
+        decoded = json.loads(call.arguments)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def _call_target(args: dict[str, Any] | None) -> str:
+    """The path, command, pattern or url a call named, on one bounded line."""
+    for key in ("path", "file_path", "command", "pattern", "url", "query"):
+        value = (args or {}).get(key)
+        if isinstance(value, str) and value.strip():
+            line = value.strip().splitlines()[0]
+            return line if len(line) <= _TARGET_CHARS else line[: _TARGET_CHARS - 3] + "..."
+    return ""
+
+
+def _result_notice(call: ToolCall | None, message: ChatMessage) -> str:
+    name = call.name if call else message.name or "tool"
+    target = _call_target(_call_arguments(call) if call else None)
+    lines = message.content.count("\n") + 1 if message.content else 0
+    head = f"{name} {target}" if target else name
+    return (
+        f"[{head}: {lines} lines, {len(message.content):,} characters, omitted; "
+        f"call {name} again if needed]"
+    )
+
+
+def _condense_result(call: ToolCall | None, message: ChatMessage) -> ChatMessage:
+    content = message.content
+    if content.startswith(_ERROR_PREFIXES):
+        if len(content) <= _ERROR_KEEP_CHARS:
+            return message
+        rest = len(content) - _ERROR_KEEP_CHARS
+        content = f"{content[:_ERROR_KEEP_CHARS]}\n[{rest:,} more characters omitted]"
+        return ChatMessage(message.role, content, [], message.tool_call_id, message.name)
+    notice = _result_notice(call, message)
+    if len(notice) >= len(content):
+        return message
+    return ChatMessage(message.role, notice, [], message.tool_call_id, message.name)
+
+
+def _condense_call(call: ToolCall) -> ToolCall:
+    """Replace a large ``write``/``edit`` body with its size, keeping the arguments valid JSON."""
+    fields = _BODY_ARGUMENTS.get(call.name)
+    args = _call_arguments(call) if fields else None
+    if not fields or args is None:
+        return call
+    path = args.get("path") if isinstance(args.get("path"), str) else ""
+    changed = False
+    for key, verb in fields.items():
+        value = args.get(key)
+        if not isinstance(value, str):
+            continue
+        notice = (
+            f"[{verb} {path}: {len(value):,} characters]"
+            if path
+            else f"[{verb}: {len(value):,} characters]"
+        )
+        if len(notice) < len(value):
+            args[key], changed = notice, True
+    if not changed:
+        return call
+    return ToolCall(call.id, call.name, json.dumps(args, ensure_ascii=False, separators=(",", ":")))
+
+
+def condense_history(
+    messages: Sequence[ChatMessage], keep: int = HISTORY_KEEP_FULL_RESULTS
+) -> list[ChatMessage]:
+    """The request projection of *messages*: tool results older than the last *keep* become
+    one-line notices and their large ``write``/``edit`` arguments become counts. Pure and
+    deterministic; the stored history is never changed."""
+    answered = [m.tool_call_id for m in messages if m.role == "tool"]
+    old = set(answered[: max(0, len(answered) - max(1, keep))])
+    calls = {c.id: c for m in messages for c in m.tool_calls}
+    out: list[ChatMessage] = []
+    for m in messages:
+        if m.role == "tool" and m.tool_call_id in old:
+            out.append(_condense_result(calls.get(m.tool_call_id), m))
+        elif m.role == "assistant" and any(c.id in old for c in m.tool_calls):
+            condensed = [_condense_call(c) if c.id in old else c for c in m.tool_calls]
+            out.append(ChatMessage(m.role, m.content, condensed, m.tool_call_id, m.name))
+        else:
+            out.append(m)
+    return out
 
 
 # ── atomic grouping ───────────────────────────────────────────────────────────
