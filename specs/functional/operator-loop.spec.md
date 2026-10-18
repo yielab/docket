@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.9.0
+**Version**: 1.9.1
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-18
 
@@ -407,7 +407,8 @@ right here; any other target (or none) reopens it `pending`, carrying a syntheti
 `route_counts` rebuilt from that same persisted field exactly as any other routed hop's.
 `core.answers.sweep_expired_questions`, run from every `serve --dispatch` sweep, moves an
 unanswered `waiting_input` task past its question's `expiresAt` to `blocked`/
-`blockedReason: "input_expired"` -- never `failed`. Full mechanics: pod-dispatch.spec.md,
+`blockedReason: "input_expired"` -- never `failed`. A question parked without its own
+`expiresAt` (a consultation) carries now plus the pod's `inputExpiryHours`. Full mechanics: pod-dispatch.spec.md,
 "Operator input steps and answers". An `input` step whose `from:` hop carries a Lead intake
 brief with its own `questions[]` asks those specific questions instead of the generic single
 free-text `answer` property (area 3, "The Lead's intake"); `answer_task` and this area's own
@@ -806,6 +807,11 @@ Each JSONL line is a JSON object with these fields:
   `GET /pods/<p>/corrections?since=` serves it (`operator-api.spec.md`).
 
 ## Changelog
+
+### Version 1.9.1 (2026-10-18)
+
+- Area 7: a parked consultation expires after the pod's `inputExpiryHours` (it parked with
+  `expiresAt: null` and waited forever); a step's `expiresHours` still wins.
 
 ### Version 1.9.0 (2026-10-18)
 
