@@ -34,10 +34,18 @@
 > P44-4, P44-6 and P44-9. `read`'s window was cut to 6,000 characters with unpadded numbers at
 > integration because the card's 400-line window sent more on two steps.
 >
+> **Wave 113 closed 2026-10-18.** Bench on the private copies with the composed `phase44`
+> policy (tool output + K=2 condensation; estimates): sent 0.25 / 0.49 / 0.63 / 0.37 of today,
+> counted under the new rule 11,584 / 12,502 / 64,979 / 12,147, so no step reaches the budget.
+> The critic cannot send under half on a replay (its system and tool floor repeats on all 11
+> calls, and the replay keeps its nine recorded re-reads that P44-5's delivered diff removes); the
+> real run at the phase close is the measure. Integration moved the request measurement into the
+> adapter (P44-10 had mirrored the wire encoders in core) and dropped a stale checkout note.
+>
 > | Wave | Cards | Depends on |
 > | --- | --- | --- |
 > | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff — **closed 2026-10-18** | — |
-> | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields — **opened 2026-10-18** | 112 merged |
+> | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields — **closed 2026-10-18** | 112 merged |
 > | 114 | P44-7 pod memory store · P44-9 `cache_control` | 113 merged |
 > | 115 | P44-8 memory operator controls · phase close (bench + paid real run) | 114 merged |
 
@@ -153,7 +161,7 @@
 
 ### P44-4 — history inside a step does not grow quadratically
 
-- **Status:** IN-PROGRESS (@wave-113) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-18 (`6d42237d`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: 64 % of counted tokens were old tool results re-sent; the
   bench (P44-1) gives K=1 -53 %, K=2 -39 %.
 - **Goal:** when a request is built, tool results older than the last `K` results become a
@@ -174,7 +182,7 @@
 
 ### P44-6 — the prompt in layers, stable first
 
-- **Status:** IN-PROGRESS (@wave-113) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-18 (`323e467a`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: roots in the middle of the system prompt, HEARTBEAT's per-task
   block after them, member files contradicting the live contract, `<promise>DONE</promise>` with
   no reader, a `glob **/*` to discover the tree.
@@ -202,7 +210,7 @@
 
 ### P44-10 — measurable without reconstruction
 
-- **Status:** IN-PROGRESS (@wave-113) · **Size:** S · **Model:** Haiku
+- **Status:** DONE 2026-10-18 (`b2677337`) · **Size:** S · **Model:** Haiku
 - **Trigger:** ADR 0028 point 8: the measured table had to be rebuilt by hand from sessions.
 - **Goal:** each `llm_call` trace event carries `request` = bytes and estimated tokens for
   system, tools, tool results, assistant text and user; the task's `byModel` carries `input`,
@@ -270,6 +278,13 @@
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phase 43 (not cards; triage when a trigger fires)
 
+- **Found in Wave 113 (Phase 44).** `_resolve_hop_instructions` still opens "You are the
+  Implementer..." (SOUL says it); recipe roles using `${codebaseOrConfigured}` (secure-build
+  security-vetter) still render a path; `cli/_agents._create_workspace` (standalone agents)
+  still writes HEARTBEAT/promise text; `repo_map.SKIPPED_DIRS` mirrors `toolbox.SKIPPED_DIRS`
+  (pinned by an equality test); a condensation notice carries the call's full path; the task's
+  top-level `usage` lacks `cached`/`cacheWrite` (only `byModel` has them); pod read routes do
+  not carry `tokenBudget`.
 - **Found in Wave 112 (Phase 44).** The prospective budget check compares the whole calibrated
   input estimate plus reserve against the counted budget, so a heavily cached step is refused
   early; discount by the previous call's cache reads if a real run is refused with room left.

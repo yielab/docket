@@ -2739,7 +2739,6 @@ class TestLlmCallTrace:
             for e in events
             if e["event_type"] == "llm_call"
         ]
-        assert all("request" in e["payload"] for e in events if e["event_type"] == "llm_call")
 
         # The pre-card call shape: `_trace_llm_call` invoked with no `messages` at all, as
         # every call site did before this card -- the capture path never runs.

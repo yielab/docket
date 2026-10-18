@@ -250,16 +250,14 @@ class TestPipeline:
         assert "checkout" not in lead_message
         assert lead_env is None
         impl_message, impl_env = by_agent["demo-implementer"]
-        assert f"Your working checkout for this task: `{worktree}`" in impl_message
+        assert f"Working directory: {worktree}" in impl_message
+        assert "origin codebase" not in impl_message
         assert impl_env is not None
         assert impl_env[_rd.PIPELINE_WORKTREE_ENV] == str(worktree)
         downstream = [call for call in calls if call[0].endswith(("-reviewer", "-tester"))]
         assert len(downstream) == 2
         for _agent_id, message, env in downstream:
-            assert (
-                f"Effective implementation checkout for this downstream hop: `{worktree}`"
-                in message
-            )
+            assert f"Working directory: {worktree}" in message
             assert (
                 "one distinct recognized verdict marker at the start of a complete line" in message
             )

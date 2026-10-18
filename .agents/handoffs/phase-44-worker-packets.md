@@ -173,3 +173,52 @@ the private copies).
   `cacheWrite` from the hop usage P44-2 shipped. Edit no other function in that file.
 - `tokenBudget`: the per-step budget comes from `edges/adapters/docket_runtime.py::_turn_token_budget`
   and its config default; expose the effective value on the task read routes in `serve.py`.
+
+## Wave 114 (base: the Wave 113 rollup commit)
+
+Wave 113 shipped: `core/session.py::condense_history` (K=2, request-only, wired in
+`_TurnState.messages_for_durable`), the layered prompt (`core/identity.py`: SOUL, INSTRUCTIONS,
+member AGENTS, contract without roots, repo text, skills, MEMORY last and only when
+`memory_has_content`; `_RUNTIME_CONTEXT_FILES = (MEMORY_FILE,)`), `core/repo_map.py` and the task
+block in `_hop_message`, `POD_TEMPLATE_VERSION` 4, and `ChatResponse.request_bytes` measured by
+`edges/adapters/llm.py::request_part_bytes`.
+
+### P44-7 — pod memory store (Sonnet)
+
+- Storage: `config.PODS_DIR / <pod> / "memory.json"` (add `config.pod_memory_path`), written only
+  through `edges/store.py` (atomic, filelock, 0600). Shape: `{"entries": [...]}`, each entry
+  `{id, kind, path|command, note, status: accepted|pending|refused, reason, provenance: {task,
+  date, commit}}`; cap by count (config constant), oldest accepted dropped first.
+- The hop's memory section: a trailing block the step result may end with (pick one fixed
+  marker, e.g. a `## Memory` heading followed by `- generated: <path> -- <note>` lines; one line
+  per entry, closed kinds only). Document the exact grammar in `workspace-structure.spec.md` and
+  in the shared method block of the member templates (one line; P44-6 owns those templates and
+  is merged, so you may edit that block only).
+- Verification: `generated` -> the path exists at the task's commit (`git cat-file -e
+  <commit>:<path>` through a new `edges/adapters/system.py` helper); `command` -> an exit status
+  for that command in the task's trace (`process_exited`/`command_step` events; locate with rg).
+  `pitfall`/`convention` -> `pending`. A hop whose trace has any `fetch` tool call -> every entry
+  `pending`. Imperative free text (a note starting with a verb in the imperative, or containing
+  "ignore", "always", "never run", URLs) -> `refused` with a reason; keep this rule small and
+  explicit, and screen each note with the same pre-input screen the task intake uses (locate
+  `_enqueue_pre_input_gate` in `core/dispatch.py` and reuse its screening call, do not copy it).
+- Merge point: one call from `core/dispatch.py::_finalize_task` (nothing else in that file).
+- Render: `core/identity.py` composes accepted entries as the last system section, behind the
+  same untrusted frame as repository instructions (`REPO_INSTRUCTIONS_FRAME`-style constant of
+  its own), capped (config constant); an entry whose path is gone from the hop's root is omitted.
+- Every change writes a `memory_update` trace event (add it to `EVENT_TYPES`) and an audit entry.
+- Delete the per-member daily-log seeding and the pod-task distillation that nothing feeds
+  (`core/memory.py`, its callers and tests; D-57), keeping `pod reset`'s behaviour coherent and
+  stated in the spec.
+
+### P44-9 — `cache_control` for Anthropic models (Sonnet)
+
+- Anthropic model = the endpoint's model id, after any `<vendor>/` prefix, starts with `claude`
+  (covers the `anthropic` provider and `anthropic/...` on a gateway). No catalog field.
+- In `edges/adapters/llm.py::build_payload` only: for such a model, the system message's content
+  becomes one text part `{"type": "text", "text": ..., "cache_control": {"type": "ephemeral"}}`
+  and the last message's content likewise (a tool message too). Every other model's payload is
+  byte-identical to today (pin with a test over a recorded payload).
+- `request_part_bytes` must still count the encoded parts.
+- The real-gateway check is the integrator's, after merge, with maintainer approval: two calls
+  with the same prefix, the second must report `cached_tokens > 0`.
