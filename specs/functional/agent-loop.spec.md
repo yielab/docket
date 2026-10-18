@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.40.0
+**Version**: 1.41.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -683,7 +683,7 @@ This specification does NOT cover:
     task request, preflight and finalization request, so the fit check measures what is sent.
     The projection **MUST NOT** be written back: `session.json` and the compaction candidates are
     built from the stored messages, and the newest `HISTORY_KEEP_FULL_RESULTS` tool results of
-    the request stay whole.
+    the request stay whole, with older ones while they fit `HISTORY_FULL_RESULTS_CHARS`.
 
 ## Interface Contracts
 
@@ -876,6 +876,11 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.41.0 (2026-10-18)
+
+- Requirement 84 names the character budget the projection keeps whole beside the newest
+  results (`session-history.spec.md` 1.7.0).
 
 ### Version 1.40.0 (2026-10-18)
 

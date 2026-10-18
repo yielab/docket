@@ -795,7 +795,7 @@ class TestCondenseHistory:
     def test_keeps_k_whole_results_and_notices_for_the_rest(self) -> None:
         """Six read results with K=2 leave two whole and four one-line notices."""
         messages = _history(6)
-        out = _sess.condense_history(messages, keep=2)
+        out = _sess.condense_history(messages, keep=2, budget=0)
         results = [m for m in out if m.role == "tool"]
         whole = [m for m in results if m.content.count("\n") > 5]
         notices = [m for m in results if m.content.startswith("[read src/f")]
@@ -810,15 +810,15 @@ class TestCondenseHistory:
         """The projection returns new messages; user messages and the input list stay as given."""
         messages = _history(5)
         before = list(messages)
-        out = _sess.condense_history(messages, keep=1)
+        out = _sess.condense_history(messages, keep=1, budget=0)
         assert messages == before
         assert out[0] == user("the task")
 
     def test_is_deterministic_and_prefix_stable_between_requests(self) -> None:
         """Two consecutive requests agree byte for byte up to the newly condensed message."""
-        first = _sess.condense_history(_history(5), keep=2)
-        second = _sess.condense_history(_history(6), keep=2)
-        assert _sess.condense_history(_history(6), keep=2) == second
+        first = _sess.condense_history(_history(5), keep=2, budget=0)
+        second = _sess.condense_history(_history(6), keep=2, budget=0)
+        assert _sess.condense_history(_history(6), keep=2, budget=0) == second
         shared = next(i for i, (a, b) in enumerate(zip(first, second, strict=False)) if a != b)
         assert first[:shared] == second[:shared]
         assert second[shared].role == "tool"
@@ -827,7 +827,7 @@ class TestCondenseHistory:
     def test_a_short_result_is_left_alone(self) -> None:
         """A result no longer than its notice is not rewritten."""
         messages = [user("t"), *_read_exchange(0, "ok"), *_read_exchange(1), *_read_exchange(2)]
-        out = _sess.condense_history(messages, keep=1)
+        out = _sess.condense_history(messages, keep=1, budget=0)
         assert out[2].content == "ok"
         assert out[4].content.startswith("[read src/f1.py")
 
@@ -841,7 +841,7 @@ class TestCondenseHistory:
             *_read_exchange(1, long),
             *_read_exchange(2),
         ]
-        out = _sess.condense_history(messages, keep=1)
+        out = _sess.condense_history(messages, keep=1, budget=0)
         assert out[2].content == short
         assert out[4].content.startswith("ERROR: xxx")
         assert len(out[4].content) < 600
@@ -859,13 +859,13 @@ class TestCondenseHistory:
             *_read_exchange(1),
             *_read_exchange(2),
         ]
-        out = _sess.condense_history(messages, keep=2)
+        out = _sess.condense_history(messages, keep=2, budget=0)
         import json
 
         sent = json.loads(out[1].tool_calls[0].arguments)
         assert sent == {"path": "content/x.md", "content": "[wrote content/x.md: 5,000 characters]"}
         assert out[1].tool_calls[0].id == "w1"
-        assert _sess.condense_history(messages, keep=3)[1] == messages[1]
+        assert _sess.condense_history(messages, keep=3, budget=0)[1] == messages[1]
 
     def test_unparseable_arguments_are_left_untouched(self) -> None:
         """Arguments that are not a JSON object are never rewritten."""
@@ -876,4 +876,29 @@ class TestCondenseHistory:
             tool_result(call, "r" * 900),
             *_read_exchange(1),
         ]
-        assert _sess.condense_history(messages, keep=1)[1] == messages[1]
+        assert _sess.condense_history(messages, keep=1, budget=0)[1] == messages[1]
+
+    def test_small_results_stay_whole_within_the_budget(self) -> None:
+        """Results that fit the character budget together are never condensed, whatever K is."""
+        messages = _history(6)
+        out = _sess.condense_history(messages, keep=1, budget=10_000)
+        assert out == messages
+
+    def test_the_budget_condenses_from_the_first_result_that_does_not_fit(self) -> None:
+        """Newest first, results stay whole while they fit; that one and every older one go."""
+        messages = _history(6)
+        size = len(messages[-1].content)
+        out = _sess.condense_history(messages, keep=1, budget=3 * size)
+        results = [m for m in out if m.role == "tool"]
+        assert [m.content.startswith("[read src/f") for m in results] == [True] * 3 + [False] * 3
+
+    def test_a_condensed_result_stays_condensed_as_results_arrive(self) -> None:
+        """Under the budget a result only moves from whole to notice, so the prefix stays stable."""
+        size = len(_history(1)[-1].content)
+        seen: set[str] = set()
+        for count in range(1, 9):
+            out = _sess.condense_history(_history(count), keep=2, budget=3 * size)
+            condensed = {m.tool_call_id for m in out if m.role == "tool" and m.content[0] == "["}
+            assert seen <= condensed
+            seen = condensed
+        assert seen

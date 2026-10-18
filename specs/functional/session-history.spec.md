@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
 compactor before each task-completion backend call. Wave 20 card W20-C4 gives every pod-dispatch
@@ -156,12 +156,15 @@ This specification does NOT cover:
 
 ### Request projection
 
-29. `condense_history(messages, keep=HISTORY_KEEP_FULL_RESULTS)` **MUST** be a pure function: the
+29. `condense_history(messages, keep=HISTORY_KEEP_FULL_RESULTS, budget=HISTORY_FULL_RESULTS_CHARS)`
+    **MUST** be a pure function: the
     same messages always yield the same bytes, the input list and its messages are never changed,
     and nothing is read from or written to disk. It is applied to the request only; the stored
     history keeps every byte (`core/agent_loop.py::_TurnState.messages_for_durable` is its one
     live caller).
-30. Of the answered `tool` messages, all but the last `keep` (at least 1) **MUST** have their
+30. The last `keep` (at least 1) answered `tool` messages stay whole; older ones stay whole too,
+    newest first, while the characters of all whole results fit in `budget` (6,000, one default
+    `read` window). From the first that does not fit, it and every older one **MUST** have their
     `content` replaced by `[<tool> <path|command|pattern|url>: N lines, M characters, omitted;
     call <tool> again if needed]`, built from the matching call, unless the notice is not shorter
     than the content. Each message keeps its role, `tool_call_id` and `name`. A result beginning
@@ -191,8 +194,10 @@ def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage
 
 # request projection (pure; requirements 29-31)
 HISTORY_KEEP_FULL_RESULTS = 2
+HISTORY_FULL_RESULTS_CHARS = 6_000
 def condense_history(
     messages: Sequence[ChatMessage], keep: int = HISTORY_KEEP_FULL_RESULTS,
+    budget: int = HISTORY_FULL_RESULTS_CHARS,
 ) -> list[ChatMessage]: ...
 def find_orphaned_tool_messages(messages: Sequence[ChatMessage]) -> list[int]: ...
 def find_unanswered_tool_calls(messages: Sequence[ChatMessage]) -> list[str]: ...
@@ -357,6 +362,20 @@ result = sess.compact_session(
 - `condense_history` **MUST NOT** change what `load_messages` returns; it shapes a request only.
 
 ## Changelog
+
+### Version 1.7.0 (2026-10-18)
+
+- Condensation counts characters as well as results (requirement 30). Older results stay whole
+  while all whole results fit in `HISTORY_FULL_RESULTS_CHARS` (6,000); from the first that does
+  not fit, it and every older one become notices, so a result only ever moves from whole to
+  notice and the request prefix stays stable. Found by the Phase 44 real rerun: with K=2 alone,
+  a model making one call per round lost a 1,099-character README two rounds after reading it,
+  re-read it and a 2,362-character script in a loop (16 calls, 44,031 input tokens, nothing
+  written) until the no-progress stop ended the step. Replay bench, policy `phase44`, sent as a
+  fraction of baseline (critic / implementer-a / implementer-b / researcher): 0.68 / 0.25 /
+  0.50 / 0.45 at 6,000, against 0.63 / 0.25 / 0.49 / 0.37 with the count alone. The bench
+  replays the recorded calls, so it shows the cost of keeping more and never the re-reads it
+  saves.
 
 ### Version 1.6.0 (2026-10-18)
 
