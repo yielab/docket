@@ -3866,16 +3866,14 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
         for t in tasks:
             if t.get("id") == task_id:
                 _apply_result(t, res)
-                usage: dict[str, Any] = {"input": 0, "output": 0, "byModel": {}}
+                keys = ("input", "cached", "cacheWrite", "output")
+                usage: dict[str, Any] = {**dict.fromkeys(keys, 0), "byModel": {}}
                 for h in res.hops:
-                    bucket = usage["byModel"].setdefault(
-                        h.model, dict.fromkeys(("input", "cached", "cacheWrite", "output"), 0)
-                    )
-                    for key in bucket:
+                    bucket = usage["byModel"].setdefault(h.model, dict.fromkeys(keys, 0))
+                    for key in keys:
                         n = int((h.usage or {}).get(key, 0) or 0)
                         bucket[key] += n
-                        if key in ("input", "output"):
-                            usage[key] += n
+                        usage[key] += n
                 t["usage"] = usage
                 return {"tasks": tasks}
         return None

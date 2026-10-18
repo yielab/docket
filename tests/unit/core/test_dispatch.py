@@ -1556,6 +1556,8 @@ class TestHopEvents:
         ]
         assert stored["usage"] == {
             "input": 14,
+            "cached": 0,
+            "cacheWrite": 0,
             "output": 6,
             "byModel": {
                 "local/served-model": {"input": 14, "cached": 0, "cacheWrite": 0, "output": 6}
@@ -1565,7 +1567,7 @@ class TestHopEvents:
     def test_by_model_sums_cache_reads_and_writes_per_model(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """byModel sums cached and cacheWrite per model; top-level keys stay input and output."""
+        """The task's usage and each byModel entry sum input, cached, cacheWrite and output."""
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -1599,6 +1601,8 @@ class TestHopEvents:
         (stored,) = [t for t in raw["tasks"] if t["id"] == task_id]
         assert stored["usage"] == {
             "input": 150,
+            "cached": 70,
+            "cacheWrite": 5,
             "output": 10,
             "byModel": {"local/x": {"input": 150, "cached": 70, "cacheWrite": 5, "output": 10}},
         }
