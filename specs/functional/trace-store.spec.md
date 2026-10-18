@@ -1,13 +1,13 @@
 # Trace Store Specification
 
-**Version**: 1.8.1
+**Version**: 1.9.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
 `core/security.py`'s guardrail checks. Before v1.0.0
 the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -156,7 +156,8 @@ This specification does NOT cover:
     enabled exporter has been granted (`core.telemetry.capture_classes()`, ADR 0015). A call
     made with no messages, or with an empty grant, **MUST** produce a payload carrying none of
     these keys, with the same keys and the same insertion order a payload built before this
-    capability existed would have.
+    capability existed would have. Requirement 28's `request` key is not one of these keys: it is
+    written on every call that supplies messages, whatever the grant.
 22. `outputMessages` **MUST** appear only when `"completions"` is granted, and **MUST** render
     the reply message as one entry: a `text` part for its text (when non-empty) and one
     `tool_call` part per requested tool call, each carrying `id`, `name` and `arguments`.
@@ -183,6 +184,21 @@ This specification does NOT cover:
     cut to the same 4,000-character bound — only when `"toolResults"` is granted; with no such
     grant its payload **MUST** carry no `text` key. (Found by the live privacy proof: the
     projection's `gen_ai.tool.call.result` read a `text` key that the live loop never wrote.)
+
+### Request breakdown
+
+28. An `llm_call` record **MUST** carry `request` whenever its caller supplies the exchange's
+    request messages (both live call sites do). `request` **MUST** hold exactly the keys
+    `system`, `tools`, `toolResults`, `assistant` and `user`, each an object `{"bytes": int,
+    "estTokens": int}`. `bytes` is the UTF-8 length of the JSON encoding, as the transport
+    serialises it, of each object in that part: `system` counts the messages with role `system`,
+    `toolResults` the role `tool` messages, `assistant` the `assistant` messages, `user` the
+    `user` messages, and `tools` the advertised tool definitions. The request envelope (the model,
+    stream, sampling and tool-choice keys, and the array brackets and separators) is not counted,
+    so the five `bytes` values sum to the bytes of the messages and tools as sent. `estTokens` is
+    `bytes // config.CONTEXT_BYTES_PER_TOKEN`: an estimate, never a measured count, which stays
+    `inputTokens`. A compaction call advertises no tools, so its `tools` part is `{"bytes": 0,
+    "estTokens": 0}`. A call made without messages carries no `request` key.
 
 ## Process lifecycle events
 
@@ -328,6 +344,12 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.9.0 (2026-10-18)
+
+- Requirement 28 (P44-10, ADR 0028 point 8): an `llm_call` record carries `request`, the request's
+  size by part (`system`, `tools`, `toolResults`, `assistant`, `user`) in bytes and estimated
+  tokens. Additive; no existing `llm_call` key changes.
 
 ### Version 1.8.1 (2026-10-17)
 
