@@ -32,6 +32,11 @@ ROOTS: tuple[str, ...] = (
     "specs",
     "README.md",
     "CONTRIBUTING.md",
+    "COMPATIBILITY.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "install.sh",
+    "uninstall.sh",
 )
 # Files inside ROOTS whose owners have not swept them yet.
 PENDING: tuple[str, ...] = ()

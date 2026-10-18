@@ -28,8 +28,8 @@ records what docket is verified against and how breaks are tracked. See the READ
 - **MCP.** `docket setup mcp add` points at any MCP stdio server; its tools are gated
   through the exact same chokepoint as a built-in, namespaced `mcp__<server>__<tool>`.
   Requires the optional `[mcp]` extra (`pip install 'docket[mcp]'` or `uv sync --extra mcp`);
-  without it, `docket mcp` commands print an actionable missing-SDK message instead of a bare
-  import error.
+  without it, `docket setup mcp` and `docket start --mcp` print an actionable missing-SDK
+  message instead of a bare import error.
 
 ## Embeddable runtime adapters
 

@@ -126,11 +126,11 @@ if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
 fi
 
 echo "Next steps:"
-echo "  docket init      — run inside a codebase: sets up docket and its first pod"
-echo "  docket add       — add an agent to the current pod"
-echo "  docket doctor    — verify system health"
+echo "  docket setup     — connect a model endpoint and check this machine"
+echo "  docket init      — run inside a codebase: creates its team, a pod of agents"
+echo "  docket pod add   — add members of a role to the current pod"
 echo ""
 echo "Optional — shell completions:"
-echo "  bash:  echo 'eval \"\$(docket completions bash)\"' >> ~/.bashrc"
-echo "  zsh:   echo 'eval \"\$(docket completions zsh)\"' >> ~/.zshrc"
+echo "  bash:  echo 'eval \"\$(docket setup shell bash)\"' >> ~/.bashrc"
+echo "  zsh:   echo 'eval \"\$(docket setup shell zsh)\"' >> ~/.zshrc"
 echo ""
