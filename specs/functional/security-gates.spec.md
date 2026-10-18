@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.60.0
+**Version**: 0.61.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -86,13 +86,17 @@ are owned here, not there.
    a new command there (`core/security.py::_logical_lines`); a newline inside quotes stays text
    and a backslash-newline is a continuation. `echo` is
    redirect-sensitive (`core/security.py`'s `_REDIRECT_SENSITIVE_BINS`): a bare `echo hi` is
-   allowed, but `echo ... >`/`>>`/`&>` still asks by the same "not on the curated allowlist" path,
+   allowed, but `echo ... >`/`>>`/`&>` still asks, naming the redirect (`output redirect to <target>
+   is outside the workspace`, or `output redirect after cd cannot be placed`) and never the binary,
    because its argument is often model-composed text and an output redirect turns that into an
    unattended arbitrary-path write — adding `echo` to the allowlist **MUST NOT** also unlock that.
    The one exception is a redirect docket can place: `classify_command` takes the turn's
    `roots` (`core/tools.py::evaluate_tool_call` passes `ToolContext.roots`), and when every
    output-redirect target of the segment resolves inside them — a relative target against
-   `roots[0]`, the `bash` tool's cwd, symlinks followed; no earlier `cd`/`pushd`/`popd` segment;
+   `roots[0]`, the `bash` tool's cwd, symlinks followed; an earlier `cd <literal path>` is followed
+   (the target resolves against the directory the previous `cd` reached; a `cd` with an expansion,
+   `-`, no argument, or any `pushd`/`popd`, a `cd` that is itself a pipeline element or backgrounded, or a command
+   with `(` or `||`, stops placement; a pipe in a later segment does not);
    no `$`, `~`, glob or brace the shell would rewrite first; no operator without a target — the
    redirect is the `write` tool by another name (the file tools are confined to the same roots,
    and every role that may not write is denied `bash`) and **MUST** be allowed, for `echo` and
@@ -103,6 +107,15 @@ are owned here, not there.
    `&>>` and `>&` to a path; `2>&1` copies a descriptor and opens nothing. `pytest` and `python`
    are on `SAFE_BINS` beside `python3`: the bare test runner runs the same code
    `python3 -m pytest` does, so asking on one spelling only was a trap, not a gate.
+   **A heredoc whose delimiter is quoted or backslashed** (`<<'EOF'`, `<<"EOF"`, `<<\EOF`, and the
+   `<<-` forms) carries stdin data, not commands: `classify_command` cuts the body and its closing
+   delimiter line before the opaque-marker scan, the line split and binary classification, so a
+   backtick, `${`, apostrophe or `=>` in the body asks nothing. The line carrying `<<` is
+   classified as before, `match_high_risk` still reads the full text including the body, an
+   unquoted delimiter keeps its body classified (the shell expands it), a heredoc fed to a shell
+   (`bash`, `sh`, `zsh`, `dash`, `ksh`, `source` or `.` as in `source /dev/stdin`, or a wrapper of one, anywhere on the carrying line) keeps its
+   body classified as commands, and a quoted heredoc with no closing delimiter asks. Here-strings
+   (`<<<`) are not heredocs.
    **The classifier sees through command wrappers and deleting flags of allowlisted bins.** A
    segment led by `env` (after its `VAR=value` and option arguments), `xargs` (after its options),
    `nice`, `nohup`, `timeout <duration>`, `time`, `command` or `stdbuf` is classified by
@@ -1831,6 +1844,15 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.61.0 (2026-10-18)
+
+- Tool-approval gates requirement 1: the body of a quoted-delimiter heredoc is data and is cut
+  before classification (a `python3 - <<'EOF'` script with backticks, `${`, an apostrophe or `=>`
+  no longer asks); unquoted and shell-fed heredocs and an unclosed one are unchanged.
+- Tool-approval gates requirement 1: a refused redirect names the rule (`output redirect to <target>
+  is outside the workspace` / `output redirect after cd cannot be placed`), never an allowlisted
+  binary; a `cd` to a literal path is followed when placing a later relative redirect.
 
 ### Version 0.60.0 (2026-10-18)
 

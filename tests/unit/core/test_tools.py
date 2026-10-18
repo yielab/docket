@@ -163,7 +163,7 @@ class TestCommandClassifierIsArgumentAware:
         for command in ("echo x > f", "echo x > /etc/passwd"):
             verdict = classify_command(command)
             assert verdict.action == "ask", command
-            assert verdict.reason == "'echo' is not on the curated allowlist", command
+            assert verdict.reason.startswith("output redirect to "), command
 
     @pytest.mark.parametrize(
         "command", ["pytest -q", "pytest tests/unit -x", "python -m pytest", "python script.py"]
@@ -275,8 +275,12 @@ class TestRedirectsIntoTheWorkspace:
         (workspace / "link").symlink_to(outside)
         assert classify_command("echo x > link/a.txt", roots=(workspace,)).action == "ask"
 
-    def test_an_earlier_cd_makes_a_relative_target_unplaceable(self, workspace: Path) -> None:
-        assert classify_command("cd src && echo x > a.txt", roots=(workspace,)).action == "ask"
+    def test_an_unfollowable_cd_makes_a_relative_target_unplaceable(self, workspace: Path) -> None:
+        assert classify_command('cd "$D" && echo x > a.txt', roots=(workspace,)).action == "ask"
+
+    def test_a_literal_cd_is_followed(self, workspace: Path) -> None:
+        assert classify_command("cd src && echo x > a.txt", roots=(workspace,)).action == "allow"
+        assert classify_command("cd .. && echo x > a.txt", roots=(workspace,)).action == "ask"
 
     def test_a_descriptor_copy_opens_no_file(self, workspace: Path) -> None:
         assert classify_command("echo x > out.txt 2>&1", roots=(workspace,)).action == "allow"
