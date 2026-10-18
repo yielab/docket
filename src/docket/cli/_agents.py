@@ -161,7 +161,7 @@ def _needs_review(
     n = len(review.runs)
     ui.error(
         f"{_stopped(command)}. The repository brings {n} command{'s' if n != 1 else ''} that "
-        "need your OK, and there is no terminal to ask on. Nothing was "
+        f"need{'' if n != 1 else 's'} your OK, and there is no terminal to ask on. Nothing was "
         f"{'created' if command == 'docket init' else 'changed'}."
     )
     render_run_items(review.runs)
