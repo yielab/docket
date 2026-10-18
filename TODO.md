@@ -47,7 +47,7 @@
 > | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff — **closed 2026-10-18** | — |
 > | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields — **closed 2026-10-18** | 112 merged |
 > | 114 | P44-7 pod memory store · P44-9 `cache_control` — **closed 2026-10-18** | 113 merged |
-> | 115 | P44-8 memory operator controls · phase close (bench + paid real run) | 114 merged |
+> | 115 | P44-8 memory operator controls — **opened 2026-10-18** · phase close (bench + paid real run) | 114 merged |
 
 ### P44-1 — a replay bench over the four measured steps
 
@@ -248,7 +248,7 @@
 
 ### P44-9 — `cache_control` for Anthropic models
 
-- **Status:** DONE 2026-10-18 (`5df30da4`) · gateway check pending maintainer approval · **Size:** S · **Model:** Sonnet
+- **Status:** DONE 2026-10-18 (`5df30da4`) · gateway verified 2026-10-18: two identical calls to `anthropic/claude-sonnet-5.5` through `ai-gateway`, input 7,529 each, cache write 7,525 then cache read 7,525 · **Size:** S · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: 0 % cache over 11 calls for the Anthropic critic.
 - **Goal:** for a provider/model the catalog marks as Anthropic, the request marks
   `cache_control` at the end of the stable prefix (system) and on the last message; other
@@ -264,7 +264,7 @@
 
 ### P44-8 — pod memory: operator controls
 
-- **Status:** TODO (Wave 115) · **Size:** S · **Model:** Sonnet
+- **Status:** IN-PROGRESS (@wave-115) · **Size:** S · **Model:** Sonnet
 - **Trigger:** ADR 0028 point 7: pending entries need approval; every change must be visible
   and revertible.
 - **Goal:** pending `pitfall`/`convention` entries appear in `docket inbox` and are approved or

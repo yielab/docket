@@ -222,3 +222,24 @@ block in `_hop_message`, `POD_TEMPLATE_VERSION` 4, and `ChatResponse.request_byt
 - `request_part_bytes` must still count the encoded parts.
 - The real-gateway check is the integrator's, after merge, with maintainer approval: two calls
   with the same prefix, the second must report `cached_tokens > 0`.
+
+## Wave 115 (base: the Wave 114 rollup commit)
+
+Wave 114 shipped `core/pod_memory.py` with the typed API `list_entries(project, status)`,
+`approve(project, id, *, actor)`, `refuse(project, id, reason, *, actor)`, `revert(project, id,
+*, actor)`, `reset(project, *, actor)` (raise `PodMemoryError` on an unknown id or wrong state;
+`revert` leaves a refused tombstone), entries in `config.pod_memory_path(pod)`, and
+`cache_control` for Anthropic models (verified on the gateway).
+
+### P44-8 — memory operator controls (Sonnet)
+
+- `docket pod memory list [--status accepted|pending|refused] [--json]`, `docket pod memory
+  approve <id>`, `refuse <id> --reason`, `revert <id>`, `reset` (confirmation, `--yes`), all
+  under the existing `pod` group in `cli/_pod.py` (no new top-level command: D-57's eleven stay),
+  the pod from `--pod/-p` or the cwd like every pod verb. Every action goes through the
+  `core/pod_memory.py` API with `actor="cli"`; the API already audits.
+- `docket inbox` lists pending memory entries beside parked tasks, in `core/inbox.py`'s existing
+  view model (locate the parked-task view and add one item kind; do not fork the renderer).
+  Approval from the inbox is the same `approve` call.
+- Regenerate `docs/commands.md` with `scripts/gen_cli_docs.py`; recapture only the goldens whose
+  help text changes and explain every line.
