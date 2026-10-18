@@ -246,14 +246,27 @@ class TestToolOutputBudget:
         out = toolbox.read_file((workspace,), "long.txt")
         assert out.ok
         lines = out.content.splitlines()
-        assert lines[0] == f"{1:>6}\tline 1"
+        assert lines[0] == f"{1}\tline 1"
         window, footer = lines[:-2], lines[-1]
         assert len(window) == toolbox.READ_DEFAULT_LINES
-        assert window[-1] == f"{toolbox.READ_DEFAULT_LINES:>6}\tline {toolbox.READ_DEFAULT_LINES}"
+        assert window[-1] == f"{toolbox.READ_DEFAULT_LINES}\tline {toolbox.READ_DEFAULT_LINES}"
         assert (
             footer
             == f"[lines 1-{toolbox.READ_DEFAULT_LINES} of 1000; call read with offset={toolbox.READ_DEFAULT_LINES + 1} for more]"
         )
+
+    def test_read_without_a_window_stops_at_the_default_character_budget(
+        self, workspace: Path
+    ) -> None:
+        """A file of long lines is cut by characters before the line count is reached."""
+        row = "x" * 99
+        (workspace / "wide.txt").write_text(f"{row}\n" * 300, encoding="utf-8")
+        out = toolbox.read_file((workspace,), "wide.txt")
+        window, footer = out.content.split("\n\n[")
+        assert len(window) <= toolbox.READ_DEFAULT_CHARS
+        shown = len(window.splitlines())
+        assert 0 < shown < 300
+        assert footer == f"lines 1-{shown} of 300; call read with offset={shown + 1} for more]"
 
     def test_read_with_an_explicit_window_is_numbered_and_names_what_remains(
         self, workspace: Path
@@ -262,12 +275,12 @@ class TestToolOutputBudget:
             "".join(f"line {i}\n" for i in range(1, 31)), encoding="utf-8"
         )
         out = toolbox.read_file((workspace,), "short.txt", offset=10, limit=5)
-        assert out.content.splitlines() == [f"{n:>6}\tline {n}" for n in range(10, 15)] + [
+        assert out.content.splitlines() == [f"{n}\tline {n}" for n in range(10, 15)] + [
             "",
             "[lines 10-14 of 30; call read with offset=15 for more]",
         ]
         tail = toolbox.read_file((workspace,), "short.txt", offset=28)
-        assert tail.content == f"{28:>6}\tline 28\n{29:>6}\tline 29\n{30:>6}\tline 30"
+        assert tail.content == f"{28}\tline 28\n{29}\tline 29\n{30}\tline 30"
 
     def test_edit_applies_to_text_copied_from_the_numbered_window(self, workspace: Path) -> None:
         path = workspace / "edit.txt"

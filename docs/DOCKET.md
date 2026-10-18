@@ -889,18 +889,19 @@ default.
 
 Before the platform work, a hop's prompt was built by concatenating every prior hop's raw text
 output, capped only by a process-wide byte budget. Today every hop produces a typed
-`HandoffArtifact` (`core/handoff.py`: `summary`, `files_changed`, `diff_ref`, `verdict`, `notes`)
-instead of a raw string, persisted alongside its hop record so `--resume` recovers it exactly.
-`files_changed` and `diff_ref` are populated for a real Implementer hop via a git probe of its
-working tree (uncommitted changes and the current branch name — not a diff against a fixed base
-ref); `notes` is reserved in the schema but has no producer yet, honestly documented as such
+`HandoffArtifact` (`core/handoff.py`: `summary`, `files_changed`, `diff_ref`, `diff`, `verdict`,
+`notes`) instead of a raw string, persisted alongside its hop record so `--resume` recovers it
+exactly. Every hop that changed the tree fills `files_changed` and `diff` (tracked changes plus
+the content of new files, capped at `HANDOFF_DIFF_MAX_CHARS` with a marker), so the next hop reads
+what was written instead of re-reading it with tools; `diff_ref` (the branch name) stays
+Implementer-only; `notes` is reserved in the schema but has no producer yet, honestly documented as such
 rather than implied to be populated.
 
 `core/context.py`'s `compile_artifact` fits each prior hop's artifact into the *next* hop's
 per-role token budget (`RoleArchetype.token_budget`, declared per archetype rather than one
 global constant — 6000 by default). A hop further into the past gets a smaller share of that
 budget, the same halving series a byte-budget stopgap originally used, now denominated in tokens.
-If an artifact doesn't fit, fields are shed one at a time in a declared order — `notes`, then
+If an artifact doesn't fit, fields are shed one at a time in a declared order — `diff`, then `notes`, then
 `diff_ref`, then `files_changed`, then `verdict` — before `summary` itself is ever touched; only
 once every droppable field is gone and it still doesn't fit is `summary` truncated, always with a
 visible `[... summary truncated: N bytes omitted ...]` marker, never silently. Token counts are an

@@ -246,3 +246,13 @@ def test_fixtures_reproduce_the_real_sessions_counted_totals() -> None:
     fake = BENCH.measure(BENCH.load_steps(FIXTURES))
     assert sorted(r.counted_old for r in real) == sorted(r.counted_old for r in fake)
     assert sum(r.counted_old for r in real) == 369_263
+
+
+def test_the_tool_output_policy_sends_less_on_every_recorded_step() -> None:
+    """Bounded tool output never makes a recorded step send more, and cuts the listing step most."""
+    steps = BENCH.load_steps(FIXTURES)
+    ratios = {}
+    for step, row in zip(steps, BENCH.measure(steps), strict=True):
+        ratios[step.name] = BENCH.project(step, BENCH.POLICIES["tool-output"]).sent / row.sent
+    assert all(ratio < 1.0 for ratio in ratios.values()), ratios
+    assert ratios["implementer-a"] < 0.5

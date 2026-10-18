@@ -27,16 +27,23 @@
 > none reaches the budget under the new count, the critic's verdict is kept; then one real run of
 > the same four steps (maintainer-approved, paid).
 >
+> **Wave 112 closed 2026-10-18.** Bench on the private copies (estimates labelled, per step
+> implementer-a / implementer-b / critic / researcher): counted under the new rule 31,229 / 18,664 /
+> 101,292 / 18,641 (old rule 101,248 / 84,340 / 101,292 / 82,383); with the `tool-output` policy
+> sent 0.33 / 0.83 / 0.89 / 0.75 of today. The critic (0 % cache) is still over budget: it needs
+> P44-4, P44-6 and P44-9. `read`'s window was cut to 6,000 characters with unpadded numbers at
+> integration because the card's 400-line window sent more on two steps.
+>
 > | Wave | Cards | Depends on |
 > | --- | --- | --- |
-> | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff | — |
+> | 112 | P44-1 bench · P44-2 budget · P44-3 tool output · P44-5 handoff — **closed 2026-10-18** | — |
 > | 113 | P44-4 condensation · P44-6 prompt layers · P44-10 measurement fields | 112 merged |
 > | 114 | P44-7 pod memory store · P44-9 `cache_control` | 113 merged |
 > | 115 | P44-8 memory operator controls · phase close (bench + paid real run) | 114 merged |
 
 ### P44-1 — a replay bench over the four measured steps
 
-- **Status:** IN-PROGRESS (@wave-112) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-18 (`c49864a5`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0028 "Acceptance for the phase": no change in this phase can claim a saving
   without before/after numbers, and no paid call may be used to get them.
 - **Goal:** `scripts/maint/context_replay.py` reads session files (a directory argument) and
@@ -66,7 +73,7 @@
 
 ### P44-2 — the budget counts new tokens and accepts a paid final reply
 
-- **Status:** IN-PROGRESS (@wave-112) · **Size:** M · **Model:** Sonnet
+- **Status:** DONE 2026-10-18 (`e5fe4962`) · **Size:** M · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: cache reads count at full weight (`TokenUsage.total_tokens`);
   the critic's `finish_reason=stop` reply was discarded 1,292 tokens over; no prospective check
   without a registered output bound; estimate 1.8x short; pod dollar estimate charges cache twice.
@@ -98,7 +105,7 @@
 
 ### P44-3 — tool output has a budget
 
-- **Status:** IN-PROGRESS (@wave-112) · **Size:** S · **Model:** Haiku
+- **Status:** DONE 2026-10-18 (`64ae55b2`) · **Size:** S · **Model:** Haiku
 - **Trigger:** ADR 0028 evidence: `glob **/*` 41,964 characters (78 % repeated prefix) re-sent
   four times; `read` whole-file 12,475 characters; `fetch` up to 200k bytes and offered with an
   empty allowlist (seven refused calls).
@@ -124,7 +131,7 @@
 
 ### P44-5 — every writing hop delivers what it produced
 
-- **Status:** IN-PROGRESS (@wave-112) · **Size:** S · **Model:** Sonnet
+- **Status:** DONE 2026-10-18 (`e80a1e03`) · **Size:** S · **Model:** Sonnet
 - **Trigger:** ADR 0028 evidence: the critic re-read and re-sent the researcher's note nine
   times (~30k tokens) because `_implementer_diff_probe` serves the `implementer` role only and
   `diff_ref` is a branch name.
@@ -263,6 +270,13 @@
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phase 43 (not cards; triage when a trigger fires)
 
+- **Found in Wave 112 (Phase 44).** The prospective budget check compares the whole calibrated
+  input estimate plus reserve against the counted budget, so a heavily cached step is refused
+  early; discount by the previous call's cache reads if a real run is refused with room left.
+  `glob`/`grep` still walk vendored trees before filtering (pathlib cannot prune); measure before
+  changing. In an in-place task on an already dirty tree, the first writing hop's `diff` carries
+  the operator's own changes once (task worktrees start clean). The bench scales cached tokens by
+  the sent ratio; P44-4 may need a cache-aware projection.
 - **The Lead plans with the codebase path, the Implementer is rooted in the task worktree**
   (measurement 3: `tool.refused` on `read` of the codebase path, audit seq 6-7 of the throwaway
   home). The Lead's hop should name the task worktree, or the handoff should rewrite the path.
