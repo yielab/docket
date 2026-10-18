@@ -531,6 +531,70 @@ def _capture_llm_call_content(
     payload["systemInstructionsSha256"] = digest
 
 
+_REQUEST_PART_BY_ROLE = {
+    "system": "system",
+    "user": "user",
+    "assistant": "assistant",
+    "tool": "toolResults",
+}
+
+
+def _wire_message(message: ChatMessage) -> dict[str, Any]:
+    """*message* as ``edges/adapters/llm.py`` encodes it. Mirrored because core cannot import the
+    edge; ``TestLlmCallRequestBreakdown`` pins the two to the bytes the endpoint receives."""
+    if message.role == "tool":
+        out: dict[str, Any] = {
+            "role": "tool",
+            "content": message.content,
+            "tool_call_id": message.tool_call_id,
+        }
+        if message.name:
+            out["name"] = message.name
+        return out
+    if message.tool_calls:
+        return {
+            "role": message.role,
+            "content": message.content or None,
+            "tool_calls": [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.arguments},
+                }
+                for call in message.tool_calls
+            ],
+        }
+    return {"role": message.role, "content": message.content}
+
+
+def _wire_tool(spec: ToolSpec) -> dict[str, Any]:
+    """*spec* as ``edges/adapters/llm.py`` advertises it (mirrored, as ``_wire_message``)."""
+    return {
+        "type": "function",
+        "function": {
+            "name": spec.name,
+            "description": spec.description,
+            "parameters": spec.parameters or {"type": "object", "properties": {}},
+        },
+    }
+
+
+def _request_breakdown(
+    messages: Sequence[ChatMessage], tools: Sequence[ToolSpec]
+) -> dict[str, dict[str, int]]:
+    """Each part of the request as ``{bytes, estTokens}``; trace-store requirement 28."""
+    sizes = dict.fromkeys(("system", "tools", "toolResults", "assistant", "user"), 0)
+    for message in messages:
+        part = _REQUEST_PART_BY_ROLE[message.role]
+        sizes[part] += len(json.dumps(_wire_message(message)).encode("utf-8"))
+    for spec in tools:
+        sizes["tools"] += len(json.dumps(_wire_tool(spec)).encode("utf-8"))
+    return {
+        part: {"bytes": size, "estTokens": size // _cfg.CONTEXT_BYTES_PER_TOKEN}
+        for part, size in sizes.items()
+    }
+
+
 def _trace_llm_call(
     project: str,
     session_key: str,
@@ -541,10 +605,11 @@ def _trace_llm_call(
     purpose: str = "",
     task_id: str = "",
     messages: Sequence[ChatMessage] | None = None,
+    tools: Sequence[ToolSpec] = (),
 ) -> None:
-    """One backend chat-completions exchange, measured -- never a cost figure. *messages*,
-    the exact request sent to ``backend.complete``, is captured only for content classes an
-    enabled exporter has asked for; omitted, the payload is unchanged from before this card."""
+    """One backend chat-completions exchange, measured -- never a cost figure. *messages* and
+    *tools*, the exact request sent to ``backend.complete``, give the ``request`` breakdown; the
+    content of *messages* is captured only for classes an enabled exporter asked for."""
     payload: dict[str, Any] = {
         "model": response.model,
         "provider": response.provider,
@@ -560,6 +625,7 @@ def _trace_llm_call(
     if purpose:
         payload["purpose"] = purpose
     if messages is not None:
+        payload["request"] = _request_breakdown(messages, tools)
         _capture_llm_call_content(payload, session_key, messages, response)
     trace_event(
         project,
@@ -1630,6 +1696,7 @@ class _TurnState:
             self.iteration,
             task_id=self.trace_task_id,
             messages=messages,
+            tools=request_tools,
         )
         self.last_raw = response.raw
         self.last_model, self.last_provider = response.model, response.provider

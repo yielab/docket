@@ -1557,7 +1557,50 @@ class TestHopEvents:
         assert stored["usage"] == {
             "input": 14,
             "output": 6,
-            "byModel": {"local/served-model": {"input": 14, "output": 6}},
+            "byModel": {
+                "local/served-model": {"input": 14, "cached": 0, "cacheWrite": 0, "output": 6}
+            },
+        }
+
+    def test_by_model_sums_cache_reads_and_writes_per_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """byModel sums cached and cacheWrite per model; top-level keys stay input and output."""
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        repoint_docket_home(monkeypatch, home)
+        record_isolation_off(home)
+        _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        task = _dispatch.enqueue_task("demo", "usage", channel="cli")
+        task_id = str(task["id"])
+        hops = [
+            _dispatch.HopResult(
+                role="lead",
+                member_id="m",
+                ok=True,
+                model="local/x",
+                provider="local",
+                usage={"input": 100, "cached": 60, "cacheWrite": 5, "output": 7},
+            ),
+            _dispatch.HopResult(
+                role="implementer",
+                member_id="m",
+                ok=True,
+                model="local/x",
+                provider="local",
+                usage={"input": 50, "cached": 10, "cacheWrite": 0, "output": 3},
+            ),
+        ]
+        _dispatch._finalize_task(
+            "demo", task_id, _dispatch.TaskResult(task_id=task_id, status="done", hops=hops)
+        )
+        raw = json.loads(_dispatch.pod_task_list_path("demo").read_text())
+        (stored,) = [t for t in raw["tasks"] if t["id"] == task_id]
+        assert stored["usage"] == {
+            "input": 150,
+            "output": 10,
+            "byModel": {"local/x": {"input": 150, "cached": 70, "cacheWrite": 5, "output": 10}},
         }
 
 
