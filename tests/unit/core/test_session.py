@@ -802,7 +802,8 @@ class TestCondenseHistory:
         assert (len(whole), len(notices)) == (2, 4)
         assert [m.tool_call_id for m in results] == [f"c{n}" for n in range(6)]
         assert results[0].content == (
-            "[read src/f0.py: 40 lines, 501 characters, omitted; call read again if needed]"
+            "[read src/f0.py: 40 lines, 501 characters, already seen and omitted; "
+            "call read again only for exact text you still need]"
         )
         assert all(m.content.count("\n") > 5 for m in results[-2:])
 

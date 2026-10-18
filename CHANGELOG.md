@@ -120,6 +120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stay whole while all whole results fit in 6,000 characters; only past that do they become
   one-line notices. The Phase 44 rerun found a model making one call per round re-reading a
   README and a script in a loop until the no-progress stop ended the step.
+- **A condensed result no longer invites a re-read.** Its notice says the result was already
+  seen and asks for a new call only for exact text still needed; "call <tool> again if needed"
+  had read as an invitation.
 - **A step no longer re-sends every earlier tool result (P44-4).** Results older than the last
   two become one-line notices and large old `write`/`edit` arguments become character counts, in
   the request only (`session.json` keeps every byte). With bounded tool output, the replay bench

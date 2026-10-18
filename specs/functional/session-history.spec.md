@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
 compactor before each task-completion backend call. Wave 20 card W20-C4 gives every pod-dispatch
@@ -165,8 +165,8 @@ This specification does NOT cover:
 30. The last `keep` (at least 1) answered `tool` messages stay whole; older ones stay whole too,
     newest first, while the characters of all whole results fit in `budget` (6,000, one default
     `read` window). From the first that does not fit, it and every older one **MUST** have their
-    `content` replaced by `[<tool> <path|command|pattern|url>: N lines, M characters, omitted;
-    call <tool> again if needed]`, built from the matching call, unless the notice is not shorter
+    `content` replaced by `[<tool> <path|command|pattern|url>: N lines, M characters, already
+    seen and omitted; call <tool> again only for exact text you still need]`, built from the matching call, unless the notice is not shorter
     than the content. Each message keeps its role, `tool_call_id` and `name`. A result beginning
     `ERROR:`, `REFUSED [` or `AWAITING APPROVAL:` stays whole up to 400 characters and is
     otherwise cut to its first 400 with a count of the rest. User and system messages are never
@@ -362,6 +362,12 @@ result = sess.compact_session(
 - `condense_history` **MUST NOT** change what `load_messages` returns; it shapes a request only.
 
 ## Changelog
+
+### Version 1.8.0 (2026-10-18)
+
+- The condensation notice says the result was already seen and asks for a new call only for
+  exact text still needed (requirement 30). "call <tool> again if needed" read as an invitation:
+  in the Phase 44 rerun a model re-read a file it had just read until the no-progress stop.
 
 ### Version 1.7.0 (2026-10-18)
 
