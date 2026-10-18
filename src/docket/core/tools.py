@@ -823,8 +823,9 @@ def _fetch_tool(fetch_url: Any) -> Tool:
         name="fetch",
         description=(
             "Fetch a URL over HTTP(S). Only domains on the fetch allowlist "
-            "(FETCH_ALLOWED_DOMAINS) may be reached; the response is size-capped and "
-            "time-limited. Network egress is otherwise open for this fleet (see "
+            "(FETCH_ALLOWED_DOMAINS) may be reached; the response is size-capped, time-limited "
+            "and truncated like any tool result when long. Network egress is otherwise open for "
+            "this fleet (see "
             "security-gates.spec.md) -- this tool exists so reaching the network never "
             "has to mean reaching for bash + curl/python3/node instead."
         ),
@@ -862,12 +863,36 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     )
 
 
-def builtin_registry() -> ToolRegistry:
-    """The default tool set: read, write, edit, glob, grep, bash, skill, consult, fetch. Handlers are
-    imported here (not at module scope) so this module stays importable without the
-    filesystem/subprocess layer, keeping "core reaches out to edges for I/O" at one
-    point."""
+_READ_DESCRIPTION = (
+    "Read a text file as numbered lines, 400 at a time. Paths are relative to the workspace. "
+    "For a larger file pass offset (1-indexed line) and limit, or follow the footer's offset "
+    "to continue. Copy text from the window without the numbers when editing."
+)
+_GLOB_DESCRIPTION = (
+    "List files matching a glob pattern, as paths relative to the workspace, sorted. Vendored and "
+    "generated directories (node_modules, .git, .venv, build output) are skipped. Search with grep "
+    "or a narrow pattern before listing a whole tree."
+)
+_GREP_DESCRIPTION = (
+    "Search file contents for a regular expression. Hits print as paths relative to the "
+    "workspace, sorted by path; vendored and generated directories are skipped. Search for a "
+    "symbol here before listing files with glob."
+)
+
+
+def _offered_fetch() -> list[Tool]:
+    """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
+    from docket import config as _cfg
     from docket.edges.adapters import fetch as _fetch
+
+    return [_fetch_tool(_fetch.fetch_url)] if _cfg.FETCH_ALLOWED_DOMAINS else []
+
+
+def builtin_registry() -> ToolRegistry:
+    """The default tool set: read, write, edit, glob, grep, bash, skill, consult, and fetch (only
+    with an allowlist). Handlers are imported here, not at module scope, so this module stays
+    importable without the filesystem/subprocess layer. Core reaches out to edges for I/O here.
+    """
     from docket.edges.adapters import toolbox
 
     registry = ToolRegistry()
@@ -875,7 +900,7 @@ def builtin_registry() -> ToolRegistry:
     registry.register(
         Tool(
             name="read",
-            description="Read a text file. Use offset/limit to read a window of a large file.",
+            description=_READ_DESCRIPTION,
             parameters={
                 "type": "object",
                 "properties": {
@@ -945,7 +970,7 @@ def builtin_registry() -> ToolRegistry:
     registry.register(
         Tool(
             name="glob",
-            description="List files matching a glob pattern, most recently modified first.",
+            description=_GLOB_DESCRIPTION,
             parameters={
                 "type": "object",
                 "properties": {
@@ -964,7 +989,7 @@ def builtin_registry() -> ToolRegistry:
     registry.register(
         Tool(
             name="grep",
-            description="Search file contents for a regular expression.",
+            description=_GREP_DESCRIPTION,
             parameters={
                 "type": "object",
                 "properties": {
@@ -1007,7 +1032,6 @@ def builtin_registry() -> ToolRegistry:
             kind="exec",
         )
     )
-    _register_all(registry, _skill_tool(), _consult_tool())
-    registry.register(_fetch_tool(_fetch.fetch_url))
+    _register_all(registry, _skill_tool(), _consult_tool(), *_offered_fetch())
 
     return registry

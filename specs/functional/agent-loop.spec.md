@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.35.1
+**Version**: 1.36.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -632,6 +632,28 @@ This specification does NOT cover:
     through the environment variable of the same name); `0` **MUST** disable the check. Detection
     is per turn only, never across turns.
 
+### Built-in tool output budget (Phase 44 P44-3, ADR 0028 section 3)
+
+80. `glob` and `grep` **MUST** print each match as a path relative to the first allowed root,
+    never with the root prefix; a match under a later root prints relative to that root. Matches
+    **MUST** be sorted by that printed path. A match with any path component named in
+    `toolbox.SKIPPED_DIRS` (`.git`, `node_modules`, `.venv`, `dist`, `build`, `target`, `vendor`,
+    `__pycache__`) **MUST** be omitted. `glob`'s most-recently-modified order is retired.
+81. `read` without a `limit` **MUST** return at most `toolbox.READ_DEFAULT_LINES` (400) lines,
+    starting at `offset` (line 1 when absent); an explicit `limit` is honoured as given. Every
+    returned line **MUST** be prefixed with its 1-indexed line number, right aligned to six
+    columns, then a tab. When lines remain after the returned window, the result **MUST** end with
+    `[lines F-L of M; call read with offset=L+1 for more]`, where F and L are the first and last
+    returned line numbers and M is the file's line count. The numbers are presentation only: text
+    copied from the window without them **MUST** match the file for `edit`.
+82. `glob`, `grep`, `read` and `fetch` results **MUST** pass through the same announced
+    truncation as every other built-in (`toolbox._truncate`, `TOOL_MAX_OUTPUT_CHARS`). A result
+    cut by that limit **MUST NOT** be indistinguishable from a complete one.
+83. `builtin_registry()` **MUST** register `fetch` only while `config.FETCH_ALLOWED_DOMAINS` is
+    non-empty, read when the registry is built. With an empty allowlist `fetch` **MUST NOT** appear
+    in `specs()`, so the model is not offered it, and a call naming it is refused as an unknown
+    tool like any other unregistered name.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.agent_loop`)
@@ -823,6 +845,15 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.36.0 (2026-10-18)
+
+- Built-in tool output budget (requirements 80-83, ADR 0028 section 3): `glob` and `grep` print
+  root-relative, sorted paths and skip vendored and generated directories; `read` without
+  `offset`/`limit` returns a numbered window of `READ_DEFAULT_LINES` lines with a remaining-lines
+  footer; `glob`, `grep`, `read` and `fetch` pass through the announced `_truncate`; `fetch` is
+  registered only while `FETCH_ALLOWED_DOMAINS` is non-empty. Requirement 28's built-in set names
+  `fetch` as before; it is offered only when an operator has configured an allowlist.
 
 ### Version 1.35.1 (2026-10-17)
 
