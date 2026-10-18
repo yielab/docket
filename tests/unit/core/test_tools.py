@@ -251,12 +251,21 @@ class TestRedirectsIntoTheWorkspace:
         assert verdict.action == "allow"
 
     @pytest.mark.parametrize(
-        "target", ["../escape.txt", "/etc/passwd", "~/x.txt", "$HOME/x.txt", "*.txt", "/dev/null"]
+        "target", ["../escape.txt", "/etc/passwd", "~/x.txt", "$HOME/x.txt", "*.txt", "/dev/nullx"]
     )
     def test_a_target_outside_or_unresolvable_asks(self, workspace: Path, target: str) -> None:
         verdict = classify_command(f"echo x > {target}", roots=(workspace,))
         assert verdict.action == "ask", target
         assert verdict.bin_name == "echo"
+
+    @pytest.mark.parametrize("command", ["echo x > /dev/null", "echo x 2>/dev/null >out.txt"])
+    def test_a_discarding_redirect_is_allowed(self, workspace: Path, command: str) -> None:
+        assert classify_command(command, roots=(workspace,)).action == "allow", command
+
+    def test_a_discarding_redirect_needs_no_roots(self) -> None:
+        assert classify_command("echo x > /dev/null").action == "allow"
+        assert classify_command("ls missing 2>/dev/null", jailed=True).action == "allow"
+        assert classify_command("echo x 2>/dev/null > notes.txt").action == "ask"
 
     def test_a_symlink_that_leaves_the_workspace_asks(
         self, workspace: Path, tmp_path: Path
