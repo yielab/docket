@@ -282,3 +282,32 @@ class TestRecordedSpendNeverContaminated:
         agent_row = next(a for a in data["agents"] if a["id"] == lead_id)
         assert agent_row["costUsd"] == 0.0
         assert data["totalCostUsd"] == 0.0
+
+
+class TestUnpricedModelSurfaces:
+    """A budgeted pod running a model with no price says so where the operator looks."""
+
+    def _budgeted_pod(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+        _seed_pod(tmp_path, monkeypatch)
+        model = "ai-gateway/acme/model-x"
+        _fleet.set_model_both("demo-implementer", model)
+        result = CliRunner().invoke(_app, ["pod", "set", "budgetUsd", "3", "--pod", "demo"])
+        assert result.exit_code == 0, result.output
+        return model
+
+    def test_the_pod_report_names_the_unpriced_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import pod_report
+
+        model = self._budgeted_pod(tmp_path, monkeypatch)
+        assert pod_report.pod_report("demo")["budgetUnpriced"] == [model]
+
+    def test_status_json_and_text_name_the_unpriced_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        model = self._budgeted_pod(tmp_path, monkeypatch)
+        as_json = CliRunner().invoke(_app, ["status", "--pod", "demo", "--json"])
+        assert json.loads(as_json.output)["budgetUnpriced"] == [model]
+        as_text = CliRunner().invoke(_app, ["status", "--pod", "demo"], env={"COLUMNS": "200"})
+        assert f"cannot stop spend on {model}" in as_text.output

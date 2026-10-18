@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.52.1
+**Version**: 6.53.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -2117,6 +2117,8 @@ tool_result                 # after a successful hop; also emitted (payload {"ve
 error                       # after a failed hop (in place of tool_result)
 cost_charged                # after any hop with nonzero cost
 budget_exceeded             # the budget gate blocked a hop (task -> blocked)
+budget_warning              # action "unpriced_model": the hop's model has no price, so the cap
+                             #   cannot stop it; the hop runs (cost-tracking.spec.md req. 6)
 verification_failed         # a mechanical gate's command exited nonzero (any role, not just implementer);
                              #   an external gate's payload carries `source: "task"` for a task's own gate
 tester_verdict_failed       # the Tester's reply was FAIL or unparseable (legacy name, preserved)
@@ -2299,6 +2301,11 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.53.0 (2026-10-18)
+
+- Before each hop of a pod with `budgetUsd`, a hop whose model has no price emits
+  `budget_warning` (`action: "unpriced_model"`) and runs (cost-tracking.spec.md 1.9.0).
 
 ### Version 6.52.1 (2026-10-17)
 

@@ -22,6 +22,7 @@ from docket.core import pod as _pod
 from docket.core import profile as _profile
 from docket.core import runs as _runs
 from docket.core import trace as _trace
+from docket.core.pod_report import unpriced_text
 from docket.core.utils import (
     DayRecord,
     aggregate_cost,
@@ -179,7 +180,15 @@ def _project_summary(project: str) -> dict[str, Any]:
             if _profile.effective_profile(project) == _profile.LIGHTS_OUT
             else {}
         ),
+        **({"budgetUnpriced": u} if (u := _unpriced_models(project)) else {}),
     }
+
+
+def _unpriced_models(project: str) -> list[str]:
+    try:
+        return _dispatch.unpriced_budget_models(project)
+    except _dispatch.DispatchError:
+        return []
 
 
 def _inventory() -> dict[str, Any]:
@@ -300,6 +309,11 @@ def _render_current(summary: dict[str, Any]) -> None:
         *_profile_rows(summary.get("profile")),
         ("Approved, ready", str(tasks["approvedReady"])),
         ("Tokens", tokens),
+        *(
+            [("Budget", unpriced_text(summary["budgetUnpriced"]))]
+            if summary.get("budgetUnpriced")
+            else []
+        ),
         (
             "Done / failed / aborted",
             f"{out['success']} / {out['failure']} / {out['aborted']}"

@@ -366,8 +366,14 @@ def pod_report(project: str) -> dict[str, Any]:
         },
         "pipeline": {"source": _dispatch.effective_pipeline_source(project)},
         "network": dict(zip(("mode", "scope"), _pod.effective_network(project), strict=True)),
+        "budgetUnpriced": _dispatch.unpriced_budget_models(project),
         **record,
     }
+
+
+def unpriced_text(models: list[str]) -> str:
+    """What a budget cannot do about *models*, for ``pod show`` and ``status``."""
+    return f"cannot stop spend on {', '.join(models)}: no price in the provider catalog"
 
 
 def _codebase(project: str) -> str:

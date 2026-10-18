@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A budget names the models it cannot price instead of counting them as $0.** A model with no
+  catalog price added nothing to the budget estimate, so `budgetUsd` stopped nothing on it (a
+  real run spent 175k tokens on gateway models and reported $0 against a $3 cap). Docket still
+  runs the hop but now warns: a `budget_warning` trace event (`unpriced_model`) before each such
+  hop, and `budgetUnpriced` in `docket pod show`, `GET /pods/<p>` and `docket status`. Local
+  models are never flagged. The estimate still prices a member's tokens at the member's model,
+  not at a step's `model:` override.
+
 - **`POST /pods` takes `name` and `location`, the body API 5 publishes.** ADR 0027 and
   `operator-api.spec.md` named those fields, while the route still read `project` and `path`, so
   Tack's ensure call failed with `400 project is required` and no run reached a team. `project`

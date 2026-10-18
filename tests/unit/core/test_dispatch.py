@@ -13,6 +13,7 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import threading
@@ -528,6 +529,62 @@ class TestExecuteUnitDirectly:
                 check_approval=True,
                 index_for_context=0,
             )
+
+
+_UNPRICED = "ai-gateway/acme/model-x"
+
+
+def _budget_warnings() -> list[dict[str, Any]]:
+    tf = _cfg.TRACES_DIR / "myapp" / "agent:myapp:task-1.jsonl"
+    events = _trace.read_trace(tf) if tf.exists() else []
+    return [e["payload"] for e in events if e["event_type"] == "budget_warning"]
+
+
+def _run_one_hop(cap: float, node: _orch.PlannedUnit) -> _dispatch._UnitOutcome:
+    ctx = _unit_context(cap=cap, run=lambda *a, **k: _rd.TurnResult(True, "done", 0.0, {}))
+    return _dispatch._execute_unit(
+        ctx, node, prior_snapshot=[], rework_hop=None, check_approval=True, index_for_context=0
+    )
+
+
+class TestUnpricedModelUnderABudget:
+    """A budget cannot stop spend it cannot price: dispatch warns and runs the hop."""
+
+    @pytest.fixture(autouse=True)
+    def _nothing_spent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_dispatch, "pod_gating_cost", lambda project: (0.0, False))
+
+    def test_an_unpriced_member_model_warns_and_still_runs(self, pod_home: Path) -> None:
+        _write_meta("myapp-implementer", {"model": _UNPRICED})
+        outcome = _run_one_hop(5.0, _planned_unit("myapp-implementer"))
+        assert outcome.kind == "advance"
+        [warning] = _budget_warnings()
+        assert warning["action"] == "unpriced_model"
+        assert _UNPRICED in warning["reason"] and "$5.00" in warning["reason"]
+
+    def test_a_step_model_is_the_one_checked(self, pod_home: Path) -> None:
+        _write_meta("myapp-implementer")
+        node = dataclasses.replace(_planned_unit("myapp-implementer"), model=_UNPRICED)
+        _run_one_hop(5.0, node)
+        assert [w["action"] for w in _budget_warnings()] == ["unpriced_model"]
+
+    @pytest.mark.parametrize(
+        ("cap", "model"),
+        [(5.0, "anthropic/claude-haiku-4-5"), (5.0, "local/local-model"), (0.0, _UNPRICED)],
+    )
+    def test_no_warning_when_priced_local_or_uncapped(
+        self, pod_home: Path, cap: float, model: str
+    ) -> None:
+        _write_meta("myapp-implementer", {"model": model})
+        _run_one_hop(cap, _planned_unit("myapp-implementer"))
+        assert _budget_warnings() == []
+
+    def test_the_pod_lists_its_unpriced_models_only_under_a_budget(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"model": "local/local-model"})
+        _write_meta("myapp-implementer", {"model": _UNPRICED})
+        assert _dispatch.unpriced_budget_models("myapp") == []
+        _write_meta("myapp-lead", {"model": "local/local-model", "budgetUsd": 3})
+        assert _dispatch.unpriced_budget_models("myapp") == [_UNPRICED]
 
 
 class TestDeterministicRefusalFailsOnlyThatTask:
