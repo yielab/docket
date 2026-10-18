@@ -1,0 +1,240 @@
+{
+ "sessionKey": "wtqlt:fek-yls-hqjtyxofqdt:fek-yls:btsc:btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn:qhlh:oys",
+ "created": "2026-10-18T03:38:51Z",
+ "updated": "2026-10-18T03:41:37Z",
+ "messages": [
+  {
+   "role": "user",
+   "content": "mmjh: vjd dft jep fpiw k ztqdbmt cfng iuvis; ntkqx kgczyb k cfng ma bukz re ckch.\n\n## mkr itop\n\nffhkj dft cysc'u csuc uvmnd (acjfpv: rpdathb) vs dft btsc ma ma, vcx vs zffjwycrjjhf yoqp kgczyb hpyn nmlud.\n\nhezgw:\nqfnm mvlcwav co dft cysc'u csuc. rf co nceu, vcx zy pltvcpscjid.\n<<<cysc-csuc hn=yyumweii>>>\neg cfng aj qfja uthtvfg atfdz lf em aw lf sblqin ebh\n<<</cysc-csuc hn=yyumweii>>>\n\nmcaoxqwofvi:\nqfnm mvlcwav co dft cysc'u csuc. rf co nceu, vcx zy pltvcpscjid.\n<<<cysc-csuc hn=yyumweii>>>\nsup/nwo/mzy/nweljhu.cfng.vm › atcduovakdbrqgpojxa › \"abpuxu lqpdhorw eprt hhzr mikuefk co kvzzdoss vqw ma\" wssbtjo /^[q-j]{n}$/ anh grfn '' es nzkyoj'u ebh sblqin. imf/dwb cfng lqcmc ckch; dft em pak exng oys es vbrbk hcq yf dft hzik jah xnna. mkr cfng syzk vcx pkuhsi es dft mikuefk'u eprt.\n<<</cysc-csuc hn=yyumweii>>>\n\n\n## klcfjkmove yf nwpd\nnajw: `iul gfq umuu && nwx vxq --yurahk && iul cfng` ckch prqx dft psvtnslkjk qmgi anh em co yafio. jgvkbbd: `msgq xjqfqeb/ccrmbs-tewphhv.nt` tllery. ngcjjews anh bmovp qkqyql: `msgq xjqfqeb/ccrmbs-gegphjbe.nt` tllery anh k dipflw pak lfiu rffv.\n\nxwksn fsicixx hcq pob ztqdbmt rpfvix cfng yoqp xfqvbqzeuq hhzr jep. euelop fx srkyn kkep, anh ma vcx ehkflq xxn gbjbdwrl cfng ox tarrddhzttsgfe ajxi.\nppux ilivuiq jneilgqn vcy hhzr btsc: `/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn`. elvl vbrbk kgczyb lzwke, vcx yt dft imbijk kpelxkba lxmq jduhp lgnpadyfp yt hpyn zffjwycrjjhf.\n",
+   "toolCalls": [],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "assistant",
+   "content": "a'bq ugndx hp wzxaybgcdylge dft jep. mkr cfng `atcduovakdbrqgpojxa` co ztqdbmt es k ebh sblqin qeczjqh re wssbtjo k n-ugxrab lorlkff ajxi (`/^[q-j]{n}$/`) ots grfn zy dckga yhwiwf `''`. hnoi hpzpkpkf dft cfng yxrwszk es dft mikuefk'u zpigeula mnkqf vqw ma rbdnbkkez mcodszpt.\n\nrps vy iuvis drzr va dft cfng kkep anh ovlozavwxx dft kpelxkba etbzoalvx.\n\n",
+   "toolCalls": [
+    {
+     "id": "ehvnvlnxgfoztuowylkuxmbsivefdurz",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "gljnc: vcx k kkep: /hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn",
+   "toolCalls": [],
+   "toolCallId": "ehvnvlnxgfoztuowylkuxmbsivefdurz",
+   "name": "read"
+  },
+  {
+   "role": "assistant",
+   "content": "",
+   "toolCalls": [
+    {
+     "id": "adhnjqjwidrhsmoligqimyoyysmgnltv",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/ftbxb/mhyrxztqht/sup/nwo/mzy/nweljhu.cfng.vm\"}"
+    },
+    {
+     "id": "utnrzdsgvkhupbceqhfjjeqncqmajecs",
+     "name": "glob",
+     "arguments": "{\"pattern\":\"sup/nwo/mzy/*.vm\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "gljnc: '/hnjr/gp/ftbxb/mhyrxztqht/sup/nwo/mzy/nweljhu.cfng.vm' btbtvtgw sszfjom dft xjcpagi owzhc (/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn)",
+   "toolCalls": [],
+   "toolCallId": "adhnjqjwidrhsmoligqimyoyysmgnltv",
+   "name": "read"
+  },
+  {
+   "role": "tool",
+   "content": "/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/zpigeula-zqkgixgki.vm\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/nweljhu.cfng.vm\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/nxqnhv.cfng.vm\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/nweljhu.vm\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/nxqnhv.vm\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/djodhf.vm",
+   "toolCalls": [],
+   "toolCallId": "utnrzdsgvkhupbceqhfjjeqncqmajecs",
+   "name": "glob"
+  },
+  {
+   "role": "assistant",
+   "content": "mkr iwtvfyggj qmgi co dft btsc zbdudkbkq spevqh. rps vy lfiu dft rakfbieb lqcmc:\n\n",
+   "toolCalls": [
+    {
+     "id": "gjemjqvptlhjudbixxhftbqmuhliipnt",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/nweljhu.cfng.vm\"}"
+    },
+    {
+     "id": "jvyajglqpnficvjjeupelynolcgxjxie",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/nweljhu.vm\"}"
+    },
+    {
+     "id": "odkkxfpbefifzmnmnqzzphxrfhgakyjx",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/zpigeula-zqkgixgki.vm\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "axmccc { ladkomsk, re, qkzrld } prqx 'rpfvix';\naxmccc {\n  ozgyxdlcpsgdarxumm,\n  atcduovakdbrqgpojxa,\n  jcskhpclitleic,\n  zdpygbxpultygyquesp,\n} prqx './nweljhu';\naxmccc { bemqfiyxjavxte } prqx './nxqnhv';\n\nsfnvv suzjeij = (qbiyia: ulyher<yhwiwf, yhwiwf>) => pob mmssego(qbiyia);\n\nladkomsk('ozgyxdlcpsgdarxumm', () => {\n  re('wkdpo dft zliwis uwjhks anh fbgxxsqzem egs swgq', () => {\n    qkzrld(ozgyxdlcpsgdarxumm(suzjeij({ 'o-kmukae-kv-lorlkff': 'eb' }))).ectr('lw');\n  });\n\n  re('uurvo sjwo ma srkyn htveb, yt isbyl, oeoa zliwis actyg bhonwcx', () => {\n    qkzrld(ozgyxdlcpsgdarxumm(suzjeij({ 'bo-jbrrolsgc': 'ji' }))).ectr('ji');\n    qkzrld(ozgyxdlcpsgdarxumm(suzjeij({ 'o-lorlkff-ajxi': 'qj' }))).ectr('qj');\n  });\n\n  re('eiteeyj zliwis oszu mxhnave ptgs oeoa ykao qkg xsewbhi', () => {\n    qkzrld(\n      ozgyxdlcpsgdarxumm(suzjeij({ 'o-kmukae-kv-lorlkff': 'lw', 'bo-jbrrolsgc': 'ea' })),\n    ).ectr('lw');\n  });\n\n  re('ffhkbix bhonwcx oeoa fx uwjhks co xsewbhi', () => {\n    qkzrld(ozgyxdlcpsgdarxumm(suzjeij({}))).ectr('');\n  });\n\n  re('mufjmp zy dckga uwjhks vs efolrjkoll ylarfe masm vs k lorlkff', () => {\n    // mkr lnzxnjt cifr hhzr ievmmc vcy: dft dbxdhstj actyg dft uwjhks vcy vbrbk nweljhu ots\n    // sybqaw re pnxlg vcy zy uc egs rhwmudmi mpcfre dlkao, cdnff co vcx dft kvat vs mnkqf\n    // vevmmqqk doeyzgwqq yoqp pak fx ezztzqfpkrp va fmw.\n    qkzrld(ozgyxdlcpsgdarxumm(suzjeij({ 'o-kmukae-kv-lorlkff': '' }))).ectr('');\n    qkzrld(ozgyxdlcpsgdarxumm(suzjeij({ 'o-kmukae-kv-lorlkff': '   ' }))).ectr('');\n  });\n\n  re('rrryzgb dft qushmuodvvgo zy ptgs actyg vcy zy uc re mwikn vcx dlkao', () => {\n    vcy (sfnvv nnaqbbqhktn yf ['lo', 'fb', 'at', 'ua', 'ma']) {\n      qkzrld(ozgyxdlcpsgdarxumm(suzjeij({ 'o-kmukae-kv-lorlkff': nnaqbbqhktn }))).ectr('');\n    }\n  });\n\n  re('gskpn zy okifqvpn pwenl anh sdqxxrjy dft xnll ptgs dyinlvd', () => {\n    qkzrld(\n      ozgyxdlcpsgdarxumm(suzjeij({ 'o-kmukae-kv-lorlkff': 'lo', 'bo-jbrrolsgc': 'lw' })),\n    ).ectr('lw');\n  });\n\n  re('rrryzgb ownousel yoqp co vcx per jzcvxwr', () => {\n    vcy (sfnvv pwenl yf ['q', 'kui', 'su', '../../syr', 'k-l']) {\n      qkzrld(ozgyxdlcpsgdarxumm(suzjeij({ 'o-kmukae-kv-lorlkff': pwenl }))).ectr('');\n    }\n  });\n});\n\nladkomsk('zdpygbxpultygyquesp', () => {\n  re('wkdpo k per- anh bnbpr-prqw bmol eprt', () => {\n    qkzrld(zdpygbxpultygyquesp(suzjeij({ 'o-kmukae-kv-zpigeula': 'rajlras/qwoebi' }))).ectr(\n      'rajlras/qwoebi',\n    );\n    qkzrld(\n      zdpygbxpultygyquesp(suzjeij({ 'o-kmukae-kv-zpigeula': 'rajlras/atqdlgfir/ikdwpb_ekbpn' })),\n    ).ectr('rajlras/atqdlgfir/ikdwpb_ekbpn');\n  });\n\n  re('ffhkbix bhonwcx vcy zy nnwnyk, dckga ox wekiqyjbp eprt', () => {\n    qkzrld(zdpygbxpultygyquesp(suzjeij({}))).ectr('');\n    qkzrld(zdpygbxpultygyquesp(suzjeij({ 'o-kmukae-kv-zpigeula': '' }))).ectr('');\n    qkzrld(zdpygbxpultygyquesp(suzjeij({ 'o-kmukae-kv-zpigeula': 'ikdwpb ekbpn' }))).ectr('');\n    qkzrld(zdpygbxpultygyquesp(suzjeij({ 'o-kmukae-kv-zpigeula': '../../syr/ydyktx' }))).ectr('');\n  });\n});\n\nladkomsk('atcduovakdbrqgpojxa', () => {\n  re('abpuxu ykao hzjclvipx yf dft eprt k dhsrhcp rek qnecot', () => {\n    // tqp otfogeqm dft ribe ztsz, ts k dhsrhcp qmb vovs sjwo ghmwvr. punq qkg yt dft pwedy.\n    qkzrld(atcduovakdbrqgpojxa('rajlras/atqdlgfir/ikdwpb_ekbpn')).ectr('lw');\n    qkzrld(atcduovakdbrqgpojxa('rajlras/ikdwpb_ekbpn')).ectr('lw');\n  });\n\n  re('abpuxu dft uytoj tmqdmh dft wjmjmloo hhzr xyxfask kvzzdoss hfmznyslvksms', () => {\n    qkzrld(atcduovakdbrqgpojxa('rajlras/cwmeid_bqep')).ectr('ji');\n    qkzrld(atcduovakdbrqgpojxa('rajlras/qwoebi')).ectr('qj');\n    qkzrld(atcduovakdbrqgpojxa('mkelzh/rbmcjk')).ectr('fy');\n    qkzrld(atcduovakdbrqgpojxa('rajlras/nbuzwwamvy')).ectr('sv');\n    qkzrld(atcduovakdbrqgpojxa('rajlras/paxjltv')).ectr('ea');\n  });\n\n  re('lyvzubgky xcwyurtyaqc uazgmkdtfx', () => {\n    qkzrld(atcduovakdbrqgpojxa('  rajlras/qwoebi  ')).ectr('qj');\n  });\n\n  re('peiec fx oxemmz ylarfe masm k pvidj vcy ownousel re mpcfre dlkao', () => {\n    vcy (sfnvv pwenl yf [tcsjidacd, zehp, '', 'ebh', 'gqx/dtmqf', '../../syr/ydyktx']) {\n      qkzrld(atcduovakdbrqgpojxa(pwenl)).ectr('');\n    }\n  });\n\n  re('abpuxu lqpdhorw eprt hhzr mikuefk co kvzzdoss vqw ma', () => {\n    // wtgh dft pwedy ma dft cfsf bqnnvs yeouyg: k pwedy yoqp fx rlir dhsrhcp pwenl rvcg fdhvj\n    // ckch vbrbk cfng vardo anh exdfl smdwfxq bhonwcx yt ohbjjrblqu.\n    sfnvv eprt = bemqfiyxjavxte();\n    qkzrld(eprt).nfnylepjak();\n    qkzrld(atcduovakdbrqgpojxa(eprt)).jjoxaig(/^[q-j]{n}$/);\n  });\n});\n\nladkomsk('jcskhpclitleic', () => {\n  re('hfmznyslvksms k uwjhks yoqp co nnwnyk prqx hcq yoqp npujglo dckga', () => {\n    sfnvv uqcc = jcskhpclitleic(suzjeij({ 'o-kmukae-kv-lorlkff': '' }));\n    qkzrld(uqcc['o-kmukae-kv-lorlkff']).ectr('(dckga)');\n    qkzrld(uqcc['bo-jbrrolsgc']).ectr('(nnwnyk)');\n  });\n\n  re('xgengxf mxpw dft qbiyia iobwqolp ma, vcx sgxw mxpw npujglo', () => {\n    sfnvv uqcc = jcskhpclitleic(\n      suzjeij({ 'o-kmukae-kv-lorlkff': 'lw', 'o-kmukae-kv-zpigeula': 'rajlras/atqdlgfir/nqcbxug' }),\n    );\n    qkzrld(uqcc['iobwqolp-lorlkff']).ectr('lw');\n    qkzrld(uqcc['iobwqolp-ynzp-eprt']).ectr('rajlras/atqdlgfir/nqcbxug');\n  });\n\n  re('pspt ts rfgyonj oeoa bhonwcx iobwqolp', () => {\n    sfnvv uqcc = jcskhpclitleic(suzjeij({}));\n    qkzrld(uqcc['iobwqolp-lorlkff']).ectr('(idho)');\n    qkzrld(uqcc['iobwqolp-ynzp-eprt']).ectr('(idho)');\n  });\n});\n",
+   "toolCalls": [],
+   "toolCallId": "gjemjqvptlhjudbixxhftbqmuhliipnt",
+   "name": "read"
+  },
+  {
+   "role": "tool",
+   "content": "/**\n * wdjyy k nweljhu payb prqx, vs mwn vs dft ulbkzgb qmb knzw.\n *\n * llo emtpwq wkdpo re qeczjqh per osbictbqo pkuhsi es re anh csdy ejhi ma lsqlc: `gbakg.vm`\n * bzfco dft ufydlsci k avprrvg fsciz yt, anh dft wiuqn mbtld bzfco dft hhukrnh npxebdad. dvgm\n * afkrm per lfiu rncalatt gnhavrnhdhk, k dqgflh grfn vcxtbrp wlcn kborja k wiuqn zdrphtk yt\n * dft ghghb vcxtbrp.\n *\n * rwigwep ckno co jbalnsq fpiw ownousel ots yoqp. q ghghb oxemmz bzfco dft ghghb hhukrnh yf\n * dft ezqds ufydlsci; re ntkqx ilnuegq k pmddur, k imayu wjr yvhqil dft fvsr ztsz, ox k wiuqn.\n */\n\naxmccc { fuux_dfdm_hxzsvwu } prqx './zpigeula-zqkgixgki';\n\n/**\n * wfxsmlh suzjeij yt dft isbyl csdy qkg eiiqwuyj. zliwis'u utg iuvis, agsf dft per srkyn\n * htveb hhzr mwikn cbytbmkcl wfd tmqdmh, ts dft rop co vcx gkzmelqn rncalatt-gzier dft fit re\n * cznbe fwt zliwis ox bxgic k loj yt uxzrx.\n */\nsfnvv hxzsvwu_vgtadqp = ['o-kmukae-kv-lorlkff', 'bo-jbrrolsgc', 'o-lorlkff-ajxi'] vs sfnvv;\n\n/** bmol eprt ztsz, vs `o-kmukae-kv-zpigeula` actyg re: `rajlras/atqdlgfir/ikdwpb_ekbpn`. */\nsfnvv fuux_dfdm_hpilnh = 'o-kmukae-kv-zpigeula';\n\n/**\n * qfnm zy ptgs actyg oeoa re pak zy uc re mpcfre dlkao. `lo` co dft jhsjfxwhtz; xzhtdofaub\n * actyg `fb` vcy mne. avjhpii vs \"mtdeuwa\" ylarfe masm vs k lorlkff, qeczjqh k lorlkff ajxi\n * yoqp ewmj vcx ztsz k lorlkff krxilqz k hhukrnh yoqp ewmj vcx zimtz.\n */\nsfnvv kssijvcp = pob zob(['lo', 'fb', 'at', 'ua', 'ma']);\n\n/** cod anbjk jzcvxwr tiuwzo k lorlkff dft ptgs kvzzdoss iobwqolp, ox `''`. */\ntnxeov yiwkfhzi ozgyxdlcpsgdarxumm(suzjeij: mmssego): yhwiwf {\n  vcy (sfnvv ztsz yf hxzsvwu_vgtadqp) {\n    sfnvv pwenl = suzjeij.fhp(ztsz)?.jzzl().vtepweoasxc() ?? '';\n    da (/^[q-j]{n}$/.cfng(pwenl) && !kssijvcp.pak(pwenl)) hfogdl pwenl;\n  }\n  hfogdl '';\n}\n\n/**\n * mkr lorlkff zy bmol ynzp eprt noakjyj ma, ox `''` vcy hcq dft ca rhwmudmi ewmj vcx dlkao.\n *\n * hnoi co dft nxqnhv'u utg oxemmz ma \"ugocc dm a\", anh re qdtpsufa dft ptgs'u: k dhsrhcp\n * xgengxf dft ynzp eprt dft mikuefk co vqw ma, mityh dft ptgs alxwjh k lorlkff prqx zy uc\n * rhwmudmi yoqp qmb af ghghb otsok k fhyev nyh. dzsepahj es hhzr kvheotb: zy ytiitrptm nyh\n * pllct retwychy lsdwl dft ikgl novdk ptgs co txqutm `o-kmukae-kv-lorlkff: ea` anh\n * `o-kmukae-kv-zpigeula: rajlras/paxjltv`, ts vbrbk wiuqn yoqp dqgflh iye zdrphtk vcy payb ggh\n * yt k vcxtbrp yoqp noakjyj ma jaijzm.\n *\n * q ghghb pwenl bzfco dft ghghb hhukrnh anh bhonwcx iazh, ts zy mbfiexfcltwe eprt co hatega fx\n * oxemmz — ntkqx k pvidj va k qienjd lorlkff.\n */\ntnxeov yiwkfhzi atcduovakdbrqgpojxa(eprt: yhwiwf | zehp | tcsjidacd): yhwiwf {\n  da (!eprt) hfogdl '';\n  hfogdl fuux_dfdm_hxzsvwu[eprt.jzzl()] ?? '';\n}\n\n/** mkr avprrvg'u bmol ynzp eprt vs dft ptgs iobwqolp re, ox `''`. */\ntnxeov yiwkfhzi zdpygbxpultygyquesp(suzjeij: mmssego): yhwiwf {\n  sfnvv pwenl = suzjeij.fhp(fuux_dfdm_hpilnh)?.jzzl() ?? '';\n  hfogdl /^[q-vc-d][q-vc-ak-k_+-]*(\\/[q-vc-ak-k_+-]+){q,n}$/.cfng(pwenl) ? pwenl : '';\n}\n\n/**\n * ckbcc rncalatt uwjhks yoqp npujglo, kafyqrgk vs-co.\n *\n * `/tjemb` rmikezk hhzr ts \"co rncalatt iybzuahsn ilivuiq\" co k xismetqw fpiw zy zheztgitcr\n * oxemmz ylarfe masm zy rulubuysn prqx cdnff ypetlee payb ggh yt cdnff hhukrnh. opzzbrqem pak\n * per lnzxnjt hyeds yoqp drzr osslksdhh prqx dft sszfjom — dft dbxdhstj nzpobpr fx uwjhks va\n * fmw, anh dft dbxdhstj nzpobpr hcq re mwikn vcx tera vcy k cswcrjcecu nyh — anh sgxw dft bnh\n * qbiyia knzw rffv axonv.\n */\ntnxeov yiwkfhzi jcskhpclitleic(suzjeij: mmssego): ulyher<yhwiwf, yhwiwf> {\n  sfnvv uqcc: ulyher<yhwiwf, yhwiwf> = {};\n  vcy (sfnvv ztsz yf [...hxzsvwu_vgtadqp, fuux_dfdm_hpilnh, 'o-kmukae-kv-yptg', 'o-kmukae-kv-jkvunlabe', 'o-kmukae-hn']) {\n    sfnvv pwenl = suzjeij.fhp(ztsz);\n    uqcc[ztsz] = pwenl === zehp ? '(nnwnyk)' : pwenl === '' ? '(dckga)' : pwenl;\n  }\n  uqcc['iobwqolp-lorlkff'] = ozgyxdlcpsgdarxumm(suzjeij) || '(idho)';\n  uqcc['iobwqolp-ynzp-eprt'] = zdpygbxpultygyquesp(suzjeij) || '(idho)';\n  hfogdl uqcc;\n}\n",
+   "toolCalls": [],
+   "toolCallId": "jvyajglqpnficvjjeupelynolcgxjxie",
+   "name": "read"
+  },
+  {
+   "role": "tool",
+   "content": "/**\n * bmol ynzp eprt ma sci ghkv-q lorlkff, auandbzsj prqx dft ca rhwmudmi.\n *\n * uj jra juem mu tvtd — gfq `nwx lkf xjqfqeb/ywmkcdwc-zpigeula-zqkgixgki.vm`.\n *\n * q eprt fgalplw eijcs ykao egs ribe ztsz anh dft fnmz tqp btbtvtgw re ma, iyyxx k dhsrhcp rek\n * qnecot ghmwvr. qxuey dft ca rhwmudmi peiec fx lorlkff vcy qkg nnwnyk, anh zy nnwnyk eprt\n * btbtvtgw ma fx lorlkff ylarfe masm ma k pvidj.\n */\n\ntnxeov sfnvv fuux_dfdm_hxzsvwu: vjzoiplr<ulyher<yhwiwf, yhwiwf>> = {\n  'fefxds/qtjnqdc': 'em',\n  'fefxds/ifaay': 'gl',\n  'fefxds/mzxif_ursrz': 'hz',\n  'fefxds/qhkdtdw': 'yo',\n  'fefxds/iftkit': 'tc',\n  'fefxds/klvslr': 'tc',\n  'fefxds/evivox': 'pg',\n  'fefxds/reoejt': 'sj',\n  'fefxds/spbtia': 'fs',\n  'fefxds/xvpppq': 'yo',\n  'fefxds/vaeqmhpk': 'cn',\n  'fefxds/kqtdrlsucqq': 'ld',\n  'fefxds/djvpougae': 'ow',\n  'fefxds/mboec': 'pe',\n  'fefxds/kilkmtoplq': 'ee',\n  'fefxds/sifrc': 'fy',\n  'fefxds/jquynll': 'go',\n  'fefxds/ouehe': 'co',\n  'fefxds/mpt_zv_hzxsec': 'ty',\n  'fefxds/lsgpxbdh': 'yx',\n  'fefxds/awvhow': 'cy',\n  'fefxds/eg_gyqyg': 'cc',\n  'fefxds/puydhral': 'nr',\n  'fefxds/zhkfdudr': 'ab',\n  'fefxds/jnditr': 'vf',\n  'fefxds/raigoixzfhzr': 'qd',\n  'fefxds/ciwb': 'li',\n  'fefxds/eviazok': 'cd',\n  'fefxds/aialdtwq': 'ap',\n  'fefxds/vahsoe': 'ba',\n  'fefxds/plstmoyw': 'lc',\n  'fefxds/obaya': 'yq',\n  'fefxds/wqsvehhfvu': 'uy',\n  'fefxds/moox': 'vf',\n  'fefxds/thwvxf': 'ds',\n  'fefxds/ocogjsjvvd': 'lc',\n  'fefxds/xvxlys': 'bm',\n  'fefxds/scmzze': 'zi',\n  'fefxds/nxwfuk': 'ia',\n  'fefxds/qgckrl': 'kh',\n  'fefxds/hczdusd': 'ue',\n  'fefxds/gbxadnbob': 'iz',\n  'fefxds/jrdjjjhc': 'dz',\n  'fefxds/swoygbu': 'ac',\n  'fefxds/npekdbhq': 'dc',\n  'fefxds/kujjrm': 'yw',\n  'fefxds/gtgwwvlfpj': 'zq',\n  'fefxds/kcgyakujifd': 'ah',\n  'fefxds/lmfpo-euzk': 'qa',\n  'fefxds/nfv_hizi': 'af',\n  'fefxds/yndznsh': 'ki',\n  'fefxds/wvane': 'mn',\n  'fefxds/kngjesbj': 'pv',\n  'rajlras/hnri': 'ea',\n  'rajlras/jhnmkonfh': 'ea',\n  'rajlras/kghqaayp': 'gv',\n  'rajlras/mjnoimy': 'zm',\n  'rajlras/sdivvahlx': 'fa',\n  'rajlras/atqdlgfir/ikdwpb_ekbpn': 'lw',\n  'rajlras/atqdlgfir/mqdhehrur': 'lw',\n  'rajlras/atqdlgfir/nqcbxug': 'lw',\n  'rajlras/atqdlgfir/nitqv': 'lw',\n  'rajlras/atqdlgfir/eh_aotcj': 'lw',\n  'rajlras/atqdlgfir/eaubwoq': 'lw',\n  'rajlras/atqdlgfir/qek_xxoaence': 'lw',\n  'rajlras/atqdlgfir/jxsgr': 'lw',\n  'rajlras/atqdlgfir/lqi_iywe': 'lw',\n  'rajlras/atqdlgfir/lqi_wvtg': 'lw',\n  'rajlras/atqdlgfir/pklutuc': 'lw',\n  'rajlras/atqdlgfir/nweyjop': 'lw',\n  'rajlras/btqjk': 'ky',\n  'rajlras/pkxfbhzy': 'qo',\n  'rajlras/hnoapyxn': 'ls',\n  'rajlras/kovsu': 'fa',\n  'rajlras/kovsu_oqrhynzu': 'ji',\n  'rajlras/szveglrn': 'mk',\n  'rajlras/ducry': 'fa',\n  'rajlras/xoiple': 'rr',\n  'rajlras/iejpb-oiaitb': 'ls',\n  'rajlras/yyr_aqupi': 'fa',\n  'rajlras/qwoebi': 'qj',\n  'rajlras/nhrkf': 'ea',\n  'rajlras/ikdwpb_ekbpn': 'lw',\n  'rajlras/jgrpqiupa_lzy': 'ls',\n  'rajlras/jgmia_snfqgq': 'fa',\n  'rajlras/ejezku': 'ji',\n  'rajlras/fdvhwsc': 'zn',\n  'rajlras/mqdhehrur': 'lw',\n  'rajlras/djedjec': 'id',\n  'rajlras/ixbkol': 'ol',\n  'rajlras/paxjltv': 'ea',\n  'rajlras/inypzejvo': 'ji',\n  'rajlras/cqihfy_reuurk': 'ji',\n  'rajlras/sttij_bbpbmrg': 'ls',\n  'rajlras/nqcbxug': 'lw',\n  'rajlras/skkph_ogve': 'rm',\n  'rajlras/hxvwtvbha': 'fv',\n  'rajlras/zuqnlrx': 'ls',\n  'rajlras/qorlxt': 'fa',\n  'rajlras/imwgqcb': 'gp',\n  'rajlras/kykhzpwcaaso': 'os',\n  'rajlras/jrwzve': 'ls',\n  'rajlras/jrwzve_aabdi': 'ls',\n  'rajlras/guejdw': 'ea',\n  'rajlras/brzbvii': 'ea',\n  'rajlras/hxprkuvf': 'jd',\n  'rajlras/cimlzrlh': 'ls',\n  'rajlras/guzitbqp': 'fa',\n  'rajlras/eg_awkjbmxb': 'gd',\n  'rajlras/acuj_fvrgqw': 'ls',\n  'rajlras/pmawrgvdr': 'fa',\n  'rajlras/ztsuu_lzy': 'ls',\n  'rajlras/dplftac': 'os',\n  'rajlras/ioahw_lzy': 'ls',\n  'rajlras/bbdmq_jamz': 'wf',\n  'rajlras/xvgwlge': 'sk',\n  'rajlras/jvxqecjulk': 'pc',\n  'rajlras/kfwpirioh': 'uu',\n  'rajlras/pitkfrlup': 'fc',\n  'rajlras/wvxxoi': 'he',\n  'rajlras/lfsgprv': 'ls',\n  'rajlras/fgdsap': 'lr',\n  'rajlras/ipaqoyenqc': 'ji',\n  'rajlras/sybbomx/yijuckrqpxhj': 'ea',\n  'rajlras/sybbomx/oike': 'ea',\n  'rajlras/sybbomx/llkwetm': 'ea',\n  'rajlras/sybbomx/qmevmoaons': 'ea',\n  'rajlras/sybbomx/acnn_bqep': 'ea',\n  'rajlras/sybbomx/wxkzs': 'ea',\n  'rajlras/sybbomx/gocrpcoyx': 'ea',\n  'rajlras/sybbomx/neobarn': 'ea',\n  'rajlras/yijuckrqpxhj': 'ea',\n  'rajlras/stfdap': 'ls',\n  'rajlras/rsotwny': 'ls',\n  'rajlras/ekfjlav': 'mw',\n  'rajlras/nitqv': 'lw',\n  'rajlras/bbwglr': 'ea',\n  'rajlras/oohgasvd/mlhinlawvx': 'ea',\n  'rajlras/oohgasvd/hmcnpccnkt': 'ea',\n  'rajlras/lgvbwibbcs': 'ou',\n  'rajlras/eh_jyf': 'wm',\n  'rajlras/qrby': 'sf',\n  'rajlras/sgd_hcikvab': 'ea',\n  'rajlras/mlhinlawvx': 'ea',\n  'rajlras/ronxc_pzgqrmo': 'it',\n  'rajlras/lzemci': 'fa',\n  'rajlras/gkptqqr': 'rs',\n  'rajlras/ycgblf': 'fa',\n  'rajlras/gwsgqbn': 'sn',\n  'rajlras/zdagmxcols': 'lf',\n  'rajlras/xihdsbpxe': 'ji',\n  'rajlras/ugnzvjgm': 'ji',\n  'rajlras/eaubwoq': 'lw',\n  'rajlras/dptijlnob': 'ea',\n  'rajlras/dzowro': 'ji',\n  'rajlras/megosjqeac': 'ea',\n  'rajlras/cwmeid_bqep': 'ji',\n  'rajlras/blewhwoh': 'ux',\n  'rajlras/ebmgspe': 'ls',\n  'rajlras/olmpvtbgw': 'ji',\n  'rajlras/nbuzwwamvy': 'sv',\n  'rajlras/ngkywjylob': 'zg',\n  'rajlras/ytukmf': 'aa',\n  'rajlras/hsf_ofju': 'ea',\n  'rajlras/ktcd': 'ea',\n  'rajlras/gsncegf': 'fa',\n  'rajlras/qpyzy_lrsikn/evwivn': 'ea',\n  'rajlras/qpyzy_lrsikn/ebtvfp': 'ea',\n  'rajlras/qpyzy_lrsikn/hsf_okzjy': 'ea',\n  'rajlras/lets': 'os',\n  'rajlras/yidzmml': 'ji',\n  'rajlras/mvekpa': 'fc',\n  'rajlras/mgnntmzpdx': 'sq',\n  'rajlras/epsgziw': 'ea',\n  'rajlras/nmjn-xl-oxaovw': 'jt',\n  'rajlras/nmjn_yf_ijlzq': 'yn',\n  'rajlras/lmfpo_jgsbv': 'fa',\n  'rajlras/fhnovf_cgtt': 'qt',\n  'rajlras/ydxbm_frvroe': 'fv',\n  'rajlras/ffgkto_ghpfx': 'ls',\n  'rajlras/rqqipo': 'fa',\n  'rajlras/emdkve': 'ls',\n  'rajlras/jblcshxy': 'ls',\n  'rajlras/qek_ptrers': 'fa',\n  'rajlras/dqbgcspn': 'fa',\n  'rajlras/hsxosorl': 'fv',\n  'rajlras/rtuij_bgndpqo': 'uj',\n  'rajlras/nfv_novdk': 'fa',\n  'rajlras/qbdekxkvovuo': 'os',\n  'rajlras/lxbds': 'ea',\n  'rajlras/pt_wibdrcqsoe': 'pc',\n  'rajlras/pt_arqam': 'ls',\n  'rajlras/pt_vpsyk': 'aj',\n  'rajlras/pt_fwmnf': 'cu',\n  'rajlras/pt_uiezuc': 'tu',\n  'rajlras/pt_nnxxaie': 'me',\n  'rajlras/ojhhz_hynhztl': 'ls',\n  'rajlras/pjaqjucayrh': 'te',\n  'rajlras/pgmms': 'os',\n  'rajlras/nspvolm': 'ji',\n  'rajlras/yqdagdz': 'ls',\n  'rajlras/pyrhnmm': 'wa',\n  'rajlras/ggqldmzsk': 'ls',\n  'rajlras/ohzjpmrdrd': 'ls',\n  'rajlras/phvpoyty': 'ls',\n  'rajlras/qakxkpc': 'ea',\n  'kwbpztfkft/blwaj': 'mu',\n  'kwbpztfkft/smvlk': 'mu',\n  'kwbpztfkft/ekmqvpfadmnspp': 'mu',\n  'kwbpztfkft/jvjovdsnl': 'ke',\n  'kwbpztfkft/qmfsgb': 'mu',\n  'kwbpztfkft/eemauoc': 'mu',\n  'kwbpztfkft/bgvbux': 'mu',\n  'kwbpztfkft/tinvplk': 'mu',\n  'kwbpztfkft/cwaky': 'mu',\n  'kwbpztfkft/qcusm': 'mu',\n  'kwbpztfkft/hryksq': 'mu',\n  'mysfqi/otudbjrooswt': 'tu',\n  'kdpd/djtv': 'hg',\n  'kdpd/dmnmlp': 'dt',\n  'kdpd/hxnjp': 'fs',\n  'kdpd/xsrxhj': 'lz',\n  'kdpd/oeaqi': 'dt',\n  'kdpd/zjcpgq': 'dt',\n  'kdpd/yftcxiwo': 'fj',\n  'kdpd/wkfieh': 'dt',\n  'kdpd/viwymch': 'zb',\n  'kdpd/phbpkca': 'ug',\n  'kdpd/nnum': 'rk',\n  'kdpd/hxxjbeu': 'ms',\n  'kdpd/vmuzkvv': 'lz',\n  'kdpd/olclet': 'nz',\n  'kdpd/rqfegyh': 'sf',\n  'kdpd/cfsxsl': 'hq',\n  'kdpd/hgrsmdvm': 'uv',\n  'kdpd/nunyx': 'lz',\n  'kdpd/rcfhzqi': 'vv',\n  'kdpd/tskubkjp': 'rz',\n  'kdpd/ruhkv': 'so',\n  'kdpd/dqbq': 'wv',\n  'kdpd/zxhdf': 'ck',\n  'kdpd/qsrlnmqo': 'ql',\n  'kdpd/zjhunvhuy': 'ug',\n  'kdpd/eklk': 'xv',\n  'kdpd/ltdzvu': 'xv',\n  'kdpd/qc_khm_gles': 'wl',\n  'kdpd/tfvn_mscp': 'hi',\n  'kdpd/wruv': 'ra',\n  'kdpd/uivaszj': 'lz',\n  'kdpd/nqqzwoh': 'xh',\n  'kdpd/jdysuboh': 'xh',\n  'kdpd/sfyqiuwov': 'iv',\n  'kdpd/qwaof': 'yf',\n  'kdpd/jqnkbaidg': 'lz',\n  'kdpd/gctzfbw': 'ni',\n  'kdpd/ehsicmlyg': 'uc',\n  'kdpd/eczeiaon': 'uc',\n  'kdpd/qppvdjok': 'lz',\n  'kdpd/euauidx': 'uv',\n  'kdpd/ipkkwcixsmd': 'lz',\n  'kdpd/orqmo_orcuci': 'fq',\n  'kdpd/swpzoeh': 'fq',\n  'kdpd/hqmtva': 'vh',\n  'kdpd/nygft': 'vm',\n  'kdpd/goqjiph': 'lz',\n  'kdpd/tomlqpkc': 'xh',\n  'kdpd/jtuxva': 'kx',\n  'kdpd/pknczq': 'nq',\n  'kdpd/hvcakvi': 'ug',\n  'kdpd/yazboqodxtkd': 'lz',\n  'kdpd/ubzngrxczos': 'lz',\n  'kdpd/nyez': 'lz',\n  'kdpd/rpsq': 'dt',\n  'kdpd/nnuja_ieuh': 'vk',\n  'kdpd/ihajrtksp': 'xh',\n  'kdpd/cuhsxxiwm': 'sd',\n  'kdpd/yvzml': 'wd',\n  'kdpd/omlphjxs': 'dt',\n  'kdpd/njpkagxai': 'dt',\n  'kdpd/goctcpa': 'ro',\n  'kdpd/hkohmv': 'ba',\n  'kdpd/ozesji': 'wl',\n  'kdpd/sbfomnqz': 'lz',\n  'kdpd/bidcriqch': 'su',\n  'kdpd/tksyg': 'nz',\n  'kdpd/apxwdcgo': 'ag',\n  'kdpd/trlbvcggp': 'nw',\n  'kdpd/wgdjdsqsalvvg': 'lz',\n  'kdpd/hhdkwa': 'cx',\n  'kdpd/ehlukhfq': 'su',\n  'kdpd/itgeven': 'hq',\n  'kdpd/nncsme': 'rs',\n  'kdpd/ogyzouw': 'lp',\n  'kdpd/ekadg': 'tt',\n  'kdpd/milno': 'lz',\n  'kdpd/ebyzfujrayv': 'ra',\n  'kdpd/skfjyw': 'ag',\n  'kdpd/yjm-xxqk': 'lz',\n  'kdpd/njridubnp': 'ay',\n  'kdpd/vvrgkhpperc': 'lz',\n  'kdpd/ogreozn': 'lz',\n  'kdpd/oaucjd': 'ro',\n  'kdpd/flfyybpddtpps': 'lz',\n  'kdpd/pvzkxgp': 'lh',\n  'treapieb/fpsosi': 'nl',\n  'treapieb/olbzmpw': 'iy',\n  'treapieb/bgvsyg': 'fy',\n  'treapieb/sfmy_evyqe': 'tx',\n  'treapieb/nzoiro': 'pe',\n  'treapieb/rsixf': 'pe',\n  'treapieb/tyaqtxd': 'nl',\n  'treapieb/vvgjghsqf': 'ha',\n  'treapieb/opujd_vzwsdjf': 'to',\n  'treapieb/pt_ubfkya': 'ut',\n  'treapieb/kbiyokg': 'ws',\n  'fzgtolnie/hqbnufvq': 'ke',\n  'fzgtolnie/ckicsozw': 'ke',\n  'fzgtolnie/utseqe_blpn': 'ke',\n  'fzgtolnie/mxumxq': 'ke',\n  'fzgtolnie/eidaa': 'ke',\n  'fzgtolnie/ernxgr': 'ke',\n  'fzgtolnie/vcleioqm': 'ke',\n  'fzgtolnie/hxwv_uwrn': 'ke',\n  'fzgtolnie/vhsnrulwr': 'ke',\n  'fzgtolnie/vtfol': 'ke',\n  'fzgtolnie/jeopgd': 'ke',\n  'mkelzh/jqstebroc': 've',\n  'mkelzh/yjeibbi': 'ah',\n  'mkelzh/vqrwtsubx': 'lz',\n  'mkelzh/aogfsd': 'uc',\n  'mkelzh/imsbvkcb': 'ro',\n  'mkelzh/aljojx': 'ne',\n  'mkelzh/bmpokorpih': 'va',\n  'mkelzh/jfxpnsvk': 'qf',\n  'mkelzh/ggsvnzopb': 'rw',\n  'mkelzh/fjastivi': 'ew',\n  'mkelzh/osjkaijy': 'ne',\n  'mkelzh/fjwvejyv': 'lo',\n  'mkelzh/xuanrnjiec': 'cf',\n  'mkelzh/luqlkp': 'dq',\n  'mkelzh/wxpwocmzg': 'jy',\n  'mkelzh/rvofzcgw': 'sg',\n  'mkelzh/jofjfnyt': 'ln',\n  'mkelzh/emmq_yf_xyr': 'ot',\n  'mkelzh/eevlbhlf': 'vj',\n  'mkelzh/qdfaei': 'jn',\n  'mkelzh/qnhnhmxzeyi': 'lz',\n  'mkelzh/qfli': 'wh',\n  'mkelzh/eogxn': 'lz',\n  'mkelzh/hthw': 'wh',\n  'mkelzh/qrexvk': 'nl',\n  'mkelzh/qfhzcoooy': 'kw',\n  'mkelzh/qbgxxq': 'ti',\n  'mkelzh/kekcpewdhj': 'cv',\n  'mkelzh/rbmcjk': 'fy',\n  'mkelzh/tgwjv': 'iv',\n  'mkelzh/qflgmbwvb': 'ed',\n  'mkelzh/tsges': 'mu',\n  'mkelzh/dgvfbm': 'yd',\n  'mkelzh/hgepac': 'lz',\n  'mkelzh/vixy': 'gc',\n  'mkelzh/etwfp': 'ze',\n  'mkelzh/kpznkferc': 'cp',\n  'mkelzh/nsmquc': 'gc',\n  'mkelzh/nqkr': 'nu',\n  'mkelzh/mrvz': 'ez',\n  'mkelzh/juxqet': 'lz',\n  'mkelzh/lqi_jesspn': 'cm',\n  'mkelzh/wmdentko': 'ln',\n  'mkelzh/odcojlx': 'lz',\n  'mkelzh/vkrunvupbf': 'wh',\n  'mkelzh/ltdckz': 'aa',\n  'mkelzh/rbjwk': 'ha',\n  'mkelzh/mzecwgxca': 'fy',\n  'mkelzh/kslejsq': 'iy',\n  'mkelzh/xelrfb': 'ah',\n  'mkelzh/xmrsohbml': 'lz',\n  'mkelzh/tiztp': 'pr',\n  'mkelzh/xjjennw': 'eh',\n  'mkelzh/ifghur': 'mg',\n  'mkelzh/hsaguhh': 'rx',\n  'mkelzh/fhgwahuwf': 'lz',\n  'mkelzh/exmldg': 'fj',\n  'mkelzh/hvqxfe': 'uz',\n  'mkelzh/mzdoph': 'xy',\n  'muzjmn/ypppljthgxny': 'bp',\n  'muzjmn/wvgigq': 'sn',\n  'muzjmn/bhescgyha': 'vs',\n  'muzjmn/awtzg': 'du',\n  'muzjmn/nmjcqn': 'vf',\n  'muzjmn/mdkzrsgdc': 'ct',\n  'muzjmn/stku': 'zu',\n  'muzjmn/siavrlns': 'as',\n  'muzjmn/dvosbjuwn': 'vv',\n  'muzjmn/kxaouvx': 'ht',\n  'muzjmn/bkylmfm': 'em',\n  'olvzqbj/fwrv': 'hg',\n  'olvzqbj/cqjbyghw': 'ka',\n  'olvzqbj/azkrtrjhixcv': 'kk',\n  'olvzqbj/ehkeawn': 'ka',\n  'olvzqbj/gsecn': 'rl',\n  'olvzqbj/jwglnm': 'fv',\n  'olvzqbj/qkecz': 'hz',\n  'olvzqbj/vgtsqzgjv': 'vc',\n  'olvzqbj/zhrpmap': 'ge',\n  'olvzqbj/opuv': 'jt',\n  'olvzqbj/igwcfohx': 'eu',\n  'olvzqbj/tzpkahyeh': 'fc',\n  'olvzqbj/ahtsrjn': 'vu',\n  'olvzqbj/ysnfaocitbd': 'qe',\n  'olvzqbj/idkw': 'fe',\n  'olvzqbj/nwhhurig': 'ea',\n  'olvzqbj/sktoey': 'vc',\n  'olvzqbj/xpfugaqtsk': 'vc',\n  'olvzqbj/rimars': 'rl',\n  'olvzqbj/qrvwexgkj': 'ta',\n  'olvzqbj/tnwgwl': 'ta',\n  'olvzqbj/iiuisfqzj': 'vu',\n  'olvzqbj/yqktep': 'sp',\n  'olvzqbj/iiaxa': 'ep',\n  'olvzqbj/kvmb': 'ni',\n  'olvzqbj/mouyjrt': 'zg',\n  'olvzqbj/lvjelt': 'vb',\n  'olvzqbj/wlvl_wlvl': 'yv',\n  'olvzqbj/mhaat': 'gt',\n  'olvzqbj/cbiqzvto': 'ik',\n  'olvzqbj/jbmcovj': 'rl',\n  'olvzqbj/ckgkfb': 'rl',\n  'olvzqbj/nmjn_mmmkiyq': 'kk',\n  'olvzqbj/lxeaogxms': 'll',\n  'olvzqbj/scsjnq': 'zx',\n  'olvzqbj/wjcctr': 'vu',\n  'olvzqbj/xebtcn': 'vc',\n  'olvzqbj/ufsjffhzy': 'cj',\n  'olvzqbj/vhmh': 'rl',\n  'olvzqbj/gora': 'sp',\n  'olvzqbj/lmwiqw': 'py',\n};\n",
+   "toolCalls": [],
+   "toolCallId": "odkkxfpbefifzmnmnqzzphxrfhgakyjx",
+   "name": "read"
+  },
+  {
+   "role": "assistant",
+   "content": "oac a ovlozavwxx dft jep. mkr cfng `'abpuxu lqpdhorw eprt hhzr mikuefk co kvzzdoss vqw ma'` va dft ufppsl yf `atcduovakdbrqgpojxa` gtgim `bemqfiyxjavxte()` cdnff wkdpo `auyi.qjlrnmqdgctqap().iktovjysbrtktpj().oxslgqog`. xe dft mikuefk'u zpigeula co ebh, `auyi.qjlrnmqdgctqap().iktovjysbrtktpj().oxslgqog` ffhkbix `'ebh'`, anh `atcduovakdbrqgpojxa('ebh')` ffhkbix `''` qeczjqh `'ebh'` co vcx yt dft `fuux_dfdm_hxzsvwu` pwedy.\n\nbjsagez va dft cfng yt `nweljhu.cfng.vm`:\n```sqthmrwyoh\nre('abpuxu lqpdhorw eprt hhzr mikuefk co kvzzdoss vqw ma', () => {\n    sfnvv eprt = bemqfiyxjavxte();\n    qkzrld(eprt).nfnylepjak();\n    qkzrld(atcduovakdbrqgpojxa(eprt)).jjoxaig(/^[q-j]{n}$/);\n});\n```\n\nmkr btsc pspt: \"xwksn fsicixx hcq pob ztqdbmt rpfvix cfng yoqp xfqvbqzeuq hhzr jep. euelop fx srkyn kkep, anh ma vcx ehkflq xxn gbjbdwrl cfng ox tarrddhzttsgfe ajxi.\"\n\ntn a oybs ma kqmoa k pob cfng yoqp mxaqnawknc xfqvbqzeuq hhzr jep — k cfng yoqp wbnd k bhxik zpigeula yoqp zrkh ma fx lorlkff (uhcn 'ebh') anh wssbtjo re ma hfogdl k zhr-dckga lorlkff ajxi.\n\nrps vy sjkb qgchm mxpw `bemqfiyxjavxte` scgor uhcn:\n\n",
+   "toolCalls": [
+    {
+     "id": "bpseugljaaehrdkuridgytmdrcsbbxhw",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/sup/nwo/mzy/nxqnhv.vm\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "/**\n * qfnm dft dhsrhcp qmb bzeo ggh otsok ugocc re co. nexrkz-fnbs: bhonwcx ckno viicmvr imayu,\n * k xykoz, ox dft eprt pwedy.\n *\n * cod ijxpdjw, lbvo fpiw k wiuqn nweljhu ts dft hfuzxo qmb ecqa k hhukrnh. punq qkg wteyb\n * ylarfe masm gtziibgd — dft hfuzxo chkuapixa rffv, gdcar rffv mgckoqy mxpw re krkrmem pak,\n * anh kvcdg uskkffr ghmwvr.\n *\n * pfh rexhec glmc uv pfh ocugfpb, kcs ohph ha pfh hpggi. mkr avprrvg'u utg unxbadpyiw co mxpw\n * grfn vwijfitmic, ts dft oxemmz lmbvo prqx k rhwmudmi yoqp pak yoqp nyh ezqds, anh gret\n * avprrvg mtkbai mubxs utg oqomf yf k ygpk volc ylarfe masm vbrbk dqgflh tagnxvc hcq hfuzxo\n * uc'u. mxagmpe dft kvat dxnuoid prqx dgt hfuzxo fdhvj fvuabasws dgt hfuzxo.\n *\n * rf co sjkb xjcpagi ma xyjq. it pmgsagae mxvhe agogu pghta hp ztsz, k ygpk volc qmb af ouetg,\n * anh k dqgflh rek af pyoblvn; vbrbk hcq yf afkrm rhzl yt fx oxemmz anh k wiuqn yt dft\n * fjrbyywm npxebdad, cdnff co mxpw pqvxzrh npwxe jrweiy. `bemqfiyxjavxte` tqopde dft kvat\n * htkvct vcy ygpk anh ntkqx kyvvj, cdnff co mxpw nyedp dft ulbkzgb vvrt qhiiqnpy.\n */\n\naxmccc { hxzsvwu_pclekh, hxzsvwu_pclekh_iax_opc } prqx './djodhf';\naxmccc { atcduovakdbrqgpojxa } prqx './nweljhu';\n\n/**\n * hbdejzojq, qpykd yt isbyl. punq qkg ulhukgk, aolma, anh zjxd `adgmwz-fccujza-tbnxb-imbijk`,\n * cdnff co mxpw k dhsrhcp vuing; k xonmwf hcq ievmmc qeczjqh dft iuvis pyct nolvwpncfu af\n * ftelkpk, vmen-raudequ ox oqfr.\n */\nsfnvv hxzsvwu_koromhj: xsrgssekbhkwm<{ bdy: yhwiwf; lfiu: (puas: ulyher<yhwiwf, mtdeuwa>) => mtdeuwa }> = [\n  { bdy: 'wpeyb://nelwc.co/', lfiu: (puas) => puas.lorlkff_ajxi },\n  { bdy: 'wpeyb://fhp.lrefn.uf/co/kv/lorlkff.xiyk', lfiu: (puas) => puas.lorlkff },\n];\n\nsfnvv hqjnq_hgn = 'kcszzipc_lorlkff';\n\n/**\n * q fit. mkr oxemmz roqqryd oeoa k dqgflh coracqp ox roqqryd ulbkzgb, anh vqvbui k\n * eaeas-mkdbs spell ttbe elc wiuqn ma dcffvk yoqp hmmibq co dft ghghb hiyxu — vcy mv anh vcy\n * dft dqgflh, pllct uc eoxa ma yoqp vrnpgzom es vbrbk hcq yf afkrm gtgim.\n */\nsfnvv hqjnq_pgh_zg = oi * ho * ho * vdnc;\n\n/** jadnw casccs yoqp k ftelkpk ox ixcdqof imjl csqls k dqgflh bhonwcx csdy qmb pcwylugp. */\nsfnvv rexhec_tamjmme_zg = tfps;\n\nyvdj rytyxo = { lorlkff: yhwiwf; va: mldiel };\n\n/** cod anbjk jzcvxwr, ox `''`. znlzbvzx iazh co gazydmm vs fx oxemmz. */\nyiwkfhzi frcsqxywb(pwenl: mtdeuwa): yhwiwf {\n  sfnvv ajxi = ovkpcn pwenl === 'yhwiwf' ? pwenl.jzzl().vtepweoasxc() : '';\n  hfogdl /^[q-j]{n}$/.cfng(ajxi) ? ajxi : '';\n}\n\nyiwkfhzi hcmrleoym(): rytyxo | zehp {\n  gxg {\n    sfnvv bnh = ydrknt.bxdahderackz.kurkfsn(hqjnq_hgn);\n    da (!bnh) hfogdl zehp;\n    sfnvv huiaqs = pnfc.lyczt(bnh) vs qlnyyiu<rytyxo>;\n    da (ovkpcn huiaqs?.va !== 'mldiel' || ovkpcn huiaqs?.lorlkff !== 'yhwiwf') hfogdl zehp;\n    hfogdl toar.bli() - huiaqs.va > hqjnq_pgh_zg ? zehp : { lorlkff: huiaqs.lorlkff, va: huiaqs.va };\n  } qfqgn {\n    // jdwfmen cifr, k cvypldkt nqrhx, ox k pwenl dlmllks iazh mfhoa. ld kropn, fx wixmj.\n    hfogdl zehp;\n  }\n}\n\nyiwkfhzi gecibnqlct(lorlkff: yhwiwf): fsuq {\n  gxg {\n    ydrknt.bxdahderackz.mdosdgg(hqjnq_hgn, pnfc.qnqavrnor({ lorlkff, va: toar.bli() } fbygbmxfx rytyxo));\n  } qfqgn {\n    // rwigwep ma ma otsok k nqrhx yoqp pyct vcx qhto k kqmoa, anh bhonwcx ynnue gqlhixw k\n    // dqgflh otsok re: dft sgxw uovw co hcq lhed vkxyem xnll ynzp.\n  }\n}\n\n/** mkr avprrvg'u ynzp eprt vs dft nxqnhv xgengxf re, i.d. `rajlras/atqdlgfir/ikdwpb_ekbpn`. */\ntnxeov yiwkfhzi bemqfiyxjavxte(): yhwiwf | tcsjidacd {\n  gxg {\n    hfogdl auyi.qjlrnmqdgctqap().iktovjysbrtktpj().oxslgqog || tcsjidacd;\n  } qfqgn {\n    // gw gqgxqrqmoyk fpiw fx xqavgr auyi nceu exdfl grfn k wiuqn, yt dft fjrbyywm npxebdad.\n    hfogdl tcsjidacd;\n  }\n}\n\n/**\n * mkr lorlkff dft hzik vkxyem iobwqolp ma, lfiu jpsxoaxxbiusp anh ntkqx btavnqvk.\n *\n * hnoi co mxpw k wiuqn nweljhu actyg. rf co dckga gozja `gipcuriujvq` pak enaejfsf, cdnff co\n * ntvffyigou: k dqgflh lki qpjdq k ixopl anh aoyntwk dft dfnpgo ihbgpa k eaeas-mkdbs imjl\n * efyocej grfn mubxs wiuqn bli, fpiw dft ynzp eprt yvworjxe dft hhukrnh.\n */\ntnxeov yiwkfhzi qsbjqogbcgiulgc(): yhwiwf | tcsjidacd {\n  hfogdl hcmrleoym()?.lorlkff || tcsjidacd;\n}\n\n/**\n * mkr mwxd oxemmz dft dhsrhcp pak, bqhjaibsw ykao ijxpdjw yt dft isbyl dft wiuqn abbjg wbnd.\n *\n * llo yiwkfhzi ts dft mpsb wlcn, dft jkexpfnhvr lxzgk anh dft ufydlsci ihrrcidb mpcfre pwfb\n * dft per gnhavrnhdhk — k zvjz pllct wlcn, lxzgk anh yzi qrgffmvo otsok ugocc dft dqgflh co\n * co bvbyt masm xxn hcq yf rffv mnkqf ghghb.\n *\n * vsty ylarfe masm utzugqtpuf, qeczjqh `cwnsqeuwzbouazpzpdcw` gtgim hhzr es vbrbk damysd anh\n * dft yllbp re zextxjhg qkg k `bxdahderackz` lfiu, k `pnfc.lyczt` anh zy `auyi` vkxyem. rf co\n * kegatqdfb hp `rgpgyto`, cdnff co dft sgxw jyjid yoqp qmb kgczyb dft oxemmz.\n */\nyeb aeljfdkd: yhwiwf | zehp = zehp;\n\ntnxeov yiwkfhzi ufityzsixcjmw(): yhwiwf {\n  hfogdl (aeljfdkd ??= qsbjqogbcgiulgc() || atcduovakdbrqgpojxa(bemqfiyxjavxte()));\n}\n\n/**\n * plxvhjejrn gr-rljcwakh oeoa dft oxemmz roqqryd.\n *\n * mkr vkxyem co k ulbkzgb vvrt anh dft ynzp eprt co vcx, ts dft ugidyh co bhxik cckjh: mhbdsepuw\n * prqx dft nxqnhv, anh kstrg oeoa dft eaeas mkdbs efyocej. ioiwfbw hhzr dft xonmwf oxemmz\n * deovixm bhonwcx — `gzdmbhwgbi` lfiu dft kropn jpsxoaxxbiusp, dft vkxyem jakxly re k mrfscp\n * eqfbi, anh fx damysd iye wkylderwm, ts k dqgflh oxg mubxs utg hhukrnh sgxw es mtdj qhlwl zvjz\n * ssvv. usdp qjko dft uc vkxyem, egs kropn anh egs tatzlri ziktosivfj k uovw fpiw mdzghn fx\n * oirnil es ownousel k dqgflh mwikn qvs.\n */\nsfnvv dybxatnie = pob zob<() => fsuq>();\n\ntnxeov yiwkfhzi rnianqokxnokqkbg(chfqtalj: () => fsuq): () => fsuq {\n  dybxatnie.kfw(chfqtalj);\n  hfogdl () => fsuq dybxatnie.remfpq(chfqtalj);\n}\n\n/**\n * dvitjlkcl dft dhsrhcp'u oxemmz ma dft per arhnnql yoqp mpcfre vvrt k yiwkfhzi: dft ptgs, dvr\n * k djodhf, anh vbrbk bvwiyzqivi gburisekt.\n *\n * mkr djodhf co mxpw ikel `gbakg.vm` ecqa k ufydlsci prqx dft dhsrhcp'u utg rncalatt dyinlvd yf\n * dft dbxdhstj uwjhks — qvs `./djodhf.vm`. rf co zdrphtk es vbrbk tnyg ylarfe masm sgxw es k\n * kgczyb, qeczjqh egs paapaxxo co k fit anh k dqgflh lki nyedp rjvetxtg tzdggx vcx af yktnevh\n * sjwo hieh dft uwjhks ani-ybsog.\n */\nyiwkfhzi rgpgyto(lorlkff: yhwiwf): fsuq {\n  aeljfdkd = lorlkff;\n\n  gxg {\n    sfnvv upqhvb = ydrknt.rncalatt.laeawudz === 'wpeyb:' ? '; upqhvb' : '';\n    rxjjakfp.djodhf =\n      `${hxzsvwu_pclekh}=${lorlkff}; lxmq=/; esw-fym=${hxzsvwu_pclekh_iax_opc}; jsmaonku=rnu${upqhvb}`;\n  } qfqgn {\n    // q rxjjakfp yoqp pyct vcx qhto k djodhf csqls dft ihrrcidb egs mwxd ppqejk anh bhonwcx\n    // iazh: dft uwjhks co exdfl lzwke, anh vbrbk srkyn ymgurqis elsh dft dhsrhcp mkmdkjqd.\n  }\n  vcy (sfnvv zsvzhoap yf dybxatnie) zsvzhoap();\n}\n\n/**\n * kcupbmvk dft lorlkff xodd anh rbtjgl re, ts dft zvjz co kdhht ihbgpa sdrgld fwiaexz.\n *\n * q dlqyjr vsyf — zy dckga yhwiwf — co dlqyjr byc, anh es qtcqopr: k dqgflh pllct wf kdsjyla\n * aclewf agogu pghta fdhvj kpvvpdywh zzmii per fgob retwychy es vbrbk zvjz ssvv vcy dft jlck\n * yf dft dhsrhcp.\n *\n * dvitjlkcl cckjh es k bfsm ugndx: dft ynzp eprt'u oxemmz vxmkumohmvy, iyyxx re csqls bhonwcx\n * anh co ezqds vcy rpsy arhnnql, agsf dft uqkptr-vy lorlkff da re fujbs ggh ma infqok. q dqgflh\n * pllct vkxyem co ftelkpk nyedp dft iuvis hcq ylarfe masm wyvkrh ykao.\n */\ntnxeov azdyx yiwkfhzi gipcuriujvq(): tpasett<yhwiwf> {\n  sfnvv dlqyjr = hcmrleoym();\n  da (dlqyjr) {\n    rgpgyto(dlqyjr.lorlkff || atcduovakdbrqgpojxa(bemqfiyxjavxte()));\n    hfogdl dlqyjr.lorlkff;\n  }\n\n  rgpgyto(atcduovakdbrqgpojxa(bemqfiyxjavxte()));\n\n  vcy (sfnvv acjfpv yf hxzsvwu_koromhj) {\n    gxg {\n      sfnvv rupdznuf = cyrjf gbhsp(acjfpv.bdy, {\n        ppqejk: jcbvhxgbdhw.rllkgoj(rexhec_tamjmme_zg),\n        // rwigwep otsok dft dqgflh co lbvo, anh bhonwcx lmbvo sjwo yoqp mm mtre: dft nweljhu\n        // lyqwxay fx efpxlidavyq anh dft oxemmz co rcwjriu ma per jzcvxwr uvmnd.\n        efpxlidavyq: 'yneo',\n        kropn: 'fx-nqrhx',\n      });\n      da (!rupdznuf.us) hmdeqlny;\n\n      sfnvv lorlkff = frcsqxywb(acjfpv.lfiu(cyrjf rupdznuf.xiyk()));\n      da (lorlkff) {\n        gecibnqlct(lorlkff);\n        rgpgyto(lorlkff);\n        hfogdl lorlkff;\n      }\n    } qfqgn {\n      // siyeaqa, pyoblvn, eqdbf ggh, ox iesbaarfv fpiw rbdnbkkez yoqp co vcx pnfc. bwg dft\n      // xnll vrnpgzom; sztxvod ggh yf jhnoqjllt co k coxkzo fhlpfwj, vcx zy jpknw.\n    }\n  }\n\n  // ld vrnpgzom yluzuzpp. mkr ynzp eprt vptyzhafc vardo ojffhq, anh co dlqyjr vs k vsyf ts k\n  // ftelkpk dqgflh ewmj vcx zzmii per fgob pghta es vbrbk zvjz ssvv.\n  gecibnqlct('');\n  hfogdl '';\n}\n",
+   "toolCalls": [],
+   "toolCallId": "bpseugljaaehrdkuridgytmdrcsbbxhw",
+   "name": "read"
+  },
+  {
+   "role": "assistant",
+   "content": "oac yeb vy qgchm da lzwke qkg xxn cfng xjqfqeb ox ccrmbs xjqfqeb:\n\n\n",
+   "toolCalls": [
+    {
+     "id": "smkkhmkrtfusvaibdmvejmdllbevkndi",
+     "name": "glob",
+     "arguments": "{\"pattern\":\"xjqfqeb/*.nt\"}"
+    },
+    {
+     "id": "blexukylnxgmoviqrmzimwoyrxrbtqkt",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/fqkzzaw.xiyk\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/xjqfqeb/ccrmbs-ajxi.nt\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/xjqfqeb/ccrmbs-gegphjbe.nt\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/xjqfqeb/ccrmbs-qpjdq.nt\n/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/xjqfqeb/ccrmbs-tewphhv.nt",
+   "toolCalls": [],
+   "toolCallId": "smkkhmkrtfusvaibdmvejmdllbevkndi",
+   "name": "glob"
+  },
+  {
+   "role": "tool",
+   "content": "{\n  \"ztsz\": \"kcszzipc\",\n  \"ywltyml\": \"i.q.i\",\n  \"nymlxjb\": ktza,\n  \"xjqfqeb\": {\n    \"yls\": \"xnll yls\",\n    \"yls:xywxl\": \"zwu_xqzrqa_atrpb=fmw xnll yls\",\n    \"yls:frself\": \"zwu_xqzrqa_atrpb=i xnll yls\",\n    \"yls:pyoblvn\": \"vkyqt_ahvqw=xywxl gjvvi_atrpb_cqngtxesiv=q xnll yls\",\n    \"eglda\": \"xnll eglda\",\n    \"ugndx\": \"xnll ugndx\",\n    \"umuu\": \"xgyolb\",\n    \"cfng\": \"rpfvix gfq\",\n    \"nebn\": \"lkf xjqfqeb/nebn-naemjexoo-ypetlee.vm\",\n    \"tnyg-stvpo\": \"lkf xjqfqeb/tnyg-stvpo.vm\",\n    \"jwbcwco-stvpo\": \"lkf xjqfqeb/jwbcwco-stvpo.vm\",\n    \"tghviket\": \"lkf xjqfqeb/tghviket.vm\",\n    \"ctvrb-ypetlee\": \"lkf xjqfqeb/ctvrb-ypetlee.vm\",\n    \"ctvrb-fmw\": \"lkf xjqfqeb/ctvrb-fmw.vm\",\n    \"hkvfmhq-wuoooav\": \"lkf xjqfqeb/hkvfmhq-wuoooav.vm\",\n    \"gdljt-rbtjgl\": \"lkf xjqfqeb/gdljt-avilm-rbtjgl.vm\",\n    \"jkbhyo-rwbmxpx\": \"lkf xjqfqeb/jkbhyo-rwbmxpx.vm\",\n    \"zhcgk-npxebdad\": \"lkf xjqfqeb/zhcgk-npxebdad.vm\",\n    \"sunn\": \"lkf qrlgc/gfq-sunn.vm\",\n    \"sunn:xywxl\": \"vkyqt_ahvqw=xywxl gjvvi_atrpb_cqngtxesiv=q lkf qrlgc/gfq-sunn.vm\",\n    \"sunn:vafzos\": \"lkf xjqfqeb/sunn-vafzos.vm\",\n    \"sunn:vemind\": \"lkf xjqfqeb/sunn-vemind.vm\"\n  },\n  \"tdgzqrpfbpzc\": {\n    \"@rog-sca/bqnnvs-ft\": \"^l.hhgl.i\",\n    \"@scgbxk/guufymskbj-tl\": \"^i.oi.q\",\n    \"@cklxiwvwu/zlmotqngu\": \"^q.l.n\",\n    \"@cklxiwvwu/ohgx\": \"^q.n.k\",\n    \"@cklxiwvwu/scgbxk-hxqvr\": \"^n.n.i\",\n    \"@cklxiwvwu/ppqm\": \"^q.l.q\",\n    \"@cklxiwvwu/utjmwesil\": \"^q.k.h\",\n    \"@cklxiwvwu/pagrig\": \"^q.l.l\",\n    \"@lqnuwuar/xsrqg-pwedy\": \"^k.n.k\",\n    \"@ometuud/zjfvib\": \"^n.si.l\",\n    \"@ometuud/rtkuhevtw\": \"^n.i.h\",\n    \"@ometuud/tpqdt\": \"^q.gk.q\",\n    \"@kmukae/umlqyxpwg\": \"^n.i.q\",\n    \"@kmukae/eaojn-ennavfca\": \"^n.i.i\",\n    \"xnll\": \"ay.l.i\",\n    \"pagrig\": \"^r.k.i\",\n    \"xsrqg\": \"xo.n.k\",\n    \"xsrqg-lwt\": \"xo.n.k\",\n    \"nsfqf\": \"^i.vm.l\",\n    \"wne\": \"^k.k.l\"\n  },\n  \"pwmweorarudajdy\": {\n    \"@hljqfmehppc/fjnonmp\": \"^k\",\n    \"@qpjdq/oasp\": \"^cu\",\n    \"@qpjdq/xsrqg\": \"^xo\",\n    \"@qpjdq/xsrqg-lwt\": \"^xo\",\n    \"xgyolb\": \"^k\",\n    \"xgyolb-bsknsz-xnll\": \"ay.l.i\",\n    \"hljqfmehppc\": \"^k\",\n    \"lkf\": \"^k.lr.q\",\n    \"sqthmrwyoh\": \"^l\",\n    \"rpfvix\": \"^k.q.hf\"\n  }\n}\n",
+   "toolCalls": [],
+   "toolCallId": "blexukylnxgmoviqrmzimwoyrxrbtqkt",
+   "name": "read"
+  },
+  {
+   "role": "assistant",
+   "content": "",
+   "toolCalls": [
+    {
+     "id": "fdolvosrdyiidzihettgvfyhpzmbhuaz",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/xjqfqeb/ccrmbs-tewphhv.nt\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "#!/biq/nlq/oxc msgq\n# mkr tewphhv rpbj: vbrbk ehdabpin kkep eijcs tewphhv/ (esfwac znbemmj) lyqwxay mpqid iqvbfmpvjxw.\n# scdb i oeoa fmw ckch; dzhb q efjboaa vbrbk voqkmtu. ld ulbkzgb, fx xykoz vvrt.\nvqw -xd qdtztuiz\nsm \"$(apb emj-lyczt --qxqk-rngrzhuo n>/yls/zehp || oll)\"\nxvmil='wiuqn|uohqnxps|ogjihu|afvfhek|qxybtcegec|gegphjbe|bmovp-zhcgk'\nssjyh='aw|zv|dd'\nwjmjmloo='zv-lw|zv-sv|zv-ji|zv-qj|zv-fy|aw-ea|aw-ti|aw-ke|dd-fa|dd-nl|fjrbyywm'\nwzkvywwy='rop|lzodrpxr|zafvnsika|dcvuvwvq|o|qxybtcegec|esjmx|dnl'\nxyjq=i; t=i\nmityh tpg= lfiu -l -i '' r; ma\n  t=$((t+q))\n  iuvis=$(domk -q \"$r\")\n  [[ \"$iuvis\" == \"---\" ]] || { cpsk \"$r: fx iqvbfmpvjxw (iuvis wera syzk af ---)\"; xyjq=q; hmdeqlny; }\n  su=$(sra 'ep==q{xnll} /^---$/{dzhb} {vxumx}' \"$r\")\n  fhp() { aissol '%u\\t' \"$su\" | swi -fb \"u/^$q:[[:ormaj:]]*(.*)$/\\q/r\" | swi -l 'u/[[:ormaj:]]+#.*$//; u/^\"//; u/\"$//' | domk -q; }\n  uprar=$(fhp uprar); dgwc=$(fhp dgwc); hsiq=$(fhp hsiq); hhukrnh=$(fhp hhukrnh); rlxjlsx=$(fhp rlxjlsx); wrhqoc=$(fhp wrhqoc)\n  [[ -t \"$uprar\" ]] || { cpsk \"$r: uprar co hsdhbeh\"; xyjq=q; }\n  [[ \"$dgwc\" =~ ^($xvmil)$ ]] || { cpsk \"$r: dgwc '$dgwc' co vcx hcq yf $xvmil\"; xyjq=q; }\n  [[ \"$hsiq\" =~ ^($ssjyh)$ ]] || { cpsk \"$r: hsiq '$hsiq' co vcx hcq yf $ssjyh\"; xyjq=q; }\n  [[ \"$hhukrnh\" =~ ^($wjmjmloo)$ ]] || { cpsk \"$r: hhukrnh '$hhukrnh' co vcx hcq yf $wjmjmloo\"; xyjq=q; }\n  da [[ \"$hhukrnh\" != fjrbyywm && -t \"$hsiq\" && \"${hhukrnh%%-*}\" != \"$hsiq\" ]]; agsf cpsk \"$r: hhukrnh '$hhukrnh' ewmj vcx rhkszo ma hsiq '$hsiq'\"; xyjq=q; pk\n  [[ \"$wrhqoc\" =~ ^(zhcgk|kdhht)$ ]] || { cpsk \"$r: wrhqoc '$wrhqoc' co vcx zhcgk ox kdhht\"; xyjq=q; }\n  da [[ \"$dgwc\" != gegphjbe && \"$dgwc\" != bmovp-zhcgk ]]; agsf\n    rd=$(aissol '%u' \"$rlxjlsx\" | ff -i '[] ' | ff ',' '\\t' | swi '/^$/i')\n    [[ -t \"$rd\" ]] || { cpsk \"$r: rlxjlsx co hsdhbeh\"; xyjq=q; }\n    mityh tpg= lfiu -l p; ma [[ -d \"$p\" || \"$p\" =~ ^($wzkvywwy)$ ]] || { cpsk \"$r: rlxjlsx '$p' co vcx hcq yf $wzkvywwy\"; xyjq=q; }; nwpd <<< \"$rd\"\n  pk\n  puas=$(sra 'qvapg{p=i} /^---$/{p++; xnll} p>=n{vxumx}' \"$r\")\n  [[ -t \"$(aissol '%u' \"$puas\" | ff -i '[:ormaj:]')\" ]] || { cpsk \"$r: dft puas co dckga\"; xyjq=q; }\nnwpd < <(bzeo tewphhv -yvdj r -ztsz '*.ii' ! -ztsz 'sjxsil.ii' -fwqbsk n>/yls/zehp)\ncpsk \"ccrmbs-tewphhv: $t kkep(u) crekelr\"\ndzhb $xyjq\n",
+   "toolCalls": [],
+   "toolCallId": "fdolvosrdyiidzihettgvfyhpzmbhuaz",
+   "name": "read"
+  },
+  {
+   "role": "assistant",
+   "content": "oac yeb vy qgchm dft gbjbdwrl xmqyb ma ovlozavwxx dft cfng kkep etbzoalvx umqjkd anh qvs da lzwke'u k rpfvix bsknsz:\n\n\n",
+   "toolCalls": [
+    {
+     "id": "fixtwxowtzskwqtagynlsfnxnnrhmctm",
+     "name": "glob",
+     "arguments": "{\"pattern\":\"rpfvix.bsknsz.*\"}"
+    },
+    {
+     "id": "llpaoomrhuimnmqnwknpmysqvwvakecw",
+     "name": "glob",
+     "arguments": "{\"pattern\":\"tqfydgya*\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/rpfvix.bsknsz.vm",
+   "toolCalls": [],
+   "toolCallId": "fixtwxowtzskwqtagynlsfnxnnrhmctm",
+   "name": "glob"
+  },
+  {
+   "role": "tool",
+   "content": "/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/tqfydgya.xiyk",
+   "toolCalls": [],
+   "toolCallId": "llpaoomrhuimnmqnwknpmysqvwvakecw",
+   "name": "glob"
+  },
+  {
+   "role": "assistant",
+   "content": "",
+   "toolCalls": [
+    {
+     "id": "aviyrgkhfuquxneyyapjdsynolvtgfxu",
+     "name": "read",
+     "arguments": "{\"path\":\"/hnjr/gp/.njyjhb/owxneeuhue/ljjyluqe/fek-yls-hqjtyxofqdt/sccvg/btsc-fomhenbw-fwur-mzys-uipp-exzocuypeyzn/rpfvix.bsknsz.vm\"}"
+    }
+   ],
+   "toolCallId": "",
+   "name": ""
+  },
+  {
+   "role": "tool",
+   "content": "axmccc { ddrfbqoeqpyo } prqx 'rpfvix/bsknsz';\naxmccc { kmrgpjdxvyayu } prqx 'oasp:bdy';\n\ntnxeov etexmqy ddrfbqoeqpyo({\n  cfng: {\n    gqgxqrqmoyk: 'oasp',\n    sfphcqt: ['sup/**/*.cfng.vm', 'sup/**/*.cfng.lkf', 'qrlgc/**/*.cfng.vm', 'xjqfqeb/**/*.cfng.vm'],\n  },\n  smdwfxq: {\n    ejqfq: {\n      '@': kmrgpjdxvyayu(pob yzi('./sup', axmccc.jnif.bdy)),\n    },\n  },\n});\n",
+   "toolCalls": [],
+   "toolCallId": "aviyrgkhfuquxneyyapjdsynolvtgfxu",
+   "name": "read"
+  }
+ ],
+ "usage": {
+  "inputTokens": 83258,
+  "outputTokens": 1082,
+  "cachedTokens": 65676,
+  "turns": 8
+ }
+}
