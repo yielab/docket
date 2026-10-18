@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`POST /pods` takes `name` and `location`, the body API 5 publishes.** ADR 0027 and
+  `operator-api.spec.md` named those fields, while the route still read `project` and `path`, so
+  Tack's ensure call failed with `400 project is required` and no run reached a team. `project`
+  and `path` are removed from the request; the response still says `project`.
+
 - `dispatch_refused` trace events were rejected as an unknown type and never written.
 
 ## [0.2.0-beta.5] - 2026-10-14

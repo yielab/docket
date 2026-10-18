@@ -45,7 +45,7 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     url = f"http://127.0.0.1:{srv.server_address[1]}"
     codebase = tmp_path / "codebase"
     codebase.mkdir()
-    status, _ = _post(f"{url}/pods", {"project": "demo", "path": str(codebase)})
+    status, _ = _post(f"{url}/pods", {"name": "demo", "location": str(codebase)})
     assert status == 201
     yield url
     srv.shutdown()

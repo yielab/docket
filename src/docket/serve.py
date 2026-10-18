@@ -1766,9 +1766,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error("Request body must be a JSON object", 400)
             return
 
-        project = body.get("project")
+        project = body.get("name")
         if not isinstance(project, str) or not project:
-            self._send_json_error("project is required", 400)
+            self._send_json_error("name is required", 400)
             return
 
         from docket.core import blueprints as _bp
@@ -1778,9 +1778,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error("blueprint must be a non-empty string", 400)
             return
 
-        path_value = body.get("path", "")
+        path_value = body.get("location", "")
         if not isinstance(path_value, str):
-            self._send_json_error("path must be a string", 400)
+            self._send_json_error("location must be a string", 400)
             return
 
         # `pod` mirrors `docket init --pod full` — the CLI's only roster

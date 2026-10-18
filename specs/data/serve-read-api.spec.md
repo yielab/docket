@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.9.0
+**Version**: 3.10.0
 **Status**: Stable
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -594,7 +594,7 @@ effects, UI-free; `docket init`'s default and `--from` pod paths call the exact 
 
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"project": "myapp", "path": "/srv/repos/myapp", "blueprint": "software"}' \
+  -d '{"name": "myapp", "location": "/srv/repos/myapp", "blueprint": "software"}' \
   http://127.0.0.1:7331/pods
 ```
 
@@ -602,8 +602,8 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `project` | string | Yes | The pod id (matches `docket init`'s project id, not its display name — a blueprint pod has no separate display-name field). `400` if absent, empty, or fails `core.provisioning.validate_project_id` (specs/validation/input-validation.spec.md §1). |
-| `path` | string | No | The blueprint's `codebase` (a `codebase`-kind blueprint, e.g. `software`) or `workDir` (a `workdir`-kind blueprint, e.g. `research`/`content`/`ops`) — `provision_pod` picks which one it means from the blueprint's own `workspace_kind`. Defaults to `""` (a `workdir`-kind blueprint then auto-provisions one under `config.pod_work_dir(project)`, exactly as `docket init` with no path does). |
+| `name` | string | Yes | The pod id (matches `docket init`'s project id, not its display name — a blueprint pod has no separate display-name field). `400` if absent, empty, or fails `core.provisioning.validate_project_id` (specs/validation/input-validation.spec.md §1). |
+| `location` | string | No | The blueprint's `codebase` (a `codebase`-kind blueprint, e.g. `software`) or `workDir` (a `workdir`-kind blueprint, e.g. `research`/`content`/`ops`) — `provision_pod` picks which one it means from the blueprint's own `workspace_kind`. Defaults to `""` (a `workdir`-kind blueprint then auto-provisions one under `config.pod_work_dir(project)`, exactly as `docket init` with no path does). |
 | `blueprint` | string | No | A `core.blueprints` registry name. Defaults to `"software"` (`core.blueprints.DEFAULT_BLUEPRINT`, `docket init`'s own default). An unknown name is `400`, naming the invalid blueprint (`core.blueprints.BlueprintError`'s own message). |
 | `pod` | `"full"` | No | Mirrors `docket init --pod full` — a CLI roster override (`--with` has no HTTP counterpart), itself restricted to the `software` blueprint (a non-`software` blueprint provisions its own fixed roster; `pod` is silently ignored for one, exactly as the CLI warns-and-ignores rather than erroring). Any value other than `"full"` is `400`. |
 | `budget` | number \| numeric string | No | Overrides the blueprint's own default budget cap (applied to the Lead member only). `0`, omitted, or a non-positive value means no override (falls back to the blueprint default). A non-numeric value is `400`. |
@@ -627,12 +627,12 @@ Success response (`201`) — the created pod roster (with `"created": true`):
 
 - A malformed JSON body, or a body that is valid JSON but not an object, is rejected with `400`
   before `provision_pod` is ever called.
-- A missing or empty `project` is `400`.
-- A `project` that fails `core.provisioning.validate_project_id` — e.g. contains `/` or `..` — is
+- A missing or empty `name` is `400` (`name is required`).
+- A `name` that fails `core.provisioning.validate_project_id` — e.g. contains `/` or `..` — is
   rejected with `400` (`core.provisioning.ProjectIdError`'s own message), checked inside
   `provision_pod` as its first statement, before the per-project lock and before any workspace path
   is built (W36-C1).
-- `project` already having a registered pod member is rejected with `409` — matching `docket init --from`'s
+- A `name` already having a registered pod member is rejected with `409` — matching `docket init --from`'s
   own idempotence contract (`_provision_pod_from_spec`'s "already exists — skipping"): the existing
   pod is left completely untouched, not silently re-provisioned or clobbered. Concurrent requests for
   one project are serialized from that check through commit or rollback, so a losing request cannot
@@ -728,11 +728,11 @@ Tack-granted approval must not be indistinguishable from a CI job's.
   parked pod task gains the task-wide grant of operator-loop 5a (channel `http`); a refused 21st
   grant adds a `note` to the `200` body.
 - `POST /pods` MUST reject a request with no (or an invalid) Bearer token with `401` before touching
-  any project state; MUST reject a malformed/non-object body, a missing/empty `project`, a `pod`
+  any project state; MUST reject a malformed/non-object body, a missing/empty `name`, a `pod`
   value other than `"full"`, or a non-numeric `budget` with `400` before `provision_pod` is ever
-  called, and a `project` failing `core.provisioning.validate_project_id`, an unknown `blueprint`,
+  called, and a `name` failing `core.provisioning.validate_project_id`, an unknown `blueprint`,
   or an invalid `verifyCmd` with `400` from `provision_pod`'s own validation (id check first, before
-  its exists-check, before any side effect; W36-C1); MUST reject an already-provisioned `project`
+  its exists-check, before any side effect; W36-C1); MUST reject an already-provisioned `name`
   with `409` without touching the existing pod, unless the body carries `"ensure": true`, which
   answers `200` with `"created": false` and touches nothing; and on a genuine mid-provisioning failure MUST leave
   no member workspace, no fleet registration and no orphaned port/scratch allocation created by that
@@ -789,6 +789,13 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.10.0 (2026-10-18)
+
+- `POST /pods` reads the pod id from `name` and its codebase or work directory from `location`,
+  the body `operator-api.spec.md` 5.0 and ADR 0027 published for version 5. The route had kept
+  `project` and `path`, so a consumer sending the published body got `400 project is required`.
+  `project` and `path` are gone with no alias (D-57); the response still names the pod `project`.
 
 ### Version 3.9.0 (2026-10-17)
 

@@ -110,20 +110,20 @@ def _ws(member_id: str) -> Path:
 class TestAuth:
     def test_no_auth_returns_401(self, live_server: tuple[str, str]) -> None:
         url, _ = live_server
-        status, body = _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"})
+        status, body = _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"})
         assert status == 401
         assert body["ok"] is False
 
     def test_wrong_token_returns_401(self, live_server: tuple[str, str]) -> None:
         url, _ = live_server
         status, _body = _post(
-            f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token="wrong"
+            f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token="wrong"
         )
         assert status == 401
 
     def test_no_auth_creates_nothing(self, live_server: tuple[str, str]) -> None:
         url, _ = live_server
-        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"})
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"})
         assert _ids() == []
 
 
@@ -143,22 +143,22 @@ class TestBadRequests:
         assert status == 400
         assert body["ok"] is False
 
-    def test_missing_project_returns_400(self, live_server: tuple[str, str]) -> None:
+    def test_missing_name_returns_400(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        status, body = _post(f"{url}/pods", {"path": "/src/demo"}, token)
+        status, body = _post(f"{url}/pods", {"location": "/src/demo"}, token)
         assert status == 400
-        assert "project" in body["error"].lower()
+        assert "name" in body["error"].lower()
 
-    def test_empty_project_returns_400(self, live_server: tuple[str, str]) -> None:
+    def test_empty_name_returns_400(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        status, _body = _post(f"{url}/pods", {"project": "", "path": "/src/demo"}, token)
+        status, _body = _post(f"{url}/pods", {"name": "", "location": "/src/demo"}, token)
         assert status == 400
 
     def test_unknown_blueprint_returns_400(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, body = _post(
             f"{url}/pods",
-            {"project": "demo", "path": "/src/demo", "blueprint": "wizard-pod"},
+            {"name": "demo", "location": "/src/demo", "blueprint": "wizard-pod"},
             token,
         )
         assert status == 400
@@ -168,7 +168,7 @@ class TestBadRequests:
     def test_invalid_pod_field_returns_400(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, _body = _post(
-            f"{url}/pods", {"project": "demo", "path": "/src/demo", "pod": "medium"}, token
+            f"{url}/pods", {"name": "demo", "location": "/src/demo", "pod": "medium"}, token
         )
         assert status == 400
         assert _ids() == []
@@ -177,7 +177,7 @@ class TestBadRequests:
         url, token = live_server
         status, _body = _post(
             f"{url}/pods",
-            {"project": "demo", "path": "/src/demo", "budget": "lots"},
+            {"name": "demo", "location": "/src/demo", "budget": "lots"},
             token,
         )
         assert status == 400
@@ -187,7 +187,7 @@ class TestBadRequests:
         url, token = live_server
         status, _body = _post(
             f"{url}/pods",
-            {"project": "demo", "path": "/src/demo", "verifyCmd": "line one\nline two"},
+            {"name": "demo", "location": "/src/demo", "verifyCmd": "line one\nline two"},
             token,
         )
         assert status == 400
@@ -204,7 +204,7 @@ class TestBadRequests:
         codebase = tmp_path / "codebase"
         codebase.mkdir()
         status, _body = _post(
-            f"{url}/pods", {"project": "../../escaped", "path": str(codebase)}, token
+            f"{url}/pods", {"name": "../../escaped", "location": str(codebase)}, token
         )
         assert status == 400
         assert _ids() == []
@@ -220,7 +220,7 @@ class TestSuccess:
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        status, body = _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        status, body = _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
         assert status == 201
         assert body["ok"] is True
         assert body["project"] == "demo"
@@ -233,7 +233,7 @@ class TestSuccess:
 
     def test_workspaces_actually_exist_on_disk(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
         for mid in ("demo-lead", "demo-implementer"):
             ws = _ws(mid)
             assert ws.is_dir()
@@ -243,7 +243,7 @@ class TestSuccess:
 
     def test_explicit_blueprint_is_honoured(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        status, body = _post(f"{url}/pods", {"project": "myops", "blueprint": "ops"}, token)
+        status, body = _post(f"{url}/pods", {"name": "myops", "blueprint": "ops"}, token)
         assert status == 201
         assert body["blueprint"] == "ops"
         assert sorted(m["role"] for m in body["members"]) == ["lead", "monitor", "operator"]
@@ -260,7 +260,7 @@ class TestIdempotence:
         _pod.build_pod_from_blueprint("demo", "software", location="/src/demo")
         before = sorted(_ids())
 
-        status, body = _post(f"{url}/pods", {"project": "demo", "path": "/other/path"}, token)
+        status, body = _post(f"{url}/pods", {"name": "demo", "location": "/other/path"}, token)
 
         assert status == 409
         assert body["ok"] is False
@@ -404,7 +404,7 @@ class TestRollback:
 
         monkeypatch.setattr(_pp, "_write_member_workspace", flaky_write)
 
-        status, body = _post(f"{url}/pods", {"project": "flaky", "path": "/src/flaky"}, token)
+        status, body = _post(f"{url}/pods", {"name": "flaky", "location": "/src/flaky"}, token)
 
         assert status == 500
         assert body["ok"] is False
@@ -446,7 +446,7 @@ class TestSharedProvisioningPath:
 
         # The HTTP path.
         status, _body = _post(
-            f"{url}/pods", {"project": "httpproj", "path": "/src/httpproj"}, token
+            f"{url}/pods", {"name": "httpproj", "location": "/src/httpproj"}, token
         )
         assert status == 201
 
@@ -469,7 +469,7 @@ class TestOverridesThreaded:
     def test_pod_full_gives_the_four_role_roster(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, body = _post(
-            f"{url}/pods", {"project": "demo", "path": "/src/demo", "pod": "full"}, token
+            f"{url}/pods", {"name": "demo", "location": "/src/demo", "pod": "full"}, token
         )
         assert status == 201
         assert sorted(m["role"] for m in body["members"]) == [
@@ -482,7 +482,7 @@ class TestOverridesThreaded:
     def test_budget_overrides_blueprint_default(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, _body = _post(
-            f"{url}/pods", {"project": "myresearch", "blueprint": "research", "budget": 42}, token
+            f"{url}/pods", {"name": "myresearch", "blueprint": "research", "budget": 42}, token
         )
         assert status == 201
         raw = json.loads((_ws("myresearch-lead") / ".docket-meta.json").read_text())
@@ -492,7 +492,7 @@ class TestOverridesThreaded:
         url, token = live_server
         status, _body = _post(
             f"{url}/pods",
-            {"project": "demo", "path": "/src/demo", "verifyCmd": "npm test"},
+            {"name": "demo", "location": "/src/demo", "verifyCmd": "npm test"},
             token,
         )
         assert status == 201
@@ -509,11 +509,11 @@ class TestEnsure:
     def test_ensure_returns_the_existing_pod_unchanged(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         first_status, first = _post(
-            f"{url}/pods", {"project": "demo", "path": "/src/demo", "ensure": True}, token
+            f"{url}/pods", {"name": "demo", "location": "/src/demo", "ensure": True}, token
         )
         before = (_cfg.FLEET_FILE).read_bytes()
         status, body = _post(
-            f"{url}/pods", {"project": "demo", "path": "/other/path", "ensure": True}, token
+            f"{url}/pods", {"name": "demo", "location": "/other/path", "ensure": True}, token
         )
         assert (first_status, first["created"]) == (201, True)
         assert (status, body) == (200, {"ok": True, "created": False, "project": "demo"})
@@ -521,15 +521,30 @@ class TestEnsure:
         raw = json.loads((_ws("demo-lead") / ".docket-meta.json").read_text())
         assert raw["codebase"] == "/src/demo"
 
+    def test_the_adr_0027_body_creates_then_ensures(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        body = {"name": "fab-dev", "location": "/src/fab", "blueprint": "software", "ensure": True}
+        first_status, first = _post(f"{url}/pods", body, token)
+        status, again = _post(f"{url}/pods", body, token)
+        assert (first_status, first["created"], first["project"]) == (201, True, "fab-dev")
+        assert {m["role"] for m in first["members"]} == {"lead", "implementer"}
+        assert (status, again) == (200, {"ok": True, "created": False, "project": "fab-dev"})
+
+    def test_the_v4_project_and_path_fields_are_gone(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        status, body = _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        assert (status, body["error"]) == (400, "name is required")
+        assert _ids() == []
+
     def test_without_ensure_an_existing_pod_stays_409(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
-        status, _body = _post(f"{url}/pods", {"project": "demo", "ensure": False}, token)
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        status, _body = _post(f"{url}/pods", {"name": "demo", "ensure": False}, token)
         assert status == 409
 
     def test_non_boolean_ensure_returns_400(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        status, _body = _post(f"{url}/pods", {"project": "demo", "ensure": "yes"}, token)
+        status, _body = _post(f"{url}/pods", {"name": "demo", "ensure": "yes"}, token)
         assert status == 400
         assert _ids() == []
 
@@ -545,7 +560,7 @@ class TestReadPods:
 
     def test_list_names_each_pod_with_its_queue(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
         status, body = _get(f"{url}/pods", token)
         assert status == 200
         (row,) = body["pods"]
@@ -561,7 +576,7 @@ class TestReadPods:
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        _post(f"{url}/pods", {"project": "demo", "path": "/src/demo"}, token)
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
         status, body = _get(f"{url}/pods/demo", token)
         assert status == 200
         assert set(_pod_report.pod_report("demo")) <= set(body)
@@ -575,7 +590,7 @@ class TestReadPods:
         """A repository keeping `.docket/teams/<pod>/` reports that directory."""
         url, token = live_server
         (tmp_path / "repo" / ".docket" / "teams" / "demo").mkdir(parents=True)
-        _post(f"{url}/pods", {"project": "demo", "path": str(tmp_path / "repo")}, token)
+        _post(f"{url}/pods", {"name": "demo", "location": str(tmp_path / "repo")}, token)
         _, body = _get(f"{url}/pods/demo", token)
         assert body["repoConfigDir"] == str(tmp_path / "repo" / ".docket" / "teams" / "demo")
 
