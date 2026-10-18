@@ -1395,7 +1395,8 @@ class TestRunTurn:
 
 
 def _tool_reply(backend: _ScriptedBackend) -> str:
-    return next(m for m in backend.calls[1] if m.role == "tool").content
+    """The tool message's text, without the leading line number `read` prefixes."""
+    return next(m for m in backend.calls[1] if m.role == "tool").content.removeprefix("     1\t")
 
 
 class TestRootResolutionPrecedence:

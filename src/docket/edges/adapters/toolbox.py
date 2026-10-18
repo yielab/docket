@@ -39,6 +39,12 @@ SandboxMode = Literal["off", "auto"]
 MAX_OUTPUT_CHARS = _cfg.TOOL_MAX_OUTPUT_CHARS
 MAX_GREP_MATCHES = 200
 MAX_GLOB_RESULTS = 300
+# Vendored and generated trees that glob and grep never report (agent-loop requirement 80).
+SKIPPED_DIRS = frozenset(
+    {".git", "node_modules", ".venv", "dist", "build", "target", "vendor", "__pycache__"}
+)
+# Lines `read` returns when no limit is given (agent-loop requirement 81).
+READ_DEFAULT_LINES = 400
 
 # How often `run_bash`'s cancellable wait loop re-checks the callback and the
 # overall deadline. Short enough that a separate process's cancellation
@@ -100,7 +106,9 @@ def text_outcome(text: str) -> ToolOutcome:
 
 
 def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 0) -> ToolOutcome:
-    """Read a text file, optionally a line window of it (1-indexed *offset*)."""
+    """Read a text file as numbered lines: from *offset* (1-indexed), *limit* lines or the default.
+
+    A footer names the window and the next ``offset`` whenever lines remain after it."""
     try:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
@@ -112,12 +120,17 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
     except OSError as ex:
         return ToolOutcome(False, error=f"cannot read {path}: {ex}")
 
-    if offset or limit:
-        lines = text.splitlines()
-        start = max(0, offset - 1) if offset else 0
-        end = start + limit if limit else len(lines)
-        text = "\n".join(lines[start:end])
-    return ToolOutcome(True, content=_truncate(text))
+    lines = text.splitlines()
+    start = max(0, offset - 1)
+    window = lines[start : start + (limit or READ_DEFAULT_LINES)]
+    body = "\n".join(f"{n:>6}\t{line}" for n, line in enumerate(window, start=start + 1))
+    shown_end = start + len(window)
+    if shown_end < len(lines):
+        body += (
+            f"\n\n[lines {start + 1}-{shown_end} of {len(lines)}; "
+            f"call read with offset={shown_end + 1} for more]"
+        )
+    return text_outcome(body)
 
 
 def write_file(roots: tuple[Path, ...], path: str, content: str) -> ToolOutcome:
@@ -191,8 +204,23 @@ def _resolves_within(roots: tuple[Path, ...], candidate: Path) -> bool:
     return True
 
 
+def _display_path(roots: tuple[Path, ...], found: Path) -> str:
+    """*found* relative to the first root that holds it, so output never repeats a root prefix."""
+    for root in roots:
+        try:
+            return str(found.relative_to(root.resolve()))
+        except ValueError:
+            continue
+    return str(found)
+
+
+def _under_skipped_dir(found: Path, base: Path) -> bool:
+    """Whether a directory between *base* and *found* is a vendored or generated tree."""
+    return any(part in SKIPPED_DIRS for part in found.relative_to(base).parts[:-1])
+
+
 def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOutcome:
-    """List files matching a glob *pattern*, newest first."""
+    """List files matching a glob *pattern*, sorted by their root-relative path."""
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
@@ -200,26 +228,23 @@ def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOut
     if not base.is_dir():
         return ToolOutcome(False, error=f"not a directory: {path or base}")
     try:
-        matches = [p for p in base.glob(pattern) if p.is_file()]
+        matches = [p for p in base.glob(pattern) if p.is_file() and not _under_skipped_dir(p, base)]
     except (OSError, ValueError) as ex:
         return ToolOutcome(False, error=f"bad glob {pattern!r}: {ex}")
-    filtered = [p for p in matches if _resolves_within(roots, p)]
-    filtered.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    shown = filtered[:MAX_GLOB_RESULTS]
-    body = "\n".join(str(p) for p in shown) or "(no matches)"
-    if len(filtered) > len(shown):
-        body += f"\n\n[truncated: {len(filtered) - len(shown)} more matches]"
-    return ToolOutcome(True, content=body)
+    shown_paths = sorted(_display_path(roots, p) for p in matches if _resolves_within(roots, p))
+    shown = shown_paths[:MAX_GLOB_RESULTS]
+    body = "\n".join(shown) or "(no matches)"
+    if len(shown_paths) > len(shown):
+        body += f"\n\n[truncated: {len(shown_paths) - len(shown)} more matches]"
+    return text_outcome(body)
 
 
 def grep_files(
     roots: tuple[Path, ...], pattern: str, path: str = "", glob: str = "**/*"
 ) -> ToolOutcome:
-    """Search file contents for a regex, returning ``path:line:text`` hits.
+    """Search file contents for a regex, returning root-relative ``path:line:text`` hits, sorted.
 
-    Implemented in Python rather than shelling out to ``rg``/``grep``: a tool that degrades when
-    a binary is missing would answer differently per machine, and routing through the shell would
-    add a second exec path beside the gated one."""
+    Pure Python, not a shell-out: no second exec path beside the gated one, and no per-machine answers."""
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
@@ -232,15 +257,18 @@ def grep_files(
     hits: list[str] = []
     truncated = False
     for candidate in sorted(base.glob(glob)):
-        if not candidate.is_file() or not _resolves_within(roots, candidate):
+        if not candidate.is_file() or _under_skipped_dir(candidate, base):
+            continue
+        if not _resolves_within(roots, candidate):
             continue
         try:
             text = candidate.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
+        shown = _display_path(roots, candidate)
         for lineno, line in enumerate(text.splitlines(), start=1):
             if regex.search(line):
-                hits.append(f"{candidate}:{lineno}:{line.strip()[:300]}")
+                hits.append(f"{shown}:{lineno}:{line.strip()[:300]}")
                 if len(hits) >= MAX_GREP_MATCHES:
                     truncated = True
                     break
@@ -250,7 +278,7 @@ def grep_files(
     body = "\n".join(hits) or "(no matches)"
     if truncated:
         body += f"\n\n[truncated at {MAX_GREP_MATCHES} matches]"
-    return ToolOutcome(True, content=_truncate(body))
+    return text_outcome(body)
 
 
 # ── exec ──────────────────────────────────────────────────────────────────────

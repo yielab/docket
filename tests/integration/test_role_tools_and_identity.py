@@ -267,10 +267,11 @@ class TestRegistryForRoleExcludesByKindToo:
         assert "mcp__fs__write_file" not in narrowed
         assert "read" in narrowed
 
-    def test_builtin_tool_kinds_matches_the_real_builtin_registry(self) -> None:
-        """Drift guard: the static map must stay true to the registry it
-        describes, or a new built-in silently gains no capability denial.
-        """
+    def test_builtin_tool_kinds_matches_the_real_builtin_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Drift guard: a new built-in must gain a capability entry; fetch needs an allowlist."""
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
         real = builtin_registry()
         actual = {name: real.get(name).kind for name in real.names()}  # type: ignore[union-attr]
         assert actual == _archetypes.BUILTIN_TOOL_KINDS
