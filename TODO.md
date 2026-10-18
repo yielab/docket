@@ -33,12 +33,12 @@
 >
 > | Batch | Cards | Ownership (no two lanes share a file or function) |
 > | --- | --- | --- |
-> | A | W116-1 → W116-2 (one worker, `security.classify_command`) · W116-3 (policy template) · W116-4 (role text, `bash` description) · W116-5 (`trace.trace_event`) · W116-6 (`dispatch._apply_result`) · W116-7 (`approval.approval_create`) | parallel |
+> | A | W116-1 → W116-2 (one worker, `security.classify_command`) · W116-3 (policy template) · W116-4 (role text, `bash` description) · W116-5 (`trace.trace_event`) · W116-6 (`dispatch._apply_result`) · W116-7 (`approval.approval_create`) — **closed 2026-10-18**, six Sonnet workers in hand-made worktrees, merges `141e8121` 7 · `a328c381` 3 · `67980b97` 4 · `f76494ad` 5 · `9c306fd0` 1+2 · `ffc0ce51` 6 | parallel |
 > | B | W116-8 (inbox contract) · W116-9 (re-attach contract, asserts W116-6/7) · W116-10 (condensation) | A merged |
 
 ### W116-1 — a quoted heredoc's body is data, not commands
 
-**Status:** TODO · **Size:** M · **Read:** `docket-spec-work` skill
+**Status:** DONE 2026-10-18 (`9c306fd0`) · **Size:** M · **Read:** `docket-spec-work` skill
 - **Trigger (deterministic):** `core/security.py::classify_command` treats `<<` as an input
   redirect only (`:68`), and `_logical_lines` (`:208`) splits the heredoc body into lines, so
   each body line is classified as a command. `_OPAQUE_MARKERS` (`:171`) is a substring scan of the
@@ -85,7 +85,7 @@
 
 ### W116-2 — a refused redirect names the rule, not the binary
 
-**Status:** TODO · **Size:** S · **Depends:** W116-1 (same function; same worker, after it)
+**Status:** DONE 2026-10-18 (`9c306fd0`) · **Size:** S · **Depends:** W116-1 (same function; same worker, after it)
 - **Trigger (deterministic):** jailed, every binary is redirect-sensitive (`security.py:507`). An
   output redirect that `_redirects_stay_inside` (`:299`) cannot place makes `classify_command`
   emit `'<bin>' is not on the curated allowlist` (`:519-522`), and that binary may well be on the
@@ -115,7 +115,7 @@
 
 ### W116-3 — `block-destructive` matches a write to `.env`, not two words in one call
 
-**Status:** TODO · **Size:** S
+**Status:** DONE 2026-10-18 (`a328c381`) · **Size:** S
 - **Trigger (deterministic):** the shipped `templates/policies/block-destructive.yaml` has the
   alternatives `(?:\.env\b.*write|write.*\.env\b)` and the same pair for `.ssh/`. They are matched
   `IGNORECASE | MULTILINE` (`core/policy.py:542`) against the rendered call. In that rendering a
@@ -149,7 +149,7 @@
 
 ### W116-4 — the roles that write are told to write with `write` and `edit`
 
-**Status:** TODO · **Size:** S
+**Status:** DONE 2026-10-18 (`67980b97`) · **Size:** S
 - **Trigger (measured, joint run):**
   - Nothing in `core/archetypes.py::_IMPLEMENTER_BODY` (`:308`), `_WRITER_BODY` (`:484`) or the
     `bash` description (`core/tools.py:1019`) prefers the file tools. Both roles have them
@@ -177,7 +177,7 @@
 
 ### W116-5 — redaction keeps a trace payload valid JSON
 
-**Status:** TODO · **Size:** S
+**Status:** DONE 2026-10-18 (`f76494ad`) · **Size:** S
 - **Trigger (deterministic):** `core/trace.py::trace_event` redacts the *serialized* payload
   (`:260`), then falls back to `{"text": ...}` when it no longer parses (`:262-264`). The pattern
   `[A-Z][A-Z0-9_]{5,40}_(?:API_KEY|SECRET|TOKEN|KEY)\s*[=:]\s*\S+` eats the closing `"`, `,` and
@@ -201,7 +201,7 @@
 
 ### W116-6 — `inputExpiryHours` reaches the questions it promises to expire
 
-**Status:** TODO · **Size:** S
+**Status:** DONE 2026-10-18 (`ffc0ce51`) · **Size:** S
 - **Trigger (deterministic; the seventh unwired-setting instance):**
   - `PodSettings.input_expiry_hours` (`core/pod.py:334`, default 72) has a writer (`pod set`) and
     a display, but no reader on the dispatch path.
@@ -229,7 +229,7 @@
 
 ### W116-7 — every approval records its own deadline
 
-**Status:** TODO · **Size:** S
+**Status:** DONE 2026-10-18 (`141e8121`) · **Size:** S
 - **Trigger (deterministic):** a pre-hop gate approval (`requireApprovalRoles`, a pipeline
   approval gate, an enqueue-time `require_approval`) is created with no `expiresAt`.
   `core/approval.py::_expiry_deadline` (`:555`) falls back to `created + APPROVAL_TIMEOUT`
@@ -347,6 +347,18 @@
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phases 43-44 (not cards; triage when a trigger fires)
 
+- **Found integrating Wave 116 batch A (2026-10-18).**
+  - **Shell keywords are classified as binaries when unjailed.** `for t in a; do ...; done` asks
+    with `'for' is not on the curated allowlist` (also `do`, `done`, `if`, `then`, `while`).
+    Jailed, the allowlist stands down and the loop runs. Pre-existing; the run's parked command
+    ends in such a loop, so it still asks without the sandbox. Trigger: an operator running
+    without isolation reports it.
+  - **`security-gates.spec.md` keeps a paragraph that verifies the old `.env\b.*write`
+    alternatives** ("Two `block-destructive.json` alternatives were verified..."), now
+    describing a pattern that no longer exists. Delete it with the next spec touch.
+  - **Worker worktrees lack the `mcp` extra**, so `mypy src` (anyio) and `gen_cli_docs.py`
+    (`click`) fail there; every worker reported it. Packet §0 should say `uv run --extra mcp`
+    for those two gates.
 - **Found in the 2026-10-18 joint run (Wave 116 evidence).**
   - **Gateway models have no context window.** All 49 `request_fit` events said
     `unknown_window`: `templates/providers/05-ai-gateway.yaml` declares no model rows with
