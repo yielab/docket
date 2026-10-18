@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.4.0
+**Version**: 5.4.1
 **Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -108,7 +108,8 @@ rework that must start from the previous attempt's branch is a new `POST /tasks/
 
 ### `POST /pods`
 
-As today (`name`, `location`, `blueprint`, `pod`, `budget`, `verifyCmd`), plus `ensure: true`:
+`name`, `location`, `blueprint`, `pod`, `budget`, `verifyCmd` (`serve-read-api.spec.md`
+§POST /pods), plus `ensure: true`:
 when the pod exists the answer is `200` with `"created": false` and nothing is changed or
 re-applied. Without `ensure` an existing pod stays `409`.
 
@@ -298,6 +299,12 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.4.1 (2026-10-18)
+
+- `POST /pods` now reads `name` and `location` as this spec has said since 5.0.0; until
+  0.2.0-beta.6's fix the route read `project` and `path` (found by Tack's first run against a real
+  docket). A test sends the ADR 0027 body literally.
 
 ### Version 5.4.0 (2026-10-17)
 
