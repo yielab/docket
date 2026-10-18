@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.24.0
+**Version**: 1.25.0
 **Status**: Implemented. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
 takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
 `resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
@@ -42,7 +42,7 @@ gained a production caller this wave (see `mcp-client.spec.md`), so a registry `
 narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
 in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
 for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -250,7 +250,11 @@ This specification does NOT cover:
    the previous step's work), never re-read what it carries, find code with `grep` for a
    concrete name and `read` by ranges, and never list the whole tree. A step prompt adds only its
    own output contract. Both templates render to the same bytes for two tasks of one member, so
-   the system prompt carries no task data. `POD_TEMPLATE_VERSION` is 4.
+   the system prompt carries no task data. `POD_TEMPLATE_VERSION` is 4. The same block ends
+   with one line naming the memory-section grammar (workspace-structure.spec.md "Pod memory",
+   requirement 3): end the reply with `## Memory` and lines `- <kind>: <path or command> -- <fact>`,
+   kind one of `generated`, `command`, `pitfall`, `convention`, facts only. It stays under 520
+   characters with the other four lines.
 6. **Known gap, out of this requirement's scope:** the standalone (non-pod) project-agent
    AGENTS.md generator (`cli/_agents.py`) carries its own,
    separately hand-written copy of the same instruction this requirement removes from
@@ -677,6 +681,13 @@ docket pod validate ./producer.yaml
   that could not pass `docket pod update` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.25.0 (2026-10-18)
+
+- The shared `## Method` block gains one line naming the memory-section grammar (requirement 5
+  of "Generated instructions agree with the runtime contract", P44-7). Members stamped
+  `templateVersion` 4 whose `AGENTS.md` lacks it show as stale to `docket pod update`, which
+  compares the text; `POD_TEMPLATE_VERSION` is left at 4 for the integrator to decide.
 
 ### Version 1.24.0 (2026-10-18)
 

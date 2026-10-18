@@ -469,13 +469,8 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("DISTILL_TIMEOUT_S",),
-        "Wall-clock bound on the one driver-backed distillation turn `docket pod reset` runs",
+        "Wall-clock bound on the one driver-backed summarising turn session compaction runs",
         "`120`",
-    ),
-    (
-        ("DISTILL_MAX_INPUT_BYTES",),
-        "How much daily-log content goes into a distillation turn's prompt",
-        "`49152` (48 KiB)",
     ),
     (
         ("DISPATCH_RETRIES_DEFAULT",),
@@ -723,7 +718,7 @@ _TIPS = """\
 Use bash loops for batch operations:
 
 ```bash
-# Reset every member of a pod (each distills its memory first)
+# Reset every member of a pod (rebuilds each member's files)
 for id in $(docket pod show --json | jq -r '.members[].id'); do docket pod reset "$id" --yes; done
 
 # Cheaper models fleet-wide: change the policy once — every

@@ -1,8 +1,6 @@
-"""`docket pod reset`: distill a member's memory first, fail closed, then rebuild.
+"""`docket pod reset`: rebuild a member's files and ledger, leave every memory file alone.
 
-Drives the leaf in-process with `default_driver` monkeypatched to `FakeDriver`, so no live
-endpoint is involved. The hermetic no-fake proof (the production driver failing with no
-provider credentials) is the `exec`/dispatch suites' job.
+Drives the leaf in-process; no model is involved, and a driver that is called fails the test.
 """
 
 from __future__ import annotations
@@ -17,7 +15,6 @@ from typer.testing import CliRunner
 
 import docket.config as _cfg
 from docket.cli import _pod
-from docket.core import memory as _mem
 from docket.edges.adapters import docket_runtime as _dr
 
 SUBJECT = "docket.cli._pod"
@@ -41,8 +38,11 @@ def _make_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return ws
 
 
-def _use_fake_driver(monkeypatch: pytest.MonkeyPatch, fake: FakeDriver) -> None:
+@pytest.fixture
+def fake_driver(monkeypatch: pytest.MonkeyPatch) -> FakeDriver:
+    fake = FakeDriver()
     monkeypatch.setattr(_dr, "default_driver", lambda: fake)
+    return fake
 
 
 def _reset(*extra: str) -> tuple[int, str]:
@@ -51,89 +51,66 @@ def _reset(*extra: str) -> tuple[int, str]:
 
 
 class TestPodReset:
-    def test_distills_first_then_clears_and_keeps_the_fresh_memory_md(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_resets_the_ledger_and_calls_no_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
+    ) -> None:
+        ws = _make_ws(tmp_path, monkeypatch)
+
+        code, out = _reset("--yes")
+
+        assert code == 0, out
+        assert fake_driver.calls == []
+        hb_text = (ws / "HEARTBEAT.md").read_text(encoding="utf-8")
+        assert "a real task" not in hb_text
+        assert "_none yet_" in hb_text
+
+    def test_leaves_memory_md_the_daily_logs_and_the_pod_memory_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
     ) -> None:
         ws = _make_ws(tmp_path, monkeypatch)
         (ws / "MEMORY.md").write_text("# MEMORY.md\n\n## Old\nkeep this\n", encoding="utf-8")
         log = ws / "memory" / "2026-07-01.md"
         log.write_text("notes\n", encoding="utf-8")
-        fake = FakeDriver()
-        _use_fake_driver(monkeypatch, fake)
+        pod_memory = _cfg.pod_memory_path("demo")
+        pod_memory.parent.mkdir(parents=True, exist_ok=True)
+        pod_memory.write_text('{"entries": []}\n', encoding="utf-8")
 
         code, out = _reset("--yes")
 
         assert code == 0, out
-        assert len(fake.calls) == 1  # distillation ran
-        assert not log.exists()
-        assert list((ws / "memory" / _mem.DISTILLED_ARCHIVE_DIRNAME).rglob("*.md"))
-        mem_text = (ws / "MEMORY.md").read_text(encoding="utf-8")
-        assert "keep this" in mem_text
-        assert "Distilled" in mem_text
-        hb_text = (ws / "HEARTBEAT.md").read_text(encoding="utf-8")
-        assert "a real task" not in hb_text
-        assert "_none yet_" in hb_text
-
-    def test_a_failed_distillation_blocks_the_whole_reset(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        ws = _make_ws(tmp_path, monkeypatch)
-        (ws / "MEMORY.md").write_text("# MEMORY.md\n\nkeep this\n", encoding="utf-8")
-        log = ws / "memory" / "2026-07-01.md"
-        log.write_text("notes\n", encoding="utf-8")
-        soul = (ws / "SOUL.md").read_text(encoding="utf-8")
-        (ws / "SOUL.md").write_text("hand edited\n", encoding="utf-8")
-        fake = FakeDriver(fail_role="implementer", error="boom", failure_kind="daemon_error")
-        _use_fake_driver(monkeypatch, fake)
-
-        code, out = _reset("--yes")
-
-        assert code == 1
-        assert "daemon_error" in out, "the failure kind must reach the operator"
-        assert "Nothing was deleted" in out
-        assert log.exists()
         assert "keep this" in (ws / "MEMORY.md").read_text(encoding="utf-8")
-        assert "a real task" in (ws / "HEARTBEAT.md").read_text(encoding="utf-8")
-        assert (ws / "SOUL.md").read_text(encoding="utf-8") == "hand edited\n"
-        assert soul != "hand edited\n"
+        assert log.read_text(encoding="utf-8") == "notes\n"
+        assert pod_memory.read_text(encoding="utf-8") == '{"entries": []}\n'
+        assert not (ws / "memory" / ".distilled").exists()
 
     def test_rebuilds_workspace_files_from_metadata(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
     ) -> None:
         ws = _make_ws(tmp_path, monkeypatch)
         original = (ws / "SOUL.md").read_text(encoding="utf-8")
         (ws / "SOUL.md").write_text("hand edited\n", encoding="utf-8")
-        _use_fake_driver(monkeypatch, FakeDriver())
 
         code, out = _reset("--yes")
 
         assert code == 0, out
         assert (ws / "SOUL.md").read_text(encoding="utf-8") == original
 
-    def test_off_a_tty_without_yes_refuses_before_any_distillation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_off_a_tty_without_yes_refuses_and_changes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
     ) -> None:
         ws = _make_ws(tmp_path, monkeypatch)
-        log = ws / "memory" / "2026-07-01.md"
-        log.write_text("notes\n", encoding="utf-8")
-        fake = FakeDriver()
-        _use_fake_driver(monkeypatch, fake)
 
         code, out = _reset()
 
         assert code == 1
         assert "--yes" in out
-        assert fake.calls == []
-        assert log.exists()
+        assert "a real task" in (ws / "HEARTBEAT.md").read_text(encoding="utf-8")
 
     def test_a_name_outside_the_pod_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
     ) -> None:
         _make_ws(tmp_path, monkeypatch)
-        fake = FakeDriver()
-        _use_fake_driver(monkeypatch, fake)
 
         result = _runner.invoke(_pod.pod_app, ["reset", "other-lead", "--pod", "demo", "--yes"])
 
         assert result.exit_code == 1
-        assert fake.calls == []

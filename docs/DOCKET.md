@@ -136,8 +136,7 @@ typed `Protocol` — `RuntimeDriver` — that `core/` and `cli/` program against
 driver's on-disk knowledge. It has four members plus one ingestion helper:
 
 - `run_turn` — one costed agent turn: the hot path `core/dispatch.py`'s pipeline calls for every
-  hop, and, per decision D-18, docket's own self-originated LLM calls (memory distillation, see
-  [Memory Management](#memory-management))
+  hop, and, per decision D-18, docket's own self-originated LLM calls (session compaction)
 - `list_sessions` / `usage` — durable-session enumeration and token/cost aggregation
 - `capabilities` — what this driver instance can actually promise (for example, whether it
   reports a real USD cost at all), so a caller never hardcodes an assumption about the one
@@ -571,21 +570,16 @@ docket pod reset <member-id>
 docket setup --fix
 ```
 
-### Memory Distillation
+### Pod Memory
 
-`docket pod reset <member-id>` summarizes an agent's pending daily logs into `MEMORY.md`,
-archives the originals into `memory/.distilled/<day>/` rather than deleting anything outright,
-then clears and rebuilds the member's workspace.
-This is docket's first *self-originated* LLM call (decision D-18): docket runs one turn as the
-agent whose memory is being distilled to write the summary, through the same
-`RuntimeDriver.run_turn` every dispatch hop uses — no new SDK dependency, no direct provider call.
-
-The reset command runs distillation **first** before the clearing and rebuilding step — so
-routine maintenance never quietly throws away undistilled history. The contract fails **closed**:
-a driver failure or an empty reply leaves the daily logs exactly where they were, and the
-subsequent reset is aborted rather than proceeding over lost content. "Nothing to distill" (no
-pending daily logs) is a different, harmless case — there's nothing undistilled to lose, so the
-reset proceeds normally.
+What a pod learns about its repository lives in one `memory.json` per pod. A step's reply may end
+with a `## Memory` section of `- <kind>: <path or command> -- <fact>` lines; when the task ends,
+docket decides each entry itself. A generated path present at the task's commit and a command with
+an exit status in the task's trace are accepted automatically; a pitfall or convention waits for the
+operator; anything that reads as an instruction, or comes from a task that called `fetch`, is
+refused or held. Accepted entries reach every member's prompt last, behind an untrusted frame, never
+in docket's voice. `docket pod reset` no longer distills anything: it resets a member's ledger and
+rebuilds its files. See `specs/functional/workspace-structure.spec.md`, "Pod memory".
 
 ---
 
@@ -676,7 +670,7 @@ Tester:      ✓ Behavior-only validation
 
 ### Features Implemented ✅
 
-- [x] Memory management system and distillation (`docket pod reset`)
+- [x] Pod memory: governed, verified entries shared by the pod (`memory.json`)
 - [x] Pod delegation + dispatch (`docket task add`, `docket task list`, `docket run`)
 - [x] Workspace startup contract generation (`WORKFLOW_AUTO.md`/`MEMORY.md`/`HEARTBEAT.md`) +
   `docket setup` re-seeding of a missing or stale one
@@ -694,7 +688,6 @@ Tester:      ✓ Behavior-only validation
 - [x] RuntimeDriver port — one typed protocol, one shipped driver (`core/runtime_driver.py`,
   `edges/adapters/docket_runtime.py`'s `DocketDriver`)
 - [x] docket as an MCP server (`docket start --mcp`, optional `[mcp]` extra)
-- [x] Memory distillation (`docket pod reset` distills first by default)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
 - [x] Hash-chained, tamper-evident audit log (`docket log verify`)
 - [x] The operator API: addressable tasks and pod routes over HTTP for an external plan of record

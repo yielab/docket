@@ -1536,46 +1536,20 @@ def _normalized_fact_text(text: str) -> str:
     return re.sub(r"[\s,_`]+", "", text.lower())
 
 
-def _seed_memory_logs(home: Path) -> Path:
+def _seed_operator_memory(home: Path) -> None:
     lead_ws = home / "workspaces" / "projects" / "smoke-lead"
-    memory_dir = lead_ws / "memory"
-    memory_dir.mkdir(parents=True, exist_ok=True)
-    (memory_dir / "2026-08-17.md").write_text(
-        """# Checkout incident notes
+    (lead_ws / "MEMORY.md").write_text(
+        """# MEMORY.md
 
-- [exact] MONEY-104: integer cents; tax uses `(subtotal_cents * tax_basis_points + 5_000) // 10_000`; binary floats are forbidden.
-- META-201: receipt metadata tenant was temporarily `amber-2`.
-- Transient note: a staging worker was restarted; do not retain this as product behavior.
-""",
-        encoding="utf-8",
-    )
-    (memory_dir / "2026-08-18.md").write_text(
-        """# Checkout decision follow-up
+## Checkout decisions
 
-- [exact] META-202 supersedes META-201: every receipt must use tenant `cobalt-7`, never `amber-2`.
+- MONEY-104: integer cents; tax uses `(subtotal_cents * tax_basis_points + 5_000) // 10_000`; binary floats are forbidden. The integer half-up rule remains active.
+- META-202 supersedes META-201: every receipt must use tenant `cobalt-7`, never `amber-2`.
 - Keep the public APIs `invoice_total(subtotal_cents, tax_basis_points)` and
   `receipt_metadata(order_id)` stable.
-- The MONEY-104 integer half-up rule remains active.
 """,
         encoding="utf-8",
     )
-    return lead_ws
-
-
-def _verify_distilled_memory(lead_ws: Path) -> None:
-    pending = sorted((lead_ws / "memory").glob("*.md"))
-    _require(not pending, "daily memory logs remained pending after distillation")
-    archived = sorted((lead_ws / "memory" / ".distilled").glob("*/*.md"))
-    archived_names = {path.name for path in archived}
-    expected_names = {"2026-08-17.md", "2026-08-18.md"}
-    _require(
-        expected_names <= archived_names,
-        f"scenario memory logs were not both archived: {sorted(archived_names)}",
-    )
-    memory_text = (lead_ws / "MEMORY.md").read_text(encoding="utf-8")
-    facts = _normalized_fact_text(memory_text)
-    for expected_fact in ("cobalt-7", "5000", "10000", "integer"):
-        _require(expected_fact in facts, f"distilled MEMORY.md lost {expected_fact!r}")
 
 
 def _verify_memory_maintenance(world: Path, home: Path, task: dict[str, Any]) -> None:
@@ -1774,10 +1748,8 @@ def _run(
         print("[check] full pod provisioned: lead, implementer, reviewer, tester")
 
         if scenario == _MEMORY_SCENARIO:
-            lead_ws = _seed_memory_logs(home)
-            run_cli("pod", "reset", "smoke-lead", "--yes", "--pod", "smoke")
-            _verify_distilled_memory(lead_ws)
-            print("[check] memory logs distilled and archived with current decisions retained")
+            _seed_operator_memory(home)
+            print("[check] operator MEMORY.md seeded with the current checkout decisions")
 
         _delegate_smoke_task(run_cli, scenario)
         run_cli("pod", "plan", "--pod", "smoke", "--pipeline", str(pipeline))

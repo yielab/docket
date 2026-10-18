@@ -143,7 +143,8 @@ context passes the budget.
 | File | What it is actually for |
 |---|---|
 | `WORKFLOW_AUTO.md` | The startup contract for an agent reading its workspace by hand. A live turn replaces it with the runtime contract above. Editing it changes nothing a docket turn sees. |
-| `memory/YYYY-MM-DD.md` | Daily logs. Not in the prompt. `docket pod reset <member>` distills and moves its content into `MEMORY.md`, which is. |
+| `memory/YYYY-MM-DD.md` | Daily logs an older docket left behind. Not in the prompt, and docket no longer writes, distills or archives them. |
+| `memory.json` (in the pod's runtime directory) | What the pod learned: entries a task's reply ended with, accepted only when docket verified them. Accepted entries reach every member's prompt last, behind an untrusted frame. |
 | `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--pipeline` or bound with `docket pod set pipeline` (see §3.5). |
 
 ### Who decides what: the ownership map
@@ -268,8 +269,8 @@ Edit the agent's workspace files directly, under `~/.docket/workspaces/projects/
 - `docket pod set verify` regenerates the Implementer's `TOOLS.md`. Put your own
   Implementer notes in `SOUL.md` or `MEMORY.md` instead, or re-add them after changing the verify
   command.
-- `docket pod reset <member>` resets `HEARTBEAT.md` and clears `MEMORY.md` (after distilling
-  into it) and rebuilds the member's workspace.
+- `docket pod reset <member>` resets `HEARTBEAT.md` and rebuilds the member's `SOUL.md`,
+  `AGENTS.md` and `TOOLS.md`. It leaves `MEMORY.md`, `memory/` and the pod's `memory.json` alone.
 - `docket setup` rewrites `WORKFLOW_AUTO.md` whenever its contract version is stale. That costs
   nothing, since the file is not sent to the model.
 

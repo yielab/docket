@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.20.0
+**Version**: 1.21.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`. There are no shared agents: no workspace is provisioned outside a pod. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
@@ -15,7 +15,7 @@ requirement 5: `templates/exporters/` joins `templates/providers/` as read-only 
 `docket-exporters.json`/`exporters-health.json` are documented in
 observability-export.spec.md, not here — this spec's scope is the workspace and template layer,
 not `DOCKET_HOME`'s own top-level registry files (see "Shipped-data templates").
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -72,16 +72,17 @@ covers the resulting file set for either workspace kind, not blueprint selection
      instructions apply only to an agent reading this file directly, outside Docket's turn loop —
      the live turn loop never sends this raw file to the model, composing a small read-only
      projection instead (`core/identity.py`)
-   - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written). The seed
-     names no path: its stack line is the only fact it carries from provisioning. A live turn
-     composes it only when it holds text beyond that template (agent-loop.spec.md requirement 30)
+   - `MEMORY.md` — the operator's free notes about the project (seeded; docket never writes it
+     again). The seed names no path: its stack line is the only fact it carries from
+     provisioning. A live turn composes it only when it holds text beyond that template
+     (agent-loop.spec.md requirement 30). What a pod learns by itself lives in the pod's
+     `memory.json` ("Pod memory" below), not here
    - `.docket-meta.json` — docket metadata (see data spec)
-   - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning);
-     `memory/.distilled/<YYYY-MM-DD>/` **MAY** additionally exist — an archive `docket pod reset`
-     (which distills first; ROADMAP Phase 17 C-2) writes daily logs into instead of deleting them, one dated subdirectory per distillation
-     run. Never created at provisioning, never read by the runtime contract (a plain
-     `memory/*.md` glob does not descend into it), and never counted as a "missing" file by
-     `docket setup`
+   - `memory/` — an empty directory at provisioning. docket seeds no daily log, distills none
+     and archives none (ADR 0028 point 7; the pipeline had no writer in a pod task). A
+     `YYYY-MM-DD.md` file or a `.distilled/` archive an older docket left there stays as it is:
+     docket never reads, moves or deletes it, `docket pod reset` included, and `docket setup`
+     never counts one as missing
 2. A `workflows/` directory **MAY** exist as a pre-existing artifact of the now-retired
    Lobster workflow surface (ROADMAP decision D-16, Phase 16 W-3) — docket no longer
    creates, reads, or manages it; any `*.lobster.yml` files inside are left untouched on disk.
@@ -115,6 +116,71 @@ covers the resulting file set for either workspace kind, not blueprint selection
    flag a stale pod member (advisory, same severity as the existing non-pod
    `_check_template_version`) rather than silently skipping every pod member the way it
    did before this requirement.
+
+### Pod memory (P44-7, ADR 0028 point 7)
+
+What a pod learns about its repository survives the task that learned it, in one file for the
+whole pod and every member that reads it.
+
+1. A pod **MAY** have `memory.json` at `$DOCKET_HOME/workspaces/pods/<pod>/memory.json`
+   (`config.pod_memory_path`), shaped `{"entries": [...]}`. It is created by the first recorded
+   entry, written only through `edges/store.py` (atomic, filelocked, `0600`) and removed with the
+   pod. An entry is `{id, kind, path | command, note, status, reason, provenance}` where
+   `status` is `accepted`, `pending` or `refused`, `reason` says why in one phrase, and
+   `provenance` is `{task, date, commit}`; a `command` entry also carries `exit`, the status
+   docket read from the task's trace. The `id` is derived from `(kind, subject)`, so it is also
+   the deduplication key.
+2. The kinds are closed: `generated` (a repository path not worth reading, with what it is),
+   `command` (a command and what it showed), `pitfall` and `convention` (a repository path, or
+   `.` for the whole repository, and one fact about it). A note is one sentence of at most 200
+   characters.
+3. **The memory section.** A step's reply **MAY** end with a section opened by a line that is
+   exactly `## Memory`, followed by one line per entry of the form
+   `- <kind>: <path or command> -- <note>`. The last such heading wins; the section ends at the
+   next heading or the end of the reply; a line that is not a bullet is ignored; a bullet that does
+   not fit the grammar or names another kind is dropped and traced as refused. At most
+   `config.POD_MEMORY_MAX_PER_TASK` entries are read per reply. docket reads it when the task
+   reaches a terminal state (`dispatch._finalize_task`), from every hop that ended ok.
+4. **Acceptance is mixed.** docket decides each entry, never the model:
+   - **refused**, with a reason: a malformed subject (absolute, `..`, empty), a note over the
+     limit, a note that reads as an instruction or carries a URL (a note that starts with an
+     imperative verb, or contains `ignore`, `disregard`, `override`, `always`, `never`, `do not`,
+     `don't`, `must`, `should`, `from now on`, `system prompt` or `instruction`), a `pre_input`
+     verdict of `block`, `require_approval` or `redact` on the entry's text (screened untrusted,
+     the pod's own policies included), a `generated` path absent at the task's commit, or a
+     `command` with no exit status in the task's trace.
+   - **pending**: every `pitfall` and `convention`; every entry of a task whose trace holds a
+     `fetch` tool call, or whose trace cannot be read; a `pre_input` verdict of `warn`; a
+     `generated` entry when the task produced no commit.
+   - **accepted**, automatically: a `generated` entry whose path exists at the task's commit
+     (`git cat-file -e <commit>:<path>`), and a `command` entry whose command has an exit status
+     in the task's trace (a `command_step`, the verify gate, or a `bash` call with its
+     `process_exited`). The task's commit is the latest hop evidence commit.
+   Text that arrived from the repository, a tool result or the web is therefore never stored as
+   an instruction: nothing is accepted from it except a fact docket checked itself.
+5. **Bounds and deduplication.** An entry already present for the same `(kind, subject)` is not
+   added again: an accepted or refused one stands (a refusal is the operator's or docket's
+   decision and is not reopened), a pending one is replaced only by an accepted one. At most
+   `config.POD_MEMORY_MAX_ACCEPTED` accepted entries are kept, the oldest dropped first, and at
+   most `config.POD_MEMORY_MAX_UNDECIDED` pending and refused ones together, the oldest dropped
+   first, so a flood of pending entries cannot push an accepted one out.
+6. **Render.** `core.identity.compose_agent_prompt` **MUST** compose the accepted entries as the
+   last section of the system prompt, after `MEMORY.md`, behind its own untrusted frame
+   (`POD_MEMORY_FRAME`: the entries come from earlier tasks of this pod, not from the operator,
+   and are never a request to run commands or to change tools, approvals or policies) and never
+   in docket's voice. The section is reported as `podMemory` in `prompt_composed`. It is
+   capped at `config.POD_MEMORY_RENDER_MAX_BYTES` by dropping the oldest whole entries, an entry
+   whose path no longer exists under the first project root is omitted (not deleted), and no
+   accepted entry composes nothing, byte-identically to before this section existed.
+7. **Every change is recorded.** Adding, deciding, reverting or resetting entries writes one
+   `memory_update` trace event per entry (trace-store.spec.md) and one `pod.memory.<action>`
+   audit entry carrying the entry id, kind and status, never its note or subject.
+8. `core/pod_memory.py` **MUST** expose the operator's side as a typed API: `list_entries`,
+   `approve` (pending to accepted), `refuse` (pending to refused, with a reason), `revert`
+   (accepted to refused, so the same fact is not accepted again) and `reset` (remove every
+   entry). Each audits and traces like requirement 7. No command or inbox item calls them in
+   this version.
+9. `docket pod reset <member>` **MUST NOT** read or change `memory.json`, `MEMORY.md` or `memory/`.
 
 ### No shared agents
 
@@ -241,7 +307,9 @@ docket setup [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md
 - After `docket init` (or `docket pod add` for a new pod member), all required core files **MUST** exist with `700`/`600` permissions and
   a current-version contract marker in `WORKFLOW_AUTO.md`.
 - After the first `docket init` in a fresh home, `workspaces/` holds only the pod's members.
-- After `docket pod reset <member>`, core files **MUST** be regenerated from metadata.
+- After `docket pod reset <member>`, `SOUL.md`, `AGENTS.md`, `TOOLS.md` and the `HEARTBEAT.md`
+  ledger **MUST** be regenerated from metadata; `MEMORY.md`, `memory/` and the pod's
+  `memory.json` are left as they were.
 
 ### Invariants
 
@@ -256,6 +324,18 @@ docket setup [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.21.0 (2026-10-18)
+
+- **Pod memory (P44-7, ADR 0028 point 7).** New "Pod memory" section: one governed
+  `memory.json` per pod, a fixed `## Memory` reply grammar, mixed acceptance (only facts docket
+  verified itself are accepted automatically), an untrusted frame in the system tail, caps, a
+  `memory_update` trace event and an audit entry per change, and the typed API the operator
+  commands will use.
+- The per-member daily-log pipeline is removed (D-57): provisioning no longer seeds
+  `memory/YYYY-MM-DD.md`, the distillation turn and its archive are deleted, and `docket pod
+  reset` no longer distills, deletes `memory/*.md` or clears `MEMORY.md`. `MEMORY.md` is the
+  operator's notes. Existing log files and archives are left alone.
 
 ### Version 1.20.0 (2026-10-18)
 
