@@ -271,8 +271,8 @@ def _result_notice(call: ToolCall | None, message: ChatMessage) -> str:
     lines = message.content.count("\n") + 1 if message.content else 0
     head = f"{name} {target}" if target else name
     return (
-        f"[{head}: {lines} lines, {len(message.content):,} characters, omitted; "
-        f"call {name} again if needed]"
+        f"[{head}: {lines} lines, {len(message.content):,} characters, already seen and "
+        f"omitted; call {name} again only for exact text you still need]"
     )
 
 
