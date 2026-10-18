@@ -96,7 +96,7 @@ def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
         return None
     in_rate, out_rate, cache_read_rate, cache_write_rate = pricing
     usd = (
-        totals.input_tokens / 1_000_000 * in_rate
+        max(0, totals.input_tokens - totals.cache_read) / 1_000_000 * in_rate
         + totals.output_tokens / 1_000_000 * out_rate
         + totals.cache_read / 1_000_000 * cache_read_rate
         + totals.cache_write / 1_000_000 * cache_write_rate

@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.35.1
+**Version**: 1.36.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -17,9 +17,9 @@ history coordinate from the trace coordinate so pod steps do not replay another 
 Every prospective task or compaction request is preflighted against the selected endpoint's
 registered context window when that endpoint advertises one; same-turn tool growth is compacted
 through the durable atomic path before transport rather than relying only on pre-turn history size.
-When the endpoint also advertises a positive output limit, the loop reserves one bounded,
-tool-free terminal response before another ordinary round can exhaust the cumulative measured
-turn budget. **Wave 30 card W30-C2** adds `ToolContext.approval_mode`: a call gated to `ask` under
+The loop reserves one bounded, tool-free terminal response before another ordinary round can
+exhaust the cumulative turn budget; an endpoint with no registered output limit reserves
+`config.DEFAULT_MAX_OUTPUT_TOKENS`. The budget counts new tokens: cache reads are free. **Wave 30 card W30-C2** adds `ToolContext.approval_mode`: a call gated to `ask` under
 `"refuse"` is denied immediately, with no approval record and no wait, and the loop stops on that
 denial alone rather than folding it into the consecutive-denial count — see requirement 70 and
 `security-gates.spec.md`'s approval-mode clause for the `core/tools.py` half of this contract.
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-10-17
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -120,9 +120,14 @@ This specification does NOT cover:
 9. The loop **MUST** stop with `stop_reason="timeout"` once the configured wall-clock budget
    for the whole turn has elapsed, checked between iterations.
 10. The loop **MUST** stop with `stop_reason="token_budget"` once the turn's cumulative
-    *measured* token usage (`core.llm.TokenUsage`, real counts) exceeds the configured budget.
-    This **MUST NOT** be computed from the bytes/divisor estimate `core/context.py`/
-    `core/session.py` use for compaction.
+    *counted* token usage exceeds the configured budget. Counted tokens are
+    `TokenUsage.counted_tokens`: `input_tokens - cached_tokens + output_tokens` (a cache read is
+    never counted; a cache write is part of the input and is). The figure is the endpoint's
+    reported usage (`core.llm.TokenUsage`, real counts) and **MUST NOT** be computed from the
+    bytes/divisor estimate `core/context.py`/`core/session.py` use for compaction. A response
+    that carries no tool calls is the exception: it is already paid, so it is persisted and
+    returned `ok` even when it crosses the budget (requirement 55 refuses only a response with
+    tool calls).
 11. A backend failure (`ChatResponse.ok=False`) **MUST** stop the loop with
     `stop_reason="backend_error"` and the backend's own `failure_kind`, without raising.
 12. `AgentLoopResult.failure_kind` **MUST** be `None` if and only if `ok` is `True`.
@@ -403,10 +408,16 @@ This specification does NOT cover:
     OpenAI-compatible backend **MUST** estimate from the same payload builder used for transport.
     This bytes/`CONTEXT_BYTES_PER_TOKEN` figure **MUST** be labelled an estimate and **MUST NOT** be
     folded into measured `TokenUsage`.
-46. A known-window request with no positive maximum-output reserve **MUST** fail locally rather than
-    claim it fits. When the window is unknown, the loop **MUST** preserve existing behavior and
-    expose that no registered-window guarantee was applied; it **MUST NOT** invent a model/window
-    table.
+46. The output reserve is the configured or endpoint-registered maximum output; when there is none
+    it **MUST** be `config.DEFAULT_MAX_OUTPUT_TOKENS`, so every known-window request is checked
+    against a positive reserve and the request is still sent without a `max_tokens`. When the
+    window is unknown, the loop **MUST** preserve existing behavior and expose that no
+    registered-window guarantee was applied; it **MUST NOT** invent a model/window table.
+46a. After the first measured call of a turn, every input estimate used by the window check and the
+    cumulative budget check **MUST** be scaled by `max(1, measured_input / estimated_input)` of the
+    latest call that reported input tokens, so an under-counting estimator converges on the
+    endpoint's own count and never shrinks below the raw estimate. The scaled figure is still an
+    estimate: it **MUST NOT** be folded into `TokenUsage`.
 47. When a task request is estimated over-window, the loop **MUST** invoke the existing durable,
     fail-closed session compactor with a smaller target, preserve complete assistant-tool/result
     atomic units, reload the accepted messages, and retry the estimate before transport. Every
@@ -426,12 +437,11 @@ This specification does NOT cover:
 
 ### Terminal response reservation (Wave 25 W25-C3)
 
-50. When the selected endpoint supplies a positive maximum-output reserve, every task and
-    compaction completion **MUST** be preflighted against the cumulative turn budget before
-    transport. The comparison **MUST** add measured usage from prior completions to the prospective
-    request-input estimate and the same output reserve used by requirement 45. Estimates **MUST
-    NOT** be added to `TokenUsage`; an endpoint with no positive output reserve preserves the
-    existing measured post-response guard because Docket cannot truthfully promise an output bound.
+50. Every task and compaction completion **MUST** be preflighted against the cumulative turn
+    budget before transport. The comparison **MUST** add counted usage (requirement 10) from prior
+    completions to the prospective request-input estimate and the same output reserve used by
+    requirement 45, which is `config.DEFAULT_MAX_OUTPUT_TOKENS` when the endpoint registers no
+    bound. Estimates **MUST NOT** be added to `TokenUsage`.
 51. When a normal tool-enabled task request would exceed that prospective cumulative bound, the
     loop **MUST** make at most one finalization attempt. That request **MUST** explicitly ask for a
     truthful terminal response from work already completed, advertise no tools, preserve the
@@ -466,9 +476,11 @@ This specification does NOT cover:
     estimates, output reserve, and an explicit estimate marker. It **MUST NOT** contain messages,
     prompts, tool arguments, tool results, or model output.
 55. After the existing backend-error and truncation checks retain their more specific outcomes, a
-    successful, non-truncated response whose measured usage crosses the hard cumulative limit
-    **MUST NOT** dispatch or persist tool calls from that response and **MUST** return the existing
-    `token_budget` failure. Previous complete durable units remain intact.
+    successful, non-truncated response that carries tool calls and whose counted usage crosses the
+    hard cumulative limit **MUST NOT** dispatch or persist tool calls from that response and
+    **MUST** return the existing `token_budget` failure. Previous complete durable units remain
+    intact. The same response without tool calls is persisted and returned as the `final_message`
+    outcome.
 56. Within one task request-fit evaluation, an accepted compaction of the current-turn suffix or
     historical prefix **MUST** be followed by exactly one reload and task-fit recheck, and that same
     logical segment revision **MUST NOT** be selected for compaction again. Segment revision identity
@@ -738,7 +750,7 @@ from docket.core.tools import ToolContext, builtin_registry
 
 ctx = ToolContext(agent_id="demo", role="implementer", project="demo", roots=(workspace,))
 result = agent_loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:demo:default", "read notes.md")
-# result.ok, result.output, result.usage.total_tokens, result.tool_calls_executed
+# result.ok, result.output, result.usage.counted_tokens, result.tool_calls_executed
 ```
 
 ### A confused model that never stops requesting tools
@@ -823,6 +835,20 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.36.0 (2026-10-18)
+
+- The turn budget counts new tokens: `TokenUsage.counted_tokens` (`input - cached + output`) feeds
+  the iteration bound, the post-response check, the prospective check and the finalization
+  trace, so a cache read costs nothing (requirement 10). `TokenUsage` gains `cache_write_tokens`,
+  parsed from `prompt_tokens_details.cache_write_tokens` or `cache_creation_input_tokens`.
+- A response without tool calls that crosses the budget is accepted (requirements 10, 55): the
+  critic's reply was discarded 1,292 tokens over after it had been paid for.
+- An endpoint with no registered output bound reserves `config.DEFAULT_MAX_OUTPUT_TOKENS` (4096),
+  so the prospective check and the window check run for it; requirement 46's "fail locally with
+  no reserve" is replaced, and requirement 50 no longer needs a registered bound.
+- New requirement 46a: after the first measured call the input estimate is scaled by
+  `max(1, measured / estimated)`.
 
 ### Version 1.35.1 (2026-10-17)
 

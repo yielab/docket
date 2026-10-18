@@ -149,7 +149,9 @@ def _hop_evidence(rec: dict[str, Any]) -> HopEvidence:
     usage_raw = _as_dict(rec.get("usage"))
     if usage_raw is not None:
         try:
-            usage = UsageEvidence.model_validate(usage_raw)
+            usage = UsageEvidence.model_validate(
+                {key: usage_raw[key] for key in ("input", "output") if key in usage_raw}
+            )
         except ValueError:
             usage = None
 

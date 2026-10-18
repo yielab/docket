@@ -1433,14 +1433,15 @@ class TestLiveSessionCompaction:
         original_messages = [
             message.model_dump(by_alias=True) for message in load_session(session_key).messages
         ]
-        backend = ScriptedBackend(
+        backend = _SizedBackend(
             [
                 _truncated(
                     "partial summary must never become durable",
                     usage=TokenUsage(input_tokens=4, output_tokens=1),
                 ),
                 _final("task completion must not be called"),
-            ]
+            ],
+            estimate=5,
         )
 
         result = _loop.run_agent_turn(
@@ -1449,7 +1450,7 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "must not be appended",
-            config=_loop.LoopConfig(history_budget_tokens=1, token_budget=100),
+            config=_loop.LoopConfig(history_budget_tokens=1, token_budget=100, max_tokens=5),
         )
 
         assert not result.ok
@@ -1505,7 +1506,7 @@ class TestLiveSessionCompaction:
             response = _final("   ", usage)
         else:
             response = _tool_call_response("summary-tool", "echo", '{"text": "no"}', usage)
-        backend = ScriptedBackend([response])
+        backend = _SizedBackend([response], estimate=5)
 
         result = _loop.run_agent_turn(
             backend,
@@ -1513,7 +1514,7 @@ class TestLiveSessionCompaction:
             ctx,
             session_key,
             "must not be appended",
-            config=_loop.LoopConfig(history_budget_tokens=1, token_budget=20),
+            config=_loop.LoopConfig(history_budget_tokens=1, token_budget=20, max_tokens=5),
         )
 
         assert not result.ok
@@ -1833,7 +1834,9 @@ class TestStopConditions:
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:
         backend = InfiniteToolBackend()  # 15 tokens (10 in + 5 out) per iteration
-        config = _loop.LoopConfig(max_iterations=1000, max_tool_calls=1000, token_budget=40)
+        backend.max_output_tokens = 1  # type: ignore[attr-defined]
+        backend.estimate_input_tokens = lambda messages, **kwargs: 10  # type: ignore[attr-defined]
+        config = _loop.LoopConfig(max_iterations=1000, max_tool_calls=1000, token_budget=44)
 
         result = _loop.run_agent_turn(
             backend, registry, ctx, "agent:demo:default", "go", config=config
@@ -1842,8 +1845,10 @@ class TestStopConditions:
         assert result.ok is False
         assert result.stop_reason == "token_budget"
         assert result.failure_kind == "invalid_output"
-        assert result.usage.total_tokens > 40
-        assert backend.call_count == 3  # no invented prospective reserve when max_tokens is unknown
+        assert result.usage.total_tokens > 44
+        assert (
+            backend.call_count == 3
+        )  # the prospective estimate was tiny; the measured guard fires
 
     def test_backend_error_is_reported_with_its_own_failure_kind(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -2017,6 +2022,7 @@ class TestTerminalResponseReservation:
                 TokenUsage(input_tokens=65, output_tokens=5),
             ),
             _final("implemented and validated", TokenUsage(input_tokens=8, output_tokens=2)),
+            normal_estimate=65,
         )
         session_key = "agent:budget-finalize:default"
 
@@ -2061,10 +2067,10 @@ class TestTerminalResponseReservation:
             "tokenBudget": 100,
             "measuredTokensUsed": 70,
             "remainingMeasuredTokens": 30,
-            "normalEstimatedInputTokens": 25,
+            "normalEstimatedInputTokens": 65,
             "finalizationEstimatedInputTokens": 10,
             "outputReserveTokens": 10,
-            "normalProspectiveTokens": 35,
+            "normalProspectiveTokens": 75,
             "finalizationProspectiveTokens": 20,
             "estimate": True,
         }
@@ -2110,7 +2116,7 @@ class TestTerminalResponseReservation:
                     message.content.startswith("[compacted summary of ") for message in messages
                 ):
                     return 90
-                return 20
+                return 45
 
             def complete(
                 self,
@@ -2184,6 +2190,7 @@ class TestTerminalResponseReservation:
             _tool_call_response(
                 "poison", "echo", '{"text": "must not run"}', TokenUsage(input_tokens=30)
             ),
+            normal_estimate=75,
             finalization_estimate=15,
         )
         session_key = "agent:budget-irreducible:default"
@@ -2219,6 +2226,7 @@ class TestTerminalResponseReservation:
             ),
             _final("must not be reached"),
             finalization_estimate=95,
+            normal_estimate=65,
         )
         backend.context_window_tokens = 100  # type: ignore[attr-defined]
         session_key = "agent:budget-final-context:default"
@@ -2259,6 +2267,7 @@ class TestTerminalResponseReservation:
                 '{"text": "optional retry"}',
                 TokenUsage(input_tokens=8, output_tokens=2),
             ),
+            normal_estimate=65,
         )
         session_key = "agent:budget-tool-refused:default"
 
@@ -2293,6 +2302,7 @@ class TestTerminalResponseReservation:
                 tool_calls=[ToolCall(id="partial", name="echo", arguments="{")],
                 usage=TokenUsage(input_tokens=8, output_tokens=2),
             ),
+            normal_estimate=65,
         )
         session_key = "agent:budget-final-truncated:default"
 
@@ -2358,6 +2368,7 @@ class TestTerminalResponseReservation:
                 "c1", "echo", '{"text": "validated"}', TokenUsage(input_tokens=65, output_tokens=5)
             ),
             ChatResponse(ok=False, error="finalization cancelled", failure_kind=failure_kind),
+            normal_estimate=65,
         )
         session_key = f"agent:budget-{failure_kind}:default"
 
@@ -2737,3 +2748,173 @@ class TestHistoryFeeding:
         assert "first question" in sent_contents
         assert "first answer" in sent_contents
         assert "second question" in sent_contents
+
+
+# ── the budget counts new tokens ─────────────────────────────────────────────
+
+
+class _SizedBackend(ScriptedBackend):
+    """A scripted backend with registered bounds and a fixed input estimate."""
+
+    def __init__(
+        self,
+        responses: Sequence[ChatResponse],
+        *,
+        estimate: int,
+        window: int | None = None,
+        max_output: int | None = None,
+    ) -> None:
+        super().__init__(responses)
+        self._estimate = estimate
+        self.context_window_tokens = window
+        self.max_output_tokens = max_output
+
+    def estimate_input_tokens(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> int:
+        return self._estimate
+
+
+def _request_fits(ctx: ToolContext, session_key: str) -> list[dict[str, Any]]:
+    tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+    records = [json.loads(line) for line in tracefile.read_text().splitlines()]
+    return [r["payload"] for r in records if r["event_type"] == "request_fit"]
+
+
+class TestCountedTokenBudget:
+    def test_cache_reads_do_not_count_against_the_budget(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        cached = TokenUsage(input_tokens=12_000, cached_tokens=10_000, output_tokens=50)
+        backend = _SizedBackend(
+            [
+                _tool_call_response("c1", "echo", '{"text": "a"}', cached),
+                _tool_call_response("c2", "echo", '{"text": "b"}', cached),
+                _tool_call_response("c3", "echo", '{"text": "c"}', cached),
+                _final("done", cached),
+            ],
+            estimate=12_000,
+        )
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            "agent:counted-cache:default",
+            "work",
+            config=_loop.LoopConfig(token_budget=30_000),
+        )
+
+        assert result.ok, result.error
+        assert len(backend.calls) == 4
+        assert result.usage.counted_tokens == 4 * 2_050
+
+    def test_a_final_reply_that_crosses_the_budget_is_kept(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = _SizedBackend(
+            [
+                _tool_call_response("c1", "echo", '{"text": "a"}', TokenUsage(10, 5)),
+                _final("the answer", TokenUsage(input_tokens=200, output_tokens=50)),
+            ],
+            estimate=20,
+            max_output=10,
+        )
+        session_key = "agent:counted-final:default"
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "work",
+            config=_loop.LoopConfig(token_budget=100, max_tokens=10),
+        )
+
+        assert result.ok, result.error
+        assert result.stop_reason == "final_message"
+        assert result.output == "the answer"
+        assert result.usage.counted_tokens > 100
+        assert load_session(session_key).messages[-1].content == "the answer"
+
+    def test_a_tool_calling_reply_that_crosses_the_budget_is_still_refused(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = _SizedBackend(
+            [
+                _tool_call_response("c1", "echo", '{"text": "a"}', TokenUsage(10, 5)),
+                _tool_call_response("c2", "echo", '{"text": "b"}', TokenUsage(200, 50)),
+            ],
+            estimate=20,
+            max_output=10,
+        )
+        session_key = "agent:counted-tools:default"
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "work",
+            config=_loop.LoopConfig(token_budget=100, max_tokens=10),
+        )
+
+        assert not result.ok
+        assert result.stop_reason == "token_budget"
+        assert [m.role for m in load_session(session_key).messages] == ["user", "assistant", "tool"]
+
+    def test_a_backend_without_an_output_bound_reserves_the_default(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = _SizedBackend([_final()], estimate=50, window=100_000)
+        session_key = "agent:counted-reserve:default"
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "work",
+            config=_loop.LoopConfig(token_budget=_cfg.DEFAULT_MAX_OUTPUT_TOKENS - 1),
+        )
+
+        assert not result.ok
+        assert result.stop_reason == "token_budget"
+        assert "no backend call made" in result.error
+        assert not backend.calls
+        fits = _request_fits(ctx, session_key)
+        assert fits
+        assert {fit["outputReserveTokens"] for fit in fits} == {_cfg.DEFAULT_MAX_OUTPUT_TOKENS}
+
+    def test_the_estimate_is_scaled_by_the_first_measured_call(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = _SizedBackend(
+            [
+                _tool_call_response("c1", "echo", '{"text": "a"}', TokenUsage(400, 5)),
+                _tool_call_response("c2", "echo", '{"text": "b"}', TokenUsage(40, 5)),
+                _final("done", TokenUsage(40, 5)),
+            ],
+            estimate=100,
+            window=100_000,
+            max_output=10,
+        )
+        session_key = "agent:counted-calibration:default"
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "work",
+            config=_loop.LoopConfig(max_tokens=10),
+        )
+
+        assert result.ok, result.error
+        task_fits = [fit["estimatedInputTokens"] for fit in _request_fits(ctx, session_key)]
+        assert task_fits == [100, 400, 100]

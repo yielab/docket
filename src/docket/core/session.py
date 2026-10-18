@@ -97,6 +97,7 @@ class MeasuredUsage(BaseModel):
     input_tokens: int = Field(0, alias="inputTokens")
     output_tokens: int = Field(0, alias="outputTokens")
     cached_tokens: int = Field(0, alias="cachedTokens")
+    cache_write_tokens: int = Field(0, alias="cacheWriteTokens")
     turns: int = 0
 
 
@@ -106,6 +107,7 @@ def _add_usage(current: MeasuredUsage, delta: TokenUsage) -> MeasuredUsage:
         input_tokens=current.input_tokens + delta.input_tokens,
         output_tokens=current.output_tokens + delta.output_tokens,
         cached_tokens=current.cached_tokens + delta.cached_tokens,
+        cache_write_tokens=current.cache_write_tokens + delta.cache_write_tokens,
         turns=current.turns + 1,
     )
 
