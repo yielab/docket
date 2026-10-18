@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A task's usage carries its cache figures.** `task["usage"]` (on `GET /tasks/<pod>` and
+  `GET /tasks/<pod>/<id>`) sums `cached` and `cacheWrite` beside `input` and `output`, as each
+  `byModel` entry already did, so a consumer counts new tokens as `input - cached + output`
+  where it reads the totals.
 - **The operator controls pod memory (P44-8).** `docket pod memory list [--status] [--json]`,
   `approve`, `refuse --reason`, `revert` and `reset [--yes]`, each audited; `docket inbox` lists
   pending memory entries under "Needs you" with the command that approves or refuses each one.

@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.6.0
+**Version**: 5.7.0
 **Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
 **Last Updated**: 2026-10-18
 
@@ -159,7 +159,7 @@ The same body with an `idempotencyKey` already in the queue (`200`):
   "maxTokens": 400000, "tokenBudget": 100000,
   "restrictions": {"deniedTools": ["fetch"], "network": "none", "policies": []},
   "worktree": {"dir": "...", "branch": "docket/fab-dev/task-5d0c...", "baseCommit": "a1b2c3d"},
-  "usage": {"input": 61230, "output": 4120,
+  "usage": {"input": 61230, "cached": 40000, "cacheWrite": 2100, "output": 4120,
             "byModel": {"local/local-model": {"input": 48000, "cached": 40000, "cacheWrite": 0, "output": 3000},
                         "anthropic/claude-sonnet-4-6": {"input": 13230, "cached": 0, "cacheWrite": 2100, "output": 1120}}},
   "hops": [{"role": "implementer", "stepId": "implementer", "model": "local/local-model",
@@ -173,8 +173,9 @@ with one, what its cap has left after its persisted hops (`maxTokens` minus the 
 usage), never below 0. It is computed on read, from the same values `core/dispatch.py` applies, and
 is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod>/<id>` return.
 
-Each `byModel` entry sums its hops' `input`, `cached`, `cacheWrite` and `output`; the task's own
-top-level `input` and `output` are unchanged (`cached` and `cacheWrite` are per model only).
+The task's `usage` and each `byModel` entry sum their hops' `input`, `cached`, `cacheWrite` and
+`output`. `input` includes the cache reads and writes, so a consumer counting new tokens computes
+`input - cached + output`, the rule docket's own budget applies.
 
 `POST .../cancel` (`200`): `{"ok": true, "task": "...", "status": "cancelled"}`.
 `POST .../retry` (`200`): `{"ok": true, "task": "...", "status": "pending"}`.
@@ -308,6 +309,11 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.7.0 (2026-10-18)
+
+- The task's top-level `usage` carries `cached` and `cacheWrite` beside `input` and `output`,
+  summed over its hops like each `byModel` entry. Additive: no existing key changes.
 
 ### Version 5.6.0 (2026-10-18)
 

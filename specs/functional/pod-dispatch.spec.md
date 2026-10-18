@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.55.0
+**Version**: 6.56.0
 **Status**: Complete. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
 produced: `HandoffArtifact.diff`, a capped diff of the hop's tracked changes plus the content of
 its new files, rendered once after the summary — see "Structured handoff artifacts" and
@@ -1803,8 +1803,8 @@ document (`evidence.py`, `docs/contracts/`) are unchanged.*
    `""` for both. The two events can differ when the endpoint serves a different model than the
    one requested.
 5. Each time `_finalize_task` settles a task (a terminal state or a waiting one), it **MUST**
-   write `task["usage"]` as `{"input": n, "output": n, "byModel": {<model>: {"input": n,
-   "output": n}}}`, summed over the task's persisted `hops` (a hop with `usage` `null` adds
+   write `task["usage"]` as `{"input": n, "cached": n, "cacheWrite": n, "output": n, "byModel":
+   {<model>: {"input": n, "cached": n, "cacheWrite": n, "output": n}}}`, summed over the task's persisted `hops` (a hop with `usage` `null` adds
    nothing). A hop whose `model` is `""` is summed under the `""` key. A task that has never
    settled has no `usage` key.
 
@@ -2334,6 +2334,11 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.56.0 (2026-10-18)
+
+- `task["usage"]` carries `cached` and `cacheWrite` at the top level as well as per model
+  (requirement 5 of "Hop events"), so a consumer reads the cache figures where it reads `input`.
 
 ### Version 6.55.0 (2026-10-18)
 
