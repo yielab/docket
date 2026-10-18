@@ -352,6 +352,52 @@ with `pod check`.
 
 Example: docket pod policies block-destructive
 
+### pod memory
+
+**Usage:** `docket pod memory`
+
+What this pod has learned about its repository: review, approve, revert, reset.
+
+### pod memory list
+
+**Usage:** `docket pod memory list`
+
+List the pod's memory entries with their status and why.
+
+Example: docket pod memory list --status pending
+
+### pod memory approve
+
+**Usage:** `docket pod memory approve`
+
+Accept a pending entry; the pod's next prompt carries it.
+
+Example: docket pod memory approve mem-0123456789
+
+### pod memory refuse
+
+**Usage:** `docket pod memory refuse`
+
+Refuse a pending entry; the same fact is not stored again.
+
+Example: docket pod memory refuse mem-0123456789 --reason stale
+
+### pod memory revert
+
+**Usage:** `docket pod memory revert`
+
+Take an accepted entry out of every prompt; it stays as a refusal.
+
+Example: docket pod memory revert mem-0123456789
+
+### pod memory reset
+
+**Usage:** `docket pod memory reset`
+
+Remove every memory entry of the pod after confirmation.
+
+Example: docket pod memory reset --yes
+
 
 ---
 
