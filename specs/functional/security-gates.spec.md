@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.60.0
+**Version**: 0.61.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1268,6 +1268,10 @@ without asking again.
      (`create_pregrant`, channel `cli`, tool and canonical argument digest) and adds it to
      `ToolContext.pregrants`, so one identical later call in the same turn context runs without a
      new approval. It is single-use.
+3. **Every approval records its own deadline.** `core/approval.py::approval_create` always stores
+   `expiresAt`: the caller's value, else `created + config.APPROVAL_TIMEOUT` (ISO 8601 UTC). The
+   record, the `GET /approvals` view and the inbox item therefore carry the same deadline the
+   sweep enforces.
 
 ### Credentials in task processes (implemented, ADR 0020 §8)
 
@@ -1831,6 +1835,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.61.0 (2026-10-18)
+
+- Approval tokens requirement 3: every pending approval records its own `expiresAt`, the given
+  value else `created + APPROVAL_TIMEOUT`, so a client re-attaching after a restart can tell how
+  long it has. Before, a pre-hop gate approval showed `expiresAt: null` and was denied 15
+  minutes later.
 
 ### Version 0.60.0 (2026-10-18)
 

@@ -211,7 +211,7 @@ def approval_create(
 ) -> str:
     """Persist a pending approval and return its token. ``context`` is optional caller
     data stored verbatim, never redacted; always ``{}`` when omitted. ``expires_at``,
-    when given, is the record's own deadline -- the sweep honours it over ``APPROVAL_TIMEOUT``.
+    is the record's own deadline; omitted, it is ``created + APPROVAL_TIMEOUT``.
     ``rationale`` (already screened and bounded; ``""`` when none) makes this a gated-call
     pack: the record and ``approval_requested`` gain ``rationale`` and the three ``options``.
     ``None`` leaves both out."""
@@ -234,8 +234,7 @@ def approval_create(
         "created": created,
         "context": context or {},
     }
-    if expires_at:
-        data["expiresAt"] = expires_at
+    data["expiresAt"] = expires_at or _iso_after(created, _cfg.APPROVAL_TIMEOUT)
     if rationale is not None:
         data["rationale"] = rationale
         data["options"] = approval_options()
@@ -552,20 +551,16 @@ def _parse_iso(text: str) -> float | None:
         return None
 
 
+def _iso_after(stamp: str, seconds: float) -> str:
+    base = _parse_iso(stamp) or _dt.datetime.now(_dt.UTC).timestamp()
+    moment = _dt.datetime.fromtimestamp(base + seconds, _dt.UTC)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _expiry_deadline(data: dict[str, Any]) -> float | None:
-    """A pending record's own ``expiresAt`` wins when present (a parked call may carry
-    one); otherwise fall back to ``created + APPROVAL_TIMEOUT``, unchanged from before
-    pre-grants existed."""
+    """A pending record's own ``expiresAt`` epoch seconds, or ``None`` when absent."""
     expires_at = data.get("expiresAt")
-    if expires_at:
-        return _parse_iso(str(expires_at))
-    created_str = str(data.get("created", ""))
-    if not created_str:
-        return None
-    created_ts = _parse_iso(created_str)
-    if created_ts is None:
-        return None
-    return created_ts + _cfg.APPROVAL_TIMEOUT
+    return _parse_iso(str(expires_at)) if expires_at else None
 
 
 def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
@@ -593,8 +588,7 @@ def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
 
 
 def approval_sweep_expired() -> int:
-    """Expire pending approvals past their deadline (own ``expiresAt``, else
-    ``APPROVAL_TIMEOUT``) via ``_resolve_timeout_as_denied``, and separately prune
+    """Expire pending approvals past their deadline (their ``expiresAt``) via ``_resolve_timeout_as_denied``, and separately prune
     unconsumed pre-grants past theirs -- both resolved to **denied** (fail-closed)."""
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0

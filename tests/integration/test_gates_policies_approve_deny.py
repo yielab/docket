@@ -431,6 +431,7 @@ class TestSweep:
         path = oc_dir / "approvals" / f"{token}.json"
         rec = json.loads(path.read_text())
         rec["created"] = "2000-01-01T00:00:00Z"
+        rec["expiresAt"] = rec["created"]
         path.write_text(json.dumps(rec))
         swept = _ap.approval_sweep_expired()
         assert swept == 1

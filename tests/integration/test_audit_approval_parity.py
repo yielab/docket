@@ -310,6 +310,7 @@ class TestAtomicApprovalDecisions:
         token = _ap.approval_create("atomic-expiry", "implementer", "deploy")
         record = _ap.approval_get(token)
         record["created"] = "2000-01-01T00:00:00Z"
+        record["expiresAt"] = record["created"]
         _ap._store.write_json(_ap._approval_path(token), record)
         sweep_counts: list[int] = []
         real_set_state = _ap._set_state
