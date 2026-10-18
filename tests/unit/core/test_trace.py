@@ -265,3 +265,53 @@ def test_a_new_trace_project_directory_is_created_0700(tmp_path, permissive_umas
 def test_hop_events_are_known_types() -> None:
     """The two hop-level events belong to the closed event vocabulary."""
     assert {"hop_started", "hop_finished"} <= trace.EVENT_TYPES
+
+
+class TestRedactionKeepsPayloadStructured:
+    """trace_event redacts string values of a JSON payload, never its structure."""
+
+    @staticmethod
+    def _stored(tmp_path: object) -> dict[str, object]:
+        import json
+
+        files = list(trace._cfg.TRACES_DIR.glob("*/*.jsonl"))
+        assert len(files) == 1
+        rec: dict[str, object] = json.loads(files[0].read_text().splitlines()[-1])
+        return rec
+
+    def test_secret_in_error_keeps_object_and_usage(self, tmp_path: object) -> None:
+        """An error holding NAME_API_TOKEN=value is stored as an object with usage intact."""
+        import json
+
+        payload = json.dumps({"error": "x FAKE_API_TOKEN=abc", "usage": {"input": 1}})
+        assert trace.trace_event("p", "s", "lead", "hop_finished", payload) == "written"
+        stored = self._stored(tmp_path)["payload"]
+        assert isinstance(stored, dict)
+        assert stored["usage"] == {"input": 1}
+        assert "abc" not in stored["error"]
+        assert "[REDACTED]" in stored["error"]
+        assert "text" not in stored
+
+    def test_stored_secret_value_two_levels_deep_is_replaced(
+        self, tmp_path: object, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stored secret nested two levels deep is replaced and siblings survive."""
+        import json
+
+        monkeypatch.setenv("SOME_SERVICE_TOKEN", "zz-secret-value-12345")
+        payload = json.dumps(
+            {"a": {"b": ["note zz-secret-value-12345 end", {"c": "zz-secret-value-12345"}]}, "n": 2}
+        )
+        trace.trace_event("p", "s", "lead", "hop_finished", payload)
+        stored = self._stored(tmp_path)["payload"]
+        assert "zz-secret-value-12345" not in json.dumps(stored)
+        assert stored["n"] == 2
+        assert stored["a"]["b"][1]["c"] == "[REDACTED]"
+
+    def test_plain_text_payload_is_redacted_as_text(self, tmp_path: object) -> None:
+        """A non-JSON payload is redacted whole and wrapped as text."""
+        trace.trace_event("p", "s", "lead", "error", "boom FAKE_API_TOKEN=abc done")
+        stored = self._stored(tmp_path)["payload"]
+        assert isinstance(stored, dict)
+        assert "abc" not in stored["text"]
+        assert "[REDACTED]" in stored["text"]
