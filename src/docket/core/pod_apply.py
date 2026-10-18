@@ -85,6 +85,12 @@ class _PluginWrite:
 
 
 @dataclass(frozen=True)
+class _NamedPipelineWrite:
+    name: str
+    source: bytes
+
+
+@dataclass(frozen=True)
 class _SkillWrite:
     """One skill's complete file set to write into the pod's own ``config/skills/<name>/`` --
     every relative path (POSIX-separated) inside the skill's own directory paired with its
@@ -137,6 +143,7 @@ class ApplyPlan:
     _role_writes: tuple[_RoleWrite, ...] = field(default=())
     _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
     _plugin_writes: tuple[_PluginWrite, ...] = field(default=())
+    _named_pipeline_writes: tuple[_NamedPipelineWrite, ...] = field(default=())
     _skill_writes: tuple[_SkillWrite, ...] = field(default=())
     _mcp_server_write: _McpServerWrite | None = field(default=None)
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
@@ -239,10 +246,11 @@ class RecipeSummary:
     description: str
     exporters: tuple[str, ...] = ()
     mcp_servers: tuple[str, ...] = ()
+    pipelines: tuple[str, ...] = ()
 
     def render(self) -> str:
         """One line, every count always shown, in a fixed order; `pipeline none` when unbound;
-        `· exporters <name>, ...` and `· mcp-servers <name>, ...` appended only when present."""
+        `· exporters`, `· mcp-servers` and `· pipelines <name>, ...` appended only when present."""
         line = (
             f"roles {self.roles} · policies {self.policies} · members {self.members} · "
             f"pipeline {self.pipeline or 'none'} · plugins {self.plugins} · skills {self.skills} · "
@@ -252,6 +260,8 @@ class RecipeSummary:
             line += f" · exporters {', '.join(self.exporters)}"
         if self.mcp_servers:
             line += f" · mcp-servers {', '.join(self.mcp_servers)}"
+        if self.pipelines:
+            line += f" · pipelines {', '.join(self.pipelines)}"
         return line
 
 
@@ -353,6 +363,7 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
     servers = _declared_servers(directory)
     return RecipeSummary(
         mcp_servers=tuple(s.name for s in servers),
+        pipelines=tuple(f.stem for f in _named_pipeline_files(directory)),
         roles=roles,
         policies=policies,
         plugins=plugins,
@@ -495,6 +506,45 @@ def _plan_plugins(directory: Path, project: str) -> tuple[list[ApplyItem], list[
             action = "replace" if dest.is_file() else "add"
             writes.append(_PluginWrite(name=plugin_file.name, source=source))
         items.append(ApplyItem(kind="plugin", name=plugin_file.name, action=action))
+    return items, writes
+
+
+def _named_pipeline_files(directory: Path) -> list[Path]:
+    """``pipelines/*.yaml|yml`` directly under *directory*, sorted by name."""
+    pipelines_dir = directory / "pipelines"
+    if not pipelines_dir.is_dir():
+        return []
+    return sorted([*pipelines_dir.glob("*.yaml"), *pipelines_dir.glob("*.yml")])
+
+
+def _plan_named_pipelines(
+    directory: Path, project: str
+) -> tuple[list[ApplyItem], list[_NamedPipelineWrite]]:
+    """Plan ``pipelines/<name>.yaml`` into *project*'s own ``config/pipelines/``, the directory
+    dispatch resolves a task's ``pipeline`` in, by bytes. A file dispatch could not run (an
+    invalid pipeline, or a stem that is not a task pipeline name) raises PodApplyError."""
+    items: list[ApplyItem] = []
+    writes: list[_NamedPipelineWrite] = []
+    dest_dir = _cfg.pod_config_dir(project) / "pipelines"
+    seen: set[str] = set()
+    for pipeline_file in _named_pipeline_files(directory):
+        rel = f"pipelines/{pipeline_file.name}"
+        if not _dispatch.TASK_PIPELINE_NAME.match(pipeline_file.stem):
+            raise PodApplyError(f"{rel}: {pipeline_file.stem!r} is not a pipeline name")
+        if pipeline_file.stem in seen:
+            raise PodApplyError(f"{rel}: two files name pipeline {pipeline_file.stem!r}")
+        seen.add(pipeline_file.stem)
+        source = pipeline_file.read_bytes()
+        loaded = _pipeline.load_pipeline(source.decode("utf-8"))
+        if loaded.spec is None:
+            raise PodApplyError(f"{rel}: {'; '.join(loaded.errors)}")
+        dest = dest_dir / pipeline_file.name
+        if dest.is_file() and dest.read_bytes() == source:
+            action: ApplyAction = "skip"
+        else:
+            action = "replace" if dest.is_file() else "add"
+            writes.append(_NamedPipelineWrite(name=pipeline_file.name, source=source))
+        items.append(ApplyItem(kind="pipeline", name=rel, action=action))
     return items, writes
 
 
@@ -798,6 +848,8 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     plugin_items, plugin_writes = _plan_plugins(directory, project)
 
+    named_items, named_writes = _plan_named_pipelines(directory, project)
+
     skill_items, skill_writes = _plan_skills(directory, project)
 
     member_items, member_writes, roster_after = _plan_members(project, member_roles, augmented)
@@ -815,6 +867,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     items = [*role_items, *policy_items, *plugin_items, *skill_items, *mcp_items, *member_items]
     if pipeline_item is not None:
         items.append(pipeline_item)
+    items.extend(named_items)
     items.extend(setting_items)
 
     return ApplyPlan(
@@ -825,6 +878,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         _role_writes=tuple(role_writes),
         _policy_writes=tuple(policy_writes),
         _plugin_writes=tuple(plugin_writes),
+        _named_pipeline_writes=tuple(named_writes),
         _skill_writes=tuple(skill_writes),
         _mcp_server_write=mcp_write,
         _member_writes=tuple(member_writes),
@@ -932,17 +986,17 @@ def apply_directory(
     return DirectoryOutcome("applied", apply(plan, channel=channel).items)
 
 
-def _run_steps(steps: list[Any]) -> list[RunItem]:
+def _run_steps(steps: list[Any], prefix: str = "") -> list[RunItem]:
     found: list[RunItem] = []
     for step in steps:
         if step.run is not None:
             env = "".join(f" {k}={v}" for k, v in sorted((step.env or {}).items()))
-            found.append(RunItem("pipeline-step", step.id, f"{step.run}{env}"))
+            found.append(RunItem("pipeline-step", prefix + step.id, f"{step.run}{env}"))
         command = getattr(step.gate, "command", None)
         if command:
             kind = "gate" if step.gate.type == "external" else "verify"
-            found.append(RunItem(kind, step.id, command))
-        found.extend(_run_steps(step.parallel or []))
+            found.append(RunItem(kind, prefix + step.id, command))
+        found.extend(_run_steps(step.parallel or [], prefix))
     return found
 
 
@@ -983,6 +1037,10 @@ def classify_directory(directory: Path) -> PlanReview:
         spec = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8")).spec
         runs.extend(_run_steps(spec.steps if spec is not None else []))
         adds.append(("pipeline", pipeline_file.name))
+    for named in _named_pipeline_files(directory):
+        spec = _pipeline.load_pipeline(named.read_text(encoding="utf-8")).spec
+        runs.extend(_run_steps(spec.steps if spec is not None else [], f"{named.stem}/"))
+        adds.append(("pipeline", f"pipelines/{named.name}"))
     for server in _declared_servers(directory):
         runs.append(RunItem("mcp-server", server.name, " ".join([server.command, *server.args])))
     plugins_dir = directory / "plugins"
@@ -1119,6 +1177,19 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
             dest.write_bytes(plugin_write.source)
             dest.chmod(0o600)
 
+    if plan._named_pipeline_writes:
+        pipelines_dir = _cfg.pod_config_dir(plan.project) / "pipelines"
+        pipelines_dir.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            _cfg.PODS_DIR.chmod(0o700)
+            pipelines_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
+            pipelines_dir.parent.chmod(0o700)  # pod_config_dir(project)
+            pipelines_dir.chmod(0o700)
+        for named_write in plan._named_pipeline_writes:
+            dest = pipelines_dir / named_write.name
+            dest.write_bytes(named_write.source)
+            dest.chmod(0o600)
+
     if plan._skill_writes:
         skills_dir = _cfg.pod_config_dir(plan.project) / "skills"
         skills_dir.mkdir(parents=True, exist_ok=True)
@@ -1243,6 +1314,17 @@ def _export_plugins(project: str, directory: Path) -> None:
         (dest_dir / f.name).write_bytes(f.read_bytes())
 
 
+def _export_named_pipelines(project: str, directory: Path) -> None:
+    """Copy *project*'s own ``config/pipelines/`` files byte-for-byte as ``pipelines/<name>``."""
+    files = _named_pipeline_files(_cfg.pod_config_dir(project))
+    if not files:
+        return
+    dest_dir = directory / "pipelines"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        (dest_dir / f.name).write_bytes(f.read_bytes())
+
+
 def _export_skills(project: str, directory: Path) -> None:
     """Copy *project*'s own ``config/skills/`` byte-for-byte into ``skills/<name>/`` -- unlike
     a role or policy, a skill is not regenerated, since it carries its own files rather than a
@@ -1333,6 +1415,7 @@ def export_pod(project: str, directory: Path) -> None:
     _export_roles(project, directory)
     _export_policies(project, directory)
     _export_plugins(project, directory)
+    _export_named_pipelines(project, directory)
     _export_skills(project, directory)
     _export_mcp_servers(project, directory)
     _export_pipeline(project, directory)

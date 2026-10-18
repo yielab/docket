@@ -37,8 +37,6 @@
   are already per task; a card would add a `maxParallelTasks` pod setting and a bounded pool in
   `dispatch_pod`.
 - **Warm workspace** -- trigger in ADR 0027 point 10 (measured 6.5 s + 15.5 s, 829 MB).
-- **`pod apply`/`pod export` do not carry `config/pipelines/`** (P43-3): a pod-local pipeline is
-  read at claim but cannot be shipped in `.docket/`. Natural home: P43-7 or P43-8.
 - **A task's `network: none` cuts the agent turn only** (P43-4): `verifyCmd` and `run:` steps keep
   the pod's posture; the spec says so. A parallel group's merge in `_run_group_node` drops
   `_UnitOutcome.failure_kind`, so a budget stop inside a group loses `budget`.

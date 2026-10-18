@@ -341,3 +341,78 @@ class TestReviewDecision:
         directory = self._runs(tmp_path)
         _reviewed.remember(tmp_path, _pod_apply.classify_directory(directory).runs)
         assert _pod_apply.review_decision(tmp_path, directory, None).status == "go"
+
+
+_FAST = "name: fast\nsteps:\n  - build: implementer\n    verify: make check\n"
+
+
+class TestPodLocalPipelines:
+    """``pipelines/<name>.yaml`` travels with ``update`` and ``export``; dispatch reads the copy."""
+
+    def test_update_copies_the_file_where_a_task_resolves_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import dispatch as _dispatch
+
+        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
+        root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})
+        plan = _pod_apply.plan_apply("demo", root)
+        assert ("pipeline", "pipelines/fast.yaml", "add") in {
+            (i.kind, i.name, i.action) for i in plan.items
+        }
+        _pod_apply.apply(plan, channel="cli")
+        path, source = _dispatch._task_pipeline_file("demo", "fast") or (None, None)
+        assert source == "pod:fast" and path is not None
+        assert path.read_text() == _FAST and oct(path.stat().st_mode & 0o777) == "0o600"
+        again = _pod_apply.plan_apply("demo", root)
+        assert ("pipeline", "pipelines/fast.yaml", "skip") in {
+            (i.kind, i.name, i.action) for i in again.items
+        }
+
+    def test_export_writes_it_back_byte_for_byte(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
+        root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})
+        _pod_apply.apply(_pod_apply.plan_apply("demo", root), channel="cli")
+        out = tmp_path / "exported"
+        _pod_apply.export_pod("demo", out)
+        assert (out / "pipelines" / "fast.yaml").read_text() == _FAST
+
+    @pytest.mark.parametrize(
+        ("name", "text", "message"),
+        [
+            ("fast.yaml", "name: fast\nsteps: []\n", "pipelines/fast.yaml"),
+            ("Fast.yaml", _FAST, "not a pipeline name"),
+        ],
+        ids=["invalid", "bad-name"],
+    )
+    def test_a_file_dispatch_could_not_run_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, text: str, message: str
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
+        root = _repo_dir(tmp_path, {f"pipelines/{name}": text})
+        with pytest.raises(_pod_apply.PodApplyError, match=message):
+            _pod_apply.plan_apply("demo", root)
+
+    def test_its_commands_need_the_review(self, tmp_path: Path) -> None:
+        root = _repo_dir(
+            tmp_path,
+            {"pipelines/fast.yaml": _FAST + "  - id: migrate\n    run: make migrate\n"},
+        )
+        review = _pod_apply.classify_directory(root)
+        got = {(i.kind, i.name, i.runs) for i in review.runs}
+        assert ("verify", "fast/build", "make check") in got
+        assert ("pipeline-step", "fast/migrate", "make migrate") in got
+        assert ("pipeline", "pipelines/fast.yaml") in review.adds
+
+    def test_summary_and_validate_name_it(self, tmp_path: Path) -> None:
+        from docket.core import config_docs as _config_docs
+
+        root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})
+        summary = _pod_apply.summarize_recipe(root)
+        assert summary.pipelines == ("fast",)
+        assert summary.render().endswith(" · pipelines fast")
+        results = _config_docs.validate_path(root)
+        assert [(r.path.name, r.error) for r in results] == [("fast.yaml", None)]
+

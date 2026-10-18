@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Implemented
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-18
 
 ## Purpose
 
@@ -158,7 +158,8 @@ This specification does NOT cover:
    else the current directory, when no argument is given; a file argument **MUST** validate
    that one file only.
 2. Given a directory, it **MUST** validate every `*.yaml`/`*.yml`/`*.json` file directly under
-   `roles/` and `policies/`, plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
+   `roles/`, `policies/` and `mcp-servers/`, every `*.yaml`/`*.yml` under `pipelines/` (a
+   pipeline by location), plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
    directly under the directory, when present. `discover_config_paths` does not look for a
    provider, exporter or channel document by location — `docket pod validate <file>` naming one
    directly still loads it (`kind: provider`/`exporter`/`channel` is enough; `load_document`
@@ -315,6 +316,12 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.11.0 (2026-10-18)
+
+- `docket pod validate` item 2: `pipelines/*.yaml|yml` are pipelines by location and are validated
+  (they now travel with `pod update`/`export`, pod-blueprints 1.32.0); the item also names
+  `mcp-servers/`, which discovery already read.
 
 ### Version 1.10.0 (2026-10-13)
 

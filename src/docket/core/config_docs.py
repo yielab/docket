@@ -39,6 +39,7 @@ _LOCATION_KIND: dict[str, str] = {
     "roles": "role",
     "policies": "policy",
     "mcp-servers": "mcp-server",
+    "pipelines": "pipeline",
 }
 
 
@@ -414,15 +415,17 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
 
 
 def discover_config_paths(directory: str | Path) -> list[Path]:
-    """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``pipeline.yaml``/
-    ``.yml``, and ``pod.yaml``/``.yml`` directly under *directory*, in that order."""
+    """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``pipelines/*``
+    (``.yaml|yml``), ``pipeline.yaml``/``.yml``, and ``pod.yaml``/``.yml`` directly under
+    *directory*, in that order."""
     base = Path(directory)
     paths: list[Path] = []
-    for sub in ("roles", "policies", "mcp-servers"):
+    for sub in ("roles", "policies", "mcp-servers", "pipelines"):
         sub_dir = base / sub
         if not sub_dir.is_dir():
             continue
-        for pattern in ("*.yaml", "*.yml", "*.json"):
+        patterns = ("*.yaml", "*.yml") if sub == "pipelines" else ("*.yaml", "*.yml", "*.json")
+        for pattern in patterns:
             paths.extend(sorted(sub_dir.glob(pattern)))
     for stem in ("pipeline", "pod"):
         for ext in ("yaml", "yml"):
