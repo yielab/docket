@@ -77,6 +77,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default planned a bare `[skip]`; the plan line now reads `[skip] setting: approvalMode (already
   the default)` and `--json` carries it as the item's `note`.
 
+- **A pipeline step with two gates is refused instead of losing one.** In the short form,
+  `verify: true` beside `gate: {external: ./ci.sh}` kept the verify gate and dropped the external
+  check with no error. A step may carry one of `verdict`, `verify`, `approval` and `gate`; more is
+  a load error naming the step and the keys (`step 'build': one gate per step (got verify,
+  gate)`).
+
 - **A team's `pipelines/` travels with `docket pod update` and `docket pod export`.** A task that
   names `pipeline: <name>` reads `<pod config>/pipelines/<name>.yaml`, but nothing put the file
   there: `update` skipped the directory and `export` dropped it, so every hop ran with the

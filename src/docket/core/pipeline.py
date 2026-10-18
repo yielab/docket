@@ -835,6 +835,9 @@ def _build_gate(
     step_id: str, entry: dict[Any, Any], seen_ids: list[str]
 ) -> tuple[dict[str, Any] | None, Any]:
     on = _get_on(entry)
+    gate_keys = [key for key in ("verdict", "verify", "approval", "gate") if key in entry]
+    if len(gate_keys) > 1:
+        raise _ShortFormError(f"step {step_id!r}: one gate per step (got {', '.join(gate_keys)})")
     if "verdict" in entry:
         gate = _build_verdict_gate(entry["verdict"])
         if on is not _NO_ON:
