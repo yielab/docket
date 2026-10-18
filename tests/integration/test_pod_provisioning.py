@@ -98,7 +98,7 @@ class TestBuildPod:
         lead = (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text()
         impl = (home / "workspaces" / "projects" / "demo-implementer" / "SOUL.md").read_text()
         assert "NEVER edit code" in lead
-        assert "inside" in impl and "/src/demo" in impl
+        assert "working directory" in impl and "/src/demo" not in impl
         # No leftover shared-specialist language anywhere in the pod.
         assert "shared specialist" not in (lead + impl).lower()
 
@@ -476,6 +476,31 @@ class TestMemberSync:
 
         assert written == []
         assert soul_path.read_text() == before
+
+    def test_a_v3_member_is_regenerated_and_its_memory_md_is_left_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import json
+
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        ws = home / "workspaces" / "projects" / "demo-implementer"
+        (ws / "SOUL.md").write_text("## Codebase\n/src/demo\n- `<promise>DONE</promise>`\n")
+        (ws / "AGENTS.md").write_text("## Session Startup\n2. Read HEARTBEAT.md\n")
+        (ws / "MEMORY.md").write_text("## Repo\n- codebase: `/src/demo`\nFACT-AGENT-WROTE\n")
+        meta_path = ws / ".docket-meta.json"
+        meta = json.loads(meta_path.read_text())
+        meta["templateVersion"] = "3"
+        meta_path.write_text(json.dumps(meta))
+        memory_before = (ws / "MEMORY.md").read_bytes()
+
+        written = _pp.resync_member("demo-implementer")
+
+        assert {"SOUL.md", "AGENTS.md"} <= set(written)
+        assert "promise" not in (ws / "SOUL.md").read_text()
+        assert "HEARTBEAT" not in (ws / "AGENTS.md").read_text()
+        assert (ws / "MEMORY.md").read_bytes() == memory_before
+        assert _meta(home, "demo-implementer")["templateVersion"] == "4"
 
     def test_resync_never_touches_instructions_md(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

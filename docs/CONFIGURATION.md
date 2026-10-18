@@ -113,25 +113,26 @@ This is the model you need to customize anything. Every live turn, whether a dis
 `docket start` sweep or a Telegram `/delegate`, rebuilds the agent's **system prompt from disk**.
 Nothing is cached, so an edit takes effect on the next turn with nothing to restart.
 
-The system prompt is, in this order:
+The system prompt is, in this order, stable first (two tasks of one member get the same bytes):
 
 1. **`SOUL.md`**. An oversized
    `SOUL.md` is visibly middle-truncated rather than starving the sections below.
-2. **A fixed runtime contract** written by docket (not a file). It lists the directories the
-   agent's tools may touch and tells it that its private workspace files are read-only.
-3. **Workspace state**, in this order: `HEARTBEAT.md`, `AGENTS.md`, `TOOLS.md`, `MEMORY.md`.
-   - `HEARTBEAT.md` is included from its first `##` heading on, with HTML comments removed.
-   - `AGENTS.md` is included without its `## Session Startup` section.
-   - `TOOLS.md` and `MEMORY.md` are included verbatim.
+2. **`AGENTS.md`**, the member's method, without its `## Session Startup` section.
+3. **A fixed runtime contract** written by docket (not a file). It tells the agent that its
+   private workspace files are read-only. It names no directory: the task message names the
+   working directory and carries a repository map.
+4. **`MEMORY.md`**, verbatim, only when it holds more than its generated template.
 
-Section 3 shares one budget, resolved per turn from the model actually being called: half the
+`HEARTBEAT.md` and `TOOLS.md` stay on disk but are not part of a pod task's prompt.
+
+The prompt shares one budget, resolved per turn from the model actually being called: half the
 registered context window (minus the output reserve and a labelled tool-schema allowance),
 floored at `CONTEXT_TOKEN_BUDGET` (default 6000) × `CONTEXT_BYTES_PER_TOKEN` (default 4) ≈ 24 KB.
 A 16k local endpoint resolves below that floor, so it gets exactly the floor; a 200k hosted model
 fits every section in full. Setting `CONTEXT_TOKEN_BUDGET` explicitly overrides both. The
 `prompt_composed` trace event names the resolved `budgetTokens` and its `budgetSource`
 (`env`/`window`/`default`). An oversized `SOUL.md` is capped (middle-truncated with a visible
-marker) so it cannot crowd out the contract or the state sections; a state file that does not fit
+marker) so it cannot crowd out the contract or `MEMORY.md`; a section that does not fit
 is truncated or omitted **with a one-line marker in the prompt naming it**, and every composition
 emits a `prompt_composed` trace event listing each section as full, truncated or omitted
 (`docket task trace`). Nothing is dropped silently. `docket setup --fix` warns when the static

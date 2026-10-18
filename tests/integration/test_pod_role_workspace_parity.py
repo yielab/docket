@@ -2,7 +2,9 @@
 
 Compares `cli/_pod.py`'s output against a frozen, independently hand-written
 baseline embedded here, across a range of inputs -- self-diffing the current
-output would miss a regression from editing both sides together.
+output would miss a regression from editing both sides together. The baseline moves only with
+a deliberate, spec'd template change (here: no path in SOUL, the shared method in AGENTS, no
+completion promise).
 """
 
 from __future__ import annotations
@@ -10,20 +12,16 @@ from __future__ import annotations
 import pytest
 
 from docket.cli import _pod
-from docket.core import memory as _mem
 from docket.core import pod
 
 SUBJECT = "docket.core"
-
-REQUIRED_STARTUP_FILE = _mem.REQUIRED_STARTUP_FILE
 
 
 def _legacy_member_soul(
     member: pod.PodMember, project: str, codebase: str, stack: str, description: str
 ) -> str:
-    """Frozen copy of the original `cli/_pod.py::_member_soul` (before the
-    archetype registry existed) — do not "fix" to match a future refactor;
-    this is the byte-identity ground truth."""
+    """Frozen copy of `cli/_pod.py::_member_soul` as the layered prompt defines it -- do not
+    "fix" to match a future refactor; this is the byte-identity ground truth."""
     head = (
         f"# SOUL.md — {project} · {member.role}\n\n"
         "## Identity\n"
@@ -33,7 +31,6 @@ def _legacy_member_soul(
         "You belong to one project only. Respect the pod session-key boundary — "
         "no cross-project access.\n\n"
         f"## Project\n{description or project}\n\n"
-        f"## Codebase\n{codebase or '(no codebase configured)'}\n\n"
         f"## Stack\n{stack}\n\n"
     )
     if member.role == "lead":
@@ -50,17 +47,16 @@ def _legacy_member_soul(
     elif member.role == "implementer":
         body = (
             "## Role — Implementer\n"
-            f"- You run **inside** this project's workspace and know {codebase or 'it'} "
-            "deeply. Read files before changing them.\n"
-            "- You implement the tasks the Lead assigns: read/write/edit the codebase.\n"
-            "- Signal completion with `<promise>DONE</promise>`.\n"
+            "- You implement the tasks the Lead assigns: read/write/edit the codebase in your "
+            "working directory. Read a file before changing it.\n"
             "- Never push to main/master without HITL approval; never delete files "
             "without explicit instruction.\n"
         )
     elif member.role == "reviewer":
         body = (
             "## Role — Reviewer (veto power)\n"
-            "- You review diffs for correctness, security, and requirement fit.\n"
+            "- You review the diff the task message delivers for correctness, security, and "
+            "requirement fit; read a file only for context the diff does not show.\n"
             "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
             "- **Marker convention:** start exactly one output line with `APPROVE` or "
             "`REQUEST-CHANGES` (case-insensitive) — dispatch scans all complete lines "
@@ -87,20 +83,15 @@ def _legacy_member_soul(
 
 
 def _legacy_member_agents(member: pod.PodMember, project: str) -> str:
-    """Frozen copy of `cli/_pod.py::_member_agents`'s original generator, minus the
-    Red Lines' HEARTBEAT-write bullet: that line contradicted the live runtime
-    contract's "no private logging is required" (see role-archetypes.spec.md)."""
+    """Frozen copy of the pod-member AGENTS.md generator: the shared method, then the Red Lines;
+    no Session Startup (the runtime already did those reads) and no private-file instruction."""
     return (
         f"# AGENTS.md — {project} · {member.role}\n\n"
-        "## Session Startup\n"
-        "_Lean — re-sent every turn._\n"
-        f"1. Read {REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
-        "   path (the runtime requires this after every context reset).\n"
-        "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
-        "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
-        "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
-        "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
-        "   later turn.\n\n"
+        "## Method\n"
+        "- Start from the task message: it delivers your working directory, a repository map and "
+        "what the previous step produced. Never re-read what it already carries.\n"
+        "- Find code with `grep` for a concrete name or string, then `read` the lines you need "
+        "(offset and limit). Never list the whole tree (no `**/*` glob).\n\n"
         "## Red Lines\n"
         f"- Stay within the `{project}` pod; coordinate only within it (the Lead\n"
         "  routes work between members). No cross-project access.\n"

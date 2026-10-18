@@ -1168,12 +1168,12 @@ class TestRunTurn:
         assert result.ok is True
         system = backend.calls[0][0]
         assert system.role == "system"
-        assert str(codebase) in system.content
+        assert str(codebase) not in system.content
         assert "TESTER-ROLE-RULE" in system.content
-        assert "CURRENT-ACTIVE-STATE" in system.content
+        assert "CURRENT-ACTIVE-STATE" not in system.content
         assert "SAFE-RED-LINE" in system.content
         assert "CUSTOM-RUNTIME-RULE" in system.content
-        assert "README-VALIDATION-RULE" in system.content
+        assert "README-VALIDATION-RULE" not in system.content
         assert "CURRENT-DURABLE-DECISION" in system.content
         assert "LEGACY-OPEN-PRIVATE" not in system.content
         assert "open `HEARTBEAT.md`" not in system.content

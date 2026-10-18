@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.38.0
+**Version**: 1.39.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -24,7 +24,7 @@ exhaust the cumulative turn budget; an endpoint with no registered output limit 
 denial alone rather than folding it into the consecutive-denial count — see requirement 70 and
 `security-gates.spec.md`'s approval-mode clause for the `core/tools.py` half of this contract.
 Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace sections are fitted,
-so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
+so it can never crowd the runtime contract or `MEMORY.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
 **Last Updated**: 2026-10-18
@@ -204,8 +204,11 @@ This specification does NOT cover:
     An empty result (no workspace, no identity files, no `agent_id`) **MUST NOT** add an empty
     `system` message.
 30. The composed system prompt **MUST** fold together this agent's `SOUL.md` (if present), an optional
-    operator-owned `INSTRUCTIONS.md` composed immediately after `SOUL.md` and ahead of everything else, and one authoritative runtime projection of Docket's generated
-    startup contract. `INSTRUCTIONS.md` **MUST NOT** be written, regenerated, or quarantined by
+    operator-owned `INSTRUCTIONS.md` composed immediately after `SOUL.md`, the member's own `AGENTS.md`
+    (its method and tool strategy; the generated `## Session Startup` section is omitted from the
+    projection) composed immediately after `INSTRUCTIONS.md` and ahead of everything else, and one authoritative runtime projection of Docket's generated
+    startup contract. Layers run stable first: `SOUL.md`, `INSTRUCTIONS.md`, `AGENTS.md`, the
+    contract, repository text, then `MEMORY.md` last. `INSTRUCTIONS.md` **MUST NOT** be written, regenerated, or quarantined by
     Docket at any point (provisioning, `sync`, `set-verify`, `doctor --fix`) — it is the durable
     home for operator instructions precisely because nothing on this path ever overwrites it.
     After the runtime contract, an **opt-in** section
@@ -274,19 +277,20 @@ This specification does NOT cover:
     The live projection **MUST NOT** send raw `WORKFLOW_AUTO.md` startup prose that tells a model
     to open or update `HEARTBEAT.md`, `MEMORY.md`, or `memory/`: those instructions are for a
     manual/external reset path, while the live runtime has already read the state itself. Instead,
-    it **MUST** carry the exact project roots already resolved into `ToolContext.roots`, state once
-    that private control files are already loaded/read-only and are never project-tool targets
-    (explicitly including shell execution), and state that returning the completed result is
-    sufficient because Docket owns turn durability. The same fresh composition **MUST** append
-    current private-workspace state in this priority order: the runtime-safe projections of
-    `HEARTBEAT.md` and `AGENTS.md`, optional `TOOLS.md`, then `MEMORY.md`. The HEARTBEAT projection
-    **MUST** retain its H2 state sections while omitting the generated preamble and HTML authoring
-    template that tell the model to maintain that file. A custom HEARTBEAT without H2 state remains
-    intact. The AGENTS projection **MUST** structurally omit the generated `## Session Startup`
-    section, whose private-file reads duplicate the runtime, while preserving the title,
-    `## Red Lines`, and other custom sections byte-for-byte; a custom AGENTS file without that
-    heading remains intact. Prompt composition **MUST NOT** rewrite any source workspace file or
-    regex-filter arbitrary prose.
+    it **MUST** state once that private control files are already loaded/read-only and are never
+    project-tool targets (explicitly including shell execution), and state that returning the
+    completed result is sufficient because Docket owns turn durability. It **MUST NOT** carry the
+    project roots (ADR 0028 section 1, P44-6): they limit the tools through `ToolContext.roots`
+    and reach the model in the task message (pod-dispatch.spec.md, "Bounded hop prompts" requirement 10), so two tasks of one member in different worktrees compose a byte-identical system
+    prompt. `HEARTBEAT.md` and `TOOLS.md` **MUST NOT** be composed: every live turn is a pod
+    hop, the task arrives in the message, and tool schemas travel in the `tools` parameter. The
+    fresh composition **MUST** append `MEMORY.md` as the last layer, and only when it holds text
+    beyond its generated template (headings, `_..._` placeholders and the `stack`/`codebase`/
+    `path`/`origin` lines of a seed are the template). The AGENTS projection **MUST**
+    structurally omit the generated `## Session Startup` section, whose private-file reads
+    duplicate the runtime, while preserving the title, `## Red Lines`, and other custom sections
+    byte-for-byte; a custom AGENTS file without that heading remains intact. Prompt composition
+    **MUST NOT** rewrite any source workspace file or regex-filter arbitrary prose.
     The projected contract plus appended state **MUST** fit a resolved static-context budget,
     preserve higher priorities first, and mark any truncation/omission visibly rather than silently
     growing an endpoint's context or dropping state. That budget (`core.identity.
@@ -300,7 +304,7 @@ This specification does NOT cover:
     heavily-reserved window can only ever match today's behaviour, never shrink below it; (c) absent
     or non-positive window information (an unresolvable or unregistered model) **MUST** resolve to
     plain `config.CONTEXT_TOKEN_BUDGET_DEFAULT`, unchanged from before this budget became
-    window-aware. The runtime contract is never truncated; `HEARTBEAT.md` and `TOOLS.md` **MUST NOT**
+    window-aware. The runtime contract is never truncated; `MEMORY.md` **MUST NOT**
     be crowded out in favor of `SOUL.md` or `INSTRUCTIONS.md` — an oversized `SOUL.md` **MUST**
     itself be visibly, middle-truncated (head and tail kept, a marker naming the omitted byte count
     in between) to a bounded share of the budget *before* the private-workspace sections are
@@ -309,7 +313,8 @@ This specification does NOT cover:
     middle-truncated to at most half of whatever budget remains after `SOUL.md`'s own cap, so
     `SOUL.md` and `INSTRUCTIONS.md` together can never exhaust that room either, and reports its
     own `full`/`truncated`/`omitted` `PromptSectionReport` exactly like every other section — never
-    a second composer, never merged into `SOUL.md`'s report. The opt-in project-instructions
+    a second composer, never merged into `SOUL.md`'s report. The member's `AGENTS.md` is capped
+    the same way in the room `INSTRUCTIONS.md` left, under its own report name. The opt-in project-instructions
     section, when configured, **MUST** likewise be middle-truncated to at most half of whatever
     budget remains after `INSTRUCTIONS.md`'s own cap, so `SOUL.md`, `INSTRUCTIONS.md`, and project
     instructions together can never exhaust that room either, and reports its own `PromptSectionReport`
@@ -326,9 +331,8 @@ This specification does NOT cover:
     partially fits), so a crowded middle section never silently erases what follows it.
     `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace event per non-empty
     composition, listing every section actually attempted — `SOUL.md`, optional
-    `INSTRUCTIONS.md`, optional `projectInstructions`, optional `skills`, plus whichever of
-    `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had
-    content — with the bytes included and a `full`/`truncated`/`omitted` status per section, plus
+    `INSTRUCTIONS.md`, optional `AGENTS.md`, optional `projectInstructions`, optional `skills`,
+    plus `MEMORY.md` when it holds content — with the bytes included and a `full`/`truncated`/`omitted` status per section, plus
     the resolved
     `budgetTokens` and its `budgetSource` (`env`/`window`/`default`) for this composition. An agent
     with no identity/startup/private files still composes no system message and emits no
@@ -864,6 +868,17 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.39.0 (2026-10-18)
+
+- The prompt in layers, stable first (requirement 30, ADR 0028 sections 1 and 6, P44-6): the live
+  contract no longer lists the project roots (the tools still enforce them), so the system prompt
+  and tool schemas are byte-identical between two tasks of one member in different worktrees; the
+  roots and a derived repository map arrive in the task message. `HEARTBEAT.md` and `TOOLS.md` are
+  no longer composed in a pod task, `MEMORY.md` composes only when it holds more than its
+  template, and the member's `AGENTS.md` composes right after `INSTRUCTIONS.md`, ahead of the
+  contract. A system prompt that named `/abs/path/worktree` in the middle used to differ on the
+  first line of every task, so no provider cache could ever hit.
 
 ### Version 1.38.0 (2026-10-18)
 
