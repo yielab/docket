@@ -594,6 +594,26 @@ class TestReadPods:
         _, body = _get(f"{url}/pods/demo", token)
         assert body["repoConfigDir"] == str(tmp_path / "repo" / ".docket" / "teams" / "demo")
 
+    def test_pod_carries_its_effective_read_only_grants(
+        self, live_server: tuple[str, str], tmp_path: Path
+    ) -> None:
+        """`readOnly` is the machine's grants the pod keeps; `settings.readOnly` its choice."""
+        from docket.core import fleet as _fleet
+
+        url, token = live_server
+        node, py = tmp_path / "node", tmp_path / "py"
+        node.mkdir()
+        py.mkdir()
+        _fleet.add_read_only(str(node))
+        _fleet.add_read_only(str(py))
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        _, body = _get(f"{url}/pods/demo", token)
+        assert body["readOnly"] == [str(node.resolve()), str(py.resolve())]
+        _fleet.meta_set("demo-lead", "readOnly", str(py.resolve()))
+        _, body = _get(f"{url}/pods/demo", token)
+        assert body["readOnly"] == [str(py.resolve())]
+        assert body["settings"]["readOnly"]["value"] == str(py.resolve())
+
     def test_unknown_pod_returns_404(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, body = _get(f"{url}/pods/nope", token)

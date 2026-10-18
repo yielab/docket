@@ -340,6 +340,7 @@ def run_bash(
     on_process: Callable[[str, dict[str, Any]], None] | None = None,
     network: bool = True,
     cache_dir: Path | None = None,
+    read_only: tuple[Path, ...] = (),
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
@@ -385,7 +386,13 @@ def run_bash(
     container_name = ""
     if backend in ("docker", "landlock", "seatbelt"):
         launch = _system.jail_launch(
-            roots, command, backend, network=network, env=env, cache_dir=cache_dir
+            roots,
+            command,
+            backend,
+            network=network,
+            env=env,
+            cache_dir=cache_dir,
+            read_only=read_only,
         )
         popen_arg: str | list[str] = launch.argv
         shell = False

@@ -590,8 +590,9 @@ by default, leaving `fetch` as the only path; `docket setup sandbox network open
 (macOS), or Docker when chosen with `docket setup sandbox backend docker`, and refuses to record
 on when no backend is usable; once on, a turn is refused rather than run unjailed if the backend
 disappears. The Docker image is `DOCKET_SANDBOX_IMAGE`. The choice is `isolationMode` in
-`fleet.json`; `networkMode` (`docket setup sandbox network`) is the other `security` flag the live path
-enforces. Requirements and coverage:
+`fleet.json`; `networkMode` (`docket setup sandbox network`) and `readOnly` (`docket setup sandbox
+read add|remove`, toolchain paths every jail may read, never write; a pod's `readOnly` setting only
+narrows them) are the other `security` keys the live path enforces. Requirements and coverage:
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md#workspace-isolation-opt-in-the-sandbox-for-the-agents-shell).
 
 ### 3.7 Give agents external tools (MCP)
@@ -1141,7 +1142,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 
 | File | Format and key fields | Written by | Read on the live path by | Hand-edit |
 |---|---|---|---|---|
-| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationMode,networkMode}` | init, `setup sandbox` | isolation and network mode (`isolationMode`, `networkMode`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
+| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationMode,networkMode,readOnly}` | init, `setup sandbox` | isolation and network mode (`isolationMode`, `networkMode`), read-only jail grants (`readOnly`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
 | `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `setup provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `setup provider add/remove/export`. Malformed entries are named by `docket setup`. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `setup model set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `setup model set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | you | tool narrowing, hop budget, gate contract; templates at provisioning | by hand; `pod update <file>` writes the pod's own overlay |

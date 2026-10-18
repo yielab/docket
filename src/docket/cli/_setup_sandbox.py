@@ -23,6 +23,10 @@ sandbox_app = typer.Typer(
     no_args_is_help=False,
     invoke_without_command=True,
 )
+read_app = typer.Typer(name="read", no_args_is_help=True)
+sandbox_app.add_typer(
+    read_app, name="read", help="Paths every sandbox may read, never write (the toolchain)."
+)
 
 
 class NetworkMode(StrEnum):
@@ -123,6 +127,7 @@ def sandbox_state() -> dict[str, object]:
         "kernel": _kernel() if avail.landlock else None,
         "available": _available(avail),
         "missing": _MISSING[plat] if avail.backend == "none" else None,
+        "readOnly": [str(p) for p in _fleet.get_read_only_paths()],
         "line": lines[0],
         "hint": lines[1].strip() if len(lines) > 1 else None,
     }
@@ -157,6 +162,8 @@ def status(json_out: bool = False) -> int:
         report(f"Network: {posture.line}")
     else:
         ui.dim(f"Network: {posture.line} (a pod's network none still narrows it)")
+    for path in state["readOnly"]:  # type: ignore[attr-defined]
+        ui.dim(f"Read-only: {path}")
     return 0
 
 
@@ -206,6 +213,32 @@ def backend(choice: str) -> int:
             ui.warn("Docker is not reachable now: turns are refused until it is")
     else:
         ui.success("Sandbox backend auto: landlock on Linux, seatbelt on macOS")
+    return 0
+
+
+def read_add(path: str) -> int:
+    """Record a read-only grant every sandbox reads and executes, never writes."""
+    try:
+        resolved = _fleet.add_read_only(path)
+    except ValueError as exc:
+        ui.error(f"Not granted: {exc}")
+        return 1
+    audit_log("gates.read", f"add {resolved}")
+    ui.success(f"Sandboxes may read {resolved} (never write it)")
+    if not _fleet.get_isolation_enabled():
+        ui.dim("Isolation is off: it applies once docket setup sandbox on")
+    return 0
+
+
+def read_remove(path: str) -> int:
+    """Drop a recorded read-only grant."""
+    try:
+        removed = _fleet.remove_read_only(path)
+    except ValueError as exc:
+        ui.error(str(exc))
+        return 1
+    audit_log("gates.read", f"remove {removed}")
+    ui.success(f"Sandboxes no longer read {removed}")
     return 0
 
 
@@ -281,6 +314,26 @@ def sandbox_network(mode: NetworkMode = typer.Argument(..., help="none or open")
 
     Example: docket setup sandbox network none"""
     rc = network(mode.value)
+    _contract.next_step("docket setup sandbox")
+    raise typer.Exit(rc)
+
+
+@read_app.command("add")
+def sandbox_read_add(path: str = typer.Argument(..., help="Absolute path to grant")) -> None:
+    """Let every sandbox read and run PATH, never write it (a toolchain under your home).
+
+    Example: docket setup sandbox read add ~/.nvm/versions/node/v22.17.1"""
+    rc = read_add(path)
+    _contract.next_step("docket setup sandbox")
+    raise typer.Exit(rc)
+
+
+@read_app.command("remove")
+def sandbox_read_remove(path: str = typer.Argument(..., help="A recorded path")) -> None:
+    """Stop granting PATH to sandboxes.
+
+    Example: docket setup sandbox read remove ~/.nvm/versions/node/v22.17.1"""
+    rc = read_remove(path)
     _contract.next_step("docket setup sandbox")
     raise typer.Exit(rc)
 

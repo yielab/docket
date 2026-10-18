@@ -600,6 +600,28 @@ List the high-risk action classes that always ask.
 
 Example: docket setup sandbox classes
 
+### setup sandbox read
+
+**Usage:** `docket setup sandbox read`
+
+Paths every sandbox may read, never write (the toolchain).
+
+### setup sandbox read add
+
+**Usage:** `docket setup sandbox read add`
+
+Let every sandbox read and run PATH, never write it (a toolchain under your home).
+
+Example: docket setup sandbox read add ~/.nvm/versions/node/v22.17.1
+
+### setup sandbox read remove
+
+**Usage:** `docket setup sandbox read remove`
+
+Stop granting PATH to sandboxes.
+
+Example: docket setup sandbox read remove ~/.nvm/versions/node/v22.17.1
+
 ### setup notify
 
 **Usage:** `docket setup notify`

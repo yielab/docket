@@ -245,6 +245,21 @@ Under Docker the jail is only as capable as its image, `DOCKET_SANDBOX_IMAGE` (d
 `docket setup` checks the image for `git` and warns with the fix.
 `DOCKET_SANDBOX_BACKEND=landlock|seatbelt|docker|none` forces one backend. Nothing here is needed while isolation is off.
 
+**A toolchain under your home.** The jail reads the system's directories (`/usr`, `/opt`, ...)
+and Python's own prefix, never your home, so a Node installed by a version manager or a pytest
+in the user site cannot load inside it, and a gate that needs one fails like a failing test.
+Grant it read-only, for every pod:
+
+```bash
+docket setup sandbox read add ~/.nvm/versions/node/v22.17.1   # read and run, never write
+docket setup sandbox read remove ~/.nvm/versions/node/v22.17.1
+```
+
+`add` refuses docket's home, your home itself and any parent of either. A pod's `readOnly`
+setting keeps only some of these grants (`docket pod set readOnly none` keeps nothing); it can
+never add one, so a repository's team directory cannot widen what the jail reads. Inside the jail
+`HOME` is the pod's cache, so a Python tool is best reached through a venv on a granted path.
+
 **What it covers, once on.**
 - Every `bash` call runs in the jail. Only the agent's workspace, the task's worktree and a
   private temp dir (exported as `TMPDIR`; the shared `/tmp` is not writable) are writable; the

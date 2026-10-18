@@ -495,6 +495,52 @@ class TestPodSettingsMcpServers:
         assert settings.value_and_source("mcpServers", "shop") == ("a", "set")
 
 
+class TestPodSettingsReadOnly:
+    """`readOnly` narrows the machine's read-only jail grants and never widens them."""
+
+    @pytest.fixture
+    def grants(self, tmp_path: Path) -> tuple[Path, Path]:
+        from docket.core import fleet as _fleet
+
+        node, py = tmp_path / "node", tmp_path / "py"
+        node.mkdir()
+        py.mkdir()
+        _fleet.add_read_only(str(node))
+        _fleet.add_read_only(str(py))
+        return node.resolve(), py.resolve()
+
+    def test_unset_keeps_every_machine_grant(self, grants: tuple[Path, Path]) -> None:
+        _write_lead_meta("shop")
+        assert pod.effective_read_only("shop") == grants
+
+    def test_a_list_keeps_only_the_named_grants(self, grants: tuple[Path, Path]) -> None:
+        _write_lead_meta("shop", {"readOnly": str(grants[1])})
+        assert pod.effective_read_only("shop") == (grants[1],)
+
+    def test_none_keeps_nothing(self, grants: tuple[Path, Path]) -> None:
+        _write_lead_meta("shop", {"readOnly": "none"})
+        assert pod.effective_read_only("shop") == ()
+
+    def test_a_grant_the_operator_removes_leaves_the_pod(self, grants: tuple[Path, Path]) -> None:
+        from docket.core import fleet as _fleet
+
+        _write_lead_meta("shop", {"readOnly": f"{grants[0]},{grants[1]}"})
+        _fleet.remove_read_only(str(grants[0]))
+        assert pod.effective_read_only("shop") == (grants[1],)
+
+    def test_coerce_refuses_a_path_the_machine_has_not_granted(
+        self, grants: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        other = tmp_path / "other"
+        other.mkdir()
+        with pytest.raises(pod.PodSettingsError, match="readOnly"):
+            pod.PodSettings.coerce("readOnly", f"{grants[0]},{other}")
+
+    def test_coerce_stores_granted_paths_and_none(self, grants: tuple[Path, Path]) -> None:
+        assert pod.PodSettings.coerce("readOnly", f" {grants[1]} ") == str(grants[1])
+        assert pod.PodSettings.coerce("readOnly", "none") == "none"
+
+
 class TestPodSettingsDeniedTools:
     """`PodSettings.deniedTools`: built-in tool names every role in this pod
     additionally denies, unioned by `core.archetypes.registry_for_role` -- see

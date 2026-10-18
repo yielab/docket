@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The sandbox can read the operator's toolchain.** `docket setup sandbox read add <path>`
+  grants every jail read and execute (never write) on a path such as a version manager's Node
+  or the system Python's user site; `read remove` drops it, and `docket setup sandbox --json`
+  lists them as `readOnly`. A pod's `readOnly` setting keeps only some of them (`none` keeps
+  nothing) and can never add a path. `add` refuses docket's home, the operator's home and any
+  ancestor of either. Found by the Phase 44 real rerun: `npm`/`npx` under `~/.nvm` exited 126
+  inside the jail and `pytest` in the user site could not load, so no JS or user-site Python
+  gate could pass with isolation on.
 - **A task's usage carries its cache figures.** `task["usage"]` (on `GET /tasks/<pod>` and
   `GET /tasks/<pod>/<id>`) sums `cached` and `cacheWrite` beside `input` and `output`, as each
   `byModel` entry already did, so a consumer counts new tokens as `input - cached + output`

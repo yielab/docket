@@ -102,10 +102,12 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
             else _system.seatbelt_command_argv
         )
         env = ["env", *(f"{k}={v}" for k, v in _system.tmp_environment(tmp).items())]
-        argv = build((*roots, tmp), [*env, *server], launch.network)
+        argv = build((*roots, tmp), [*env, *server], launch.network, launch.read_only)
     elif backend == "docker":
         name = f"docket-mcp-{uuid.uuid4().hex[:12]}"
-        argv = _system.docker_command_argv(name, roots, server, dict(config.env), launch.network)
+        argv = _system.docker_command_argv(
+            name, roots, server, dict(config.env), launch.network, launch.read_only
+        )
     else:
         raise RuntimeError(
             "isolation is on but no sandbox backend is usable; use Linux 5.13+ (landlock) or "

@@ -406,7 +406,8 @@ def pod_summary(project: str) -> dict[str, Any]:
 
 
 def pod_detail(project: str) -> dict[str, Any]:
-    """``pod_report`` plus the profile verdict, the pipeline source and the repo config dir."""
+    """``pod_report`` plus the profile verdict, the pipeline source, the repo config dir and the
+    read-only jail grants the pod keeps."""
     effective = _profile.effective_profile(project)
     verdict = (
         _profile.as_json(_profile.project_violations(project))
@@ -418,6 +419,7 @@ def pod_detail(project: str) -> dict[str, Any]:
         "profile": verdict,
         "pipelineSource": _dispatch.effective_pipeline_source(project),
         "repoConfigDir": _repo_config_dir(project),
+        "readOnly": [str(path) for path in _pod.effective_read_only(project)],
     }
 
 

@@ -169,3 +169,24 @@ def test_a_jailed_verify_writes_its_home_under_the_pod_cache(
     res = _dispatch.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "done", res.reason
     assert (_cfg.pod_cache_dir("myapp") / "probe").exists()
+
+
+@needs_landlock
+def test_a_jailed_verify_reads_a_granted_toolchain_and_cannot_write_it(
+    tmp_path: Path, outside: Path, isolation_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (outside / "tool.txt").write_text("v22")
+    reads = f'test "$(cat {outside}/tool.txt)" = v22'
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    denied = _dispatch.dispatch_task("myapp", _verify_task(first, reads), runner=_runner)
+    assert denied.status == "failed"
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    _fleet.add_read_only(str(outside))
+    task = _verify_task(second, f"{reads} && ! touch {outside}/written")
+    task["id"] = "e3"
+    res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+    assert res.status == "done", res.reason
+    assert not (outside / "written").exists()

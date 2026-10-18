@@ -307,6 +307,7 @@ class StdioLaunch:
     sandbox: Literal["auto", "off"] = "off"
     network: bool = True
     roots: tuple[Path, ...] = ()
+    read_only: tuple[Path, ...] = ()
 
 
 class ListToolsFn(Protocol):

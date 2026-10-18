@@ -25,6 +25,7 @@ for fleet and agent-metadata state. These are docket-owned formats read through
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -68,6 +69,8 @@ class FleetSecurity(BaseModel):
     sandbox_backend: str = Field("auto", alias="sandboxBackend")
     # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; core/profile.py).
     profile: str = Field("unset", alias="profile")
+    # Resolved absolute paths every jail reads and executes, never writes (the toolchain).
+    read_only: list[str] = Field(default_factory=list, alias="readOnly")
 
 
 class FleetConfig(BaseModel):
@@ -300,6 +303,51 @@ def set_sandbox_backend(choice: str) -> None:
     cfg = load_fleet()
     cfg.security.sandbox_backend = choice
     _save_fleet(cfg)
+
+
+def get_read_only_paths(cfg: FleetConfig | None = None) -> tuple[Path, ...]:
+    """The operator's read-only jail grants, as recorded (a grant gone from disk is kept)."""
+    return tuple(Path(p) for p in (cfg or load_fleet()).security.read_only)
+
+
+def _read_only_refusal(path: Path) -> str | None:
+    if not path.is_absolute():
+        return "is not an absolute path"
+    if not path.exists():
+        return "does not exist"
+    resolved = path.resolve()
+    docket_home = _cfg.DOCKET_HOME.resolve()
+    if resolved == docket_home or resolved.is_relative_to(docket_home):
+        return "is docket's home or inside it"
+    for guarded in (Path.home().resolve(), docket_home):
+        if guarded.is_relative_to(resolved):
+            return f"would expose {guarded}"
+    return None
+
+
+def add_read_only(path: str) -> Path:
+    """Record *path* (resolved) as a read-only jail grant; ``ValueError`` names a refusal."""
+    candidate = Path(path)
+    refusal = _read_only_refusal(candidate)
+    if refusal is not None:
+        raise ValueError(f"{path} {refusal}")
+    resolved = candidate.resolve()
+    cfg = load_fleet()
+    if str(resolved) not in cfg.security.read_only:
+        cfg.security.read_only.append(str(resolved))
+        _save_fleet(cfg)
+    return resolved
+
+
+def remove_read_only(path: str) -> str:
+    """Drop a recorded grant, matched as given or resolved; ``ValueError`` when not recorded."""
+    cfg = load_fleet()
+    for candidate in dict.fromkeys((path, str(Path(path).resolve()))):
+        if candidate in cfg.security.read_only:
+            cfg.security.read_only.remove(candidate)
+            _save_fleet(cfg)
+            return candidate
+    raise ValueError(f"{path} is not a recorded read-only grant")
 
 
 def set_sandbox_isolation(mode: str = "non-main") -> None:

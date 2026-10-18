@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.58.0
+**Version**: 0.59.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1061,6 +1061,26 @@ either.
     (the file can name a program to run), since Landlock cannot keep it unwritable. A task with no
     recorded `gitDir` (one that ran in place) is not covered. The escape matrix pins this with a
     planted `core.fsmonitor` that must never run.
+14. **The operator grants the toolchain read-only.** A tool installed under the operator's home
+    (a version manager's Node, the user site of the system Python) is unreadable in the jail, so a
+    gate that needs it fails like a failing test. `docket setup sandbox read add <path>` records
+    an absolute path in `FleetSecurity.read_only` (`fleet.json` `security.readOnly`, machine-wide,
+    audited `gates.read`), and `read remove <path>` drops a recorded path, existing or not (exit
+    1 when it is not recorded). `add` is refused (exit 1, nothing written) for a relative or
+    missing path, `DOCKET_HOME` or a path inside it, and the operator's home or any ancestor of
+    it or of `DOCKET_HOME`. A recorded path is stored resolved. A pod may only narrow the
+    machine's list, never widen it: its `readOnly` setting (`docket pod set readOnly ...` or a
+    `pod.yaml` `settings` mapping) is unset (every machine grant), `none` (no grant), or a
+    comma-separated list whose every path must already be a machine grant when it is written
+    (`coerce` refuses any other, so a repository's team directory cannot add a path). A turn's
+    grants are `core/pod.py::effective_read_only`: the machine's list, kept only where the pod
+    names it; a grant the operator later removes leaves every pod, and unreadable pod settings
+    fail closed to none. Every jail docket starts while isolation is on reads and executes those
+    paths and never writes them: `--ro` for Landlock, a read-only `subpath` for Seatbelt, a
+    `:ro` bind mount for docker; `bash`, `verifyCmd`, `run:` steps and stdio MCP servers alike,
+    through `jail_launch` and `mcp_client._jailed_command`. A path removed from disk after it was
+    recorded is skipped like any other missing grant. `docket setup sandbox` lists them, and its
+    `--json` carries `readOnly` (a list, empty by default). With isolation off nothing changes.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1351,6 +1371,8 @@ docket setup sandbox backend auto|docker # MUST record the backend choice in fle
 docket setup sandbox network none|open # MUST record the global network mode (audited gates.network);
                                 #   anything else: usage, exit 2. See Network egress requirement 7
 docket setup sandbox classes           # MUST list the documented high-risk action classes, read-only
+docket setup sandbox read add|remove PATH # MUST record or drop a read-only grant for every jail
+                                #   (audited gates.read); refusals per Exec sandbox requirement 14
 docket init                    # the tool-call gate needs no install step (always active); there
                                 #   is no --gates/--no-gates option (Enablement requirement 2)
 docket setup sandbox           # MUST report gate status, isolation posture and the backend (a read)
@@ -1803,6 +1825,14 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.59.0 (2026-10-18)
+
+- Exec sandbox requirement 14: `docket setup sandbox read add|remove <path>` records an
+  operator-declared read-only grant that every jail reads and executes (Landlock `--ro`,
+  Seatbelt read `subpath`, docker `:ro` mount). The Phase 44 real rerun found `npm`/`npx`
+  under the operator's home exiting 126 inside the jail and `pytest` in the user site
+  unloadable, so no JS or user-site Python gate could pass with isolation on.
 
 ### Version 0.58.0 (2026-10-18)
 

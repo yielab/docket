@@ -84,6 +84,8 @@ class ToolContext:
     approval_timeout: int | None = None
     # The pod's cache dir: a jailed bash gets it as its home and an extra read-write root.
     cache_dir: Path | None = None
+    # The operator's read-only jail grants (the toolchain); only a jailed bash reads them.
+    read_only: tuple[Path, ...] = ()
     on_process: Callable[[str, dict[str, Any]], None] | None = None
     # The assistant text of the message making the current call(s); the agent loop sets it
     # per batch. Raw: ``_approval.screen_rationale`` screens it when an approval is made.
@@ -860,6 +862,7 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         _tag_bash_process_events(ctx.on_process),
         ctx.network,
         ctx.cache_dir,
+        ctx.read_only,
     )
 
 
