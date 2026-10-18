@@ -132,3 +132,24 @@ def test_run_bash_reports_and_applies_the_landlock_backend(
     assert "[sandbox: landlock]" in out.error
     assert (root / "in.txt").exists()
     assert not (tmp_path / "out.txt").exists()
+
+
+def test_a_file_outside_the_grants_cannot_run_and_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exit 126 in a jail names the grant that fixes it; with the grant the same call runs."""
+    from docket.edges.adapters import toolbox
+
+    root, tools = tmp_path / "root", tmp_path / "tools"
+    root.mkdir()
+    tools.mkdir()
+    script = tools / "tool.sh"
+    script.write_text("#!/bin/sh\necho ran\n")
+    script.chmod(0o755)
+    monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+    env = {"TMPDIR": str(root)}
+    denied = toolbox.run_bash((root,), str(script), env=env, sandbox="auto")
+    assert denied.error.startswith("command exited 126; the jail could not execute it")
+    assert "docket setup sandbox read add" in denied.error
+    granted = toolbox.run_bash((root,), str(script), env=env, sandbox="auto", read_only=(tools,))
+    assert granted.ok and granted.content.startswith("ran")

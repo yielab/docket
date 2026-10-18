@@ -1083,6 +1083,10 @@ either.
     through `jail_launch` and `mcp_client._jailed_command`. A path removed from disk after it was
     recorded is skipped like any other missing grant. `docket setup sandbox` lists them, and its
     `--json` carries `readOnly` (a list, empty by default). With isolation off nothing changes.
+    A jailed `bash` call that exits 126 (found but cannot execute) **MUST** say so in its error,
+    after `command exited 126`: the jail could not execute it, a retry will not help, and the
+    operator grants a toolchain with `docket setup sandbox read add <path>`. It is a message,
+    not a new stop condition: the no-progress stop still bounds a model that keeps retrying.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1834,6 +1838,8 @@ $ git clone https://anywhere.example/repo.git
   or without roots. The Phase 44 real rerun saw a jailed `ls x 2>/dev/null` ask for approval
   with the reason "'ls' is not on the curated allowlist", although the jail grants `/dev/null`
   and the write discards everything.
+- Exec sandbox requirement 14: a jailed `bash` exit 126 names the grant that fixes it. In the
+  same rerun the implementer retried `npm`/`npx` after each 126 without learning why.
 
 ### Version 0.59.0 (2026-10-18)
 

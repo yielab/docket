@@ -259,6 +259,8 @@ docket setup sandbox read remove ~/.nvm/versions/node/v22.17.1
 setting keeps only some of these grants (`docket pod set readOnly none` keeps nothing); it can
 never add one, so a repository's team directory cannot widen what the jail reads. Inside the jail
 `HOME` is the pod's cache, so a Python tool is best reached through a venv on a granted path.
+A command the jail cannot execute exits 126, and the agent's result says so and names this
+command, so the trace tells you which grant is missing.
 
 **What it covers, once on.**
 - Every `bash` call runs in the jail. Only the agent's workspace, the task's worktree and a

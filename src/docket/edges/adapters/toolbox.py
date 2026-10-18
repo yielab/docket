@@ -300,6 +300,16 @@ def grep_files(
 # ── exec ──────────────────────────────────────────────────────────────────────
 
 
+# Exit 126 is the shell's "found but cannot execute"; in a jail that is usually a binary or a
+# library outside the granted paths, which no retry fixes.
+_CANNOT_EXECUTE = 126
+_CANNOT_EXECUTE_HINT = (
+    "; the jail could not execute it, most likely a file outside its granted paths, so a retry "
+    "will not help: report it (the operator grants a toolchain with "
+    "`docket setup sandbox read add <path>`)"
+)
+
+
 def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None) -> str:
     """The honest, per-call answer to "was this actually sandboxed, and by what": ``""`` when
     nobody asked (default ``sandbox="off"``, behaviour untouched byte for byte). When asked
@@ -459,6 +469,8 @@ def run_bash(
         exit_payload["exitCode"] = proc.returncode
         if proc.returncode != 0:
             message = f"command exited {proc.returncode}"
+            if tag and proc.returncode == _CANNOT_EXECUTE:
+                message += _CANNOT_EXECUTE_HINT
             return ToolOutcome(
                 False,
                 content=body,
