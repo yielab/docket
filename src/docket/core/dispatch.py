@@ -51,6 +51,7 @@ from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import prepare as _prepare
 from docket.core import profile as _profile
+from docket.core import protected_paths as _protected
 from docket.core import repo_map as _repo_map
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
@@ -233,6 +234,9 @@ class TaskResult:
     # on. Empty for every other blocked cause (e.g. budget auto-pause), which `_apply_result`
     # then falls back to `reason` for, unchanged from before this field existed.
     blocked_reason: str = ""
+    # Only meaningful when status == "waiting_approval" for a `check_changed` approval: the
+    # protected paths the task's diff touched, persisted as the task's `checkChanged`.
+    check_changed: list[str] = field(default_factory=list)
 
     @property
     def cost_usd(self) -> float:
@@ -1267,13 +1271,25 @@ def _tree_diff(cwd: str) -> str:
     return _handoff.cap_diff(text, limit)
 
 
+def _cut_at_word(text: str, limit: int) -> str:
+    """*text* whole when it fits *limit*, else cut at the last space before the limit (at the
+    limit itself when its first word is longer)."""
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    if text[limit] == " ":
+        return head.rstrip()
+    cut = head.rfind(" ")
+    return head[:cut].rstrip() if cut > 0 else head
+
+
 def _pin_hop_tree(cwd: str, task: dict[str, Any], role: str, *, in_worktree: bool) -> str | None:
     """Pin the tree a hop left in a commit and return its sha, ``None`` on failure: committed on
     the task branch in a task worktree, a branchless snapshot in place. An agent normally leaves
     its work uncommitted, and the task branch would then stay at its base commit."""
     task_id = str(task.get("id") or "")
     first_line = str(task.get("description") or "").strip().split("\n", 1)[0].strip()
-    subject = first_line[:72] or f"docket task {task_id}"
+    subject = _cut_at_word(first_line, 72) or f"docket task {task_id}"
     message = f"{subject}\n\ndocket task {task_id}, {role} hop"
     if in_worktree:
         return _sys.git_commit_all(cwd, message)
@@ -2940,6 +2956,7 @@ def _run_group_node(
             for oc in child_outcomes:
                 if oc.kind == "failed":
                     merged.kind, merged.reason = "failed", oc.reason
+                    merged.failure_kind = oc.failure_kind
                     break
     return merged
 
@@ -3482,6 +3499,68 @@ def _refuse_unmet_profile(
     raise DispatchError(f"lights-out profile not met -- {lines}")
 
 
+def _checked_commands(
+    project: str, task: dict[str, Any], runtime_steps: tuple[_orch.PlannedNode, ...]
+) -> list[str]:
+    """The commands this task runs as checks: the Implementer's ``verifyCmd``, every mechanical or
+    external gate command and ``run:`` step of the pipeline, and the task's own gate command."""
+    implementer = pod_full_roster(project).get("implementer")
+    commands = [str(_fleet.meta_get(implementer, "verifyCmd", "") or "")] if implementer else []
+    for node in runtime_steps:
+        for unit in node.children if isinstance(node, _orch.PlannedGroup) else (node,):
+            commands.append(unit.run or "")
+            if isinstance(unit.gate, (_pipeline.MechanicalGate, _pipeline.ExternalGate)):
+                commands.append(unit.gate.command or "")
+    raw_gate = task.get("gate")
+    if isinstance(raw_gate, dict):
+        commands.append(str(raw_gate.get("command") or ""))
+    return [c for c in commands if c]
+
+
+def _park_if_check_changed(
+    ctx: _UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...], result: TaskResult
+) -> None:
+    """A finished task whose diff touches a protected path (core/protected_paths.py) parks
+    ``waiting_approval`` for a person whatever the profile, instead of ending ``done``. A task
+    with no recorded worktree is not checked."""
+    record = ctx.task.get("worktree")
+    directory = _task_worktree_dir(ctx.task)
+    branch = str(record.get("branch") or "") if isinstance(record, dict) else ""
+    base = str(record.get("baseCommit") or "") if isinstance(record, dict) else ""
+    if not (directory and branch and base):
+        return
+    paths = _protected.changed_protected(
+        directory,
+        base,
+        branch,
+        _pod_settings(ctx.project).protects,
+        _checked_commands(ctx.project, ctx.task, runtime_steps),
+    )
+    if not paths:
+        return
+    listed = ", ".join(paths[: _protected.MAX_LISTED_PATHS])
+    if len(paths) > _protected.MAX_LISTED_PATHS:
+        listed += f" and {len(paths) - _protected.MAX_LISTED_PATHS} more"
+    token = _ap.approval_create(
+        ctx.project,
+        "lead",
+        f"pod dispatch -- task {ctx.task_id} edits what checks it: {listed}",
+        context={"kind": "check_changed", "taskId": ctx.task_id, "paths": paths},
+    )
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        "lead",
+        "approval_required",
+        _json.dumps({"role": "lead", "token": token, "kind": "check_changed", "paths": paths}),
+    )
+    result.status = "waiting_approval"
+    result.reason = f"the change edits what checks it: {listed} (token={token})"
+    result.approval_token = token
+    result.pending_approval_index = None
+    result.check_changed = paths
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
@@ -3598,6 +3677,8 @@ def dispatch_task(
 
         _refuse_unmet_profile(project, task_id, runtime_steps)
         _run_pipeline(ctx, runtime_steps, pipeline_index, pending_rework_by_index, result, prior)
+        if result.status == "done":
+            _park_if_check_changed(ctx, runtime_steps, result)
     except DispatchError as exc:
         result.status = "failed"
         result.reason = str(exc)
@@ -3631,6 +3712,10 @@ def _apply_result(
     task["claimId"] = None
     task.pop("claimPid", None)
     task.pop("consultAnswer", None)  # delivered to the hop this result came from
+    if res.check_changed:
+        task["checkChanged"] = list(res.check_changed)
+    else:
+        task.pop("checkChanged", None)
     if res.status == "blocked":
         task["blockedReason"] = res.blocked_reason or res.reason
     elif res.status == "waiting_approval":
@@ -3679,12 +3764,11 @@ def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
     base_ref = str(claimed.get("baseRef") or "")
     implementer = _pod.member_id(project, "implementer")
     codebase = str(_fleet.meta_get(implementer, "codebase", "") or "")
-    if not codebase or _fleet.meta_get(implementer, "inPlace", ""):
+    if not codebase:
         if base_ref:
             claimed["claimRefusal"] = (
                 "base_ref",
-                f"baseRef {base_ref!r} needs a task worktree, but the Implementer has no "
-                "codebase or runs in place",
+                f"baseRef {base_ref!r} needs a task worktree, but the Implementer has no codebase",
             )
         return
     task_id = str(claimed.get("id", ""))
@@ -4341,6 +4425,7 @@ def resolve_waiting_approval_detail(
     context = rec.get("context")
     context = context if isinstance(context, dict) else {}
     parked = bool(context.get("parked"))
+    check_changed = context.get("kind") == "check_changed"
     task_id = str(context.get("taskId", ""))
     project = str(rec.get("project", ""))
     if not project or (not task_id and not parked):
@@ -4366,7 +4451,13 @@ def resolve_waiting_approval_detail(
             pending_index = t.get("pendingApprovalIndex")
             t.pop("approvalToken", None)
             t.pop("pendingApprovalIndex", None)
-            if decision == "granted":
+            if decision == "granted" and check_changed:
+                t["status"] = "done"
+                t["reason"] = "check_changed approved"
+                t["completedAt"] = _now()
+                t["claimId"] = None
+                t.pop("taskGrants", None)
+            elif decision == "granted":
                 t["status"] = "pending"
                 if parked:
                     pregrants_raw = t.get("pregrants")
@@ -4388,7 +4479,7 @@ def resolve_waiting_approval_detail(
             else:
                 t["status"] = "failed"
                 t["reason"] = f"approval denied: {reason}" if reason else "approval denied"
-                t["failureKind"] = "approval_denied"
+                t["failureKind"] = "check_changed" if check_changed else "approval_denied"
                 t["completedAt"] = _now()
                 t["claimId"] = None
                 t.pop("taskGrants", None)
@@ -4396,7 +4487,7 @@ def resolve_waiting_approval_detail(
             return {"tasks": tasks}
         return None
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
     if updated:
         _trace.trace_event(
             project,
@@ -4404,6 +4495,12 @@ def resolve_waiting_approval_detail(
             "lead",
             "approval_resumed" if decision == "granted" else "approval_task_denied",
             _json.dumps({"task": resolved_task_id, "token": token}),
+        )
+    if updated and check_changed:
+        tasks_after = doc.get("tasks")
+        _mem.sync_dispatch_tasks(
+            _cfg.workspace_dir(_pod.member_id(project, "lead")),
+            tasks_after if isinstance(tasks_after, list) else [],
         )
     return updated, note
 

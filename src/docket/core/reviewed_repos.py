@@ -10,11 +10,14 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
+from docket.core import protected_paths as _protected
 from docket.core.audit import audit_log
 from docket.core.pod_apply import RunItem
 from docket.edges import store
+from docket.edges.adapters import system as _sys
 
 CODE_LENGTH = 16
+_NAMES_NO_FILE = frozenset({"allow-commands", "network", "role-loosens"})
 
 
 @dataclass(frozen=True)
@@ -28,14 +31,28 @@ class ReviewedRepo:
     items: tuple[RunItem, ...]
 
 
-def _digest(items: tuple[RunItem, ...]) -> str:
-    canonical = sorted((i.kind, i.name, i.runs) for i in items)
+def _named_file_ids(items: tuple[RunItem, ...], repo_root: Path) -> list[tuple[str, str]]:
+    """``(path, blob id)`` of each tracked file of *repo_root* that a command in *items* names."""
+    commands = [i.runs for i in items if i.kind not in _NAMES_NO_FILE]
+    if not commands:
+        return []
+    root = str(repo_root)
+    names = _protected.command_files(commands, frozenset(_sys.git_tracked_files(root)))
+    return sorted(_sys.git_blob_ids(root, sorted(names)).items())
+
+
+def _digest(items: tuple[RunItem, ...], repo_root: Path) -> str:
+    canonical = [
+        sorted((i.kind, i.name, i.runs) for i in items),
+        _named_file_ids(items, repo_root),
+    ]
     return hashlib.sha256(json.dumps(canonical).encode("utf-8")).hexdigest()
 
 
-def review_code(items: tuple[RunItem, ...]) -> str:
-    """The short code shown for exactly these items, independent of their order."""
-    return _digest(items)[:CODE_LENGTH]
+def review_code(items: tuple[RunItem, ...], repo_root: Path) -> str:
+    """The short code shown for exactly these items and the files their commands name in
+    *repo_root*, independent of the items' order."""
+    return _digest(items, repo_root)[:CODE_LENGTH]
 
 
 def _key(repo_root: Path) -> str:
@@ -81,15 +98,15 @@ def lookup(repo_root: Path, project: str) -> ReviewedRepo | None:
 
 def is_reviewed(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> bool:
     """Whether *project* approved exactly these items for *repo_root* at some point."""
-    digest = _digest(items)
+    digest = _digest(items, repo_root)
     return any(found.digest == digest for found in approvals(repo_root, project))
 
 
 def remember(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> str:
     """Record *project*'s OK for these items and audit ``repo.allow``; returns the code.
     A set already approved moves to the latest position instead of being repeated."""
-    code = review_code(items)
-    digest = _digest(items)
+    code = review_code(items, repo_root)
+    digest = _digest(items, repo_root)
     entry: dict[str, Any] = {
         "digest": digest,
         "code": code,

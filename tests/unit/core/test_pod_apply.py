@@ -274,6 +274,61 @@ class TestPrepare:
         assert _pod_apply.classify_directory(recipe).runs == ()
 
 
+class TestProtects:
+    """A team's `protects:` is applied as the pod's setting and exported back, never reviewed."""
+
+    def _recipe(self, tmp_path: Path, text: str) -> Path:
+        recipe = tmp_path / "recipe"
+        recipe.mkdir()
+        (recipe / "pod.yaml").write_text(text, encoding="utf-8")
+        return recipe
+
+    def test_apply_stores_the_list_and_export_writes_it_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
+        recipe = self._recipe(tmp_path, "kind: pod\nname: x\nprotects: ['src/api/*', Makefile]\n")
+        plan = _pod_apply.plan_apply("guard", recipe)
+        assert [(i.kind, i.name, i.action) for i in plan.items] == [("setting", "protects", "add")]
+        _pod_apply.apply(plan)
+        assert pod.PodSettings.load_for("guard").protects == ("src/api/*", "Makefile")
+        out = tmp_path / "out"
+        _pod_apply.export_pod("guard", out)
+        manifest = (out / "pod.yaml").read_text(encoding="utf-8")
+        assert "protects:" in manifest and "settings" not in manifest
+
+    def test_an_empty_list_clears_the_patterns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
+        _pod_apply.apply(_pod_apply.plan_apply("guard", self._recipe(tmp_path, "protects: [a]\n")))
+        (tmp_path / "recipe" / "pod.yaml").write_text("protects: []\n", encoding="utf-8")
+        _pod_apply.apply(_pod_apply.plan_apply("guard", tmp_path / "recipe"))
+        assert pod.PodSettings.load_for("guard").protects == ()
+
+    def test_protects_inside_settings_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
+        recipe = self._recipe(tmp_path, "settings:\n  protects: a\n")
+        with pytest.raises(_pod_apply.PodApplyError, match="top level"):
+            _pod_apply.plan_apply("guard", recipe)
+
+    @pytest.mark.parametrize(
+        "text", ["protects: a\n", "protects: [1]\n", "protects: ['/abs']\n", "protects: ['']\n"]
+    )
+    def test_a_malformed_protects_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
+        with pytest.raises(_pod_apply.PodApplyError, match="protects"):
+            _pod_apply.plan_apply("guard", self._recipe(tmp_path, text))
+
+    def test_protects_is_not_a_run_item(self, tmp_path: Path) -> None:
+        review = _pod_apply.classify_directory(self._recipe(tmp_path, "protects: [a]\n"))
+        assert review.runs == () and ("setting", "protects") in review.adds
+
+
 def _repo_dir(tmp_path: Path, files: dict[str, str]) -> Path:
     root = tmp_path / "dotdocket"
     for rel, text in files.items():
