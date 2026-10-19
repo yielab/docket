@@ -80,6 +80,18 @@
       ],
       "default": null,
       "title": "Exporters"
+    },
+    "prepare": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prepare"
     }
   },
   "required": [

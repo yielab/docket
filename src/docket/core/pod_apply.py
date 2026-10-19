@@ -33,11 +33,12 @@ from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
+from docket.core import prepare as _prepare
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 
 _MANIFEST_KEYS = frozenset(
-    {"members", "settings", "pipeline", "kind", "name", "description", "exporters"}
+    {"members", "settings", "pipeline", "kind", "name", "description", "exporters", "prepare"}
 )
 
 # The same name shape `core.exporter.ExporterSpec` validates -- checked here too so a
@@ -761,6 +762,21 @@ def _plan_settings(
     return items, writes
 
 
+def _settings_with_prepare(
+    raw_settings: dict[str, Any], manifest: dict[str, Any]
+) -> dict[str, Any]:
+    """*raw_settings* plus the manifest's top-level ``prepare`` (blank means ``none``); a
+    ``prepare`` inside ``settings`` is refused, as ``pipeline`` is."""
+    if "prepare" in raw_settings:
+        raise PodApplyError("pod.yaml: 'prepare' belongs at the top level, not 'settings'")
+    raw = manifest.get("prepare")
+    if raw is None:
+        return raw_settings
+    if not isinstance(raw, str):
+        raise PodApplyError("pod.yaml: 'prepare' must be a string")
+    return {**raw_settings, "prepare": raw.strip() or "none"}
+
+
 def _plan_exporters(manifest: dict[str, Any]) -> tuple[str, ...]:
     """Validate `pod.yaml`'s optional `exporters` list against the live exporter catalog
     (ADR 0014 rule 7): a recipe may *name* a destination, never carry one. A malformed or
@@ -862,7 +878,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     mcp_items, mcp_write = _plan_mcp_servers(directory, project)
 
     setting_items, setting_writes = _plan_settings(
-        project, raw_settings, tuple(i.name for i in mcp_items)
+        project, _settings_with_prepare(raw_settings, manifest), tuple(i.name for i in mcp_items)
     )
 
     items = [*role_items, *policy_items, *plugin_items, *skill_items, *mcp_items, *member_items]
@@ -1026,6 +1042,26 @@ def _config_docs_doc(path: Path, kind: str) -> dict[str, Any]:
         return {}
 
 
+def _prepare_runs(directory: Path, manifest: dict[str, Any]) -> list[RunItem]:
+    """The install command a task worktree runs: the directory's own ``prepare:``, else -- for a
+    repository's ``.docket/`` -- the one derived from a lockfile at the repository root."""
+    raw = manifest.get("prepare")
+    if isinstance(raw, str):
+        command = raw.strip()
+    elif raw is None and _is_repo_config_dir(directory):
+        found = _prepare.lockfile_in(repo_root(directory))
+        command = found[1] if found else ""
+    else:
+        command = ""
+    return [] if _prepare.is_off(command) else [RunItem("prepare", "prepare", command)]
+
+
+def _is_repo_config_dir(directory: Path) -> bool:
+    return directory.name == ".docket" or (
+        directory.parent.name == "teams" and directory.parent.parent.name == ".docket"
+    )
+
+
 def classify_directory(directory: Path) -> PlanReview:
     """Read-only split of *directory* into adds and run-on-this-machine items; needs no pod."""
     manifest_file = directory / "pod.yaml"
@@ -1055,6 +1091,7 @@ def classify_directory(directory: Path) -> PlanReview:
         runs.append(RunItem("allow-commands", "allowCommands", ", ".join(names)))
     if str(settings.get("network", "")) == "open":
         runs.append(RunItem("network", "network", "open"))
+    runs.extend(_prepare_runs(directory, manifest))
     runs.extend(_loosened_denials(directory))
     for sub, kind in (("roles", "role"), ("policies", "policy")):
         sub_dir = directory / sub
@@ -1064,6 +1101,8 @@ def classify_directory(directory: Path) -> PlanReview:
     if skills_dir.is_dir():
         adds.extend(("skill", p.name) for p in sorted(skills_dir.iterdir()) if p.is_dir())
     adds.extend(("setting", k) for k in sorted(settings) if k not in ("allowCommands", "network"))
+    if "prepare" in manifest:
+        adds.append(("setting", "prepare"))
     refused = tuple(n for n in names if n in REPO_REFUSED_COMMANDS)
     return PlanReview(tuple(adds), tuple(runs), refused)
 
@@ -1379,8 +1418,8 @@ def _export_manifest(project: str, directory: Path) -> None:
     settings_doc = pod.PodSettings.load_for(project)
     settings_out: dict[str, Any] = {}
     for key in pod.PodSettings.KEYS:
-        if key == "pipeline":
-            continue  # top-level file, never a `settings` entry (see `_plan_settings`)
+        if key in ("pipeline", "prepare"):
+            continue  # top-level, never a `settings` entry (see `_settings_with_prepare`)
         value, source = settings_doc.value_and_source(key, project)
         if source == "set" and value is not None:
             settings_out[key] = value
@@ -1390,6 +1429,8 @@ def _export_manifest(project: str, directory: Path) -> None:
         manifest["settings"] = settings_out
     if settings_doc.exporters:
         manifest["exporters"] = list(settings_doc.exporters)
+    if settings_doc.prepare:
+        manifest["prepare"] = settings_doc.prepare
     pod_path = directory / "pod.yaml"
     _dump_yaml_file(pod_path, manifest, schema_header=_schema_header(directory, pod_path, "pod"))
 

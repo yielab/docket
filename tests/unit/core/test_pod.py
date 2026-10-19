@@ -541,6 +541,27 @@ class TestPodSettingsReadOnly:
         assert pod.PodSettings.coerce("readOnly", "none") == "none"
 
 
+class TestPodSettingsPrepare:
+    """`prepare` is one install line, `none` to turn it off, `""` to leave it to the lockfile."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").prepare == ""
+
+    def test_coerce_keeps_the_stripped_line_and_none(self) -> None:
+        assert pod.PodSettings.coerce("prepare", " make deps ") == "make deps"
+        assert pod.PodSettings.coerce("prepare", "none") == "none"
+
+    @pytest.mark.parametrize("bad", ["a\nb", "a\x00b", "x" * 1001])
+    def test_coerce_refuses_a_multiline_nul_or_long_value(self, bad: str) -> None:
+        with pytest.raises(pod.PodSettingsError, match="prepare"):
+            pod.PodSettings.coerce("prepare", bad)
+
+    def test_a_stored_value_is_read_back(self) -> None:
+        _write_lead_meta("shop", {"prepare": "make deps"})
+        assert pod.PodSettings.load_for("shop").prepare == "make deps"
+
+
 class TestPodSettingsDeniedTools:
     """`PodSettings.deniedTools`: built-in tool names every role in this pod
     additionally denies, unioned by `core.archetypes.registry_for_role` -- see

@@ -28,6 +28,7 @@ import pytest
 import docket.config as _cfg
 from docket.core import dispatch as _dispatch
 from docket.core import pod_provisioning as _pp
+from docket.core import prepare as _prepare
 from docket.edges.adapters import system
 
 SUBJECT = "docket.jail"
@@ -537,3 +538,67 @@ def test_a_main_checkout_root_is_refused_on_landlock_and_guarded_elsewhere(
         backend, main, "echo y > y.txt && git add y.txt && git commit -q -m from-main-jail"
     )
     assert commit.returncode == 0, commit.stderr
+
+
+def _install_into(wt: Path, codebase: Path) -> Path:
+    """Prepare *wt* the way dispatch does, with an install that writes ``node_modules/tool``."""
+    (wt / "package-lock.json").write_text("{}")
+    spec = _prepare.resolve(wt, task_prepare=None, pod_prepare="")
+    assert spec is not None
+
+    def install(command: str) -> tuple[int | None, str]:
+        (wt / "node_modules").mkdir()
+        (wt / "node_modules" / "tool").write_text("installed\n")
+        return 0, ""
+
+    outcome = _prepare.prepare_worktree(spec, wt, str(codebase), "", install)
+    assert outcome.ok and (wt / "node_modules").is_symlink()
+    return _prepare.entry_dir(str(codebase), spec).resolve()
+
+
+def test_a_prepared_cache_entry_is_readable_but_not_writable_to_a_jailed_gate(
+    backend: str, task_tree: TaskTree, arena: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(_cfg, "PREPARE_CACHE_DIR", arena / "cache" / "prepare")
+    entry = _install_into(task_tree.wt, task_tree.main)
+    cmd = "cat node_modules/tool > read.txt; echo planted > node_modules/planted"
+    jail = system.JailPolicy(network=True)
+    monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (jail, None))
+    _dispatch._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
+    assert (task_tree.wt / "read.txt").read_text() == "installed\n", "the entry was unreadable"
+    assert not (entry / "node_modules" / "planted").exists(), "a gate wrote the cache entry"
+    monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (None, None))
+    _dispatch._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
+    assert (entry / "node_modules" / "planted").exists(), "control: unjailed can write"
+
+
+def test_the_prepare_launch_has_the_network_a_gate_under_network_none_lacks(
+    backend: str, task_tree: TaskTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bind, dial = _listener_address(backend)
+    server, got = _serve(bind)
+    port = server.getsockname()[1]
+    if backend == "docker":
+        attack = f"printf hello | nc -w 2 {dial} {port}"
+    else:
+        attack = (
+            f"python3 -c \"import socket; s = socket.create_connection(('{dial}', {port}), 2); "
+            "s.sendall(b'hello')\""
+        )
+    pods_jail = system.JailPolicy(network=False)
+    monkeypatch.setattr(
+        _dispatch._dr, "resolve_command_jail", lambda project, label: (pods_jail, None)
+    )
+    try:
+        _dispatch._run_prepare_command("proj", attack, str(task_tree.wt))
+        for _ in range(50):
+            if got:
+                break
+            threading.Event().wait(0.1)
+        assert got == [b"hello"], "the install launch must reach the network"
+        got.clear()
+        _dispatch._run_in_envelope("proj", "verify", attack, str(task_tree.wt), 60)
+        threading.Event().wait(1)
+        assert got == [], "a gate reached the network under the pod's network none"
+    finally:
+        server.close()

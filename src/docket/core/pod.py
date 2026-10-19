@@ -25,6 +25,7 @@ from docket.core import archetypes as _archetypes
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import models_policy as _mp
+from docket.core import prepare as _prepare
 from docket.core import schedule as _schedule
 from docket.core import security as _security
 
@@ -284,6 +285,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "network": "network",
     "profile": "profile",
     "readOnly": "read_only",
+    "prepare": "prepare",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -391,6 +393,10 @@ class PodSettings(BaseModel):
     # It only ever narrows: ``coerce`` refuses a path the machine has not granted.
     read_only: str = Field("", alias="readOnly")
 
+    # The install command a task's fresh worktree runs before its first hop (core/prepare.py);
+    # 'none' turns preparation off and '' leaves the choice to the worktree's lockfile.
+    prepare: str = Field("", alias="prepare")
+
     # 'attended' (the default) or 'lights-out' (core/profile.py): a pod may only move toward
     # stricter than the fleet's recorded profile -- ``coerce`` refuses a weaker write.
     profile: str = Field("attended", alias="profile")
@@ -433,6 +439,7 @@ class PodSettings(BaseModel):
         "network",
         "profile",
         "readOnly",
+        "prepare",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
@@ -582,6 +589,12 @@ class PodSettings(BaseModel):
             if not Path(path).is_absolute():
                 raise ValueError(f"{path!r} is not an absolute path")
         return ",".join(paths)
+
+    @field_validator("prepare", mode="before")
+    @classmethod
+    def _parse_prepare(cls, value: Any) -> str:
+        """One line of at most 1,000 characters, or ``none``."""
+        return _prepare.check_command(value)
 
     @field_validator("profile", mode="before")
     @classmethod

@@ -1,7 +1,9 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.58.0
-**Status**: Complete. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
+**Version**: 6.59.0
+**Status**: Complete. **P45-1** (ADR 0029 point 1) prepares the worktree docket makes: before a claimed task's first hop,
+`dispatch_pod` runs one install command (the task's `prepare`, the pod's `prepare` setting, else one derived from
+the worktree's lockfile) and keeps what it installed once per codebase and lockfile hash — see "Task preparation" below. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
 produced: `HandoffArtifact.diff`, a capped diff of the hop's tracked changes plus the content of
 its new files, rendered once after the summary — see "Structured handoff artifacts" and
 "Implementer diff producer" below. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
@@ -68,7 +70,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -822,6 +824,11 @@ was seeded once at binding time.)*
    the global `docket setup sandbox network` mode (a pod `open` under a global `none` stays `none`), via
    `core.pod.effective_network`, which `DocketDriver` reads each turn. See `security-gates.spec.md`
    "Network egress" requirement 7.
+10. `PodSettings` also carries `prepare` (`str`, `""` by default, at most 1,000 characters, no NUL
+    or newline): the install command a pod's tasks run in a fresh worktree, or `none` to turn
+    preparation off (see "Task preparation"). Written by `pod.yaml`'s top-level `prepare:` (never
+    inside `settings`, like `pipeline`) or by `docket pod set prepare` through the generic
+    `coerce`-then-`meta_set` path. `""` is unset: the lockfile decides.
 
 ### Schedule configuration and doctor visibility (ROADMAP P26-12)
 
@@ -1889,6 +1896,67 @@ document (`evidence.py`, `docs/contracts/`) are unchanged.*
      itself. The shipped `anti-tautology` and `mutation` recipes **MUST** fail on an empty
      `DOCKET_HEAD_COMMIT`.
 
+### Task preparation (P45-1, ADR 0029 point 1)
+
+A task's worktree is a bare checkout: nothing the project's own checks import is installed in it.
+`core/prepare.py` owns the resolution, the cache and the run; `dispatch_pod` owns the call.
+
+1. After the claim-time refusals (requirement 4b of "Task worktrees") and the task's pipeline and
+   gate resolution, and before the task's first hop, `dispatch_pod` **MUST** prepare the claimed
+   task's worktree. A task with no recorded worktree `dir` (one that runs in place) **MUST NOT** be
+   prepared: docket installs only into a checkout it made. No hop runs, and no token is spent, until
+   preparation has finished.
+2. The command is the first of these that is present; a blank string or `none` (any case) at a
+   level turns preparation off and wins over every lower level:
+   1. the task's own `prepare` (`POST /tasks/<pod>`, stored on the task record before it runs);
+   2. the pod's `prepare` setting (`PodSettings.prepare`, set by `pod.yaml`'s top-level `prepare:`
+      or `docket pod set prepare`);
+   3. the command for the first lockfile found at the worktree's root, in this order:
+      `package-lock.json` -> `npm ci`; `pnpm-lock.yaml` -> `pnpm install --frozen-lockfile`;
+      `yarn.lock` -> `yarn install --immutable`; `uv.lock` -> `uv sync --frozen`; `poetry.lock` ->
+      `poetry install`; `Cargo.lock` -> `cargo fetch`.
+   No command and no lockfile **MUST** run nothing, record nothing and write no event: docket never
+   guesses an install.
+3. The command **MUST** run with the worktree as its working directory and `PREPARE_TIMEOUT_S`
+   (900 seconds) as its limit, under the same posture as a `verifyCmd`
+   (`_run_in_envelope`): on the host when isolation is off, and when isolation is on through
+   `system.jail_launch` with the worktree writable and **the network open for this launch only**
+   whatever the pod's `network` records; the hops keep the pod's setting
+   (`security-gates.spec.md` Exec sandbox requirement 15). Isolation on with no usable backend
+   refuses the run like any other command: the task fails `prepare` with that reason.
+4. Cache. With a lockfile present, what the command installs is kept in
+   `DOCKET_HOME/cache/prepare/<codebase name>-<8 hex of the codebase path's sha256>/<lock>-<cmd>/`,
+   `<lock>` being the first 16 hex characters of the lockfile's sha256 and `<cmd>` the first 8 of the
+   command's. Only `node_modules` is kept and linked: it is the one install directory that is
+   relocatable; a `.venv` or a Cargo registry is rebuilt by the command in every worktree. Rules:
+   - A hit (the entry exists) runs no command: `node_modules` is symlinked into the worktree.
+   - A miss runs the command in the worktree, then moves `node_modules` into a `.partial` sibling,
+     renames it to the entry (never visible half-built) and symlinks it back. The whole of a miss
+     runs under a `filelock` on `<codebase dir>/.lock`, so two tasks of one codebase never build
+     the same entry twice; a failed command leaves no entry.
+   - After a build, the three most recently used entries of the codebase are kept and the others
+     removed; a hit refreshes its entry's modification time.
+   - A name that already exists in the worktree (a tracked `node_modules`) is left alone.
+   - The linked names are added to the repository's `info/exclude` (common git dir) so the link is
+     never part of the task's commit.
+5. Record and resume. A prepared task records `prepared = {command, source, lockHash, cacheHit}`
+   (`source` is `task`, `pod` or `lockfile`; `lockHash` the lockfile's full sha256, `""` without one).
+   A claimed task whose record carries the same `command` and `lockHash` and whose links still
+   resolve **MUST NOT** be prepared again; a link whose cache entry was removed since is replaced.
+6. A failing command (non-zero exit, timeout, refusal) **MUST** settle the task `failed` through
+   the claim-time refusal (`_refuse_claimed_task`) with `failureKind: "prepare"` and a `reason` of
+   `prepare failed: <command> (exit <n>): <tail>`, the tail being the last
+   `VERIFY_EVIDENCE_TAIL_CHARS` characters of the redacted output. No hop runs. `prepare` is not in
+   `RESUMABLE_FAILURE_KINDS`: a resume would fail the same way, so the operator fixes the command
+   or the lockfile and re-enqueues.
+7. Every preparation that runs a command or links a cache entry **MUST** write one `prepare` trace
+   event (`trace-store.spec.md`) with `{command, source, cacheHit, seconds, exit}`; `exit` is
+   `null` on a hit and when the command could not start.
+8. Hops and gates **MUST** be able to read what was linked but not write it: the cache entry is a
+   read-only root of every jailed hop and gate command whose worktree links into it
+   (`security-gates.spec.md` Exec sandbox requirement 15). A tool that writes into
+   `node_modules` (a `.cache` or `.vite` directory) therefore cannot, under isolation.
+
 ### Downstream worktree continuity
 
 1. When the task has a recorded worktree, every non-Lead hop (the Implementer included) **MUST**
@@ -2185,6 +2253,7 @@ command_step                  # a `run` step executed (or was refused), carrying
 input_requested                # an `input` step parked the task, waiting on an operator question
 input_answered                 # `core.answers.answer_task` resumed a parked `input` step
 input_expired                  # an unanswered question passed its deadline (task -> blocked)
+prepare                        # a claimed task's worktree was prepared (command, source, cacheHit, seconds, exit)
 ```
 
 ## Examples
@@ -2342,6 +2411,14 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.59.0 (2026-10-19)
+
+- New "Task preparation" section (P45-1, ADR 0029 point 1): `dispatch_pod` prepares a claimed
+  task's worktree before its first hop from the task's `prepare`, the pod's `prepare` setting or
+  the worktree's lockfile; `node_modules` is cached per codebase and lockfile and linked read-only
+  to the hops; a failure settles the task `failureKind: "prepare"` with no hop. `PodSettings`
+  gains `prepare`. The `prepare` trace event joins the list of events this pipeline emits.
 
 ### Version 6.58.0 (2026-10-18)
 

@@ -201,6 +201,79 @@ class TestRecipeExporters:
         assert pod.PodSettings.load_for(project).exporters == ()
 
 
+class TestPrepare:
+    """A team's `prepare:` is applied as the pod's setting and reviewed as a command."""
+
+    def _recipe(self, tmp_path: Path, text: str) -> Path:
+        recipe = tmp_path / "recipe"
+        recipe.mkdir()
+        (recipe / "pod.yaml").write_text(text, encoding="utf-8")
+        return recipe
+
+    def test_apply_stores_it_as_the_pods_setting_and_export_writes_it_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
+        recipe = self._recipe(tmp_path, "kind: pod\nname: x\nprepare: make deps\n")
+        plan = _pod_apply.plan_apply("prep", recipe)
+        assert [(i.kind, i.name, i.action) for i in plan.items] == [("setting", "prepare", "add")]
+        _pod_apply.apply(plan)
+        assert pod.PodSettings.load_for("prep").prepare == "make deps"
+        out = tmp_path / "out"
+        _pod_apply.export_pod("prep", out)
+        manifest = (out / "pod.yaml").read_text(encoding="utf-8")
+        assert "prepare: make deps" in manifest and "settings" not in manifest
+
+    def test_a_blank_prepare_is_stored_as_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
+        _pod_apply.apply(_pod_apply.plan_apply("prep", self._recipe(tmp_path, "prepare: ''\n")))
+        assert pod.PodSettings.load_for("prep").prepare == "none"
+
+    def test_prepare_inside_settings_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
+        recipe = self._recipe(tmp_path, "settings:\n  prepare: make\n")
+        with pytest.raises(_pod_apply.PodApplyError, match="top level"):
+            _pod_apply.plan_apply("prep", recipe)
+
+    @pytest.mark.parametrize("text", ["prepare: 3\n", "prepare: [a]\n", 'prepare: "a\\nb"\n'])
+    def test_a_malformed_prepare_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
+    ) -> None:
+        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
+        with pytest.raises(_pod_apply.PodApplyError):
+            _pod_apply.plan_apply("prep", self._recipe(tmp_path, text))
+
+    def test_a_declared_command_is_a_run_item_and_none_is_not(self, tmp_path: Path) -> None:
+        declared = _pod_apply.classify_directory(self._recipe(tmp_path, "prepare: make deps\n"))
+        assert [(i.kind, i.name, i.runs) for i in declared.runs] == [
+            ("prepare", "prepare", "make deps")
+        ]
+        off = tmp_path / "off"
+        off.mkdir()
+        (off / "pod.yaml").write_text("prepare: none\n", encoding="utf-8")
+        assert _pod_apply.classify_directory(off).runs == ()
+
+    def test_a_repositorys_lockfile_command_is_a_run_item(self, tmp_path: Path) -> None:
+        config = tmp_path / ".docket"
+        config.mkdir()
+        (tmp_path / "package-lock.json").write_text("{}")
+        review = _pod_apply.classify_directory(config)
+        assert [(i.kind, i.runs) for i in review.runs] == [("prepare", "npm ci")]
+        team = config / "teams" / "web"
+        team.mkdir(parents=True)
+        assert [i.runs for i in _pod_apply.classify_directory(team).runs] == ["npm ci"]
+
+    def test_a_lockfile_beside_an_ordinary_directory_is_not_reviewed(self, tmp_path: Path) -> None:
+        (tmp_path / "package-lock.json").write_text("{}")
+        recipe = tmp_path / "recipe"
+        recipe.mkdir()
+        assert _pod_apply.classify_directory(recipe).runs == ()
+
+
 def _repo_dir(tmp_path: Path, files: dict[str, str]) -> Path:
     root = tmp_path / "dotdocket"
     for rel, text in files.items():

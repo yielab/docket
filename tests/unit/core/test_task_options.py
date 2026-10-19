@@ -119,3 +119,14 @@ def test_a_block_policy_is_accepted_in_short_or_canonical_form() -> None:
         "action": "block",
     }
     assert _ok(restrictions={"policies": [short, canonical]}).restrictions is not None
+
+
+@pytest.mark.parametrize("value", ["npm ci", "", "none"])
+def test_prepare_is_kept_verbatim_even_when_blank(value: str) -> None:
+    assert _ok(prepare=value).as_record() == {"prepare": value}
+
+
+@pytest.mark.parametrize("value", ["a\nb", "a\x00b", "x" * 1001, 3, ["a"]])
+def test_a_malformed_prepare_is_refused(value: Any) -> None:
+    with pytest.raises(_to.TaskOptionsError):
+        _ok(prepare=value)
