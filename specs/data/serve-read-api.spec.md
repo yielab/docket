@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.10.2
+**Version**: 3.11.0
 **Status**: Stable
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -267,7 +267,8 @@ Requires `Authorization: Bearer <token>`. Returns the derived operator inbox —
 every provisioned pod that needs a human, plus recent context — built by
 `core/inbox.py::build_inbox`. An optional `?since=<iso>` query parameter restricts `doneSince` to
 tasks that completed after that timestamp; omitted, `doneSince` lists every terminal task. The
-body is `InboxView` (`core/operator_contract.py`) exactly, `by_alias`:
+body is `InboxView` (`core/operator_contract.py`) exactly, `by_alias`; an item's `question` includes
+the operator-v1.1 fields (`kind`, `options`, `recommendation`) when the task parked a consultation:
 
 ```json
 {
@@ -789,6 +790,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.11.0 (2026-10-19)
+
+- `GET /inbox`: a parked consultation's `question` carries `kind`, `options` (`id`, `label`,
+  `description`, ...) and `recommendation`, as `GET /tasks/<pod>/<id>` does; `inbox.schema.json`
+  describes the v1.1 question.
 
 ### Version 3.10.2 (2026-10-18)
 

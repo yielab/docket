@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 1.9.1
+**Version**: 1.10.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -192,7 +192,8 @@ of its own.
    item, and no escape codes.
 7. `GET /inbox?since=<iso>` (`serve.py`) MUST require the same `Authorization: Bearer <token>`
    as `GET /approvals` and return the identical JSON shape `docket inbox --json` prints for the
-   same state.
+   same state. A task's `question` MUST carry `kind`, `options` and `recommendation` whenever the
+   stored question has a `kind`, so a client can offer the options without a second read.
 8. `docket start --mcp`'s `inbox(since=None)` tool MUST return the same shape as `GET /inbox`.
 9. `GET /metrics` MUST expose `docket_inbox_items{section="needsYou"|"failed"|"doneSince"|
    "running"}` as a gauge, one line per section, computed from `build_inbox(now=..., since=None)`.
@@ -807,6 +808,13 @@ Each JSONL line is a JSON object with these fields:
   `GET /pods/<p>/corrections?since=` serves it (`operator-api.spec.md`).
 
 ## Changelog
+
+### Version 1.10.0 (2026-10-19)
+
+- Area 5 item 7: an inbox item's `question` carries the v1.1 fields (`kind`, `options`,
+  `recommendation`) when the stored question has them, on `GET /inbox`, the MCP `inbox` tool and
+  `docket inbox --json` alike; `TaskView.question` is typed `QuestionV11 | Question` and
+  `inbox.schema.json` describes both. Text output and notifications are unchanged.
 
 ### Version 1.9.1 (2026-10-18)
 
