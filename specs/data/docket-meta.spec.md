@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.6.2
+**Version**: 3.6.3
 **Status**: Complete
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -84,7 +84,6 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Its lifecycle is coupled to attempt-owned provisioning: rollback removes a scratch/workdir path only when that attempt created it, preserving pre-existing runtime contents and a successful same-project pod's directory. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
 | `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set verify --member`, `pod unset verify --member` (removes the key), `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod add --verify "<cmd>"` flag or `docket pod set verify "<cmd>" --member <member-id>` for an existing member (FD-1) — `meta_set` remains the internal fallback |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
-| `inPlace` | bool | `true` | local | No (in-place pod Implementers) | in-place provisioning | Marks an Implementer that works in the codebase itself: dispatch makes no task worktree for it — see pod-dispatch.spec.md "Task worktrees". **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
 
 In the **Written by** column, `add` means project/pod provisioning, which since 21abc85 is
 `docket init` (including `docket init --from`); `docket pod add`
@@ -237,6 +236,11 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.6.3 (2026-10-19)
+
+- `inPlace` removed: nothing wrote it, and a pod whose Implementer has no codebase, or whose worktree
+  cannot be added, already runs in place (pod-dispatch.spec.md "Task worktrees").
 
 ### Version 3.6.2 (2026-10-08)
 

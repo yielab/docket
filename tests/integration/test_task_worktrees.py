@@ -383,21 +383,6 @@ def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
     assert "disk full" in _dispatch.read_tasks("demo")[0]["reason"]
 
 
-def test_an_in_place_pod_never_gets_task_worktrees(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _fleet.meta_set("demo-implementer", "inPlace", True)
-
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
-
-    assert "worktree" not in _dispatch.read_tasks("demo")[0]
-    assert _worktree_paths(repo) == [str(repo.resolve())]
-
-
 def test_a_command_step_gets_the_task_id_and_the_evidence_commits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -543,7 +528,7 @@ def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
     repo = tmp_path / "repo"
     _init_repo(repo)
     _seed_pod(tmp_path, monkeypatch, repo)
-    _fleet.meta_set("demo-implementer", "inPlace", True)
+    monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a, **_k: (False, "forced"))
     head = _git(repo, "rev-parse", "HEAD")
     _bind_pipeline(_COORDINATES_PIPELINE_YAML)
     _dispatch.enqueue_task("demo", "work", channel="cli")

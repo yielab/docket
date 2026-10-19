@@ -92,6 +92,21 @@
       ],
       "default": null,
       "title": "Prepare"
+    },
+    "protects": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Protects"
     }
   },
   "required": [

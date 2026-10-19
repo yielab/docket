@@ -562,6 +562,32 @@ class TestPodSettingsPrepare:
         assert pod.PodSettings.load_for("shop").prepare == "make deps"
 
 
+class TestPodSettingsProtects:
+    """`protects` is a comma-joined list of repository globs; it only ever adds to the defaults."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").protects == ()
+
+    def test_coerce_joins_the_stripped_unique_globs(self) -> None:
+        assert pod.PodSettings.coerce("protects", " src/*.js , Makefile,src/*.js") == (
+            "src/*.js,Makefile"
+        )
+
+    @pytest.mark.parametrize("bad", ["/abs", "a/../b", "x" * 201])
+    def test_coerce_refuses_an_escaping_or_long_glob(self, bad: str) -> None:
+        with pytest.raises(pod.PodSettingsError, match="protects"):
+            pod.PodSettings.coerce("protects", bad)
+
+    def test_coerce_refuses_more_than_fifty_globs(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="protects"):
+            pod.PodSettings.coerce("protects", ",".join(f"d{n}/*" for n in range(51)))
+
+    def test_a_stored_value_is_read_back_as_a_tuple(self) -> None:
+        _write_lead_meta("shop", {"protects": "a/*,b"})
+        assert pod.PodSettings.load_for("shop").protects == ("a/*", "b")
+
+
 class TestPodSettingsDeniedTools:
     """`PodSettings.deniedTools`: built-in tool names every role in this pod
     additionally denies, unioned by `core.archetypes.registry_for_role` -- see

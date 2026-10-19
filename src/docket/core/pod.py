@@ -26,6 +26,7 @@ from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import models_policy as _mp
 from docket.core import prepare as _prepare
+from docket.core import protected_paths as _protected
 from docket.core import schedule as _schedule
 from docket.core import security as _security
 
@@ -286,6 +287,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "profile": "profile",
     "readOnly": "read_only",
     "prepare": "prepare",
+    "protects": "protects",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -397,6 +399,10 @@ class PodSettings(BaseModel):
     # 'none' turns preparation off and '' leaves the choice to the worktree's lockfile.
     prepare: str = Field("", alias="prepare")
 
+    # Globs a task may not change without a person (core/protected_paths.py); they add to the
+    # defaults and never remove one. Comma-joined in storage, like allowCommands.
+    protects: tuple[str, ...] = Field((), alias="protects")
+
     # 'attended' (the default) or 'lights-out' (core/profile.py): a pod may only move toward
     # stricter than the fleet's recorded profile -- ``coerce`` refuses a weaker write.
     profile: str = Field("attended", alias="profile")
@@ -440,6 +446,7 @@ class PodSettings(BaseModel):
         "profile",
         "readOnly",
         "prepare",
+        "protects",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
@@ -595,6 +602,21 @@ class PodSettings(BaseModel):
     def _parse_prepare(cls, value: Any) -> str:
         """One line of at most 1,000 characters, or ``none``."""
         return _prepare.check_command(value)
+
+    @field_validator("protects", mode="before")
+    @classmethod
+    def _parse_protects(cls, value: Any) -> tuple[str, ...]:
+        """Comma-separated path globs, at most ``MAX_PATTERNS``, each one ``check_pattern`` accepts."""
+        if value in (None, ""):
+            return ()
+        tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
+        kept: dict[str, None] = {}
+        for raw in tokens:
+            if str(raw).strip():
+                kept.setdefault(_protected.check_pattern(raw), None)
+        if len(kept) > _protected.MAX_PATTERNS:
+            raise ValueError(f"at most {_protected.MAX_PATTERNS} patterns")
+        return tuple(kept.keys())
 
     @field_validator("profile", mode="before")
     @classmethod

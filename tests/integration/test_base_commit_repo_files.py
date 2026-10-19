@@ -3,7 +3,8 @@
 An Implementer that rewrites ``AGENTS.md`` or a ``.docket/skills`` file in its task worktree and
 commits must not change what the next hop is told. Drives real ``dispatch_pod`` over a real git
 repo and the real ``DocketDriver``; the oracle is the system prompt the reviewer's backend
-receives, and the result of its ``skill`` tool call.
+receives, and the result of its ``skill`` tool call. The rewrite edits ``.docket/``, so the
+finished task parks for a person instead of ending ``done``.
 """
 
 from __future__ import annotations
@@ -161,7 +162,8 @@ def _run(skill_probe: bool = False) -> tuple[_Runner, _Backend]:
     runner = _Runner(backend)
     _dispatch.enqueue_task("demo", "do the thing", channel="cli")
     (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
-    assert result.status == "done", result.reason
+    assert result.status == "waiting_approval", result.reason
+    assert ".docket/skills" in result.reason
     return runner, backend
 
 
@@ -217,7 +219,8 @@ def test_the_hop_records_each_composed_repository_file_with_its_sha256(
     runner.driver.run_turn = spy  # type: ignore[method-assign]
     _dispatch.enqueue_task("demo", "do the thing", channel="cli")
     (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
-    assert result.status == "done", result.reason
+    assert result.status == "waiting_approval", result.reason
+    assert ".docket/skills" in result.reason
     files = seen[-1].repo_files
     assert files["AGENTS.md"] == hashlib.sha256(_BASE_AGENTS.encode()).hexdigest()
     assert ".docket/skills/demo-skill/SKILL.md" in files

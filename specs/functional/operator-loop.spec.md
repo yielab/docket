@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-19
 
@@ -568,6 +568,20 @@ functions, every surface is transport"; this area is that transport.
    report's JSON carries `checks.securityGates.profile {<pod>: {name, violations}}`, only then. Both call `core/profile.py::gather_facts` and `lights_out_violations`, the function
    dispatch calls. With the effective profile `attended` the output is byte-identical to before.
 
+### A task that edited its own check (P45-3, ADR 0029 point 3)
+
+1. A task whose finished diff touches a protected path parks `waiting_approval` with an approval
+   of context kind `check_changed` and `checkChanged` on the task (`pod-dispatch.spec.md` "A change
+   that edits its own check"), under every profile: `lights-out` does not skip it, because a
+   person is what a check the change defined cannot be.
+2. The task is an ordinary `needsYou` item: its `TaskView.reason` and the approval's `action` text
+   name the paths (at most 20, then a count of the rest), `a2aState` is `INPUT_REQUIRED`, and the
+   notification is `approval.requested` through the channels that already carry one. No new
+   event type, schema field or channel is introduced.
+3. The approval is answered like any other (`docket task approve|deny`, `POST /approvals/<token>`,
+   MCP, Telegram); a grant completes the task (`done`) instead of returning it to `pending`, a
+   denial fails it with `failureKind: "check_changed"`.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.operator_contract`)
@@ -808,6 +822,12 @@ Each JSONL line is a JSON object with these fields:
   `GET /pods/<p>/corrections?since=` serves it (`operator-api.spec.md`).
 
 ## Changelog
+
+### Version 1.11.0 (2026-10-19)
+
+- New section "A task that edited its own check" (P45-3, ADR 0029 point 3): the `check_changed`
+  park is a `needsYou` item under every profile; its grant ends the task `done`, its denial
+  `failed`/`check_changed`.
 
 ### Version 1.10.0 (2026-10-19)
 

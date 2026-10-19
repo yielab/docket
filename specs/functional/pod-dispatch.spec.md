@@ -1,7 +1,9 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.59.0
-**Status**: Complete. **P45-1** (ADR 0029 point 1) prepares the worktree docket makes: before a claimed task's first hop,
+**Version**: 6.60.0
+**Status**: Complete. **P45-3** (ADR 0029 point 3) keeps a check from being defined by the change it checks: a task whose
+finished diff touches a protected path parks `waiting_approval` for a person, whatever the profile — see "A change that
+edits its own check" below. **P45-1** (ADR 0029 point 1) prepares the worktree docket makes: before a claimed task's first hop,
 `dispatch_pod` runs one install command (the task's `prepare`, the pod's `prepare` setting, else one derived from
 the worktree's lockfile) and keeps what it installed once per codebase and lockfile hash — see "Task preparation" below. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
 produced: `HandoffArtifact.diff`, a capped diff of the hop's tracked changes plus the content of
@@ -829,6 +831,12 @@ was seeded once at binding time.)*
     preparation off (see "Task preparation"). Written by `pod.yaml`'s top-level `prepare:` (never
     inside `settings`, like `pipeline`) or by `docket pod set prepare` through the generic
     `coerce`-then-`meta_set` path. `""` is unset: the lockfile decides.
+11. `PodSettings` also carries `protects` (a comma-joined list of glob patterns in storage, `()` by
+    default): the paths a task may not change without a person ("A change that edits its own
+    check"). It adds to the defaults and never removes one. Written by `pod.yaml`'s top-level
+    `protects:` list (never inside `settings`) or by `docket pod set protects`. A pattern is a
+    non-empty repository-relative glob of at most 200 characters with no comma, NUL, newline,
+    leading `/` or `..` segment; at most 50.
 
 ### Schedule configuration and doctor visibility (ROADMAP P26-12)
 
@@ -1511,7 +1519,8 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 3. The group's outcome **MUST** merge its children's outcomes by priority: `blocked` (any child)
    > `failed` (any child) > `advance` (all children). A rework outcome is impossible inside a
    group — the pipeline format's own validator forbids a `rework` edge on a step nested inside a
-   `parallel` group.
+   `parallel` group. The merged `failed` outcome **MUST** keep the failing child's `failure_kind`
+   (a child stopped by the task's `maxTokens` makes the group, and the task, `failureKind: "budget"`).
 4. Each child's hop **MUST** be persisted (`on_hop`) the moment that child's turn completes — not
    deferred until the whole group joins — so a crash in one sibling **MUST NOT** lose a hop that
    already finished in another (R-1's crash-safety guarantee, generalized to a concurrent
@@ -1829,7 +1838,7 @@ document (`evidence.py`, `docs/contracts/`) are unchanged.*
    provisioning records no `worktreeDir`/`worktreeBranch` on any member. There is no per-member
    worktree code path.
 2. At claim (`_claim_next_task`), for a task with no `worktree` recorded, a pod whose Implementer
-   has a `codebase` and is not `inPlace` **MUST** get `<Implementer workspace>/tasks/<taskId>`
+   has a `codebase` **MUST** get `<Implementer workspace>/tasks/<taskId>`
    created on a new branch `docket/<project>/<taskId>` from the codebase's HEAD, and **MUST**
    record `task["worktree"] = {dir, branch, baseCommit, gitDir, commonDir}` through the task-list
    writer (`edges/store.py`); `baseCommit` is the new worktree's HEAD, the creation commit;
@@ -1882,8 +1891,9 @@ document (`evidence.py`, `docs/contracts/`) are unchanged.*
      `.gitignore` respected, **MUST** be committed on the task branch
      (`edges.adapters.system.git_commit_all`), so `git merge <branch>` (the command `docket task
      show` prints) brings the work and `docket task prune` keeps the worktree until that branch
-     is merged. The commit's subject is the task description's first line (else `docket task
-     <id>`),
+     is merged. The commit's subject is the task description's first line cut to at most 72 characters at a word boundary (the whole line
+     when it fits; a single word longer than 72 is cut at 72), else `docket task
+     <id>`,
      its body names the task id and the hop; it runs with repository hooks and commit signing
      disabled (bookkeeping, not a gate), as the operator's git identity, else `docket
      <docket@localhost>`. A tree with nothing to commit **MUST NOT** get a commit; `commit` is
@@ -1956,6 +1966,41 @@ A task's worktree is a bare checkout: nothing the project's own checks import is
    read-only root of every jailed hop and gate command whose worktree links into it
    (`security-gates.spec.md` Exec sandbox requirement 15). A tool that writes into
    `node_modules` (a `.cache` or `.vite` directory) therefore cannot, under isolation.
+
+### A change that edits its own check (P45-3, ADR 0029 point 3)
+
+A team's gate is quick feedback for the agent; it reads configuration the agent can edit. The
+protected-path rules (defaults, `protects`, command-named files) are `security-gates.spec.md`
+"Protected paths"; `core/protected_paths.py` owns them as pure functions over a list of paths.
+
+1. When `dispatch_task`'s pipeline ends `done` and the task records a worktree (`dir`, `branch`,
+   `baseCommit`), dispatch **MUST** list the paths the task changed: `git diff --name-only
+   <baseCommit> <branch>` united with the worktree's uncommitted and untracked paths
+   (`git status --porcelain`), read host-side (`edges.adapters.system`). A task with no worktree
+   record (it ran in place) **MUST NOT** be checked: it has no base to diff against.
+2. The patterns are the defaults, the pod's `protects` setting, and every tracked file of the
+   worktree that a command the task ran as a check names: the Implementer's `verifyCmd`, the
+   command of every `mechanical` or `external` gate and every `run:` step of the resolved
+   pipeline (a `parallel` group's children too), and the task's own `gate.command`.
+3. A changed path that is protected **MUST** park the task `waiting_approval` instead of `done`,
+   whatever the pod's `profile` (`lights-out` included) and `approvalMode`: dispatch creates an
+   approval through `core.approval.approval_create` with context `{"kind": "check_changed",
+   "taskId", "paths"}`, sets `task["checkChanged"]` to all the sorted protected paths,
+   `approvalToken`, a `reason` of `the change edits what checks it: <paths> (token=<token>)` (the
+   text lists at most 20 paths, then `and <n> more`), and
+   traces `approval_required` with `kind: "check_changed"`. `pendingApprovalIndex` is `null`. No
+   hop runs and no token is spent after the pipeline's last hop.
+4. `resolve_waiting_approval_detail` for a `check_changed` approval: a **grant** ends the task
+   `done` (`completedAt` set, `claimId` cleared, `approvalToken` cleared, `checkChanged` kept as
+   the record of what was granted) and never `pending` or a gate override; a **deny**, or an
+   approval that expired, ends it `failed` with `failureKind: "check_changed"` and `reason`
+   `approval denied[: <reason>]`, `checkChanged` kept. `docket task approve|deny`, `POST
+   /approvals/<token>`, MCP and Telegram all resolve it, and each decision writes the audit entry
+   with its channel that every approval writes.
+5. `check_changed` is not in `RESUMABLE_FAILURE_KINDS`. A `failed` task retried runs the pipeline
+   again and is checked again; `_apply_result` clears a stale `checkChanged` from any result that
+   does not set one.
+6. Not done here: files are not restored before a gate, and nothing is checked at claim.
 
 ### Downstream worktree continuity
 
@@ -2079,15 +2124,17 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    more hops may have completed and been persisted. Not terminal — either a live dispatcher is
    working it, or (if `claimedAt` has gone stale) the next `dispatch_pod` call's sweep will move
    it to `failed`/`stale_claim`.
-3. `done` — every present hop ran and passed all applicable gates (including any rework cycles).
-   Terminal.
+3. `done` — every present hop ran and passed all applicable gates (including any rework cycles)
+   and, for a task with a worktree, its diff touched no protected path or a person granted it
+   ("A change that edits its own check"). Terminal.
 4. `failed` — a hop's subprocess call failed (after exhausting any retries), a `verifyCmd`
    failed, a Tester verdict was FAIL/unparseable, a Reviewer's rework budget was exhausted or its
    verdict was unparseable, a stale claim was swept, or a require_approval gate's approval was
    denied (`failureKind: "approval_denied"`, see below). Terminal for this dispatch attempt,
    **except** a `failureKind: "stale_claim"` failure, which is reclaimable via `--resume` (see
    "Crash recovery") — a `failureKind: "approval_denied"` failure is **never** reclaimable, with
-   or without `--resume`.
+   or without `--resume`. A denied `check_changed` approval (`failureKind: "check_changed"`) is
+   likewise never reclaimable.
 5. `blocked` — the pod's budget cap was reached before a hop could run, or (ADR 0016, "Operator
    input steps and answers" below) a parked question's `expiresAt` passed unanswered
    (`blockedReason: "input_expired"`). Not terminal — re-enters `pending` only via
@@ -2106,7 +2153,9 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    `approve_task` also appends to the task's `taskGrants`, from which `_compose_hop` mints one
    single-use pre-grant per entry for each later hop (operator-loop requirement 5a). A denied (or
    fail-closed-expired) approval instead moves the task straight to `failed` (see above) — it
-   does not pass through `pending` at all.
+   does not pass through `pending` at all. A `check_changed` approval ("A change that edits its
+   own check") is the one exception to re-entering `pending`: its grant ends the task `done` and
+   its denial `failed`, and it is never skipped by a profile or an `approvalMode`.
 7. `cancelled` (Wave 26 W26-C10c) — the owning run's persisted cancellation signal was observed
    during execution. Terminal. The task retains its completed and cancelled-hop evidence, records
    `completedAt`, and cannot be reclaimed or overwritten by a late successful response.
@@ -2411,6 +2460,16 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.60.0 (2026-10-19)
+
+- New "A change that edits its own check" section (P45-3, ADR 0029 point 3): a task that ends
+  `done` with a protected path in its diff parks `waiting_approval` (approval kind `check_changed`,
+  `checkChanged: [paths]`) whatever the profile; a grant ends it `done`, a deny `failed` with
+  `failureKind: "check_changed"`. `PodSettings` gains `protects`. Task states 3, 4 and 6 name it.
+- "Parallel step groups" requirement 3: the merged `failed` outcome keeps the child's
+  `failure_kind`. "Task worktrees": the pin commit's subject is cut at a word boundary, and the
+  `inPlace` Implementer meta key, which nothing wrote, is gone.
 
 ### Version 6.59.0 (2026-10-19)
 

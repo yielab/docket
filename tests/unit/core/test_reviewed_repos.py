@@ -16,12 +16,12 @@ A = RunItem("pipeline-step", "migrate", "sh scripts/migrate.sh")
 B = RunItem("mcp-server", "db", "npx -y @acme/db-mcp@1.4.2")
 
 
-def test_the_code_is_sixteen_hex_and_independent_of_item_order() -> None:
+def test_the_code_is_sixteen_hex_and_independent_of_item_order(tmp_path: Path) -> None:
     """The same items in any order give the same 16-hex code; a changed command changes it."""
-    code = _reviewed.review_code((A, B))
+    code = _reviewed.review_code((A, B), tmp_path)
     assert len(code) == 16 and int(code, 16) >= 0
-    assert _reviewed.review_code((B, A)) == code
-    assert _reviewed.review_code((A, RunItem(B.kind, B.name, "npx evil"))) != code
+    assert _reviewed.review_code((B, A), tmp_path) == code
+    assert _reviewed.review_code((A, RunItem(B.kind, B.name, "npx evil")), tmp_path) != code
 
 
 def test_remember_then_lookup_matches_only_the_same_items(tmp_path: Path) -> None:
@@ -89,8 +89,8 @@ def test_the_older_one_entry_shape_is_not_read(tmp_path: Path) -> None:
     old = {
         "repos": {
             str(repo.resolve()): {
-                "digest": _reviewed._digest((A,)),
-                "code": _reviewed.review_code((A,)),
+                "digest": _reviewed._digest((A,), repo),
+                "code": _reviewed.review_code((A,), repo),
                 "date": "2026-10-01",
                 "items": [{"kind": A.kind, "name": A.name, "runs": A.runs}],
             }
