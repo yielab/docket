@@ -311,7 +311,7 @@ class TaskView(BaseModel):
     priority: str = ""
     created_at: str = Field("", alias="createdAt")
     updated_at: str = Field("", alias="updatedAt")
-    question: Question | None = None
+    question: QuestionV11 | Question | None = None
     approval_token: str | None = Field(None, alias="approvalToken")
     brief: TaskBrief | None = None
 
