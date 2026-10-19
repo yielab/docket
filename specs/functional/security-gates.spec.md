@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.64.0
+**Version**: 0.65.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -689,15 +689,13 @@ tool call to take.**
    > and `^(write|edit) path="...(.env|.ssh/...)"`. `grep -r process.env src/` and a script that
    > merely contains `.write(` and `process.env` do not fire.
 
-   > **Two `block-destructive.json` alternatives were verified, not assumed, against this
-   > render.** `\.env\b.*write` and `\.ssh\/\s*write` require the path text to appear *before*
-   > the literal word "write". No render of a `write` tool call produces that order — a natural
-   > render puts the verb first (`write path=".env" ...`) — so, checked empirically, **neither
-   > alternative ever matched**. Both were fixed to match either order
-   > (`(?:\.env\b.*write|write.*\.env\b)` and the `.ssh` equivalent); the fix is covered by
+   > **History: the either-order `.env`/`.ssh` alternatives.** The original `block-destructive`
+   > alternatives `\.env\b.*write` and `\.ssh\/\s*write` never matched a `write` call, whose render
+   > puts the verb first; they were first fixed to match either order. That form spanned a whole
+   > script and was itself replaced in 0.62.0 by the target-anchored alternatives above, which
    > `TestBlockDestructiveShippedTemplate::test_policy_gates_a_write_call_the_command_classifier_never_inspects`
-   > and `::test_ssh_directory_write_is_also_gated`, both of which fail against the original
-   > patterns and pass against the fixed ones.
+   > and `::test_ssh_directory_write_is_also_gated` pin. The shipped template no longer contains
+   > `\.env\b.*write`.
 2. `core/tools.py`'s `evaluate_tool_call` **MUST** be the single point that consults
    `policy_eval_detail(ctx.role, "pre_tool_call", render_tool_call(tool.name, args))`, alongside
    P19-2's command classifier — no second call site may gate a tool call. A policy `action`
@@ -1121,6 +1119,35 @@ either.
     links, never from a setting a repository can write. Escape-matrix rows: a jailed command reads
     the entry and cannot write it (an unjailed control can), and a prepare launch reaches a
     listener while a hop under `network: none` does not.
+
+### Protected paths and the reviewed digest (P45-3, ADR 0029 point 3)
+
+A check is never defined by the change it checks. `core/protected_paths.py` holds the rules as
+pure functions; `pod-dispatch.spec.md` "A change that edits its own check" is where a task meets
+them.
+
+1. **Defaults.** A path is protected when it matches one of: the lockfiles `core/prepare.py`
+   knows (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`,
+   `Cargo.lock`), `package.json`, `pyproject.toml`, `Cargo.toml`, `.eslintrc*`, `eslint.config.*`,
+   `tsconfig*.json`, `vitest.config.*`, `jest.config.*`, `ruff.toml`, `setup.cfg`, `tox.ini`,
+   `pytest.ini`, `mypy.ini`, `.docket/**` and `.github/workflows/**`. A pattern without a `/` is
+   matched against the file name at any depth (`web/package.json` is protected); a pattern with a
+   `/` is matched against the whole repository-relative path, `*` matching across `/`. Matching is
+   case-sensitive, on `/`-separated paths.
+2. **The team's `protects`.** `PodSettings.protects` adds patterns, with the same matching; it
+   never removes a default, and a pattern that matches nothing is not an error.
+3. **Files a reviewed command names.** A command string is split like a shell would (quotes, and
+   `&&`, `||`, `;` and `|` as separators); a token, or the part of `--flag=value` after the `=`,
+   with a leading `./` removed, that is a tracked file of the repository is protected. Only files
+   are named this way: `pytest tests/` names a directory and protects nothing, and a `make` or
+   `npm run` target is covered only through the files it reads that the defaults already hold.
+4. **The reviewed digest covers those files' contents.** `core.reviewed_repos` computes the
+   digest of a set of run items together with, for each tracked file those items' commands name
+   (items of kind `allow-commands`, `network` and `role-loosens` name none), the file's git blob
+   id as it stands in the codebase root. A file whose content changes, or which is added or
+   removed from the set, changes the digest and the 16-hex review code, so `pod update` and
+   `docket run` ask the person again; the stored items are unchanged, so a refusal shows the same
+   before/now lines. A root that is not a git repository contributes no files.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1869,6 +1896,14 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.65.0 (2026-10-19)
+
+- New "Protected paths and the reviewed digest" section (P45-3, ADR 0029 point 3): the default
+  protected paths, the team's `protects`, the tracked files a reviewed command names, and the
+  review digest covering those files' contents.
+- The stale `.env\b.*write` note under "Rendering a call for the policy engine" now says what the
+  shipped template does: the either-order form was itself replaced in 0.62.0.
 
 ### Version 0.64.0 (2026-10-19)
 

@@ -34,11 +34,22 @@ from docket.core import pod
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import prepare as _prepare
+from docket.core import protected_paths as _protected
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 
 _MANIFEST_KEYS = frozenset(
-    {"members", "settings", "pipeline", "kind", "name", "description", "exporters", "prepare"}
+    {
+        "members",
+        "settings",
+        "pipeline",
+        "kind",
+        "name",
+        "description",
+        "exporters",
+        "prepare",
+        "protects",
+    }
 )
 
 # The same name shape `core.exporter.ExporterSpec` validates -- checked here too so a
@@ -762,19 +773,34 @@ def _plan_settings(
     return items, writes
 
 
-def _settings_with_prepare(
+def _settings_with_top_level(
     raw_settings: dict[str, Any], manifest: dict[str, Any]
 ) -> dict[str, Any]:
-    """*raw_settings* plus the manifest's top-level ``prepare`` (blank means ``none``); a
-    ``prepare`` inside ``settings`` is refused, as ``pipeline`` is."""
-    if "prepare" in raw_settings:
-        raise PodApplyError("pod.yaml: 'prepare' belongs at the top level, not 'settings'")
+    """*raw_settings* plus the manifest's top-level ``prepare`` (blank means ``none``) and
+    ``protects`` (a list of globs); either one inside ``settings`` is refused, as ``pipeline``
+    is."""
+    for key in ("prepare", "protects"):
+        if key in raw_settings:
+            raise PodApplyError(f"pod.yaml: '{key}' belongs at the top level, not 'settings'")
+    merged = dict(raw_settings)
     raw = manifest.get("prepare")
-    if raw is None:
-        return raw_settings
-    if not isinstance(raw, str):
-        raise PodApplyError("pod.yaml: 'prepare' must be a string")
-    return {**raw_settings, "prepare": raw.strip() or "none"}
+    if raw is not None:
+        if not isinstance(raw, str):
+            raise PodApplyError("pod.yaml: 'prepare' must be a string")
+        merged["prepare"] = raw.strip() or "none"
+    patterns = manifest.get("protects")
+    if patterns is not None:
+        merged["protects"] = _protects_list(patterns)
+    return merged
+
+
+def _protects_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list) or not all(isinstance(e, str) for e in raw):
+        raise PodApplyError("pod.yaml: 'protects' must be a list of strings")
+    try:
+        return [_protected.check_pattern(entry) for entry in raw]
+    except ValueError as exc:
+        raise PodApplyError(f"pod.yaml: 'protects' entry is invalid ({exc})") from exc
 
 
 def _plan_exporters(manifest: dict[str, Any]) -> tuple[str, ...]:
@@ -878,7 +904,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     mcp_items, mcp_write = _plan_mcp_servers(directory, project)
 
     setting_items, setting_writes = _plan_settings(
-        project, _settings_with_prepare(raw_settings, manifest), tuple(i.name for i in mcp_items)
+        project, _settings_with_top_level(raw_settings, manifest), tuple(i.name for i in mcp_items)
     )
 
     items = [*role_items, *policy_items, *plugin_items, *skill_items, *mcp_items, *member_items]
@@ -962,7 +988,7 @@ def review_decision(
         return ReviewDecision("refused", review)
     if not review.runs or _reviewed.is_reviewed(repo_root, project, review.runs):
         return ReviewDecision("go", review)
-    code = _reviewed.review_code(review.runs)
+    code = _reviewed.review_code(review.runs, repo_root)
     if accept is None:
         return ReviewDecision("needs_code", review, code)
     return ReviewDecision("accepted" if accept == code else "code_mismatch", review, code)
@@ -1106,6 +1132,8 @@ def classify_directory(directory: Path) -> PlanReview:
     adds.extend(("setting", k) for k in sorted(settings) if k not in ("allowCommands", "network"))
     if "prepare" in manifest:
         adds.append(("setting", "prepare"))
+    if "protects" in manifest:
+        adds.append(("setting", "protects"))
     refused = tuple(n for n in names if n in REPO_REFUSED_COMMANDS)
     return PlanReview(tuple(adds), tuple(runs), refused)
 
@@ -1421,8 +1449,8 @@ def _export_manifest(project: str, directory: Path) -> None:
     settings_doc = pod.PodSettings.load_for(project)
     settings_out: dict[str, Any] = {}
     for key in pod.PodSettings.KEYS:
-        if key in ("pipeline", "prepare"):
-            continue  # top-level, never a `settings` entry (see `_settings_with_prepare`)
+        if key in ("pipeline", "prepare", "protects"):
+            continue  # top-level, never a `settings` entry (see `_settings_with_top_level`)
         value, source = settings_doc.value_and_source(key, project)
         if source == "set" and value is not None:
             settings_out[key] = value
@@ -1434,6 +1462,8 @@ def _export_manifest(project: str, directory: Path) -> None:
         manifest["exporters"] = list(settings_doc.exporters)
     if settings_doc.prepare:
         manifest["prepare"] = settings_doc.prepare
+    if settings_doc.protects:
+        manifest["protects"] = list(settings_doc.protects)
     pod_path = directory / "pod.yaml"
     _dump_yaml_file(pod_path, manifest, schema_header=_schema_header(directory, pod_path, "pod"))
 

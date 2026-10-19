@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.0.0
+**Version**: 6.1.0
 **Status**: Implemented (Phase 43, ADR 0027; Phase 45, ADR 0029). `SERVE_API_VERSION` is `"6"`.
 **Last Updated**: 2026-10-19
 
@@ -296,7 +296,8 @@ state; a server instance holds none.
    and `POST /tasks/<id>/answer` read the same files, so a fresh instance over the same
    `DOCKET_HOME` accepts the grant or answer a previous instance parked. The approval's own
    `expiresAt` is on its record (`GET /approvals`).
-3. An answer or grant moves the task to `pending` and starts nothing. The next sweep tick
+3. An answer or grant moves the task to `pending` and starts nothing (a grant of a `check_changed`
+   approval is the exception: it ends the task `done`, see "Check changed" below). The next sweep tick
    (30 s under `--dispatch`) or `POST /dispatch/<pod>` resumes it at the hop it stopped on; a
    completed hop is never re-run.
 4. Use one `idempotencyKey` per attempt. The key binds to the task for as long as the task is in
@@ -311,6 +312,21 @@ state; a server instance holds none.
    resumes it from its last persisted hop on the next tick. A `failed` task with any other
    `failureKind` (except a settled `dispatch_refused`, which the sweep also resumes) is final
    until `POST .../retry`.
+
+## Check changed
+
+A task whose finished diff touches a protected path (`security-gates.spec.md` "Protected paths and
+the reviewed digest") is not `done`: it is `waiting_approval` whatever the pod's profile, so a
+consumer that polls for `done` does not see an unreviewed change to a check.
+
+1. The task record (`GET /tasks/<pod>/<id>`, `GET /inbox`'s task view reason) carries
+   `checkChanged`, the sorted protected paths the diff touched, with `approvalToken`; `GET
+   /approvals` lists the approval with context kind `check_changed`.
+2. `POST /approvals/<token>` with a grant ends the task `done`; a deny (or an approval past its
+   `expiresAt`) ends it `failed` with `failureKind: "check_changed"`, which is final until
+   `POST .../retry`. `checkChanged` stays on the record either way.
+3. `apiVersion` stays `"6"`: `checkChanged` and the new `failureKind` are additive to it, and the
+   Phase 45 version has not been released.
 
 ## Return
 
@@ -350,6 +366,12 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 6.1.0 (2026-10-19)
+
+- New "Check changed" section (P45-3, ADR 0029 point 3): a task whose diff touches a protected
+  path is `waiting_approval` with `checkChanged: [paths]` under every profile; a grant ends it
+  `done`, a deny `failed` with `failureKind: "check_changed"` (final). `apiVersion` stays `"6"`.
 
 ### Version 6.0.0 (2026-10-19)
 
