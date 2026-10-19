@@ -903,3 +903,41 @@ class TestCondenseHistory:
             assert seen <= condensed
             seen = condensed
         assert seen
+
+
+class TestCondenseHistoryBatches:
+    """The cut moves in batches, so the request prefix survives the calls between boundaries."""
+
+    def test_the_prefix_is_identical_between_batch_boundaries(self) -> None:
+        """With 2,000-character results the prefix moves at five of twelve steps, not nine."""
+
+        def grown(count: int) -> list[ChatMessage]:
+            out: list[ChatMessage] = [user("the task")]
+            for n in range(count):
+                out.extend(_read_exchange(n, body=str(n).ljust(2_000, "x")))
+            return out
+
+        previous = _sess.condense_history(grown(1))
+        boundaries = 0
+        for count in range(2, 13):
+            current = _sess.condense_history(grown(count))
+            if current[: len(previous) - 2] != previous[:-2]:
+                boundaries += 1
+            previous = current
+        assert boundaries == 5
+
+    def test_the_low_water_mark_leaves_room_before_the_next_cut(self) -> None:
+        """After a cut the whole results fit the low-water mark, so the next few arrivals add none."""
+        size = 1_000
+
+        def grown(count: int) -> list[ChatMessage]:
+            out: list[ChatMessage] = [user("the task")]
+            for n in range(count):
+                out.extend(_read_exchange(n, body="y" * size))
+            return out
+
+        def condensed(count: int) -> int:
+            out = _sess.condense_history(grown(count), keep=1)
+            return sum(1 for m in out if m.role == "tool" and m.content.startswith("[read"))
+
+        assert [condensed(n) for n in range(5, 12)] == [0, 0, 4, 4, 4, 4, 8]

@@ -35,6 +35,7 @@ from docket.edges import store as _store
 __all__ = [
     "HISTORY_FULL_RESULTS_CHARS",
     "HISTORY_KEEP_FULL_RESULTS",
+    "HISTORY_LOW_WATER_CHARS",
     "CompactionPlan",
     "CompactionResult",
     "MeasuredUsage",
@@ -64,6 +65,8 @@ SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], Tur
 HISTORY_KEEP_FULL_RESULTS = 2
 #: Older results also stay whole while all whole results fit in this many characters.
 HISTORY_FULL_RESULTS_CHARS = 6_000
+#: Once whole results exceed the budget, condensing leaves at most this many characters whole.
+HISTORY_LOW_WATER_CHARS = 3_000
 
 _SESSION_FILENAME = "session.json"
 _COMPACTED_SUMMARY_PREFIX = "[compacted summary of "
@@ -314,21 +317,34 @@ def _condense_call(call: ToolCall) -> ToolCall:
     return ToolCall(call.id, call.name, json.dumps(args, ensure_ascii=False, separators=(",", ":")))
 
 
+def _batch_cut(sizes: Sequence[int], keep: int, budget: int) -> int:
+    """How many of the oldest results are condensed: it moves only when the whole ones outgrow
+    *budget*, and then down to the low-water mark. A function of *sizes* alone."""
+    low = min(HISTORY_LOW_WATER_CHARS, budget // 2)
+    cut = 0
+    for end in range(1, len(sizes) + 1):
+        if sum(sizes[cut:end]) <= budget:
+            continue
+        start = max(cut, end - keep)
+        whole = sum(sizes[start:end])
+        while start > cut and whole + sizes[start - 1] <= low:
+            start -= 1
+            whole += sizes[start]
+        cut = start
+    return cut
+
+
 def condense_history(
     messages: Sequence[ChatMessage],
     keep: int = HISTORY_KEEP_FULL_RESULTS,
     budget: int = HISTORY_FULL_RESULTS_CHARS,
 ) -> list[ChatMessage]:
     """The request projection: the last *keep* tool results and older ones that still fit
-    *budget* characters stay whole; the rest become notices and their large ``write``/``edit``
-    arguments counts. Pure and deterministic; the stored history is never changed."""
+    *budget* characters stay whole, with the cut moving in batches; the rest become notices and
+    their large ``write``/``edit`` arguments counts. Pure and deterministic; the stored history
+    is never changed."""
     results = [m for m in messages if m.role == "tool"]
-    keep = max(1, keep)
-    whole = sum(len(m.content) for m in results[-keep:])
-    cut = max(0, len(results) - keep)
-    while cut and whole + len(results[cut - 1].content) <= budget:
-        cut -= 1
-        whole += len(results[cut].content)
+    cut = _batch_cut([len(m.content) for m in results], max(1, keep), budget)
     old = {m.tool_call_id for m in results[:cut]}
     calls = {c.id: c for m in messages for c in m.tool_calls}
     out: list[ChatMessage] = []
