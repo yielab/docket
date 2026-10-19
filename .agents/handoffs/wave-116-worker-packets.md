@@ -169,3 +169,73 @@ integrator orders them on merge).
   in `core/inbox.py`/`core/operator_contract.py`, whichever is the public path.
 - Spec: `security-gates.spec.md` §"Approval tokens and approval packs";
   `specs/data/serve-read-api.spec.md` 3.10.1, the approval view fields.
+
+## Batch B
+
+### W116-8 — `GET /inbox` carries a consultation's options (Sonnet)
+
+- The seam: `core/inbox.py::_task_question` already builds a `QuestionV11` when the stored
+  question has `kind`, and `task_view` puts it on `TaskView.question`, which is typed `Question`
+  (`core/operator_contract.py:314`). Find where the v1.1 fields are lost between that model and
+  the HTTP body (`serve.py` inbox route, MCP `inbox`, `inbox --json`): a `model_dump` over the
+  narrower type, a schema-driven filter, or the field annotation itself. Fix the one owner;
+  the three surfaces must stay equal because they render the same `InboxView`.
+- Contract: `docs/contracts/operator-v1/inbox.schema.json` is generated from the Pydantic models
+  (find the generator under `scripts/` with `rg -n "inbox.schema" scripts tests`). Bump through
+  the generator, never by hand, and keep whatever check test compares the file to the models.
+- RED: a parked consultation with two options (build it the way
+  `tests/integration/test_consult_park.py` does), then `GET /inbox` lacks `options`. Assert
+  `kind`, each option's `id`/`label`, `recommendation`, and that `inbox --json` equals the HTTP
+  item. Validate the HTTP body against the bumped schema.
+- Non-goals: text output and notifications are unchanged; the memory-entries follow-up on the
+  board is not folded in.
+- Specs: `specs/functional/operator-loop.spec.md` (1.9.1) and `specs/data/serve-read-api.spec.md`
+  (3.10.2); one minor bump each.
+
+### W116-9 — the re-attach contract is written down and pinned (Sonnet)
+
+- Spec first: `specs/api/operator-api.spec.md` (5.8.0) lists "the stop and resume rules of the
+  daemon" in Scope and has no section for them. Add "Re-attaching after a restart" under Output
+  (before "Trace events" or after `/health`), minor bump 5.9.0, with the six rules on the card.
+  Cross-reference, do not restate, the expiry rules of `security-gates.spec.md` 0.63.0
+  (`expiresAt` on every approval) and `operator-loop.spec.md` (`inputExpiryHours`, final state
+  `blocked`).
+- Test shape: `tests/integration/test_serve_task_answer_endpoint.py` has the `pod_home` +
+  `live_server` fixtures (a `ThreadingHTTPServer` over `_DocketHandler`). "A restart" is: stop
+  that server, start a second one over the same `pod_home`. Park a task with the stub endpoint
+  the way `test_consult_park.py` and `tests/integration/test_approval_gated_dispatch.py` do
+  (`llm_server` fixture, `register_local_provider`).
+- Each rule gets one test in `tests/integration/test_serve_reattach.py`: GET serves the parked
+  task from disk with `approvalToken` + `expiresAt`; a grant through the fresh instance moves it
+  to `pending` and the next sweep (`core/dispatch` sweep entry point, called directly) resumes it
+  at the gated hop; the same through `POST /tasks/<id>/answer` for `waiting_input`; a
+  consultation's `question.options` on `GET /tasks/<pod>/<id>`; an `idempotencyKey` retried
+  after a failure returns the failed task; a `stale_claim` failure is picked up by the next sweep.
+  Oracles: HTTP bodies and `TASK_LIST.json`.
+- No `src/` change is expected. A failing test is a defect: fix it in this card and say so in
+  the return, with the spec text it contradicted.
+
+### W116-10 — condensation keeps the cached prefix (Sonnet; load `docket-context-runtime`)
+
+- `core/session.py::condense_history` (`:317`) recomputes `cut` on every call and the notice
+  boundary moves one result at a time, so consecutive requests differ right after the system
+  prompt. Spec requirement 30-31 of `specs/functional/session-history.spec.md` (1.8.0); the last
+  sentence of 31 promises a byte-identical prefix that the loop does not deliver once results
+  outgrow `budget`.
+- Goal: hysteresis. When the whole results exceed `budget`, cut down to a low-water mark
+  (a second constant beside `HISTORY_FULL_RESULTS_CHARS`, e.g. half) so the projection is
+  identical for several calls and moves only at a batch boundary. `keep` and `budget` are not
+  changed. The function stays pure; the hysteresis must be a function of the messages alone (no
+  state across calls), so the "previous cut" is derived, not remembered.
+- RED (unit, `tests/unit/core/test_session.py`): over a growing sequence of histories (each adds
+  one assistant/tool pair with a 2,000-character result), every message before the newest pair
+  is byte-identical between consecutive projections except at batch boundaries; assert the
+  number of boundaries. Today it fails because the boundary moves at nearly every step.
+- Bench (estimate, label it so): `env -u VIRTUAL_ENV uv run python scripts/maint/context_replay.py
+  <replay-dir>` before and after, where `<replay-dir>` is given in your prompt (private
+  recordings, gitignored; never copy anything from it into the tree). Report prefix-stable calls
+  and counted tokens per step. Adopt only if counted tokens do not rise on the implementer and
+  the researcher steps. Add a `--policy` only if the script needs one to project the change.
+- Risk to record, not to solve: condensing earlier can cause re-reads. The real-run count is
+  the integrator's.
+- Spec bump 1.9.0: amend requirement 30 (the low-water mark) and the prefix sentence of 31.
