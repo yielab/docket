@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.63.0
+**Version**: 0.64.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -1108,6 +1108,19 @@ either.
     after `command exited 126`: the jail could not execute it, a retry will not help, and the
     operator grants a toolchain with `docket setup sandbox read add <path>`. It is a message,
     not a new stop condition: the no-progress stop still bounds a model that keeps retrying.
+15. **A prepared worktree is readable, never writable, and its install has the network (P45-1,
+    ADR 0029 point 1).** The install command of a task's worktree (`pod-dispatch.spec.md` "Task
+    preparation") is a docket-launched command like a `verifyCmd`: with isolation on it runs
+    through `jail_launch` with the worktree writable and **the network open for that launch
+    only**, whatever the pod's `network` records; with isolation off it runs on the host. Hops,
+    `verifyCmd`, `run:` steps and gates keep the pod's `network`. The cache entry the install is
+    kept in (`DOCKET_HOME/cache/prepare/<codebase>/<entry>`) is added as a read-only root, as
+    requirement 14's grants are, to every jailed command whose worktree holds a symlink into it
+    (`core/prepare.py::linked_entries`): readable and executable, not writable, so a hop cannot
+    alter what the next task of the codebase links. The entry is found from the worktree's own
+    links, never from a setting a repository can write. Escape-matrix rows: a jailed command reads
+    the entry and cannot write it (an unjailed control can), and a prepare launch reaches a
+    listener while a hop under `network: none` does not.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1856,6 +1869,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.64.0 (2026-10-19)
+
+- Exec sandbox requirement 15 (P45-1, ADR 0029 point 1): the install of a task's worktree runs
+  with the network open for that launch only; the cache entry it fills is a read-only root of
+  every jailed command whose worktree links into it. Two escape-matrix rows pin it.
 
 ### Version 0.63.0 (2026-10-18)
 

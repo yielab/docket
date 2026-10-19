@@ -29,6 +29,7 @@ from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp
 from docket.core import pod as _pod
 from docket.core import policy as _policy
+from docket.core import prepare as _prepare
 from docket.core import repo_view as _repo_view
 from docket.core import runs as _runs
 from docket.core import session as _session
@@ -440,6 +441,12 @@ def resolve_command_jail(project: str, label: str) -> tuple[_system.JailPolicy |
     ), None
 
 
+def _hop_read_only(project: str, root: Path) -> tuple[Path, ...]:
+    """The read-only roots of a hop: the operator's grants for the pod, plus the prepared
+    install cache entries the hop's root links into."""
+    return (*_pod.effective_read_only(project), *_prepare.linked_entries(root))
+
+
 def _resolve_posture(
     agent_id: str, role: str, env: dict[str, str] | None = None
 ) -> tuple[bool, bool]:
@@ -657,7 +664,7 @@ class DocketDriver:
             approval_expires_at=approval_expires_at,
             approval_timeout=approval_timeout,
             cache_dir=_jail_cache_dir(agent_id, want_sandbox),
-            read_only=_pod.effective_read_only(resolved_project) if want_sandbox else (),
+            read_only=_hop_read_only(resolved_project, ctx_roots[0]) if want_sandbox else (),
             on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role
