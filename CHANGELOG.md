@@ -112,6 +112,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`GET /inbox` carries a consultation's options (W116-8).** `TaskView.question` was typed
+  as the v1.0 `Question`, so `GET /inbox`, the MCP `inbox` tool and `docket inbox --json` dropped
+  a parked consultation's `kind`, `options` and `recommendation` that `GET /tasks/<pod>/<id>`
+  served; a client had to read every task twice. The three surfaces now carry them, and the
+  operator-v1 `inbox` and `task` schemas describe the v1.1 question (operator-loop 1.10.0,
+  serve-read-api 3.11.0).
+- **The re-attach contract is written down and pinned (W116-9).** `operator-api.spec.md` 5.9.0
+  states what a client may rely on after its runner or docket restarts: tasks served from disk
+  with their token or question, tokens and questions answerable across restarts, answers that
+  start no sweep, one `idempotencyKey` per attempt, expiry by cross-reference, `stale_claim`
+  resumed by the next sweep. Seven integration tests drive a second server over the same home.
+- **Condensation moves in batches (W116-10).** `condense_history` recomputed its cut on every
+  request and moved it one result at a time once results outgrew 6,000 characters, so the first
+  changed message sat right after the system prompt and the provider's cached prefix ended
+  there. The cut now drops whole results to a 3,000-character low-water mark and holds until
+  they pass the budget again, still as a pure function of the messages (session-history 1.9.0).
 - **A quoted heredoc's body is data, not commands (W116-1).** The classifier read every line of
   a heredoc body as a command, so a `python3 - <<'EOF'` script holding a backtick, `${`, an
   apostrophe or `=>` asked for approval. With a quoted delimiter (`<<'EOF'`, `<<"EOF"`,

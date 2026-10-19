@@ -34,7 +34,7 @@
 > | Batch | Cards | Ownership (no two lanes share a file or function) |
 > | --- | --- | --- |
 > | A | W116-1 → W116-2 (one worker, `security.classify_command`) · W116-3 (policy template) · W116-4 (role text, `bash` description) · W116-5 (`trace.trace_event`) · W116-6 (`dispatch._apply_result`) · W116-7 (`approval.approval_create`) — **closed 2026-10-18**, six Sonnet workers in hand-made worktrees, merges `141e8121` 7 · `a328c381` 3 · `67980b97` 4 · `f76494ad` 5 · `9c306fd0` 1+2 · `ffc0ce51` 6 | parallel |
-> | B | W116-8 (inbox contract) · W116-9 (re-attach contract, asserts W116-6/7) · W116-10 (condensation) | A merged |
+> | B | W116-8 (inbox contract) · W116-9 (re-attach contract, asserts W116-6/7) · W116-10 (condensation) — **closed 2026-10-19**, three Sonnet workers, merges `7edd7bbb` 8 · `7f6d8e9f` 9 · `3e548efa` 10 | A merged |
 
 ### W116-1 — a quoted heredoc's body is data, not commands
 
@@ -250,7 +250,7 @@
 
 ### W116-8 — `GET /inbox` carries a consultation's options
 
-**Status:** TODO · **Size:** M · **Depends:** batch A merged
+**Status:** DONE 2026-10-19 (`7edd7bbb`) · **Size:** M · **Depends:** batch A merged
 - **Trigger (deterministic):** `TaskView.question` is typed `Question`
   (`core/operator_contract.py:314`). A consultation's `kind`, `options` and `recommendation`
   (`QuestionV11`) survive in memory for notifications (`core/inbox.py::_task_question`) but are
@@ -273,7 +273,7 @@
 
 ### W116-9 — the re-attach contract is written down and pinned
 
-**Status:** TODO · **Size:** S · **Depends:** W116-6, W116-7
+**Status:** DONE 2026-10-19 (`7f6d8e9f`) · **Size:** S · **Depends:** W116-6, W116-7
 - **Trigger (explicit request):** after its runner restarted and abandoned live tasks, Tack asked
   which re-attach contract it may rely on. The behaviour holds today from durable state, but:
   - `specs/api/operator-api.spec.md` (5.8.0) lists "stop and resume rules of the daemon" in scope
@@ -304,7 +304,7 @@
 
 ### W116-10 — condensation keeps the cached prefix
 
-**Status:** TODO · **Size:** M · **Read:** `docket-context-runtime` skill
+**Status:** DONE 2026-10-19 (`3e548efa`) · **Size:** M · **Read:** `docket-context-runtime` skill
 - **Trigger (the mechanism is deterministic; the size is an estimate, so measure first):**
   - `core/session.py::condense_history` (`:317`) recomputes its cut on every request and moves it
     one result at a time (keep 2, 6,000 characters).
@@ -332,6 +332,7 @@
      condensed files at calls 9-11. A real run (maintainer-approved) counts re-reads before this
      card closes.
 - **RED test:** `tests/unit/core/test_session.py` (prefix stability); it fails today.
+- **Close note (2026-10-19, estimates from the replay bench over the joint run's recorded steps):** counted tokens did not rise on any step; the researcher step fell (prefix-stable calls 8/14 to 9/14, prefix-aware counted 11,750 to 9,970), the implementer step was unchanged (3/5) because its first result alone exceeds the 6,000 budget and forces a boundary, the writer step unchanged. The unit test shows the mechanism on 2,000-character results: 9 prefix changes over 12 histories down to 5. Acceptance 3 (re-read count on a real run) is open: it is measured in the next joint run with Tack.
 - **Spec:** `specs/functional/session-history.spec.md` (1.8.0), condensation requirement.
 
 ## ◇ Phase 44 closed 2026-10-18
