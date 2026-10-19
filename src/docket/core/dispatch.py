@@ -49,6 +49,7 @@ from docket.core import pod as _pod
 from docket.core import pod_memory as _pod_memory
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
+from docket.core import prepare as _prepare
 from docket.core import profile as _profile
 from docket.core import repo_map as _repo_map
 from docket.core import runs as _runs
@@ -3076,6 +3077,8 @@ def _run_in_envelope(
     if refusal is not None:
         return None, f"[{label} not run: {refusal}]"
     if jail is not None:
+        linked = _prepare.linked_entries(cwd)
+        jail = replace(jail, read_only=(*jail.read_only, *linked)) if linked else jail
         return _sys.run_command(cmd, cwd, timeout, env=env, jail=jail)
     if env is None:
         return _sys.run_command(cmd, cwd, timeout)
@@ -3741,6 +3744,91 @@ def _refuse_claimed_task(
         tasks_after if isinstance(tasks_after, list) else [],
     )
     return TaskResult(task_id=task_id, status="failed", reason=reason, failure_kind=failure_kind)
+
+
+def _run_prepare_command(project: str, cmd: str, cwd: str) -> tuple[int | None, str]:
+    """Run a task's install command: in the pod's jail with the network open for this launch
+    only when isolation is on, on the host like a ``verifyCmd`` otherwise."""
+    jail, refusal = _dr.resolve_command_jail(project, "prepare")
+    if refusal is not None:
+        return None, f"[prepare not run: {refusal}]"
+    if jail is None:
+        return _sys.run_command(cmd, cwd, _cfg.PREPARE_TIMEOUT_S)
+    return _sys.run_command(cmd, cwd, _cfg.PREPARE_TIMEOUT_S, jail=replace(jail, network=True))
+
+
+def _prepare_reason(command: str, outcome: _prepare.PrepareOutcome) -> str:
+    status = f"exit {outcome.exit_code}" if outcome.exit_code is not None else "no exit status"
+    tail = _trace.redact(outcome.output)[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :]
+    return f"prepare failed: {command} ({status}): {tail}"
+
+
+def _trace_prepare(
+    project: str, task_id: str, spec: _prepare.PrepareSpec, outcome: _prepare.PrepareOutcome
+) -> None:
+    payload = {
+        "command": spec.command,
+        "source": spec.source,
+        "cacheHit": outcome.cache_hit,
+        "seconds": round(outcome.seconds, 3),
+        "exit": outcome.exit_code,
+    }
+    _trace.trace_event(
+        project,
+        f"agent:{project}:{task_id}",
+        "lead",
+        "prepare",
+        _json.dumps(payload),
+        duration_ms=int(outcome.seconds * 1000),
+        task_id=task_id,
+    )
+
+
+def _store_prepared(project: str, task: dict[str, Any], prepared: dict[str, Any]) -> None:
+    task["prepared"] = prepared
+    task_id = task.get("id")
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks = doc.get("tasks")
+        if not isinstance(tasks, list):
+            return None
+        for t in tasks:
+            if isinstance(t, dict) and t.get("id") == task_id:
+                t["prepared"] = prepared
+        return {"tasks": tasks}
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+
+
+def _prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | None:
+    """Prepare a claimed task's own worktree before its first hop (pod-dispatch.spec.md, "Task
+    preparation"); the refusing ``TaskResult`` when the install fails, else ``None``."""
+    worktree = task.get("worktree")
+    root = str(worktree.get("dir") or "") if isinstance(worktree, dict) else ""
+    if not root:
+        return None
+    try:
+        pod_prepare = _pod_settings(project).prepare
+    except DispatchError as exc:
+        return _refuse_claimed_task(project, task, "prepare", str(exc))
+    spec = _prepare.resolve(Path(root), task_prepare=task.get("prepare"), pod_prepare=pod_prepare)
+    if spec is None or not _prepare.needs_prepare(Path(root), task.get("prepared"), spec):
+        return None
+    codebase = str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
+    outcome = _prepare.prepare_worktree(
+        spec,
+        Path(root),
+        codebase,
+        str(worktree.get("commonDir") or "") if isinstance(worktree, dict) else "",
+        lambda cmd: _run_prepare_command(project, cmd, root),
+    )
+    _trace_prepare(project, str(task.get("id", "")), spec, outcome)
+    if not outcome.ok:
+        return _refuse_claimed_task(
+            project, task, "prepare", _prepare_reason(spec.command, outcome)
+        )
+    _store_prepared(project, task, _prepare.record(spec, outcome))
+    return None
 
 
 def _claim_next_task(
@@ -4466,6 +4554,10 @@ def dispatch_pod(
             results.append(_refuse_claimed_task(project, task, "pipeline", str(exc)))
             continue
         _record_task_run(project, task, source)
+        refused = _prepare_claimed_task(project, task)
+        if refused is not None:
+            results.append(refused)
+            continue
 
         def _persist(hop: HopResult, _project: str = project, _task_id: str = task_id) -> None:
             _persist_hop(_project, _task_id, hop)

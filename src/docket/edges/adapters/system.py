@@ -1239,6 +1239,21 @@ def git_worktree_add(
     return True, ""
 
 
+def git_info_exclude(common_dir: str, patterns: tuple[str, ...]) -> None:
+    """Append each of *patterns* not already there to ``<common_dir>/info/exclude``, the one
+    exclude file git reads for every worktree of the repository. Best effort, never raises."""
+    path = Path(common_dir) / "info" / "exclude"
+    try:
+        existing = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+        missing = [p for p in patterns if p not in existing]
+        if missing:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write("".join(f"{p}\n" for p in missing))
+    except OSError:
+        return
+
+
 def git_worktree_remove(repo_dir: str, worktree_path: str) -> tuple[bool, str]:
     """Remove the git worktree at ``worktree_path`` (``--force``, to handle
     unclean worktrees). Returns ``(success, message)``; degrades gracefully

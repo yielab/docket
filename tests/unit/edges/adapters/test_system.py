@@ -867,3 +867,24 @@ class TestGitUntracked:
         monkeypatch.setattr(_sys, "git_available", lambda: True)
         monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
         assert _sys.git_untracked("/tmp/nowhere") == []
+
+
+class TestGitInfoExclude:
+    """``git_info_exclude`` appends each pattern once to the common dir's ``info/exclude``."""
+
+    def test_appends_missing_patterns_once(self, tmp_path: Path) -> None:
+        exclude = tmp_path / "info" / "exclude"
+        _sys.git_info_exclude(str(tmp_path), ("/node_modules",))
+        _sys.git_info_exclude(str(tmp_path), ("/node_modules", "/.venv"))
+        assert exclude.read_text().splitlines() == ["/node_modules", "/.venv"]
+
+    def test_keeps_what_was_already_there(self, tmp_path: Path) -> None:
+        (tmp_path / "info").mkdir()
+        (tmp_path / "info" / "exclude").write_text("# keep\n")
+        _sys.git_info_exclude(str(tmp_path), ("/node_modules",))
+        assert (tmp_path / "info" / "exclude").read_text() == "# keep\n/node_modules\n"
+
+    def test_an_unwritable_common_dir_is_ignored(self, tmp_path: Path) -> None:
+        blocker = tmp_path / "file"
+        blocker.write_text("x")
+        _sys.git_info_exclude(str(blocker), ("/node_modules",))

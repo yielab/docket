@@ -29,6 +29,10 @@ ARCHETYPE_REGISTRY_FILE = DOCKET_HOME / "docket-roles.json"
 # members live directly at WORKSPACES_DIR/<role-or-project>/...
 WORKSPACES_DIR = DOCKET_HOME / "workspaces"
 JAIL_TMP_DIR = DOCKET_HOME / "jail-tmp"
+# PREPARE_CACHE_DIR: what a task worktree's install produced, kept once per codebase and lockfile
+# hash (core/prepare.py); PREPARE_TIMEOUT_S bounds the install, PREPARE_CACHE_KEEP the entries
+# kept per codebase.
+PREPARE_CACHE_DIR = DOCKET_HOME / "cache" / "prepare"
 PROJECTS_DIR = WORKSPACES_DIR / "projects"
 # PODS_DIR: per-pod runtime resources (scratch dir, workdir) -- see
 # pod_scratch_dir()/pod_work_dir() below. Distinct from a pod's *workspace*
@@ -372,6 +376,8 @@ TOOL_MAX_OUTPUT_CHARS = int(os.environ.get("DOCKET_TOOL_MAX_OUTPUT_CHARS", "3000
 # output tail (core/dispatch.py's HopResult.verify) -- long enough to carry a real
 # test-failure trace, short enough that a queue record never balloons.
 VERIFY_EVIDENCE_TAIL_CHARS = 4000
+PREPARE_TIMEOUT_S = 900
+PREPARE_CACHE_KEEP = 3
 # AGENT_LOOP_WALL_CLOCK_TIMEOUT_S: default overall budget for one turn,
 # checked between iterations (not by interrupting an in-flight HTTP call).
 # edges.adapters.docket_runtime.DocketDriver.run_turn overrides this with its

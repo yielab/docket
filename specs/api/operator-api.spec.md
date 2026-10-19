@@ -1,7 +1,7 @@
-# Operator API (HTTP, version 5) -- contract spec
+# Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 5.9.0
-**Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
+**Version**: 6.0.0
+**Status**: Implemented (Phase 43, ADR 0027; Phase 45, ADR 0029). `SERVE_API_VERSION` is `"6"`.
 **Last Updated**: 2026-10-19
 
 ## Purpose
@@ -13,7 +13,7 @@ configuration, and read the corrections ledger. It is the one door for a program
 the door for a person, and both call the same `core/` functions (the Phase 22 rule: expose what
 `core/` already does, add no new behaviour).
 
-Version 5 is negotiated, not pinned: a consumer reads `apiVersion` from `GET /status.json`
+Version 6 is negotiated, not pinned: a consumer reads `apiVersion` from `GET /status.json`
 (`serve-read-api.spec.md`) and names the version it needs. There is no interim version.
 
 ## Scope
@@ -81,6 +81,7 @@ call the same core functions (P43-10); `docket start` gains `--bind` (P43-11).
 | `pipeline` | string | the name of a pod-local pipeline (`<pod config dir>/pipelines/<name>.yaml`) or a shipped methodology recipe (`docket pod recipes`); unset means the pod's effective pipeline. Resolved at claim; an unknown name fails the task before any hop with `failureKind: "pipeline"` |
 | `gate` | object | `{"command": string, "timeoutS"?: int, "map"?: {exit code: label}}` -- an `ExternalGate` (ADR 0025) added **after** the last implementer step's own gate, with the same labels and `on:` routing. It never replaces a gate the pipeline declares |
 | `maxTokens` | int > 0 | a budget over the task's counted usage (`input - cached + output` summed over hops; a cache read is not counted); each hop runs with `token_budget = maxTokens - used so far`; a hop that would start with nothing left fails the task with `failureKind: "budget"` |
+| `prepare` | string | the install command run in this task's worktree before its first hop; `""` or `none` runs nothing and wins over the pod's `prepare` and the lockfile. Unset means the pod's `prepare` setting, else the command for the worktree's lockfile (`pod-dispatch.spec.md` "Task preparation"). Stored on the task record before it runs and shown by `GET /tasks/<pod>/<id>`; an install that fails settles the task before any hop with `failureKind: "prepare"` and the output tail as `reason`. A newline or NUL, or more than 1,000 characters, is `400` |
 | `restrictions` | object | see below. Anything that would widen is `422` |
 
 `restrictions`:
@@ -275,7 +276,7 @@ nonexistent or relative `directory` is `400`, an unknown pod `404`. The apply is
 Unchanged keys plus, when `docket start` runs with `--dispatch`:
 
 ```json
-{"ok": true, "apiVersion": "5",
+{"ok": true, "apiVersion": "6",
  "dispatch": {"on": true, "inflight": ["web-dev"], "stopping": false, "workers": 4}}
 ```
 
@@ -315,7 +316,7 @@ state; a server instance holds none.
 |---|---|
 | `200` | a read; an idempotent re-post; cancel/retry/apply/ensure done |
 | `201` | a new task or a new pod |
-| `400` | malformed JSON, missing `description`, an unknown field type, a `baseRef`/`pipeline`/`gate` of the wrong shape |
+| `400` | malformed JSON, missing `description`, an unknown field type, a `baseRef`/`pipeline`/`gate`/`prepare` of the wrong shape |
 | `401` | missing or wrong Bearer token, always first |
 | `404` | no pod, no task, no such route |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code |
@@ -347,6 +348,13 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 6.0.0 (2026-10-19)
+
+- `apiVersion` `"6"` (P45-1, ADR 0029 point 1): `POST /tasks/<pod>` accepts `prepare`, the task
+  record carries it and `prepared`, and `failureKind: "prepare"` is a new final failure (the sweep
+  does not resume it). A consumer that needs docket to install a task's dependencies reads
+  `apiVersion >= 6`; one that sends no `prepare` gets the pod's setting or the lockfile's command.
 
 ### Version 5.9.0 (2026-10-19)
 
