@@ -203,7 +203,7 @@ class TestPodUpdateRenameAndReview:
         )
         assert ok.exit_code == 0
         assert _pod_core.bound_pipeline_path("demo").is_file()
-        assert _rr.is_reviewed(code, items)
+        assert _rr.is_reviewed(code, "demo", items)
 
     def test_a_dry_run_asks_nothing_and_writes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

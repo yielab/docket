@@ -158,3 +158,13 @@ def test_the_default_directory_is_the_pods_team_dir(server: str, tmp_path: Path)
     status, _ = _post(f"{server}/pods/demo/apply", {})
     assert status == 200 and "x-checker" in _roles("demo")
     assert _fleet.meta_get("demo-lead", "configSource", "").endswith("teams/demo")
+
+
+def test_a_pod_with_no_recorded_codebase_is_refused(server: str, tmp_path: Path) -> None:
+    """A pod with no codebase meta is 400 and is never reviewed against the directory's parent."""
+    _fleet.meta_set("demo-lead", "codebase", "")
+    directory = _directory(tmp_path, "runs-nocb", _RUNS)
+    status, body = _post(f"{server}/pods/demo/apply", {"directory": str(directory)})
+    assert status == 400
+    assert "no recorded codebase" in body["error"]
+    assert "reviewCode" not in body
