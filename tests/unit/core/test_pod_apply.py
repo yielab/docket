@@ -320,27 +320,43 @@ class TestReviewDecision:
 
     def test_nothing_to_run_and_shipped_recipes_go(self, tmp_path: Path) -> None:
         plain = _repo_dir(tmp_path, {"policies/p.json": "{}"})
-        assert _pod_apply.review_decision(tmp_path, plain, None).status == "go"
+        assert _pod_apply.review_decision(tmp_path, "a", plain, None).status == "go"
         shipped = next(p for p in _cfg.recipes_dir().iterdir() if p.is_dir())
-        assert _pod_apply.review_decision(tmp_path, shipped, "bogus").status == "go"
+        assert _pod_apply.review_decision(tmp_path, "a", shipped, "bogus").status == "go"
 
     def test_run_items_need_the_code_then_accept_it(self, tmp_path: Path) -> None:
         directory = self._runs(tmp_path)
-        first = _pod_apply.review_decision(tmp_path, directory, None)
+        first = _pod_apply.review_decision(tmp_path, "a", directory, None)
         assert first.status == "needs_code" and len(first.code) == 16
-        assert _pod_apply.review_decision(tmp_path, directory, first.code).status == "accepted"
-        assert _pod_apply.review_decision(tmp_path, directory, "0" * 16).status == "code_mismatch"
+        assert _pod_apply.review_decision(tmp_path, "a", directory, first.code).status == "accepted"
+        assert (
+            _pod_apply.review_decision(tmp_path, "a", directory, "0" * 16).status == "code_mismatch"
+        )
 
     def test_a_shell_is_refused_before_any_code_matters(self, tmp_path: Path) -> None:
         directory = _repo_dir(tmp_path, {"pod.yaml": "settings:\n  allowCommands: [bash]\n"})
-        assert _pod_apply.review_decision(tmp_path, directory, "x").status == "refused"
+        assert _pod_apply.review_decision(tmp_path, "a", directory, "x").status == "refused"
 
     def test_a_remembered_review_goes(self, tmp_path: Path) -> None:
         from docket.core import reviewed_repos as _reviewed
 
         directory = self._runs(tmp_path)
-        _reviewed.remember(tmp_path, _pod_apply.classify_directory(directory).runs)
-        assert _pod_apply.review_decision(tmp_path, directory, None).status == "go"
+        _reviewed.remember(tmp_path, "a", _pod_apply.classify_directory(directory).runs)
+        assert _pod_apply.review_decision(tmp_path, "a", directory, None).status == "go"
+
+    def test_a_second_pod_on_the_same_codebase_keeps_the_first_approval(
+        self, tmp_path: Path
+    ) -> None:
+        """Pod b's approval does not make pod a ask again; a returning set still goes."""
+        from docket.core import reviewed_repos as _reviewed
+
+        directory = self._runs(tmp_path)
+        items = _pod_apply.classify_directory(directory).runs
+        _reviewed.remember(tmp_path, "a", items)
+        _reviewed.remember(tmp_path, "b", items)
+        assert _pod_apply.review_decision(tmp_path, "a", directory, None).status == "go"
+        assert _pod_apply.review_decision(tmp_path, "b", directory, None).status == "go"
+        assert _pod_apply.review_decision(tmp_path, "c", directory, None).status == "needs_code"
 
 
 _FAST = "name: fast\nsteps:\n  - build: implementer\n    verify: make check\n"
