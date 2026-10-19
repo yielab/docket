@@ -137,7 +137,7 @@
 
 ### P45-3 — a change that edits its own check goes to a person
 
-**Status:** READY (P45-1 and P45-4 merged; P45-2 shares none of its functions) · **Size:** M · **Model:** Sonnet
+**Status:** IN PROGRESS (worker w118-p45-3, Wave 118) · **Size:** M · **Model:** Sonnet
 
 - **Trigger:** ADR 0029 point 3: a gate such as `npx eslint` reads configuration the agent edits;
   `reviewed_repos.py` hashes only the command text.
