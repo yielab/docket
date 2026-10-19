@@ -112,6 +112,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Approvals are kept per codebase and team, as a set.** `reviewed-repos.json` is keyed by
+  codebase and pod and keeps every approved set, so a second team on the same codebase no longer
+  replaces the first team's approval, and returning to an earlier approved set asks nothing;
+  `repo.allow` audits `pod=`. The old one-entry file is not read, so its operator is asked once
+  more (D-57). `POST /pods/<p>/apply` refuses 400 for a pod with no recorded codebase instead of
+  reviewing against the directory's parent, and the changed-since-review hint names
+  `.docket/teams/<pod>` when the repository keeps teams.
 - **`GET /inbox` carries a consultation's options (W116-8).** `TaskView.question` was typed
   as the v1.0 `Question`, so `GET /inbox`, the MCP `inbox` tool and `docket inbox --json` dropped
   a parked consultation's `kind`, `options` and `recommendation` that `GET /tasks/<pod>/<id>`
