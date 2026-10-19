@@ -930,9 +930,12 @@ class ReviewDecision:
     code: str = ""
 
 
-def review_decision(repo_root: Path, directory: Path, accept: str | None) -> ReviewDecision:
+def review_decision(
+    repo_root: Path, project: str, directory: Path, accept: str | None
+) -> ReviewDecision:
     """Whether *directory*'s run-on-this-machine items are cleared by the shipped-recipe
-    exemption, a remembered review or the matching *accept* code. Read-only."""
+    exemption, a set *project* remembered for *repo_root*, or the matching *accept* code.
+    Read-only."""
     from docket.core import reviewed_repos as _reviewed
 
     empty = PlanReview((), ())
@@ -941,7 +944,7 @@ def review_decision(repo_root: Path, directory: Path, accept: str | None) -> Rev
     review = classify_directory(directory)
     if review.refused:
         return ReviewDecision("refused", review)
-    if not review.runs or _reviewed.is_reviewed(repo_root, review.runs):
+    if not review.runs or _reviewed.is_reviewed(repo_root, project, review.runs):
         return ReviewDecision("go", review)
     code = _reviewed.review_code(review.runs)
     if accept is None:
@@ -972,18 +975,18 @@ def apply_directory(
     plan = plan_apply(project, directory)
     if dry_run:
         return DirectoryOutcome("planned", plan.items)
-    decision = review_decision(root, directory, accept)
+    decision = review_decision(root, project, directory, accept)
     if decision.status == "refused":
         return DirectoryOutcome("refused", refused=decision.review.refused)
     if decision.status == "needs_code":
         return DirectoryOutcome("needs_code", code=decision.code, runs=decision.review.runs)
     if decision.status == "code_mismatch":
-        found = _reviewed.lookup(root)
+        found = _reviewed.lookup(root, project)
         was = {(i.kind, i.name): i.runs for i in found.items} if found else {}
         changed = tuple(i for i in decision.review.runs if was.get((i.kind, i.name)) != i.runs)
         return DirectoryOutcome("code_mismatch", runs=changed)
     if decision.status == "accepted":
-        _reviewed.remember(root, decision.review.runs)
+        _reviewed.remember(root, project, decision.review.runs)
     return DirectoryOutcome("applied", apply(plan, channel=channel).items)
 
 
@@ -1089,12 +1092,12 @@ class RepoChanges:
     allowed_on: str
 
 
-def runs_changed(repo_dir: Path) -> tuple[RunChange, ...]:
-    """The run-on-this-machine items of *repo_dir* that differ from the operator's remembered
-    review of its repository (every item when none was remembered)."""
+def runs_changed(project: str, repo_dir: Path) -> tuple[RunChange, ...]:
+    """The run-on-this-machine items of *repo_dir* that differ from the latest set *project*
+    remembered for its repository (every item when none was remembered)."""
     from docket.core import reviewed_repos as _reviewed
 
-    found = _reviewed.lookup(repo_root(repo_dir))
+    found = _reviewed.lookup(repo_root(repo_dir), project)
     was = {(i.kind, i.name): i.runs for i in found.items} if found else {}
     return tuple(
         RunChange(i, was.get((i.kind, i.name)))
@@ -1133,11 +1136,11 @@ def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
     if directory_digest(repo_dir) == recorded:
         return None
     plan = plan_apply(project, repo_dir)
-    found = _reviewed.lookup(repo_root(repo_dir))
+    found = _reviewed.lookup(repo_root(repo_dir), project)
     return RepoChanges(
         plan=plan,
         adds_changed=tuple(f"{i.kind} {i.name}" for i in plan.items if i.action != "skip"),
-        runs_changed=runs_changed(repo_dir),
+        runs_changed=runs_changed(project, repo_dir),
         review=classify_directory(repo_dir),
         allowed_on=found.date if found else "",
     )

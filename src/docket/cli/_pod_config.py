@@ -211,7 +211,7 @@ def _review_directory(project: str, directory: Path, json_out: bool, accept: str
 
     root = _codebase(project)
     request = _agents.InitRequest(accept=accept, json_out=json_out)
-    if _agents.review_repo_source(request, root, directory, "docket pod update"):
+    if _agents.review_repo_source(request, project, root, directory, "docket pod update"):
         raise typer.Exit(2)
 
 
