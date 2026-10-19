@@ -99,7 +99,7 @@ the agent ran `git commit` itself, its changes stay **uncommitted** in the workt
 branch and merge it like any other. Your verify command's by-products (`__pycache__/`, caches) land
 there too. `docket pod delete` removes all task worktrees with the member
 and deletes the merged task branches (an unmerged branch is kept, with the removal command printed).
-An Implementer marked `inPlace` works in the codebase itself and gets no task worktree. Reviewer and Tester run with the codebase root as
+A pod whose Implementer has no codebase, or whose worktree cannot be added, works in place. Reviewer and Tester run with the codebase root as
 their working directory, so a test run can leave caches in your checkout.
 
 To try any of this without touching your real setup, point `HOME` (or `DOCKET_HOME`) at a scratch

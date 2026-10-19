@@ -212,6 +212,40 @@ class TestGitDiffStat:
         assert _sys.git_diff_stat("/tmp/repo", "HEAD") is None
 
 
+class TestGitTrackedFilesAndBlobIds:
+    def test_tracked_files_are_the_nul_separated_listing_sorted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        listing = "scripts/check.sh\0README.md\0"
+        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(stdout=listing))
+        assert _sys.git_tracked_files("/tmp/repo") == ["README.md", "scripts/check.sh"]
+
+    def test_tracked_files_are_empty_outside_a_repo_or_without_git(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(128))
+        assert _sys.git_tracked_files("/tmp/notrepo") == []
+        monkeypatch.setattr(_sys, "git_available", lambda: False)
+        assert _sys.git_tracked_files("/tmp/repo") == []
+
+    def test_blob_ids_skip_unsafe_paths_and_failed_hashes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        answers = {"a.sh": _FakeCompleted(stdout="abc123\n"), "gone.sh": _FakeCompleted(128)}
+        monkeypatch.setattr(_sys.subprocess, "run", lambda argv, **k: answers[argv[-1]])
+        got = _sys.git_blob_ids("/tmp/repo", ["a.sh", "gone.sh", "../x", "/etc/passwd"])
+        assert got == {"a.sh": "abc123"}
+
+    def test_blob_ids_are_empty_without_paths_or_git(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys, "git_available", lambda: False)
+        assert _sys.git_blob_ids("/tmp/repo", ["a.sh"]) == {}
+        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        assert _sys.git_blob_ids("/tmp/repo", []) == {}
+
+
 class TestDesktopNotificationsAvailable:
     def test_linux_needs_a_session_and_notify_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_sys.sys, "platform", "linux")

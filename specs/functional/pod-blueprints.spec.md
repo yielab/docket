@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.35.0
+**Version**: 1.36.0
 **Status**: Implemented
 **Last Updated**: 2026-10-19
 
@@ -226,13 +226,14 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
    optional `policies/*.json` directory (guardrail policies, the same schema
    `core.policy.validate_policy` enforces), an optional `pipeline.yaml` (or the file named by
-   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly six
+   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly seven
    top-level keys — `members` (a list of role names to add if absent), `settings` (a mapping of
    any `docket pod set <key> <value>` key), `pipeline` (a filename inside *dir*,
    default `pipeline.yaml` when that file exists), `description` (a string; read only for
    display — requirement 9 — and never applied to the pod), and `exporters` (a list of
-   observability-destination names — requirement 11 — reported, never activated), and `prepare` (a
-   string, the install command of a task's worktree — requirement 13). An
+   observability-destination names — requirement 11 — reported, never activated), `prepare` (a
+   string, the install command of a task's worktree — requirement 13), and `protects` (a list of
+   path globs a task may not change without a person — requirement 14). An
    unrecognized top-level `pod.yaml` key, a `members`/`settings` value of the wrong type, a
    `description` that is not a string, or an `exporters` entry that is not a plain string naming
    a catalog exporter, **MUST** be rejected before anything else is read. *dir* **MAY** also carry
@@ -414,7 +415,9 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     renamed to, with no alias) **MUST** put a directory that is not a shipped recipe through the
     same review against the pod's recorded codebase, on a terminal or with `--accept <code>`, and
     `docket run` **MUST** do the same for a changed item before dispatching; neither
-    `docket start` nor `dispatch_pod` reads `.docket/`. A review shows the repository's
+    `docket start` nor `dispatch_pod` reads `.docket/`. The digest of a set also covers the git blob id of each tracked file a command of the set
+    names (`security-gates.spec.md` "Protected paths and the reviewed digest"), so changing such a
+    script asks again. A review shows the repository's
     commands as before/now; `core.pod_apply.repo_changes` derives them from the directory and the
     stored review. The remembered review is kept per codebase and per pod, as a set: each pod
     keeps every item set it approved, an approval never replaces another pod's or the pod's
@@ -441,6 +444,19 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     from it. `prepare: none` lists nothing. `docket pod export` writes the recorded setting back
     as `prepare:`.
 
+14. **A team names what its tasks may not change alone (P45-3, ADR 0029 point 3).** `pod.yaml`'s
+    optional top-level `protects:` is a list of path globs added to the default protected paths
+    (`security-gates.spec.md` "Protected paths and the reviewed digest"); a task whose diff
+    touches one parks for a person (`pod-dispatch.spec.md` "A change that edits its own check").
+    It belongs at the top level, never inside `settings` (`plan_apply` **MUST** refuse
+    `settings.protects` naming that), and is applied as the pod's `protects` setting, so
+    `plan_apply` lists it as a `setting` item and `docket pod set protects` writes the same value.
+    A value that is not a list of strings, or an entry that `PodSettings` refuses (empty, over 200
+    characters, a comma, NUL or newline, a leading `/` or a `..` segment), or more than 50 entries,
+    is rejected before anything is written. An empty list clears the pod's patterns. A `protects:`
+    is not a run item: it only narrows what runs unattended, so it needs no review. `docket pod
+    export` writes the recorded setting back as `protects:`.
+
 ### Pod manifests: export
 
 The write direction the deferred manifest carried since "apply" shipped: `apply` composes a
@@ -465,12 +481,12 @@ machine, the trigger `docket pod update` itself named as deferred.
    not regenerated) when `PodSettings.pipeline` is set; and a `pod.yaml` manifest with `kind:
    pod` and `name: <project>` written first, then `members` (every non-Lead role this pod's
    roster has, `core.dispatch.pod_full_roster(project)`), `settings` (every key in
-   `PodSettings.KEYS` (but `pipeline` and `prepare`, which are top-level) whose stored value differs from that model's own default — a key at its
+   `PodSettings.KEYS` (but `pipeline`, `prepare` and `protects`, which are top-level) whose stored value differs from that model's own default — a key at its
    default is never written, so a fresh pod exports an empty `settings` mapping; `configSource`/
    `configDigest`, outside `KEYS`, are never written here regardless of value — requirement 6
    above), and `exporters` (this pod's recorded `exporters` list, requirement 11, written only
-   when non-empty — unlike `configSource`/`configDigest`, this key round-trips like `members`), and
-   `prepare` (this pod's `prepare` setting, written top-level only when set).
+   when non-empty — unlike `configSource`/`configDigest`, this key round-trips like `members`), `prepare` (this pod's `prepare` setting, written top-level only when set), and
+   `protects` (this pod's patterns, written top-level only when set).
    `export` **MUST NOT** write a
    `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename `apply` already
    resolves makes one redundant, matching every shipped recipe's own `pod.yaml`. A recipe's own
@@ -653,6 +669,13 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.36.0 (2026-10-19)
+
+- Requirement 14 (P45-3, ADR 0029 point 3): `pod.yaml` gains a top-level `protects:` list, applied
+  as the pod's `protects` setting and exported back. Requirement 12: the remembered review's digest
+  covers the blob id of each tracked file a reviewed command names. Requirement 1's key count is
+  seven.
 
 ### Version 1.35.0 (2026-10-19)
 

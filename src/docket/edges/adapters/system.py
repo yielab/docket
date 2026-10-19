@@ -1579,6 +1579,38 @@ def git_diff_names(cwd: str, base: str, head: str) -> list[str]:
     return sorted(line for line in result.stdout.splitlines() if line.strip())
 
 
+def git_tracked_files(cwd: str) -> list[str]:
+    """Every path ``git ls-files`` lists in `cwd`, sorted; ``[]`` on a missing binary, a
+    non-repo directory or a timeout."""
+    if not git_available():
+        return []
+    try:
+        result = _git_run(cwd, ["ls-files", "-z"], _QUERY_TIMEOUT)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+    if result.returncode != 0:
+        return []
+    return sorted(name for name in result.stdout.split("\0") if name)
+
+
+def git_blob_ids(cwd: str, paths: list[str]) -> dict[str, str]:
+    """The git blob id of each of *paths* as the files stand in `cwd` (``git hash-object``); a
+    path that cannot be hashed is left out, and ``{}`` on a missing binary or a timeout."""
+    if not paths or not git_available():
+        return {}
+    ids: dict[str, str] = {}
+    for rel in paths:
+        if not _repo_rel_path_ok(rel):
+            continue
+        try:
+            result = _git_run(cwd, ["hash-object", "--", rel], _QUERY_TIMEOUT)
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            return {}
+        if result.returncode == 0 and result.stdout.strip():
+            ids[rel] = result.stdout.strip()
+    return ids
+
+
 _PIN_TIMEOUT = 60
 # Repository hooks and signing stay off: a pin is bookkeeping, and a hook is the codebase's own
 # code, which docket never runs on the host outside a gate.

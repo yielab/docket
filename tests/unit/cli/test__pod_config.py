@@ -199,7 +199,12 @@ class TestPodUpdateRenameAndReview:
         wrong = _pod_run("update", str(code / ".docket"), "--pod", "demo", "--accept", "0" * 16)
         assert wrong.exit_code == 2
         ok = _pod_run(
-            "update", str(code / ".docket"), "--pod", "demo", "--accept", _rr.review_code(items)
+            "update",
+            str(code / ".docket"),
+            "--pod",
+            "demo",
+            "--accept",
+            _rr.review_code(items, code),
         )
         assert ok.exit_code == 0
         assert _pod_core.bound_pipeline_path("demo").is_file()
