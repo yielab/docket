@@ -657,7 +657,8 @@ def _task_approve(
     ui.success(f"Approved {label}")
     if note:
         ui.warn(note)
-    if project:
+    context = _ap.approval_get(token).get("context")
+    if project and not (isinstance(context, dict) and context.get("kind") == "check_changed"):
         _resume_hint(project)
 
 

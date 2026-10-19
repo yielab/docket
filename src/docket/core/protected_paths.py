@@ -107,7 +107,7 @@ def changed_protected(
     *commands* name. ``[]`` when git can say nothing."""
     changed = {
         *_sys.git_diff_names(worktree, base_commit, branch),
-        *_sys.git_changed_files(worktree),
+        *_sys.git_changed_files(worktree, all_untracked=True),
     }
     if not changed:
         return []
