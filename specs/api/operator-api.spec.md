@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.8.0
+**Version**: 5.9.0
 **Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -279,6 +279,36 @@ Unchanged keys plus, when `docket start` runs with `--dispatch`:
  "dispatch": {"on": true, "inflight": ["web-dev"], "stopping": false, "workers": 4}}
 ```
 
+### Re-attaching after a restart
+
+A client whose runner, or docket itself, restarted re-attaches from durable state alone. Every
+rule below holds because the task list (`TASK_LIST.json`) and the approval records are the only
+state; a server instance holds none.
+
+1. `GET /tasks/<pod>/<id>` serves any task of the pod from disk, whatever its status and
+   whichever server instance started its hops. A `waiting_approval` task carries its
+   `approvalToken`; a `waiting_input` task carries its `question`, with `options` when the park
+   was a consultation or a decision.
+2. A token or a question is answerable after either process restarts: `POST /approvals/<token>`
+   and `POST /tasks/<id>/answer` read the same files, so a fresh instance over the same
+   `DOCKET_HOME` accepts the grant or answer a previous instance parked. The approval's own
+   `expiresAt` is on its record (`GET /approvals`).
+3. An answer or grant moves the task to `pending` and starts nothing. The next sweep tick
+   (30 s under `--dispatch`) or `POST /dispatch/<pod>` resumes it at the hop it stopped on; a
+   completed hop is never re-run.
+4. Use one `idempotencyKey` per attempt. The key binds to the task for as long as the task is in
+   the pod's queue, whatever its status: a retry that reuses the key after a failure answers
+   `200` with `"created": false` and the failed task, and enqueues nothing. A new attempt takes a
+   new key, or `POST .../retry` on the failed task.
+5. Expiry and its final states are not restated here: an approval past its `expiresAt` resolves
+   to denied (`security-gates.spec.md` 0.63.0, "Approval tokens and approval packs"); a question past its
+   `expiresAt` moves the task to `blocked` with `blockedReason: "input_expired"`
+   (`operator-loop.spec.md`, `inputExpiryHours`).
+6. A `failed` task with `failureKind: "stale_claim"` is transient under `--dispatch`: the sweep
+   resumes it from its last persisted hop on the next tick. A `failed` task with any other
+   `failureKind` (except a settled `dispatch_refused`, which the sweep also resumes) is final
+   until `POST .../retry`.
+
 ## Return
 
 | Code | When |
@@ -295,6 +325,9 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
 
 ## Validation
 
+- `tests/integration/test_serve_reattach.py`: one test per rule of "Re-attaching after a
+  restart"; a restart is a first `ThreadingHTTPServer` shut down and a second one started over
+  the same temporary `DOCKET_HOME`. The oracles are the HTTP bodies and `TASK_LIST.json`.
 - `tests/integration/test_serve_tasks_endpoint.py` (extended) and new
   `tests/integration/test_serve_task_lifecycle.py`, `test_serve_pods_config.py`: the real
   `_DocketHandler` on a loopback `ThreadingHTTPServer`, a pod seeded in a temporary
@@ -314,6 +347,14 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.9.0 (2026-10-19)
+
+- New section "Re-attaching after a restart": six rules a client may rely on after its runner or
+  docket restarts (tasks served from disk, tokens and questions answerable across restarts,
+  answers start no sweep, one `idempotencyKey` per attempt, expiry by cross-reference,
+  `stale_claim` resumed by the next sweep). Documents existing behaviour; pinned by
+  `tests/integration/test_serve_reattach.py`.
 
 ### Version 5.8.0 (2026-10-18)
 
