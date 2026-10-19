@@ -1138,9 +1138,10 @@ def git_is_repo(cwd: str) -> bool:
     return result.returncode == 0
 
 
-def git_changed_files(cwd: str) -> list[str]:
+def git_changed_files(cwd: str, *, all_untracked: bool = False) -> list[str]:
     """Return paths with uncommitted changes in `cwd` (staged, unstaged,
-    untracked); the `files_changed` producer for an Implementer hop's
+    untracked; with `all_untracked`, each file inside a new directory rather
+    than the directory); the `files_changed` producer for an Implementer hop's
     `HandoffArtifact`. Uses `git status --porcelain` (not a diff against a
     fixed base ref) so it reflects the real tree regardless of what the
     Implementer has committed this hop. Degrades to `[]` -- never raises --
@@ -1149,7 +1150,8 @@ def git_changed_files(cwd: str) -> list[str]:
     if not git_available():
         return []
     try:
-        result = _git_run(cwd, ["status", "--porcelain"], _QUERY_TIMEOUT)
+        args = ["status", "--porcelain", *(["--untracked-files=all"] if all_untracked else [])]
+        result = _git_run(cwd, args, _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
     if result.returncode != 0:

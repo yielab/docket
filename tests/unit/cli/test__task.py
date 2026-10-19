@@ -572,12 +572,13 @@ def _task(*args: str) -> Any:
     return _runner.invoke(app, ["task", *args])
 
 
-def _park_on_approval(project: str, task_id: str) -> str:
+def _park_on_approval(project: str, task_id: str, kind: str = "") -> str:
     """Park *task_id* on a pending approval the way the pre-hop gate does."""
     from docket.core import approval as _ap
     from docket.edges import store as _store
 
-    token = _ap.approval_create(project, "implementer", "deploy", context={"taskId": task_id})
+    context: dict[str, Any] = {"taskId": task_id, **({"kind": kind} if kind else {})}
+    token = _ap.approval_create(project, "implementer", "deploy", context=context)
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:
         for t in doc["tasks"]:
@@ -648,6 +649,22 @@ class TestTaskApprove:
 
         assert "docket run" not in result.stderr
         assert "will pick it up" in result.stdout
+
+    def test_a_check_changed_grant_ends_the_task_and_gives_no_pickup_hint(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.cli import _service
+
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        _park_on_approval("demo", task["id"], kind="check_changed")
+        monkeypatch.setattr(_service, "is_running", lambda: True)
+
+        result = _task("approve", task["id"])
+
+        assert result.exit_code == 0
+        assert "will pick it up" not in result.stdout
+        assert "docket run" not in result.stderr
 
     def test_a_token_ref_resolves_its_pod_and_ends_with_the_hint(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

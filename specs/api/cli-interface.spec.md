@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.16.0
+**Version**: 2.17.0
 **Status**: Complete
 **Last Updated**: 2026-10-19
 
@@ -351,7 +351,8 @@ The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.
   `task.cancel` audit entry names the project, task, prior status and channel `cli`
 **Output**: One confirmation line. `approve`, `answer`, `retry` and `--for` end with the run
 hint: `docket is running and will pick it up` when `docket start` is running, else
-`Next: docket run --pod <p>` on stderr, for a task ref and for an `apr-` token alike; `cancel` ends with `Next: docket task retry <id>` when it
+`Next: docket run --pod <p>` on stderr, for a task ref and for an `apr-` token alike (an approved
+`check_changed` approval ends its task `done`, so `approve` prints no run hint for it); `cancel` ends with `Next: docket task retry <id>` when it
 settled a stale claim
 **Return**: 0 on success (an approval already in the requested state is a warning, exit 0); 1 on
 an unknown or ambiguous ref, a task in the wrong state, an approval already resolved the
@@ -995,6 +996,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.17.0 (2026-10-19)
+
+- `task approve` prints no run hint for a `check_changed` approval: its grant ends the task
+  `done`, so nothing picks it up (found integrating P45-3).
 
 ### Version 2.16.0 (2026-10-19)
 

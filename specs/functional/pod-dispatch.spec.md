@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.60.0
+**Version**: 6.60.1
 **Status**: Complete. **P45-3** (ADR 0029 point 3) keeps a check from being defined by the change it checks: a task whose
 finished diff touches a protected path parks `waiting_approval` for a person, whatever the profile — see "A change that
 edits its own check" below. **P45-1** (ADR 0029 point 1) prepares the worktree docket makes: before a claimed task's first hop,
@@ -1976,7 +1976,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
 1. When `dispatch_task`'s pipeline ends `done` and the task records a worktree (`dir`, `branch`,
    `baseCommit`), dispatch **MUST** list the paths the task changed: `git diff --name-only
    <baseCommit> <branch>` united with the worktree's uncommitted and untracked paths
-   (`git status --porcelain`), read host-side (`edges.adapters.system`). A task with no worktree
+   (`git status --porcelain --untracked-files=all`, so a file inside a new directory is listed by
+   its own path), read host-side (`edges.adapters.system`). A task with no worktree
    record (it ran in place) **MUST NOT** be checked: it has no base to diff against.
 2. The patterns are the defaults, the pod's `protects` setting, and every tracked file of the
    worktree that a command the task ran as a check names: the Implementer's `verifyCmd`, the
@@ -2460,6 +2461,12 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.60.1 (2026-10-19)
+
+- "A change that edits its own check" requirement 1: the untracked paths are listed with
+  `--untracked-files=all`, so a protected file inside a directory git has never seen is matched
+  by its own path (found integrating P45-3).
 
 ### Version 6.60.0 (2026-10-19)
 

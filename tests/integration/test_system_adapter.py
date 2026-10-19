@@ -7,6 +7,7 @@ availability, git branch lookup, and git changed-files probe.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -158,3 +159,12 @@ def test_git_ls_files_is_none_outside_a_repository(monkeypatch: pytest.MonkeyPat
 def test_git_ls_files_is_none_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(system, "git_available", lambda: False)
     assert system.git_ls_files("/repo") is None
+
+
+def test_git_changed_files_all_untracked_lists_files_in_a_new_directory(tmp_path: Path) -> None:
+    """With all_untracked a file inside a new directory is listed by its own path."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "tsconfig.json").write_text("{}\n")
+    assert system.git_changed_files(str(tmp_path)) == ["config/"]
+    assert system.git_changed_files(str(tmp_path), all_untracked=True) == ["config/tsconfig.json"]
