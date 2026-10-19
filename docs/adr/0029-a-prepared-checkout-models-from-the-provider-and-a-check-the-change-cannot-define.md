@@ -8,8 +8,10 @@ itself can edit. And one approval per repository is overwritten by the next team
 docket change?
 
 **Where decided:** 2026-10-19, by the maintainer, from the investigation below (`develop` at
-`cd75351d`). The per-step token limit is **not** decided here: it waits on Tack's decision on
-limits by kind of task (Tack ADR 0086, "Not decided"), and `AGENT_LOOP_TOKEN_BUDGET` stays as it is.
+`cd75351d`). The per-step token limit needs no change: Tack decided on 2026-10-19 (its ADR 0086
+decision 5) that every run it sends carries a limit, and docket already gives each step what is
+left of a task's `maxTokens`; `AGENT_LOOP_TOKEN_BUDGET` stays as it is, for a task that comes with
+none.
 
 ## The decision, on one screen
 
@@ -61,7 +63,8 @@ limits by kind of task (Tack ADR 0086, "Not decided"), and `AGENT_LOOP_TOKEN_BUD
 
 ## What this does not do
 
-- Change the per-step token limit or `budgetUsd` (see "Where decided").
+- Change the per-step token limit or `budgetUsd`: a task's `maxTokens` already bounds its steps (see
+  "Where decided").
 - Build container images per project, or guess an install without a lockfile.
 - Restore protected files from the base commit before a gate runs: a legitimate change to a
   manifest (a new dependency) would then be checked against the old one. It is sent to a person

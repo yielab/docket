@@ -742,5 +742,21 @@
     "heading": "◆ CLOSED — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028)",
     "bytes": 21773,
     "sha256": "605ca1254ae4927e1da65be97584f194484143c1e92fd63b9eb98fc890abc3b6"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 116 COMPLETE — what a joint run through Tack found, CLOSED 2026-10-19 (no phase; opened 2026-10-18)",
+    "bytes": 21195,
+    "sha256": "5e573e31741de9f307f241ef2151074ff756312d18ab8a165dadf82cc3df3f61"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ Phase 44 closed 2026-10-18",
+    "bytes": 712,
+    "sha256": "2275a8733f297eefe14d2af358a8eb21673986a5c487a96e495d5e8b3b35e102"
   }
 ]
