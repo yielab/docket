@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.33.0
+**Version**: 1.34.0
 **Status**: Implemented
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -415,7 +415,12 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     `docket run` **MUST** do the same for a changed item before dispatching; neither
     `docket start` nor `dispatch_pod` reads `.docket/`. A review shows the repository's
     commands as before/now; `core.pod_apply.repo_changes` derives them from the directory and the
-    stored review. The decision itself (go, refused, needs a code, wrong code, accepted) is
+    stored review. The remembered review is kept per codebase and per pod, as a set: each pod
+    keeps every item set it approved, an approval never replaces another pod's or the pod's
+    earlier set, and a directory is `go` for any set its pod has approved (returning to an
+    earlier set asks nothing; a new set asks, showing only what changed against the pod's latest
+    approval). A `reviewed-repos.json` in the older one-entry shape is not read, so its operator
+    is asked once more (D-57; CHANGELOG). The decision itself (go, refused, needs a code, wrong code, accepted) is
     `core.pod_apply.review_decision`, shared by the CLI and by `apply_directory` behind `POST /pods/<p>/apply`, which is
     always off a terminal: without the matching `accept` it creates nothing and answers `409`
     with the code (`operator-api.spec.md`).
@@ -631,6 +636,12 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.34.0 (2026-10-19)
+
+- Requirement 12: the remembered review (`reviewed-repos.json`) is kept per codebase and per pod,
+  as a set of approved digests; a second pod's approval on the same codebase no longer removes the
+  first's (P45-4, ADR 0029 point 4). The older one-entry shape is not read (D-57).
 
 ### Version 1.33.0 (2026-10-18)
 

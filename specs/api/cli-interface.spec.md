@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.15.0
+**Version**: 2.16.0
 **Status**: Complete
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -230,7 +230,9 @@ provisioning belongs to `init`, including multi-project automation.
   row reads `N allowed on <date> (code <16 hex>)`, and when the repository's `.docket/` now
   holds a run-on-this-machine item that differs from the allowed one, a second row reads `N
   changed in the repository, waiting for your OK: docket run asks`; neither row exists without a
-  remembered review. `status` reads the repository and the store, and writes nothing.
+  remembered review. The remembered review is the pod's own: `status` reads the approvals this
+  pod made for the repository, so a second pod's approval does not change this pod's row.
+  `status` reads the repository and the store, and writes nothing.
 - `--all` reports the same summary for every registered pod, once per project rather than once
   per agent, with failed counts; `--all --json` also carries the fleet inventory
   (`timestamp`, `channels`, `agents`, `totalCostUsd`).
@@ -993,6 +995,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.16.0 (2026-10-19)
+
+- `docket status`'s `Commands` row is per pod (P45-4): the approvals the pod made for its
+  repository, not whichever pod approved last (pod-blueprints 1.34.0 requirement 12).
 
 ### Version 2.15.0 (2026-10-18)
 

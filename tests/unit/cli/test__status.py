@@ -237,7 +237,7 @@ class TestCommandsRows:
         (code / ".docket" / "pipeline.yaml").write_text(
             f"name: p\nsteps:\n  - id: migrate\n    run: {run}\n"
         )
-        _rr.remember(code, (RunItem("pipeline-step", "migrate", "make migrate"),))
+        _rr.remember(code, "demo", (RunItem("pipeline-step", "migrate", "make migrate"),))
         return code
 
     def test_allowed_and_changed_rows(

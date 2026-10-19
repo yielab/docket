@@ -1708,6 +1708,13 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error(f"Unknown pod: {project}", 404)
             return
         codebase = fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
+        if not codebase:
+            self._send_json_error(
+                f"pod {project} has no recorded codebase; docket pod update reviews a "
+                "directory against the repository the pod was made from",
+                400,
+            )
+            return
         directory_value = body.get("directory")
         dry_run, accept = body.get("dryRun", False), body.get("accept")
         if directory_value is not None and not isinstance(directory_value, str):
@@ -1717,9 +1724,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error("dryRun must be a boolean and accept a string", 400)
             return
         if directory_value is None:
-            directory_value = (
-                str(_pod_apply.repo_config_dir(Path(codebase), project)) if codebase else ""
-            )
+            directory_value = str(_pod_apply.repo_config_dir(Path(codebase), project))
         elif not Path(directory_value).is_absolute():
             self._send_json_error("directory must be an absolute path", 400)
             return
@@ -1727,10 +1732,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if not directory_value or not directory.is_dir():
             self._send_json_error(f"directory not found: {directory_value}", 400)
             return
-        root = Path(codebase) if codebase else directory.parent
         try:
             outcome = _pod_apply.apply_directory(
-                project, directory, root, accept=accept, dry_run=dry_run, channel="http"
+                project, directory, Path(codebase), accept=accept, dry_run=dry_run, channel="http"
             )
         except _pod_apply.PodApplyError as exc:
             self._send_json_error(str(exc), 400)

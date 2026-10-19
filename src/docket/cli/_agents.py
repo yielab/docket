@@ -113,7 +113,7 @@ def _refuse_shell(review: _pod_apply.PlanReview) -> int:
 
 
 def _changed_since_review(
-    root: Path, code: str, review: _pod_apply.PlanReview, command: str = "docket init"
+    root: Path, project: str, code: str, review: _pod_apply.PlanReview, command: str = "docket init"
 ) -> int:
     from docket.core import reviewed_repos as _reviewed
 
@@ -121,7 +121,7 @@ def _changed_since_review(
         f"{_stopped(command)}. The repository changed what runs on this machine since review "
         f"code {code}:"
     )
-    before = _reviewed.lookup(root)
+    before = _reviewed.lookup(root, project)
     was = {(i.kind, i.name): i.runs for i in before.items} if before else {}
     for item in review.runs:
         if was.get((item.kind, item.name)) != item.runs:
@@ -130,9 +130,10 @@ def _changed_since_review(
                 f"    before: {escape(was.get((item.kind, item.name), '(not reviewed)'))}"
             )
             ui.console.print(f"    now:    {escape(item.runs)}")
+    target = _pod_apply.repo_config_dir(root, project, create=True).relative_to(root).as_posix()
     ui.console.print(
         "Review the new version with: docket init --no-apply, then "
-        "docket pod update .docket --dry-run"
+        f"docket pod update {target} --dry-run"
     )
     return 2
 
@@ -174,21 +175,25 @@ def _needs_review(
 
 
 def review_repo_source(
-    req: InitRequest, loc_path: Path, apply_source: Path, command: str = "docket init"
+    req: InitRequest,
+    project: str,
+    loc_path: Path,
+    apply_source: Path,
+    command: str = "docket init",
 ) -> int:
     """The operator's OK for what *apply_source* runs on this machine, asked before anything is
     created. 0 means go on; 2 means stop (already printed). Shipped recipes are exempt."""
     from docket.cli._pod_config import render_review
     from docket.core import reviewed_repos as _reviewed
 
-    decision = _pod_apply.review_decision(loc_path, apply_source, req.accept)
+    decision = _pod_apply.review_decision(loc_path, project, apply_source, req.accept)
     review = decision.review
     if decision.status == "go":
         return 0
     if decision.status == "refused":
         return _refuse_shell(review)
     if decision.status == "code_mismatch":
-        return _changed_since_review(loc_path, req.accept or "", review, command)
+        return _changed_since_review(loc_path, project, req.accept or "", review, command)
     if decision.status == "needs_code":
         if not (_stdin_is_tty() and not req.json_out):
             return _needs_review(req, review, decision.code, command)
@@ -201,7 +206,7 @@ def review_repo_source(
                 f"{_stopped(command)}. Nothing was {'created' if command == 'docket init' else 'changed'}."
             )
             return 2
-    _reviewed.remember(loc_path, review.runs)
+    _reviewed.remember(loc_path, project, review.runs)
     return 0
 
 
@@ -281,7 +286,7 @@ def run_init(req: InitRequest) -> int:
     if resolve_rc:
         return resolve_rc
     if apply_source is not None and not req.no_apply:
-        review_rc = review_repo_source(req, loc_path, apply_source)
+        review_rc = review_repo_source(req, aid, loc_path, apply_source)
         if review_rc:
             return review_rc
 

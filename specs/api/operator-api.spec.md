@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 5) -- contract spec
 
-**Version**: 5.9.0
+**Version**: 5.10.0
 **Status**: Implemented (Phase 43, ADR 0027). `SERVE_API_VERSION` is `"5"`.
 **Last Updated**: 2026-10-19
 
@@ -259,7 +259,9 @@ A directory that runs things without a matching `accept` (`409`; a wrong `accept
 ```
 
 A directory that names a refused `allowCommands` shell is `409` with no `reviewCode`. A
-nonexistent or relative `directory` is `400`, an unknown pod `404`. The apply is audited as
+nonexistent or relative `directory` is `400`, an unknown pod `404`. A pod with no recorded
+codebase (its Lead has no `codebase` meta) is `400` with a message naming `docket pod update`
+and a codebase; it is never reviewed against the directory's parent. The apply is audited as
 `pod.apply` with `channel=http`; an accepted code is remembered as the CLI does (`repo.allow`).
 
 `GET /pods/<p>/corrections?since=2026-10-01T00:00:00Z` (`200`):
@@ -347,6 +349,12 @@ Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the exa
   routes this spec owns.
 
 ## Changelog
+
+### Version 5.10.0 (2026-10-19)
+
+- `POST /pods/<p>/apply` (P45-4): a pod with no recorded codebase is `400` instead of being reviewed
+  against the directory's parent; the remembered review is per codebase and pod, so an approval
+  for one pod never replaces another's (pod-blueprints 1.34.0 requirement 12).
 
 ### Version 5.9.0 (2026-10-19)
 

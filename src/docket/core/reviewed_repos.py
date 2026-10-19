@@ -42,28 +42,56 @@ def _key(repo_root: Path) -> str:
     return str(repo_root.resolve())
 
 
-def lookup(repo_root: Path) -> ReviewedRepo | None:
-    """The remembered review for *repo_root*, or None."""
-    entry = store.read_json(_cfg.REVIEWED_REPOS_FILE).get("repos", {}).get(_key(repo_root))
-    if not isinstance(entry, dict):
-        return None
-    items = tuple(RunItem(str(i["kind"]), str(i["name"]), str(i["runs"])) for i in entry["items"])
-    return ReviewedRepo(
-        _key(repo_root), str(entry["digest"]), str(entry["code"]), str(entry["date"]), items
-    )
+def _rows(by_pod: dict[str, Any], project: str) -> list[dict[str, Any]]:
+    rows = by_pod.get(project)
+    if not isinstance(rows, list):
+        return []
+    return [r for r in rows if isinstance(r, dict) and isinstance(r.get("digest"), str)]
 
 
-def is_reviewed(repo_root: Path, items: tuple[RunItem, ...]) -> bool:
-    """Whether *repo_root* was allowed with exactly these items."""
-    found = lookup(repo_root)
-    return found is not None and found.digest == _digest(items)
+def _is_one_entry_shape(by_pod: Any) -> bool:
+    """One entry per codebase (no pod keys) is not read as pods; it counts as nothing."""
+    return not isinstance(by_pod, dict) or isinstance(by_pod.get("digest"), str)
 
 
-def remember(repo_root: Path, items: tuple[RunItem, ...]) -> str:
-    """Record the operator's OK for these items and audit ``repo.allow``; returns the code."""
+def approvals(repo_root: Path, project: str) -> list[ReviewedRepo]:
+    """Every item set *project* approved for *repo_root*, oldest first."""
+    repos = store.read_json(_cfg.REVIEWED_REPOS_FILE).get("repos", {})
+    by_pod = repos.get(_key(repo_root))
+    if _is_one_entry_shape(by_pod):
+        return []
+    key = _key(repo_root)
+    return [
+        ReviewedRepo(
+            key,
+            str(row["digest"]),
+            str(row["code"]),
+            str(row["date"]),
+            tuple(RunItem(str(i["kind"]), str(i["name"]), str(i["runs"])) for i in row["items"]),
+        )
+        for row in _rows(by_pod, project)
+    ]
+
+
+def lookup(repo_root: Path, project: str) -> ReviewedRepo | None:
+    """The latest set *project* approved for *repo_root*, or None."""
+    found = approvals(repo_root, project)
+    return found[-1] if found else None
+
+
+def is_reviewed(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> bool:
+    """Whether *project* approved exactly these items for *repo_root* at some point."""
+    digest = _digest(items)
+    return any(found.digest == digest for found in approvals(repo_root, project))
+
+
+def remember(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> str:
+    """Record *project*'s OK for these items and audit ``repo.allow``; returns the code.
+    A set already approved moves to the latest position instead of being repeated."""
     code = review_code(items)
+    digest = _digest(items)
     entry: dict[str, Any] = {
-        "digest": _digest(items),
+        "digest": digest,
         "code": code,
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
         "items": [{"kind": i.kind, "name": i.name, "runs": i.runs} for i in items],
@@ -71,9 +99,17 @@ def remember(repo_root: Path, items: tuple[RunItem, ...]) -> str:
 
     def _write(current: dict[str, Any]) -> dict[str, Any]:
         repos = dict(current.get("repos", {}))
-        repos[_key(repo_root)] = entry
+        key = _key(repo_root)
+        by_pod = repos.get(key) or {}
+        kept: dict[str, Any] = {} if _is_one_entry_shape(by_pod) else dict(by_pod)
+        rows = [r for r in _rows(kept, project) if r["digest"] != digest]
+        kept[project] = [*rows, entry]
+        repos[key] = kept
         return {"repos": repos}
 
     store.read_modify_write(_cfg.REVIEWED_REPOS_FILE, _write)
-    audit_log("repo.allow", f"repo={_key(repo_root)} code={code} items={len(items)}")
+    audit_log(
+        "repo.allow",
+        f"repo={_key(repo_root)} pod={project} code={code} items={len(items)}",
+    )
     return code

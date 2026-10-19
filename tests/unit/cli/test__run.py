@@ -460,7 +460,7 @@ def _repo_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run: str = "make 
     (code / ".docket" / "skills" / "style-guide" / "SKILL.md").write_text(_SKILL.format(body="v1"))
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
     _pa.apply(_pa.plan_apply("demo", code / ".docket"))
-    _rr.remember(code, _pa.classify_directory(code / ".docket").runs)
+    _rr.remember(code, "demo", _pa.classify_directory(code / ".docket").runs)
     return code
 
 
@@ -545,7 +545,7 @@ class TestRunPicksUpTheRepository:
         assert "make migrate" in result.output and "make evil" in result.output
         assert "Allow the new version? [y/N]" in result.output
         assert "make evil" in _pod_core.bound_pipeline_path("demo").read_text()
-        found = _rr.lookup(code)
+        found = _rr.lookup(code, "demo")
         assert found is not None and found.items[0].runs == "make evil"
 
     def test_n_runs_the_allowed_version(

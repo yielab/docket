@@ -102,17 +102,17 @@ def _last_run(project: str) -> dict[str, Any] | None:
     }
 
 
-def _commands(root: str, project: str = "") -> dict[str, Any] | None:
+def _commands(root: str, project: str) -> dict[str, Any] | None:
     """The commands the operator allowed for the repository at *root* and how many of its
     ``.docket/`` run items now differ; None when nothing was ever allowed."""
     from docket.core import pod_apply as _pod_apply
     from docket.core import reviewed_repos as _reviewed
 
-    found = _reviewed.lookup(Path(root)) if root else None
+    found = _reviewed.lookup(Path(root), project) if root else None
     if found is None:
         return None
     directory = _pod_apply.repo_config_dir(Path(root), project)
-    changed = len(_pod_apply.runs_changed(directory)) if directory.is_dir() else 0
+    changed = len(_pod_apply.runs_changed(project, directory)) if directory.is_dir() else 0
     return {"allowed": len(found.items), "date": found.date, "code": found.code, "changed": changed}
 
 
