@@ -165,7 +165,7 @@
 
 ### P45-4 — approvals are kept per codebase and team, as a set
 
-**Status:** IN PROGRESS (worker w117-p45-4, Wave 117) · **Size:** S · **Model:** Haiku
+**Status:** DONE 2026-10-19 (merge b5318e7c; full gates at the Wave 117 rollup) · **Size:** S · **Model:** Haiku
 
 - **Trigger:** ADR 0029 point 4: one entry per codebase, overwritten; two pods' approvals 0.3 s
   apart in `audit.log`, the second replacing the first.
