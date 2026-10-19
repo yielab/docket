@@ -72,7 +72,7 @@
 
 ### P45-1 — docket prepares the worktree it makes
 
-**Status:** IN PROGRESS (worker w117-p45-1, Wave 117) · **Size:** M · **Model:** Sonnet
+**Status:** DONE 2026-10-19 (merge 645fce80; Wave 117 gates green) · **Size:** M · **Model:** Sonnet
 
 - **Trigger:** ADR 0029 point 1: in a fresh Fabulada worktree `Cannot find package 'eslint'`,
   `Cannot find module 'vitest/config'`, and the machine's `tsc` 7.0.2 against the project's 5.9.3.
@@ -137,7 +137,7 @@
 
 ### P45-3 — a change that edits its own check goes to a person
 
-**Status:** TODO after Wave 117 · **Size:** M · **Model:** Sonnet
+**Status:** READY (P45-1 and P45-4 merged; P45-2 shares none of its functions) · **Size:** M · **Model:** Sonnet
 
 - **Trigger:** ADR 0029 point 3: a gate such as `npx eslint` reads configuration the agent edits;
   `reviewed_repos.py` hashes only the command text.
@@ -165,7 +165,7 @@
 
 ### P45-4 — approvals are kept per codebase and team, as a set
 
-**Status:** DONE 2026-10-19 (merge b5318e7c; full gates at the Wave 117 rollup) · **Size:** S · **Model:** Haiku
+**Status:** DONE 2026-10-19 (merge b5318e7c; Wave 117 gates green) · **Size:** S · **Model:** Haiku
 
 - **Trigger:** ADR 0029 point 4: one entry per codebase, overwritten; two pods' approvals 0.3 s
   apart in `audit.log`, the second replacing the first.
@@ -205,6 +205,21 @@
 > packet note, the warm workspace, and "no `node_modules` is pod configuration", which ADR 0029
 > reversed).
 
+- **Found integrating Wave 117 (P45-1, 2026-10-19).**
+  - **Only `node_modules` is cached.** A `.venv` is not relocatable, so `uv sync`, `poetry
+    install` and `cargo fetch` run in each task worktree. Trigger: a measured Python or Rust
+    prepare that dominates a task's wall clock.
+  - **A tool that writes into `node_modules/.cache` fails with isolation on** (the entry is
+    read-only in the jail). Trigger: a real gate failing on it.
+  - **Eviction can break a running task's link** when a fourth lockfile of one codebase is
+    prepared while an older task still runs; resume detects the broken link and prepares again.
+    Trigger: a real run that hits it.
+  - **Prepare is not cancellable**, like `verifyCmd`; it is bounded by `PREPARE_TIMEOUT_S` (900 s).
+  - **A hop that makes its own `node_modules` symlink to another codebase's cache entry gets that
+    entry read-only in its jail** (`core/prepare.py::linked_entries` accepts any entry under the
+    cache). Installed packages, not secrets; restrict to the task's codebase when next touched.
+  - **The real `npm ci` inside the Landlock jail is unproven** (the tests use a fixture command);
+    P45-5's real run is the evidence.
 - **Found integrating Wave 116 batch A (2026-10-18).**
   - **Shell keywords are classified as binaries when unjailed.** `for t in a; do ...; done` asks
     with `'for' is not on the curated allowlist` (also `do`, `done`, `if`, `then`, `while`).

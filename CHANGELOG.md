@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **docket prepares the worktree it makes for a task (API version 6).** Before a claimed task's
+  first hop, dispatch runs the task's `prepare`, else the team's `prepare:` in `pod.yaml`, else the
+  command for the lockfile at the worktree root (`npm ci`, `pnpm install --frozen-lockfile`,
+  `yarn install --immutable`, `uv sync --frozen`, `poetry install`, `cargo fetch`); `""` or
+  `none` turns it off. With isolation on the install runs in the jail with the network open for
+  that launch only; hops and gates keep the pod's network. `node_modules` is kept once per
+  codebase and lockfile under `~/.docket/cache/prepare/` (three entries per codebase) and linked
+  into each worktree, read-only inside the jail. A failed install fails the task with
+  `failureKind: "prepare"` and no hop; a `prepare` trace event records command, source, cache
+  hit, seconds and exit. A team's or derived command is reviewed as kind `prepare`. Found by
+  Fabulada's first code run through a team: a fresh worktree had no `eslint` or `vitest`.
 - **The sandbox can read the operator's toolchain.** `docket setup sandbox read add <path>`
   grants every jail read and execute (never write) on a path such as a version manager's Node
   or the system Python's user site; `read remove` drops it, and `docket setup sandbox --json`
