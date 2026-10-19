@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A change that edits its own check goes to a person.** When a task's pipeline ends `done` and
+  its diff (committed, uncommitted and untracked) touches a protected path, the task parks
+  `waiting_approval` with an approval of kind `check_changed` and `checkChanged: [paths]`, under
+  every profile, lights-out included; approving ends it `done`, denying fails it with
+  `failureKind: "check_changed"`. Protected paths are the defaults (lockfiles, `package.json`,
+  `pyproject.toml`, `Cargo.toml`, lint/type/test configuration, `.docket/`, CI workflows), the
+  team's `protects:` in `pod.yaml` (adds only), and every tracked file a gate, `verifyCmd` or `run:`
+  step names. The review digest now also covers the contents of the files a reviewed command
+  names, so `pod update` and `docket run` ask again after such a file changes; every existing
+  approval is asked once more (D-57).
 - **docket prepares the worktree it makes for a task (API version 6).** Before a claimed task's
   first hop, dispatch runs the task's `prepare`, else the team's `prepare:` in `pod.yaml`, else the
   command for the lockfile at the worktree root (`npm ci`, `pnpm install --frozen-lockfile`,
@@ -103,6 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The `inPlace` meta key**, which nothing wrote; `_ensure_task_worktree` no longer reads it.
 - **The per-member daily-log pipeline (P44-7).** Daily logs under `memory/`, their seeding at
   provisioning and their distillation into MEMORY.md are gone: nothing wrote them in a pod task.
   `docket pod reset` resets the ledger and the member's templates and no longer distills or
@@ -123,6 +134,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Pin commit subjects are cut at a word boundary**, and a parallel group that fails keeps its
+  failing child's `failureKind` (a budget stop inside a group now says `budget`).
 - **Approvals are kept per codebase and team, as a set.** `reviewed-repos.json` is keyed by
   codebase and pod and keeps every approved set, so a second team on the same codebase no longer
   replaces the first team's approval, and returning to an earlier approved set asks nothing;

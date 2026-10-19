@@ -137,7 +137,7 @@
 
 ### P45-3 — a change that edits its own check goes to a person
 
-**Status:** IN PROGRESS (worker w118-p45-3, Wave 118) · **Size:** M · **Model:** Sonnet
+**Status:** DONE 2026-10-19 (merge e6142b1c; Wave 118 gates green) · **Size:** M · **Model:** Sonnet
 
 - **Trigger:** ADR 0029 point 3: a gate such as `npx eslint` reads configuration the agent edits;
   `reviewed_repos.py` hashes only the command text.
@@ -205,6 +205,13 @@
 > packet note, the warm workspace, and "no `node_modules` is pod configuration", which ADR 0029
 > reversed).
 
+- **Found integrating Wave 118 (P45-3, 2026-10-19).**
+  - **A file a check reaches only through `make` or `npm run` is protected only through the
+    default files it reads** (`Makefile` is not a default; `package.json` is). Stated in
+    `security-gates.spec.md`. Trigger: a real gate whose script lives behind a target.
+  - **A gitignored file is invisible to the check** (`git status` and `git diff` skip it), so a
+    tool configuration the repository ignores can be edited without a park. Trigger: a real
+    repository that ignores a file its gate reads.
 - **Found integrating Wave 117 (P45-1, 2026-10-19).**
   - **Only `node_modules` is cached.** A `.venv` is not relocatable, so `uv sync`, `poetry
     install` and `cargo fetch` run in each task worktree. Trigger: a measured Python or Rust
