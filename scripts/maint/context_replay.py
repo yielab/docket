@@ -154,6 +154,9 @@ class Projection:
     sent: int
     counted_old: int
     counted_new: int
+    stable: int = 0
+    transitions: int = 0
+    counted_prefix: int = 0
 
 
 def load_steps(directory: Path) -> list[Step]:
@@ -256,21 +259,43 @@ def measure(
     return rows
 
 
+def _common_prefix_bytes(a: Messages, b: Messages) -> int:
+    total = 0
+    for x, y in zip(a, b, strict=False):
+        if x != y:
+            break
+        total += _bytes([x])
+    return total
+
+
 def project(step: Step, policy: Policy) -> Projection:
-    """Estimate *step* under *policy*: measured input per call, scaled by the request byte ratio."""
+    """Estimate *step* under *policy* from measured input scaled by the request byte ratio.
+
+    ``stable`` counts calls whose request starts with the previous one, byte for byte."""
     overhead = overhead_tokens(step)
-    sent = old = new = 0
+    sent = old = new = stable = prefix = 0
+    previous: Messages | None = None
     for index, call in enumerate(step.calls):
         measured = _payload(call, "inputTokens")
         request = request_messages(step, index)
-        before, after = _bytes(request), _bytes(policy(request))
+        projected = policy(request)
+        before, after = _bytes(request), _bytes(projected)
         scaled = overhead + max(0.0, measured - overhead) * (after / before if before else 1.0)
         scaled_cached = _payload(call, "cachedTokens") * (scaled / measured if measured else 1.0)
         output = _payload(call, "outputTokens")
         sent += round(scaled)
         old += round(scaled) + output
         new += round(scaled - scaled_cached) + output
-    return Projection(sent, old, new)
+        shared = 0.0
+        if previous is not None:
+            if projected[: len(previous)] == previous:
+                stable += 1
+            shared = overhead + _common_prefix_bytes(previous, projected) / (
+                config.CONTEXT_BYTES_PER_TOKEN
+            )
+        prefix += round(scaled - min(scaled, shared)) + output
+        previous = projected
+    return Projection(sent, old, new, stable, max(0, len(step.calls) - 1), prefix)
 
 
 def render_table(rows: list[Row], budget: int) -> str:
@@ -307,12 +332,16 @@ def render_projection(steps: list[Step], names: list[str]) -> str:
         if name not in POLICIES:
             raise SystemExit(f"unknown policy {name!r}; known: {', '.join(sorted(POLICIES))}")
         lines.append(f"policy {name} (estimate, not measured)")
-        lines.append(f"{'step':<15}{'sent':>10}{'vs base':>9}{'old rule':>10}{'new rule':>10}")
+        lines.append(
+            f"{'step':<15}{'sent':>10}{'vs base':>9}{'old rule':>10}{'new rule':>10}"
+            f"{'prefix rule':>13}{'stable':>9}"
+        )
         for step, row in zip(steps, base, strict=True):
             p = project(step, POLICIES[name])
             ratio = p.sent / row.sent if row.sent else 1.0
             lines.append(
                 f"{step.name:<15}{p.sent:>10,}{ratio:>9.2f}{p.counted_old:>10,}{p.counted_new:>10,}"
+                f"{p.counted_prefix:>13,}{f'{p.stable}/{p.transitions}':>9}"
             )
     return "\n".join(lines)
 

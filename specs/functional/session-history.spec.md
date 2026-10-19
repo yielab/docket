@@ -1,13 +1,13 @@
 # Session History Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
 compactor before each task-completion backend call. Wave 20 card W20-C4 gives every pod-dispatch
 pipeline step its own history key while preserving the task-wide trace identity. Wave 25 adds a
 bounded range mode so per-request fit can preserve the current task verbatim while compacting only
 older history or completed same-turn tool units.
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-19
 
 ## Purpose
 
@@ -164,7 +164,11 @@ This specification does NOT cover:
     live caller).
 30. The last `keep` (at least 1) answered `tool` messages stay whole; older ones stay whole too,
     newest first, while the characters of all whole results fit in `budget` (6,000, one default
-    `read` window). From the first that does not fit, it and every older one **MUST** have their
+    `read` window). The cut is a function of the messages alone and moves in batches: walking the
+    results oldest to newest, once the characters of all whole results exceed `budget`, the cut
+    moves so the whole results fit in the low-water mark (`HISTORY_LOW_WATER_CHARS`, 3,000, at
+    most half of `budget`; the last `keep` stay whole regardless) and does not move again until
+    the whole results exceed `budget` once more. Every result older than the cut **MUST** have its
     `content` replaced by `[<tool> <path|command|pattern|url>: N lines, M characters, already
     seen and omitted; call <tool> again only for exact text you still need]`, built from the matching call, unless the notice is not shorter
     than the content. Each message keeps its role, `tool_call_id` and `name`. A result beginning
@@ -175,8 +179,9 @@ This specification does NOT cover:
     `new_string` and `old_string` (`edit`) **MUST** be replaced by `[wrote <path>: N characters]`
     (`[replaced <path>: N characters]` for `old_string`) when that is shorter; the other keys and
     the call id are kept and the arguments remain a JSON object. Arguments that do not parse as a
-    JSON object are left as they are. A message that gains a result later changes only at that
-    message, so the request prefix before it is byte-identical between consecutive requests.
+    JSON object are left as they are. Between consecutive requests, every message before the newest assistant/tool pair is
+    byte-identical, except when a batch boundary of requirement 30 is crossed; the prefix a
+    provider caches therefore survives the calls between two boundaries.
 
 ## Interface Contracts
 
@@ -362,6 +367,15 @@ result = sess.compact_session(
 - `condense_history` **MUST NOT** change what `load_messages` returns; it shapes a request only.
 
 ## Changelog
+
+### Version 1.9.0 (2026-10-19)
+
+- Condensation moves in batches (requirement 30). The cut used to be recomputed on every request
+  and, once results outgrew `budget`, moved one result at a time, so the first changed message
+  sat right after the system prompt and the provider's cached prefix ended there. Now, once the
+  whole results exceed `budget`, the cut drops them to `HISTORY_LOW_WATER_CHARS` (3,000) and
+  holds until they exceed `budget` again. Still pure: the boundary is derived from the result
+  sizes, not remembered. Requirement 31's prefix sentence now names the batch boundaries.
 
 ### Version 1.8.0 (2026-10-18)
 
