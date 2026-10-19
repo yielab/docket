@@ -98,6 +98,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "hop_started",  # a pod-dispatch hop began: step, member, model, provider, cycle
         "hop_finished",  # ...and ended: ok, verdict, gate, usage, durationMs
         "memory_update",  # a pod-memory entry was recorded, decided, reverted or reset
+        "prepare",  # a claimed task's worktree was prepared: command, source, cacheHit, exit
         "process_started",  # a tool handler's real OS process group started
         "process_exited",  # ...and its matching exit, with exitCode or signal
         "error",

@@ -193,6 +193,7 @@ _FULL_BODY = {
     "pipeline": "tdd",
     "gate": {"command": "npm test -- --ci", "timeoutS": 600, "map": {"3": "needs_human"}},
     "maxTokens": 400000,
+    "prepare": "pnpm install --frozen-lockfile",
     "restrictions": {"deniedTools": ["fetch"], "network": "none", "policies": []},
 }
 
@@ -290,6 +291,8 @@ class TestAddressableTask:
             {"gate": {"timeoutS": 5}},
             {"maxTokens": 0},
             {"maxTokens": "many"},
+            {"prepare": 3},
+            {"prepare": "a\nb"},
             {"restrictions": "none"},
         ):
             status, _body = _post(f"{url}/tasks/demo", {"description": "x", **extra}, token)

@@ -38,10 +38,10 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
 
 
 def test_api_version_is_5(live_server: str) -> None:
-    """/status.json carries apiVersion 5."""
+    """/status.json carries apiVersion 6."""
     req = urllib.request.Request(f"{live_server}/status.json")
     req.add_header("Authorization", f"Bearer {_TOKEN}")
     with urllib.request.urlopen(req, timeout=5) as resp:
         body = json.loads(resp.read())
 
-    assert body["apiVersion"] == "5"
+    assert body["apiVersion"] == "6"

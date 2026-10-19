@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.11.0
+**Version**: 3.12.0
 **Status**: Stable
 **Last Updated**: 2026-10-19
 
@@ -35,7 +35,7 @@ It does NOT cover the write endpoints' request handling (`POST /approvals/<token
 request/response body — those are implementation details gated by `Authorization: Bearer <token>`
 and documented in `src/docket/serve.py`.
 
-**API version:** `5`  (`SERVE_API_VERSION = "5"` in `src/docket/serve.py`)
+**API version:** `6`  (`SERVE_API_VERSION = "6"` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
 `/health`) require no auth. `/approvals`, `/inbox`, `/runs`, `/runs/<id>`, and the write endpoints
 all require `Authorization: Bearer <token>`.
@@ -79,7 +79,7 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 
 ```json
 {
-  "apiVersion": "5",
+  "apiVersion": "6",
   "timestamp":  "2026-06-25T10:00:00Z",
   "channels":   ["telegram"],
   "agents": [
@@ -104,7 +104,7 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 
 | Field | Type | Notes |
 |---|---|---|
-| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"5"`. |
+| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"6"`. |
 | `channels` | string[] | Distinct channel names present in Docket's `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here** (3.5.0): a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
@@ -790,6 +790,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.12.0 (2026-10-19)
+
+- `API version` is `6`: `apiVersion` in `GET /status.json` and `SERVE_API_VERSION` read `"6"`
+  (P45-1; the task field and failure kind are owned by `operator-api.spec.md` 6.0.0).
 
 ### Version 3.11.0 (2026-10-19)
 

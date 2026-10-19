@@ -1,7 +1,8 @@
 """The addressable-task fields of an enqueue: shape and narrowing checks, no resolution.
 
-``baseRef`` and ``pipeline`` are resolved at claim, ``gate``, ``maxTokens`` and ``restrictions``
-at hop time; this module only refuses what can never be valid or would widen a pod's limits."""
+``baseRef``, ``pipeline`` and ``prepare`` are resolved at claim, ``gate``, ``maxTokens`` and
+``restrictions`` at hop time; this module only refuses what can never be valid or would widen a
+pod's limits."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, Validat
 
 from docket.core import archetypes as _archetypes
 from docket.core import policy as _policy
+from docket.core import prepare as _prepare
 
 _GATE_LABELS = ("pass", "fail", "needs_human")
 TASK_STATUSES = frozenset(
@@ -66,6 +68,7 @@ class TaskOptions(BaseModel):
     pipeline: StrictStr | None = Field(None, min_length=1)
     gate: TaskGate | None = None
     max_tokens: StrictInt | None = Field(None, alias="maxTokens", gt=0)
+    prepare: StrictStr | None = None
     restrictions: TaskRestrictions | None = None
 
     def as_record(self) -> dict[str, Any]:
@@ -115,6 +118,7 @@ def validate_task_options(
     pipeline: Any = None,
     gate: Any = None,
     max_tokens: Any = None,
+    prepare: Any = None,
     restrictions: Any = None,
 ) -> TaskOptions:
     """Validate the raw values (``None`` is unset); raises TaskOptionsError, or its subclass
@@ -126,6 +130,7 @@ def validate_task_options(
         "pipeline": pipeline,
         "gate": gate,
         "maxTokens": max_tokens,
+        "prepare": prepare,
         "restrictions": restrictions,
     }
     try:
@@ -136,6 +141,11 @@ def validate_task_options(
         raise TaskOptionsError("invalid pipeline: must not be blank")
     if options.gate is not None:
         _check_gate(options.gate)
+    if options.prepare is not None:
+        try:
+            _prepare.check_command(options.prepare)
+        except ValueError as exc:
+            raise TaskOptionsError(f"invalid prepare: {exc}") from exc
     if options.restrictions is not None:
         _check_restrictions(options.restrictions)
     return options

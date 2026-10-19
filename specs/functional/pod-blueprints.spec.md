@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.34.0
+**Version**: 1.35.0
 **Status**: Implemented
 **Last Updated**: 2026-10-19
 
@@ -226,12 +226,13 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
    optional `policies/*.json` directory (guardrail policies, the same schema
    `core.policy.validate_policy` enforces), an optional `pipeline.yaml` (or the file named by
-   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly five
+   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly six
    top-level keys — `members` (a list of role names to add if absent), `settings` (a mapping of
    any `docket pod set <key> <value>` key), `pipeline` (a filename inside *dir*,
    default `pipeline.yaml` when that file exists), `description` (a string; read only for
    display — requirement 9 — and never applied to the pod), and `exporters` (a list of
-   observability-destination names — requirement 11 — reported, never activated). An
+   observability-destination names — requirement 11 — reported, never activated), and `prepare` (a
+   string, the install command of a task's worktree — requirement 13). An
    unrecognized top-level `pod.yaml` key, a `members`/`settings` value of the wrong type, a
    `description` that is not a string, or an `exporters` entry that is not a plain string naming
    a catalog exporter, **MUST** be rejected before anything else is read. *dir* **MAY** also carry
@@ -394,8 +395,8 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     <command>`, `gate: {external: <command>}`, the canonical `mechanical`/`external` gate with a
     `command`, inside a `parallel` group too; a `verify: true` that defers to the member's
     `verifyCmd` runs nothing the repository wrote), MCP server commands, plugins, a
-    `network: open` setting, `allowCommands`, and a role overlay that removes a built-in role's
-    denied tool. A shipped recipe resolved by name **MUST** be exempt. When the second group is
+    `network: open` setting, `allowCommands`, a role overlay that removes a built-in role's
+    denied tool, and the install command a task's worktree runs (`prepare`, requirement 13). A shipped recipe resolved by name **MUST** be exempt. When the second group is
     non-empty and the repository's remembered review (`core.reviewed_repos`, `reviewed-repos.json`
     in the operator's home, 0600, written through `edges/store`) does not hold the same items,
     `init` **MUST**: on a terminal, print both groups with each item's exact command and ask
@@ -425,6 +426,21 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     always off a terminal: without the matching `accept` it creates nothing and answers `409`
     with the code (`operator-api.spec.md`).
 
+13. **A team prepares its task worktrees (P45-1, ADR 0029 point 1).** `pod.yaml`'s optional
+    top-level `prepare:` is the install command a task's fresh worktree runs before its first hop
+    (`pod-dispatch.spec.md` "Task preparation"); `none` (or `""`) turns the lockfile-derived
+    default off. It belongs at the top level, never inside `settings` (`plan_apply` **MUST** refuse
+    `settings.prepare` naming that, as it does for `pipeline`) and is applied as the pod's
+    `prepare` setting, so `plan_apply` lists it as a `setting` item and `docket pod set prepare`
+    writes the same value. A value that is not a string, has a newline or NUL, or exceeds 1,000
+    characters is rejected before anything is written. `classify_directory` **MUST** list the
+    command as a run-on-this-machine item of kind `prepare` (name `prepare`, runs = the command)
+    so requirement 12's review shows and remembers it: the directory's own `prepare:` when it
+    has one and it is not `none`, else — when *dir* belongs to a repository
+    (`core.pod_apply.repo_root`) whose root holds a lockfile — the command pod-dispatch derives
+    from it. `prepare: none` lists nothing. `docket pod export` writes the recorded setting back
+    as `prepare:`.
+
 ### Pod manifests: export
 
 The write direction the deferred manifest carried since "apply" shipped: `apply` composes a
@@ -449,11 +465,12 @@ machine, the trigger `docket pod update` itself named as deferred.
    not regenerated) when `PodSettings.pipeline` is set; and a `pod.yaml` manifest with `kind:
    pod` and `name: <project>` written first, then `members` (every non-Lead role this pod's
    roster has, `core.dispatch.pod_full_roster(project)`), `settings` (every key in
-   `PodSettings.KEYS` whose stored value differs from that model's own default — a key at its
+   `PodSettings.KEYS` (but `pipeline` and `prepare`, which are top-level) whose stored value differs from that model's own default — a key at its
    default is never written, so a fresh pod exports an empty `settings` mapping; `configSource`/
    `configDigest`, outside `KEYS`, are never written here regardless of value — requirement 6
    above), and `exporters` (this pod's recorded `exporters` list, requirement 11, written only
-   when non-empty — unlike `configSource`/`configDigest`, this key round-trips like `members`).
+   when non-empty — unlike `configSource`/`configDigest`, this key round-trips like `members`), and
+   `prepare` (this pod's `prepare` setting, written top-level only when set).
    `export` **MUST NOT** write a
    `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename `apply` already
    resolves makes one redundant, matching every shipped recipe's own `pod.yaml`. A recipe's own
@@ -636,6 +653,12 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.35.0 (2026-10-19)
+
+- Requirement 13 (P45-1, ADR 0029 point 1): `pod.yaml` gains a top-level `prepare:`, applied as the
+  pod's `prepare` setting; the command (or the lockfile's derived one) is a reviewed item of kind
+  `prepare`; export writes it back. Requirement 1's key count is six.
 
 ### Version 1.34.0 (2026-10-19)
 
