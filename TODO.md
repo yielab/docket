@@ -72,7 +72,7 @@
 
 ### P45-1 — docket prepares the worktree it makes
 
-**Status:** READY · **Size:** M · **Model:** Sonnet
+**Status:** IN PROGRESS (worker w117-p45-1, Wave 117) · **Size:** M · **Model:** Sonnet
 
 - **Trigger:** ADR 0029 point 1: in a fresh Fabulada worktree `Cannot find package 'eslint'`,
   `Cannot find module 'vitest/config'`, and the machine's `tsc` 7.0.2 against the project's 5.9.3.
@@ -165,7 +165,7 @@
 
 ### P45-4 — approvals are kept per codebase and team, as a set
 
-**Status:** READY · **Size:** S · **Model:** Haiku
+**Status:** IN PROGRESS (worker w117-p45-4, Wave 117) · **Size:** S · **Model:** Haiku
 
 - **Trigger:** ADR 0029 point 4: one entry per codebase, overwritten; two pods' approvals 0.3 s
   apart in `audit.log`, the second replacing the first.
