@@ -148,6 +148,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The built-in `anthropic` provider sends `anthropic-version: 2023-06-01`, which Anthropic's
+  `/v1/models` requires (it answered 400 to the registration probe, so no limit was ever
+  observed for an Anthropic model). Found by the Phase 45 real run.
 - `llm_call` request bytes measured a JSON body with non-ASCII escaped to `\uXXXX`, inflating a
   non-ASCII part by about 60% (18,037 B reported against 11,367 B); the request body is now sent
   and measured as UTF-8. An `llm_call` record carries `cacheWriteTokens` when the backend reports

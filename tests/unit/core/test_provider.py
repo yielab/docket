@@ -65,6 +65,11 @@ class TestBuiltinCatalog:
         # so this only passes once the built-in `anthropic` document is found.
         assert _provider.load_catalog().get("anthropic") is not None
 
+    def test_anthropic_sends_the_version_header_its_models_route_requires(self) -> None:
+        spec = _provider.load_catalog().get("anthropic")
+        assert spec is not None
+        assert spec.headers.get("anthropic-version") == "2023-06-01"
+
     def test_every_built_in_document_loads(self) -> None:
         directory = _cfg.PROVIDER_TEMPLATES_DIR
         files = sorted(directory.glob("*.yaml"))

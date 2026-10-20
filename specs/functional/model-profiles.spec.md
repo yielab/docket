@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 3.6.0
+**Version**: 3.6.1
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -518,6 +518,12 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.6.1 (2026-10-20)
+
+- The built-in `anthropic` document carries `headers: {anthropic-version: "2023-06-01"}`: Anthropic's
+  `/v1/models` refuses a request without it (400), so the registration probe and the daily
+  refresh of requirement 9 never recorded an Anthropic limit. Found by the Phase 45 real run.
 
 ### Version 3.6.0 (2026-10-20)
 

@@ -6,6 +6,8 @@ auth:
   type: bearer
   credentials: [ANTHROPIC_API_KEY]
 credentialPrefix: sk-ant-
+headers:
+  anthropic-version: "2023-06-01"
 pricesAsOf: "2026-06-11"
 models:
   - id: claude-haiku-4-5
