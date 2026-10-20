@@ -148,6 +148,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `task retry` after a failed branch of a parallel review group re-runs the group instead of
+  ending the task `done` with the failed gate unmet: resume counted a group finished when every
+  child had any persisted hop, failed ones included. Found by the Phase 45 real run.
 - A known output cap larger than a hop's remaining token budget no longer refuses the hop before
   any call: the budget reserve and the `max_tokens` sent are cut to what the budget leaves after
   the estimated input (at least 256). Found by the Phase 45 real run: with Anthropic's observed

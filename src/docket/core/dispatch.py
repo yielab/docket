@@ -1376,9 +1376,17 @@ class _ResumePosition:
 
 
 def _group_complete(node: _orch.PlannedGroup, prior: list[HopResult]) -> bool:
-    """Whether every child of a parallel group already has a persisted hop."""
-    seen = {h.step_id or h.role for h in prior}
-    return all((c.step_id or "") in seen for c in node.children)
+    """Whether every child of a parallel group has a persisted hop whose latest attempt
+    succeeded; a failed or parked child re-runs the whole group on resume."""
+    latest: dict[str, HopResult] = {}
+    for hop in prior:
+        latest[hop.step_id or hop.role] = hop
+    return all(
+        (c.step_id or "") in latest
+        and latest[c.step_id or ""].ok
+        and not latest[c.step_id or ""].parked
+        for c in node.children
+    )
 
 
 def _replay_pipeline_position(
