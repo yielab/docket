@@ -104,7 +104,7 @@
 
 ### P45-2 — a model's limits come from the provider's `/models`
 
-**Status:** IN PROGRESS — Wave 119, option A: limit rows out, `price`/`pricesAsOf`/`presets` stay (decided 2026-10-20) · **Size:** M · **Model:** Sonnet
+**Status:** DONE — merged `3005bad4` (Wave 119, 2026-10-20; option A: limit rows out, `price`/`pricesAsOf`/`presets` stay). Shipped: `ProbeResult.limits` from one per-shape field map (Anthropic `max_input_tokens`/`max_tokens`, gateway `context_window`/`max_tokens`, llama.cpp `meta.n_ctx`, OpenRouter `context_length`/`top_provider.max_completion_tokens`; 0/null is unknown), `provider-models.json` written at `provider add` and once a day by the dispatch sweep for operator-registered providers, declared > observed > unknown in `endpoint_from_spec`, `--ctx/--max-tokens` without defaults, sources in `setup provider show` and `pod show --json`; UTF-8 request bytes (`ensure_ascii=False` on the wire too), `cacheWriteTokens`. Not reproduced: the 4,096 cut itself (no replayed `llm_call` shows `finishReason: length`; the code path is cited). Found: a worker test with `monkeypatch.undo()` wrote test data into the real `~/.docket/provider-models.json` (operator cleanup). · **Size:** M · **Model:** Sonnet
 
 - **Trigger:** ADR 0029 point 2: an id outside the shipped rows gets no window and no output bound
   (`edges/adapters/llm.py::endpoint_from_spec`); 49 of 49 `request_fit` events in the joint run
@@ -185,7 +185,7 @@
 
 ### P45-5 — the real run, and the phase close
 
-**Status:** TODO after Wave 118 · **Size:** M · **Model:** integrator, maintainer-approved, paid
+**Status:** IN PROGRESS — 2026-10-20, approved as a small run without Tack (one task on `fab-dev` through `POST /tasks`, recorded by `scripts/maint/live-dispatch-baseline.sh`; the same recording is the Phase 46 P46-15 "before" baseline) · **Size:** M · **Model:** integrator, maintainer-approved, paid
 
 - **Goal:** Fabulada's code task through Tack on the merged tree, against the operator's
   `~/.docket`: per step sent/counted/largest request, prepare seconds and cache MB, every
