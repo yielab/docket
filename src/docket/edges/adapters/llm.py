@@ -37,6 +37,7 @@ from docket.core.llm import (
     ChatMessage,
     ChatResponse,
     Endpoint,
+    ModelLimits,
     Role,
     TokenUsage,
     ToolCall,
@@ -160,10 +161,14 @@ def request_part_bytes(payload: dict[str, Any]) -> dict[str, int]:
     """Bytes of each part of an encoded request body; trace-store requirement 28."""
     sizes = dict.fromkeys(("system", "tools", "toolResults", "assistant", "user"), 0)
     for message in payload.get("messages", []):
-        sizes[_REQUEST_PART_BY_ROLE[message["role"]]] += len(json.dumps(message).encode("utf-8"))
+        sizes[_REQUEST_PART_BY_ROLE[message["role"]]] += _utf8_len(message)
     for tool in payload.get("tools", []):
-        sizes["tools"] += len(json.dumps(tool).encode("utf-8"))
+        sizes["tools"] += _utf8_len(tool)
     return sizes
+
+
+def _utf8_len(part: Any) -> int:
+    return len(json.dumps(part, ensure_ascii=False).encode("utf-8", errors="replace"))
 
 
 # ── wire decoding ─────────────────────────────────────────────────────────────
@@ -394,7 +399,7 @@ class OpenAIChatClient:
                 latency_ms=_elapsed_ms(),
             )
         payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
-        body = json.dumps(payload).encode()
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8", errors="replace")
         request = urllib.request.Request(
             self.url, data=body, headers=self._headers(), method="POST"
         )
@@ -502,6 +507,7 @@ class ProbeResult:
     status: int | None
     transport_error: str = ""
     model_ids: list[str] = field(default_factory=list)
+    limits: dict[str, ModelLimits] = field(default_factory=dict)
 
 
 def _extract_model_ids(raw_body: str) -> list[str]:
@@ -517,6 +523,57 @@ def _extract_model_ids(raw_body: str) -> list[str]:
     if not isinstance(rows, list):
         return []
     return [row["id"] for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)]
+
+
+def _positive_int(value: Any) -> int | None:
+    """*value* when it is a positive integer, else ``None`` (unknown): absent, null, zero, a
+    string, a float and a bool are all unknown."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
+def _first_limit(*candidates: Any) -> int | None:
+    for candidate in candidates:
+        found = _positive_int(candidate)
+        if found is not None:
+            return found
+    return None
+
+
+def _row_limits(row: dict[str, Any]) -> ModelLimits:
+    """One `/models` row's window and output cap, the wire shape told by field presence;
+    `meta.n_ctx` is the loaded context, never `n_ctx_train`."""
+    meta = row.get("meta")
+    top = row.get("top_provider")
+    return ModelLimits(
+        context_window=_first_limit(
+            row.get("max_input_tokens"),
+            row.get("context_window"),
+            meta.get("n_ctx") if isinstance(meta, dict) else None,
+            row.get("context_length"),
+        ),
+        max_output=_first_limit(
+            row.get("max_tokens"),
+            top.get("max_completion_tokens") if isinstance(top, dict) else None,
+        ),
+    )
+
+
+def _extract_model_limits(raw_body: str) -> dict[str, ModelLimits]:
+    """Each advertised id's published limits, ``{}`` for any body that is not a `data` list."""
+    try:
+        data = json.loads(raw_body) if raw_body.strip() else {}
+    except json.JSONDecodeError:
+        return {}
+    rows = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return {}
+    return {
+        row["id"]: _row_limits(row)
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    }
 
 
 def probe_models(endpoint: Endpoint, timeout: float = 5.0) -> ProbeResult:
@@ -542,8 +599,13 @@ def probe_models(endpoint: Endpoint, timeout: float = 5.0) -> ProbeResult:
     except OSError as ex:
         return ProbeResult(status=None, transport_error=str(ex))
 
-    model_ids = _extract_model_ids(raw_body) if status == 200 else []
-    return ProbeResult(status=status, model_ids=model_ids)
+    if status != 200:
+        return ProbeResult(status=status)
+    return ProbeResult(
+        status=status,
+        model_ids=_extract_model_ids(raw_body),
+        limits=_extract_model_limits(raw_body),
+    )
 
 
 # ── endpoint resolution ───────────────────────────────────────────────────────
@@ -617,15 +679,17 @@ def resolve_endpoint(model: str) -> Endpoint | None:
 
 def endpoint_from_spec(spec: ProviderSpec, provider: str, model_id: str, api_key: str) -> Endpoint:
     """The endpoint catalog entry *spec* (named *provider*) gives *model_id*, with *api_key*
-    already resolved."""
-    exact = next((row for row in spec.models if row.id == model_id), None)
+    already resolved; each limit is declared, else observed, else unknown."""
+    from docket.core import provider as _prov
+
+    limits = _prov.resolve_limits(spec, model_id)
     return Endpoint(
         base_url=spec.base_url,
         model_id=model_id,
         api_key=api_key,
         provider=provider,
-        context_window_tokens=exact.context_window if exact else None,
-        max_output_tokens=exact.max_tokens if exact else None,
+        context_window_tokens=limits.context_window,
+        max_output_tokens=limits.max_output,
         auth_type=spec.auth.type,
         auth_header=spec.auth.header,
         headers=tuple(spec.headers.items()),

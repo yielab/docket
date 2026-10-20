@@ -239,8 +239,11 @@ The model an agent actually calls is the `model` in its own `.docket-meta.json`.
 rewrite that field on every agent whose `modelSource` is `policy`, immediately. Pins are never
 touched.
 
-`--ctx` and `--max-tokens` matter: they are the limits docket checks requests against. Against a
-small-context local server, also export `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` (the 30000 default
+`--ctx` and `--max-tokens` are optional: a value you give is the model's declared limit, and
+one you leave out is what the provider's `/models` publishes (recorded at `provider add` and once
+a day by `docket start --dispatch`), else unknown. They are the limits docket checks requests
+against, and `docket setup provider show <name>` prints each with its source (declared, observed
+on a date, or unknown). Against a small-context local server, also export `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` (the 30000 default
 suits a large hosted model, and two full tool results overflow a 16k window).
 
 Credential lookup order, per name in the provider document's `auth.credentials`:
@@ -1144,7 +1147,8 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | File | Format and key fields | Written by | Read on the live path by | Hand-edit |
 |---|---|---|---|---|
 | `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationMode,networkMode,readOnly}` | init, `setup sandbox` | isolation and network mode (`isolationMode`, `networkMode`), read-only jail grants (`readOnly`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
-| `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `setup provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `setup provider add/remove/export`. Malformed entries are named by `docket setup`. |
+| `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `setup provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id` and any declared `contextWindow`/`maxTokens`) | via `setup provider add/remove/export`. Malformed entries are named by `docket setup`. |
+| `provider-models.json` | `providers{<name>: {observedAt, models{<id>: {contextWindow, maxTokens}}}}`: the limits each registered provider's `/models` published, `null` where it published none | `setup provider add`, the daily `docket start --dispatch` sweep | endpoint resolution: a model's limit when its provider document declares none | no. Delete it to forget what was observed. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `setup model set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `setup model set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | you | tool narrowing, hop budget, gate contract; templates at provisioning | by hand; `pod update <file>` writes the pod's own overlay |
 | `policies/*.yaml\|json` | one policy per file (§3.6) | `docket setup`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |

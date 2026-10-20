@@ -22,12 +22,14 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import docket.config as _cfg
+from docket.core.llm import ModelLimits
 from docket.edges import store as _store
 
 if TYPE_CHECKING:
@@ -419,6 +421,128 @@ def resolve_credential(spec: ProviderSpec) -> tuple[str, str]:
     return "", "none"
 
 
+LimitSource = Literal["declared", "observed", "unknown"]
+
+
+@dataclass(frozen=True)
+class ResolvedLimits:
+    """A model's context window and output cap, each with where it came from (declared in the
+    catalog row, observed from the provider's ``/models``, or unknown -- never a default)."""
+
+    context_window: int | None
+    max_output: int | None
+    context_window_source: LimitSource
+    max_output_source: LimitSource
+    observed_at: str
+
+    @property
+    def source(self) -> LimitSource:
+        """One word for the row: ``declared`` if any limit is, else ``observed`` if any is."""
+        sources = (self.context_window_source, self.max_output_source)
+        for kind in ("declared", "observed"):
+            if kind in sources:
+                return kind
+        return "unknown"
+
+
+def _observed_entry(provider: str) -> dict[str, Any]:
+    providers = _store.read_json(_cfg.PROVIDER_MODELS_FILE).get("providers")
+    entry = providers.get(provider) if isinstance(providers, dict) else None
+    return entry if isinstance(entry, dict) else {}
+
+
+def observed_limits(provider: str, model_id: str) -> ModelLimits | None:
+    """What *provider*'s ``/models`` last published for *model_id*, or ``None`` when that model
+    was never observed. The only reader of ``config.PROVIDER_MODELS_FILE``."""
+    models = _observed_entry(provider).get("models")
+    row = models.get(model_id) if isinstance(models, dict) else None
+    if not isinstance(row, dict):
+        return None
+
+    def _limit(value: object) -> int | None:
+        return (
+            value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+        )
+
+    return ModelLimits(_limit(row.get("contextWindow")), _limit(row.get("maxTokens")))
+
+
+def observed_at(provider: str) -> str:
+    """The ``YYYY-MM-DD`` *provider* was last observed, or ``""`` when it never was."""
+    value = _observed_entry(provider).get("observedAt")
+    return value if isinstance(value, str) else ""
+
+
+def resolve_limits(spec: ProviderSpec, model_id: str) -> ResolvedLimits:
+    """*model_id*'s limits under *spec*, each limit declared > observed > unknown."""
+    exact = next((row for row in spec.models if row.id == model_id), None)
+    seen = observed_limits(spec.name, model_id)
+    when = observed_at(spec.name) if seen is not None else ""
+
+    def _pick(declared: int | None, found: int | None) -> tuple[int | None, LimitSource]:
+        if declared is not None:
+            return declared, "declared"
+        if found is not None:
+            return found, "observed"
+        return None, "unknown"
+
+    window, window_source = _pick(
+        exact.context_window if exact else None, seen.context_window if seen else None
+    )
+    output, output_source = _pick(
+        exact.max_tokens if exact else None, seen.max_output if seen else None
+    )
+    return ResolvedLimits(window, output, window_source, output_source, when)
+
+
+def _today() -> str:
+    return datetime.now(UTC).date().isoformat()
+
+
+def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
+    """Replace *spec*'s observed models with what *probe* advertised, dated today. A probe that
+    is not a 200 records nothing and leaves an earlier observation alone. The only writer of
+    ``config.PROVIDER_MODELS_FILE``."""
+    if probe.status != 200:
+        return
+    models = {
+        model_id: {
+            "contextWindow": probe.limits.get(model_id, ModelLimits()).context_window,
+            "maxTokens": probe.limits.get(model_id, ModelLimits()).max_output,
+        }
+        for model_id in sorted(set(probe.model_ids) | set(probe.limits))
+    }
+    entry = {"observedAt": _today(), "models": models}
+
+    def _update(current: dict[str, Any]) -> dict[str, Any]:
+        providers = current.get("providers")
+        if not isinstance(providers, dict):
+            providers = {}
+        providers[spec.name] = entry
+        return {"providers": providers}
+
+    _store.read_modify_write(_cfg.PROVIDER_MODELS_FILE, _update)
+
+
+def refresh_observed_models_due() -> list[str]:
+    """Probe every operator-registered (``global``) provider not yet observed today and record
+    the result; a built-in nobody registered is never probed. Returns the names refreshed."""
+    catalog = load_catalog()
+    refreshed: list[str] = []
+    for name in sorted(catalog.entries):
+        if catalog.source_of(name) != "global" or observed_at(name) == _today():
+            continue
+        spec = catalog.entries[name]
+        try:
+            probe = probe_spec(spec)
+            if probe.status == 200:
+                record_observed_models(spec, probe)
+                refreshed.append(name)
+        except Exception:
+            continue
+    return refreshed
+
+
 @dataclass(frozen=True)
 class ProviderVerification:
     """A classified probe of a provider's ``/models`` route (ADR 0011 §4) -- pure, no I/O.
@@ -522,6 +646,7 @@ def register_provider(spec: ProviderSpec, *, probe: ProbeResult | None = None) -
     desired = _with_inherited_identity(spec)
     changed = existing != desired
     save_provider(spec)
+    record_observed_models(spec, probe)
 
     from docket.core import audit as _audit
 

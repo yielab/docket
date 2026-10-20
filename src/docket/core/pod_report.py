@@ -146,7 +146,7 @@ def _config_of_record_report(settings: _pod.PodSettings | None) -> dict[str, str
 
 def _provider_report(model: str) -> dict[str, Any]:
     """Where *model* resolves: catalog scope, dialect, base URL, the credential's
-    name/source and the exact model row -- the provenance ``resolve_endpoint``
+    name/source and the model's limits and where each came from -- the provenance ``resolve_endpoint``
     itself does not report. See model-profiles.spec.md "Provider catalog" 7."""
     provider_name, _, model_id = model.partition("/")
     if not model_id:
@@ -159,7 +159,7 @@ def _provider_report(model: str) -> dict[str, Any]:
     if spec is not None:
         credential_name = spec.auth.credentials[0] if spec.auth.credentials else ""
         _value, credential_source = _provider.resolve_credential(spec)
-        exact = next((row for row in spec.models if row.id == model_id), None)
+        found = _provider.resolve_limits(spec, model_id)
         return {
             "name": spec.name,
             "scope": catalog.source_of(provider_name),
@@ -168,9 +168,12 @@ def _provider_report(model: str) -> dict[str, Any]:
             "credential": {"name": credential_name, "source": credential_source},
             "model": {
                 "id": model_id,
-                "contextWindow": exact.context_window if exact else None,
-                "maxTokens": exact.max_tokens if exact else None,
-                "source": "row" if exact is not None else "none",
+                "contextWindow": found.context_window,
+                "maxTokens": found.max_output,
+                "contextWindowSource": found.context_window_source,
+                "maxTokensSource": found.max_output_source,
+                "source": found.source,
+                "observedAt": found.observed_at,
             },
         }
 
@@ -187,7 +190,10 @@ def _provider_report(model: str) -> dict[str, Any]:
             "id": model_id,
             "contextWindow": endpoint.context_window_tokens if endpoint else None,
             "maxTokens": endpoint.max_output_tokens if endpoint else None,
-            "source": "none",
+            "contextWindowSource": "unknown",
+            "maxTokensSource": "unknown",
+            "source": "unknown",
+            "observedAt": "",
         },
     }
 

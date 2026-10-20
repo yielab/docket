@@ -1,13 +1,13 @@
 # Trace Store Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
 `core/security.py`'s guardrail checks. Before v1.0.0
 the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-10-19
+**Last Updated**: 2026-10-20
 
 ## Purpose
 
@@ -202,10 +202,15 @@ This specification does NOT cover:
     `toolResults` the role `tool` messages, `assistant` the `assistant` messages, `user` the
     `user` messages, and `tools` the advertised tool definitions. The request envelope (the model,
     stream, sampling and tool-choice keys, and the array brackets and separators) is not counted,
-    so the five `bytes` values sum to the bytes of the messages and tools as sent. `estTokens` is
+    so the five `bytes` values sum to the bytes of the messages and tools as sent. The JSON is
+    encoded as UTF-8 (`ensure_ascii=False`) by the transport and the measure alike, so a non-ASCII
+    part is its UTF-8 length, not six bytes per escaped character. `estTokens` is
     `bytes // config.CONTEXT_BYTES_PER_TOKEN`: an estimate, never a measured count, which stays
     `inputTokens`. A compaction call advertises no tools, so its `tools` part is `{"bytes": 0,
     "estTokens": 0}`. A call made without messages carries no `request` key.
+    An `llm_call` record **MUST** also carry `cacheWriteTokens` (the part of `inputTokens` the
+    endpoint reported writing to a cache, `TokenUsage.cache_write_tokens`) when it is positive,
+    and no such key otherwise, so a record of an endpoint that reports none is unchanged.
 
 ## Process lifecycle events
 
@@ -351,6 +356,14 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.13.0 (2026-10-20)
+
+- Requirement 28 (P45-2, ADR 0029 point 2): `request` bytes are the UTF-8 length of the body
+  (`ensure_ascii=False`; the transport encodes the same way), where the default escaping counted
+  18,037 B for a user part whose message is 11,367 B; an `llm_call` record carries
+  `cacheWriteTokens` when positive. Additive. (The `1.25.0` in this file's text is the loop
+  spec's version.)
 
 ### Version 1.12.0 (2026-10-19)
 

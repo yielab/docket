@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.41.0
+**Version**: 1.42.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract or `MEMORY.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-20
 
 ## Purpose
 
@@ -408,8 +408,10 @@ This specification does NOT cover:
 
 ### Per-request endpoint fit (Wave 25 W25-C2)
 
-44. The stored provider's model entry **MUST** reach the live client with its positive
-    `contextWindow` and `maxTokens` values. Selection **MUST** match the exact model id, not merely
+44. The endpoint's limits **MUST** reach the live client as declared > observed > unknown per
+    limit (model-profiles.spec.md "Provider catalog" 9): the stored provider's exact model entry's
+    positive `contextWindow`/`maxTokens` first, else what the provider's `/models` published and
+    `provider-models.json` recorded. Selection **MUST** match the exact model id, not merely
     the provider. A process-wide `DOCKET_LLM_BASE_URL` override **MUST NOT** inherit stored limits
     from the provider it replaces; without independently advertised override limits its window is
     explicitly unknown and existing hosted/override behavior remains available without a false fit
@@ -422,7 +424,11 @@ This specification does NOT cover:
     folded into measured `TokenUsage`.
 46. The output reserve is the configured or endpoint-registered maximum output; when there is none
     it **MUST** be `config.DEFAULT_MAX_OUTPUT_TOKENS`, so every known-window request is checked
-    against a positive reserve and the request is still sent without a `max_tokens`. When the
+    against a positive reserve and the request is still sent without a `max_tokens`: the
+    reserve is budget arithmetic only, and an endpoint whose output cap is unknown (neither
+    declared nor observed) sends no `max_tokens`, so the provider's own default applies and is
+    reported as unknown, never as `DEFAULT_MAX_OUTPUT_TOKENS`. A known cap, declared or observed,
+    is sent as `max_tokens`. When the
     window is unknown, the loop **MUST** preserve existing behavior and expose that no
     registered-window guarantee was applied; it **MUST NOT** invent a model/window table.
 46a. After the first measured call of a turn, every input estimate used by the window check and the
@@ -876,6 +882,15 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.42.0 (2026-10-20)
+
+- Requirements 44 and 46 (P45-2, ADR 0029 point 2): an endpoint's window and output cap resolve
+  declared > observed > unknown, the observed value being the provider's own `/models` figure.
+  The output reserve stays budget arithmetic only; an unknown cap sends no `max_tokens` and the
+  provider's default is reported as unknown. The 4,096-token cut of the 2026-10-18 joint run is
+  the provider's default output cap for a model with no registered bound, not a docket request
+  field. `_resolve_context_bounds` is unchanged.
 
 ### Version 1.41.0 (2026-10-18)
 

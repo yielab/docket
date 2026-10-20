@@ -685,7 +685,8 @@ def _run_sweeps(dispatch: bool = False) -> None:
     regardless of age, matching the trace sweep's own liveness rule.
 
     When *dispatch* is set (opt-in, real budget-gated agent turns, never part of the read-only
-    monitor), also drains every dispatchable pod's queue (one run record per pod, source
+    monitor), also refreshes the limits each registered provider's ``/models`` publishes (once a
+    day per provider; ``core.provider.refresh_observed_models_due``) and drains every dispatchable pod's queue (one run record per pod, source
     ``"sweep"``) and checks due schedules. Each pod is swept on a pool worker (at most
     ``DISPATCH_SWEEP_WORKERS`` at once) and a pod whose previous sweep is still running is
     skipped, so this returns without waiting for the turns; ``_drain_sweeps`` waits."""
@@ -710,7 +711,10 @@ def _run_sweeps(dispatch: bool = False) -> None:
         conversations.prune_closed_durable()
     if dispatch:
         from docket.core import dispatch as _dispatch
+        from docket.core import provider as _provider
 
+        with contextlib.suppress(Exception):
+            _provider.refresh_observed_models_due()
         try:
             pods_to_dispatch = _dispatch.dispatchable_pods()
         except Exception as exc:

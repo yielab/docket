@@ -1,10 +1,10 @@
 # Model Policy Specification
 
-**Version**: 3.5.0
+**Version**: 3.6.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-20
 
 ## Purpose
 
@@ -271,8 +271,8 @@ feasibility spike remains in ROADMAP and Git history.
    `header`), `headers` (a map of additional static header names to values sent verbatim on
    every request), `local`, `marketplace`, `credentialPrefix` (a credential-format hint `setup provider add`
    warns against, optional), `pricesAsOf` (`YYYY-MM-DD`, required when any model row carries a `price`),
-   `models[]` (`id`, `contextWindow`, `maxTokens`, optional `price: {input, output, cacheRead,
-   cacheWrite}` USD per million tokens), `presets[]` (`name`, `ranks: {economy, standard,
+   `models[]` (`id`, optional declared `contextWindow`/`maxTokens`, optional `price: {input, output, cacheRead,
+   cacheWrite}` USD per million tokens; no built-in document declares a limit), `presets[]` (`name`, `ranks: {economy, standard,
    premium}` as bare model ids, `note`), and `note`. `core.provider.load_provider_document`
    **MUST** raise naming the file and field on an unreadable file, bad YAML, a missing
    `kind`/`name`, an unknown `dialect`/`auth.type`, a credential count that does not match the
@@ -323,8 +323,9 @@ feasibility spike remains in ROADMAP and Git history.
    resolved model, the provider's name, catalog scope (`"built-in"` / `"global"` / `""` when the
    provider is absent from the catalog), `dialect`, `baseUrl`, the resolved credential's name and
    source (`core.provider.resolve_credential`'s `"override"`/`"env"`/`"store"`/`"none"`), and the
-   exact model row's `id`/`contextWindow`/`maxTokens` with a `source` of `"row"` when an exact
-   row matched or `"none"` when it did not — never a credential value. The human-readable render
+   model's `id`/`contextWindow`/`maxTokens` as resolved by requirement 9, with a `source` of
+   `"declared"`, `"observed"` or `"unknown"` (plus `contextWindowSource`/`maxTokensSource` per
+   limit and `observedAt`) — never a credential value. The human-readable render
    **MUST** show the same provider name, scope and credential source under the model line.
    `docket setup` **MUST** report each global provider document (`config.PROVIDERS_FILE`) that
    fails the validation `core.provider.load_provider_document` applies to a file on disk — naming
@@ -340,6 +341,31 @@ feasibility spike remains in ROADMAP and Git history.
    first and last carries one marker. For every other model the request body **MUST** be
    byte-identical to the unmarked encoding. `request_part_bytes` counts the encoded parts as
    sent. No catalog field decides this: the model id does.
+9. **Limits come from the provider.** A model's context window and output cap are resolved per
+   limit as **declared > observed > unknown**. *Declared* is the exact `models[]` row's
+   `contextWindow`/`maxTokens` (from `setup provider add --ctx/--max-tokens` or a `kind: provider`
+   document); *observed* is what the provider's own `/models` body published, recorded in
+   `config.PROVIDER_MODELS_FILE` (`~/.docket/provider-models.json`,
+   `{"providers": {<name>: {"observedAt": "YYYY-MM-DD", "models": {<id>: {"contextWindow": N|null,
+   "maxTokens": N|null}}}}}`), read by `core.provider.observed_limits` and written only by
+   `core.provider.record_observed_models`, both through `edges/store.py`; *unknown* is `None`,
+   never a filled-in number. `edges/adapters/llm.py::probe_models` **MUST** return each advertised
+   id's limits (`ProbeResult.limits`), detecting the wire shape **per row by field presence**:
+   window from `max_input_tokens` (Anthropic), `context_window` (gateway), `meta.n_ctx`
+   (llama.cpp -- **never** `meta.n_ctx_train`) or `context_length` (OpenRouter); output cap from
+   `max_tokens` or `top_provider.max_completion_tokens`. A value that is absent, null, not an
+   integer or not positive (the gateway publishes `0` for a non-language model) is unknown. The
+   shipped templates **MUST NOT** declare a limit; `price`, `pricesAsOf` and `presets` stay.
+   Observations are recorded by `register_provider` (so `setup provider add` records what its
+   registration probe saw) and, once a day per provider whose catalog scope is `global` (never an
+   unregistered built-in), by `core.provider.refresh_observed_models_due`, which
+   `docket start --dispatch`'s sweep calls. A probe that is not a 200 records nothing and never
+   erases an earlier observation. `setup provider add --ctx/--max-tokens` have no numeric
+   default: absent means "take what the probe observes, else unknown", a given value is declared.
+   `setup provider show` **MUST** print one row per model with `window` and `output`, each as
+   `<N> (declared)`, `<N> (observed <date>)` or `unknown`; `--json` carries `contextWindow`,
+   `maxTokens`, `limitsSource` (`declared` when any limit is declared, else `observed` when any is
+   observed, else `unknown`), `contextWindowSource`, `maxTokensSource` and `observedAt`.
 
 ### Pricing
 
@@ -492,6 +518,16 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.6.0 (2026-10-20)
+
+- "Provider catalog" requirement 9 (P45-2, ADR 0029 point 2, option A): a model's limits come
+  from the provider's own `/models` body, recorded in `provider-models.json`; resolution is
+  declared > observed > unknown; `setup provider show` and `pod show` name each limit's source.
+  The shipped `anthropic` template loses its two `contextWindow`/`maxTokens` rows (`price`,
+  `pricesAsOf` and `presets` stay); `provider add --ctx/--max-tokens` lose their 16384/8192
+  defaults. Requirements 1 and 7 follow (`source` is `declared | observed | unknown`, replacing
+  `row | none`).
 
 ### Version 3.5.0 (2026-10-18)
 

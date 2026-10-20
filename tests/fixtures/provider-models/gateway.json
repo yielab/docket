@@ -1,0 +1,392 @@
+{
+ "object": "list",
+ "data": [
+  {
+   "id": "anthropic/claude-sonnet-4.5",
+   "object": "model",
+   "created": 1755815280,
+   "released": 1759104000,
+   "owned_by": "anthropic",
+   "name": "Claude Sonnet 4.5",
+   "description": "...",
+   "context_window": 1000000,
+   "max_tokens": 64000,
+   "type": "language",
+   "zdr": "all",
+   "no_training": "all",
+   "tags": [
+    "explicit-caching",
+    "file-input",
+    "reasoning",
+    "tool-use",
+    "vision",
+    "web-search",
+    "structured-output"
+   ],
+   "regions": [
+    "eu",
+    "us"
+   ],
+   "supported_specifications": [
+    "v2",
+    "v3",
+    "v4"
+   ],
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "supported_parameters": [
+    "max_tokens",
+    "temperature",
+    "stop",
+    "tools",
+    "tool_choice",
+    "reasoning",
+    "include_reasoning",
+    "response_format",
+    "structured_outputs"
+   ],
+   "temperature": true,
+   "reasoning_options": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "budget_tokens",
+     "min": 1024
+    }
+   ],
+   "knowledge": "2025-07-31",
+   "pricing": {
+    "input": "0.000003",
+    "input_tiers": [
+     {
+      "cost": "0.000003",
+      "min": 0,
+      "max": 200001
+     },
+     {
+      "cost": "0.000006",
+      "min": 200001
+     }
+    ],
+    "output": "0.000015",
+    "output_tiers": [
+     {
+      "cost": "0.000015",
+      "min": 0,
+      "max": 200001
+     },
+     {
+      "cost": "0.0000225",
+      "min": 200001
+     }
+    ],
+    "input_cache_read": "0.0000003",
+    "input_cache_read_tiers": [
+     {
+      "cost": "0.0000003",
+      "min": 0,
+      "max": 200001
+     },
+     {
+      "cost": "0.0000006",
+      "min": 200001
+     }
+    ],
+    "input_cache_write": "0.00000375",
+    "input_cache_write_tiers": [
+     {
+      "cost": "0.00000375",
+      "min": 0,
+      "max": 200001
+     },
+     {
+      "cost": "0.0000075",
+      "min": 200001
+     }
+    ],
+    "web_search": "10",
+    "regional": {
+     "eu": {
+      "input": "0.0000033",
+      "input_tiers": [
+       {
+        "cost": "0.0000033",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.0000066",
+        "min": 200001
+       }
+      ],
+      "output": "0.0000165",
+      "output_tiers": [
+       {
+        "cost": "0.0000165",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.00002475",
+        "min": 200001
+       }
+      ],
+      "input_cache_read": "0.00000033",
+      "input_cache_read_tiers": [
+       {
+        "cost": "0.00000033",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.00000066",
+        "min": 200001
+       }
+      ],
+      "input_cache_write": "0.000004125",
+      "input_cache_write_tiers": [
+       {
+        "cost": "0.000004125",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.00000825",
+        "min": 200001
+       }
+      ]
+     },
+     "us": {
+      "input": "0.0000033",
+      "input_tiers": [
+       {
+        "cost": "0.0000033",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.0000066",
+        "min": 200001
+       }
+      ],
+      "output": "0.0000165",
+      "output_tiers": [
+       {
+        "cost": "0.0000165",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.00002475",
+        "min": 200001
+       }
+      ],
+      "input_cache_read": "0.00000033",
+      "input_cache_read_tiers": [
+       {
+        "cost": "0.00000033",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.00000066",
+        "min": 200001
+       }
+      ],
+      "input_cache_write": "0.000004125",
+      "input_cache_write_tiers": [
+       {
+        "cost": "0.000004125",
+        "min": 0,
+        "max": 200001
+       },
+       {
+        "cost": "0.00000825",
+        "min": 200001
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "anthropic/claude-haiku-4.5",
+   "object": "model",
+   "created": 1755815280,
+   "released": 1760486400,
+   "owned_by": "anthropic",
+   "name": "Claude Haiku 4.5",
+   "description": "...",
+   "context_window": 200000,
+   "max_tokens": 64000,
+   "type": "language",
+   "zdr": "all",
+   "no_training": "all",
+   "tags": [
+    "explicit-caching",
+    "file-input",
+    "reasoning",
+    "tool-use",
+    "vision",
+    "web-search",
+    "structured-output"
+   ],
+   "regions": [
+    "eu",
+    "us"
+   ],
+   "supported_specifications": [
+    "v2",
+    "v3",
+    "v4"
+   ],
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "supported_parameters": [
+    "max_tokens",
+    "temperature",
+    "stop",
+    "tools",
+    "tool_choice",
+    "reasoning",
+    "include_reasoning",
+    "response_format",
+    "structured_outputs"
+   ],
+   "temperature": true,
+   "reasoning_options": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "budget_tokens",
+     "min": 1024
+    }
+   ],
+   "knowledge": "2025-02-28",
+   "interleaved": true,
+   "pricing": {
+    "input": "0.000001",
+    "output": "0.000005",
+    "input_cache_read": "0.0000001",
+    "input_cache_write": "0.00000125",
+    "web_search": "10",
+    "regional": {
+     "eu": {
+      "input": "0.0000011",
+      "output": "0.0000055",
+      "input_cache_read": "0.00000011",
+      "input_cache_write": "0.000001375"
+     },
+     "us": {
+      "input": "0.0000011",
+      "output": "0.0000055",
+      "input_cache_read": "0.00000011",
+      "input_cache_write": "0.000001375"
+     }
+    }
+   }
+  },
+  {
+   "id": "alibaba/wan-v2.5-t2v-preview",
+   "object": "model",
+   "created": 1755815280,
+   "released": 1758672000,
+   "owned_by": "alibaba",
+   "name": "Wan v2.5 Text-to-Video Preview",
+   "description": "...",
+   "context_window": 0,
+   "max_tokens": 0,
+   "type": "video",
+   "zdr": "all",
+   "no_training": "all",
+   "supported_specifications": [
+    "v3",
+    "v4"
+   ],
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "video_capabilities": {
+    "supported_operations": [
+     "text-to-video"
+    ],
+    "supported_resolutions": [
+     "480p",
+     "720p",
+     "1080p"
+    ],
+    "supported_aspect_ratios": [
+     "16:9",
+     "9:16",
+     "1:1",
+     "4:3",
+     "3:4"
+    ],
+    "supported_durations_seconds": [
+     5,
+     10
+    ],
+    "generate_audio": true,
+    "supported_fps": [
+     24
+    ],
+    "input_limits": {
+     "text": {
+      "max_chars": 1500
+     },
+     "audio": {
+      "max_file_size_mb": 15,
+      "supported_formats": [
+       "wav",
+       "mp3"
+      ],
+      "supported_sources": [
+       "url"
+      ],
+      "min_duration_seconds": 3,
+      "max_duration_seconds": 30
+     }
+    }
+   },
+   "pricing": {
+    "video_duration_pricing": [
+     {
+      "resolution": "480p",
+      "cost_per_second": "0.05"
+     },
+     {
+      "resolution": "720p",
+      "cost_per_second": "0.1"
+     },
+     {
+      "resolution": "1080p",
+      "cost_per_second": "0.15"
+     }
+    ]
+   }
+  }
+ ]
+}
