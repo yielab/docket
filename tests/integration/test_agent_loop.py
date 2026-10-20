@@ -1853,6 +1853,30 @@ class TestStopConditions:
             backend.call_count == 3
         )  # the prospective estimate was tiny; the measured guard fires
 
+    def test_a_known_output_cap_above_the_budget_is_cut_to_what_the_budget_leaves(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        """An observed 128k cap never refuses a 10k-budget hop; the request sends what is left."""
+        backend = ScriptedBackend([_final()])
+        backend.max_output_tokens = 128_000  # type: ignore[attr-defined]
+        backend.estimate_input_tokens = lambda messages, **kwargs: 10  # type: ignore[attr-defined]
+        sent: list[int | None] = []
+        scripted_complete = backend.complete
+
+        def complete(messages: Sequence[ChatMessage], **kwargs: Any) -> ChatResponse:
+            sent.append(kwargs.get("max_tokens"))
+            return scripted_complete(messages, **kwargs)
+
+        backend.complete = complete  # type: ignore[method-assign]
+        config = _loop.LoopConfig(token_budget=10_000)
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:demo:default", "go", config=config
+        )
+
+        assert result.ok is True, result.error
+        assert sent == [10_000 - 10]
+
     def test_backend_error_is_reported_with_its_own_failure_kind(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:

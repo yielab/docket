@@ -148,6 +148,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A known output cap larger than a hop's remaining token budget no longer refuses the hop before
+  any call: the budget reserve and the `max_tokens` sent are cut to what the budget leaves after
+  the estimated input (at least 256). Found by the Phase 45 real run: with Anthropic's observed
+  128,000 cap, the reviewer hop was refused with 127,735 tokens left and 2,861 of input.
 - The built-in `anthropic` provider sends `anthropic-version: 2023-06-01`, which Anthropic's
   `/v1/models` requires (it answered 400 to the registration probe, so no limit was ever
   observed for an Anthropic model). Found by the Phase 45 real run.

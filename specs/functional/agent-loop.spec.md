@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.42.0
+**Version**: 1.43.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -428,7 +428,12 @@ This specification does NOT cover:
     reserve is budget arithmetic only, and an endpoint whose output cap is unknown (neither
     declared nor observed) sends no `max_tokens`, so the provider's own default applies and is
     reported as unknown, never as `DEFAULT_MAX_OUTPUT_TOKENS`. A known cap, declared or observed,
-    is sent as `max_tokens`. When the
+    is sent as `max_tokens`. When the turn has a measured token budget and the cap is known, the
+    reserve used for the budget check and the `max_tokens` sent are both the smaller of the cap
+    and what the budget leaves after the estimated input (`token_budget` minus counted tokens
+    minus the estimate), so a cap larger than the remaining budget never refuses a request by
+    itself; only when fewer than `MIN_OUTPUT_TOKENS` (256) would be left does the budget check
+    refuse. The window check keeps the full cap. When the
     window is unknown, the loop **MUST** preserve existing behavior and expose that no
     registered-window guarantee was applied; it **MUST NOT** invent a model/window table.
 46a. After the first measured call of a turn, every input estimate used by the window check and the
@@ -882,6 +887,14 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.43.0 (2026-10-20)
+
+- Requirement 46: with a measured token budget and a known output cap, the budget reserve and the
+  `max_tokens` sent are cut to what the budget leaves after the estimated input (floor
+  `MIN_OUTPUT_TOKENS`, 256). Found by the Phase 45 real run: the first hop with an observed
+  128,000 cap (Anthropic, P45-2) was refused before any call, `finalization_exceeds_remaining_turn_budget`,
+  with 127,735 tokens left and 2,861 of input.
 
 ### Version 1.42.0 (2026-10-20)
 
