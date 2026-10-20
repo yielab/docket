@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/maint/live-dispatch-baseline.sh` records one real dispatch through the HTTP API (task,
+  trace, diff, raw trace files) so a phase's real run and a before/after comparison use one
+  command.
 - **A model's limits come from the provider's `/models`.** `setup provider add` and, once a day,
   the `docket start --dispatch` sweep read what each operator-registered provider publishes
   (Anthropic `max_input_tokens`/`max_tokens`, the gateway's `context_window`/`max_tokens`,

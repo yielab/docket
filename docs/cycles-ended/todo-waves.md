@@ -14508,3 +14508,183 @@ SSE, aggregate statistics (ADR 0027 point 10).
 > fixed (`a20af9bf`, `66ce844d`, `e831923d`, `ce8c41a7`). No phase is planned; the follow-ups with
 > named triggers stay in the section below.
 
+## ◆ CLOSED — Phase 45: a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19, closed 2026-10-20)
+
+> **Evidence.** Fabulada's first code run through a team, through Tack, on 2026-10-19:
+> [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md)
+> "Evidence". It is also the trigger D-63 named for the deferred **warm workspace** (ADR 0027
+> point 10), so P45-1 consumes that follow-up. The per-step token limit needs no card: every run
+> Tack sends carries `maxTokens` (Tack ADR 0086 decision 5) and `core/dispatch.py::_gate_task_tokens`
+> already hands each hop what is left of it.
+>
+> **Shape.** Four cards, one per ADR point, plus the real run. Items from the follow-ups list ride
+> along only where the card already edits that file or function; the rest stay in the follow-ups
+> section, untouched.
+>
+> **Planning measurements (2026-10-19, `f2e9b956`).**
+> - Nothing on the dispatch path reads `core/reviewed_repos.py` (callers: `cli/_status.py`,
+>   `cli/_run.py::_pick_up_repository`, `cli/_agents.py`, `core/pod_apply.py::review_decision` /
+>   `apply_directory`). P45-3 therefore makes the files a reviewed command names protected paths,
+>   so the agent's own edit to them parks for a person, instead of adding a claim-time check.
+> - The "4,096 output cap" is a reserve, not a request field:
+>   `core/agent_loop.py::_resolve_request_limits` uses `config.DEFAULT_MAX_OUTPUT_TOKENS` for the
+>   window and budget checks only and sends no `max_tokens` when the endpoint registers none. A
+>   reply cut at 4,096 came from the provider's default; P45-2 reproduces it first.
+> - The local llama.cpp `/v1/models` publishes `meta.n_ctx` 32768 (served) and `meta.n_ctx_train`
+>   262144 (training); the field map is per shape and pinned by recorded bodies.
+> - `jail_launch(..., network=)` takes the network per launch, and `dispatch_pod`'s
+>   `claimRefusal` -> `_refuse_claimed_task` fails a task before any hop with a `failureKind`;
+>   `prepare` reuses both.
+>
+> **Interface for Tack (provisional until P45-1 lands; Tack builds against it, ADR 0086).**
+> `POST /tasks/<pod>` accepts `prepare` (string; `""` off; absent = the team's `prepare:`, else the
+> lockfile's command). New `failureKind` values `prepare` (before any hop, the command's output as
+> reason) and `check_changed` (on deny, `checkChanged: [paths]` on the task). Tack sends `prepare`
+> only when `apiVersion` is `"6"` or later.
+>
+> **Before Wave 117 (operator steps, refused to agents by the permission classifier):** reinstall
+> the service venv, replace the installed `block-destructive.yaml` from the template, restart
+> `docket start`. Retired, not carried: the Phase 39 "Tack `harness run` -> `exec` string" item;
+> `exec` was deleted in Phase 43 and Tack sends work over HTTP.
+>
+> **Worker packets** §0: `uv run --extra mcp` for `mypy src` and `scripts/gen_cli_docs.py --check`
+> (worker worktrees lack `click`/`anyio` otherwise; every Wave 116 worker hit it).
+>
+> **Phase acceptance:** Fabulada's code task through Tack prepares its worktree from the lockfile
+> (the second task with the same lockfile prepares in seconds), runs eslint, vitest and the
+> project's own `tsc`, and finishes or parks on `check_changed`; `setup provider show` names every
+> limit it uses or says `unknown`; two teams on one codebase keep both approvals.
+>
+> | Wave | Cards | Ownership (no two lanes share a function) | Depends on |
+> | --- | --- | --- | --- |
+> | 117 | P45-1 prepare · P45-2 limits from `/models` · P45-4 approvals as a set | P45-1: new `core/prepare.py`, `core/dispatch.py::dispatch_pod` claim loop, `core/task_options.py`, `serve.py` field map + `SERVE_API_VERSION`, a `prepare` RunItem in `core/pod_apply.py` (new function), `pod.schema.json`. P45-2: `edges/adapters/llm.py`, `core/provider.py`, `core/agent_loop.py::_resolve_request_limits`/`_trace_llm_call`, `templates/providers/`, `cli/_provider.py`. P45-4: `core/reviewed_repos.py` keying, `core/pod_apply.py::review_decision`/`apply_directory`/the two `lookup` readers, `cli/_status.py`, `cli/_run.py`, `cli/_agents.py` | — |
+> | 118 | P45-3 protected paths | `core/protected_paths.py` (new), `core/reviewed_repos.py::_digest`, `core/dispatch.py::_run_pipeline` done path/`_finalize_task`/`_pin_hop_tree`/`_run_group_node`/`_ensure_task_worktree`, `core/pod_apply.py::plan_apply`, `pod.schema.json` | 117 merged |
+> | 119 | P45-5 the real run and the close | board, ROADMAP, CHANGELOG | 118 merged |
+
+### P45-1 — docket prepares the worktree it makes
+
+**Status:** DONE 2026-10-19 (merge 645fce80; Wave 117 gates green) · **Size:** M · **Model:** Sonnet
+
+- **Trigger:** ADR 0029 point 1: in a fresh Fabulada worktree `Cannot find package 'eslint'`,
+  `Cannot find module 'vitest/config'`, and the machine's `tsc` 7.0.2 against the project's 5.9.3.
+- **Goal:** after the claim checks, `dispatch_pod` prepares the task worktree. The command is the
+  task's `prepare`, else the team's `prepare:` in `pod.yaml`, else derived from the lockfile at the
+  worktree root (`package-lock.json` -> `npm ci`, `pnpm-lock.yaml` ->
+  `pnpm install --frozen-lockfile`, `yarn.lock` -> `yarn install --immutable`, `uv.lock` ->
+  `uv sync --frozen`, `poetry.lock` -> `poetry install`, `Cargo.lock` -> `cargo fetch`); `""` or
+  `prepare: none` turns it off; no lockfile and no command runs nothing. It runs through
+  `jail_launch(..., network=True)` when isolation is on (the hops keep the pod's network) and on
+  the host like `verifyCmd` when it is off. The install output is kept once per codebase and
+  lockfile hash under `DOCKET_HOME/cache/prepare/`, built under a file lock, linked into each
+  worktree, readable (not writable) by the hops' jail, three entries kept per codebase. A team's
+  or derived command is a reviewed item (kind `prepare`); a task's own `prepare` is on the task
+  record before it runs. A failure fails the task with `failureKind: "prepare"` and the output
+  tail, before any hop. A `prepare` trace event records command, source, cache hit, seconds,
+  exit. `SERVE_API_VERSION` becomes `"6"`.
+- **Non-goals:** guessing without a lockfile; container images per project.
+- **Acceptance:** a fixture repo with `package-lock.json` and one dev dependency: the implementer
+  hop finds `node_modules/.bin/<tool>`; the second task with the same lockfile is a cache hit; a
+  broken lockfile fails `prepare` with no hop and no tokens; `prepare: ""` skips it; with isolation
+  on, a hop cannot write the cache entry and its network is the pod's (escape-matrix rows).
+  Oracle: task record, trace, the hop's tool result.
+- **RED test:** the fixture repo has no `node_modules` after claim.
+- **Gates:** full default lanes, `pytest-without-sandbox.sh`, escape matrix, goldens,
+  `gen_cli_docs --check`.
+- **Spec:** `pod-dispatch.spec.md`, `operator-api.spec.md` (field, version 6, `failureKind`),
+  `pod-blueprints.spec.md` (`prepare:` reviewed), `trace-store.spec.md` (event), sandbox spec.
+
+### P45-2 — a model's limits come from the provider's `/models`
+
+**Status:** DONE — merged `3005bad4` (Wave 119, 2026-10-20; option A: limit rows out, `price`/`pricesAsOf`/`presets` stay). Shipped: `ProbeResult.limits` from one per-shape field map (Anthropic `max_input_tokens`/`max_tokens`, gateway `context_window`/`max_tokens`, llama.cpp `meta.n_ctx`, OpenRouter `context_length`/`top_provider.max_completion_tokens`; 0/null is unknown), `provider-models.json` written at `provider add` and once a day by the dispatch sweep for operator-registered providers, declared > observed > unknown in `endpoint_from_spec`, `--ctx/--max-tokens` without defaults, sources in `setup provider show` and `pod show --json`; UTF-8 request bytes (`ensure_ascii=False` on the wire too), `cacheWriteTokens`. Not reproduced: the 4,096 cut itself (no replayed `llm_call` shows `finishReason: length`; the code path is cited). Found: a worker test with `monkeypatch.undo()` wrote test data into the real `~/.docket/provider-models.json` (operator cleanup). · **Size:** M · **Model:** Sonnet
+
+- **Trigger:** ADR 0029 point 2: an id outside the shipped rows gets no window and no output bound
+  (`edges/adapters/llm.py::endpoint_from_spec`); 49 of 49 `request_fit` events in the joint run
+  said `unknown_window` (gateway).
+- **First step:** reproduce the 4,096 cut on a model with no registered bound and cite where it
+  comes from.
+- **Goal:** `probe_models` returns each advertised id's window and output cap through one
+  per-shape field map (Anthropic `max_input_tokens`/`max_tokens`; llama.cpp `meta.n_ctx`, never
+  `n_ctx_train`; OpenRouter `context_length`/`top_provider.max_completion_tokens`; the gateway as
+  its recorded body shows; anything else unknown). Observed limits go to a docket-owned
+  `provider-models.json` (via `edges/store.py`, with the date) at `setup provider add` and once a
+  day in the `docket start --dispatch` sweep. `endpoint_from_spec` resolves operator-declared >
+  observed > unknown; a known output cap is sent as `max_tokens`. The shipped templates lose their
+  `contextWindow`/`maxTokens` rows. `setup provider show` and `pod report` print each limit's
+  source (`declared`, `observed <date>`, `unknown`).
+- **Rides along (same files):** `request_part_bytes` measures UTF-8 (18,037 B against 11,367 B
+  measured for a non-ASCII part); `llm_call` carries `cacheWrite` when reported.
+- **Decision needed before claim (maintainer):** ADR 0029 says templates keep "only connection
+  data", but prices feed the labelled estimate and budget auto-pause and `presets` feed the rank
+  anchors. Recommended: remove limits only; keep `price`/`pricesAsOf`/`presets`.
+- **Non-goals:** refusing an unadvertised step `model:`; prices from the provider.
+- **Acceptance:** recorded `/models` bodies (llama.cpp from `127.0.0.1:8081`, Anthropic,
+  OpenRouter, the gateway; scrubbed) yield the published limits, the llama.cpp window is 32768;
+  `rg 'contextWindow|maxTokens' src/docket/templates/providers` prints nothing; a never-observed
+  model shows `unknown`, never a filled-in number. Oracle: the recorded bodies.
+- **RED test:** the llama.cpp body parsed to `n_ctx`.
+- **Gates:** full default lanes, goldens, `scripts/metrics.py --check`.
+- **Spec:** `model-profiles.spec.md`, `agent-loop.spec.md` (reserve), `trace-store.spec.md`
+  (`llm_call`).
+
+### P45-3 — a change that edits its own check goes to a person
+
+**Status:** DONE 2026-10-19 (merge e6142b1c; Wave 118 gates green) · **Size:** M · **Model:** Sonnet
+
+- **Trigger:** ADR 0029 point 3: a gate such as `npx eslint` reads configuration the agent edits;
+  `reviewed_repos.py` hashes only the command text.
+- **Goal:** protected paths are the defaults (lockfiles, `package.json`, `pyproject.toml`,
+  `Cargo.toml`, lint/type/test configuration, `.docket/`, `prill.yaml`, CI workflows), the team's
+  `protects:` in `pod.yaml` (adds only), and every tracked file a reviewed command names. When a
+  pipeline ends `done` and `git diff --name-only <baseCommit>..<branch>` touches one, the task
+  parks `waiting_approval` (approval kind `check_changed`, `checkChanged: [paths]`) whatever the
+  profile, lights-out included; grant -> `done`, deny -> `failed`/`check_changed`. The review digest
+  includes the blob id of each file a command names, so `pod update` and `docket run` ask again
+  after such a file changes.
+- **Rides along (same functions):** `_pin_hop_tree` cuts a subject at a word boundary;
+  `_run_group_node` keeps `failure_kind` (a budget stop in a group says `budget`); the dead
+  `inPlace` key in `_ensure_task_worktree`; the stale `.env\b.*write` paragraph in
+  `security-gates.spec.md`.
+- **Non-goals:** restoring files before a gate; a claim-time review check.
+- **Acceptance:** a stub task editing `package.json` under `lights-out` parks naming it;
+  `task approve` -> `done`, `task deny` -> `failed`/`check_changed`; a task editing `scripts/check.sh`
+  behind gate `bash scripts/check.sh` parks; a task editing only `src/` ends `done`. Oracle: task
+  record, audit entries with their channel.
+- **RED test:** the lights-out `package.json` case.
+- **Gates:** full default lanes, goldens, `validate-specs.sh`.
+- **Spec:** `pod-dispatch.spec.md`, `operator-api.spec.md`, `operator-loop.spec.md`,
+  `pod-blueprints.spec.md` (`protects:`, digest), `security-gates.spec.md`.
+
+### P45-4 — approvals are kept per codebase and team, as a set
+
+**Status:** DONE 2026-10-19 (merge b5318e7c; Wave 117 gates green) · **Size:** S · **Model:** Haiku
+
+- **Trigger:** ADR 0029 point 4: one entry per codebase, overwritten; two pods' approvals 0.3 s
+  apart in `audit.log`, the second replacing the first.
+- **Goal:** `reviewed-repos.json` keys by (resolved codebase, pod) and keeps every approved digest;
+  `is_reviewed` is true for any of them; `code_mismatch` diffs against the pair's latest approval;
+  `repo.allow` audits `pod=`. An old one-entry file is ignored and asked again once (D-57;
+  CHANGELOG says so).
+- **Rides along (same functions):** `POST /pods/<p>/apply` on a pod with no recorded codebase
+  refuses instead of reviewing against `directory.parent`; the `_changed_since_review` hint names
+  `teams/<pod>/` when the repository keeps teams.
+- **Acceptance:** two pods on one codebase approved in turn both answer `go`; returning to an
+  earlier approved set asks nothing; a third set asks with only its changed items. Oracle:
+  `review_decision` and the file.
+- **RED test:** the second pod's approval removing the first's.
+- **Gates:** full default lanes, goldens, `gen_cli_docs --check`.
+- **Spec:** `pod-blueprints.spec.md`, `operator-api.spec.md`, `cli-interface.spec.md`.
+
+### P45-5 — the real run, and the phase close
+
+**Status:** DONE — 2026-10-20, a small run without Tack (the maintainer's call), twice. Run 1 (`task-b1e95477`): prepare `npm ci` from the lockfile inside the Landlock jail, 22.4 s, cache miss (829 MB); one park on a read-only `bash` with `$(...)`; implementer done, gate `npx eslint && npx tsc --noEmit && npx vitest run` exit 0; the reviewer was refused before any call (defect: an observed 128,000 cap as the budget reserve, fixed `0a0bff6c`, agent-loop 1.43.0) and `task retry` ended the task `done` with no verdict (defect: a group with a failed child counted finished, fixed `f9a5cec4`, pod-dispatch 6.61.0). Run 2 (`task-b5e39e26`, same text, fixed service): prepare cache hit 0 s, same park and grant, implementer done, reviewer `approve` (Opus, `max_tokens` cut to the budget), tester `pass`, `done` 4m33s after the grant. Also found: Anthropic `/v1/models` needs `anthropic-version` (fixed `3e9c3d9f`). Trigger values recorded in the follow-ups below; recordings in gitignored `internal-docs/baselines/phase-46/before/` (`dispatch-2` is the Phase 46 "before" baseline). Not reproduced: a `check_changed` park (neither run touched a protected path). · **Size:** M · **Model:** integrator, maintainer-approved, paid
+
+- **Goal:** Fabulada's code task through Tack on the merged tree, against the operator's
+  `~/.docket`: per step sent/counted/largest request, prepare seconds and cache MB, every
+  `failureKind`. Write down, without acting on them, the observed values for the follow-up
+  triggers this run can see: a parked turn paid twice, the implementers' sent ratio, hop report
+  language, the W116-10 re-read count, `unknown_window` events. A trigger that fires becomes a
+  card afterwards, not inside this one.
+- **Acceptance:** the phase acceptance, met or stated as partly met with numbers; ROADMAP row 45
+  dated, CHANGELOG `[Unreleased]`, board archived with `split_board.py archive`.
+- **Gates:** every gate in CLAUDE.md "Running tests", in a clean worktree.
+
