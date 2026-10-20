@@ -104,7 +104,7 @@
 
 ### P45-2 — a model's limits come from the provider's `/models`
 
-**Status:** BLOCKED on the maintainer's prices decision (below) · **Size:** M · **Model:** Sonnet
+**Status:** IN PROGRESS — Wave 119, option A: limit rows out, `price`/`pricesAsOf`/`presets` stay (decided 2026-10-20) · **Size:** M · **Model:** Sonnet
 
 - **Trigger:** ADR 0029 point 2: an id outside the shipped rows gets no window and no output bound
   (`edges/adapters/llm.py::endpoint_from_spec`); 49 of 49 `request_fit` events in the joint run
