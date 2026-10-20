@@ -197,6 +197,268 @@
   dated, CHANGELOG `[Unreleased]`, board archived with `split_board.py archive`.
 - **Gates:** every gate in CLAUDE.md "Running tests", in a clean worktree.
 
+## ◇ PHASE 46 — PLANNED — organize by context, refactor by tool (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, starts when Phase 45 closes)
+
+> **Evidence.** Measured 2026-10-20 at `c74a224e` (ADR 0030 "Evidence"): 31 of 63 `core` modules
+> import `edges`; 206 function-local imports hide a 38-module cycle; `core/dispatch.py` is 4,727
+> lines, 168 definitions, 20 % of all `src/` commits in 90 days; `status` is written in 16 places;
+> 1,191 `monkeypatch` uses, 72 on `dispatch`; the runtime wheel is a 40-file build-hook copy.
+>
+> **Shape.** The ADR is the step-by-step guide; each card below is one of its steps. **Zero
+> behaviour change** is the contract: the HTTP API 6, the CLI goldens and the `docket_runtime`
+> facade are the oracle; every internal shape (module paths, persisted JSON, test locations) is
+> free to change (D-57: no users, no data to migrate). Every card ends with
+> `scripts/maint/refactor_gate.sh` exit 0 (nine checks, ADR 0030 "The step-by-step guide"); a
+> card that fails the gate is reverted and its mapping corrected, never patched until green.
+>
+> **Who does what.** Tool-only cards (T) run a script; a model writes code only in P46-2, P46-3,
+> P46-4 (tools with their own tests) and P46-12, P46-13 (bounded judgment with generated input).
+> Review cards (R) are one human read of a generated artifact. The integrator owns `refactor/`
+> (mapping, analysis, retired list), the board, ROADMAP, CHANGELOG and every rollup.
+>
+> **Ordering.** A: P46-1 → P46-2 ∥ P46-3 → P46-4 → P46-5. B: P46-6 → P46-7 → P46-8 → P46-9 →
+> P46-10 → P46-11. C: P46-12 (after P46-7), P46-13 (after P46-8). D: P46-14 → P46-15. Baseline
+> live run recorded before P46-6. **Freeze:** no other card touches `src/` from P46-6 to P46-15.
+>
+> **Dev dependencies added:** `libcst`, `import-linter`. Runtime dependencies unchanged.
+>
+> **Phase acceptance** (ADR 0030 "Phase acceptance"): architecture tests at target (ignore list
+> empty, local imports 0, largest module ≤ 700, `status` writers 1, every patch on its defining
+> module, every test at its mirror path); runtime installs without a hook; API/goldens/facade
+> tests unchanged; before/after live traces identical modulo ids and timestamps; no `cli/`,
+> `core/`, `edges/`, `serve.py`, `config.py` left.
+
+### P46-1 — the rules the documents state
+
+**Status:** TODO after Phase 45 closes · **Size:** S · **Model:** integrator · **Kind:** R
+
+- **Trigger:** ADR 0030 points 1-2 and 5 replace the layer rule `cli -> core -> edges`.
+- **Goal:** `CONTRIBUTING.md` "Package layout" describes the context packages, the two-level rule,
+  the dependency table and the 700-line ceiling; `AGENTS.md` change contract item 4 names the
+  import contracts instead of the three layers; `specs/test-framework.md` "Lanes and placement"
+  (2.21.0) describes mirror placement, markers as lanes, `tests/fixtures/`, `contracts/`, `e2e/`,
+  `architecture/`, `release/`, and the end of `SUBJECT`; CLAUDE.md "Architecture" points to the ADR.
+  ADR 0030, the ROADMAP rows and the §4.5 amendment landed with the plan (2026-10-20).
+- **Non-goals:** moving any code.
+- **Acceptance:** the three documents agree with the ADR's dependency table word for word where
+  they cite it; `validate-specs.sh` and the agent-lane prose tests pass.
+- **Gates:** `validate-specs.sh`, `tests/release` prose tests, `gen_cli_docs --check`.
+
+### P46-2 — `analyze.py`: the measurements and the first mapping
+
+**Status:** TODO after P46-1 · **Size:** M · **Model:** Sonnet · **Kind:** T (tool with tests)
+
+- **Goal:** `scripts/maint/refactor/analyze.py` writes `refactor/analysis.json` + markdown: import
+  graph and SCCs (top-level and with local imports, via `grimp`); every function-local `docket`
+  import (file, line); call-graph groups for `core/dispatch.py`, `serve.py`,
+  `edges/adapters/system.py` (definitions, line ranges, external callers); every `["status"] =`
+  site with the fields set in the same block and its caller; every `_cfg.NAME` read; every
+  monkeypatch target with the module that defines the patched object; fan-in per task-record key;
+  whether `runs.json` duplicates `task["hops"]`. `--metrics` prints the nine gate numbers.
+  `--draft-map` emits `refactor/target-map.toml` from the groups and ADR 0030 "Target layout".
+- **Non-goals:** changing any file under `src/` or `tests/`.
+- **Acceptance:** on `develop` the metrics print local imports 206, largest cycle 38, `status`
+  writers 16, largest module 4727 (±0); on `tests/architecture/fixtures/toy/` the groups and
+  SCCs match the fixture's expected JSON. Oracle: the tool's own tests.
+- **RED test:** the toy fixture's expected JSON before the tool exists.
+- **Gates:** ruff, mypy on the script, its tests; `comment_lint`.
+
+### P46-3 — `move.py` and `refactor_gate.sh`
+
+**Status:** TODO after P46-1 · **Size:** L · **Model:** Sonnet · **Kind:** T (tool with tests)
+
+- **Goal:** `scripts/maint/refactor/move.py` (libcst) executes `target-map.toml`: `git mv` whole
+  modules; move named definitions with leading comments and decorators in mapping order; rewrite
+  `import`/`from … import` in `src/` and `tests/`; rewrite `"docket.a.b"` string targets and
+  `SUBJECT`; move each test file to its `SUBJECT` module's mirror path, splitting a file by
+  symbol when its tests import two destinations; rewrite code paths in `specs/`, `docs/` (not
+  `cycles-ended/`, not `adr/`), `CONTRIBUTING.md`, `AGENTS.md`, `.agents/skills/`; `ruff --fix`;
+  maintain `refactor/retired.txt`. Flags `--dry-run`, `--check`; idempotent.
+  `scripts/maint/refactor_gate.sh` runs the nine checks of ADR 0030 and exits non-zero on the
+  first failure, printing which.
+- **Non-goals:** running the mapping on the real tree (that is P46-7 onwards).
+- **Acceptance:** on the toy fixture, three mappings (whole module, split by definition, test
+  split by symbol) produce the expected trees byte for byte and `--check` passes afterwards;
+  `--dry-run` on the real tree with the P46-2 draft lists only mapped files and changes nothing.
+- **RED test:** the expected trees before the tool exists.
+- **Gates:** ruff, mypy on the scripts, their tests.
+
+### P46-4 — `tests/architecture/`, the ratchets and the markers
+
+**Status:** TODO after P46-2 and P46-3 · **Size:** M · **Model:** Sonnet · **Kind:** T
+
+- **Goal:** move the 25 guards to `tests/architecture/` and the 18 agent-lane files to
+  `tests/release/` (by `move.py`). Add `test_import_contracts.py` (import-linter, ADR 0030
+  dependency table, current violations in a baseline ignore list), `test_no_local_imports.py`
+  (baseline 206), `test_module_size.py` (ceiling = current largest, target 700),
+  `test_status_writers.py` (baseline 16, target 1), `test_ids.py` (`test_ids.txt` manifest; a
+  missing id needs a `retired:` line in the commit), and the autouse fixture in `tests/conftest.py`
+  wrapping `monkeypatch.setattr`: an original whose `__module__` is not the patched module fails
+  with `patch the defining module: <module>`. Register markers `unit integration sandbox e2e slow
+  release evals`; a codemod adds `pytestmark` by current directory; CI selects by `-m`;
+  `testpaths = ["tests"]`; `tests/evals/README.md` states the lane is empty and never in CI.
+- **Acceptance:** the gate passes with every baseline at its measured value; in a scratch branch
+  one added local import, one `status` write and one patch on a re-exporting module each fail the
+  gate (seen to fail, reverted); `-m "not sandbox"` collects what `pytest-without-sandbox.sh` did.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-5 — `kernel/` and `Home`
+
+**Status:** TODO after P46-4 · **Size:** L · **Model:** integrator + codemod · **Kind:** T + R
+
+- **Goal:** `analyze.py --emit-home` generates `kernel/home.py::Home` from the 102 `config.py`
+  names (same defaults, types, environment variables); the maintainer reviews the class once.
+  `current_home()` (`ContextVar`, process default from the environment) and `use_home(home)`
+  context manager. Codemods: the 307 `_cfg.NAME` reads → `current_home().name`; the test fixture
+  `use_home(Home(tmp_path))` replaces `repoint_docket_home`; `datetime.now(UTC)`/`time.monotonic`
+  outside tests → `kernel/clock.py`. `config.py` keeps only template lookups and moves to
+  `kernel/`. `kernel/ids.py`, `kernel/errors.py`, `kernel/text.py` take `_now`, `_parse_iso`,
+  `_cut_at_word` and friends. The architecture guard forbids `os.environ`, `datetime.now` and
+  `time.*` outside `kernel/`.
+- **Acceptance:** a new test runs two `use_home` blocks and asserts disjoint files; the
+  partial-repointer guard and its baseline are deleted; the gate passes.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-6 — `bootstrap.py`, the composition root
+
+**Status:** TODO after P46-5 · **Size:** M · **Model:** Sonnet · **Kind:** T + R
+
+- **Goal:** plain functions `build_store`, `build_sandbox`, `build_driver`, `build_channels`,
+  `build_app` (CLI), `build_server` (HTTP), each taking a `Home`; the CLI entry and `serve` call
+  them once. No registry, no framework. Import-linter contract: only `bootstrap` and `interfaces`
+  import `*/adapters` (added to the ignore-list ratchet).
+- **Before this card the integrator records the baseline live run** (ADR 0030 P46-15):
+  `capture-doc-journey.sh` on the local model plus one HTTP dispatch, trace files kept under
+  `refactor/baseline/`.
+- **Acceptance:** the gate; `docket --help` golden unchanged; `serve` starts from `build_server`.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-7 — split `core/dispatch.py`
+
+**Status:** TODO after P46-6 · **Size:** L · **Model:** codemod · **Kind:** T + R
+
+- **Goal:** the reviewed mapping assigns the 168 definitions to `tasks/application/` (`queue`,
+  `lifecycle`, `actions`, `approvals`, `sweep`), `tasks/domain/task.py` (shared types),
+  `pipeline/application/executor.py`, `hops/application/` (`compose`, `runner`, `record`),
+  `hops/gates/` (`pre_hop`, `post_hop`), `hops/workspace/*`, `teams/settings.py` (the `pod_*`
+  readers). One commit per destination, leaf-first. The six externally used private names become
+  public in their module; the 24 importers are rewritten in the same commit (no re-export, D-57).
+  `HopResult`/`TaskResult` become frozen with `with_*` methods; the four mutators return values.
+- **Non-goals:** changing any transition (P46-12), any persisted shape (P46-11).
+- **Acceptance:** `core/dispatch.py` does not exist; largest resulting module ≤ 700; the 72
+  `dispatch` patches are on their defining modules (the P46-4 fixture proves it); manifest ids
+  unchanged under new paths; the gate passes after every commit.
+- **Gates:** `refactor_gate.sh` per commit.
+
+### P46-8 — every remaining module to its context
+
+**Status:** TODO after P46-7 · **Size:** L · **Model:** codemod · **Kind:** T
+
+- **Goal:** one commit per context, leaf-first: `platform`, `models`, `observability`,
+  `operator`, `sandbox`, `governance`, `teams`, `agent`, `tasks`, `pipeline`, `hops`,
+  `interfaces` (cli commands, mcp, telegram entry). `edges/adapters/system.py` splits into
+  `platform/process.py`, `platform/git.py`, `sandbox/launch.py` by the P46-2 groups; `jail.py` and
+  `plugins.py` leave the package root. Mirror tests, specs and live docs rewritten per commit.
+- **Acceptance:** `src/docket/cli`, `core` and `edges` do not exist; the import-linter ignore
+  list is exactly the remaining domain→adapter edges (printed by `analyze.py`); the gate passes
+  per commit.
+- **Gates:** `refactor_gate.sh` per commit.
+
+### P46-9 — split `serve.py`
+
+**Status:** TODO after P46-8 · **Size:** M · **Model:** codemod · **Kind:** T + R
+
+- **Goal:** a codemod lifts each path branch of `do_GET`/`do_POST` into
+  `interfaces/http/routes/<resource>.py` (tasks, pods, approvals, inbox, traces, health, metrics,
+  dispatch) and generates the `(method, pattern) -> handler` table; `interfaces/http/auth.py`
+  holds the bearer check once; `interfaces/http/server.py` holds the handler class, threads and
+  stop controller.
+- **Acceptance:** `SERVE_API_VERSION` and every response byte-identical (the serve tests move
+  beside their route and pass unchanged); `serve.py` does not exist.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-10 — the runtime is a package, not a build hook
+
+**Status:** TODO after P46-8 · **Size:** M · **Model:** Sonnet · **Kind:** T
+
+- **Goal:** with the contract "`agent` imports `kernel` only" green, delete
+  `packages/docket-runtime/hatch_build.py` and its 40-file closure; the distribution includes
+  `docket/agent` and `docket/kernel`; `docket_runtime/__init__.py` re-exports the same facade names.
+- **Acceptance:** `uv build` in a clean venv, `import docket_runtime` exposes the same names;
+  `tests/release/test_runtime_package_boundary.py` passes with the hook gone.
+- **Gates:** `refactor_gate.sh`, `tests/release`.
+
+### P46-11 — persisted shapes the structure wants (D-57)
+
+**Status:** TODO after P46-9 · **Size:** M · **Model:** Sonnet · **Kind:** T + R
+
+- **Goal:** the task record is written nested (`spec`, `lifecycle`, `execution`, `pending`) with
+  the same camelCase field names inside (the API serializer flattens, so responses are
+  unchanged); pod settings move from the Lead's `.docket-meta.json` to `pods/<pod>/settings.json`;
+  `TASK_LIST.json` stays one document per pod. Old-shape readers are deleted, not kept.
+- **Non-goals:** one file per task (measured trigger); any API change.
+- **Acceptance:** operator-api and serve-read-api tests unchanged; the gate; the operator wipes
+  and re-initializes the live `~/.docket` after it lands (no users, no migration) and one
+  dispatch on the local model runs to `done`.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-12 — one owner of the task's state
+
+**Status:** TODO after P46-7 · **Size:** M · **Model:** Sonnet (one attempt) · **Kind:** M + T
+
+- **Input:** the P46-2 table of 16 sites (from, to, fields, caller).
+- **Goal:** `tasks/domain/state.py`: `Status`, `FailureKind` enums, the allowed-transition table,
+  `transition(record, to, *, reason="", failure_kind=None, ...)` setting exactly each
+  transition's fields (`completedAt`, `claimId=None`, `pending=None` on a terminal state). A
+  codemod replaces the 16 sites by AST location. A test **generated from the table**: each allowed
+  transition sets its fields; each other pair raises `IllegalTransition`.
+  `test_status_writers.py` ratchets to 1.
+- **Non-goals:** adding or removing a transition that exists today.
+- **Acceptance:** no behavioural test changes; the generated test passes; the gate passes.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-13 — ports for what the ignore list still holds
+
+**Status:** TODO after P46-8 · **Size:** L · **Model:** Sonnet where a signature is unclean · **Kind:** T + M
+
+- **Goal:** for each remaining domain→adapter import, `analyze.py --emit-port` generates a
+  `Protocol` from the signatures the domain uses; `bootstrap.py` binds the real adapter; the
+  domain receives the port as a parameter or from `current_home()`. A model handles only
+  signatures that mix effects, one card per unclean port if more than one.
+  `tests/fixtures/fakes/<port>.py` and `tests/contracts/test_<port>_contract.py` (parametrized
+  `[real, fake]`) per port.
+- **Acceptance:** import-linter ignore list empty; local imports 0; largest SCC 1; every fake
+  passes its contract suite; the gate.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-14 — the tests only the new structure allows
+
+**Status:** TODO after P46-13 · **Size:** L · **Model:** Sonnet · **Kind:** T + M
+
+- **Goal:** `tests/fixtures/`: `home.py`, `repo.py` (temp git repo with lockfile and commits),
+  `builders.py` (`make_task`, `make_pod`, `make_hop`), `fakes/chat.py` (`ScriptedChat`: turns
+  with text and tool calls, fails when the script runs out) replacing the 7 LLM stubs.
+  `tests/e2e/`: 8-12 named flows extracted from `integration/` (software pod to done, rework
+  cycle, check_changed park + grant/deny, prepare from lockfile + cache hit, HTTP lifecycle as
+  Tack drives it, resume after restart, lights-out profile, Telegram approval). The flat
+  `tests/integration/` directory disappears (mirror path, `e2e/` or `contracts/`); each retired
+  test named in `retired:`. `SUBJECT` deleted everywhere; the layout guard checks the mirror path.
+- **Acceptance:** no file outside `tests/architecture/` mentions a module path; `analyze.py`
+  reports monkeypatch targets only on `kernel.clock` and `os.environ`; the gate.
+- **Gates:** `refactor_gate.sh`.
+
+### P46-15 — the live run, before and after, and the close
+
+**Status:** TODO after P46-14 · **Size:** M · **Model:** integrator · **Kind:** R
+
+- **Goal:** repeat the P46-6 baseline runs; compare traces event by event (names, gate outcomes,
+  transitions; ids and timestamps masked) and the HTTP responses. Rewrite CLAUDE.md, AGENTS.md,
+  the `docket-*` skills and CONTRIBUTING for the new layout (paths by the tool, prose by hand).
+  CHANGELOG "Changed (internal)". Delete `refactor/`; the architecture tests are the record.
+  ROADMAP row 46 dated; board archived with `split_board.py archive`.
+- **Acceptance:** the trace diff is empty; the Phase 46 acceptance above, with numbers.
+- **Gates:** every gate in CLAUDE.md "Running tests", in a clean worktree.
+
 ## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phases 43-44 (not cards; triage when a trigger fires)
 
 > Items a Phase 45 card absorbed moved into that card on 2026-10-19 (the gateway window, the

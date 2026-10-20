@@ -9,7 +9,9 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-19.** Every phase 0–44 is complete; **Phase 45 is planned** (D-65,
+**Last updated: 2026-10-20.** Every phase 0–44 is complete; **Phase 46 is planned** (D-66,
+[ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md): organize by context, refactor
+by tool; fifteen cards P46-1..15 on `TODO.md`, after Phase 45 closes). **Phase 45 is in progress** (D-65,
 [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md):
 a prepared task worktree, model limits from the provider, protected paths, approvals per team;
 five cards over Waves 117-119 on `TODO.md`). Wave 116 (no phase) closed 2026-10-19.
@@ -64,6 +66,8 @@ until the project drops its beta warning.
 | 43 | The team runtime behind an external plan of record: addressable tasks, HTTP lifecycle, pods over HTTP, `.docket/teams/`, one door (API 5, `exec` deleted) | D-63 · [0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md) | **complete** 2026-10-17: Wave 109 (the task, P43-1..5) 2026-10-14, Wave 110 (the pod, P43-6..9) and Wave 111 (the daemon and the command, P43-10..12) 2026-10-17; `exec` deleted, API 5, `0.2.0-beta.6` declared |
 | 44 | Context in layers and a budget that counts new tokens: replay bench, new-token budget, bounded tool output, condensed history, delivered handoffs, cache-ordered prompt, governed pod memory | D-64 · [0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md) | 2026-10-18 |
 | 45 | A prepared checkout, models from the provider, and a check the change cannot define: install from the lockfile with a cache, limits from `/models`, protected paths that park for a person, approvals per (codebase, pod) | D-65 · [0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md) | **in progress** 2026-10-19: P45-1 (prepare, API 6) and P45-4 (approvals as a set) merged in Wave 117; P45-3 (protected paths, `check_changed`) merged in Wave 118; P45-2 blocked on the prices decision; P45-5 closes |
+| 46 | Organize by context, refactor by tool: twelve context packages plus `interfaces/` and `bootstrap.py`, a checked dependency rule, one owner of the task's state, `Home` instead of module constants, tests that mirror the code; done by a mapping, a libcst codemod and one gate script, with zero behaviour change | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **planned** 2026-10-20: P46-1..15 over phases A (tools), B (transformations), C (bounded judgment), D (verification); starts when Phase 45 closes |
+| 47 | Less code, same behaviour: the task as a typed aggregate with a repository, settings as one object, declarative degradation, typed events, prompt sections, declarative routes, one reader per question, dead code by fan-in (ADR 0030 "What this unlocks") | D-66 | **deferred** until Phase 46 closes; each card carries a before/after measure |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -205,7 +209,7 @@ with one shipped driver, not a plugin framework; a second driver needs a named t
 | Use FastAPI/async for `serve` | A handful of routes; stdlib `http.server`, synchronous |
 | Add an ORM / database | JSON files modeled by Pydantic *are* the store (the filesystem is the trace/policy store too) |
 | Event sourcing / message bus / CQRS | docket-owned JSON through one writer (`edges/store.py`) plus append-only JSONL logs |
-| Deep package nesting / DDD ceremony | Keep it flat: `cli/ core/ edges/`. Split a module only when it actually hurts |
+| DDD ceremony, deep nesting | One package per business context, at most two levels inside (`domain/`, `application/`, `adapters/` only where the context needs them); a module over 700 lines is a defect. Amended by D-66 (2026-10-20): the flat `cli/ core/ edges/` layout was kept until the hurt was measured (ADR 0030 evidence), which is the trigger the earlier row named |
 | Abstract before the second caller exists | Rule of three. Make it work, then generalize |
 
 The target is **boring, typed, obvious Python.** "Scale" here is not throughput (single-host CLI) —
@@ -214,7 +218,7 @@ address exactly those.
 
 ---
 
-## 6. Decisions (D-1…D-65)
+## 6. Decisions (D-1…D-66)
 
 > Every decision is answered; a row stays because a decision outlives its phase. Rows D-1…D-24 were
 > taken in phases archived in `docs/cycles-ended/roadmap-phases.md`, and some name a daemon docket
@@ -286,6 +290,7 @@ address exactly those.
 | D-63 | Tack runs docket as a throwaway agent per attempt (`docket exec`) and gets none of the pod, roles, pipeline, gates or approvals; what must docket add so an external plan of record sends every piece of work to a long-lived pod through one door, without Tack working around docket? | Phase 43 | **Answered 2026-10-14 (ADR 0027, planned):** HTTP against `docket start --dispatch`, API version 5; a task carries `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens` and narrow-only `restrictions`; `hop_started`/`hop_finished` on the trace; cancel/retry/diff and pods (read, `ensure`, `apply`, corrections) over HTTP; `.docket/teams/<pod>/`; the daemon stops between tasks and resumes on every sweep; `exec` and harness contracts deleted outright (D-57; the maintainer chose beta.6 over one release later on 2026-10-14). Deferred with triggers: parallel tasks in a pod, warm workspace, SSE, statistics. Measured first: `npm ci` 6.5 s + build 15.5 s per worktree (829 MB), one llama.cpp slot queues (5/10.6 s for two), a stop signal waited 91 s for a whole sweep. |
 | D-64 | Four real steps stopped on a 100k token budget with no request over 26k: old tool results re-sent (64 %), the prefix repeated (25 %), cache reads counted at full weight, a finished verdict discarded. How does a step send what it needs once, and the budget count what is spent, without raising a limit? | Phase 44 | **Answered 2026-10-18 (ADR 0028):** context composed in layers stable-first with one owner each (roots and the repository map in the task message, TOOLS.md and HEARTBEAT out of a pod prompt); the budget counts `input - cache_read + output` and accepts a paid final reply; bounded `glob`/`grep`/`read`/`fetch`; deterministic condensation of results older than K; hop diffs delivered for every writing role; `cache_control` for Anthropic models after a real gateway check; one governed `memory.json` per pod (typed entries, mixed acceptance, untrusted frame, audited, revertible). |
 | D-65 | A sibling project's first code run through a team: the task worktree has no dependencies (every Node check fails before it looks at the change), the provider catalog is a fixed list (an unknown model runs with no window and a 4,096 output cap), a gate runs files the change can edit, and one approval per repository is overwritten by the next team. What does docket change? | Phase 45 | **Answered 2026-10-19 (ADR 0029, not built):** docket prepares the worktree it makes (install from the lockfile, `prepare:` per team or per task, network only for that phase, cached per lockfile hash, reviewed, `failureKind: "prepare"` before any hop); models and their limits come from the provider's `/models`, unknown is said, never filled in; protected paths send a change that edits its own check to a person (`check_changed`) and the review digest covers the files a command names; approvals kept per (codebase, pod) as a set. The per-step token limit needs no change: every run Tack sends carries `maxTokens` (Tack ADR 0086 decision 5) and each step already gets what is left of it. |
+| D-66 | The layer rule `cli -> core -> edges` is prose, not a check: 31 of 63 `core` modules import `edges`, 206 function-local imports hide a 38-module cycle, `core/dispatch.py` is 4,727 lines touched by 20 % of commits, and a task's `status` is written in 16 places. How does docket restructure without changing what it does? | Phase 46 | **Answered 2026-10-20 (ADR 0030, planned):** organize by business context with at most two levels inside each; the dependency rule becomes import-linter contracts in `tests/architecture/` (function-local imports forbidden, baselines that only shrink); one `transition()` owns `status`; `kernel/home.py::Home` replaces `config.py`'s constants; tests mirror the code and lanes are markers; the refactor is executed by a mapping file, a libcst codemod and one gate script, a model writes code in five tasks only; internal shapes are free (D-57), the HTTP API 6, the CLI goldens and the `docket_runtime` facade are the oracle. Amends the §4.5 "keep it flat" row: the hurt is measured, so the split happens. |
 
 ---
 
