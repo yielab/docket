@@ -45,7 +45,7 @@ EOF
 )"
     date -u +%Y-%m-%dT%H:%M:%SZ >"$out/started-at"
     api -X POST -H 'Content-Type: application/json' -d "$body" "$url/tasks/$pod" >"$out/create.json"
-    task_id="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id") or d.get("task",{}).get("id") or "")' "$out/create.json")"
+    task_id="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); t=d.get("task"); print(t if isinstance(t, str) else (t or {}).get("id") or d.get("id") or "")' "$out/create.json")"
     if [ -z "$task_id" ]; then
         echo "task not created: $(cat "$out/create.json")" >&2
         exit 1
