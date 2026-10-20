@@ -66,8 +66,8 @@ shapes. Every provider — built-in or your own — is a `kind: provider` docume
 (`core.provider.ProviderSpec`; see `docs/CONFIGURATION.md` §3.1 and
 `specs/functional/model-profiles.spec.md` "Provider catalog"): `name`, `dialect`, `baseUrl`,
 `auth` (`bearer`/`header`/`none` plus credential names, never values), optional `headers` for a
-static header a gateway requires, and `models[]` with each id's exact `contextWindow`/
-`maxTokens`. Register a local or other compatible endpoint with the document, or the shortcut:
+static header a gateway requires, and `models[]` with each id's optional declared
+`contextWindow`/`maxTokens`. Register a local or other compatible endpoint with the document, or the shortcut:
 
 ```bash
 docket setup provider add my-provider https://example.invalid/v1 \
@@ -75,7 +75,10 @@ docket setup provider add my-provider https://example.invalid/v1 \
 docket setup model set programmer my-provider/creator/model-id
 ```
 
-The exact registered model receives those context/output limits in the loop's preflight. A second
+The exact registered model receives those declared limits in the loop's preflight. A limit you
+do not declare is taken from the provider's own `/models` body when it publishes one (recorded
+in `provider-models.json` at `provider add` and once a day by `docket start --dispatch`), else it
+is unknown; `docket setup provider show <name>` names each limit's source. A second
 `provider add` for the same name replaces its document (an unset field inherits from a built-in of
 the same name). `docket setup provider export <name> [<file>]` prints (or writes) any provider —
 built-in or your own — back out as that same document, which doubles as a starting point for a

@@ -2581,10 +2581,14 @@ def _wire_parts(body: dict[str, Any]) -> dict[str, int]:
     """Bytes of each request part, measured on the body the stub endpoint received."""
     sizes = dict.fromkeys(("system", "tools", "toolResults", "assistant", "user"), 0)
     for message in body["messages"]:
-        sizes[_WIRE_PART_BY_ROLE[message["role"]]] += len(json.dumps(message).encode("utf-8"))
+        sizes[_WIRE_PART_BY_ROLE[message["role"]]] += _utf8(message)
     for tool in body.get("tools", []):
-        sizes["tools"] += len(json.dumps(tool).encode("utf-8"))
+        sizes["tools"] += _utf8(tool)
     return sizes
+
+
+def _utf8(part: Any) -> int:
+    return len(json.dumps(part, ensure_ascii=False).encode("utf-8"))
 
 
 class TestLlmCallRequestBreakdown:
@@ -2599,7 +2603,9 @@ class TestLlmCallRequestBreakdown:
         )
         events: list[dict[str, Any]] = []
         with _trace.subscribe(events.append):
-            result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:default", "go")
+            result = _loop.run_agent_turn(
+                backend, registry, ctx, "agent:demo:default", "revisa el \u00f1and\u00fa"
+            )
 
         assert result.ok
         payloads = [e["payload"] for e in events if e["event_type"] == "llm_call"]
@@ -2645,6 +2651,29 @@ class TestLlmCallTrace:
             assert isinstance(record["duration_ms"], int)
             assert record["duration_ms"] >= 0
             assert "cost_usd" not in record
+
+    def test_cache_write_tokens_appear_only_when_positive(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = ScriptedBackend(
+            [
+                _tool_call_response(
+                    "c1",
+                    "echo",
+                    '{"text": "hi"}',
+                    usage=TokenUsage(input_tokens=10, output_tokens=5, cache_write_tokens=7),
+                ),
+                _final("ok", usage=TokenUsage(input_tokens=20, output_tokens=8)),
+            ]
+        )
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:default", "go")
+
+        assert result.ok
+        first, second = [e["payload"] for e in events if e["event_type"] == "llm_call"]
+        assert first["cacheWriteTokens"] == 7
+        assert "cacheWriteTokens" not in second
 
     def test_a_failed_second_call_is_traced_with_its_failure_kind(
         self, ctx: ToolContext, registry: ToolRegistry

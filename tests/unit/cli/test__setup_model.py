@@ -383,3 +383,129 @@ class TestProviderAddAdvertisedModel:
 
         assert result.exit_code == 0, result.stdout + result.stderr
         assert self._row("custom") == "mine"
+
+
+class TestProviderLimits:
+    @staticmethod
+    def _probe(monkeypatch: pytest.MonkeyPatch, **limits: tuple[int | None, int | None]) -> None:
+        from docket.core.llm import ModelLimits
+        from docket.edges.adapters import llm as _llm
+
+        monkeypatch.setattr(
+            _llm,
+            "probe_models",
+            lambda *a, **k: _llm.ProbeResult(
+                status=200,
+                model_ids=sorted(limits),
+                limits={m: ModelLimits(*pair) for m, pair in limits.items()},
+            ),
+        )
+
+    def test_add_without_ctx_records_the_observed_window_and_declares_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        self._probe(monkeypatch, m=(32768, None))
+
+        result = _runner.invoke(
+            app, ["setup", "provider", "add", "custom", "http://127.0.0.1:1/v1", "--model", "m"]
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        spec = _prov.load_catalog().get("custom")
+        assert spec is not None
+        assert (spec.models[0].context_window, spec.models[0].max_tokens) == (None, None)
+        found = _prov.resolve_limits(spec, "m")
+        assert (found.context_window, found.context_window_source) == (32768, "observed")
+        assert (found.max_output, found.max_output_source) == (None, "unknown")
+
+    def test_a_given_ctx_is_declared_and_wins_over_the_probe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        self._probe(monkeypatch, m=(32768, 9000))
+
+        argv = ["setup", "provider", "add", "custom", "http://127.0.0.1:1/v1"]
+        result = _runner.invoke(app, [*argv, "--model", "m", "--ctx", "1000"])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        spec = _prov.load_catalog().get("custom")
+        assert spec is not None
+        found = _prov.resolve_limits(spec, "m")
+        assert (found.context_window, found.context_window_source) == (1000, "declared")
+        assert (found.max_output, found.max_output_source) == (9000, "observed")
+
+    def test_show_prints_each_limit_with_its_source(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        spec = _prov.ProviderSpec(
+            name="gw",
+            baseUrl="http://127.0.0.1:1/v1",
+            auth=_prov.AuthSpec(type="none"),
+            models=[
+                _prov.ModelRow(id="declared", contextWindow=1000, maxTokens=500),
+                _prov.ModelRow(id="seen"),
+                _prov.ModelRow(id="blank"),
+            ],
+        )
+        _prov.save_provider(spec)
+        from docket.core.llm import ModelLimits
+        from docket.edges.adapters.llm import ProbeResult
+
+        _prov.record_observed_models(
+            spec,
+            ProbeResult(status=200, model_ids=["seen"], limits={"seen": ModelLimits(32768, None)}),
+        )
+        when = _prov.observed_at("gw")
+
+        result = _runner.invoke(app, ["setup", "provider", "show", "gw"])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        rows = {
+            line.split()[0]: " ".join(line.split()[1:])
+            for line in result.stdout.splitlines()
+            if line.split()[:1] in (["declared"], ["seen"], ["blank"])
+        }
+        assert rows["declared"] == "1000 (declared) 500 (declared)"
+        assert rows["seen"] == f"32768 (observed {when}) unknown"
+        assert rows["blank"] == "unknown unknown"
+
+    def test_show_json_carries_the_resolved_limits_and_sources(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        spec = _prov.ProviderSpec(
+            name="gw",
+            baseUrl="http://127.0.0.1:1/v1",
+            auth=_prov.AuthSpec(type="none"),
+            models=[_prov.ModelRow(id="seen"), _prov.ModelRow(id="blank")],
+        )
+        _prov.save_provider(spec)
+        from docket.core.llm import ModelLimits
+        from docket.edges.adapters.llm import ProbeResult
+
+        _prov.record_observed_models(
+            spec,
+            ProbeResult(status=200, model_ids=["seen"], limits={"seen": ModelLimits(32768, 4096)}),
+        )
+
+        result = _runner.invoke(app, ["setup", "provider", "show", "gw", "--json"])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        seen, blank = json.loads(result.stdout)["models"]
+        assert seen["contextWindow"] == 32768 and seen["maxTokens"] == 4096
+        assert seen["limitsSource"] == "observed" and seen["observedAt"] == _prov.observed_at("gw")
+        assert (blank["contextWindow"], blank["maxTokens"]) == (None, None)
+        assert blank["limitsSource"] == "unknown"
+        assert blank["observedAt"] == ""
+
+    def test_a_built_in_model_nobody_observed_is_unknown(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        result = _runner.invoke(app, ["setup", "provider", "show", "anthropic", "--json"])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        models = json.loads(result.stdout)["models"]
+        assert models and all(m["limitsSource"] == "unknown" for m in models)
+        assert all(m["contextWindow"] is None and m["maxTokens"] is None for m in models)

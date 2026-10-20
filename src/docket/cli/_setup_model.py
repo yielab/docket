@@ -33,8 +33,6 @@ model_app = typer.Typer(
     invoke_without_command=True,
 )
 
-_DEFAULT_CTX = 16384
-_DEFAULT_MAX_TOKENS = 8192
 _KEY_NAME = _re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
@@ -153,7 +151,13 @@ def _credential_name_for(name: str) -> str:
 
 
 def _build_spec(
-    name: str, url: str | None, *, credential_given: bool, model: str | None, ctx: int, max_t: int
+    name: str,
+    url: str | None,
+    *,
+    credential_given: bool,
+    model: str | None,
+    ctx: int | None,
+    max_t: int | None,
 ) -> _prov.ProviderSpec | None:
     """The document ``add`` registers: the catalog entry, or a custom one built from ``url``."""
     existing = _prov.load_catalog().get(name)
@@ -266,8 +270,8 @@ def add_provider(
     *,
     credential: str | None = None,
     model: str | None = None,
-    ctx: int = _DEFAULT_CTX,
-    max_tokens: int = _DEFAULT_MAX_TOKENS,
+    ctx: int | None = None,
+    max_tokens: int | None = None,
     preset: bool = True,
 ) -> int:
     """Store the credential, probe ``/models``, register, apply the preset; the wizard reuses it."""
@@ -340,8 +344,12 @@ def provider_add(
         None, "--credential", help="The API key (else its env var, else a hidden prompt)"
     ),
     model: str | None = typer.Option(None, "--model", help="Model id for a custom endpoint"),
-    ctx: int = typer.Option(_DEFAULT_CTX, "--ctx", help="Context window in tokens"),
-    max_tokens: int = typer.Option(_DEFAULT_MAX_TOKENS, "--max-tokens", help="Output cap"),
+    ctx: int | None = typer.Option(
+        None, "--ctx", help="Context window in tokens (default: what /models publishes)"
+    ),
+    max_tokens: int | None = typer.Option(
+        None, "--max-tokens", help="Output cap (default: what /models publishes)"
+    ),
     no_preset: bool = typer.Option(False, "--no-preset", help="Register only; leave roles alone"),
 ) -> None:
     """Add a provider: store its credential, probe /models, apply its preset.
@@ -405,8 +413,13 @@ def provider_show(
         ui.error(f"Unknown provider {name}", "List them with docket setup provider list")
         raise typer.Exit(1)
     scope = catalog.source_of(name)
+    limits = {row.id: _prov.resolve_limits(spec, row.id) for row in spec.models}
     if json_out:
-        _contract.emit_json({"scope": scope, **spec.model_dump(by_alias=True)})
+        document = spec.model_dump(by_alias=True)
+        document["models"] = [
+            {**model, **_limits_json(limits[model["id"]])} for model in document["models"]
+        ]
+        _contract.emit_json({"scope": scope, **document})
         return
     ui.header("Provider", f"{name} ({scope})")
     creds = f" ({', '.join(spec.auth.credentials)})" if spec.auth.credentials else ""
@@ -418,6 +431,37 @@ def provider_show(
         ["models", ", ".join(row.id for row in spec.models) or "-"],
     ]
     ui.table(rows, ["FIELD", "VALUE"])
+    if limits:
+        ui.table(
+            [
+                [
+                    model_id,
+                    _limit_text(found.context_window, found.context_window_source, found),
+                    _limit_text(found.max_output, found.max_output_source, found),
+                ]
+                for model_id, found in limits.items()
+            ],
+            ["MODEL", "WINDOW", "OUTPUT"],
+        )
+
+
+def _limits_json(found: _prov.ResolvedLimits) -> dict[str, object]:
+    return {
+        "contextWindow": found.context_window,
+        "maxTokens": found.max_output,
+        "limitsSource": found.source,
+        "contextWindowSource": found.context_window_source,
+        "maxTokensSource": found.max_output_source,
+        "observedAt": found.observed_at,
+    }
+
+
+def _limit_text(value: int | None, source: str, found: _prov.ResolvedLimits) -> str:
+    if value is None:
+        return "unknown"
+    if source == "observed":
+        return f"{value} (observed {found.observed_at})"
+    return f"{value} ({source})"
 
 
 @provider_app.command("remove")

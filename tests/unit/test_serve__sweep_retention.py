@@ -165,3 +165,41 @@ class TestSweepWiring:
         monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
         serve.run_serve(port=0, interval=30)
         assert ran == ["startup"]
+
+
+class TestSweepRefreshesObservedModels:
+    @staticmethod
+    def _stub(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+        from docket.core import dispatch as _dispatch
+        from docket.core import provider as _provider
+
+        calls: list[int] = []
+        monkeypatch.setattr(_provider, "refresh_observed_models_due", lambda: calls.append(1) or [])
+        monkeypatch.setattr(_dispatch, "dispatchable_pods", lambda: [])
+        monkeypatch.setattr(serve, "_check_schedules", lambda now: None)
+        return calls
+
+    def test_only_a_dispatching_sweep_refreshes_the_providers_limits(
+        self, swept_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = self._stub(monkeypatch)
+        serve._run_sweeps()
+        assert calls == []
+        serve._run_sweeps(dispatch=True)
+        assert calls == [1]
+
+    def test_a_failing_refresh_does_not_stop_the_sweep(
+        self, swept_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import dispatch as _dispatch
+        from docket.core import provider as _provider
+
+        def boom() -> list[str]:
+            raise RuntimeError("provider down")
+
+        seen: list[int] = []
+        monkeypatch.setattr(_provider, "refresh_observed_models_due", boom)
+        monkeypatch.setattr(_dispatch, "dispatchable_pods", lambda: seen.append(1) or [])
+        monkeypatch.setattr(serve, "_check_schedules", lambda now: None)
+        serve._run_sweeps(dispatch=True)
+        assert seen == [1]

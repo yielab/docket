@@ -180,6 +180,15 @@ class ChatResponse:
 
 
 @dataclass(frozen=True)
+class ModelLimits:
+    """One model's context window and output cap as a provider published them; ``None`` is
+    unknown, never zero."""
+
+    context_window: int | None = None
+    max_output: int | None = None
+
+
+@dataclass(frozen=True)
 class Endpoint:
     """Where to send an exchange, and as whom. ``api_key`` is never logged. ``auth_type``/
     ``auth_header`` say how it rides the wire (bearer, a named header, or none); ``headers``
