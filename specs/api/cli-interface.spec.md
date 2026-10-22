@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.17.0
+**Version**: 2.18.0
 **Status**: Complete
-**Last Updated**: 2026-10-19
+**Last Updated**: 2026-10-20
 
 ## Purpose
 
@@ -595,7 +595,10 @@ exits 1 naming `--credential`), probe `<url>/models` with it and classify the re
 (model-profiles.spec.md "Provider readiness" 3), register the provider, then apply the provider's
 preset unless `--no-preset` and print which role resolves to what, plus each pod whose members the
 preset moved (model-profiles.spec.md "Provider catalog" 3). `add <file.yaml>` registers a
-`kind: provider` document. `list [--json]`, `show <name> [--json]`, `remove <name> [--yes]`
+`kind: provider` document. `--ctx` and `--max-tokens` have no default: a given value is the
+model's declared limit, an absent one is what the registration probe observes, else unknown.
+`list [--json]`, `show <name> [--json]` (one row per model with `window` and `output`, each
+naming its source: declared, observed on a date, or unknown), `remove <name> [--yes]`
 (confirms on a terminal; off one it exits 1 naming `--yes`), `export <name> [<file>]`,
 `rotate <name> [--credential KEY]`.
 **`setup model`** — bare or `list [--json]` shows the role→model table (role, model, price,
@@ -996,6 +999,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.18.0 (2026-10-20)
+
+- `setup provider add --ctx/--max-tokens` lose their 16384/8192 defaults and `show` prints each
+  model's limits with their source (model-profiles.spec.md "Provider catalog" 9; P45-2).
 
 ### Version 2.17.0 (2026-10-19)
 

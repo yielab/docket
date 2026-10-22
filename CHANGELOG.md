@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/maint/live-dispatch-baseline.sh` records one real dispatch through the HTTP API (task,
+  trace, diff, raw trace files) so a phase's real run and a before/after comparison use one
+  command.
+- **A model's limits come from the provider's `/models`.** `setup provider add` and, once a day,
+  the `docket start --dispatch` sweep read what each operator-registered provider publishes
+  (Anthropic `max_input_tokens`/`max_tokens`, the gateway's `context_window`/`max_tokens`,
+  llama.cpp `meta.n_ctx`, OpenRouter `context_length`/`top_provider.max_completion_tokens`) and
+  record it with the date in `provider-models.json`. A request's window and output cap resolve
+  per limit as declared (a document's row or `--ctx`/`--max-tokens`) > observed > unknown; a
+  value the provider does not publish (absent, null or 0) is `unknown`, never filled in.
+  `setup provider show` prints WINDOW/OUTPUT with each limit's source and `pod show --json`
+  carries `contextWindowSource`/`maxTokensSource`/`observedAt`. Found by the joint run: 49 of 49
+  `request_fit` events said `unknown_window` for gateway models.
 - **A change that edits its own check goes to a person.** When a task's pipeline ends `done` and
   its diff (committed, uncommitted and untracked) touches a protected path, the task parks
   `waiting_approval` with an approval of kind `check_changed` and `checkChanged: [paths]`, under
@@ -126,6 +139,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The shipped `anthropic` provider template no longer declares `contextWindow`/`maxTokens`
+  (prices, `pricesAsOf` and presets stay: no provider publishes them). `setup provider add
+  --ctx/--max-tokens` no longer default to 16384/8192; absent means observed, else unknown.
+  `pod show --json` `provider.model.source` is `declared | observed | unknown` (was `row | none`).
 - The serve API version is `5` (`GET /status.json` `apiVersion`); docket declares
   `0.2.0-beta.6`. The published install lines move when the release is cut.
 - A `POST /tasks/<pod>` that creates a task answers `201` (was `200`).
@@ -134,6 +151,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `task retry` after a failed branch of a parallel review group re-runs the group instead of
+  ending the task `done` with the failed gate unmet: resume counted a group finished when every
+  child had any persisted hop, failed ones included. Found by the Phase 45 real run.
+- A known output cap larger than a hop's remaining token budget no longer refuses the hop before
+  any call: the budget reserve and the `max_tokens` sent are cut to what the budget leaves after
+  the estimated input (at least 256). Found by the Phase 45 real run: with Anthropic's observed
+  128,000 cap, the reviewer hop was refused with 127,735 tokens left and 2,861 of input.
+- The built-in `anthropic` provider sends `anthropic-version: 2023-06-01`, which Anthropic's
+  `/v1/models` requires (it answered 400 to the registration probe, so no limit was ever
+  observed for an Anthropic model). Found by the Phase 45 real run.
+- `llm_call` request bytes measured a JSON body with non-ASCII escaped to `\uXXXX`, inflating a
+  non-ASCII part by about 60% (18,037 B reported against 11,367 B); the request body is now sent
+  and measured as UTF-8. An `llm_call` record carries `cacheWriteTokens` when the backend reports
+  cache writes.
 - **Pin commit subjects are cut at a word boundary**, and a parallel group that fails keeps its
   failing child's `failureKind` (a budget stop inside a group now says `budget`).
 - **Approvals are kept per codebase and team, as a set.** `reviewed-repos.json` is keyed by

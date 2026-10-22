@@ -1729,3 +1729,55 @@ class TestCancelTask:
         assert not outcome.cancelled and outcome.status == "done"
         with pytest.raises(_dispatch.TaskNotFoundError):
             _dispatch.cancel_task("myapp", "task-nope", channel="cli")
+
+
+class TestGroupResume:
+    """A parallel group is finished only when every child's latest hop succeeded."""
+
+    @staticmethod
+    def _unit(step_id: str) -> _orch.PlannedUnit:
+        return _orch.PlannedUnit(
+            step_id=step_id,
+            role=step_id,
+            agent=None,
+            archetype=None,
+            member_id=f"demo-{step_id}",
+            gate=None,
+            retries=None,
+            timeout=None,
+        )
+
+    def _group(self) -> _orch.PlannedGroup:
+        return _orch.PlannedGroup(
+            step_id="reviews", children=(self._unit("reviewer"), self._unit("tester"))
+        )
+
+    def test_a_failed_child_leaves_the_group_unfinished(self) -> None:
+        prior = [
+            _dispatch.HopResult(
+                "reviewer", "demo-reviewer", False, error="budget", step_id="reviewer"
+            ),
+            _dispatch.HopResult("tester", "demo-tester", True, output="PASS", step_id="tester"),
+        ]
+        assert _dispatch._group_complete(self._group(), prior) is False
+
+    def test_every_child_succeeded_finishes_the_group(self) -> None:
+        prior = [
+            _dispatch.HopResult(
+                "reviewer", "demo-reviewer", True, output="APPROVE", step_id="reviewer"
+            ),
+            _dispatch.HopResult("tester", "demo-tester", True, output="PASS", step_id="tester"),
+        ]
+        assert _dispatch._group_complete(self._group(), prior) is True
+
+    def test_a_child_that_failed_then_succeeded_counts_by_its_latest_hop(self) -> None:
+        prior = [
+            _dispatch.HopResult(
+                "reviewer", "demo-reviewer", False, error="budget", step_id="reviewer"
+            ),
+            _dispatch.HopResult("tester", "demo-tester", True, output="PASS", step_id="tester"),
+            _dispatch.HopResult(
+                "reviewer", "demo-reviewer", True, output="APPROVE", step_id="reviewer"
+            ),
+        ]
+        assert _dispatch._group_complete(self._group(), prior) is True

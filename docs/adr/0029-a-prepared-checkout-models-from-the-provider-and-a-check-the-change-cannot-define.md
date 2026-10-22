@@ -34,9 +34,12 @@ none.
 2. **Models come from the provider, never from a list in docket.** `provider add` and a periodic
    refresh read the provider's `/models`. A model's context window and output cap come from what
    the provider publishes there (Anthropic publishes `max_input_tokens` and `max_tokens`). The
-   shipped provider templates keep only connection data: URL, dialect and credential name. A value
-   the provider does not publish is shown as **unknown**, never filled in: no silent 4,096 output
-   cap. Prices are not needed for limits, which are in tokens.
+   shipped provider templates keep connection data (URL, dialect, credential name) and what no
+   provider publishes: prices with their date, and the presets that anchor the role ranks
+   (decided 2026-10-20, when P45-2 was claimed; the first draft said "only connection data").
+   They carry no window and no output cap. A value the provider does not publish is shown as
+   **unknown**, never filled in: no silent 4,096 output cap. Prices are not needed for limits,
+   which are in tokens.
 
 3. **A check is never defined by the change it checks.** A team's gate is quick feedback for the
    agent; the verifier, which reads its configuration from the base commit, is what a merge trusts.

@@ -134,6 +134,7 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("SERVE_PID_FILE", "serve.pid"),
     ("MCP_SERVERS_FILE", "docket-mcp-servers.json"),
     ("PROVIDERS_FILE", "docket-providers.json"),
+    ("PROVIDER_MODELS_FILE", "provider-models.json"),
     ("EXPORTERS_FILE", "docket-exporters.json"),
     ("EXPORTERS_HEALTH_FILE", "exporters-health.json"),
     ("CHANNELS_FILE", "docket-channels.json"),

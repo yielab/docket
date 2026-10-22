@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.60.1
+**Version**: 6.61.0
 **Status**: Complete. **P45-3** (ADR 0029 point 3) keeps a check from being defined by the change it checks: a task whose
 finished diff touches a protected path parks `waiting_approval` for a person, whatever the profile — see "A change that
 edits its own check" below. **P45-1** (ADR 0029 point 1) prepares the worktree docket makes: before a claimed task's first hop,
@@ -1534,7 +1534,10 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 6. **Known, documented limitation:** resuming a task that crashed mid-group re-runs the **entire**
    group from scratch on `--resume`, including any child that had already completed — there is no
    child-by-child resume granularity. (This does not affect the rework-replay path at all, per
-   requirement 3.)
+   requirement 3.) A group counts as finished on resume only when every child's **latest**
+   persisted hop succeeded and was not parked; a child whose latest hop failed (a budget stop, a
+   backend error) re-runs the group, so a `task retry` after a failed review branch never ends
+   the task `done` with that gate unmet (6.61.0).
 
 ### Runtime driver resolution
 
@@ -2461,6 +2464,13 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.61.0 (2026-10-20)
+
+- "Parallel step groups" requirement 6: a group is finished on resume only when every child's
+  latest hop succeeded. Found by the Phase 45 real run: after the reviewer branch failed on a
+  budget stop and `task retry` re-queued the task, resume saw a persisted hop for every child and
+  ended the task `done` in 20 seconds with no `APPROVE` verdict.
 
 ### Version 6.60.1 (2026-10-19)
 

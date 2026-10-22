@@ -410,6 +410,11 @@ MCP_SERVERS_FILE = Path(os.environ.get("MCP_SERVERS_FILE", DOCKET_HOME / "docket
 # (PROVIDER_TEMPLATES_DIR above), nearest-wins by name.
 PROVIDERS_FILE = Path(os.environ.get("PROVIDERS_FILE", DOCKET_HOME / "docket-providers.json"))
 
+# PROVIDER_MODELS_FILE: the limits each registered provider's /models published, with the date
+# they were observed ({"providers": {name: {"observedAt", "models": {id: {"contextWindow",
+# "maxTokens"}}}}}). One reader and one writer, both in core/provider.py, through edges/store.py.
+PROVIDER_MODELS_FILE = DOCKET_HOME / "provider-models.json"
+
 # ── exporter catalog (core/exporter.py) ───────────────────────────────────────
 # EXPORTERS_FILE: docket-owned catalog of the operator's own exporter registrations and
 # overrides (core/exporter.py's ExporterSpec/Catalog, scope "global"), written through

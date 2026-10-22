@@ -1853,6 +1853,30 @@ class TestStopConditions:
             backend.call_count == 3
         )  # the prospective estimate was tiny; the measured guard fires
 
+    def test_a_known_output_cap_above_the_budget_is_cut_to_what_the_budget_leaves(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        """An observed 128k cap never refuses a 10k-budget hop; the request sends what is left."""
+        backend = ScriptedBackend([_final()])
+        backend.max_output_tokens = 128_000  # type: ignore[attr-defined]
+        backend.estimate_input_tokens = lambda messages, **kwargs: 10  # type: ignore[attr-defined]
+        sent: list[int | None] = []
+        scripted_complete = backend.complete
+
+        def complete(messages: Sequence[ChatMessage], **kwargs: Any) -> ChatResponse:
+            sent.append(kwargs.get("max_tokens"))
+            return scripted_complete(messages, **kwargs)
+
+        backend.complete = complete  # type: ignore[method-assign]
+        config = _loop.LoopConfig(token_budget=10_000)
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:demo:default", "go", config=config
+        )
+
+        assert result.ok is True, result.error
+        assert sent == [10_000 - 10]
+
     def test_backend_error_is_reported_with_its_own_failure_kind(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:
@@ -2581,10 +2605,14 @@ def _wire_parts(body: dict[str, Any]) -> dict[str, int]:
     """Bytes of each request part, measured on the body the stub endpoint received."""
     sizes = dict.fromkeys(("system", "tools", "toolResults", "assistant", "user"), 0)
     for message in body["messages"]:
-        sizes[_WIRE_PART_BY_ROLE[message["role"]]] += len(json.dumps(message).encode("utf-8"))
+        sizes[_WIRE_PART_BY_ROLE[message["role"]]] += _utf8(message)
     for tool in body.get("tools", []):
-        sizes["tools"] += len(json.dumps(tool).encode("utf-8"))
+        sizes["tools"] += _utf8(tool)
     return sizes
+
+
+def _utf8(part: Any) -> int:
+    return len(json.dumps(part, ensure_ascii=False).encode("utf-8"))
 
 
 class TestLlmCallRequestBreakdown:
@@ -2599,7 +2627,9 @@ class TestLlmCallRequestBreakdown:
         )
         events: list[dict[str, Any]] = []
         with _trace.subscribe(events.append):
-            result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:default", "go")
+            result = _loop.run_agent_turn(
+                backend, registry, ctx, "agent:demo:default", "revisa el \u00f1and\u00fa"
+            )
 
         assert result.ok
         payloads = [e["payload"] for e in events if e["event_type"] == "llm_call"]
@@ -2645,6 +2675,29 @@ class TestLlmCallTrace:
             assert isinstance(record["duration_ms"], int)
             assert record["duration_ms"] >= 0
             assert "cost_usd" not in record
+
+    def test_cache_write_tokens_appear_only_when_positive(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = ScriptedBackend(
+            [
+                _tool_call_response(
+                    "c1",
+                    "echo",
+                    '{"text": "hi"}',
+                    usage=TokenUsage(input_tokens=10, output_tokens=5, cache_write_tokens=7),
+                ),
+                _final("ok", usage=TokenUsage(input_tokens=20, output_tokens=8)),
+            ]
+        )
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:default", "go")
+
+        assert result.ok
+        first, second = [e["payload"] for e in events if e["event_type"] == "llm_call"]
+        assert first["cacheWriteTokens"] == 7
+        assert "cacheWriteTokens" not in second
 
     def test_a_failed_second_call_is_traced_with_its_failure_kind(
         self, ctx: ToolContext, registry: ToolRegistry

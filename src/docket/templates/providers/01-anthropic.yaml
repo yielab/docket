@@ -6,6 +6,8 @@ auth:
   type: bearer
   credentials: [ANTHROPIC_API_KEY]
 credentialPrefix: sk-ant-
+headers:
+  anthropic-version: "2023-06-01"
 pricesAsOf: "2026-06-11"
 models:
   - id: claude-haiku-4-5
@@ -13,8 +15,6 @@ models:
   - id: claude-haiku-3-5
     price: {input: 0.80, output: 4.00, cacheRead: 0.08, cacheWrite: 1.00}
   - id: claude-sonnet-4-6
-    contextWindow: 200000
-    maxTokens: 64000
     price: {input: 3.00, output: 15.00, cacheRead: 0.30, cacheWrite: 3.75}
   - id: claude-sonnet-4-5
     price: {input: 3.00, output: 15.00, cacheRead: 0.30, cacheWrite: 3.75}

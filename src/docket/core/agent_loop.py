@@ -212,6 +212,8 @@ _FINALIZATION_INSTRUCTION = (
     "tool results above. Do not request any tools. If the task is incomplete, say so explicitly."
 )
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
+# The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
+MIN_OUTPUT_TOKENS = 256
 
 
 @dataclass(frozen=True)
@@ -561,6 +563,8 @@ def _trace_llm_call(
         "outputTokens": response.usage.output_tokens,
         "cachedTokens": response.usage.cached_tokens,
     }
+    if response.usage.cache_write_tokens > 0:
+        payload["cacheWriteTokens"] = response.usage.cache_write_tokens
     if iteration is not None:
         payload["iteration"] = iteration
     if purpose:
@@ -872,6 +876,7 @@ class _TurnState:
     context_window: int | None
     output_reserve: int
     request_max_tokens: int | None
+    call_max_tokens: int | None
     registry: ToolRegistry
     system_prompt: str
     tool_specs: list[ToolSpec]
@@ -943,6 +948,7 @@ class _TurnState:
             context_window=context_window,
             output_reserve=output_reserve,
             request_max_tokens=request_max_tokens,
+            call_max_tokens=request_max_tokens,
             registry=registry,
             system_prompt=system_prompt,
             tool_specs=tool_specs,
@@ -1061,16 +1067,27 @@ class _TurnState:
         if measured_input > 0 and self.pending_raw_estimate > 0:
             self.calibration = max(1.0, measured_input / self.pending_raw_estimate)
 
+    def reserve_within_budget(self, estimated_input: int, remaining: int) -> int:
+        """A known cap cut to what the budget leaves after the input (requirement 46); the
+        default reserve of an unknown cap is left alone."""
+        room = remaining - estimated_input
+        if self.request_max_tokens is None or room < MIN_OUTPUT_TOKENS:
+            return self.output_reserve
+        return min(self.output_reserve, room)
+
     def prospective_budget_error(self, estimated_input: int, *, purpose: str) -> str:
         measured_tokens = self.effective_measured_tokens()
         remaining = self.cfg.token_budget - measured_tokens
-        prospective = estimated_input + self.output_reserve
+        reserve = self.reserve_within_budget(estimated_input, remaining)
+        prospective = estimated_input + reserve
         if prospective <= remaining:
+            if self.request_max_tokens is not None:
+                self.call_max_tokens = reserve
             return ""
         return (
             f"{_TOKEN_BUDGET_ERROR_PREFIX} cannot start {purpose} completion within "
             f"token_budget={self.cfg.token_budget} (used {measured_tokens}, estimated input "
-            f"{estimated_input} + output reserve {self.output_reserve}, remaining "
+            f"{estimated_input} + output reserve {reserve}, remaining "
             f"{max(0, remaining)}); no backend call made"
         )
 
@@ -1124,7 +1141,7 @@ class _TurnState:
         response = self.backend.complete(
             summary_messages,
             tools=(),
-            max_tokens=self.request_max_tokens,
+            max_tokens=self.call_max_tokens,
             temperature=self.cfg.temperature,
             timeout=min(timeout, remaining),
         )
@@ -1632,7 +1649,7 @@ class _TurnState:
         response = self.backend.complete(
             messages,
             tools=request_tools,
-            max_tokens=self.request_max_tokens,
+            max_tokens=self.call_max_tokens,
             temperature=self.cfg.temperature,
             timeout=request_timeout,
         )

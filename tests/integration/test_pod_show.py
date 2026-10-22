@@ -351,7 +351,7 @@ class TestPodShowInvalidPodSettingsRefuses:
 
 class TestPodShowProvider:
     """`report["provider"]` names the resolved provider's scope, dialect, base URL,
-    credential source and exact model row -- model-profiles.spec.md, "Provider
+    credential source and the model's limits with their sources -- model-profiles.spec.md, "Provider
     catalog" requirement 7."""
 
     def test_agent_on_a_global_provider_document(
@@ -383,8 +383,47 @@ class TestPodShowProvider:
             "id": "qwen",
             "contextWindow": 16384,
             "maxTokens": 4096,
-            "source": "row",
+            "contextWindowSource": "declared",
+            "maxTokensSource": "declared",
+            "source": "declared",
+            "observedAt": "",
         }
+
+    def test_observed_and_unknown_limits_name_their_source(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import provider as _prov
+        from docket.core.llm import ModelLimits
+        from docket.edges.adapters.llm import ProbeResult
+
+        _seed(tmp_path, monkeypatch)
+        spec = _prov.ProviderSpec(
+            name="bench",
+            baseUrl="http://127.0.0.1:8081/v1",
+            auth=_prov.AuthSpec(type="none"),
+            models=[_prov.ModelRow(id="qwen"), _prov.ModelRow(id="other")],
+        )
+        _prov.save_provider(spec)
+        _prov.record_observed_models(
+            spec,
+            ProbeResult(status=200, model_ids=["qwen"], limits={"qwen": ModelLimits(32768, None)}),
+        )
+        lead = pod.member_id("demo", "lead")
+        _fleet.meta_set(lead, "model", "bench/qwen")
+        observed = _explain_json(lead, capsys)["provider"]["model"]
+        assert observed["contextWindow"] == 32768
+        assert observed["maxTokens"] is None
+        assert (observed["contextWindowSource"], observed["maxTokensSource"]) == (
+            "observed",
+            "unknown",
+        )
+        assert observed["source"] == "observed"
+        assert observed["observedAt"] == _prov.observed_at("bench") != ""
+
+        _fleet.meta_set(lead, "model", "bench/other")
+        unknown = _explain_json(lead, capsys)["provider"]["model"]
+        assert (unknown["contextWindow"], unknown["maxTokens"]) == (None, None)
+        assert unknown["source"] == "unknown"
 
 
 class TestPodShowPod:

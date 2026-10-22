@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.37.0
+**Version**: 1.38.0
 **Status**: Complete
-**Last Updated**: 2026-10-18
+**Last Updated**: 2026-10-20
 
 ## Purpose
 
@@ -327,7 +327,7 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
     "dialect":    "string (openai-chat)",
     "baseUrl":    "string | null",
     "credential": { "name": "string (may be empty)", "source": "override | env | store | none" },
-    "model":      { "id": "string", "contextWindow": "number | null", "maxTokens": "number | null", "source": "row | none" }
+    "model":      { "id": "string", "contextWindow": "number | null", "maxTokens": "number | null", "contextWindowSource": "declared | observed | unknown", "maxTokensSource": "declared | observed | unknown", "source": "declared | observed | unknown", "observedAt": "YYYY-MM-DD | \"\"" }
   },
   "network":   { "mode": "open | none", "scope": "default | global | pod" },
   "prompt": {
@@ -464,6 +464,13 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.38.0 (2026-10-20)
+
+- `pod show --json` `provider.model` replaces `source: row | none` with `source: declared |
+  observed | unknown` and gains `contextWindowSource`, `maxTokensSource` and `observedAt`
+  (model-profiles.spec.md "Provider catalog" 9; P45-2). A limit no one declared or observed is
+  `null` with source `unknown`.
 
 ### Version 1.37.0 (2026-10-18)
 

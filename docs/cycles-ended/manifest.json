@@ -758,5 +758,13 @@
     "heading": "◇ Phase 44 closed 2026-10-18",
     "bytes": 712,
     "sha256": "2275a8733f297eefe14d2af358a8eb21673986a5c487a96e495d5e8b3b35e102"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ CLOSED — Phase 45: a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19, closed 2026-10-20)",
+    "bytes": 15759,
+    "sha256": "6fa2f7c8e546dff1ca2c91326495c1d89941921c16e74d7e95e00d83c4b8b5c7"
   }
 ]
