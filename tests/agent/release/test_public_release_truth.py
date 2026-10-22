@@ -260,7 +260,7 @@ def _status_category(value: str) -> str:
     return match.group(0).lower()
 
 
-def test_spec_index_matches_current_headers_and_changelogs() -> None:
+def test_spec_index_matches_current_headers() -> None:
     """The public spec table must not lag the contracts it indexes."""
     rows: dict[str, tuple[str, str]] = {}
     for line in SPEC_INDEX.read_text(encoding="utf-8").splitlines():
@@ -287,16 +287,8 @@ def test_spec_index_matches_current_headers_and_changelogs() -> None:
             problems.append(
                 f"{label}: index status {indexed_status!r}, spec status {status_match.group(1)!r}"
             )
-        # Changelog entries use one of the heading/bullet styles already live across specs:
-        # "### Version 1.1.0", "### 1.0.0 -- date", or "- **1.2.3 -- date:**".
-        changelog_entry = re.compile(
-            rf"^(?:[-*]\s*)?(?:#{{2,4}}\s*(?:Version\s+)?|\*\*)\s*{re.escape(version)}\b",
-            flags=re.MULTILINE,
-        )
-        if not changelog_entry.search(text):
-            problems.append(f"{label}: current version {version} has no changelog entry")
 
-    assert problems == [], "spec index/header/changelog drift:\n" + "\n".join(problems)
+    assert problems == [], "spec index/header drift:\n" + "\n".join(problems)
 
 
 def _run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:

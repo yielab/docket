@@ -86,11 +86,3 @@ state.json.bak     {"generation": 1}
 
 `read_json(Path("state.json"))` returns `{"generation": 1}`, restores that object to
 `state.json`, and leaves the exact bytes `{broken` in `state.json.corrupt`.
-
-## Changelog
-
-### 1.0.0 — 2026-09-02
-
-- Define locked corrupt-primary recovery, bounded quarantine retention, typed failure atomicity,
-  real CLI consumption, and concurrent reader/writer oracles. Implemented at the shared JSON-store
-  chokepoint.

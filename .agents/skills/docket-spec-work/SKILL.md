@@ -7,8 +7,8 @@ description: Implement or change Docket behavior with its spec-first, test-first
 
 Start from the behavior boundary, not from a broad repository tour.
 
-1. Find the owning row in `specs/README.md`. Start with the card-named requirements, invariants,
-   current changelog entry, and targeted test classes; expand to other sections only when those
+1. Find the owning row in `specs/README.md`. Start with the card-named requirements, invariants
+   and targeted test classes; expand to other sections only when those
    sources cross-reference them. Do not read a large spec or test module end to end by default.
 2. Inventory callers with targeted `rg`, then inspect one representative public caller plus every
    caller whose return, error, or side-effect semantics the change can alter. A writer, parser,
@@ -16,7 +16,8 @@ Start from the behavior boundary, not from a broad repository tour.
    explicitly requested internal scaffolding into a public feature; describe it as unshipped until
    a caller consumes it.
 3. Classify the contract change. New or changed behavior requires the current-state spec's
-   requirement, version, status, last-updated date, and changelog first. A clarification of already
+   requirement, version, status and last-updated date first (a spec has no changelog; its history
+   is `git log`). A clarification of already
    contracted behavior needs live evidence but no invented version churn; purely editorial text
    gets proportional documentation checks.
 4. For a behavior change, build a small case matrix before the RED test: representative success,

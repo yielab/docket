@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.2
+**Version**: 1.9.3
 **Status**: Implemented
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-22
 
 ## Purpose
 
@@ -31,7 +31,7 @@ It does NOT cover:
 - The approval token lifecycle itself (`pending → granted/denied/expired`) — see
   `security-gates.spec.md`
 - The audit log's format and tamper-evidence chain — see `audit.spec.md`
-- Agent-side MCP *client* configuration (Docket consuming MCP tools inside a turn); see `mcp-client.spec.md`. The retired external-runtime feasibility spike is historical and lives in this spec’s changelog, ROADMAP, and Git history.
+- Agent-side MCP *client* configuration (Docket consuming MCP tools inside a turn); see `mcp-client.spec.md`.
 
 ## Design constraint: a server, never a host
 
@@ -391,119 +391,3 @@ concern, not docket's — see Scope above).
 // → {"name": "runs", "arguments": {"run_id": "run-3f2a1c9e-..."}}
 // ← {"id": "run-3f2a1c9e-...", "source": "mcp", "project": "myapp", "state": "succeeded", ...}
 ```
-
-## Changelog
-
-### Version 1.9.2 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 1.9.1 (2026-10-07)
-
-- The server is started with `docket start --mcp`; the tool names, arguments, return shapes and the audit, approval and dispatch-gating guarantees are unchanged. `--mcp` prints nothing to stdout but JSON-RPC and exits 2 when combined with `--dispatch`, `--telegram` or `--token-file`.
-
-### Version 1.9.0 (2026-10-05)
-
-Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
-
-- `approvals_grant` takes an optional `option` (`approve_task` grants the call task-wide, operator-loop 5a).
-
-### Version 1.8.0 (2026-10-03)
-
-- **`status` follows `/status.json` to API version 3 (legacy purge).** The always-`"inactive"`
-  `gateway` key is gone from the `status` tool's output (it is `serve.build_status()`, the same
-  payload); the purpose line and the representative example drop it and show `apiVersion` `"3"`.
-
-### Version 1.7.0 (2026-09-29)
-
-- **One more tool this close missed, thirteen total.** `task_pregrant(project, task_id, command,
-  tool="bash")` — identical to `docket pod <project> pregrant` / `POST /tasks/<id>/pregrants`
-  (both shipped by P34-15, ADR 0016 §10) — was registered in `_TOOL_NAMES` and audited from the
-  start but never documented here. `docket mcp serve --help`'s own tool list and count
-  (`cli/__init__.py`) were also stale at the old twelve and did not name `task_pregrant`; both
-  corrected.
-
-### Version 1.6.0 (2026-09-29)
-
-- **Two new tools (Phase 34, D-50, ADR 0016), twelve total.** `task_answer(project, task_id,
-  action, content=None)` calls `answer_task(channel="mcp", actor="mcp")`, raising
-  `McpToolError` on rejection; `inbox(since=None)` returns the same derived `InboxView` shape
-  `GET /inbox` and `docket inbox --json` return. `docket mcp serve --help` and
-  `docs/commands.md`'s generated tool count and list corrected from a stale ten to the current
-  twelve.
-
-### Version 1.5.0 (2026-09-21)
-
-- `approvals_grant`/`approvals_deny` now resolve any dispatch task they gated, including on an `ApprovalNoop` (W36-C4). Previously a task decided over MCP stayed `waiting_approval`.
-
-### Version 1.4.1 (2026-09-18)
-
-- Alignment pass, no tool contract change. "A server, never a host" no longer says docket refuses
-  to execute other MCP servers' tools in a turn: since D-19 it does, through `core/mcp_tools.py`,
-  and this server still never calls upstream. Syntax now names `servers` as a recognized
-  subcommand beside `serve`. `cost` no longer says "daemon-recorded": the recorded figure is
-  always `0.0` (`DocketDriver`). The `status` example now shows `"gateway": "inactive"` and
-  `totalCostUsd: 0.0`, the only values the code can return. Dropped a pointer to the removed
-  L-4 scope note.
-
-### Version 1.4.0 (2026-08-19)
-
-- W21-C1 daemon-free truth pass: removed the superseded daemon-side MCP registry spike from the
-  current contract. Docket's MCP server and client boundaries now point only at their owning specs;
-  the dated investigation remains in ROADMAP and Git history.
-
-### Version 1.3.0 (2026-07-31)
-
-- Corrected the "Scope" section's agent-side MCP client cross-reference. It previously pointed at
-  L-4 (a daemon-gated, unbuilt card) as the place agent-side MCP consumption would eventually
-  live; decision D-19 has since had docket own the turn loop directly, and ROADMAP Phase 19
-  P19-10 built docket's own MCP client straight into `core/tools.py`'s gated registry — no daemon
-  involved at all. The scope note now points at the real spec, `mcp-client.spec.md`, and states
-  plainly that it supersedes the L-4 framing. No change to this server's own contract (tools,
-  transport, audit/no-bypass guarantees) — documentation accuracy only.
-
-### Version 1.2.0 (2026-07-30)
-
-- **ROADMAP Phase 18 L-4 spike concluded: the daemon-side MCP registry is real upstream, not
-  present in this fleet's targeted daemon.** Investigated whether docket can manage the OpenClaw
-  daemon's own MCP client configuration (the *other* direction from this server) through the ACL.
-  Verdict: **yes, the capability exists** — a genuine `mcp.servers` config surface plus a full
-  `openclaw mcp add|set|list|show|status|doctor|probe|configure|tools|login|logout|reload|unset`
-  CLI family, confirmed live against an isolated run of the current stable `openclaw@2026.7.1`
-  (a real `add`/`list`/`show`/`status`/`unset` roundtrip succeeded exactly as documented, all
-  reachable via the same subprocess-CLI pattern the ACL already uses everywhere) — but **not
-  present** in the daemon version this project actually targets and has verified everywhere else
-  in the codebase, `openclaw 2026.2.23` (confirmed directly: no `mcp` subcommand, `config get
-  mcp.servers` reports the path unknown). Per the card's own instructions, this is a "yes, but the
-  capability doesn't exist yet [in the deployed fleet]" outcome: no code was written. See "L-4
-  spike findings" above for the full dated evidence trail, including a methodology note on
-  sandboxing a newer CLI probe safely.
-
-### Version 1.1.0 (2026-07-30)
-
-- ROADMAP Phase 18 L-6: migrated the transport/registration layer from the `mcp` SDK's 1.x line
-  (`mcp.server.fastmcp.FastMCP`) to its 2.x line (`mcp.server.MCPServer`) — the `docket[mcp]` pin
-  widened from `mcp>=1.2.0,<2.0.0` to `mcp>=2.0.0` (no ceiling). This was verified by installing
-  `mcp==2.0.0` and reading the shipped package directly, not assumed: `MCPServer` is a straight
-  rename/relocation of `FastMCP`, keeping identical registration ergonomics (`add_tool(fn,
-  name=...)`, `server.run(transport="stdio")`); `mcp.server.fastmcp` no longer exists as an import
-  target in 2.0. **No contract change** — all ten tool names, arguments, return shapes, the
-  audit-before-work guarantee, and the no-bypass guarantee (mutating tools still call the exact
-  same `core/` functions) are unchanged; this is a transport-layer migration only. One
-  SDK-integration-test-only difference: `MCPServer.call_tool` now returns a `CallToolResult` object
-  (`.structured_content`/`.is_error`) rather than 1.x's `(content, structured_dict)` tuple — this
-  affects only test code that calls the SDK's `call_tool` directly, not any tool's documented
-  return shape (which was always the bare dict now found at `.structured_content`).
-
-### Version 1.0.1 (2026-07-30)
-
-- Retargeted the optional-dependency cross-reference at `core/pipeline.py` — `core/lobster.py`
-  (the module it named) was deleted when `docket workflow`/Lobster was retired (ROADMAP D-16,
-  Phase 16 W-3).
-
-### Version 1.0.0 (2026-07-30)
-
-- Initial specification for ROADMAP Phase 18 L-3: `docket mcp serve`, ten tools (`status`, `pods`,
-  `queue`, `delegate`, `dispatch`, `runs`, `approvals_list`, `approvals_grant`, `approvals_deny`,
-  `cost`), the audit/no-bypass/no-host design constraints, and the optional-dependency degrade
-  path.

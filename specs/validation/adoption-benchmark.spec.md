@@ -320,27 +320,3 @@ The runner SHOULD stream JSONL input one record at a time and MUST bound every i
 loading untrusted content. It MUST use only project/runtime dependencies and the Python standard
 library; it MUST NOT add a telemetry, database, HTTP, benchmark-service, or pricing dependency.
 Deterministic scenarios MUST use no network, hosted credentials, subscriptions, or shared port.
-
-## Changelog
-
-- **1.2.3 — 2026-09-03:** Pin the managed build interpreter, complete Hatchling closure, and
-  checksum-verified zlib-ng compressor so ambient Python selection cannot change the published raw
-  wheel identity.
-
-- **1.2.2 — 2026-09-03:** Require the JSON Schema oracle as a declared test-only
-  dependency and install it in the runtime-floor harness without adding it to Docket's runtime.
-
-- **1.2.1 — 2026-09-03:** Require complete Git history in CI jobs that validate
-  the pinned baseline source, preventing shallow checkout from making provenance tests vacuously
-  fail before regeneration.
-
-- **1.2.0 — 2026-09-03:** Ship the exact-artifact Wave 29 baseline, complete
-  starter-plus-adversarial attempt set, mechanically derived public summary, bounded timing-only
-  comparison rule, privacy boundary, public report, and publication oracle.
-
-- **1.1.0 — 2026-09-02:** Ship the seven public adversarial governance and crash/recovery journeys,
-  three-repetition isolation boundary, retained byte/record evidence, and scenario driver.
-
-- **1.0.0 — 2026-09-02:** Ship the deterministic, versioned, privacy-preserving adoption benchmark
-  over public durable Docket records, including its closed JSON Schema, canonical runner, minimal
-  fixture, provenance map, atomic invalid-input behavior, and JSONL-only aggregate reconstruction.

@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.11.0
+**Version**: 1.11.1
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -14,7 +14,8 @@ separate activation step needed. See "Requirement 25-28" below for the wiring co
 naive wire (add MCP tools before narrowing, without also excluding by `Tool.kind`) would have
 silently defeated a Reviewer's "no write/edit/bash" guarantee, since a namespaced MCP tool name
 (`mcp__<server>__<tool>`) can never equal a literal denied name. That gap is closed, not merely
-avoided by omission — see the Version 1.2.0 changelog entry below ("The blocking design question").
+avoided by omission: tools are denied by capability (`Tool.kind`), never by name (see
+`role-archetypes.spec.md` "Per-role tool sets", requirement 6).
 **Phase 27, P27-3 (2026-09-26): a server now declares its own kind.** `McpServerConfig` gained
 `kind: Literal["read","write"] = "write"` and `tools: list[str] = []` (empty = all) — an operator
 assertion, not a proof: docket still cannot verify a remote tool is actually read-only, but an
@@ -30,8 +31,9 @@ version has neither key and loads unchanged (`kind` defaults to `"write"`, `tool
 pre-1.5.0 install's behavior does not change until an operator opts in. See Requirements 6 and
 32-33.
 **What remains unwired, stated plainly:** no per-turn caching of a server's tool listing (every
-turn that reaches a configured server re-spawns it — see the Version 1.2.0 changelog entry's measured per-turn cost and its
-named trigger for when to add one); HTTP/SSE transports remain unsupported (stdio only, unchanged
+turn that reaches a configured server re-spawns it: measured at ~0.6s per stdio server per turn,
+against ~0.004ms and no subprocess with zero servers; the trigger for a cache is more than one
+configured server, or turn latency measured to be dominated by MCP loading); HTTP/SSE transports remain unsupported (stdio only, unchanged
 scope); **per-tool** trust/capability metadata still does not exist — `kind`/`tools` are declared
 once per *server*, so a server that mixes read and mutating tools still cannot be split finer than
 "trust none of it" (leave `kind` at the default `write`) or "trust all of it" (`kind: read`); a
@@ -39,7 +41,7 @@ role that denies `write` gets zero tools from a mixed server exactly as before, 
 cannot verify an operator's `kind: read` assertion is true. Remote tool results use the same live
 `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved for every call so a small-context
 endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-10-13
+**Last Updated**: 2026-10-22
 
 ## Purpose
 
@@ -611,160 +613,3 @@ dispatch_tool(
   raise `DispatchError` out of `run_turn` rather than folding into a `TurnResult(ok=False, ...)` —
   a caller misconfiguration surfaces to its caller's own settle/fail path (`pod-dispatch.spec.md`),
   never as an ordinary turn outcome.
-
-## Changelog
-
-### Version 1.11.0 (2026-10-13)
-
-- Requirement 40: `isolate: false` is deleted (P41-3, ADR 0024 section 3): the field, the
-  `--no-isolate` flag, the `isolate=no` audit detail and the doctor, `config explain` and
-  `recipes show` fields that reported it are gone, with no alias or migration; the `bwrap`
-  wrapper is gone with the bwrap backend. A stdio server always starts in the turn's jail.
-
-### Version 1.10.0 (2026-10-12)
-
-- Requirements 14 and 35: the description and result screens pass the calling pod, so a
-  pod-scoped `on: input` policy applies (it was silently ignored by every screen; security audit).
-
-### Version 1.9.2 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 1.9.1 (2026-10-07)
-
-- Phase 39 (P39-13): the client-configuration verbs live under `docket setup mcp list|add|remove`
-  (`docket mcp servers` is removed); `cli/_setup_mcp.py` declares its options with Typer, so the
-  argv-recovery rule of Requirement 21 is gone.
-
-### Version 1.9.0 (2026-10-05)
-
-Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
-
-- Requirement 40 updated: unjailed MCP servers (isolate: false) are now shown by `docket doctor --json`, `docket config explain --json`, and `docket recipes show --json`.
-
-### Version 1.8.0 (2026-10-05)
-
-Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
-
-- Requirement 40: a recipe's `kind: mcp-server` document may declare `isolate: false`
-  (`config-format.spec.md`); `code-intel`'s `ast-grep` does.
-- Requirement 40 added (ADR 0020 §5): stdio servers start in the turn's jail unless declared
-  `isolate: false` (`--no-isolate`); `mcp_loader`/`load_mcp_tools`/`list_remote_tools`/
-  `call_remote_tool` take one `launch` (`StdioLaunch`) in place of `cwd`.
-- Requirement 30 updated: fetch results also pass `pre_input` (ADR 0020 §7); shared
-  implementation with MCP result screening.
-
-### Version 1.7.0 (2026-10-04)
-
-Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
-
-- Requirement 39 added: a stdio server spawned for a turn starts in that turn's resolved root; `mcp_loader` gains a `cwd` keyword.
-
-- Requirements 37-38 added: a recipe may declare pod-scoped MCP servers (`mcp-servers/*.yaml`,
-  `kind: mcp-server`), installed only by `docket pod <p> apply`, selectable by that pod only.
-
-- Requirements 35-36 added: a remote tool's result is screened through `pre_input` as untrusted
-  input (block/redact/warn), audited as `mcp_client.tool_result_blocked`/`_warn`.
-
-### Version 1.6.0 (2026-09-26)
-
-- **P27-4: a pod can select which configured MCP servers reach its turns.** New "Pod-scoped
-  server selection" requirement 34: `_load_mcp_tools` gains a `project` parameter and filters
-  `load_mcp_servers()`'s catalog by that pod's `mcpServers` setting (`pod-dispatch.spec.md`'s
-  "Pod dispatch settings" item 7) before folding servers in; `None` (unset) loads every server,
-  unchanged from every dispatch before this card. A stale selection (naming a server no longer
-  in the catalog) raises `DispatchError` naming it rather than silently narrowing further or
-  loading nothing — the one deliberate exception to Requirement 28's "never raises" contract,
-  since this is a caller misconfiguration, not a live-server failure. Requirements 25/26 and the
-  `DocketDriver` wiring-seam Interface Contract are reworded for `mcp_loader`'s new three-
-  positional shape (`registry`, `role`, `project`).
-
-### Version 1.5.0 (2026-09-26)
-
-- Requirements 32-33 added: `McpServerConfig` gains `kind: read|write` (default `write`, an
-  operator assertion never inferred from the server) and `tools` (an allow-list; empty means every
-  advertised tool). `_build_tool` registers each adapted tool with the server's declared kind
-  instead of `write` unconditionally, so a server declared `read` survives a role's `write`
-  denial; a tool outside a non-empty `tools` list is recorded as skipped. Requirement 6 reworded;
-  Status, Non-goals, Interface Contracts, Wire format and CLI syntax updated for `--kind`/`--tools`.
-  A file from before this version loads unchanged.
-
-### Version 1.4.0 (2026-09-21)
-
-- Requirement 21 reworded (W36-C2): `--env`/`--timeout` rejection is scoped to flags given before `--`, and the rule holds through the real CLI entry point, where Click used to consume the separator and `docket mcp servers add` always failed.
-
-### Version 1.3.1 (2026-09-18)
-
-- Alignment pass: the browser recipe (Examples, step 2) no longer calls `load_mcp_tools` "not yet a
-  live path" — `DocketDriver.run_turn` has called it since 1.2.0. Status's two pointers to
-  sections that do not exist ("Measured per-turn cost", "Wired to the live turn path") now point
-  at the Version 1.2.0 entry that holds that material. No requirement changed.
-
-### Version 1.3.0 (2026-08-19)
-
-- **Wave 20 context efficiency — MCP output ceiling parity.** Added Requirements 30-31 and wired
-  `edges/adapters/mcp_client.py` to the live `docket.config.TOOL_MAX_OUTPUT_CHARS` value for every
-  call. A configured small-context ceiling now bounds MCP results as well as built-ins, with the
-  existing visible truncation marker; a regression test changes the value after module import and
-  proves that two consecutive calls honor the two different limits.
-
-### Version 1.2.0 (2026-08-05)
-
-- **ROADMAP Phase 19/wave 17, card W17-1 — MCP tools reachable in a live turn.** Closed docket's
-  oldest recorded known-true limit. Added Requirements 25-29 ("Live-turn wiring"):
-  `edges/adapters/docket_runtime.py`'s `DocketDriver` gained an `mcp_loader` injection seam,
-  called from `run_turn` right after `registry_factory()` and before `run_agent_turn`'s per-turn
-  role narrowing — so a configured server's tools are folded into the registry the model sees and
-  are subject to the same narrowing a built-in tool gets. Configuring a server
-  (`docket mcp servers add`) now makes its tools usable on the very next turn.
-  - **The blocking design question this card had to answer first:** a namespaced MCP tool name
-    (`mcp__<server>__<tool>`) can never equal a literal `denied_tools` entry, so a naive wire would
-    have silently given a Reviewer (or any write-denying role) every configured server's tools —
-    falsifying this project's own "structural, not advisory" claim about role narrowing. Fixed in
-    `role-archetypes.spec.md`'s new requirement 6, not here: `registry_for_role` now also excludes
-    by `Tool.kind`, and every MCP-adapted tool is `kind="write"` unconditionally (unchanged from
-    1.1.0's `_build_tool`) — so the existing kind data, not a new MCP-aware rule, closes the gap.
-  - **Measured, not assumed, per-turn cost.** Zero configured servers (the default): one JSON read,
-    averaging 0.0036ms over 1000 iterations, no subprocess. One configured server: a real subprocess
-    round trip against `docket mcp serve` itself (a real, already-shipped MCP stdio server used as
-    the measurement's "fake" server) averaged ~0.62s steady-state per server, per turn. **Decision:
-    no caching in this version** — configuring a server is already the opt-in gate that determines
-    who pays this cost, and a correct cache needs an invalidation signal tied to
-    `MCP_SERVERS_FILE`'s content (Requirement 29) that does not exist yet; named trigger for a
-    follow-up: more than one configured server, or measured turn latency dominated by MCP loading.
-  - **What this version leaves honestly unwired:** no per-turn caching (above); HTTP/SSE transports
-    still unsupported (unchanged scope); a read-only role gets zero MCP tools rather than a
-    correctly narrowed nonzero set, because no per-tool trust/capability signal exists to
-    distinguish a genuinely read-only remote tool from a write-capable one — the follow-up this
-    leaves named, not started.
-
-### Version 1.1.1 (2026-08-04)
-
-- **CL-C (ROADMAP Phase 19, wave 14 dead-code sweep).** Removed
-  `save_mcp_servers` from `core/mcp_tools.py` and this spec's Module API: it
-  was never called by `cli/_mcp.py` or anything else (`add_mcp_server`/
-  `remove_mcp_server`'s lock-safe read-modify-write are the only registry
-  writers the CLI actually uses), and had no test coverage of its own. Purely
-  a removal of unused surface — no behavior documented elsewhere in this spec
-  changes.
-
-### Version 1.1.0 (2026-08-02)
-
-- **ROADMAP Phase 19, card P19-13 — `docket mcp servers` CLI.** Added `docket mcp servers
-  list/add/remove` (`cli/_mcp.py`), a pure presentation layer over `add_mcp_server`/
-  `load_mcp_servers`/`remove_mcp_server`, which shipped tested and uncalled in Version 1.0.0
-  (P19-10). `add`'s `--`-separator syntax (Requirement 21) keeps a server's own launch flags from
-  ever being misparsed as docket's. Added the `mcp_servers.add`/`mcp_servers.remove` audit action
-  family (see `audit.spec.md` Version 2.4.0). Documented the recipe this client exists to unlock —
-  pointing docket at the Playwright MCP server (browser automation) or any MCP-compliant search
-  server, as configuration rather than code — under Examples. **Still not on a live agent-turn
-  path**: this version does not change that `load_mcp_tools` has no production caller (see
-  Status); configuring a server makes it inspectable and ready, not yet reachable by a running
-  agent.
-
-### Version 1.0.0 (2026-07-31)
-
-- Initial specification: docket-owned MCP server configuration, tool enumeration and adaptation
-  into `core.tools.Tool`, the `mcp__<server>__<tool>` namespacing rule that makes a built-in
-  collision structurally impossible, bounded-timeout failure isolation, and `pre_input` policy
-  screening of remote tool descriptions before registration (ROADMAP Phase 19 P19-10).

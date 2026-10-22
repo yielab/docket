@@ -5,8 +5,7 @@ Only inline code spans, fenced blocks and lines that start with `docket` count; 
 such as "docket writes" is skipped. Each word must be a verb of its group, each option
 an option of its leaf and the positional count must fit. Placeholders (`<x>`, `[x]`,
 `UPPER`, `...`, `$VAR`, quoted text) stand for values; where a verb is expected only `<x>`,
-`[x]` and `...` do, and the rest of a `<a|b>` line must fit at least one of those verbs. A spec's
-`## Changelog` is the record and is cut.
+`[x]` and `...` do, and the rest of a `<a|b>` line must fit at least one of those verbs.
 
 Usage: lint_cli_invocations.py [--self-check] FILE...  (prints file:line: invocation: reason)
 """
@@ -38,7 +37,6 @@ OUTPUT_LITERALS = (
     "docket is running and will pick it up",
     "docket \u00b7 ",
 )
-RECORD_HEADING = "## Changelog"
 PLANTED = (
     ("docket task list --retry", True),
     ("docket - Apply plan myapp <- .../templates/recipes/secure-build", False),
@@ -201,17 +199,6 @@ def lint_text(label: str, text: str) -> list[str]:
     return hits
 
 
-def editable(path: Path, text: str) -> str:
-    """The text of a document without a spec's changelog record."""
-    if "specs" not in path.parts:
-        return text
-    lines = text.splitlines(keepends=True)
-    for n, line in enumerate(lines):
-        if line.rstrip("\n") == RECORD_HEADING:
-            return "".join(lines[:n])
-    return text
-
-
 def leaf_examples() -> Iterator[tuple[str, str]]:
     """(command path, Example: line) for every leaf of the live tree."""
     stack: list[tuple[str, Any]] = [("docket", ROOT_CMD)]
@@ -238,14 +225,14 @@ def lint_examples() -> list[str]:
 
 
 def lint(paths: Iterable[Path]) -> list[str]:
-    """Findings over files, cutting each spec's changelog."""
+    """Findings over files."""
     hits: list[str] = []
     for path in paths:
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        hits += lint_text(str(path), editable(path, text))
+        hits += lint_text(str(path), text)
     return hits
 
 

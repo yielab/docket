@@ -1,8 +1,8 @@
 # Runtime Library (`docket-runtime`) Contract Specification
 
-**Version**: 2.2.0
+**Version**: 2.2.1
 **Status**: Implemented artifact facade, governed-execution envelope, and configuration-scoped OpenHands/PydanticAI adapters (not published to an index)
-**Last Updated**: 2026-09-02
+**Last Updated**: 2026-10-22
 
 ## Purpose
 
@@ -196,7 +196,7 @@ dispatch never bypasses the existing `ToolResult` return contract.
 `docket-runtime` is independently versioned, currently `0.3.0`; its version
 does not imply a `docket` control-plane version. Before 1.0, patch releases do
 not remove or change a facade name; minor releases may add facade names. A
-breaking facade change requires a minor bump and a changelog entry naming the
+breaking facade change requires a minor bump and a `CHANGELOG.md` entry naming the
 replacement and deprecation path. At 1.0 and later, removal or signature
 change requires a major bump. Private implementation modules have no
 compatibility promise and must never be offered as a migration path.
@@ -223,28 +223,3 @@ and compares their normalized governed outcomes. It also proves that the base
 artifact imports without either optional framework dependency.
 `tests/agent/release/test_runtime_adapter_public_truth.py` checks the support boundary,
 protocol non-claims, and the machine-readable compact example.
-
-## Changelog
-
-### Version 2.2.0 (2026-09-01)
-
-- Added a typed, backward-compatible PydanticAI completion-usage seam so the
-  final provider response participates in Docket's cumulative token budget and
-  terminal result without changing already-terminal executions.
-- Added the artifact-installed parity contract for the pinned standard
-  OpenHands SDK and PydanticAI configurations, including their explicit tool
-  and protocol boundaries.
-
-### Version 2.1.0 (2026-09-01)
-
-- W28-C1 specifies the first external-runtime execution envelope: exact
-  response/call admission, endpoint-reported token and tool-call budgets before
-  mutation, the existing dispatch chokepoint and paired traces, isolated real-
-  store approval stubs, and one typed terminal result/handoff. The artifact
-  suite proves the behavior from both wheel and rebuilt-sdist installations.
-
-### Version 2.0.0 (2026-08-31)
-
-- Replaced the overlapping `docket.*` force-included runtime artifact with the
-  distinct `docket_runtime` facade and private implementation topology.
-- Added standalone sdist support and the first stable embedding example.

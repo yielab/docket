@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.20.1
+**Version**: 2.21.0
 **Status**: Active
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-22
 
 ## Overview
 
@@ -269,7 +269,7 @@ Because the canary requires mutable local infrastructure and un-scripted inferen
 opt-in rather than a blocking default-suite dependency. Its environment-labelled pytest wrapper
 **MUST** skip unless explicitly enabled; the standalone live command is the acceptance evidence.
 
-Test files use `test_<owned_behavior>.py`; card IDs belong in changelogs/commit history, not
+Test files use `test_<owned_behavior>.py`; card IDs belong in commit history, not
 permanent filenames.
 
 ## Pytest suite
@@ -406,7 +406,8 @@ import only the public facade, dispatch one governed tool call, and leave inspec
 evidence without importing the root `docket` package.
 
 For every row in `specs/README.md`, the indexed version and canonical status category MUST match
-the owning spec header, and that current version MUST have a changelog entry. Package and formula
+the owning spec header. A spec MUST NOT carry a `## Changelog` section: its history is
+`git log` and `CHANGELOG.md`. Package and formula
 names in public installation guidance MUST match their built artifact metadata. The gate MUST use
 temporary Docket/build state and only the runner's already-synced dependency environment; the
 runtime artifact install MUST run offline, and the gate MUST NOT contact a model provider, package
@@ -428,169 +429,3 @@ uv run pytest tests/agent
 
 Environment-dependent skips are acceptable only when the owning contract labels them optional and
 the skip reason names the missing capability.
-
-## Changelog
-
-### Version 2.20.1 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 2.20.0 (2026-10-08)
-
-- Enforcement status lists the three CLI-surface guards (help examples, JSON surface, prompt
-  sites); the completions drift guard re-derives every group's verbs and long options from the
-  registry. The golden runner keys read-only cases on the first words of the verb.
-
-### Version 2.19.0 (2026-10-07)
-
-- Rule 9 added: `cli/__init__.py` is the command registry and holds no function over ten lines
-  (the callback `_default` excepted); guarded by `tests/guards/test_layout.py`.
-
-### Version 2.18.0 (2026-10-03)
-
-- Rule 5 marked removed: `__main__._REMOVED` and `_ALIASES` were deleted (no users; legacy
-  compatibility removed), and `tests/guards/test_removed_commands.py` with them. A retired
-  command name now fails like any unknown command (exit 2, `No such command`), which
-  `integration/test_console_script_entry_point.py` pins. The enforcement-status paragraph drops
-  its two mentions of the guard.
-
-### Version 2.17.0 (2026-09-13)
-
-- Extends rule 2 to `integration/`: every file declares `SUBJECT` naming an importable `docket`
-  module or package, checked by `tests/guards/test_layout.py` via `importlib.util.find_spec`.
-  Motivation: the integration lane already carried the convention informally, but seven files
-  held free-text values (`"logs command"`, `"edit snapshot"`, and five more) and six named a
-  module the file does not exercise, with nothing checking either. Unlike the unit rule, a
-  mismatch with the file's own name is not an error, since a cross-module or process-boundary
-  test may legitimately name a package.
-
-### Version 2.16.0 (2026-09-13)
-
-- Added the function-span ratchet to the enforcement status: `tests/guards/test_function_span.py`
-  over `scripts/maint/measure_function_spans.py` and `function_span_baseline.txt` (seven entries at
-  open, the largest `run_agent_turn` at 909 lines). Motivation: ADR 0007 records the three
-  500-line functions as split, but measured spans with nested closures included show the turn
-  loop still reads as one 909-line unit. The ratchet makes the Wave 34 split cards falsifiable.
-
-### Version 2.15.0 (2026-09-12)
-
-- States the docstring budget the guard actually enforces. Rule 7 promised a 6-line module
-  docstring and a 1-line test docstring in `tests/`, but `tests/guards/test_comment_hygiene.py`
-  has only ever measured 12 and 3 lines, uniformly over `src/` and `tests/`; at the promised
-  thresholds the test lane carried 260 over-long docstrings that no gate had seen. The spec now
-  names the measured budget rather than the aspirational one.
-- Drops the "at most 80 lines each" figure for `guards/`. Nine of eighteen guard files exceed it,
-  the largest at 225 lines, and nothing checks it; the requirement that a guard file hold one
-  invariant is kept.
-
-### Version 2.14.0 (2026-09-12)
-
-- Removes the `agent/harness/` lane from both tree diagrams. It holds no tracked tests: commit
-  `97b8f35` retired its only one, and because git does not track empty directories the path does
-  not exist in a fresh clone. It survived here because the spec was not updated when the test was
-  removed, and survived a review because `ls` on a machine that has run the suite still showed the
-  directory, as a `__pycache__` artifact of the deleted test. The repository, not the filesystem,
-  is what a layout claim answers to.
-- Reconciles "Enforcement status" with what shipped. W31-C2 and W31-C3 closed on 2026-09-12, so
-  rules 2, 3, 4, 6, 7 and 8 are machine-checked rather than "contract only"; names
-  `tests/guards/test_comment_hygiene.py` as what enforces the docstring budget, and records that
-  `comment_lint.py --check` exits non-zero on archaeology alone, so a green lint is not evidence
-  about the budget.
-- Records `tests/guards/test_partial_repointers.py` (W32-C4) and moves the agent-lane baseline
-  figure to 5,151.
-
-### Version 2.13.0 (2026-09-11)
-
-- D-36 / Phase 25 adds "Lanes and placement": a product suite (`unit`, `integration`, `guards`)
-  as the only default run, a budgeted `tests/agent/` lane with declared reason and retirement
-  condition for prose, release and harness checks, one unit file per module, no `subprocess` in
-  `unit/`, duration ceilings, and comment hygiene read by `scripts/maint/comment_lint.py`.
-- W31-C1 lands the move: `tests/python/` is gone, `conftest.py` and `fakes.py` moved to `tests/`,
-  every file placed under `unit/`, `integration/`, `guards/` or `agent/{truth,release,harness}/`,
-  `testpaths` excludes `agent/`, `--import-mode=importlib` replaces the per-directory
-  `__init__.py`, and the `agent-lane` CI job runs `uv run pytest tests/agent`. Rules 2, 3, 6, 7
-  and 8's structural guards are not wired yet (W31-C2, W31-C3) — see "Enforcement status".
-
-### Version 2.12.0 (2026-08-31)
-
-- W26-C11 defines one public release-truth gate over links, executable artifact-to-first-turn
-  guidance, stale command/installer/cancellation claims, spec-index parity, and a clean-artifact
-  runtime embedding example that proves the narrow facade plus durable governance evidence.
-
-### Version 2.11.0 (2026-08-31)
-
-- W26-C4 defines the release exit oracle: a source-isolated install of the exact built wheel must
-  configure a loopback provider, initialize and complete one governed turn, retain inspectable
-  product evidence, fail cleanly on endpoint rejection, and run as a blocking Linux/macOS matrix.
-
-### Version 2.10.0 (2026-08-31)
-
-- W26-C3 defines the immutable release boundary: versioned wheel/sdist assets, checksums, SBOM and
-  provenance inputs, protected publication, exact formula metadata, and a hermetic real-installer
-  tamper oracle that refuses modified bytes before extraction.
-
-### Version 2.9.0 (2026-08-26)
-
-- W25-C9 gives the live canary one typed `allowed`/`confirmed_private`/`opaque` tool verdict shared
-  by its approval monitor and final oracle, with privacy-safe diagnostics and immediate public
-  deny/cancel plus subprocess termination after the first disqualifying approval.
-- W25-C7 spells the sole permitted live validation command byte-for-byte in the delegated task and
-  forbids alternate runners, wrappers, inline code, and redirections within the public description
-  ceiling.
-
-### Version 2.8.0 (2026-08-25)
-
-- W25-C7 makes the live memory-maintenance task state the existing private-context boundary at the
-  delegated action: downstream roles use the Lead's typed handoff, mutate via structured tools,
-  validate through the published regression command, and never probe Docket control paths with
-  project tools. The complete value-free instruction fits and is tested through the public
-  delegation ceiling. Its structured final oracle checks durable trace history plus
-  retained sessions, rejects even unsuccessful or compacted-away access attempts, and reports no
-  raw arguments or private decision values.
-
-### Version 2.7.0 (2026-08-25)
-
-- Established one canonical instruction/skill tree for Codex, Claude Code, and OpenCode, with a
-  minimal Claude bridge and portable hooks rather than duplicated skills.
-- Separated coding-harness conformance from gateway/model transport tests and kept remote canaries
-  opt-in and budgeted.
-
-### Version 2.6.0 (2026-08-22)
-
-- W25-C5 makes the basic smoke artifact contract byte-exact at both the delegated instruction and
-  the Implementer mechanical gate; shell command-substitution newline stripping can no longer let
-  a 15-byte artifact reach `done` before the independent final assertion rejects it.
-
-### Version 2.5.0 (2026-08-19)
-
-- W24-C1 makes the default live-local canary exercise memory distillation, superseding-decision
-  fidelity, typed-handoff propagation, and a non-trivial maintenance change with hidden behavioral
-  acceptance; the deterministic CI smoke remains small and stable.
-
-### Version 2.4.0 (2026-08-19)
-
-- W23-C1 adds an opt-in, loopback-only full-workflow canary that uses the real local model while
-  retaining the deterministic default smoke for CI.
-
-### Version 2.3.0 (2026-08-19)
-
-- W22-C1 adds one observable subprocess-to-HTTP-to-runtime smoke test covering provisioning,
-  dispatch, tools, mechanical/verdict/approval gates, resume, handoffs, sessions, traces, audit,
-  usage, and run records in a hermetic temporary world.
-
-### Version 2.2.0 (2026-08-19)
-
-- W21-C1 daemon-free truth pass: replaced the pre-cutover daemon/shim instructions with Docket's
-  owned runtime, `DOCKET_HOME`, `ChatBackend`, `RuntimeDriver`, and current golden harness.
-
-### Version 2.1.0 (2026-08-04)
-
-- Removed the dead eval harness section after its command and tests were retired.
-
-### Version 2.0.0 (2026-06-24)
-
-- Reorganized the Python, golden, static, and CI testing guidance.
-
-### Version 1.0.0 (2024-01-20)
-
-- Initial test framework documentation.

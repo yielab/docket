@@ -31,18 +31,15 @@ ROOTS: tuple[str, ...] = (
     "specs",
     "src/docket/templates",
 )
-# The spec index keeps the retirement notes of removed commands, as a record.
-RECORD_FILES: tuple[str, ...] = ("specs/README.md",)
 
 
 def findings(roots: tuple[str, ...] = ROOTS) -> list[str]:
     hits: list[str] = []
-    for path in rcn.iter_files(roots, RECORD_FILES):
+    for path in rcn.iter_files(roots):
         text = rcn.read_text(path)
         if text is None:
             continue
-        editable, _record = rcn.split_record(path, text)
-        hits += lint.lint_text(rcn._rel(path), editable)
+        hits += lint.lint_text(rcn._rel(path), text)
     return hits
 
 
@@ -65,15 +62,6 @@ class TestPlanted:
         doc = tmp_path / "x.md"
         doc.write_text("Run `docket task list --retry` to see.\n", encoding="utf-8")
         assert len(lint.lint([doc])) == 1
-
-    def test_a_spec_body_is_checked_and_its_changelog_is_not(self, tmp_path: Path) -> None:
-        spec = tmp_path / "specs" / "functional" / "x.spec.md"
-        spec.parent.mkdir(parents=True)
-        spec.write_text(
-            "# X\n\nUse `docket status <agent>`.\n\n## Changelog\n\n- `docket status <agent>`\n",
-            encoding="utf-8",
-        )
-        assert len(lint.lint([spec])) == 1
 
     def test_a_false_example_line_is_found(self, monkeypatch) -> None:
         monkeypatch.setattr(
