@@ -111,13 +111,6 @@ class RunCancellationSignal:
 
     run_id: str
 
-    def is_requested(self) -> bool:
-        rec = get_run(self.run_id)
-        if rec is None:
-            return False
-        lifecycle, valid = _cancellation_lifecycle(rec)
-        return not valid or lifecycle.requested
-
     def observe(self) -> bool:
         """Record first observation when requested; return whether work must stop."""
         must_stop = False
@@ -323,7 +316,7 @@ def mark_running(run_id: str) -> bool:
     return applied
 
 
-def _finish_run_transition(
+def finish_run(
     run_id: str,
     *,
     state: RunTerminalState,
@@ -331,7 +324,9 @@ def _finish_run_transition(
     error: str = "",
     preserve_cancelled: bool = False,
 ) -> bool:
-    """Atomically apply one terminal transition and report whether it won."""
+    """Atomically mark a run terminal (including ``cancelled``) and report whether it won; an
+    unknown run is a no-op. *task_ids*, when given, replaces the record's task-id list; *error*
+    is the exception text for a ``failed`` run."""
     if state not in _TERMINAL_STATES:
         raise RunError(f"invalid terminal state {state!r}")
 
@@ -389,19 +384,6 @@ def _finish_run_transition(
     if stopped_now:
         _emit_cancellation_trace(project, run_id, source, "run_cancelled")
     return applied
-
-
-def finish_run(
-    run_id: str,
-    *,
-    state: RunTerminalState,
-    task_ids: list[str] | None = None,
-    error: str = "",
-) -> None:
-    """Mark a run terminal (including ``cancelled``). No-op if unknown.
-    *task_ids*, when given, replaces the record's task-id list; *error* is
-    the exception text for a ``failed`` run (empty for ``succeeded``)."""
-    _finish_run_transition(run_id, state=state, task_ids=task_ids, error=error)
 
 
 def get_run(run_id: str) -> dict[str, Any] | None:
@@ -703,7 +685,7 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
         results = fn()
     except Exception as exc:
         error_text = f"{type(exc).__name__}: {exc}"
-        applied = _finish_run_transition(
+        applied = finish_run(
             run_id,
             state="failed",
             error=error_text,
@@ -741,7 +723,7 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
         state = "succeeded"
     if cancellations:
         error_text = "cancelled by operator"
-    applied = _finish_run_transition(
+    applied = finish_run(
         run_id,
         state=state,
         task_ids=task_ids,

@@ -101,13 +101,6 @@ def _save_fleet(cfg: FleetConfig) -> None:
     store.write_json(current_home().fleet_file, cfg)
 
 
-def meta_read(agent_id: str) -> AgentMeta:
-    """Read and validate the full .docket-meta.json for an agent."""
-    path = current_home().meta_path(agent_id)
-    raw = store.read_json(path)
-    return AgentMeta.model_validate(raw)
-
-
 def meta_get(agent_id: str, field: str, default: str = "") -> str:
     """Read a single string field from .docket-meta.json."""
     path = current_home().meta_path(agent_id)

@@ -2286,7 +2286,7 @@ queue.)
   `teardown_member`
 - `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver`, `default_driver`,
   `resolve_command_jail`, `PIPELINE_WORKTREE_ENV` and the other internal coordinates
-- `src/docket/edges/adapters/system.py`: `run_command`, `run_verify_cmd`, `process_alive`,
+- `src/docket/edges/adapters/system.py`: `run_command`, `process_alive`,
   `kill_process_group`, `task_environment`, `cache_environment`, `trust_worktree`,
   `git_worktree_add`, `git_commit_all`, `git_snapshot_commit`, `git_changed_files`,
   `git_current_branch`, `git_merge_base`, `git_diff_stat`, `git_diff_names`, `git_ls_files`

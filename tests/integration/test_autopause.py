@@ -1,6 +1,6 @@
 """Budget honesty — auto-pause, the paused-flag type bug, labelled estimates.
 
-Covers: ``AgentMeta.coerce_paused``/``is_paused()`` (typed accessor fixing the string/bool
+Covers: ``AgentMeta.coerce_paused`` (typed accessor fixing the string/bool
 display bug: a writer stores a real ``bool`` while old code compared it to the string
 ``"true"``, which ``True`` never equals); the pause writer (per-hop budget gate marks the pod's
 Lead ``paused=True, pausedReason="budget"`` at the cap); claim-time refusal
@@ -29,6 +29,7 @@ from docket.core import pod as _podcore
 from docket.core import runtime_driver as _rd
 from docket.core import utils as _utils
 from docket.core.models import AgentMeta
+from docket.core.models import AgentMeta as _AgentMeta
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
@@ -99,7 +100,7 @@ def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tok
     (sdir / "session.json").write_text(json.dumps(record))
 
 
-# ── AgentMeta.coerce_paused / is_paused ────────────────────────────────────────────
+# ── AgentMeta.coerce_paused ────────────────────────────────────────────
 
 
 class TestCoercePaused:
@@ -127,15 +128,6 @@ class TestCoercePaused:
     def test_unrelated_string_is_false_not_an_error(self) -> None:
         assert AgentMeta.coerce_paused("yes") is False
 
-    def test_instance_accessor_reflects_pydantic_coercion(self) -> None:
-        # pydantic's own bool validator already coerces "true"/"false" on
-        # model_validate — is_paused() is the one accessor everyone should
-        # call rather than re-deriving this.
-        meta = AgentMeta.model_validate({"kind": "project", "paused": "true"})
-        assert meta.is_paused() is True
-        meta2 = AgentMeta.model_validate({"kind": "project", "paused": False})
-        assert meta2.is_paused() is False
-
 
 # ── dispatch: pause on cap breach + claim-time refusal ────────────────────────────
 
@@ -153,9 +145,8 @@ class TestAutoPauseDispatch:
             assert results[0].status == "blocked"
 
             lead_id = _podcore.member_id("demo", "lead")
-            meta = _fleet.meta_read(lead_id)
-            assert meta.is_paused() is True
-            assert meta.paused_reason == "budget"
+            assert _AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
+            assert _fleet.meta_get(lead_id, "pausedReason") == "budget"
 
     def test_paused_pod_refuses_claim_at_next_dispatch(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -254,7 +245,7 @@ class TestEstimateFallback:
             results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
             assert results[0].status == "blocked"
             assert "estimated" in results[0].reason
-            assert _fleet.meta_read(lead_id).is_paused() is True
+            assert _AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
 
 
 # ── recorded spend is never contaminated by an estimate ───────────────────────────

@@ -7,12 +7,14 @@ views, the CloudEvents 1.0 envelope and `canonical_args_digest`'s stability. No 
 
 from __future__ import annotations
 
+from typing import get_args
+
 import pytest
 from pydantic import ValidationError
 
 from docket.core.operator_contract import (
-    A2A_STATES,
     EVENT_KINDS,
+    A2AState,
     AnswerResult,
     AnswerResultV11,
     ApprovalView,
@@ -64,8 +66,8 @@ def _question(**overrides: object) -> Question:
 
 
 class TestA2aState:
-    def test_a2a_states_is_the_eight_names_in_order(self) -> None:
-        assert A2A_STATES == (
+    def test_a2a_state_is_the_eight_names_in_order(self) -> None:
+        assert get_args(A2AState) == (
             "SUBMITTED",
             "WORKING",
             "INPUT_REQUIRED",
@@ -97,7 +99,7 @@ class TestA2aState:
         self, status: str, blocked_reason: str | None, failure_kind: str | None, expected: str
     ) -> None:
         assert a2a_state(status, blocked_reason, failure_kind) == expected
-        assert expected in A2A_STATES
+        assert expected in get_args(A2AState)
 
     def test_unknown_status_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown task status"):

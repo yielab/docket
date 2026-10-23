@@ -170,8 +170,8 @@ class HopResult:
     # Real evidence from this hop's mechanical verify gate (``_evaluate_mechanical_gate``):
     # ``{"cmd", "exitCode", "durationS", "outputTail"}``, or ``None`` for a hop with no
     # verify gate, or one whose gate had no ``verifyCmd`` configured (see
-    # ``verification_skipped``). ``exitCode`` is ``0``/``1`` (``run_verify_cmd`` itself
-    # carries no numeric exit code to relay). ``outputTail`` is already redacted -- see
+    # ``verification_skipped``). ``exitCode`` is ``0``/``1`` for the verify gate and the
+    # command's own status for a ``run:`` step. ``outputTail`` is already redacted -- see
     # ``_evaluate_mechanical_gate``. ``_hop_record``/``_hop_from_record`` round-trip this
     # key; a record with no ``verify`` key at all defaults to ``None`` on read.
     verify: dict[str, Any] | None = None
@@ -198,11 +198,6 @@ class HopResult:
     def __post_init__(self) -> None:
         if self.artifact is None:
             self.artifact = _handoff.HandoffArtifact.from_output(self.output)
-
-    def rendered_artifact(self) -> str:
-        """This hop's artifact rendered to text — never ``None`` after construction."""
-        assert self.artifact is not None
-        return self.artifact.render()
 
 
 @dataclass

@@ -522,10 +522,7 @@ class TestRunsReadEndpoints:
         assert requested["cancellation"]["requestedAt"] is not None
         assert requested["cancellation"]["stoppedAt"] is None
 
-        assert (
-            _runs._finish_run_transition(rec["id"], state="succeeded", task_ids=["task-cancelled"])
-            is False
-        )
+        assert _runs.finish_run(rec["id"], state="succeeded", task_ids=["task-cancelled"]) is False
         with urllib.request.urlopen(req, timeout=5) as resp:
             stopped = json.loads(resp.read())
         assert stopped["state"] == "cancelled"

@@ -156,17 +156,6 @@ def record(
     return conv, upsert(reg, conv)
 
 
-def resume(
-    reg: ConversationRegistry, cid: str, now: str
-) -> tuple[Conversation | None, ConversationRegistry]:
-    """Mark a conversation ``in_progress`` and bump ``updated``. No-op if unknown."""
-    conv = get(reg, cid)
-    if conv is None:
-        return None, reg
-    resumed = conv.model_copy(update={"status": ConversationStatus.in_progress, "updated": now})
-    return resumed, upsert(reg, resumed)
-
-
 def touch_for_hop(
     reg: ConversationRegistry, *, agent_id: str, task_ref: str, last_message: str, now: str
 ) -> ConversationRegistry:
@@ -325,11 +314,6 @@ def record_durable(
         ),
         path,
     )
-
-
-def resume_durable(cid: str, now: str, path: Path | None = None) -> Conversation | None:
-    """Resume a known conversation atomically; unknown ids leave the file untouched."""
-    return mutate(lambda reg: resume(reg, cid, now), path)
 
 
 def remove_agent_durable(agent_id: str, path: Path | None = None) -> bool:

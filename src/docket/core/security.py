@@ -8,7 +8,7 @@ docket's own workspace-isolation and network state is configurable
 ``docket setup sandbox network``) -- not whether calls are gated, only whether
 execution is sandboxed and what network the sandbox has. Also owns
 ``match_high_risk``, the argument-aware allow/ask/deny classifier used by
-the live gate and ``edges/adapters/system.py``'s ``run_verify_cmd``.
+the live gate and ``edges/adapters/system.py``'s ``run_command``.
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
 def match_high_risk(command: str) -> HighRiskClass | None:
     """Return the first HIGH_RISK_PATTERNS class matching *command*, else None.
 
-    The single classification entry point: wired into ``run_verify_cmd``
+    The single classification entry point: wired into ``run_command``
     (refuses outright before the shell ever starts) and dispatch's
     ``pre_output`` scan; ``classify_command`` below also calls this to
     decide ``ask`` for a live tool call, the check ``dispatch_tool`` enforces.

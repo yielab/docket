@@ -2,7 +2,7 @@
 ``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests, would be
 documentation, not enforcement. ``match_high_risk`` is wired into the two real paths docket
 controls; three sibling helpers that once composed it were deleted since none had a production
-caller. Covers: TestRunVerifyCmdHighRisk (``run_verify_cmd`` is the one docket-launched
+caller. Covers: TestRunVerifyCmdHighRisk (``run_command`` is the one docket-launched
 subprocess built from a free-form, operator-composed shell command, unlike every other call in
 that module's fixed argv lists; a high-risk match fails closed, the shell command never
 starts); and TestPreOutputHighRiskClassification (``pre_output`` classifies a hop's real output
@@ -30,7 +30,7 @@ from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
-# ── system adapter: run_verify_cmd's own high-risk guard ─────────────────────
+# ── system adapter: run_command's own high-risk guard ─────────────────────
 
 
 class TestRunVerifyCmdHighRisk:
@@ -41,8 +41,8 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        passed, output = _sys.run_verify_cmd("stripe charge customer --amount 500", str(tmp_path))
-        assert passed is False
+        code, output = _sys.run_command("stripe charge customer --amount 500", str(tmp_path))
+        assert code is None
         assert "money-movement" in output
         assert "docket setup sandbox classes" in output
 
@@ -53,8 +53,8 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        passed, output = _sys.run_verify_cmd("git push origin production", str(tmp_path))
-        assert passed is False
+        code, output = _sys.run_command("git push origin production", str(tmp_path))
+        assert code is None
         assert "prod-deploy" in output
 
     def test_secret_access_command_never_runs(
@@ -64,16 +64,14 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        passed, output = _sys.run_verify_cmd("ssh-keygen -t ed25519 -N ''", str(tmp_path))
-        assert passed is False
+        code, output = _sys.run_command("ssh-keygen -t ed25519 -N ''", str(tmp_path))
+        assert code is None
         assert "secret-access" in output
 
     def test_ordinary_verify_pipeline_is_unaffected(self, tmp_path: Path) -> None:
         """A realistic multi-command verify pipeline is not a false positive."""
-        passed, output = _sys.run_verify_cmd(
-            "echo building; echo testing && echo done", str(tmp_path)
-        )
-        assert passed is True
+        code, output = _sys.run_command("echo building; echo testing && echo done", str(tmp_path))
+        assert code == 0
         assert "done" in output
 
 

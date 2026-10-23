@@ -41,6 +41,7 @@ from docket.core import runtime_driver as _rd
 from docket.core import secrets as _secrets
 from docket.core import session as _session
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.core.models import AgentMeta as _AgentMeta
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
 from docket.kernel.home import Home, current_home, use_home
@@ -1543,7 +1544,9 @@ class TestBlockedStaysBlocked:
             tasks = _dispatch.read_tasks("demo")
             assert len(tasks) == 2
             assert all(t["status"] == "blocked" for t in tasks)
-            assert _fleet.meta_read(lead_id).is_paused()  # re-paused by the second breach
+            assert _AgentMeta.coerce_paused(
+                _fleet.meta_get(lead_id, "paused", "")
+            )  # re-paused by the second breach
 
             assert _dispatch.unblock_pod("demo") == 2
             tasks = _dispatch.read_tasks("demo")

@@ -289,7 +289,7 @@ where it applies to commands docket itself launches.
 
 1. **Scope: which of docket's own subprocess calls are classification targets.** Exactly one
    docket function runs a free-form, operator-composed command string through a shell:
-   `run_command` (with `run_verify_cmd`, its pass/fail projection), used for a member's
+   `run_command`, used for a member's
    `verifyCmd`, a pipeline's `run:` steps and a task's prepare install command. On the host it is
    the one `shell=True` call docket makes; in a jail it is `/bin/sh -c` inside the jail. Every
    other subprocess call builds a fixed argv itself (a `docker info` probe, a
@@ -1551,7 +1551,7 @@ $ git clone https://anywhere.example/repo.git
   `landlock_available`, `seatbelt_available`, `docker_daemon_reachable`, `jail_launch`,
   `JailPolicy`, `landlock_argv`, `seatbelt_argv`, `seatbelt_profile`, `docker_run_argv`,
   `docker_kill`, `docker_image_has_git`, `git_identity_env`, `git_dirs`, `trust_worktree`,
-  `task_environment`, `credential_names`, `run_command`, `run_verify_cmd`, `make_non_dumpable`,
+  `task_environment`, `credential_names`, `run_command`, `make_non_dumpable`,
   `git_current_branch`
 - `src/docket/edges/adapters/landlock.py`: `abi_version`, `plan_ruleset`, `socket_filter`,
   `DEFAULT_RO`, `DEFAULT_RO_FILES`, `DEFAULT_RW_FILES`

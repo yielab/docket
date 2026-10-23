@@ -56,7 +56,7 @@ This specification does NOT cover:
 ### 1. Task status and its A2A mapping
 
 1. `a2a_state(status, blocked_reason=None, failure_kind=None)` MUST return exactly one of the
-   eight `A2A_STATES` names for every docket task `status` this specification enumerates:
+   eight `A2AState` names for every docket task `status` this specification enumerates:
 
    | docket `status` | `blocked_reason` / `failure_kind` | `a2aState` |
    | --- | --- | --- |
@@ -73,9 +73,9 @@ This specification does NOT cover:
 
 2. `a2a_state` MUST raise `ValueError` for a `status` outside this table. It MUST NOT guess or
    fall back to a default state.
-3. `A2A_STATES` MUST list exactly these eight names, in this order: `SUBMITTED`, `WORKING`,
+3. `A2AState` MUST be a `Literal` of exactly these eight names: `SUBMITTED`, `WORKING`,
    `INPUT_REQUIRED`, `AUTH_REQUIRED`, `COMPLETED`, `FAILED`, `CANCELED`, `REJECTED`. It MUST be
-   the only place that vocabulary is enumerated; every other module references it.
+   the only place that vocabulary is enumerated; `a2a_state` is annotated with it.
 
 ### 2. Park, don't block
 
@@ -586,7 +586,7 @@ Every surface below calls `answer_task` (area 7); none re-implements schema vali
 ### Module API (the operator contract)
 
 ```python
-A2A_STATES: tuple[str, ...]            # the eight A2A 1.0.0 TaskState names, in order
+A2AState = Literal[...]                # the eight A2A 1.0.0 TaskState names, in order
 EVENT_KINDS: tuple[str, ...]           # task.input_required, approval.requested,
                                         # approval.expiring, task.blocked, task.failed,
                                         # task.rejected, task.completed, channel.test
@@ -756,7 +756,7 @@ a == b  # True regardless of argument dict key order
 
 ### Post-conditions
 
-- `a2a_state` MUST return a value from `A2A_STATES` for every status/reason/kind combination
+- `a2a_state` MUST return an `A2AState` for every status/reason/kind combination
   requirement area 1's table lists, and MUST raise for every other status.
 - `validate_requested_schema` MUST return its input unchanged on success and MUST raise
   `ValueError` naming the offending key on failure; it MUST NOT mutate its argument.
@@ -822,7 +822,7 @@ Each JSONL line is a JSON object with these fields:
 
 ## Implementation
 
-- `src/docket/core/operator_contract.py`: `A2A_STATES`, `EVENT_KINDS`, `a2a_state`, `TaskBrief`,
+- `src/docket/core/operator_contract.py`: `A2AState`, `EVENT_KINDS`, `a2a_state`, `TaskBrief`,
   `validate_requested_schema`, `QuestionSchema`, `new_question_id`, `Question`, `AnswerResult`,
   `QuestionKind`, `Option`, `Recommendation`, `QuestionV11`, `AnswerResultV11`,
   `validate_answer`, `validate_answer_v11`, `ApprovalView`, `TaskView`, `InboxView`,

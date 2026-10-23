@@ -1,4 +1,4 @@
 # dead and duplicated code under src/docket; shrink-only, regenerate with --write
 dead 1
-test-only 13
+test-only 4
 duplicate 5

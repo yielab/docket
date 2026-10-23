@@ -65,17 +65,6 @@ class TestPureOps:
         assert conv2.topic == "audit"
         assert len(r.conversations) == 1
 
-    def test_resume_transitions_status(self) -> None:
-        _, r = C.record(_reg(), agent_id="a", peer_id="-1", now="t0")
-        cid = C.make_id("a", "-1")
-        resumed, r = C.resume(r, cid, "t1")
-        assert resumed is not None and resumed.status is C.ConversationStatus.in_progress
-        assert resumed.updated == "t1"
-
-    def test_resume_unknown_is_noop(self) -> None:
-        conv, r = C.resume(_reg(), "nope", "t1")
-        assert conv is None and r.conversations == []
-
     def test_remove_agent(self) -> None:
         r = _reg(C.Conversation(id="a", agent_id="x"), C.Conversation(id="b", agent_id="y"))
         r = C.remove_agent(r, "x")
@@ -163,7 +152,7 @@ class TestLockedMutations:
         assert conv["lastMessage"] == "short preview"
         assert conv["taskRef"] == "task-1"
 
-    def test_unwired_touch_and_unknown_resume_are_byte_identical(self, tmp_path: Path) -> None:
+    def test_unwired_touch_leaves_the_file_byte_identical(self, tmp_path: Path) -> None:
         p = tmp_path / "conversations.json"
         original = '{\n  "future": [1, 2],\n  "conversations": []\n}\n'
         p.write_text(original)
@@ -171,7 +160,6 @@ class TestLockedMutations:
         assert not C.touch_for_hop_durable(
             agent_id="unwired", task_ref="task-1", last_message="ignored", now="t1", path=p
         )
-        assert C.resume_durable("telegram:missing:-1", "t1", p) is None
         assert p.read_text() == original
 
     def test_malformed_registry_and_mutation_exception_leave_file_unchanged(

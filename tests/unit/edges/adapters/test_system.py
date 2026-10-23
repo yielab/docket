@@ -386,7 +386,7 @@ class TestTaskEnvironmentCacheDir:
         assert _sys.task_environment()["HOME"] == "/inherited"
 
 
-# ── jail_launch / run_verify_cmd under a jail ─────────────────────────────────
+# ── jail_launch / run_command under a jail ─────────────────────────────────
 
 
 class TestJailLaunch:
@@ -479,18 +479,16 @@ class TestVerifyUnderJail:
     ) -> None:
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         marker = tmp_path / "ran"
-        passed, output = _sys.run_verify_cmd(
-            f"touch {marker}", str(tmp_path), jail=_sys.JailPolicy()
-        )
-        assert passed is False
+        code, output = _sys.run_command(f"touch {marker}", str(tmp_path), jail=_sys.JailPolicy())
+        assert code is None
         assert "verify not run" in output
         assert not marker.exists()
 
     def test_high_risk_refusal_comes_before_the_jail(self, tmp_path: Path) -> None:
-        passed, output = _sys.run_verify_cmd(
+        code, output = _sys.run_command(
             "git push origin production", str(tmp_path), jail=_sys.JailPolicy()
         )
-        assert passed is False
+        assert code is None
         assert "refused" in output
 
 

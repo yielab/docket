@@ -106,7 +106,7 @@ def _fake_runner() -> _dispatch.Runner:
 class TestDispatchVerifyCwd:
     """The verify gate's real subprocess must run in the resolved directory: each test plants a
     marker file and asserts on it via a real ``shell=True`` subprocess, not a mocked
-    ``run_verify_cmd``, proving the actual cwd rather than a helper's return value."""
+    ``run_command``, proving the actual cwd rather than a helper's return value."""
 
     @pytest.fixture(autouse=True)
     def _hermetic(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:

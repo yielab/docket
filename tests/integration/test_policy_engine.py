@@ -366,7 +366,7 @@ class TestPreOutputGate:
         lead_hop = next(h for h in results[0].hops if h.role == "lead")
         assert "leaky@example.com" not in lead_hop.output
         assert "[REDACTED]" in lead_hop.output
-        assert "leaky@example.com" not in lead_hop.rendered_artifact()
+        assert "leaky@example.com" not in lead_hop.artifact.render()
 
     def test_block_fails_the_hop_and_stops_the_pipeline(self) -> None:
         _seed_lean_pod()

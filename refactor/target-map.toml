@@ -889,7 +889,6 @@ names = [
     "tmp_environment",
     "jailed_env",
     "jail_launch",
-    "run_verify_cmd",
 ]
 
 [[definition]]
