@@ -17,773 +17,98 @@
 > resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
 > reading the diff and assuming.
 
-## ◇ Phase 45 closed 2026-10-20
-
-> Phase 45 (a prepared checkout, models from the provider, and a check the change cannot define,
-> D-65, [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md))
-> closed 2026-10-20: five cards over Waves 117-119 and two small real runs on the operator's home
-> without Tack, archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
-> Acceptance met except one clause: the worktree is prepared from the lockfile (22.4 s, then a
-> cache hit in 0 s), the project's eslint, tsc and vitest run as the gate, `setup provider show`
-> names every limit's source or says `unknown`, approvals are kept per (codebase, pod); no run
-> parked on `check_changed` because neither touched a protected path (the unit and seam tests are
-> the evidence for that clause). The runs found three defects, all fixed the same day
-> (`3e9c3d9f`, `0a0bff6c`, `f9a5cec4`). Operator items left: `~/.docket/provider-models.json.bak`
-> still holds a worker test's junk rows (`m`, window 9) and the maintainer deletes it; the two
-> task branches `docket/fab-dev/task-b1e95477…` and `…task-b5e39e26…` in the Fabulada repository
-> carry the new tests and are the maintainer's to merge or drop. Phase 46 (D-66, ADR 0030) is
-> active on branch `plan/phase-46-structure` since 2026-10-22.
-
-## ◇ PHASE 46 — ACTIVE — organize by context, refactor by tool (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, started 2026-10-22 on `plan/phase-46-structure`)
-
-> **Evidence.** Measured 2026-10-20 at `c74a224e` (ADR 0030 "Evidence"): 31 of 63 `core` modules
-> import `edges`; 206 function-local imports hide a 38-module cycle; `core/dispatch.py` is 4,727
-> lines, 168 definitions, 20 % of all `src/` commits in 90 days; `status` is written in 16 places;
-> 1,191 `monkeypatch` uses, 72 on `dispatch`; the runtime wheel is a 40-file build-hook copy.
->
-> **Shape.** The ADR is the step-by-step guide; each card below is one of its steps. **Zero
-> behaviour change** is the contract: the HTTP API 6, the CLI goldens and the `docket_runtime`
-> facade are the oracle; every internal shape (module paths, persisted JSON, test locations) is
-> free to change (D-57: no users, no data to migrate). Every card ends with
-> `scripts/maint/refactor_gate.sh` exit 0 (nine checks, ADR 0030 "The step-by-step guide"); a
-> card that fails the gate is reverted and its mapping corrected, never patched until green.
->
-> **Who does what.** Tool-only cards (T) run a script; a model writes code only in P46-2, P46-3,
-> P46-4 (tools with their own tests) and P46-12, P46-13 (bounded judgment with generated input).
-> Review cards (R) are one human read of a generated artifact. The integrator owns `refactor/`
-> (mapping, analysis, retired list), the board, ROADMAP, CHANGELOG and every rollup.
->
-> **Ordering.** A: P46-1 → P46-2 ∥ P46-3 → P46-4 → P46-5. B: P46-6 → P46-7 → P46-8 → P46-9 →
-> P46-10 → P46-11. C: P46-12 (after P46-7), P46-13 (after P46-8). D: P46-14 → P46-15. Baseline
-> live run recorded before P46-6. **Freeze:** no other card touches `src/` from P46-6 to P46-15.
->
-> **Dev dependencies added:** `libcst`, `import-linter`. Runtime dependencies unchanged.
->
-> **Phase acceptance** (ADR 0030 "Phase acceptance"): architecture tests at target (ignore list
-> empty, local imports 0, largest module ≤ 700, `status` writers 1, every patch on its defining
-> module, every test at its mirror path); runtime installs without a hook; API/goldens/facade
-> tests unchanged; before/after live traces identical modulo ids and timestamps; no `cli/`,
-> `core/`, `edges/`, `serve.py`, `config.py` left.
-
-### Progress and execution plan (2026-10-22)
-
-**Done on the branch.**
-
-- **Specs truth pass** (`3c533a9c`, `2ed1cce5`). Every one of the 32 specs now states today's code, carries no history, and names a path only in its last `## Implementation` section, the only text P46-3 rewrites. The pass did not apply Phase 46 ahead of time: each amendment is listed on its card below.
-- **The pass found 87 code defects.** None was fixed, because the specs state the code as it is. They are scheduled in Wave 120 below, or folded into the Phase 46 card that rewrites that code anyway.
-- **P46-5 step 1**, out of the planned order. It does not depend on P46-2..4. Commits `8325268f` and `cd04b643`:
-  - `kernel/` holds `home`, `clock`, `ids`, `errors` and `text`, with their unit tests, the leaf guard and the shrink-only adoption guard.
-  - `scripts/maint/adopt_kernel.py` rewrites call sites and `scripts/maint/measure_kernel_adoption.py` counts what remains.
-  - Ids, text and clock are adopted (counts 0, 3 and 0), and 13 wrappers are deleted.
-
-**How work is split: volume decides script or model.** A rewrite that is the same at every site is done by a script, even when a model could do one site faster: the script is written once, runs again in seconds on whatever tree it meets, and does not drift at site 300. A model takes the work where each site is a decision. Measured on the working tree on 2026-10-22:
-
-| Work | Volume | Who | Why |
-| --- | --- | --- | --- |
-| `config.*` reads → `current_home()` | 415 sites, 61 files | script (P46-5 step 3) | same rewrite everywhere |
-| `repoint_docket_home` → `use_home` in tests | 190 sites, 132 files | script (P46-5 step 3) | same rewrite everywhere |
-| `raise ValueError` → `InvalidInput` | 148 sites | script (P46-5 step 2) | `InvalidInput` is a `ValueError`, every `except` still catches |
-| 36 error classes → a kind | 36 classes | Opus writes the table, then the script applies it | the judgment is in the table, not in the edit |
-| `os.environ` outside `config.py` | 34 sites (61 more go away with `config.py`) | Sonnet, from the measurer's list | each site needs a decision |
-| module moves (P46-7..9) | about 100 modules | `move.py` | as ADR 0030 |
-| the 87 defects | about 75 after folding and duplicates, in 13 cards | Sonnet, one card per group of files | each needs a RED test and a decision |
-| stale text and dead code | 9 items with exact locations | Haiku | no judgment |
-| spec versions, the index, goldens | per batch | `bump.sh`, `check_spec_index.py`, `run.sh` | already scripts |
-
-Opus is the integrator only. It writes the error-kind table, reviews W120-1 and W120-2 (security), merges, bumps specs and owns every rollup. Haiku takes only edits whose exact locations are known.
-
-**Stages.** Merge in the order shown inside a batch. Each stage starts when the previous one is merged.
-
-| Stage | In parallel | Agents |
-| --- | --- | --- |
-| 1 | Wave 120 batch A (W120-1..7) and the rules of P46-5 step 3 | 8 Sonnet |
-| 2 | Wave 120 batch B (W120-8..12), P46-5 step 2's catcher and table, P46-1, P46-2, P46-3 | 9 Sonnet |
-| 3 | W120-13; the integrator then runs P46-5 steps 2 and 3 over the final tree (scripts last, once) and closes P46-5 | 1 Haiku |
-| 4 | P46-4 (needs P46-2, P46-3 and P46-5) | 1 Sonnet |
-| 5 | Baseline live run (integrator), then P46-6 → P46-15 as planned, with the freeze | per card |
-
-The scripts run last because the Wave 120 branches touch the same files the codemods touch. A script run once over the merged tree meets no conflict. A worker whose new test raises the `repointers`, `config-reads`, `environ` or `error-raises` count writes the new baseline with `measure_kernel_adoption.py --write` and reports the change; the step 2 and step 3 run brings the counts down. The `clock`, `ids` and `text` counts stay where they are: use `kernel.clock`, `kernel.ids` and `kernel.text`.
-
-**Progress 2026-10-23.** Stage 1 and the code half of stage 2 are merged: Wave 120 batches A and B (W120-1..12), P46-1, P46-2, P46-3, the P46-5 step 2 errors rule and its run (`36867d97`, the other session), and the P46-5 step 3 rules (`cf96f6cf`). Spec versions are bumped per batch (`86a5b4b5`, `e57c32bd`). Q1-Q6 were applied at their defaults. W120-13 merged the same day. Next: stage 3.
-
-**Progress 2026-10-23, later.** Done on the branch: the 17 module splits, B1 (HTTP routes), B2 (turn-loop collaborators), the import hoist, P46-6 `bootstrap.py` (`013cb44c`), P46-4 `tests/architecture/` (`4ea26c3a`) and the path sweep of specs, contributor docs and scripts. Full suite, goldens 9/9 and the agent lane pass. Remaining for the close: one real run against `internal-docs/baselines/phase-46/before` (maintainer approval), then archive this board. P46-7..9 are done by the moves above; P46-10..14 are Phase 47.
-
-**Scope cut (maintainer, 2026-10-23): the move is script-driven, without staged ceremony.** P46-5 used the codemod rules, parity tests and partial guards once and deleted them (97 commits, no module moved). The rest runs as: the map is dry-run clean (`refactor/target-map.toml`, `move.py --dry-run`: 0 problems, no import cycle beyond today's one in `cli/`), the integrator runs `move.py` once, fixes the gate, commits; workers only for judgment. P46-10..14 move to Phase 47; P46-4's contracts come after the move; P46-15 closes.
-
-**Standing rule for the rest of Phase 46 (maintainer, 2026-10-23): the refactor deletes what is dead and keeps the tree strictly DRY.** ADR 0030 deferred "dead code by fan-in" to Phase 47; it now happens here. Every card deletes, in the modules it moves or rewrites, each definition nothing references, each test that only exercises such a definition, each second copy of a helper, and each leftover kept for the past (deprecation advisories, aliases, the `enqueue_task`/`enqueue_task_once` pair); it reports the before/after of `scripts/maint/measure_dead_code.py`, whose shrink-only baseline is lane D's (`.agents/handoffs/p46-dead-code-packet.md`). The deletions in `src/` and `tests/` that lane D lists run as one lane after P46-5 stage 3c merges.
-
-**Decisions for the maintainer.** Each card applies the default below unless the maintainer answers otherwise before its batch starts.
-
-| # | Question | Default (D-57 unless stated) | Card |
-| --- | --- | --- | --- |
-| Q1 | analyst and critic have opposite model classes in `models_policy.ROLE_CLASS` and `archetypes.STARTER_ARCHETYPES` (defect 6) | keep the value the live path resolves today, and delete the other table's entry | W120-9 |
-| Q2 | `requireApprovalRoles` is read and never written (defect 7); `_policy_requires_approval` always returns False (defect 46) | delete both; one source of `require_approval` fewer | W120-8 |
-| Q3 | the role scope `org` and the global `docket-roles.json` have no writer (defect 24); `kind:`-less short forms are a compatibility layer (defect 66) | delete both | W120-9 |
-| Q4 | Telegram `/approve` and `/deny` accept a token from any pod (defect 65) | refuse a token from a pod other than the chat's bound pod | W120-10 |
-| Q5 | the `docket init --from` path without a blueprint (defects 36, 37, 84, 86, including a path traversal) | delete it: an entry without `blueprint` is refused, and the four defects go with it | W120-2 |
-| Q6 | the adoption evidence comes from the harness writing records itself (defect 80) | keep the benchmark, and make the doc say what it proves | W120-7 |
-
-### P46-1 — the rules the documents state
-
-**Status:** DONE 2026-10-23 (`a00dfdef`) · **Size:** S · **Model:** Sonnet writes, integrator reviews · **Kind:** R
-
-- **Trigger:** ADR 0030 points 1-2 and 5 replace the layer rule `cli -> core -> edges`.
-- **Goal:** `CONTRIBUTING.md` "Package layout" describes the context packages, the two-level rule,
-  the dependency table and the 700-line ceiling; `AGENTS.md` change contract item 4 names the
-  import contracts instead of the three layers; `specs/test-framework.md` "Lanes and placement"
-  (2.21.0) describes mirror placement, markers as lanes, `tests/fixtures/`, `contracts/`, `e2e/`,
-  `architecture/`, `release/`, and the end of `SUBJECT`; CLAUDE.md "Architecture" points to the ADR.
-  ADR 0030, the ROADMAP rows and the §4.5 amendment landed with the plan (2026-10-20).
-- **Non-goals:** moving any code.
-- **Acceptance:** the three documents agree with the ADR's dependency table word for word where
-  they cite it; `validate-specs.sh` and the agent-lane prose tests pass.
-- **Gates:** `validate-specs.sh`, `tests/release` prose tests, `gen_cli_docs --check`.
-
-### P46-2 — `analyze.py`: the measurements and the first mapping
-
-**Status:** DONE 2026-10-23 (`be324579`) · **Size:** M · **Model:** Sonnet · **Kind:** T (tool with tests)
-
-- **Goal:** `scripts/maint/refactor/analyze.py` writes `refactor/analysis.json` + markdown: import
-  graph and SCCs (top-level and with local imports, via `grimp`); every function-local `docket`
-  import (file, line); call-graph groups for `core/dispatch.py`, `serve.py`,
-  `edges/adapters/system.py` (definitions, line ranges, external callers); every `["status"] =`
-  site with the fields set in the same block and its caller; every
-  monkeypatch target with the module that defines the patched object; fan-in per task-record key;
-  whether `runs.json` duplicates `task["hops"]`. `--metrics` prints the nine gate numbers.
-  `--draft-map` emits `refactor/target-map.toml` from the groups and ADR 0030 "Target layout".
-- **Non-goals:** changing any file under `src/` or `tests/`; counting `config.*` reads (that is
-  `measure_kernel_adoption.py config-reads`, already a guard).
-- **Acceptance:** on its base commit the metrics equal an independent count (`rg`/`ast`) of local
-  imports, largest cycle, `status` writers and largest module; the 2026-10-20 numbers (206, 38,
-  16, 4727) no longer hold after P46-5 and Wave 120; on `tests/architecture/fixtures/toy/` the groups and
-  SCCs match the fixture's expected JSON. Oracle: the tool's own tests.
-- **RED test:** the toy fixture's expected JSON before the tool exists.
-- **Gates:** ruff, mypy on the script, its tests; `comment_lint`.
-
-### P46-3 — `move.py` and `refactor_gate.sh`
-
-**Status:** DONE 2026-10-23 (`84a332b1`, `85efef83`) · **Size:** L · **Model:** Sonnet · **Kind:** T (tool with tests)
-
-- **Goal:** `scripts/maint/refactor/move.py` (libcst) executes `target-map.toml`: `git mv` whole
-  modules; move named definitions with leading comments and decorators in mapping order; rewrite
-  `import`/`from … import` in `src/`, `tests/`, `benchmarks/`, `scripts/`, `examples/` and
-  `packages/` (code outside `src/` imports `docket.*`; missing one fails only the docs job);
-  in `specs/` only the `## Implementation` sections name paths; rewrite `"docket.a.b"` string targets and
-  `SUBJECT`; move each test file to its `SUBJECT` module's mirror path, splitting a file by
-  symbol when its tests import two destinations; rewrite code paths in `specs/`, `docs/` (not
-  `cycles-ended/`, not `adr/`), `CONTRIBUTING.md`, `AGENTS.md`, `.agents/skills/`; `ruff --fix`;
-  maintain `refactor/retired.txt`. Flags `--dry-run`, `--check`; idempotent.
-  `scripts/maint/refactor_gate.sh` runs the nine checks of ADR 0030 and exits non-zero on the
-  first failure, printing which.
-- **Non-goals:** running the mapping on the real tree (that is P46-7 onwards).
-- **Acceptance:** on the toy fixture, three mappings (whole module, split by definition, test
-  split by symbol) produce the expected trees byte for byte and `--check` passes afterwards;
-  `--dry-run` on the real tree with the P46-2 draft lists only mapped files and changes nothing.
-- **RED test:** the expected trees before the tool exists.
-- **Gates:** ruff, mypy on the scripts, their tests.
-
-### P46-4 — `tests/architecture/`, the ratchets and the markers
-
-**Status:** TODO after the move (P46-6..9): contracts are written once the tree can satisfy them; no ratchet beyond import-linter's ignore list · **Size:** M · **Model:** Sonnet · **Kind:** T
-
-- **Folded defect 69** (truth pass): `pytest-without-sandbox.sh` runs in no CI job (CI gets a
-  `-m "not sandbox"` job on a runner with `DOCKET_SANDBOX_PROBE=none`); the `slow` marker is
-  registered and used by nothing (use it or drop it); 15 test files exceed 800 lines with no guard
-  (`test_module_size.py` covers `tests/` with its own ceiling).
-- **Goal:** move every guard (27, the two `kernel` guards included) to `tests/architecture/` and the 18 agent-lane files to
-  `tests/release/` (by `move.py`). Add `test_import_contracts.py` (import-linter, ADR 0030
-  dependency table, current violations in a baseline ignore list), `test_no_local_imports.py`
-  (baseline 206), `test_module_size.py` (ceiling = current largest, target 700),
-  `test_status_writers.py` (baseline 16, target 1), `test_ids.py` (`test_ids.txt` manifest; a
-  missing id needs a `retired:` line in the commit), and the autouse fixture in `tests/conftest.py`
-  wrapping `monkeypatch.setattr`: an original whose `__module__` is not the patched module fails
-  with `patch the defining module: <module>`. Register markers `unit integration sandbox e2e slow
-  release evals`; a codemod adds `pytestmark` by current directory; CI selects by `-m`;
-  `testpaths = ["tests"]`; `tests/evals/README.md` states the lane is empty and never in CI.
-- **Acceptance:** the gate passes with every baseline at its measured value; in a scratch branch
-  one added local import, one `status` write and one patch on a re-exporting module each fail the
-  gate (seen to fail, reverted); `-m "not sandbox"` collects what `pytest-without-sandbox.sh` did.
-- **Gates:** `refactor_gate.sh`.
-
-### P46-5 — `kernel/` and `Home`
-
-**Status:** IN-PROGRESS · steps 1 and 3 DONE 2026-10-23 (stage 3c `0a13fd57`); step 2's `DocketError` catcher is not written (no other session holds it): next after the move · **Size:** L · **Model:** per step · **Kind:** T + R
-
-- **Step 1: DONE (2026-10-22).**
-  - `kernel/home.py::Home` was written by hand, not generated. `tests/integration/test_home_parity.py` pins that it equals `config.py`, name for name and default for default.
-  - Beside it: `current_home()`, `use_home()`, `kernel/clock.py` (`use_clock`), `kernel/ids.py`, `kernel/errors.py` (`DocketError` and the kinds `InvalidInput`, `NotFound`, `Conflict`, `Refused`, `Unavailable`, `DocumentError`) and `kernel/text.py` (`cut_chars`, `cut_output`, `ellipsize`, `one_line`).
-  - `tests/guards/test_kernel_is_a_leaf.py` checks that kernel imports nothing from docket.
-  - `tests/guards/test_kernel_adoption.py` with its baseline is a strict-equality ratchet: a count may neither rise nor fall without the baseline changing.
-  - `adopt_kernel.py` has the rules `ids`, `text`, `clock` and `wrappers`. It rewrote 9 id sites, the text sites, 62 clock sites and 74 wrapper calls, and deleted 13 wrappers.
-  - The runtime build hook lists the kernel files.
-  - A `ContextVar` does not reach a thread docket spawns: a threaded test re-enters `use_clock` in the thread.
-- **Step 2, errors: rule and run DONE (`36867d97`); the `DocketError` catcher at the CLI entry and the HTTP handler is still open.**
-  - **The catcher, after the move (2026-10-23):** one `except DocketError` at the CLI entry (message + hint to stderr, exit 1) and one in the HTTP handler (kind to status: `InvalidInput` 400, `NotFound` 404, `Conflict` 409, `Refused` 403, `Unavailable` 503; JSON `error`/`hint`). The per-command and per-route `try/except` blocks that only render a docket error are deleted, and so are the `ValueError`/`LookupError` bases of `InvalidInput`/`NotFound` once no `except` of a builtin depends on them.
-  - Opus writes the table that sends each of the 36 builtin-derived classes to a kind.
-  - A Sonnet worker adds the rule `errors` to `adopt_kernel.py` (re-parent per the table; `raise ValueError(x)` → `raise InvalidInput(x)`; refuse a raise with more than one argument) and its toy tests.
-  - The same worker adds one catcher of `DocketError` at the CLI entry and one in the HTTP handler. It first checks the `except ValueError` sites in `serve.py` (~219, ~991, ~1162).
-  - The 2 `RuntimeError` raises are migrated by hand.
-- **Step 3, home (stage 1 writes the rules, stage 3 runs them).**
-  - A Sonnet worker adds the rules `config-reads` (`config.NAME` → `current_home().name`) and `repointers` (→ `use_home(Home(tmp_path))`) with toy tests. Today the codemod has no tests of its own.
-  - `config-reads` refuses a read at import time and lists it, because a module-level read freezes the default home.
-  - The same worker handles the 34 `environ` sites outside `config.py` from the measurer's list: each becomes a `Home` field or stays at an entry point.
-  - Then `config.py` keeps only template lookups and moves to `kernel/`. `test_home_parity.py`, `tests/guards/test_partial_repointers.py` and its baseline are deleted.
-- **Step 3 rules: DONE (`cf96f6cf`), measured with `--check` on 2026-10-23.**
-  - `config-reads` rewrites 799 sites (373 in src, 426 in tests) and refuses 297. Of the refusals, 216 are tests that monkeypatch one config constant; they need a third rule (`monkeypatch.setattr(config, NAME, v)` → a `Home` override). 16 are import-time reads in src, and 56 are names with no `Home` field.
-  - `repointers` rewrites 123 of 190 sites. 57 helpers whose repoint outlives them and 10 thread-starting functions are converted by hand.
-  - Run `config-reads` before `repointers`.
-  - `Home` needs `secrets_file` and `secrets_meta_file`. `secrets_backend_requested`, `no_trace` and `no_export` still need a landing place.
-  - The environ table is in `.agents/handoffs/p46-5-environ-decisions.md` (34 sites to 25).
-  - **Decision (integrator): a thread docket starts runs in its spawner's context.** A `ContextVar` home does not reach `ThreadingHTTPServer` handler threads: 39 serve tests fail after the rules. One kernel helper starts a thread in `contextvars.copy_context()`, and the HTTP server runs each request in the context captured when it starts. That is also the product's behaviour: the server serves the home it started with.
-- **Stage 3 lanes: DONE (2026-10-23).** Packets in `.agents/handoffs/p46-5-stage-3-packets.md`.
-  - Lane B, the rule `config-patches` (merge `b64f4b6d`). It rewrites `monkeypatch.setattr(config, NAME, v)` to `with use_home(dataclasses.replace(current_home(), <field>=v)):`. The real count is 197 patch sites, not 216: 138 rewritten, 59 refused (29 derived properties with no field, 14 in thread functions, 11 helpers whose patch outlives them, 2 in the `conftest` `_DOCKET_HOME_PATHS` loop, 3 others). The order is `config-reads`, `config-patches`, `repointers`; `--write` with no rule names runs them as three passes in that order.
-  - Lane A, `kernel/threads.py` (merge `70a12775`): `start_thread`, `new_thread`, `submit` and `ContextHTTPServer`; every thread in `src/` goes through it, pinned by `tests/guards/test_threads_carry_context.py`. With the rules applied and `repoint_docket_home` converted by hand, serve-test failures go from 78 to 8; the 8 are fixed by the single pass (fixtures that build the server before they repoint, `_cfg` aliases, one bare thread in a test).
-- **Stage 3a: DONE (2026-10-23).** Packet `.agents/handoffs/p46-5-stage-3a-packet.md` (`ff4a2b98`..`fd73dea0`). `Home.secrets_file`/`secrets_meta_file`; `secrets_backend_requested`, `no_trace`, `no_export` are live reads in `edges/adapters/system.py`; `mkdir_private` is in `edges/store.py`; the import-time reads became `default_factory`/call-time reads; the environ table applied (environ 95 to 86). `src/` refusals 39 to 10, all template lookups.
-- **Stage 3b: DONE (merge `65365e06`).** Packet `.agents/handoffs/p46-5-stage-3b-packet.md`. One pass: `config-reads` 795 sites, `config-patches` 148, `repointers` 173. `tests/conftest.py` has one autouse `use_home` fixture; `repoint_docket_home`, `point_home_at`, `patch_home` and `_DOCKET_HOME_PATHS` are deleted; about 64 seed helpers became context managers; test threads use `new_thread`; serve fixtures build the server inside the seeded home. Counts: `config-reads` 10, `config-patches` 1 (all template lookups), `repointers` 0. Rule defects the pass showed (moot, 3c deletes the rules): the deleted helper's import stays, a dead `mp` stays in `MonkeyPatch.context`, `x._cfg.NAME` alias chains are missed, `Home(root)` inside a `replace` drops the outer override.
-- **Stage 3c: DONE (merge `0a13fd57`).** `src/docket/config.py` is deleted; the shipped-template lookups are `kernel/templates.py` (in the runtime wheel); every other name was already on `Home`. `Home.from_environ` parses each kind through one helper (`_int`, `_float`, `_optional_int`, `_optional_path`; an empty optional variable now means unset). Deleted: `test_home_parity.py`, the partial-repointer guard, its baseline and measurer, `test_docket_home_repointer.py`, and the rules `config-reads`, `config-patches`, `repointers` (`adopt_kernel.py` 1,691 to 1,082 lines, one pass); `test_config_single_owner.py` is `test_home_single_owner.py`; `test_fleet_registry.py` checked a name that no longer existed and now checks `.fleet_file`. `tests/integration/test_two_homes_in_one_process.py` is the disjointness test (fails with one block replaced by a bare call). Dead code the stage left: 83 unused `monkeypatch` parameters and 5 uncalled test helpers removed; no `Home` field is unread. Counts: `environ` 86 to 28 (live reads the decisions table keeps), `text` 3 (the formats settled below); dead code 41/22/5 to 17/17/5.
-- **Lane D: DONE (merge `40c6f9d0`).** `scripts/maint/measure_dead_code.py` and `tests/guards/test_dead_code.py`, strict-equality baseline; four spent maint scripts deleted. **Lane E: DONE (merge `a4d8052e`).** dead 17 to 1 (`PLUGIN_API_VERSION`, public API), test-only 17 to 3 (kernel test seams), duplicate groups 5 to 1 (`use_clock`/`use_home`); `enqueue_task` gone (325 test sites), one ISO parser in `kernel/clock.py`, `core/document_fields.py` owns the catalog field checks, `_contract.require_pod`/`is_tty`, the kind-less canonical document advisory deleted (config-format 1.13.0: it is a current format). 50,780 to 50,348 lines. Timing follow-up: `TestRetryDoesNotTripStaleClaimSweep` and `TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper` (a fixed `time.sleep(1)`) fail under full-lane load and pass alone; wait on a deadline instead.
-- **Text, settled.**
-  - `approval._audit_field` caps at 513 characters while the audit spec says 512: it becomes `ellipsize(x, 512)`.
-  - `…[+N chars]` (`cli/_setup_export.py`) and `[diff truncated …]` (`system.py`) keep their own format, one user each.
-  - `_cut_at_word` stays in dispatch, because only one context uses it.
-- **Acceptance.**
-  - A new test runs two `use_home` blocks and asserts their files are disjoint.
-  - Adoption counts are `clock 0`, `ids 0`, `text 0`, `error-classes 0`, `error-raises 0`, `config-reads 0` and `repointers 0`. `environ` keeps only the entry-point sites step 3 listed.
-  - The partial-repointer guard is gone, and `adopt_kernel.py --check` reports 0 sites.
-  - The full suite and the goldens pass unchanged.
-- **Gates:** CLAUDE.md "Running tests", plus `refactor_gate.sh` once P46-3 lands.
-
-## ◇ WAVE 120 — the defects the specs truth pass found (before P46-6; stages 1-3 above)
-
-> **Trigger.** The truth pass of 2026-10-22 checked every spec against the code and recorded 87
-> code defects with file:line evidence. The specs state today's behaviour, defects included. The
-> numbers below are the pass's defect numbers; the log is the gitignored
-> `internal-docs/audits/specs-truth-pass-2026-10-22.md`. Each card names the file and the
-> behaviour, so a worker does not need the log.
->
-> **Folded into other cards, not here:**
->
-> - 8, 51, 56 → P46-12
-> - 10, 67 → P46-11
-> - 14 → P46-9
-> - 62 → P46-10
-> - 69 → P46-4, plus the golden count in CLAUDE.md, which the integrator fixes
-> - 27 and the first half of 74 → follow-ups
->
-> **Duplicates:** 83 is the same defect as 30, and 87 as 60.
->
-> **Why this wave runs before P46-6:**
->
-> - The freeze forbids `src/` edits from P46-6 to P46-15.
-> - The baseline live run must include the fixes, so that before and after compare the same
->   behaviour.
-> - P46-9 requires byte-identical HTTP responses, so every byte change lands now.
->
-> A fix made in the old layout costs nothing extra: the codemod moves it.
->
-> **Rules for every W120 card.**
->
-> - **The owning spec changes with the code.** The worker rewrites the requirement it changes and
->   no other. The integrator bumps versions (`bump.sh`) once per spec per batch.
-> - **RED first.** A defect marked *unverified* is first reproduced by the RED test. If it does
->   not reproduce, the worker drops it and says so.
-> - **Ownership is by function.** A card edits only the functions it names. Shared files are
->   noted per card, and the card order is the merge order inside a batch.
-> - **P46-5 rules.**
->   - New raises use the kinds in `kernel.errors`.
->   - Clock, id and text reads go through `kernel.clock`, `kernel.ids` and `kernel.text`.
->   - A rise in `repointers`, `config-reads`, `environ` or `error-raises` is written with
->     `measure_kernel_adoption.py --write` and reported.
-> - **Probes** follow the rule in `.agents/handoffs/specs-truth-pass-worker-packets.md`:
->   - Run in a throwaway home: `d=$(mktemp -d)`, then `cd "$d"`.
->   - Remove it with `rm -rf "$d"`.
->   - Never touch `~/.docket` and never call a hosted service.
-> - **Gates.**
->   - `ruff`, `ruff format --check`, `mypy src` and the tests you touched.
->   - Then `uv run pytest`.
->   - Then `env -u VIRTUAL_ENV bash tests/golden/run.sh verify-all`. A golden changes only when
->     the card says its output changes, and the diff is explained.
->   - `validate-specs.sh`, `gen_cli_docs.py --check`, and `comment_lint.py --check` on the files
->     you touched.
-
-### W120-1 — a pod's own rules apply on every screen
-
-**Status:** DONE 2026-10-23 (`a11594c8`, Opus review passed) · **Size:** M · **Model:** Sonnet, Opus review · **Kind:** fix (security)
-
-- **Defect 39.** `policy_eval_detail` is called without `project`, so a pod-only policy is
-  skipped, at these sites:
-  - enqueue `pre_input`: `core/dispatch.py` ~328
-  - a hop's `pre_output`: ~2077
-  - Telegram `/delegate`: `core/telegram.py` ~291
-  - approval reasons: `core/approval.py` ~67, ~381, ~416
-  - answers: `core/answers.py` ~123
-
-  `tools.py`, `identity.py`, `pod_memory.py` and `mcp_tools.py` already pass it.
-- **Defect 20.** Dispatch and `docket run` resolve the plan with `load_registry()` without a
-  project, so the `gateContract` of a role defined only in the pod is lost and its step runs
-  ungated. Sites: `dispatch.py` ~2981, `cli/_run.py` ~228 and ~365, `cli/_pod_config.py` ~395.
-- **Defect 40.** `docket pod check` ignores the pod's `allowCommands` (`cli/_pod_config.py`
-  ~437), so the dry run asks where the gate allows.
-- **Owns** exactly those call sites. Shared files:
-  - `dispatch.py` with W120-8 and W120-12
-  - `telegram.py` with W120-10
-  - `_run.py` with W120-11
-  - `_pod_config.py` with W120-9
-- **RED tests**, each using a pod-only policy or role:
-  - enqueue is refused
-  - a hop's output is blocked
-  - `/delegate` is refused
-  - the gate contract gates the step
-  - `pod check` reports what the live gate decides
-- **Specs:** security-gates, role-archetypes.
-
-### W120-2 — `docket init` and provisioning leave alone what they did not create
-
-**Status:** DONE 2026-10-23 (`346ec94c`, `1d8ac5c7`, Opus review passed) · **Size:** L · **Model:** Sonnet, Opus review · **Kind:** fix, security items first
-
-- **Security defects.**
-  - 60/87: provisioning runs `chmod 700` on a workdir it did not create, the cwd included
-    (`core/pod_provisioning.py` ~848). The repo ended at mode 700 during the pass.
-  - 82: removing the last implementer deletes all of `pods/<pod>/` (`remove_member` →
-    `free_pod_resources` → `shutil.rmtree`). That loses `memory.json`, `config/` and the cache.
-  - Q5: delete the `--from` path for entries without a blueprint (`cli/_agents.py` ~463-673).
-    Defects 36, 37, 84 and 86 go with it; 36 is a path traversal (`{"id": "../escaped"}` creates
-    `workspaces/escaped`).
-  - 70: `init` run from a directory that holds `.docket/` (for example `~` with the default home)
-    applies that directory as a team configuration. *Unverified.*
-- **UX defects.**
-  - 30/83: an empty slug answers "already exists".
-  - 31: a name longer than 64 characters ends in a traceback.
-  - 32: a relative or missing codebase is stored as given.
-  - 58: `init --json` prints text on `code_mismatch` and on `refused`.
-  - 85: Rich eats `[a-z0-9]` in the invalid-id message.
-  - 74, second half: a standalone `SOUL.md` writes `agent:<id>:default` while the meta keeps
-    another `projectKey`.
-- **Owns** `cli/_agents.py`, `core/pod_provisioning.py`, and only the repository-config
-  discovery in `core/pod_apply.py`, which it shares with W120-9.
-- **RED tests:**
-  - a pre-existing workdir keeps its mode
-  - removing the last implementer keeps `pods/<pod>/memory.json`
-  - a `--from` entry without a blueprint is refused
-  - `init` from a directory holding the home applies nothing
-  - one refusal per UX defect, with exit 2 and `--json` output that parses
-- **Specs:** agent-lifecycle, cli-interface, input-validation, workspace-structure,
-  session-scoping.
-
-### W120-3 — the trace and the exporters tell the truth
-
-**Status:** DONE 2026-10-23 (`ddd475d8`) · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
-
-- **Defects.**
-  - 2: `terminal_outcomes` picks the "latest" sessions by file name (`task-<uuid4>`), so `status`
-    shows random ones. The test passes only because it names its sessions `a` and `b`.
-  - 3: `sweep_all`'s synthetic `session_end` reaches no subscriber and ignores
-    `DOCKET_NO_TRACE`.
-  - 12: a JSON line that is not an object breaks `export_lines` and `GET /traces`.
-    *Unverified.*
-  - 18: `enable_exporter --privacy` over a stored `share`, or the reverse, writes an invalid
-    entry. The load drops it in silence, yet `exporter.enabled` is audited.
-  - 19: `set_privacy(content_max_chars=0)` writes an invalid entry the same way.
-  - The fix for 18 and 19: both writers validate before they write and refuse with
-    `InvalidInput`; the audit entry is written only on success.
-- **Deletions.**
-  - 1: `trace_ingest` has no production caller and imports `edges` from `core`.
-  - 4: `drift_alert` is in `EVENT_TYPES` and the telemetry map, and nothing emits it.
-- **Reproduce or drop.** 5: `run_bash` on an exception other than `TimeoutExpired` (`toolbox.py`
-  ~441).
-- **Owns** `core/trace.py`, `core/exporter.py`, the `EVENT_TYPES` map in `core/telemetry.py`, and
-  `run_bash`.
-- **Specs:** trace-store, observability-export.
-
-### W120-4 — the pipeline loader refuses what it cannot run
-
-**Status:** DONE 2026-10-23 (`33fbf1d3`, `ae459abc`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
-
-- **Defect 53.** The loader accepts each of these in silence:
-  - `run`, `input`, `when` or `archetype` on a `parallel` group
-  - a step that has both `run` and `input`
-  - an invalid `max` on a forward route
-  - an unvalidated `on` on a parallel child, where YAML's `on` → `True` is not corrected either
-  - the `from` of a child `input`
-
-  The places are `Step._check_shape`, `PipelineSpec._check` and `_fix_on_key`.
-- **Defect 54.** `test_validate_pipeline_wrapper_matches_load` compares a value with itself.
-  Delete it, or make it compare against `load`.
-- **Owns** `core/pipeline.py` and its tests.
-- **RED tests:** one per shape. `docket pod validate` names the field and exits non-zero, and
-  every shipped recipe still loads.
-- **Spec:** pipeline-format.
-
-### W120-5 — providers and secrets fail loudly and store nothing on failure
-
-**Status:** DONE 2026-10-23 (`5eb6fd9d`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
-
-- **Defect 44.** A global document with empty `presets` makes `load_registry()` raise
-  `KeyError: 'economy'`. Instead, raise a `DocumentError` that names the missing anchor, both at
-  load and at `provider add`.
-- **Defect 43.** `setup provider add <catalog> --ctx N` with neither a URL nor `--model` ignores
-  `--ctx` and `--max-tokens`. With a URL or `--model` over a built-in, it replaces `models[]` with
-  one unpriced row. Fix: apply the flag or refuse it, and keep the inherited rows. *Unverified
-  live.*
-- **Defect 78.** When the probe fails on transport, the credential is stored anyway and the
-  output says "Nothing was registered". Fix: store only after the probe.
-- **Defect 79.** With `DOCKET_SECRETS_BACKEND=keyring` and no `secret-tool`, secrets are written
-  as plain text in silence. Fix: refuse, with a hint.
-- **Defect 38.** `credential_add`, `prompt_and_store` and the `_KEY_NAME` grammar have no caller.
-  Apply the grammar where a person types a credential name, or delete all three if no such path
-  exists.
-- **Owns** the loading in `core/models_policy.py`, `cli/_setup_model.py`, `core/secrets.py`, and
-  the registration path in `core/provider.py`.
-- **Specs:** model-profiles, api-keys, input-validation.
-
-### W120-6 — the HTTP server's own answers
-
-**Status:** DONE 2026-10-23 (`f5d081b0`) · **Size:** S · **Model:** Sonnet · **Kind:** fix (byte changes, before P46-9)
-
-- **Defects.**
-  - 11: `/metrics` emits `docket_agent_turns_total` without HELP or TYPE and interleaves it with
-    `docket_agent_cost_usd`. With two or more agents the output breaks the 0.0.4 text format.
-  - 72: `GET /pods/<p>` does not catch `PodSettingsError`; it must answer with the JSON error
-    envelope. `POST /pods/<p>/apply` parses the body before it checks that the pod exists.
-  - 13: a run cancelled by the server's second signal records `source: "cli"` (`core/runs.py`
-    ~79, ~576). *Unverified.*
-  - 33: the `docket start --telegram` hint names `setup provider add TELEGRAM_BOT_TOKEN`; it
-    should name `setup notify enable telegram`.
-- **Owns** those handlers in `serve.py` and the cancel source in `core/runs.py`.
-- **RED tests:** `/metrics` with two agents parses under the exposition rules; a pod with invalid
-  settings gets a JSON error body.
-- **Specs:** serve-read-api, operator-api.
-
-### W120-7 — the adoption evidence says what it proves
-
-**Status:** DONE 2026-10-23 (`841d86fb`, `8266ae01`) · **Size:** S · **Model:** Sonnet · **Kind:** doc and fix
-
-- **Defect 80 (Q6).** `benchmarks/run.py` writes the run, task, session and trace records
-  itself, including a fabricated `guardrail_block`. It calls the CLI only for `run --dry-run`,
-  `task approve`, `task deny` and `task show`. `docs/ADOPTION-EVIDENCE.md` and the benchmark
-  README must say exactly that, and no sentence may present it as a product run.
-- **Defect 81.** `regenerate.py --source-commit` must refuse a dirty tree, and it must replace
-  the JSONL and the aggregate together, through a temp file and a rename.
-- **Owns** `benchmarks/` and `docs/ADOPTION-EVIDENCE.md`.
-- **Spec:** adoption-benchmark. The agent-lane prose tests that read the doc must pass.
-
-### W120-8 — dispatch, answers and the budget unblock
-
-**Status:** DONE 2026-10-23 (`cb3a21c8`) · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
-
-- **Deletions (Q2).**
-  - 7: the `requireApprovalRoles` reader (`core/interruptions.py` ~85, `dispatch.py` ~1490)
-  - 46: the `_policy_requires_approval` stub (~1505)
-  - 52: `dispatch_pod(approval_timeout=)`, which has no caller
-- **Defects.**
-  - 48: `answer_task` places the parked step against the pod's effective pipeline, not the
-    task's own pipeline or the one given by `run --pipeline` (`core/answers.py` ~286).
-    *Unverified.*
-  - 49: `pod set budgetUsd 0` and `pod unset budgetUsd` requeue the blocked tasks but leave the
-    Lead paused, so each one is refused at claim.
-  - 52: "Unblocked N budget-blocked task(s)" counts every blocked task that `unblock_pod`
-    requeues, not only the budget-blocked ones.
-  - 50: `dispatch_pod` stops on any `blocked`, including a brief's `resources` block (~4691).
-- **Owns** those functions and the unblock in `cli/_pod.py`. It shares `dispatch.py` with
-  W120-1, which merges first, and with W120-12.
-- **Specs:** pod-dispatch, operator-loop.
-
-### W120-9 — roles and configuration documents follow one rule each
-
-**Status:** DONE 2026-10-23 (`495a11a0`) · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
-
-- **Defects.**
-  - 21: denying `fetch` in a pod removes every built-in of kind `read` (read, glob, grep, skill,
-    consult), because the denial goes by kind. The test only checks that `fetch` is gone. Fix: a
-    built-in denial removes that built-in alone; MCP tools keep the capability rule (CLAUDE.md
-    limit 1).
-  - 22: `pod validate` never dry-runs the role templates (`validate_archetype_dict` has no
-    caller), so a `${typo}` passes validation and fails at provisioning.
-  - 23: the short-form `model:` error sends the user to `docket setup model set <role>`, which
-    refuses any role outside the ten named ones.
-  - 59: `roles/*.yml` and `roles/*.json` are validated and counted, but `_plan_roles` applies
-    only `*.yaml`. Fix: one glob for all three.
-  - 34: `pod recipes --json` emits `mcp_servers` and omits `exporters`.
-  - 6 (Q1): the analyst/critic model class, per the decision table.
-- **Deletions (Q3).**
-  - 24: the `org` scope and the reader of the global `docket-roles.json`
-  - 66: the `kind:`-less path (`config_docs.py` ~177-197). A document without `kind:` gets its
-    parser's real error or the `kind` error.
-- **Owns** `core/archetypes.py`, `core/config_docs.py`, `_plan_roles` in `core/pod_apply.py`,
-  `ROLE_CLASS`, and the recipes and scope functions in `cli/_pod_config.py`.
-- **Specs:** role-archetypes, model-profiles, config-format, pod-blueprints, cli-json-shapes.
-
-### W120-10 — channels and Telegram deliver and refuse correctly
-
-**Status:** DONE 2026-10-23 (`efda73d2`, `573a9385`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
-
-- **Defects.**
-  - 25: the shipped `email` channel never delivers. The template sets `to`, `from` and
-    `smtpHost`; the dialect reads `host`, `user` and `to`, and always demands a secret. Fix: one
-    set of keys, and a secret only when auth is set. RED against a local SMTP stub.
-  - 26: `notify.flush` says "never raises" but guards neither `build_inbox` nor the store reads,
-    and `docket run` calls it unguarded. *Unverified.*
-  - 63: with the keyring backend the bot reads `""` from `secrets.json`. Fix: read the token
-    through the secrets backend. *Unverified.*
-  - 64: `_DELEGATE_RE` has no word boundary, so `/delegatefoo bar` enqueues "foo bar".
-  - 65 (Q4): `/approve` and `/deny` accept another pod's token, per the decision table.
-- **Folded follow-up: two enqueue entry points.** Its trigger was the next edit of
-  `telegram.py`. Keep one enqueue function and move its callers in `telegram.py` and
-  `cli/_mcp.py` to it.
-- **Owns** `edges/adapters/channels/email.py`, `templates/channels/06-email.yaml`,
-  `core/notify.py`, `core/telegram.py` except the `/delegate` screen that W120-1 changes, and
-  `cli/_setup_notify.py`.
-- **Specs:** operator-loop, telegram-integration.
-
-### W120-11 — the CLI's own output is honest
-
-**Status:** DONE 2026-10-23 (`202c28fe`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
-
-- **Defects.**
-  - 75: the `docket run` header prints `spent $0.00` next to the real cap, but recorded spend is
-    always 0. Show the labelled estimate and the cap only.
-  - 76: no command shows `paused` or `pausedReason`. `status` shows both, in text and in
-    `--json`.
-  - 55: `setup --fix --json` prints `ok Installed N baseline policies` before the JSON. That line
-    goes to stderr.
-  - 35: `docket log abc` exits 2 with "No such command". Print a usage message naming the
-    argument, and drop `scope` from the empty-log message.
-  - 41: the approval prompt in `docket run` catches only `ApprovalNoop`, so an
-    `ApprovalConflict` escapes the progress loop (`cli/_progress.py` ~139). *Unverified.*
-  - 71: the help of `setup --fix` claims repairs it does not make. It also requires `TOOLS.md`
-    from every Implementer, though provisioning does not always write it, and the seeds point to
-    a daily-log path that does not exist.
-  - 57: `cli/_mcp.py` keeps its own copy of `cost_snapshot`. Keep one function.
-- **Folded follow-up: queue counts twice.** `status` uses `pod_report.task_counts`.
-- **Owns** `cli/_log.py`, `cli/_setup.py`, `cli/_setup_check.py`, `cli/_status.py`,
-  `cli/_progress.py`, the header in `cli/_run.py`, and the cost function in `cli/_mcp.py`.
-- **Specs:** cli-interface, cli-json-shapes, cost-tracking, workspace-structure.
-
-### W120-12 — the runtime facade counts tokens as the loop does
-
-**Status:** DONE 2026-10-23 (`7e14b128`) · **Size:** M · **Model:** Sonnet · **Kind:** fix (the facade's output changes, so it lands before the baseline)
-
-- **Defects.**
-  - 61: the `docket_runtime` envelope counts `total_tokens` (input + output), while the loop
-    counts `counted_tokens` (input − cache + output). Cache writes are never summed
-    (`_execution.py` ~57).
-  - 15: the `RuntimeDriver.run_turn` port has no `trace_task_id`, although both drivers take
-    one, and dispatch calls `default_driver()` around the port (`runtime_driver.py` ~241,
-    `dispatch.py` ~2008).
-  - 16: `consult_park` is chosen on `trace_task_id is not None` instead of a non-empty value.
-    *Unverified.*
-  - 17: a composition that holds only the runtime contract sends a system prompt but emits no
-    `prompt_composed` (`agent_loop.py` ~929). *Unverified.*
-- **Owns** those functions; mypy proves the port.
-- **Specs:** runtime-library, agent-loop.
-
-### W120-13 — stale text and dead code
-
-**Status:** DONE 2026-10-23 (`97bb82c2`, `cfcbed86`) · **Size:** S · **Model:** Haiku · **Kind:** text, and deletions with a zero-caller proof
-
-- **Text.**
-  - 9: the `mcp_client._stdio_params` docstring names an opt-out that does not exist, and
-    `mcp_tools.py` ~439 says "will call once wired" about a path that is already wired.
-  - 29: `cli/_setup_sandbox.py` ~362 names "doctor". Name the real command, as `--help` shows it.
-  - 45: "Model intent per agent" in `models_policy.py` ~266, `pipeline.py` ~258,
-    `test_models_policy.py` ~93 and `pipeline-format.spec.md` ~220; `MODEL_PRICING` in the
-    comments at `cli/_mcp.py` ~265 and `docket_runtime.py` ~801.
-  - 68: `pyproject.toml` ~74, ~86 and ~134 name `docket mcp serve`; the `test_all_ten_tools_*`
-    tests check 13 tools; the `queue` and `load_session` docstrings are wrong.
-  - 77: `examples/starter/README.md` ~54-62 says the starter runs `docket task list`, but it only
-    prints that line.
-- **Dead code.** Delete each item with its tests, after `rg` shows no caller:
-  - 28: `cli/_flags.py::find_unknown_flag`
-  - 42: `system.register_credential_name`
-  - 47: `HandoffArtifact.notes`, its `render` branch and its `DROP_ORDER` entry
-  - 73: `store.read_json_readonly`
-  - Folded follow-up, dead since the harness was deleted:
-    - `verify["touched"]`
-    - `git_worktree_fingerprint`, if nothing else uses it
-    - evidence 1.0.0: `EVIDENCE_V1`, `docs/contracts/evidence-v1`,
-      `scripts/gen_evidence_schema.py` and its CI step
-- **Stop rule:** if a caller turns up, stop and report. A model does not decide a deletion.
-
-### P46-6 — `bootstrap.py`, the composition root
-
-**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** M · **Model:** Sonnet · **Kind:** T + R
-
-- **Goal:** plain functions `build_store`, `build_sandbox`, `build_driver`, `build_channels`,
-  `build_app` (CLI), `build_server` (HTTP), each taking a `Home`; the CLI entry and `serve` call
-  them once. No registry, no framework. Import-linter contract: only `bootstrap` and `interfaces`
-  import `*/adapters` (added to the ignore-list ratchet).
-- **Before this card the integrator records the baseline live run** (ADR 0030 P46-15):
-  `capture-doc-journey.sh` on the local model plus one HTTP dispatch, trace files kept under
-  `refactor/baseline/`.
-- **Acceptance:** the gate; `docket --help` golden unchanged; `serve` starts from `build_server`.
-- **Gates:** `refactor_gate.sh`.
-
-### P46-7 — split `core/dispatch.py`
-
-**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** L · **Model:** codemod · **Kind:** T + R
-
-- **The draft map does not apply yet** (`move.py --dry-run` on 2026-10-23: 203 file moves and 2208 test-id changes, then rc 2). Two mapping problems:
-  - `_store` clashes in `docket.hops.workspace.prepare`. Rename one of the two before the move.
-  - `global _sweep_stop` is split across serve, sweep and the HTTP server. Give that state one owner, as an object or a setter.
-- **The map's end state has four top-level import cycles**: about 24 modules across agent/hops/governance, 6 across platform/sandbox, 3 in interfaces.http and 2 between tasks lifecycle and sweep. Each P46 move commit applies a leaf-first slice of the map, never the whole file.
-- **analyze.py prints nine metrics the worker chose**; the ADR names five. Before P46-4 records the baseline, reconcile that list with `refactor_gate.sh` check 9.
-
-- **Goal:** the reviewed mapping assigns the 168 definitions to `tasks/application/` (`queue`,
-  `lifecycle`, `actions`, `approvals`, `sweep`), `tasks/domain/task.py` (shared types),
-  `pipeline/application/executor.py`, `hops/application/` (`compose`, `runner`, `record`),
-  `hops/gates/` (`pre_hop`, `post_hop`), `hops/workspace/*`, `teams/settings.py` (the `pod_*`
-  readers). One commit per destination, leaf-first. The six externally used private names become
-  public in their module; the 24 importers are rewritten in the same commit (no re-export, D-57).
-  `HopResult`/`TaskResult` become frozen with `with_*` methods; the four mutators return values.
-- **Non-goals:** changing any transition (P46-12), any persisted shape (P46-11).
-- **Spec amendment (truth pass):** `DispatchError` is raised from the agent layer through a lazy
-  import of `core.dispatch`, the agent→tasks edge the ADR forbids; it moves to `tasks/domain` and
-  the agent side raises a `kernel.errors` kind (agent-loop, mcp-client `## Implementation`).
-- **Acceptance:** `core/dispatch.py` does not exist; largest resulting module ≤ 700; the 72
-  `dispatch` patches are on their defining modules (the P46-4 fixture proves it); manifest ids
-  unchanged under new paths; the gate passes after every commit.
-- **Gates:** `refactor_gate.sh` per commit.
-
-### P46-8 — every remaining module to its context
-
-**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** L · **Model:** codemod · **Kind:** T
-
-- **Goal:** one commit per context, leaf-first: `platform`, `models`, `observability`,
-  `operator`, `sandbox`, `governance`, `teams`, `agent`, `tasks`, `pipeline`, `hops`,
-  `interfaces` (cli commands, mcp, telegram entry). `edges/adapters/system.py` splits into
-  `platform/process.py`, `platform/git.py`, `sandbox/launch.py` by the P46-2 groups; `jail.py` and
-  `plugins.py` leave the package root. Mirror tests, specs and live docs rewritten per commit.
-  `python -m docket.jail` and `docket.plugins` / `REGISTRY` are public names (security-gates):
-  they keep working at the same names.
-- **Acceptance:** `src/docket/cli`, `core` and `edges` do not exist; the import-linter ignore
-  list is exactly the remaining domain→adapter edges (printed by `analyze.py`); the gate passes
-  per commit.
-- **Gates:** `refactor_gate.sh` per commit.
-
-### P46-9 — split `serve.py`
-
-**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** M · **Model:** codemod · **Kind:** T + R
-
-- **Goal:** a codemod lifts each path branch of `do_GET`/`do_POST` into
-  `interfaces/http/routes/<resource>.py` (tasks, pods, approvals, inbox, traces, health, metrics,
-  dispatch) and generates the `(method, pattern) -> handler` table; `interfaces/http/auth.py`
-  holds the bearer check once; `interfaces/http/server.py` holds the handler class, threads and
-  stop controller.
-- **Folded defect 14:** the `docket start` "Endpoints:" banner lists 6 of 21 routes; it prints
-  from the generated route table.
-- **Spec amendment:** serve-read-api and operator-api both describe `/health`, `ensure`, the
-  `POST /tasks` table and the `GET /tasks` filters; one spec owns each, the other links.
-- **Acceptance:** `SERVE_API_VERSION` and every response byte-identical (the serve tests move
-  beside their route and pass unchanged); `serve.py` does not exist.
-- **Gates:** `refactor_gate.sh`.
-
-### P46-10 — the runtime is a package, not a build hook
-
-**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** M · **Model:** Sonnet · **Kind:** T
-
-- **Goal:** with the contract "`agent` imports `kernel` only" green, delete
-  `packages/docket-runtime/hatch_build.py` and its 40-file closure; the distribution includes
-  `docket/agent` and `docket/kernel`; `docket_runtime/__init__.py` re-exports the same facade names.
-- **Folded defect 62:** the hook's copied closure is not closed: several copied modules
-  (`docket_runtime`, `exporter`, `telemetry`, `llm`, …) fail to import in a clean venv while the
-  facade imports; deleting the hook closes it.
-- **Acceptance:** `uv build` in a clean venv, `import docket_runtime` exposes the same names and
-  every module in the distribution imports;
-  `tests/release/test_runtime_package_boundary.py` passes with the hook gone.
-- **Gates:** `refactor_gate.sh`, `tests/release`.
-
-### P46-11 — persisted shapes the structure wants (D-57)
-
-**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** M · **Model:** Sonnet · **Kind:** T + R
-
-- **Goal:** the task record is written nested (`spec`, `lifecycle`, `execution`, `pending`) with
-  the same camelCase field names inside (the API serializer flattens, so responses are
-  unchanged); pod settings move from the Lead's `.docket-meta.json` to `pods/<pod>/settings.json`;
-  `TASK_LIST.json` stays one document per pod. Old-shape readers are deleted, not kept.
-- **Non-goals:** one file per task (measured trigger); any API change.
-- **Folded defects:** 10 — `answer_task` clears `question` and the answer record keeps neither
-  `kind` nor `createdAt`, so every answer counts as `clarification` and
-  `docket_decision_latency_seconds_count` stays 0 (the test seeds a shape the writer never
-  produces): the nested `pending` keeps both; 67 — `budgetUsd` is a string after provisioning
-  and the flat `--from`, a float after `pod set`, and `AgentMeta.budget_usd` has no `ge=0`: one
-  number type, `>= 0`, in `settings.json`.
-- **Spec amendments** (from the truth pass, each spec states today's shape): agent-loop req 18
-  and 30 (`mcpServers`, `projectInstructions`, `worktree.*`), operator-loop (Lead settings
-  `requireApprovalRoles` if Q2 keeps it, `approvalMode`, `approvalExpiryHours`; flat task fields
-  `taskGrants`, `pregrants`, `answers[]`, `question`, `consultations`), cli-interface
-  (`TASK_LIST.json` location, `worktree.prunedAt`, `approvalToken`), mcp-client (`mcpServers`),
-  security-gates (profile, `readOnly`, `network`; `failureKind`, `approvalToken`,
-  `worktree.gitDir`), pod-dispatch (~25 sections), serve-read-api (the task field set),
-  agent-lifecycle and user-stories (`paused`, `budgetUsd` on the Lead's meta).
-- **Acceptance:** operator-api and serve-read-api tests unchanged; the gate; the operator wipes
-  and re-initializes the live `~/.docket` after it lands (no users, no migration) and one
-  dispatch on the local model runs to `done`.
-- **Gates:** `refactor_gate.sh`.
-
-### P46-12 — one owner of the task's state
-
-**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** M · **Model:** Sonnet (one attempt) · **Kind:** M + T
-
-- **Input:** the P46-2 table of 16 sites (from, to, fields, caller).
-- **Goal:** `tasks/domain/state.py`: `Status`, `FailureKind` enums, the allowed-transition table,
-  `transition(record, to, *, reason="", failure_kind=None, ...)` setting exactly each
-  transition's fields (`completedAt`, `claimId=None`, `pending=None` on a terminal state). A
-  codemod replaces the 16 sites by AST location. A test **generated from the table**: each allowed
-  transition sets its fields; each other pair raises `IllegalTransition`.
-  `test_status_writers.py` ratchets to 1.
-- **Non-goals:** adding or removing a transition that exists today.
-- **Folded defects:** 8 — `in_progress` is in `TASK_STATUSES` and nothing writes it (not a
-  `Status` member); 56 — `status` sums `counts["completed"]`, a state nothing writes; 51 — a task
-  gate with no step is left `dispatch_refused` (resumable), claimed by `--resume` and refused
-  again, while every other impossible gate ends `pipeline`: the table gives both one state.
-- **Spec amendments:** pod-dispatch (~20 sections), operator-loop (`answer_task`, expiry,
-  grant/deny transitions), security-gates (the direct `waiting_approval` write).
-- **Acceptance:** no behavioural test changes; the generated test passes; the gate passes.
-- **Gates:** `refactor_gate.sh`.
-
-### P46-13 — ports for what the ignore list still holds
-
-**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** L · **Model:** Sonnet where a signature is unclean · **Kind:** T + M
-
-- **Goal:** for each remaining domain→adapter import, `analyze.py --emit-port` generates a
-  `Protocol` from the signatures the domain uses; `bootstrap.py` binds the real adapter; the
-  domain receives the port as a parameter or from `current_home()`. A model handles only
-  signatures that mix effects, one card per unclean port if more than one.
-  `tests/fixtures/fakes/<port>.py` and `tests/contracts/test_<port>_contract.py` (parametrized
-  `[real, fake]`) per port.
-- **Acceptance:** import-linter ignore list empty; local imports 0; largest SCC 1; every fake
-  passes its contract suite; the gate.
-- **Gates:** `refactor_gate.sh`.
-
-### P46-14 — the tests only the new structure allows
-
-**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** L · **Model:** Sonnet · **Kind:** T + M
-
-- **Goal:** `tests/fixtures/`: `home.py`, `repo.py` (temp git repo with lockfile and commits),
-  `builders.py` (`make_task`, `make_pod`, `make_hop`), `fakes/chat.py` (`ScriptedChat`: turns
-  with text and tool calls, fails when the script runs out) replacing the 7 LLM stubs.
-  `tests/e2e/`: 8-12 named flows extracted from `integration/` (software pod to done, rework
-  cycle, check_changed park + grant/deny, prepare from lockfile + cache hit, HTTP lifecycle as
-  Tack drives it, resume after restart, lights-out profile, Telegram approval). The flat
-  `tests/integration/` directory disappears (mirror path, `e2e/` or `contracts/`); each retired
-  test named in `retired:`. `SUBJECT` deleted everywhere; the layout guard checks the mirror path.
-- **Acceptance:** no file outside `tests/architecture/` mentions a module path; `analyze.py`
-  reports monkeypatch targets only on `kernel.clock` and `os.environ`; the gate.
-- **Gates:** `refactor_gate.sh`.
-
-### P46-15 — the live run, before and after, and the close
-
-**Status:** TODO after P46-14 · **Size:** M · **Model:** integrator · **Kind:** R
-
-- **Goal:** repeat the P46-6 baseline runs; compare traces event by event (names, gate outcomes,
-  transitions; ids and timestamps masked) and the HTTP responses. Rewrite CLAUDE.md, AGENTS.md,
-  the `docket-*` skills and CONTRIBUTING for the new layout (paths by the tool, prose by hand).
-  CHANGELOG "Changed (internal)". Delete `refactor/`; the architecture tests are the record.
-  ROADMAP row 46 dated; board archived with `split_board.py archive`.
-- **Acceptance:** the trace diff is empty; the Phase 46 acceptance above, with numbers.
-- **Gates:** every gate in CLAUDE.md "Running tests", in a clean worktree.
-
-## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phases 43-45 (not cards; triage when a trigger fires)
+## ◇ Phase 46 closed 2026-10-23
+
+> Phase 46 (organize by context, refactor by tool, D-66,
+> [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md)) closed 2026-10-23 on branch
+> `plan/phase-46-structure`, archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
+> `src/docket/` is `kernel`, twelve context packages, `interfaces/` and `bootstrap.py`; no module is
+> over 700 lines; `tests/architecture/` holds the import contracts and the size and local-import
+> ratchets at their recorded baselines. A real run on `fab-dev` matches the baseline hop for hop and
+> event for event, and found one defect (a refused task re-claimed in a loop), fixed in `8afff095`.
+> Acceptance met except the clauses Phase 47 owns: the import baseline is 748 (not empty), `status`
+> has 16 writers, 40 patches cross modules. The branch is unmerged and unpushed. Phase 47 below is
+> planned and waits for the maintainer.
+
+## ◇ PHASE 47 — PLANNED, NOT SCHEDULED — the seams: the import rule, ports, the state owner, the runtime package, the tests
+
+> Opened 2026-10-23 from the Phase 46 cards the maintainer moved here (P46-10..14). The working
+> plan is `internal-docs/plans/phase-46-47-fast-path-2026-10-23.md` (gitignored); this section is
+> the tracked record. **That plan's measurements are stale**: they say the largest module is 1,959
+> lines, 20 modules exceed 700 and there are 207 local imports. Measured 2026-10-23 at `484bc805`:
+> largest module 695 lines (0 over 700), local `docket` imports 20 (the baseline), largest cycle
+> 35 modules counting local imports and 2 at top level, `status` writers 16, cross-module
+> monkeypatch targets 40. The splits and the HTTP and turn-loop collaborators already landed, so the
+> plan's stages A and B are done. Re-measure before any card claims a number.
+
+### P47-1 — the import rule for the 748 baseline exceptions
+
+**Status:** DECIDED 2026-10-23 (option A below, chosen at the maintainer's request; reversible by amending this card) · **Size:** S (the decision) and M (the facades it creates) · **Model:** Sonnet for the facades · **Kind:** T
+
+- **Measured 2026-10-23 at `484bc805`** (`import_contracts_baseline.txt`, classified by consumer and target):
+  - Into other contexts' internal modules, 585 edges: `interfaces` 302, `tasks` 78, `hops` 69, `teams` 65, `pipeline` 26, `governance` 17, `models` 14, `operator` 9, `observability` 5.
+  - `agent` into other contexts, 44 edges.
+  - Into `platform`, `sandbox` or a context's `adapters/`, 114 edges: `interfaces` 31, `agent` 18, `teams` 12, `tasks` 11, `governance` 8, `hops` 8, `models` 7, `observability` 6, `operator` 5, `pipeline` 4, `sandbox` 4.
+  - Reversed, 5 edges: `platform` → a context 1, `sandbox` → a context 4.
+  - **Every context's `__init__.py` is empty** (0 lines, no `__all__`). The contract says contexts talk through `__init__`, but no context has a public surface yet.
+- **Decision (option A): keep the ADR 0030 rule and build the public surface it names.** Options rejected:
+  - *Ports for everything:* 585 facade edges would each become a protocol and a binding, with no less coupling.
+  - *Amend ADR 0030 to let `interfaces` reach `application`:* it legalizes the CLI importing `tasks.domain.task` and leaves the domain edges open.
+  - *A blind re-export of every name:* it hides the boundary instead of defining it.
+  1. Each context's `__init__.py` gets an explicit `__all__`. A name is exported only when another context imports it today, and `test_import_contracts.py` fails on an export nothing outside the context uses (the dead-code rule applies to facades too). The AST scan finds 159 distinct names across 50 cross-context modules, which bounds the work.
+  2. `agent` cannot use a facade, because its contract is `kernel` only. Its 44 edges become ports owned by `agent/ports.py` and bound in `bootstrap.py` (P47-2).
+  3. `platform`, `sandbox` and context `adapters/` are side effects, reached through ports (P47-2, 114 edges).
+  4. The 5 reversed edges move the shared type to `kernel` or behind a port (P47-2).
+- **Risk:** a facade `__init__` imports its submodules, so importing a context loads all of it and can create cycles that do not exist today. Every facade commit checks `analyze.py --metrics`: `cycle_largest` must not rise.
+- **Acceptance:** ADR 0030's dependency table is unchanged; every context `__init__.py` has `__all__`; the dead-export check passes; the baseline drops by exactly the 585 facade edges, leaving the 44 + 114 + 5 that P47-2 owns; `cycle_largest` ≤ 35.
+
+### P47-2 — ports for what is not a context (narrows the old P46-13)
+
+**Status:** TODO after P47-1 · **Size:** L · **Model:** Sonnet where a signature is unclean · **Kind:** T + M
+
+- **Scope, from P47-1's decision:** the ports cover 163 edges: 114 into `platform`, `sandbox` and context `adapters/`; 44 from `agent`, whose ports live in `agent/ports.py` and are bound in `bootstrap.py`; and the 5 reversed edges, which move the shared type to `kernel` or behind a port. The other 585 are closed by P47-1's facades, not by ports.
+- **Correction to the earlier plan:** ports do not bring the ignore list to 0 on their own. After P47-1 and P47-2 the list should be empty, and that is the acceptance of both cards together.
+- **Acceptance:** each edge in that 163 leaves the baseline, the baseline count drops by exactly that number, and each new port has a fake and a `tests/contracts/` suite run as
+  `[real, fake]`.
+
+### P47-3 — one owner of the task's `status` (old P46-12)
+
+**Status:** TODO, independent of P47-2 · **Size:** M · **Model:** Sonnet (transition table) · **Kind:** M + T
+
+- **Measured:** `status` writers 16 (`analyze.py --metrics`), target 1 (ADR 0030 item 3).
+- **Acceptance:** `tasks/domain/state.py` holds the transition table and the one writer; an AST
+  guard, `tests/architecture/test_status_writers.py`, refuses `["status"] =` anywhere else and is
+  written at baseline 1, not 16.
+
+### P47-4 — the runtime package without a build hook (old P46-10)
+
+**Status:** TODO after P47-1 and P47-2 · **Size:** S · **Model:** Sonnet · **Kind:** T
+
+- **Gate:** the `agent` → other-context edges are zero (62 today).
+- **Acceptance:** `docket-runtime` builds from `src/docket/agent` and `kernel` with no hook, and the
+  runtime boundary tests pass unchanged.
+
+### P47-5 — the test restructure (old P46-14 and the test-suite plan, T1–T6)
+
+**Status:** TODO after P47-2 · **Size:** L · **Model:** Sonnet · **Kind:** T
+
+- **Goal:** ports replace the patches; the order is `internal-docs/plans/test-suite-refactor-2026-10-23.md`.
+- **Also owed:** `tests/architecture/test_ids.py` and the autouse fixture in `tests/conftest.py` that
+  fails a patch whose target is not defined in the patched module (neither exists yet).
+- **Acceptance:** cross-module monkeypatch targets 40 → 0 (`analyze.py --metrics`), and the
+  manifest and the fixture are in `tests/architecture/`.
+
+### Left out of Phase 47's path, and owed from Phase 46
+
+- **P46-11, the persisted shapes (nested task record, `pods/<pod>/settings.json`), is not scheduled.** It is a redesign; a measured need must ask for it. Its two real defects are small fixes inside Phase 47: **10** (`answer_task` clears `question`; the answer record keeps neither `kind` nor `createdAt`, so every answer counts as `clarification` and `docket_decision_latency_seconds_count` stays 0) and **67** (`budgetUsd` is a string after provisioning and the flat `--from`, a float after `pod set`, and `AgentMeta.budget_usd` has no `ge=0`).
+- **Defect 69 remains in P47-5:** `pytest-without-sandbox.sh` runs in no CI job (a `-m "not sandbox"` job on a runner with `DOCKET_SANDBOX_PROBE=none`), and the `slow` marker is registered and used by nothing.
+
+## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phases 43-46 (not cards; triage when a trigger fires)
+
+- **Found in the Phase 46 real run (2026-10-23).**
+  - **A refused task is resumed on every 30 s sweep tick** (`dispatch_refused` is in `RESUMABLE_FAILURE_KINDS`, operator-api §6 says so by design), so a task refused for a cause the operator has not fixed writes one refusal to the audit log and trace every tick. The unbounded in-run loop is fixed (`8afff095`); this is the per-tick residue. Trigger: the audit log fills with refusals of one task, or a second operator asks. Then resume only when the cause changed, or back off, and amend operator-api §6.
+  - **The gitignored `CLAUDE.md` still describes the `cli/ -> core/ -> edges/` tree.** It is not in git, so no card fixes it: the maintainer rewrites its architecture section from ADR 0030.
+  - **`analyze.py`'s default Profile and `refactor/` data are spent:** the target map is deleted; `analyze.py --draft-map` and `move.py` need a map to run, so retire them when the last Phase 47 move is done.
 
 > Items a Phase 45 card absorbed moved into that card on 2026-10-19 (the gateway window, the
 > measurement gaps, the cut commit subject, the group `failure_kind`, the stale `security-gates`

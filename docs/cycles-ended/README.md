@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (69 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (71 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-10-23 | ◇ PHASE 46 — CLOSED 2026-10-23 — organize by context, refactor by tool (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, started 2026-10-22 on `plan/phase-46-structure`) | `todo-waves.md` | 26,902 |
 | 2026-10-19 | ☑ WAVE 116 COMPLETE — what a joint run through Tack found, CLOSED 2026-10-19 (no phase; opened 2026-10-18) | `todo-waves.md` | 21,195 |
 | 2026-10-19 | ◆ CLOSED — Phase 45: a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19, closed 2026-10-20) | `todo-waves.md` | 15,759 |
 | 2026-10-18 | ◇ Phase 44 closed 2026-10-18 | `todo-waves.md` | 712 |
@@ -122,6 +123,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | Tracked decisions (not yet scheduled) | `roadmap-phases.md` | 3,415 |
 | Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19** | `roadmap-phases.md` | 4,538 |
 | ◆ CLOSED — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028) | `todo-waves.md` | 21,773 |
+| ◇ WAVE 120 — the defects the specs truth pass found (before P46-6; stages 1-3 above) | `todo-waves.md` | 33,069 |
 <!-- archive-index:end -->
 
 ## Handoffs
