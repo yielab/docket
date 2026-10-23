@@ -124,12 +124,6 @@ class TestRoundTrip:
         assert [c.id for c in fanout.parallel] == ["impl-a", "impl-b"]
         assert fanout.parallel[0].agent == "myapp-implementer"
 
-    def test_validate_pipeline_wrapper_matches_load(self) -> None:
-        assert load_pipeline(FULL_YAML).errors == []
-        broken = FULL_YAML + "\nbogusTopLevelKey: true\n"
-        assert load_pipeline(broken).errors == load_pipeline(broken).errors
-        assert load_pipeline(broken).errors != []
-
 
 # ── TestUnknownKeyRejected ───────────────────────────────────────────────────
 
@@ -1021,3 +1015,103 @@ steps:
         assert len(result.errors) == 1
         assert "ask" in result.errors[0]
         assert "unknown_key" in result.errors[0]
+
+
+# ── TestRefusedShapes ────────────────────────────────────────────────────────
+
+_HEAD = "name: p\nsteps:\n"
+_UNIT_A = "  - id: a\n    role: lead\n"
+_UNIT_B = "  - id: b\n    role: implementer\n"
+_CHILD = "      - id: c\n        role: reviewer\n"
+
+
+def _refused(body: str, *needles: str) -> None:
+    result = load_pipeline(_HEAD + body)
+    assert not result.ok, "the loader accepted a shape the executor cannot run"
+    joined = " | ".join(result.errors)
+    for needle in needles:
+        assert needle in joined, joined
+
+
+class TestRefusedShapes:
+    """A shape the executor cannot run is a load error naming the field, not silence."""
+
+    @pytest.mark.parametrize(
+        ("field_yaml", "field"),
+        [
+            ("    run: echo hi\n", "run"),
+            ("    input:\n      from: a\n", "input"),
+            ("    when:\n      memberPresent: lead\n", "when"),
+            ("    archetype: critic\n", "archetype"),
+        ],
+    )
+    def test_parallel_group_refuses_its_own_field(self, field_yaml: str, field: str) -> None:
+        body = _UNIT_A + "  - id: g\n" + field_yaml + "    parallel:\n" + _CHILD
+        _refused(body, "'g'", f"'{field}'", "parallel")
+
+    def test_step_with_run_and_input_refused(self) -> None:
+        body = _UNIT_A + "  - id: ask\n    run: echo hi\n    input:\n      from: a\n"
+        _refused(body, "'ask'", "'run'", "'input'")
+
+    @pytest.mark.parametrize("bad_max", ["0", "-1", "x", "true", "1.5"])
+    def test_forward_route_with_invalid_max_refused(self, bad_max: str) -> None:
+        body = (
+            "  - id: a\n    role: implementer\n    gate: {type: mechanical}\n"
+            f"    on:\n      fail: {{goto: b, max: {bad_max}}}\n" + _UNIT_B
+        )
+        _refused(body, "'a'", "'max'")
+
+    def test_forward_route_with_valid_max_accepted(self) -> None:
+        body = (
+            "  - id: a\n    role: implementer\n    gate: {type: mechanical}\n"
+            "    on:\n      fail: {goto: b, max: 2}\n" + _UNIT_B
+        )
+        assert load_pipeline(_HEAD + body).ok
+
+    @pytest.mark.parametrize("on_key", ["on", '"on"'])
+    def test_parallel_child_on_is_validated(self, on_key: str) -> None:
+        body = (
+            _UNIT_A
+            + "  - id: g\n    parallel:\n"
+            + _CHILD
+            + f"        {on_key}:\n          pass: nowhere\n"
+        )
+        _refused(body, "'c'", "nowhere")
+
+    def test_parallel_child_on_unquoted_key_is_corrected_not_unknown(self) -> None:
+        body = (
+            _UNIT_A + "  - id: g\n    parallel:\n" + _CHILD + "        on:\n          fail: stop\n"
+        )
+        result = load_pipeline(_HEAD + body)
+        assert result.ok, result.errors
+        assert result.spec is not None
+        child = result.spec.steps[1].parallel[0]  # type: ignore[index]
+        assert child.on == {"fail": "stop"}
+
+    def test_parallel_child_backward_route_needs_max(self) -> None:
+        body = _UNIT_A + "  - id: g\n    parallel:\n" + _CHILD + "        on:\n          fail: a\n"
+        _refused(body, "'c'", "'max'")
+
+    @pytest.mark.parametrize(
+        "from_",
+        ["ghost", "c2", "later"],
+    )
+    def test_parallel_child_input_from_is_validated(self, from_: str) -> None:
+        body = (
+            _UNIT_A
+            + "  - id: g\n    parallel:\n"
+            + _CHILD
+            + "      - id: c2\n        input:\n"
+            + f"          from: {from_}\n"
+            + "  - id: later\n    role: tester\n"
+        )
+        _refused(body, "'c2'", "'from'")
+
+    def test_parallel_child_input_from_an_earlier_step_accepted(self) -> None:
+        body = (
+            _UNIT_A
+            + "  - id: g\n    parallel:\n"
+            + _CHILD
+            + "      - id: c2\n        input:\n          from: a\n"
+        )
+        assert load_pipeline(_HEAD + body).ok
