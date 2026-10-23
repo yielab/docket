@@ -107,7 +107,9 @@ def _repo_with(tmp_path: Path, relpath: str, text: str) -> Path:
 
 class TestJsonOnEveryReviewStop:
     def test_defect_58_a_refused_shell_prints_json(self, tmp_path: Path) -> None:
-        code = _repo_with(tmp_path, "pod.yaml", "settings:\n  allowCommands: [bash]\n")
+        code = _repo_with(
+            tmp_path, "pod.yaml", "kind: pod\nname: demo\nsettings:\n  allowCommands: [bash]\n"
+        )
 
         result = runner.invoke(app, ["init", "demo", str(code), "--json"])
 
