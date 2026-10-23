@@ -557,7 +557,7 @@ def read_health() -> dict[str, dict[str, Any]]:
 class ProbeResult:
     """A raw, unclassified probe of an exporter's endpoint. ``status`` is ``None`` only for a
     transport failure (DNS, refused, timeout). A plain dataclass, not `models/adapters/openai_http.py`'s
-    provider ``ProbeResult`` -- this module imports nothing from ``edges/``."""
+    provider ``ProbeResult`` -- this module imports nothing from ``models/adapters/``."""
 
     status: int | None
     error: str = ""

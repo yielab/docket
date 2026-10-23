@@ -23,7 +23,7 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
 
 def _batch_gating_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, bool]]:
     """Return {agent_id: (budgetUsd_str, gating_cost, estimated)} -- the recorded-or-estimated
-    figure ``core/utils.gating_cost`` computes, so ``_check_budget`` can fire even though the
+    figure ``teams/utils.gating_cost`` computes, so ``_check_budget`` can fire even though the
     driver's recorded cost is always 0.0."""
     out: dict[str, tuple[str, float, bool]] = {}
     for aid in agent_ids:

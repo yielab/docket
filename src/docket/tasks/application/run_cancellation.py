@@ -39,7 +39,7 @@ class CancellationLifecycle:
 @dataclass
 class CancelOutcome:
     """Result of :func:`cancel_run` — what a ``docket task cancel <ref>`` call
-    found and did. ``core/`` returns typed results; ``cli/`` renders them."""
+    found and did. Application code returns typed results; ``interfaces/cli`` renders them."""
 
     ok: bool
     message: str

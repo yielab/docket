@@ -101,7 +101,7 @@ class PodSettings(BaseModel):
     # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
     pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
     # An `@every`/`HH:MM`/cron spec (pipeline/application/schedule.py). Mirrors the value the dedicated
-    # `set schedule <spec>` CLI path (`interfaces/cli/commands/pod.py::_pod_config_set_schedule`) persists as
+    # `set schedule <spec>` CLI path (`interfaces/cli/commands/pod_settings.py::_pod_config_set_schedule`) persists as
     # this pod's actual source of truth in `docket-schedules.json` -- see that function's
     # docstring for why this field exists alongside a second, non-meta store.
     schedule: str | None = Field(None, alias="schedule")

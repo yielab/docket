@@ -126,7 +126,7 @@ def effective_pipeline_source(project: str) -> str:
 # ``maxReworkCycles`` to override it. Only the blueprint/built-in default gets the patch.
 def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pipeline.PipelineSpec:
     """The PipelineSpec this dispatch actually runs (see pod-dispatch.spec.md,
-    "Pipeline order and participation"). Public so ``cli/_pipeline.py`` renders
+    "Pipeline order and participation"). Public so ``interfaces/cli/commands/pod_config.py`` renders
     this same resolved spec."""
     if spec is not None:
         return spec

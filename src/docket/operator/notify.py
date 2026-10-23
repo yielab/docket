@@ -463,7 +463,7 @@ def _flush(
 
 def _flush_notify_channels() -> None:
     """One `operator.notify.flush` call over every catalog channel -- the periodic half of
-    delivery; `interfaces/cli/commands/pod.py::_pod_dispatch` runs the other, foreground half."""
+    delivery; `interfaces/cli/commands/run.py::_pod_dispatch` runs the other, foreground half."""
     from docket.operator import adapters as _channels
 
     _notify.flush(

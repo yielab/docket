@@ -438,7 +438,7 @@ def _build_hop_result(
 
 # `agent.loop.approval_parked_error` owns this string's format (quoted
 # key=value pairs) -- TurnResult carries no structured field for a parked call's
-# token, so this is the one place dispatch.py re-derives it. Only the token is
+# token, so this is the one place this module re-derives it. Only the token is
 # needed here, so this stays a narrow, single-field parser.
 _PARKED_ERROR_PREFIX = "approval_parked:"
 _APPROVAL_TOKEN_RE = _re.compile(r"approval_token=(?:'([^']*)'|\"([^\"]*)\"|(\S+))")

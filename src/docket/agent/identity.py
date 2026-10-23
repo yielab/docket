@@ -562,7 +562,7 @@ def compose_agent_prompt(
     an empty ``PromptComposition`` rather than raising: a turn must still run."""
     # context_window_tokens/max_output_tokens are the resolved model window and output
     # reserve for this turn, when known (None for an unresolvable/unregistered model) --
-    # passed straight to resolve_static_context_budget, never read from edges/ here.
+    # passed straight to resolve_static_context_budget, never read from the filesystem here.
     budget_tokens, budget_source = resolve_static_context_budget(
         context_window_tokens, max_output_tokens
     )

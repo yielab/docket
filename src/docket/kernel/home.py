@@ -178,7 +178,7 @@ class Home:
     # Per-role retry budgets set in the environment (DISPATCH_RETRIES_<ROLE>); a role not
     # listed uses dispatch_retries_default. A tuple, not a dict, so Home stays hashable.
     dispatch_retries_by_role: tuple[tuple[str, int], ...] = ()
-    # Serve-wide timeouts for a hop's turn and verify step, read only by serve.py. A set
+    # Serve-wide timeouts for a hop's turn and verify step, read only by interfaces/http/server.py. A set
     # value overrides the pod's Lead meta for the dispatches `docket start` runs; None
     # leaves teams/settings.py::_resolve_timeout to decide.
     dispatch_turn_timeout_s: int | None = None

@@ -2,7 +2,7 @@
 
 Execution-related state (session records, turn results, cost/usage) tends to leak
 its on-disk/wire shape into every caller that reads it. This module is the fix: a
-single typed ``Protocol`` that ``core/`` and ``cli/`` program against, so no module
+single typed ``Protocol`` that application code and ``interfaces/cli`` program against, so no module
 outside ``models/adapters/`` needs to know what a session record, a driver
 invocation, or a cost figure actually looks like on disk.
 
@@ -16,7 +16,7 @@ The required members mirror an agent's whole lifecycle: ``run_turn`` (one
 costed agent turn, the hot path -- ``hops/application/runner.py``'s pipeline and docket's own
 self-originated LLM calls go through this); ``list_sessions``/``usage`` (durable-session
 enumeration and token/cost aggregation, keeping on-disk format knowledge out of
-``core/``); ``capabilities`` (what this driver instance can actually promise, e.g.
+application code); ``capabilities`` (what this driver instance can actually promise, e.g.
 whether it reports real USD cost, so callers never hardcode an assumption about the
 shipped driver's quirks).
 
@@ -192,7 +192,7 @@ class DriverCapabilities:
 @runtime_checkable
 class RuntimeDriver(Protocol):
     """The typed boundary between docket's domain logic and an agent runtime.
-    ``core/`` and ``cli/`` depend on this Protocol, never on a concrete driver's
+    Application code and ``interfaces/cli`` depend on this Protocol, never on a concrete driver's
     on-disk format knowledge. ``DocketDriver`` is the one shipped implementation --
     one typed port, one driver, not a plugin framework (see module docstring);
     ``tests/fakes.py``'s ``FakeDriver`` is the one test double."""

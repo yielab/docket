@@ -1,7 +1,7 @@
 """Pod provisioning: the create-a-pod side effects, UI-free.
 
-Split out of ``interfaces/cli/commands/pod.py``/``interfaces/cli/commands/agents.py``: ``core/`` must never import
-``ui.py`` or print, and ``POST /pods`` (``serve.py``) needs the same effectful
+Split out of ``interfaces/cli/commands/pod.py``/``interfaces/cli/commands/agents.py``: application code must never import
+``ui.py`` or print, and ``POST /pods`` (``interfaces/http/server.py``) needs the same effectful
 path ``docket init`` uses, so both callers of ``provision_pod`` share this file.
 Kept separate from ``teams/provisioning.py``, whose docstring promises pure,
 I/O-free UX helpers -- nearly everything here writes files and shells to git.

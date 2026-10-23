@@ -1,6 +1,6 @@
 """docket start --mcp -- expose the control plane as an MCP server over stdio. Every call goes
 through the same governance spine a CLI call does and audit-logs into the same tamper-evident
-chain; dispatch, delegate and approvals call the exact same `core/` functions the CLI and HTTP
+chain; dispatch, delegate and approvals call the exact same application functions the CLI and HTTP
 API call. A server, never a host. stdio discipline: tool functions never touch `docket.interfaces.cli.render.ui`;
 stdout is reserved for JSON-RPC once the server runs. The `mcp` SDK is optional, imported lazily
 in `serve_stdio()` guarded by `try/except ImportError`; a missing SDK prints `MISSING_SDK_HINT`.

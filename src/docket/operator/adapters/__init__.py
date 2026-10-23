@@ -1,6 +1,6 @@
 """Delivery dialects for `kind: channel` documents (ADR 0016 SS7). `sink_for` maps a
 `ChannelSpec`'s `dialect` to its `deliver` function -- the one seam `operator/notify.py::flush`
-uses; `core/` never imports this package directly.
+uses; only `operator/notify.py` and the run/setup commands import this package.
 
 Wired here: `console`, `webhook`, `command`, `ntfy`, `desktop`, `email`, `telegram`.
 """

@@ -1,4 +1,4 @@
-"""The public API a predicate plugin file imports. Nothing here imports from ``core/``: a
+"""The public API a predicate plugin file imports. Nothing here imports from ``docket``: a
 plugin is operator code loaded by convention (see ``governance/plugins.py``'s loader), never part of
 the policy engine itself.
 

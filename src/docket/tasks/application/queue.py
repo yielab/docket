@@ -46,7 +46,7 @@ _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 # see ``dispatch_task``'s ``DispatchError`` handling). Neither is a graded
 # hop/gate outcome, so neither is a "real gate/hop failure" in the sense
 # "blocked and terminal-failure re-entry" uses that phrase for. Shared by
-# ``interfaces/cli/commands/pod.py``'s "anything to do?" gate so the two never drift apart.
+# ``interfaces/cli/commands/run.py``'s "anything to do?" gate so the two never drift apart.
 RESUMABLE_FAILURE_KINDS: frozenset[str] = frozenset({"stale_claim", "dispatch_refused"})
 
 
@@ -485,8 +485,7 @@ def dispatchable_pods() -> list[str]:
 
 def pod_roster() -> list[dict[str, Any]]:
     """Every provisioned pod (grouped by project, alphabetical) with its member roster. Pure
-    data assembly for ``docket start --mcp``'s ``pods`` tool, mirroring ``interfaces/cli/commands/pod.py``'s
-    ``_pod_list``; lives here (not ``teams/pod.py``) to keep that module I/O-free."""
+    data assembly for ``docket start --mcp``'s ``pods`` tool, mirroring the CLI's pod list; lives here (not ``teams/pod.py``) to keep that module I/O-free."""
     all_ids = [a.id for a in _fleet.list_agents()]
     projects = sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
 

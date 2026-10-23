@@ -80,7 +80,7 @@ def _member_tools(
 ) -> str:
     """TOOLS.md for an Implementer -- includes allocated runtime resources.
 
-    ``verify_cmd`` (set) is dispatch.py's post-hop gate the agent must pass."""
+    ``verify_cmd`` (set) is the post-hop gate (``hops/gates/post_hop.py``) the agent must pass."""
     port_end = port_range_start + port_range_count - 1
     lines = [
         f"# TOOLS.md — {project} · {role}",
@@ -269,7 +269,7 @@ def provision_member(
         budget_usd=budget_usd,
     )
     # Registration is fleet.json only -- there is no daemon to register with
-    # (see interfaces/cli/commands/agents.py's run_add for the identical reasoning).
+    # (see ``interfaces/cli/commands/pod_members.py``'s ``add_members``).
     _fleet.add_agent(member.member_id)
     return (True, "")
 

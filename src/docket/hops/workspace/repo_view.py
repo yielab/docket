@@ -3,7 +3,7 @@
 A task worktree is writable by the Implementer, so an ``AGENTS.md`` or ``.docket/skills`` file
 read from it can be rewritten by the very hop whose work the next hop reviews. A ``RepoView``
 is the injected reader that serves those files from the base commit instead; the git read behind
-it lives in ``edges/`` and this module never shells out. A view is registered for one worktree
+it lives in ``platform/git.py`` and this module never shells out. A view is registered for one worktree
 root for the length of a turn, in that turn's context only, and ``agent/identity.py`` and
 ``agent/skills.py`` consult ``view_for(root)`` before touching the filesystem. ``composed`` records the sha256 of the bytes
 each file served, keyed by repository-relative path."""

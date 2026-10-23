@@ -1,6 +1,6 @@
 """Runs an operator-supplied binary with the event JSON on stdin (the `command` dialect,
 ADR 0016 SS7). The one module in this package that shells out -- `subprocess` is forbidden in
-every `core/` module and never `shell=True` here.
+every domain and application module and never `shell=True` here.
 
 `config.argv` is a JSON-encoded list of strings (`config` itself is `dict[str, str]`, so a
 real YAML list cannot live in it directly -- the document author writes

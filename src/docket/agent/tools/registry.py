@@ -5,7 +5,7 @@ policy engine, approval store, command classifier and audit log only work if the
 place a tool call can run from. A second path is not a convenience, it is a hole.
 
 This module *decides*; ``agent/tools/builtins/toolbox.py`` *acts* and consults no policy, keeping
-filesystem/subprocess work out of ``core/``. Every non-allow decision is audited here, not by
+filesystem/subprocess work out of the decision path. Every non-allow decision is audited here, not by
 callers. ``dispatch_tool``'s full order of operations is the pinned contract in
 ``specs/functional/security-gates.spec.md``'s "in-turn tool-call gate" section.
 """

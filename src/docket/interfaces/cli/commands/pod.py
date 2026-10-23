@@ -3,7 +3,7 @@
 A *pod* is the set of project-scoped agents for one project: a Lead plus workers, each
 with its own workspace; member ids are ``<project>-<role>`` (``-N`` for duplicates).
 Composition lives in `teams/pod.py`; provisioning I/O lives in `teams/pod_provisioning.py`
-so `serve.py`'s `POST /pods` reaches it without importing `docket.cli`. This module
+so `interfaces/http/server.py`'s `POST /pods` reaches it without importing `docket.interfaces.cli`. This module
 renders around those typed results, so `docket init` and `POST /pods` cannot drift apart.
 """
 

@@ -6,7 +6,7 @@ consults a policy, an allowlist or an approval store** -- a second module that c
 execute is a second place a gate can be forgotten. The one exception is containment, not policy:
 every path resolves against allowed roots and an escaping path raises, because this must hold no
 matter which caller arrives and needs the real filesystem (symlinks resolve, ``..`` collapses).
-Imports nothing from ``core/``; reports via ``ToolOutcome`` that ``agent/tools/registry.py`` wraps with
+Imports nothing from ``governance/``; reports via ``ToolOutcome`` that ``agent/tools/registry.py`` wraps with
 what was *decided*. ``run_bash``'s ``sandbox`` is additive mechanism, never a substitute for
 ``resolve_within``'s path-argument containment, which never inspects ``bash`` shell text -- see
 specs/functional/security-gates.spec.md."""

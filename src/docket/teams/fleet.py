@@ -20,7 +20,7 @@ version round-trips through an older one instead of being silently dropped.
 This module also carries the read/write functions
 (``meta_get``/``meta_set``/``list_agents``/``add_agent``/``get_binding``/…)
 for fleet and agent-metadata state. These are docket-owned formats read through
-``platform/store.py``, so they live as a plain ``core/`` module.
+``platform/store.py``, so they live as a plain ``teams/`` module.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ class FleetConfig(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Read/write API. Every function below is docket-owned state — fleet.json
 # and .docket-meta.json — both Docket-owned formats, so this is a plain
-# core/ module (imports only platform/store.py for I/O).
+# teams/ module (imports only platform/store.py for I/O).
 # ─────────────────────────────────────────────────────────────────────────────
 
 

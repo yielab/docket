@@ -1,6 +1,6 @@
 """The root of every failure docket raises on purpose, and the kinds a boundary reacts to.
 
-``core/`` and ``edges/`` raise; ``cli/`` and ``serve.py`` catch ``DocketError`` once at the edge
+Application and adapter code raise; ``interfaces/cli`` and ``interfaces/http`` catch ``DocketError`` once at the edge
 and turn ``message`` and ``hint`` into output or a status. A new class goes under the kind whose
 reaction it shares; a new kind needs a reaction no existing one has. A signal that is part of
 normal operation (a task parked, an approval already decided the same way) is not a failure and

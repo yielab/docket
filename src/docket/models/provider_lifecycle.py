@@ -135,7 +135,7 @@ def verify_endpoint(spec: ProviderSpec, probe: ProbeResult) -> ProviderVerificat
 
 @dataclass(frozen=True)
 class Registration:
-    """Outcome of ``register_provider``. Rendered by ``cli/_provider.py``."""
+    """Outcome of ``register_provider``. Rendered by ``interfaces/cli/commands/setup_model_provider.py``."""
 
     spec: ProviderSpec
     verification: ProviderVerification

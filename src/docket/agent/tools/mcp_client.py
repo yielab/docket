@@ -3,7 +3,7 @@
 The one shipped implementation of ``agent/tools/mcp_tools.py``'s two-function port
 (``ListToolsFn``/``CallToolFn``) -- the only module in docket that knows the
 MCP wire protocol exists, or that a subprocess is involved at all. Mirrors
-``models/adapters/openai_http.py``'s split: the port's pure types live in ``core/``,
+``models/adapters/openai_http.py``'s split: the port's pure types live in ``agent/tools/mcp_tools.py``,
 every protocol/SDK-specific detail lives here.
 
 **Subprocess-per-exchange, on purpose.** Each public function here spawns a

@@ -36,7 +36,7 @@ entry points; ``record_last_run`` is the one write path — it persists into the
 same file, under a ``lastRun`` key sitting alongside ``schedules``, via
 ``platform/store.py``'s locked read-modify-write (docket-owned JSON, single-writer
 rule applies). Before this, the last-run timestamp lived only in an in-memory
-``dict`` in ``serve.py``, so every ``docket start`` restart re-fired every due
+``dict`` in the HTTP server, so every ``docket start`` restart re-fired every due
 schedule immediately — persisting it here is what fixes that.
 """
 

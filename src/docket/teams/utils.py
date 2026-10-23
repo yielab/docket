@@ -67,7 +67,7 @@ def estimate_cost_usd(model: str, totals: UsageTotals) -> float | None:
     figure is exactly the estimate-to-billing-claim conversion this codebase
     has a standing rule against). An estimate MUST NEVER be presented as, or
     summed into, recorded spend — `docket status` stays exactly the driver's
-    own recorded figure (see cli/_cost.py and the no-unfalsifiable-cost-claims
+    own recorded figure (see interfaces/cli/commands/status.py and the no-unfalsifiable-cost-claims
     discipline in CLAUDE.md/cost-tracking.spec).
     """
     pricing = _mp.price_for(model)

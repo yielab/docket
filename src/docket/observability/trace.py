@@ -362,7 +362,7 @@ class ExpiredTrace:
 @dataclass
 class TraceExpiryReport:
     """Result of one ``expire_old_traces`` run -- always returned, never
-    printed; ``core/`` never prints, ``cli/_trace.py`` renders this."""
+    printed; application code never prints, ``interfaces/cli/commands/task.py`` renders this."""
 
     dry_run: bool
     retention_s: int

@@ -92,7 +92,7 @@ class LoopMetrics:
     decision, hook+action pair, channel+outcome), so merging multiple sources into one dict never
     grows unbounded. ``turn_duration_seconds_sum``/``_count`` is a bare Prometheus summary pair --
     deliberately no invented percentiles; an operator gets the mean from sum/count, the same
-    per-project concept ``cli/_metrics.py`` computes, just fleet-wide and unwindowed."""
+    per-project concept ``interfaces/cli/commands/status.py`` computes, just fleet-wide and unwindowed."""
 
     tool_calls: dict[str, int] = field(default_factory=dict)
     policy_hits: dict[tuple[str, str, str], int] = field(default_factory=dict)

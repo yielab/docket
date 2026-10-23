@@ -2,7 +2,7 @@
 
 `build_inbox` is pure over state its caller already read (pod tasks, pending approvals); the
 current time and the cursor to filter `doneSince` by are the caller's own inputs, so no clock or
-store lives in this module, matching every other `core/` service.
+store lives in this module, matching every other application service.
 """
 
 from __future__ import annotations

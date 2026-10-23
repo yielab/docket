@@ -35,7 +35,7 @@ from docket.platform import process as _process
 
 
 # Matched structurally against observability/adapters/otlp_http.py::SinkResult's field names,
-# never imported by name, so this module still never imports anything from edges/. Declared as
+# never imported by name, so this module still never imports anything from observability/adapters/. Declared as
 # read-only properties, not plain attributes: a frozen dataclass only satisfies a Protocol that
 # asks for a get, never one that also demands a set.
 class SinkOutcome(Protocol):

@@ -273,7 +273,7 @@ def namespaced_tool_name(server_name: str, remote_tool_name: str) -> str:
     return f"{NAMESPACE_PREFIX}{server_name}__{remote_tool_name}"
 
 
-# ── the port this module programs against (implemented in edges/) ──────────
+# ── the port this module programs against (implemented in agent/tools/mcp_client.py) ──────────
 
 
 @dataclass(frozen=True)

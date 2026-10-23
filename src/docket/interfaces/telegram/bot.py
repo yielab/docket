@@ -6,7 +6,7 @@ bot -- long-polling the Bot API
 through docket's own, already-existing approval store and pod-delegation
 APIs. Nothing here reimplements approval logic: :func:`_handle_decision`
 calls ``governance.approval.approval_grant``/``approval_deny`` exactly the way
-``cli/_approve.py``/``cli/_deny.py`` do, including the
+``interfaces/cli/commands/task.py``'s approve and deny do, including the
 ``tasks.application.actions.resolve_waiting_approval`` follow-up.
 
 ## Security model -- read this before touching authorization
@@ -225,7 +225,7 @@ def _decision_pod_refusal(agent_id: str, token: str, action: str) -> TelegramAct
 def _handle_decision(
     agent_id: str, token: str, *, grant: bool, task_wide: bool = False
 ) -> TelegramActionResult:
-    """Grant or deny *token*, mirroring ``cli/_approve.py``/``cli/_deny.py``,
+    """Grant or deny *token*, mirroring ``interfaces/cli/commands/task.py``'s approve and deny,
     including the ``resolve_waiting_approval`` follow-up so a dispatch task
     blocked on this token actually resumes or fails, not just its record."""
     action = "approve" if grant else "deny"
@@ -442,12 +442,12 @@ def handle_message(
     return TelegramActionResult(True, _UNRECOGNIZED_REPLY, True, "unparseable")
 
 
-# ── the poll loop `serve.py` drives ─────────────────────────────────────────
+# ── the poll loop `interfaces/http/server.py` drives ─────────────────────────────────────────
 
 
 @dataclass(frozen=True)
 class PollSummary:
-    """Outcome of one :func:`poll_once` call -- what `serve.py`'s loop logs."""
+    """Outcome of one :func:`poll_once` call -- what `interfaces/http/server.py`'s loop logs."""
 
     ok: bool
     configured: bool
@@ -456,7 +456,7 @@ class PollSummary:
     # Non-fatal: set when `_resolved_request_timeout` had to override a
     # misconfigured `TELEGRAM_REQUEST_TIMEOUT_S` (see that function). The
     # poll still proceeds with the corrected value -- this is surfaced so
-    # `serve.py` can tell the operator their env var is not doing what they
+    # `interfaces/http/server.py` can tell the operator their env var is not doing what they
     # think, not to abort a channel that is in fact working.
     warning: str = ""
 

@@ -4,7 +4,7 @@
 later resolver (e.g. ``tasks/application/actions.py``) find what a token gated. Trace and redaction are
 best-effort behind ``_emit_trace``/``_redact`` so tests can stub them; grant/deny also
 audit-log the calling channel, restricted to the closed ``APPROVAL_CHANNELS`` set so a caller
-(e.g. ``serve.py``) cannot inject an arbitrary string into the record. The expiry sweep
+(e.g. ``interfaces/http/server.py``) cannot inject an arbitrary string into the record. The expiry sweep
 resolves a stale pending record to **denied** (fail-closed, not ``"expired"``) and notifies
 ``tasks/application/actions.py`` so a waiting task is not left stranded. ``wait_for_approval`` blocks the
 calling thread instead for ``agent/tools/registry.py``'s in-turn gate, sharing the same fail-closed
@@ -37,7 +37,7 @@ from docket.platform import store as _store
 # The closed set of channels a grant/deny may be tagged with in the audit log
 # (see the module docstring). ``timeout`` is the fail-closed expiry path
 # (``_resolve_timeout_as_denied``), never a human-driven caller. Callers that
-# accept a channel from outside the process (``serve.py``'s
+# accept a channel from outside the process (``interfaces/http/routes/approvals.py``'s
 # ``POST /approvals/<token>``) MUST validate against this set rather than
 # passing an arbitrary string through to ``approval_grant``/``approval_deny``.
 APPROVAL_RATIONALE_MAX_CHARS = 500

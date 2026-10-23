@@ -183,7 +183,7 @@ def _evaluate_mechanical_gate(
         # Honesty rule: never silently skip — a missing verifyCmd is
         # visible via a trace event (parity with the "passed" case
         # below) and the hop's own `verification_skipped` flag, which
-        # `cli/`'s dispatch renderer prints. `core/` never prints
+        # `interfaces/cli`'s dispatch renderer prints. Application code never prints
         # directly.
         _trace_locked(
             ctx.project,

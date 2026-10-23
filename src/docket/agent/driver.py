@@ -96,10 +96,7 @@ atexit.register(_close_telemetry)
 # selection valid when written but since renamed/removed surfaces here as this
 # pod's own stale configuration -- not an ordinary turn failure like an
 # unreachable/hung/malformed remote server (which `load_mcp_tools` already
-# degrades to "unavailable" for, never raising). Deferred import of
-# `tasks.domain.task.DispatchError`: `core.dispatch` imports this module at module
-# scope, so importing it back here would be circular -- by the time any real turn
-# calls this function both modules are already fully loaded.
+# degrades to "unavailable" for, never raising).
 def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
     """*project*'s own `mcpServers` pod setting, or ``None`` (load every configured
     server) for a non-pod caller or an unset setting."""

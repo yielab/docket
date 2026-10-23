@@ -22,7 +22,7 @@ def slugify(name: str) -> str:
 
 
 class ProjectIdError(InvalidInput):
-    """A project/pod id failed ``validate_project_id``. ``core/`` raises, never prints --
+    """A project/pod id failed ``validate_project_id``. Application code raises, never prints --
     see specs/validation/input-validation.spec.md §1."""
 
 

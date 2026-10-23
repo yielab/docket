@@ -16,7 +16,7 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
 
 - ``software`` — today's pod, unchanged: Lead + Implementer against a
   codebase. Its ``default_pipeline`` is exactly ``pipeline.domain.spec.default_pipeline()``
-  (the same object dispatch.py's hardcoded order already matches) and it sets
+  (the same object the default dispatch order already matches) and it sets
   no default budget cap — provisioning through this blueprint is behaviorally
   identical to the plain default `docket init`.
 - ``research`` — Lead, Researcher, Analyst, Writer, Critic (workdir): gathers

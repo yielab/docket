@@ -309,8 +309,8 @@ def seed_contract(
 # Design rationale: specs/functional/pod-dispatch.spec.md (dispatch ledger).
 # Everything below is pure text/file manipulation over one
 # workspace's HEARTBEAT.md -- docket-owned workspace state throughout,
-# no ui/print (core/
-# never prints), no knowledge of dispatch.py's TASK_LIST.json schema beyond
+# no ui/print (application code
+# never prints), no knowledge of the TASK_LIST.json schema beyond
 # the handful of plain dict keys `sync_dispatch_tasks` reads.
 
 #: Delimiters bracketing the docket-owned dispatch region inside HEARTBEAT.md's

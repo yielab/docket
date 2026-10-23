@@ -5,7 +5,7 @@ gate; it rents only protocols, and inference is one (an HTTP POST with a JSON bo
 here knows that JSON shape, the shapes below are docket's own vocabulary, and the adapter
 translates in both directions, the same split ``agent/ports.py`` (pure typing) /
 ``models/adapters/`` (format knowledge) already uses, keeping a future second endpoint dialect
-from leaking wire fields into ``core/``. Deliberately absent: streaming, and any notion of "an
+from leaking wire fields into the agent loop. Deliberately absent: streaming, and any notion of "an
 agent" — a ``ChatBackend`` performs exactly one request/response exchange; multi-step behaviour
 (feeding tool results back, deciding when a turn is over) belongs to ``agent/loop.py``,
 because those are the decisions docket refuses to delegate."""

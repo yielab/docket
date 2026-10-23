@@ -54,9 +54,9 @@ class HopResult:
     # so every ``HopResult`` carries a real artifact once constructed.
     artifact: _handoff.HandoffArtifact | None = None
     # A mechanical gate whose command was unset — a real, intentional "no
-    # check configured" state, not a failure. ``core/`` never prints; this
+    # check configured" state, not a failure. Application code never prints; this
     # flag is this run's own in-memory signal only (not persisted — see
-    # ``_hop_record``) for ``cli/``'s dispatch renderer to print the notice.
+    # ``_hop_record``) for ``interfaces/cli``'s dispatch renderer to print the notice.
     verification_skipped: bool = False
     # Set only on a hop whose gate outcome was routed via the step's own
     # ``on`` map (see ``_route_outcome``): the resolved target -- an earlier

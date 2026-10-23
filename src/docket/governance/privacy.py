@@ -1,5 +1,5 @@
 """Named privacy classes and levels for what a trace export may share beyond bare
-structure (ADR 0015). Pure data plus two lookups -- imports nothing from ``core/``
+structure (ADR 0015). Pure data plus two lookups -- imports only ``kernel``
 so both ``observability/telemetry.py`` and ``observability/exporter.py`` can depend on it without a cycle."""
 
 from __future__ import annotations
