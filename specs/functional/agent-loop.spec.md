@@ -22,8 +22,8 @@ This specification covers:
 
 - `run_agent_turn`: message composition, the single tool-execution path, the stop-condition
   contract, truncation handling, and per-iteration session durability
-- `DocketDriver`: how the five-method `RuntimeDriver` port (`run_turn`, `list_sessions`,
-  `read_new_turns`, `usage`, `capabilities`) is implemented on top of the loop, including the
+- `DocketDriver`: how the four-method `RuntimeDriver` port (`run_turn`, `list_sessions`,
+  `usage`, `capabilities`) is implemented on top of the loop, including the
   tool-containment root resolution and the `capabilities()` honesty contract
 - That `run_agent_turn` narrows its tool registry by role (`registry_for_role`) and composes a
   system prompt (`compose_agent_prompt`) once per turn, and what each does to the messages sent to
@@ -141,8 +141,8 @@ This specification does NOT cover:
     worktree directory, then the agent's codebase, then its work directory, then its bare docket
     workspace directory.
 23. `capabilities().reports_cost_usd` **MUST** be `False`.
-24. `capabilities().supports_sessions` **MUST** be `True`, and `list_sessions`/`read_new_turns`/
-    `usage` **MUST** read docket's own durable session storage, never a daemon session log.
+24. `capabilities().supports_sessions` **MUST** be `True`, and `list_sessions`/`usage`
+    **MUST** read docket's own durable session storage, never a daemon session log.
 25. `list_sessions` **MUST** scope its results to sessions whose key belongs to the requested agent
     id.
 
@@ -293,14 +293,15 @@ This specification does NOT cover:
     (or a truncation marker, for one that partially fits).
 
     **`prompt_composed`.** `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace event
-    per composition that reports at least one section, listing every section attempted — `SOUL.md`,
+    per composition that yields a system prompt, listing every section attempted — `SOUL.md`,
     `INSTRUCTIONS.md`, `AGENTS.md`, `projectInstructions`, `skills`, `MEMORY.md` when it holds
     content, and `podMemory` — with the bytes included and a `full`/`truncated`/`omitted` status
     per section, plus the resolved `budgetTokens` and its `budgetSource` (`env`/`window`/`default`).
-    An agent with no identity, startup or private files composes no system message and emits no
-    `prompt_composed` event. This budget is an estimate like every other bytes-per-token figure —
-    never a measured token count, and never reused to bound `AGENT_LOOP_TOKEN_BUDGET`'s separate,
-    measured-usage cumulative turn budget.
+    A composition holding only the runtime contract lists no sections. An agent with no identity,
+    startup or private files composes no system message and emits no `prompt_composed` event. This
+    budget is an estimate like every other bytes-per-token figure — never a measured token count,
+    and never reused to bound `AGENT_LOOP_TOKEN_BUDGET`'s separate, measured-usage cumulative turn
+    budget.
 31. The composed system prompt **MUST NOT** be persisted to session history through
     `append_messages` — it is recomposed fresh on every call to `run_agent_turn`, so refreshed
     private workspace state (requirement 30) is reflected on the very next turn rather than frozen
@@ -353,9 +354,9 @@ This specification does NOT cover:
 42. `DocketDriver.run_turn` **MUST** pass its `session_key` to `ToolContext` and the loop as the
     durable-history identity, and **MUST** forward optional keyword-only `trace_project`,
     `trace_session_key` and `trace_task_id` values to the loop. The `RuntimeDriver` port and its
-    canonical fake **MUST** accept `trace_project` and `trace_session_key`; a caller that omits them
-    gets the defaults of requirement 40. A `trace_task_id` passed as a value (not `None`) also marks
-    the turn as a pod dispatch hop, so a `consult` parks that task. A `model` keyword, when given, wins over the
+    canonical fake **MUST** accept `trace_project`, `trace_session_key` and `trace_task_id`; a
+    caller that omits them gets the defaults of requirement 40. A non-empty `trace_task_id` also
+    marks the turn as a pod dispatch hop, so a `consult` parks that task; `None` and `""` do not. A `model` keyword, when given, wins over the
     agent's configured model for this call only and is never written back to `.docket-meta.json`.
 43. `DocketDriver.list_sessions(agent_id)` **MUST** enumerate every durable key with the
     `agent:<agent-id>:` prefix, including base scoped sessions and step-scoped dispatch histories. A
@@ -724,7 +725,6 @@ class DocketDriver:                            # implements RuntimeDriver
         trace_project=None, trace_session_key=None, trace_task_id=None, model=None,
     ) -> TurnResult: ...
     def list_sessions(self, agent_id) -> list[SessionSummary]: ...
-    def read_new_turns(self, agent_id, session_id, offset) -> SessionSlice: ...
     def usage(self, agent_id) -> UsageReport: ...
     def capabilities(self) -> DriverCapabilities: ...
 
@@ -857,7 +857,7 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 - `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver`, `default_driver`, the default
   `mcp_loader`, root resolution, the base-commit `RepoView` construction, the export start/flush
 - `src/docket/core/runtime_driver.py`: `RuntimeDriver`, `TurnResult`, `DriverCapabilities`,
-  `SessionSummary`, `SessionSlice`, `UsageReport`
+  `SessionSummary`, `UsageReport`
 - `tests/fakes.py`: `FakeDriver`, the port's canonical fake
 - `src/docket/core/identity.py`: `compose_agent_prompt`, `compose_system_prompt`,
   `project_instruction_files`, `resolve_static_context_budget`, `memory_has_content`,

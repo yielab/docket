@@ -52,9 +52,7 @@ from docket.core.runtime_driver import (
     DOCKET_TURN_TOKEN_BUDGET,
     PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
-    SessionSlice,
     SessionSummary,
-    SessionTurn,
     TurnResult,
     UsageReport,
     UsageTotals,
@@ -657,7 +655,7 @@ class DocketDriver:
             approval_mode=approval_mode,
             max_consultations=max_consultations,
             # A pod dispatch hop (it names its task): a consult parks the task.
-            consult_park=trace_task_id is not None,
+            consult_park=bool(trace_task_id),
             task_id=trace_task_id or "",
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
@@ -724,61 +722,6 @@ class DocketDriver:
             )
         return out
 
-    def read_new_turns(self, agent_id: str, session_id: str, offset: int) -> SessionSlice:
-        """Translate stored messages past *offset* (a message index into
-        ``core.session.SessionRecord.messages``, the driver-defined cursor unit) into neutral
-        turn shapes: one ``tool_call`` per call in an assistant ``tool_calls`` entry, one
-        ``tool_result`` per ``tool``-role message, else ``"other"`` (matching
-        ``core/trace.py``'s ``trace_ingest`` filter). ``core/session.py`` only records
-        session-level ``created``/``updated`` timestamps, so every turn in a slice shares one
-        ``ts`` -- coarser than per-record timestamps, but the only documented consumer
-        (idle/timeout detection) only needs the last one."""
-        record = _session.load_session(session_id)
-        messages = record.messages
-        total = len(messages)
-        if offset >= total:
-            return SessionSlice(
-                session_id=session_id,
-                had_new_content=False,
-                session_start_ts="",
-                turns=[],
-                last_ts=None,
-                next_offset=offset,
-            )
-
-        turns: list[SessionTurn] = []
-        for stored in messages[offset:]:
-            if stored.role == "assistant" and stored.tool_calls:
-                for call in stored.tool_calls:
-                    turns.append(
-                        SessionTurn(
-                            ts=record.updated,
-                            kind="tool_call",
-                            daemon_type="assistant.tool_calls",
-                            record_id=call.id,
-                        )
-                    )
-            elif stored.role == "tool":
-                turns.append(
-                    SessionTurn(
-                        ts=record.updated,
-                        kind="tool_result",
-                        daemon_type="tool",
-                        record_id=stored.tool_call_id,
-                    )
-                )
-            else:
-                turns.append(SessionTurn(ts=record.updated, kind="other", daemon_type=stored.role))
-
-        return SessionSlice(
-            session_id=session_id,
-            had_new_content=True,
-            session_start_ts=record.created if offset == 0 else "",
-            turns=turns,
-            last_ts=record.updated or None,
-            next_offset=total,
-        )
-
     def usage(self, agent_id: str) -> UsageReport:
         """Aggregate this agent's *measured*, non-estimated usage (``core.llm.TokenUsage``) across
         its sessions. ``cost_usd`` stays ``0.0`` and ``by_day`` is always ``[]`` -- see
@@ -801,7 +744,7 @@ class DocketDriver:
             # MODEL_PRICING powers comparative estimates only, never a
             # billing claim.
             reports_cost_usd=False,
-            # list_sessions/read_new_turns/usage read real, durable
+            # list_sessions/usage read real, durable
             # docket-owned session storage (core/session.py).
             supports_sessions=True,
         )

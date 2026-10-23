@@ -7,7 +7,7 @@ gated dispatcher, and an ordinary failure comes back as `TurnResult(ok=False, ..
 exception); root-resolution precedence for the tool-containment boundary -- worktree > codebase
 > work_dir > bare workspace dir -- proven with the real `read` tool against real marker files;
 `provision`/`teardown` are honest no-ops, and `capabilities()` says so; and
-`list_sessions`/`read_new_turns`/`usage` read real, durable `core/session.py` storage, scoped
+`list_sessions`/`usage` read real, durable `core/session.py` storage, scoped
 correctly to one agent's own sessions.
 """
 
@@ -1512,12 +1512,12 @@ class TestCapabilities:
         assert caps.driver_name == "docket"
         # cost_usd is never populated by this driver -- see run_turn/usage.
         assert caps.reports_cost_usd is False
-        # list_sessions/read_new_turns/usage are real, unlike a driver with
+        # list_sessions/usage are real, unlike a driver with
         # no durable store at all.
         assert caps.supports_sessions is True
 
 
-# ── list_sessions / read_new_turns / usage ───────────────────────────────────
+# ── list_sessions / usage ───────────────────────────────────
 
 
 class TestSessionIntrospection:
@@ -1538,15 +1538,6 @@ class TestSessionIntrospection:
         assert len(sessions) == 1
         assert sessions[0].session_id == session_key
         assert sessions[0].turns == 4  # user, assistant(tool_calls), tool, assistant(final)
-
-        first_slice = driver.read_new_turns("chat-agent", session_key, 0)
-        assert first_slice.had_new_content is True
-        assert [t.kind for t in first_slice.turns] == ["other", "tool_call", "tool_result", "other"]
-        assert first_slice.next_offset == 4
-        assert first_slice.session_start_ts != ""
-
-        second_slice = driver.read_new_turns("chat-agent", session_key, first_slice.next_offset)
-        assert second_slice.had_new_content is False
 
         report = driver.usage("chat-agent")
         assert report.totals.input_tokens == 16
@@ -1569,11 +1560,6 @@ class TestSessionIntrospection:
 
     def test_no_sessions_directory_yet_returns_empty(self) -> None:
         assert DocketDriver().list_sessions("nobody") == []
-
-    def test_read_new_turns_on_an_unknown_session_is_a_no_op_slice(self) -> None:
-        sl = DocketDriver().read_new_turns("nobody", "agent:nobody:default", 0)
-        assert sl.had_new_content is False
-        assert sl.turns == []
 
 
 def _probe_registry() -> ToolRegistry:
@@ -1626,6 +1612,51 @@ def _probe_call_response() -> ChatResponse:
         finish_reason="tool_calls",
         usage=TokenUsage(5, 5),
     )
+
+
+def _consult_park_probe_registry() -> ToolRegistry:
+    """A one-tool registry reporting the `consult_park` and `task_id` `run_turn` built."""
+    registry = ToolRegistry()
+
+    def _probe(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+        return ToolOutcome(True, content=f"park={ctx.consult_park} task={ctx.task_id}")
+
+    registry.register(
+        Tool(
+            name="probe",
+            description="reports ctx.consult_park",
+            parameters={"type": "object", "properties": {}},
+            handler=_probe,
+            kind="read",
+        )
+    )
+    return registry
+
+
+class TestConsultParkWiring:
+    """Only a non-empty `trace_task_id` marks the turn as a pod dispatch hop."""
+
+    @pytest.mark.parametrize(
+        ("trace_task_id", "expected"),
+        [(None, "park=False task="), ("", "park=False task="), ("t-1", "park=True task=t-1")],
+    )
+    def test_consult_park_follows_a_non_empty_task_id(
+        self, trace_task_id: str | None, expected: str
+    ) -> None:
+        _write_meta("solo-agent")
+        _fleet.disable_sandbox_isolation()
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend, registry_factory=_consult_park_probe_registry
+        )
+
+        result = driver.run_turn(
+            "solo-agent", "agent:solo-agent:default", "go", 30, trace_task_id=trace_task_id
+        )
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == expected
 
 
 class TestIsolationWiring:

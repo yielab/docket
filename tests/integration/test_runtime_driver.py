@@ -67,12 +67,6 @@ class TestFakeDriver:
         assert [s.session_id for s in fake.list_sessions("demo-lead")] == ["s1"]
         assert fake.usage("demo-lead").totals.turns == 3
 
-    def test_read_new_turns_default_is_a_no_op_slice(self) -> None:
-        fake = FakeDriver()
-        sl = fake.read_new_turns("demo-lead", "s1", 5)
-        assert sl.had_new_content is False
-        assert sl.next_offset == 5
-
     def test_capabilities(self) -> None:
         fake = FakeDriver(cost=0.0)
         assert fake.capabilities().reports_cost_usd is False

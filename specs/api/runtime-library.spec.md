@@ -79,19 +79,22 @@ implementation; cross-calling or nesting another runtime's stub is not.
 `Runtime.start_execution(context, limits)` returns one synchronous
 `GovernedExecution`. `ExecutionLimits` is frozen and carries positive
 `token_budget` and `max_tool_calls` values; a non-positive value raises
-`ValueError`. `TokenUsage` is the endpoint-reported input/output/cached-token
-shape also used by Docket's owned loop; cached tokens remain a subset of input
-and do not add to `total_tokens`. The envelope accumulates input, output and
-cached tokens; it does not accumulate cache-write tokens.
+`ValueError`. `TokenUsage` is the endpoint-reported
+input/output/cached/cache-write-token shape also used by Docket's owned loop;
+cached and cache-write tokens remain subsets of input and do not add to
+`total_tokens`. The envelope accumulates input, output, cached
+and cache-write tokens, so a terminal `ExecutionResult.usage` carries all four
+sums.
 
 Before dispatching any calls from one foreign model response, an adapter MUST
 call `GovernedExecution.record_response(usage, tool_calls)`. The method
 atomically accumulates measured usage and binds the exact ordered call batch
 to that response. A `usage` that is not a `TokenUsage` raises `TypeError`. It
 returns `None` when the batch is admitted, or the single terminal
-`ExecutionResult` when cumulative `total_tokens` (input plus output; cached
-tokens are not subtracted) is greater than the configured budget or admitting
-the complete batch would exceed `max_tool_calls`; the token check comes first.
+`ExecutionResult` when cumulative `counted_tokens` (input minus cached tokens,
+plus output, the figure the owned loop compares) is greater than the configured
+budget or admitting the complete batch would exceed `max_tool_calls`; the token
+check comes first.
 A refused batch executes no handler and creates no pending call. Estimates
 MUST NOT be accepted as `TokenUsage` or described as measured.
 

@@ -136,48 +136,6 @@ class SessionSummary:
     last_active: str = ""  # ISO-ish timestamp string, '' if unknown
 
 
-# ── session-turn ingestion (feeds core/trace.py's trace_ingest) ──────────────
-#
-# Not one of the six headline members, but part of the same containment:
-# decoding a session's raw on-disk records lives entirely in the driver;
-# core/trace.py only ever sees the neutral ``SessionTurn``/``SessionSlice``
-# shapes below and applies docket's own trace-event policy (redaction,
-# timeout handling, its own event vocabulary) on top.
-
-
-@dataclass
-class SessionTurn:
-    """One decoded session record, translated to docket's vocabulary. ``kind`` is
-    ``"tool_call"``/``"tool_result"``/``"other"`` — only the first two are ever
-    projected into a trace event. ``daemon_type`` is the *original* raw type string
-    from the driver's on-disk record, kept for the trace payload — the one place raw
-    vocabulary may surface outside the driver, since by then it is inert string data
-    in docket's own trace payload, not something being parsed."""
-
-    ts: str
-    kind: Literal["tool_call", "tool_result", "other"]
-    daemon_type: str
-    record_id: Any = None
-
-
-@dataclass
-class SessionSlice:
-    """New turns available for one on-disk session since a prior offset.
-    ``had_new_content`` distinguishes "nothing new" from "new lines that produced
-    zero ingestible turns" — the caller must still advance its offset in the latter
-    case. ``session_start_ts`` is only meaningful when the caller's prior offset was
-    0. ``last_ts`` is the last successfully-decoded record's timestamp regardless of
-    ``kind`` (used for idle/timeout detection), and may differ from ``turns[-1].ts``
-    when the tail of the slice was untranslatable content."""
-
-    session_id: str
-    had_new_content: bool
-    session_start_ts: str
-    turns: list[SessionTurn]
-    last_ts: str | None
-    next_offset: int
-
-
 # ── usage ─────────────────────────────────────────────────────────────────────
 
 
@@ -250,6 +208,7 @@ class RuntimeDriver(Protocol):
         on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
+        trace_task_id: str | None = None,
         model: str | None = None,
     ) -> TurnResult:
         """Run one real, costed agent turn. Never raises for ordinary failure modes.
@@ -258,20 +217,15 @@ class RuntimeDriver(Protocol):
         double) may ignore it, so this is purely additive. ``trace_project``/
         ``trace_session_key`` optionally keep an audit stream separate from the
         durable ``session_key``; drivers without an internal trace producer may
-        ignore them. ``model``, when given, wins over *agent_id*'s own configured model
-        for this one call only -- a pipeline step's own override (pipeline-format.spec.md
+        ignore them. ``trace_task_id`` names the pod task a dispatch hop serves: a non-empty
+        value stamps the turn's trace events and lets a consult park that task; ``None`` or
+        ``""`` is a turn with no task. ``model``, when given, wins over *agent_id*'s own
+        configured model for this one call only -- a pipeline step's own override (pipeline-format.spec.md
         "Steps" Req. 10) -- and is never persisted."""
         ...
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         """Enumerate the durable sessions the driver knows about for *agent_id*."""
-        ...
-
-    def read_new_turns(self, agent_id: str, session_id: str, offset: int) -> SessionSlice:
-        """Decode session records past *offset* (a driver-defined cursor unit). Feeds
-        ``core/trace.py``'s ingestion sweep — the one extra member beyond the
-        headline six, keeping session-record decoding inside the driver rather than
-        in ``trace_ingest`` itself."""
         ...
 
     def usage(self, agent_id: str) -> UsageReport:

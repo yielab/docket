@@ -133,7 +133,7 @@ coupling to it — parsing an agent turn's result, reading a session's on-disk J
 token/cost usage — had started leaking around the ACL rather than being contained by it.
 `core/runtime_driver.py` is the fix that outlived the daemon it was first built for: a single
 typed `Protocol` — `RuntimeDriver` — that `core/` and `cli/` program against instead of a concrete
-driver's on-disk knowledge. It has four members plus one ingestion helper:
+driver's on-disk knowledge. It has four members:
 
 - `run_turn` — one costed agent turn: the hot path `core/dispatch.py`'s pipeline calls for every
   hop, and, per decision D-18, docket's own self-originated LLM calls (session compaction)
@@ -141,8 +141,6 @@ driver's on-disk knowledge. It has four members plus one ingestion helper:
 - `capabilities` — what this driver instance can actually promise (for example, whether it
   reports a real USD cost at all), so a caller never hardcodes an assumption about the one
   shipped driver's quirks
-- `read_new_turns` — decodes session records past a caller-held offset into docket's own neutral
-  `SessionTurn`/`SessionSlice` vocabulary, feeding `core/trace.py`'s ingestion sweep
 
 `edges/adapters/docket_runtime.py`'s `DocketDriver` — docket's own turn loop, running directly
 against a configured model endpoint — is the **one shipped implementation** since Phase 19
