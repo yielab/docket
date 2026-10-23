@@ -18,7 +18,7 @@ from tests.conftest import record_isolation_off
 from tests.pods import build_pod
 
 from docket.agent import driver as _dr
-from docket.agent import loop as _agent_loop
+from docket.agent import loop_steps as _loop_steps
 from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.governance import audit as _audit
@@ -99,7 +99,7 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
             dispatched_tools += 1
             raise AssertionError("a cancellation race loser dispatched a tool")
 
-        monkeypatch.setattr(_agent_loop, "dispatch_tool", _unexpected_dispatch)
+        monkeypatch.setattr(_loop_steps, "dispatch_tool", _unexpected_dispatch)
         task = _queue.enqueue_task_once("demo", "cancel this live turn", channel="cli")[0]
         run = _runs.create_run("cli", "demo")
         returned: list[object] = []

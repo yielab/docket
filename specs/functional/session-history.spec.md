@@ -376,8 +376,8 @@ result = sess.compact_session(
   `plan_compaction`, `compact_session`, `condense_history`, `SessionSummaryRunner`,
   `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_LOW_WATER_CHARS`
 - `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
-- `src/docket/agent/loop.py`: the live caller (`run_compaction`, `summarize_without_reentry`,
-  the request builder that applies `condense_history`)
+- `src/docket/agent/loop_compaction.py`: the live caller (`run_compaction`,
+  `summarize_without_reentry`, the request builder that applies `condense_history`)
 - `src/docket/agent/llm.py`: `ChatMessage`, `ToolCall`, `TokenUsage` (the Examples import `docket.agent.session` and `docket.agent.llm`)
 - `src/docket/kernel/home.py`: the `Home` members `sessions_dir`, `distill_timeout_s`
 - `src/docket/platform/store.py`: the locked atomic read-modify-write underneath
