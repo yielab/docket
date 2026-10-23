@@ -17,14 +17,14 @@ import textwrap
 
 import pytest
 
-SUBJECT = "docket.edges.adapters.system"
+SUBJECT = "docket.platform.process"
 
 pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux /proc only")
 
 _PARENT = textwrap.dedent(
     """
     import subprocess, sys
-    from docket.edges.adapters import system
+    from docket.platform import process as system
     if sys.argv[1] == "harden":
         system.make_non_dumpable()
     child = (

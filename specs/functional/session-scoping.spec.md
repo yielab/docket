@@ -72,9 +72,9 @@ The Lead of pod `mywebsite` (default project key):
 
 ## Implementation
 
-- `src/docket/core/pod.py`: `session_key`, `PodMember.session_key`, `PodSettings.KEYS`
-- `src/docket/core/pod_provisioning.py`: `provision_member` (writes `sessionKey` and `projectKey` for each pod member)
-- `src/docket/core/pod_apply.py`: pod apply reads `projectKey` from the Lead and re-derives each member's key
+- `src/docket/teams/pod.py`: `session_key`, `PodMember.session_key`, `PodSettings.KEYS`
+- `src/docket/teams/pod_provisioning.py`: `provision_member` (writes `sessionKey` and `projectKey` for each pod member)
+- `src/docket/teams/apply/plan.py`: pod apply reads `projectKey` from the Lead and re-derives each member's key
 - `src/docket/core/dispatch.py`: `step_session_key` (the per-hop durable history key)
-- `src/docket/core/fleet.py`: `meta_set` (generic metadata write; no caller sets either key)
-- `src/docket/core/models.py`: `AgentMeta.session_key`, `AgentMeta.project_key`
+- `src/docket/teams/fleet.py`: `meta_set` (generic metadata write; no caller sets either key)
+- `src/docket/teams/models.py`: `AgentMeta.session_key`, `AgentMeta.project_key`

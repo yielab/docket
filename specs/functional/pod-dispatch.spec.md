@@ -2240,57 +2240,57 @@ queue.)
   (`_persist_hop`, `_touch_claim`, `_finalize_task`, `_apply_result`, `_hop_record`,
   `_hop_from_record`, `_normalize_task`, `_sweep_stale_claims`), resume
   (`_replay_pipeline_position`, `_group_complete`)
-- `src/docket/core/orchestrator.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
+- `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
   `normalize_values`, `render_plan`, `run_group`, `ExecutionPlan`, `PlannedUnit`, `PlannedGroup`,
   `DEFAULT_MAX_PARALLEL_WORKERS`, `trace_write_lock`
-- `src/docket/core/pipeline.py`: `PipelineSpec`, `default_pipeline`, `load_pipeline`,
+- `src/docket/pipeline/domain/spec.py`: `PipelineSpec`, `default_pipeline`, `load_pipeline`,
   `MechanicalGate`, `VerdictGate`, `ApprovalGate`, `ExternalGate`, `resolve_variables`,
   `unresolved_step_variables`
-- `src/docket/core/task_options.py`: `validate_task_options`, `TaskOptions`, `TASK_STATUSES`
-- `src/docket/core/task_ref.py`: `resolve_task`, `TaskRef`, `TaskRefError`, `SHORT_ID_LEN`
-- `src/docket/core/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`,
+- `src/docket/tasks/domain/options.py`: `validate_task_options`, `TaskOptions`, `TASK_STATUSES`
+- `src/docket/tasks/domain/refs.py`: `resolve_task`, `TaskRef`, `TaskRefError`, `SHORT_ID_LEN`
+- `src/docket/teams/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`,
   `value_and_source`), `PodSettingsError`, `pod_of`, `members_of`, `member_id`, `session_key`,
   `resolve_member_cwd`, `bound_pipeline_path`, `effective_network`, `effective_read_only`
-- `src/docket/core/answers.py`: `answer_task`, `sweep_expired_questions`, `AnswerError`,
+- `src/docket/tasks/application/answers.py`: `answer_task`, `sweep_expired_questions`, `AnswerError`,
   `AnswerRejected`
-- `src/docket/core/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
-- `src/docket/core/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
+- `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
+- `src/docket/agent/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
   `from_output`), `parse_brief`, `render_brief`, `cap_diff`
-- `src/docket/core/context.py`: `compile_artifact`, `budget_for_role`, `hop_share`,
+- `src/docket/agent/context.py`: `compile_artifact`, `budget_for_role`, `hop_share`,
   `estimate_tokens`, `SUMMARY_TRUNCATION_MARKER`
-- `src/docket/core/repo_map.py`: `render_repo_map`, `task_root_block`
-- `src/docket/core/archetypes.py`: `load_registry`, `resolve_hop_instruction`, `registry_for_role`,
+- `src/docket/hops/workspace/repo_map.py`: `render_repo_map`, `task_root_block`
+- `src/docket/teams/roles.py`: `load_registry`, `resolve_hop_instruction`, `registry_for_role`,
   `BUILTIN_TOOL_KINDS`
-- `src/docket/core/blueprints.py`: `get_blueprint`
-- `src/docket/core/evidence.py`: `task_evidence`, `EVIDENCE_V1_1`, `HopEvidence`,
+- `src/docket/teams/blueprints.py`: `get_blueprint`
+- `src/docket/tasks/application/evidence.py`: `task_evidence`, `EVIDENCE_V1_1`, `HopEvidence`,
   `TaskEvidence`, `EvidenceNotFound`
-- `src/docket/core/prepare.py`: preparation resolution, cache and record (`resolve`,
+- `src/docket/hops/workspace/prepare.py`: preparation resolution, cache and record (`resolve`,
   `needs_prepare`, `prepare_worktree`, `linked_entries`)
-- `src/docket/core/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
-- `src/docket/core/memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,
+- `src/docket/hops/workspace/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
+- `src/docket/agent/memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,
   `DISPATCH_BLOCK_BEGIN`/`DISPATCH_BLOCK_END`
-- `src/docket/core/conversations.py`: `touch_for_hop_durable`, `prune_closed_durable`
-- `src/docket/core/runs.py`: `execute`, `create_run`, `cancel_run`, `current_run_id`,
+- `src/docket/agent/conversations.py`: `touch_for_hop_durable`, `prune_closed_durable`
+- `src/docket/tasks/application/runs.py`: `execute`, `create_run`, `cancel_run`, `current_run_id`,
   `add_hop_pid`, `remove_hop_pid`, `prune_terminal`
-- `src/docket/core/approval.py`: `approval_create`, `approval_grant`, `approval_deny`,
+- `src/docket/governance/approval.py`: `approval_create`, `approval_grant`, `approval_deny`,
   `approval_sweep_expired`, `create_pregrant`, `prune_resolved`
-- `src/docket/core/schedule.py`: `set_schedule`, `unset_schedule`, `find_schedule_problems`,
+- `src/docket/pipeline/application/schedule.py`: `set_schedule`, `unset_schedule`, `find_schedule_problems`,
   `describe_spec_error`, `load_schedules`, `load_last_run`, `is_schedule_due`
-- `src/docket/core/agent_loop.py`: `run_agent_turn` (`trace_task_id`),
+- `src/docket/agent/loop.py`: `run_agent_turn` (`trace_task_id`),
   `approval_unavailable_error`, `approval_parked_error`, the cooperative cancellation checks
-- `src/docket/core/runtime_driver.py`: `RuntimeDriver`, `TurnResult`
-- `src/docket/core/operator_contract.py`: `Question`, `TaskBrief`, `validate_answer`,
+- `src/docket/agent/ports.py`: `RuntimeDriver`, `TurnResult`
+- `src/docket/operator/contract.py`: `Question`, `TaskBrief`, `validate_answer`,
   `canonical_args_digest`, `a2a_state`
-- `src/docket/core/security.py`: `classify_command`
-- `src/docket/core/pod_provisioning.py`: `provision_task_worktree`, `prune_task_worktrees`,
+- `src/docket/governance/security.py`: `classify_command`
+- `src/docket/teams/pod_provisioning.py`: `provision_task_worktree`, `prune_task_worktrees`,
   `teardown_member`
-- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver`, `default_driver`,
+- `src/docket/agent/driver.py`: `DocketDriver`, `default_driver`,
   `resolve_command_jail`, `PIPELINE_WORKTREE_ENV` and the other internal coordinates
 - `src/docket/edges/adapters/system.py`: `run_command`, `process_alive`,
   `kill_process_group`, `task_environment`, `cache_environment`, `trust_worktree`,
   `git_worktree_add`, `git_commit_all`, `git_snapshot_commit`, `git_changed_files`,
   `git_current_branch`, `git_merge_base`, `git_diff_stat`, `git_diff_names`, `git_ls_files`
-- `src/docket/edges/store.py`: `read_modify_write`
+- `src/docket/platform/store.py`: `read_modify_write`
 - `src/docket/kernel/home.py`: the `Home` members `claim_stale_timeout`, `dispatch_retries_default`,
   `dispatch_retries_per_role`, `dispatch_retry_backoff_s`, `dispatch_retry_max_wait_s`,
   `dispatch_turn_timeout_s`, `dispatch_verify_timeout_s`, `dispatch_sweep_workers`,
@@ -2299,11 +2299,11 @@ queue.)
 - `src/docket/serve.py`: the periodic sweep (`_run_sweeps`, `_sweep_one_pod`, `_check_schedules`,
   `_abandon_sweeps`), `SWEEP_ABANDON_WAIT_S`, `POST /dispatch/<project>`, `POST /approvals/<token>`,
   `GET /tasks/<pod>/<id>/evidence`
-- `src/docket/cli/_run.py`: `docket run`
-- `src/docket/cli/_task.py`: `docket task add|retry|cancel|approve|deny|prune|show`
-- `src/docket/cli/_pod.py`: `docket pod set|unset` (pipeline and schedule paths, budget re-queue)
-- `src/docket/cli/_pod_config.py`: `docket pod plan|validate`
-- `src/docket/cli/_progress.py`: the `docket run` progress view's in-place approval prompt
-- `src/docket/cli/_setup_check.py`: the ledger and schedule checks of `docket setup`
-- `src/docket/cli/_mcp.py`: the MCP `dispatch`, `delegate`, `queue` and `approvals_*` tools
+- `src/docket/interfaces/cli/commands/run.py`: `docket run`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task add|retry|cancel|approve|deny|prune|show`
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset` (pipeline and schedule paths, budget re-queue)
+- `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod plan|validate`
+- `src/docket/interfaces/cli/render/progress.py`: the `docket run` progress view's in-place approval prompt
+- `src/docket/interfaces/cli/commands/setup_check.py`: the ledger and schedule checks of `docket setup`
+- `src/docket/interfaces/cli/commands/mcp.py`: the MCP `dispatch`, `delegate`, `queue` and `approvals_*` tools
 - `scripts/gen_evidence_schema.py`: the evidence schema generator (`--check` in CI)

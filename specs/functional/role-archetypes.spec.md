@@ -575,45 +575,45 @@ docket pod validate ./producer.yaml
 
 ## Implementation
 
-- `src/docket/core/archetypes.py`: `RoleArchetype`, `GateContract`, `ArchetypeError`,
+- `src/docket/teams/roles.py`: `RoleArchetype`, `GateContract`, `ArchetypeError`,
   `from_wire`, `to_wire`, `SCOPES`, `MODEL_CLASSES`, `GATE_KINDS`, `render`,
   `resolve_hop_instruction`, `BUILTIN_ARCHETYPES`, `BUILTIN_ROLE_ORDER`, `STARTER_ARCHETYPES`,
   `STARTER_ROLE_ORDER`, `ArchetypeRegistry` (`source_of`), `load_registry`,
   `find_overlay_problems`, `BUILTIN_TOOL_KINDS`, `registry_for_role`, `validate_archetype_dict`,
   `parse_yaml_file`, `normalize_role` (short form), `to_short_role`, `load_role_file`,
   `add_user_archetype`
-- `src/docket/core/tools.py`: `ToolRegistry.without`, `Tool.kind`,
+- `src/docket/agent/tools/registry.py`: `ToolRegistry.without`, `Tool.kind`,
   `builtin_registry` (the `bash` description sentence)
-- `src/docket/core/pod.py`: `normalize_role`, `member_id`, `pod_prefix`, `pod_of`, `members_of`,
+- `src/docket/teams/pod.py`: `normalize_role`, `member_id`, `pod_prefix`, `pod_of`, `members_of`,
   `parse_member_id`, `resolve_member`, `DEFAULT_POD_ROLES`, `FULL_POD_ROLES`, `PodSettings`
   (`deniedTools`, `coerce`, `load_for`)
-- `src/docket/core/pod_provisioning.py`: `POD_TEMPLATE_VERSION`, the member render context
+- `src/docket/teams/pod_provisioning.py`: `POD_TEMPLATE_VERSION`, the member render context
   (`_render_context`), SOUL.md/AGENTS.md rendering
-- `src/docket/core/orchestrator.py`: `resolve_gate`, `parse_verdict`, `resolve_plan`
-- `src/docket/core/pipeline.py`: `default_pipeline`
+- `src/docket/pipeline/domain/plan.py`: `resolve_gate`, `parse_verdict`, `resolve_plan`
+- `src/docket/pipeline/domain/spec.py`: `default_pipeline`
 - `src/docket/core/dispatch.py`: the hop-message builder (`_hop_message`,
   `_resolve_hop_instructions`); plan resolution for dispatch (`_resolve_pipeline_steps`)
-- `src/docket/core/context.py`: `budget_for_role`, `DEFAULT_TOKEN_BUDGET`
-- `src/docket/core/session.py`: `compact_session`
-- `src/docket/core/agent_loop.py`: the per-turn `registry_for_role` call; the compaction call
+- `src/docket/agent/context.py`: `budget_for_role`, `DEFAULT_TOKEN_BUDGET`
+- `src/docket/agent/session.py`: `compact_session`
+- `src/docket/agent/loop.py`: the per-turn `registry_for_role` call; the compaction call
   passing the turn's project
-- `src/docket/core/models_policy.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
+- `src/docket/models/selection.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
   `rank_anchors`
-- `src/docket/core/identity.py`: the live runtime startup contract
-- `src/docket/core/memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` manual-path paragraph),
+- `src/docket/agent/identity.py`: the live runtime startup contract
+- `src/docket/agent/memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` manual-path paragraph),
   `REQUIRED_STARTUP_FILE`
-- `src/docket/core/config_docs.py`: `load_document` (role kind detection and validation)
-- `src/docket/core/pod_apply.py`: directory and recipe apply
-- `src/docket/cli/_pod_config.py`: `docket pod roles`, `docket pod update`, `docket pod validate`,
+- `src/docket/teams/config_docs.py`: `load_document` (role kind detection and validation)
+- `src/docket/teams/apply/plan.py`: directory and recipe apply
+- `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod roles`, `docket pod update`, `docket pod validate`,
   `docket pod recipes`, `docket pod plan`
-- `src/docket/cli/_pod.py`: `docket pod add`, the `docket pod set pipeline` role check against the pod roster
-- `src/docket/cli/_run.py`: `docket run` plan resolution
-- `src/docket/cli/_setup_check.py`: overlay problem and stale-template reports for `docket setup`
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod add`, the `docket pod set pipeline` role check against the pod roster
+- `src/docket/interfaces/cli/commands/run.py`: `docket run` plan resolution
+- `src/docket/interfaces/cli/commands/setup_check.py`: overlay problem and stale-template reports for `docket setup`
 - `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`
 - `src/docket/kernel/templates.py`: `RECIPES_DIR`
 - `src/docket/templates/recipes/`: the shipped recipe library
 - Tests: `tests/integration/test_pod_role_workspace_parity.py` (byte identity),
-  `tests/integration/test_archetypes.py` and `tests/unit/core/test_pipeline__spec.py` (gate
-  agreement), `tests/unit/core/test_archetypes.py` (runtime-contract and prompt-layer checks,
+  `tests/integration/test_archetypes.py` and `tests/unit/pipeline/domain/test_spec__spec.py` (gate
+  agreement), `tests/unit/teams/test_roles.py` (runtime-contract and prompt-layer checks,
   overlay problems, pod `deniedTools`), `tests/integration/test_role_tools_and_identity.py`
   (`BUILTIN_TOOL_KINDS` pinned against `builtin_registry()`), `tests/integration/test_recipes.py`

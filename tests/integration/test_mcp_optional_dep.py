@@ -21,10 +21,10 @@ from typing import Any
 import pytest
 from packaging.version import Version
 
-from docket.cli import _mcp
+from docket.interfaces.cli.commands import mcp as _mcp
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 
 class TestMissingSdkRealAbsence:
@@ -113,7 +113,7 @@ class TestRealSdkIntegration:
         import json as _json
 
         # Isolate from the real ~/.docket — this exercises a real tool call
-        # (status → core.fleet → fleet.json), so it must not touch the
+        # (status → teams.fleet → fleet.json), so it must not touch the
         # developer's actual docket home.
         home = tmp_path / ".docket"
         home.mkdir()

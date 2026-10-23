@@ -1,0 +1,723 @@
+"""OpenAI-compatible chat-completions adapter.
+
+The one shipped implementation of ``agent/llm.py``'s ``ChatBackend`` port, and
+the **only** module in docket that knows what a chat-completions request or
+response looks like on the wire. Everything above it — the turn loop, the tool
+dispatcher, the gates — speaks ``ChatMessage``/``ToolCall``/``ChatResponse``.
+
+**Zero new dependencies, on purpose.** The protocol is an HTTP POST with a JSON
+body; stdlib ``urllib`` covers it. Pulling in a vendor SDK to do that would
+re-introduce exactly the coupling docket deliberately avoids, and the standing
+ban on hand-rolled *per-vendor* clients is not in tension with this: there is
+one client here for one open protocol, not one per provider. llama.cpp, vLLM,
+LM Studio, OpenAI, Groq, Together and OpenRouter all speak it.
+
+**What this module refuses to do:** decide anything. It does not retry (that
+policy lives in ``core/dispatch.py``, keyed on ``FailureKind``), does not
+inspect tool calls (that is the gate's job), and does not raise for endpoint
+failures — every ordinary failure comes back as ``ChatResponse(ok=False, ...)``
+so the caller stays in control of what happens next.
+"""
+
+from __future__ import annotations
+
+import email.utils
+import json
+import os
+import urllib.error
+import urllib.request
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
+from datetime import UTC
+from typing import TYPE_CHECKING, Any
+
+from docket.agent import context as _context
+from docket.agent.llm import (
+    ChatMessage,
+    ChatResponse,
+    Endpoint,
+    ModelLimits,
+    Role,
+    TokenUsage,
+    ToolCall,
+    ToolSpec,
+)
+from docket.agent.ports import FailureKind
+from docket.kernel import clock as _clock
+from docket.platform.redirects import open_same_origin
+
+if TYPE_CHECKING:
+    from docket.models.catalog import ProviderSpec
+
+# Endpoints that return one of these are worth trying again: an overloaded or
+# briefly-unreachable server is not an answer. Everything else in the 4xx range
+# is a real rejection (bad request, bad credential, unknown model) and retrying
+# it just spends the same money twice for the same error.
+_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
+_VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant", "tool"})
+_PROTOCOL_OVERHEAD_TOKENS = 16
+
+
+# ── wire encoding ─────────────────────────────────────────────────────────────
+
+
+def _encode_message(msg: ChatMessage) -> dict[str, Any]:
+    """Translate one docket ``ChatMessage`` into a wire message object."""
+    out: dict[str, Any] = {"role": msg.role}
+    if msg.role == "tool":
+        # `content` must be present even when empty: a tool message with no
+        # content field is rejected outright by strict endpoints, and a tool
+        # that legitimately produced no output is a normal occurrence.
+        out["content"] = msg.content
+        out["tool_call_id"] = msg.tool_call_id
+        if msg.name:
+            out["name"] = msg.name
+        return out
+
+    if msg.tool_calls:
+        # An assistant message that requests tool calls may carry no prose at
+        # all. `content: null` (not "") is the shape every endpoint accepts
+        # when replaying such a message back as history.
+        out["content"] = msg.content or None
+        out["tool_calls"] = [
+            {
+                "id": call.id,
+                "type": "function",
+                "function": {"name": call.name, "arguments": call.arguments},
+            }
+            for call in msg.tool_calls
+        ]
+        return out
+
+    out["content"] = msg.content
+    return out
+
+
+def _encode_tool(spec: ToolSpec) -> dict[str, Any]:
+    """Translate one ``ToolSpec`` into a wire tool definition."""
+    return {
+        "type": "function",
+        "function": {
+            "name": spec.name,
+            "description": spec.description,
+            # An empty schema still has to be a valid object schema, or models
+            # that validate it before calling will silently never call the tool.
+            "parameters": spec.parameters or {"type": "object", "properties": {}},
+        },
+    }
+
+
+def _is_anthropic(model_id: str) -> bool:
+    return model_id.rsplit("/", 1)[-1].lower().startswith("claude")
+
+
+def _mark_cacheable(message: dict[str, Any]) -> None:
+    """Turn a message's non-empty text content into one ephemeral cache-marked part."""
+    content = message.get("content")
+    if isinstance(content, str) and content:
+        part = {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        message["content"] = [part]
+
+
+def build_payload(
+    endpoint: Endpoint,
+    messages: Sequence[ChatMessage],
+    tools: Sequence[ToolSpec] = (),
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> dict[str, Any]:
+    """Build the request body. Split out from the POST so tests can assert on
+    the exact wire shape without a socket."""
+    encoded = [_encode_message(m) for m in messages]
+    if _is_anthropic(endpoint.model_id) and encoded:
+        if encoded[0]["role"] == "system":
+            _mark_cacheable(encoded[0])
+        _mark_cacheable(encoded[-1])
+    payload: dict[str, Any] = {
+        "model": endpoint.model_id,
+        "messages": encoded,
+        "stream": False,
+    }
+    if tools:
+        payload["tools"] = [_encode_tool(t) for t in tools]
+        payload["tool_choice"] = "auto"
+    if max_tokens is not None:
+        payload["max_tokens"] = int(max_tokens)
+    if temperature is not None:
+        payload["temperature"] = float(temperature)
+    return payload
+
+
+_REQUEST_PART_BY_ROLE = {
+    "system": "system",
+    "user": "user",
+    "assistant": "assistant",
+    "tool": "toolResults",
+}
+
+
+def request_part_bytes(payload: dict[str, Any]) -> dict[str, int]:
+    """Bytes of each part of an encoded request body; trace-store requirement 28."""
+    sizes = dict.fromkeys(("system", "tools", "toolResults", "assistant", "user"), 0)
+    for message in payload.get("messages", []):
+        sizes[_REQUEST_PART_BY_ROLE[message["role"]]] += _utf8_len(message)
+    for tool in payload.get("tools", []):
+        sizes["tools"] += _utf8_len(tool)
+    return sizes
+
+
+def _utf8_len(part: Any) -> int:
+    return len(json.dumps(part, ensure_ascii=False).encode("utf-8", errors="replace"))
+
+
+# ── wire decoding ─────────────────────────────────────────────────────────────
+
+
+def _decode_tool_calls(raw: Any) -> list[ToolCall]:
+    """Pull tool calls out of a wire assistant message.
+
+    Tolerant by design about *shape* (missing ids, absent arguments) and strict
+    about nothing — because rejecting a malformed call here would hide it from
+    the gate. A call with an empty name survives this function and is refused
+    downstream, where the refusal gets an audit entry.
+    """
+    if not isinstance(raw, list):
+        return []
+    calls: list[ToolCall] = []
+    for idx, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            continue
+        fn = entry.get("function")
+        fn = fn if isinstance(fn, dict) else {}
+        # Some servers omit `id` for single-call replies; the loop needs a
+        # stable handle to address the result back, so synthesise a positional
+        # one rather than dropping the call.
+        call_id = str(entry.get("id") or f"call_{idx}")
+        arguments = fn.get("arguments")
+        if isinstance(arguments, dict):
+            # A few OpenAI-compatible servers (llama.cpp among them, depending
+            # on the grammar in use) emit already-decoded arguments instead of
+            # the spec's JSON *string*. Re-encode so `ToolCall.arguments` keeps
+            # its documented contract of being the raw JSON text.
+            arguments = json.dumps(arguments)
+        calls.append(
+            ToolCall(
+                id=call_id,
+                name=str(fn.get("name") or ""),
+                arguments=str(arguments if arguments is not None else "{}"),
+            )
+        )
+    return calls
+
+
+def _decode_usage(raw: Any) -> TokenUsage:
+    """Read real token counts off the response, defaulting to zeros."""
+    if not isinstance(raw, dict):
+        return TokenUsage()
+
+    def _as_int(value: Any) -> int:
+        return int(value) if isinstance(value, int | float) else 0
+
+    details = raw.get("prompt_tokens_details")
+    cached = _as_int(details.get("cached_tokens")) if isinstance(details, dict) else 0
+    written = _as_int(details.get("cache_write_tokens")) if isinstance(details, dict) else 0
+    return TokenUsage(
+        input_tokens=_as_int(raw.get("prompt_tokens")),
+        output_tokens=_as_int(raw.get("completion_tokens")),
+        cached_tokens=cached,
+        cache_write_tokens=written or _as_int(raw.get("cache_creation_input_tokens")),
+    )
+
+
+def decode_response(data: dict[str, Any]) -> ChatResponse:
+    """Translate a decoded response body into a ``ChatResponse``.
+
+    Separate from the transport so the tricky part — the many shapes real
+    servers emit — is unit-testable without a network.
+    """
+    # An endpoint may answer 200 with an error object instead of choices.
+    err = data.get("error")
+    if isinstance(err, dict) and err:
+        reason = str(err.get("message") or err)
+        return ChatResponse(ok=False, raw=data, error=reason, failure_kind="invalid_output")
+
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ChatResponse(
+            ok=False,
+            raw=data,
+            error="response contained no choices",
+            failure_kind="invalid_output",
+        )
+    first = choices[0]
+    if not isinstance(first, dict):
+        return ChatResponse(
+            ok=False, raw=data, error="malformed choice entry", failure_kind="invalid_output"
+        )
+
+    finish_reason = str(first.get("finish_reason") or "")
+    choice_error = first.get("error")
+    if finish_reason == "error" or (isinstance(choice_error, dict) and choice_error):
+        detail = choice_error if isinstance(choice_error, dict) else {}
+        reason = str(detail.get("message") or detail or "endpoint returned finish_reason=error")
+        code = detail.get("code")
+        failure_kind: FailureKind = "invalid_output"
+        if isinstance(code, int) and not isinstance(code, bool):
+            failure_kind = _classify_http_status(code)
+        return ChatResponse(ok=False, raw=data, error=reason, failure_kind=failure_kind)
+
+    wire_msg = first.get("message")
+    wire_msg = wire_msg if isinstance(wire_msg, dict) else {}
+    content = wire_msg.get("content")
+    role_raw = str(wire_msg.get("role") or "assistant")
+    role: Role = role_raw if role_raw in _VALID_ROLES else "assistant"  # type: ignore[assignment]
+
+    message = ChatMessage(
+        role=role,
+        content=str(content) if isinstance(content, str) else "",
+        tool_calls=_decode_tool_calls(wire_msg.get("tool_calls")),
+    )
+    return ChatResponse(
+        ok=True,
+        message=message,
+        finish_reason=finish_reason,
+        usage=_decode_usage(data.get("usage")),
+        raw=data,
+    )
+
+
+# ── transport ─────────────────────────────────────────────────────────────────
+
+
+def _classify_http_status(status: int) -> FailureKind:
+    """Map an HTTP status onto docket's retry vocabulary.
+
+    ``nonzero_exit``/``daemon_error`` read oddly for HTTP; they are reused
+    because ``core/dispatch.py``'s ``_RETRYABLE_FAILURE_KINDS`` is keyed on
+    the existing ``FailureKind`` literals, and inventing a synonym would mean
+    either a parallel retry table or a rename across dozens of test modules
+    for no behavioural gain. The daemon these names originally described is
+    gone; renaming the vocabulary itself remains a separate, not-yet-scheduled
+    cleanup.
+    """
+    return "daemon_error" if status in _RETRYABLE_STATUS else "nonzero_exit"
+
+
+def _retry_after_seconds(headers: Any) -> float | None:
+    """``Retry-After`` as seconds: integer form, or an HTTP-date as a delta from now clamped
+    to zero. Absent or unparseable is ``None`` ("the endpoint named no wait", not zero)."""
+    value = headers.get("Retry-After") if headers is not None else None
+    if not value:
+        return None
+    value = value.strip()
+    try:
+        return max(0.0, float(int(value)))
+    except ValueError:
+        pass
+    try:
+        when = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - _clock.now()).total_seconds())
+
+
+class OpenAIChatClient:
+    """``ChatBackend`` over an OpenAI-compatible ``/v1/chat/completions``.
+
+    Stateless apart from its ``Endpoint`` — safe to construct per call or hold
+    for the life of a loop.
+    """
+
+    def __init__(self, endpoint: Endpoint) -> None:
+        self.endpoint = endpoint
+
+    @property
+    def url(self) -> str:
+        return f"{self.endpoint.base_url.rstrip('/')}/chat/completions"
+
+    @property
+    def context_window_tokens(self) -> int | None:
+        return self.endpoint.context_window_tokens
+
+    @property
+    def max_output_tokens(self) -> int | None:
+        return self.endpoint.max_output_tokens
+
+    def estimate_input_tokens(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> int:
+        """Estimate the exact prospective JSON payload plus HTTP framing.
+
+        The payload is built by the same function transport uses. The fixed
+        framing allowance covers request-line/header/tokenizer separators; the
+        result remains the documented bytes-per-token estimate, never measured
+        model usage.
+        """
+        payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return max(1, _context.estimate_tokens(encoded)) + _PROTOCOL_OVERHEAD_TOKENS
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if self.endpoint.auth_type == "bearer" and self.endpoint.api_key:
+            headers["Authorization"] = f"Bearer {self.endpoint.api_key}"
+        elif self.endpoint.auth_type == "header" and self.endpoint.api_key:
+            headers[self.endpoint.auth_header] = self.endpoint.api_key
+        headers.update(self.endpoint.headers)
+        return headers
+
+    def complete(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout: int = 120,
+    ) -> ChatResponse:
+        """Send one exchange. Never raises for an endpoint or transport failure."""
+        start = _clock.monotonic()
+
+        def _elapsed_ms() -> int:
+            return int((_clock.monotonic() - start) * 1000)
+
+        if not self.endpoint.base_url:
+            return ChatResponse(
+                ok=False,
+                error="no endpoint configured for this model",
+                failure_kind="daemon_error",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+        payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8", errors="replace")
+        request = urllib.request.Request(
+            self.url, data=body, headers=self._headers(), method="POST"
+        )
+        try:
+            with open_same_origin(request, timeout=timeout) as resp:
+                raw_body = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as ex:
+            # The body of an error response is where the useful message lives
+            # (an unknown model, a bad key, a context-length overflow); reading
+            # it can itself fail on a truncated response, hence the guard.
+            try:
+                detail = ex.read().decode("utf-8", errors="replace").strip()
+            except OSError:
+                detail = ""
+            failure_kind = _classify_http_status(ex.code)
+            retry_after = (
+                _retry_after_seconds(ex.headers) if failure_kind == "daemon_error" else None
+            )
+            return ChatResponse(
+                ok=False,
+                error=f"HTTP {ex.code} from {self.url}: {detail[:500] or ex.reason}",
+                failure_kind=failure_kind,
+                retry_after_s=retry_after,
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+        except TimeoutError:
+            return ChatResponse(
+                ok=False,
+                error=f"timed out after {timeout}s calling {self.url}",
+                failure_kind="timeout",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+        except urllib.error.URLError as ex:
+            # urlopen wraps a socket timeout in URLError on some platforms, so
+            # the check above is not sufficient on its own.
+            if isinstance(ex.reason, TimeoutError):
+                return ChatResponse(
+                    ok=False,
+                    error=f"timed out after {timeout}s calling {self.url}",
+                    failure_kind="timeout",
+                    model=self.endpoint.model_id,
+                    provider=self.endpoint.provider,
+                    latency_ms=_elapsed_ms(),
+                )
+            return ChatResponse(
+                ok=False,
+                error=f"cannot reach {self.url}: {ex.reason}",
+                failure_kind="daemon_error",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+        except OSError as ex:
+            return ChatResponse(
+                ok=False,
+                error=f"cannot reach {self.url}: {ex}",
+                failure_kind="daemon_error",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+
+        try:
+            data = json.loads(raw_body) if raw_body.strip() else {}
+        except json.JSONDecodeError as ex:
+            return ChatResponse(
+                ok=False,
+                error=f"endpoint returned non-JSON ({ex}): {raw_body[:200]}",
+                failure_kind="invalid_output",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+        if not isinstance(data, dict):
+            return ChatResponse(
+                ok=False,
+                error=f"endpoint returned a {type(data).__name__}, expected an object",
+                failure_kind="invalid_output",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+        return replace(
+            decode_response(data),
+            model=self.endpoint.model_id,
+            provider=self.endpoint.provider,
+            latency_ms=_elapsed_ms(),
+            request_bytes=request_part_bytes(payload),
+        )
+
+
+# ── registration probe ────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """A raw, unclassified probe of a provider's ``/models`` route. ``status`` is ``None``
+    only for a transport failure (DNS, refused, timeout) -- classification into a registration
+    outcome is ``models/catalog.py::verify_endpoint``'s job, kept pure and out of this module."""
+
+    status: int | None
+    transport_error: str = ""
+    model_ids: list[str] = field(default_factory=list)
+    limits: dict[str, ModelLimits] = field(default_factory=dict)
+
+
+def _extract_model_ids(raw_body: str) -> list[str]:
+    """Best-effort ``{"data": [{"id": ...}, ...]}`` extraction. Any other shape yields no ids
+    rather than raising -- this is a suggestion surface, never a hard requirement."""
+    try:
+        data = json.loads(raw_body) if raw_body.strip() else {}
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    rows = data.get("data")
+    if not isinstance(rows, list):
+        return []
+    return [row["id"] for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)]
+
+
+def _positive_int(value: Any) -> int | None:
+    """*value* when it is a positive integer, else ``None`` (unknown): absent, null, zero, a
+    string, a float and a bool are all unknown."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
+def _first_limit(*candidates: Any) -> int | None:
+    for candidate in candidates:
+        found = _positive_int(candidate)
+        if found is not None:
+            return found
+    return None
+
+
+def _row_limits(row: dict[str, Any]) -> ModelLimits:
+    """One `/models` row's window and output cap, the wire shape told by field presence;
+    `meta.n_ctx` is the loaded context, never `n_ctx_train`."""
+    meta = row.get("meta")
+    top = row.get("top_provider")
+    return ModelLimits(
+        context_window=_first_limit(
+            row.get("max_input_tokens"),
+            row.get("context_window"),
+            meta.get("n_ctx") if isinstance(meta, dict) else None,
+            row.get("context_length"),
+        ),
+        max_output=_first_limit(
+            row.get("max_tokens"),
+            top.get("max_completion_tokens") if isinstance(top, dict) else None,
+        ),
+    )
+
+
+def _extract_model_limits(raw_body: str) -> dict[str, ModelLimits]:
+    """Each advertised id's published limits, ``{}`` for any body that is not a `data` list."""
+    try:
+        data = json.loads(raw_body) if raw_body.strip() else {}
+    except json.JSONDecodeError:
+        return {}
+    rows = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return {}
+    return {
+        row["id"]: _row_limits(row)
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    }
+
+
+def probe_models(endpoint: Endpoint, timeout: float = 5.0) -> ProbeResult:
+    """GET ``<base-url>/models`` with *endpoint*'s own credential headers. Never raises: an
+    ``HTTPError`` yields its status and any ids the body still advertises; a transport
+    failure (``URLError``, timeout, other ``OSError``) yields ``status=None`` with the error."""
+    url = f"{endpoint.base_url.rstrip('/')}/models"
+    request = urllib.request.Request(url, headers=OpenAIChatClient(endpoint)._headers())
+    try:
+        with open_same_origin(request, timeout=timeout) as resp:
+            status = resp.status
+            raw_body = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as ex:
+        try:
+            raw_body = ex.read().decode("utf-8", errors="replace")
+        except OSError:
+            raw_body = ""
+        return ProbeResult(status=ex.code, model_ids=_extract_model_ids(raw_body))
+    except TimeoutError as ex:
+        return ProbeResult(status=None, transport_error=str(ex) or "timed out")
+    except urllib.error.URLError as ex:
+        return ProbeResult(status=None, transport_error=str(ex.reason))
+    except OSError as ex:
+        return ProbeResult(status=None, transport_error=str(ex))
+
+    if status != 200:
+        return ProbeResult(status=status)
+    return ProbeResult(
+        status=status,
+        model_ids=_extract_model_ids(raw_body),
+        limits=_extract_model_limits(raw_body),
+    )
+
+
+# ── endpoint resolution ───────────────────────────────────────────────────────
+
+
+def resolve_endpoint(model: str) -> Endpoint | None:
+    """Resolve a ``provider/model-id`` string to a callable endpoint.
+
+    Precedence, highest first:
+
+    1. ``DOCKET_LLM_BASE_URL`` / ``DOCKET_LLM_API_KEY`` — a process-wide
+       override that points every model at one endpoint. Exists for local
+       development and for tests that want a stub server without touching
+       stored config.
+    2. The provider catalog entry for ``<provider>`` (``models/catalog.py``'s
+       ``load_catalog``) — built-in overridden by the operator's own (global), nearest-wins.
+    3. ``DOCKET_LLM_BASE_URL`` alone, only for a provider absent from the catalog (every hosted
+       gateway docket knows ships as a built-in catalog document; this step is the one escape
+       hatch left for a provider that is neither).
+
+    For a catalog entry, the API key comes from ``models/catalog.py``'s ``resolve_credential``
+    (``DOCKET_LLM_API_KEY`` -> environment -> Docket's central key store, per name in
+    ``auth.credentials``). For a provider absent from the catalog, the key falls back through
+    ``DOCKET_LLM_API_KEY``, then the derived ``<PREFIX>_API_KEY`` environment variable, then the
+    same name in the central key store. Returns ``None`` when no base URL can be found, so
+    callers report an actionable "no endpoint configured" rather than posting into the void.
+    """
+    provider, _, model_id = model.partition("/")
+    if not model_id:
+        provider, model_id = "", model
+
+    env_base = os.environ.get("DOCKET_LLM_BASE_URL", "").strip()
+    env_key = os.environ.get("DOCKET_LLM_API_KEY", "").strip()
+
+    spec = None
+    if provider and not env_base:
+        from docket.models import catalog as _prov
+
+        spec = _prov.load_catalog().get(provider)
+
+    if spec is not None:
+        from docket.models import catalog as _prov
+
+        api_key, _source = _prov.resolve_credential(spec)
+        return endpoint_from_spec(spec, provider, model_id, api_key)
+
+    # Absent from the catalog: only DOCKET_LLM_BASE_URL can resolve it, deriving the
+    # credential's env name from the provider prefix (never a per-provider literal here).
+    base_url = env_base
+    if not base_url:
+        return None
+
+    api_key = env_key
+    if not api_key and provider:
+        credential_name = f"{provider.upper().replace('-', '_')}_API_KEY"
+        api_key = os.environ.get(credential_name, "").strip()
+        if not api_key:
+            from docket.governance import secrets as _secrets
+
+            api_key = _secrets.secret_value(credential_name) or ""
+
+    return Endpoint(
+        base_url=base_url,
+        model_id=model_id,
+        api_key=api_key,
+        provider=provider,
+        context_window_tokens=None,
+        max_output_tokens=None,
+    )
+
+
+def endpoint_from_spec(spec: ProviderSpec, provider: str, model_id: str, api_key: str) -> Endpoint:
+    """The endpoint catalog entry *spec* (named *provider*) gives *model_id*, with *api_key*
+    already resolved; each limit is declared, else observed, else unknown."""
+    from docket.models import catalog as _prov
+
+    limits = _prov.resolve_limits(spec, model_id)
+    return Endpoint(
+        base_url=spec.base_url,
+        model_id=model_id,
+        api_key=api_key,
+        provider=provider,
+        context_window_tokens=limits.context_window,
+        max_output_tokens=limits.max_output,
+        auth_type=spec.auth.type,
+        auth_header=spec.auth.header,
+        headers=tuple(spec.headers.items()),
+    )
+
+
+_DIALECTS: dict[str, type[OpenAIChatClient]] = {"openai-chat": OpenAIChatClient}
+
+
+def client_for_endpoint(
+    endpoint: Endpoint, dialect: str = "openai-chat"
+) -> OpenAIChatClient | None:
+    """A client for an already-resolved *endpoint*, or ``None`` when *dialect* has no adapter."""
+    client_cls = _DIALECTS.get(dialect)
+    return client_cls(endpoint) if client_cls else None
+
+
+def client_for(model: str) -> OpenAIChatClient | None:
+    """Build a client for ``provider/model-id``, or ``None`` if unresolvable or the
+    resolved provider's ``dialect`` has no adapter in ``_DIALECTS``."""
+    endpoint = resolve_endpoint(model)
+    if endpoint is None:
+        return None
+    dialect = "openai-chat"
+    if endpoint.provider:
+        from docket.models import catalog as _prov
+
+        spec = _prov.load_catalog().get(endpoint.provider)
+        if spec is not None:
+            dialect = spec.dialect
+    return client_for_endpoint(endpoint, dialect)

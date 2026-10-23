@@ -1,0 +1,308 @@
+"""The persisted run registry — one record per dispatch invocation.
+
+Unit-level coverage of ``tasks/application/runs.py``'s CRUD primitives and its
+``execute()`` safe-wrapper, hermetic against a tmp ``RUNS_FILE``.
+Integration coverage (every real dispatch call site actually creates and
+finishes a record) lives in ``test_dispatch_run_records.py``. Covers:
+CRUD round-trip, project-filtered/newest-first listing, ``execute()``
+recording success/failure without raising, and concurrent ``create_run``
+calls never clobbering each other (locked read-modify-write).
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import datetime as _dt
+import json
+import threading
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
+from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
+from docket.tasks.application import runs as _runs
+
+SUBJECT = "docket.tasks.application.runs"
+
+
+@pytest.fixture()
+def runs_file(tmp_path: Path) -> Iterator[Path]:
+    f = tmp_path / "docket-runs.json"
+    with use_home(dataclasses.replace(current_home(), runs_file_override=f)):
+        yield f
+
+
+class _FakeTaskResult:
+    """Minimal stand-in for dispatch.TaskResult (duck-typed by tasks/application/runs.py)."""
+
+    def __init__(self, task_id: str, status: str = "done") -> None:
+        self.task_id = task_id
+        self.status = status
+
+
+class TestCreateRun:
+    def test_create_run_defaults_to_queued(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        assert rec["state"] == "queued"
+        assert rec["source"] == "cli"
+        assert rec["project"] == "demo"
+        assert rec["id"].startswith("run-")
+        assert rec["taskIds"] == []
+        assert rec["error"] == ""
+        assert rec["startedAt"] is None
+        assert rec["finishedAt"] is None
+        assert rec["cancellation"] == {
+            "requestedAt": None,
+            "observedAt": None,
+            "stoppedAt": None,
+            "reason": "",
+            "source": "",
+        }
+
+    def test_create_run_persists(self, runs_file: Path) -> None:
+        rec = _runs.create_run("webhook", "demo")
+        assert _runs.get_run(rec["id"]) == rec
+
+    def test_unknown_source_rejected(self, runs_file: Path) -> None:
+        with pytest.raises(_runs.RunError):
+            _runs.create_run("carrier-pigeon", "demo")  # type: ignore[arg-type]
+
+    def test_missing_project_rejected(self, runs_file: Path) -> None:
+        with pytest.raises(_runs.RunError):
+            _runs.create_run("cli", "")
+
+    def test_ids_are_unique(self, runs_file: Path) -> None:
+        ids = {_runs.create_run("cli", "demo")["id"] for _ in range(20)}
+        assert len(ids) == 20
+
+
+class TestLifecycle:
+    def test_mark_running_stamps_started_at(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.mark_running(rec["id"])
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == "running"
+        assert updated["startedAt"] is not None
+
+    def test_mark_running_unknown_id_is_noop(self, runs_file: Path) -> None:
+        _runs.mark_running("run-does-not-exist")  # must not raise
+
+    def test_finish_run_succeeded(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.finish_run(rec["id"], state="succeeded", task_ids=["task-1", "task-2"])
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == "succeeded"
+        assert updated["taskIds"] == ["task-1", "task-2"]
+        assert updated["error"] == ""
+        assert updated["finishedAt"] is not None
+
+    def test_finish_run_failed_carries_error(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.finish_run(rec["id"], state="failed", error="boom")
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == "failed"
+        assert updated["error"] == "boom"
+
+    def test_finish_run_invalid_state_rejected(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        with pytest.raises(_runs.RunError):
+            _runs.finish_run(rec["id"], state="queued")  # type: ignore[arg-type]
+
+    def test_finish_run_unknown_id_is_noop(self, runs_file: Path) -> None:
+        _runs.finish_run("run-does-not-exist", state="succeeded")  # must not raise
+
+
+class TestGetAndList:
+    def test_get_run_unknown_returns_none(self, runs_file: Path) -> None:
+        assert _runs.get_run("run-nope") is None
+
+    def test_list_runs_empty(self, runs_file: Path) -> None:
+        assert _runs.list_runs() == []
+
+    def test_list_runs_filters_by_project(self, runs_file: Path) -> None:
+        _runs.create_run("cli", "alpha")
+        _runs.create_run("cli", "beta")
+        _runs.create_run("webhook", "alpha")
+        alpha_runs = _runs.list_runs("alpha")
+        assert len(alpha_runs) == 2
+        assert all(r["project"] == "alpha" for r in alpha_runs)
+
+    def test_list_runs_newest_first(self, runs_file: Path) -> None:
+        first = _runs.create_run("cli", "demo")
+        second = _runs.create_run("cli", "demo")
+        records = _runs.list_runs("demo")
+        assert [r["id"] for r in records] == [second["id"], first["id"]]
+
+
+class TestExecute:
+    def test_success_records_state_and_task_ids(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        results = _runs.execute(
+            rec["id"], lambda: [_FakeTaskResult("task-a"), _FakeTaskResult("task-b")]
+        )
+        assert results is not None
+        assert [r.task_id for r in results] == ["task-a", "task-b"]
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == "succeeded"
+        assert updated["taskIds"] == ["task-a", "task-b"]
+        assert updated["error"] == ""
+
+    @pytest.mark.parametrize("parked", ["waiting_input", "waiting_approval"])
+    def test_a_parked_task_is_never_recorded_succeeded(self, runs_file: Path, parked: str) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.execute(
+            rec["id"], lambda: [_FakeTaskResult("task-a"), _FakeTaskResult("task-b", parked)]
+        )
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == parked
+        assert updated["finishedAt"]
+
+    def test_failure_outranks_a_parked_task(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+
+        class _Failed(_FakeTaskResult):
+            reason = "gate said no"
+
+        _runs.execute(
+            rec["id"], lambda: [_FakeTaskResult("a", "waiting_input"), _Failed("b", "failed")]
+        )
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == "failed"
+
+    def test_failure_never_raises_and_records_error(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+
+        def _boom() -> list[object]:
+            raise RuntimeError("dispatch exploded")
+
+        results = _runs.execute(rec["id"], _boom)
+        assert results is None  # execute() itself never raises
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == "failed"
+        assert "dispatch exploded" in updated["error"]
+        assert "RuntimeError" in updated["error"]
+
+    def test_execute_marks_running_before_invoking_fn(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        seen_state: list[str] = []
+
+        def _observe() -> list[object]:
+            mid = _runs.get_run(rec["id"])
+            assert mid is not None
+            seen_state.append(str(mid["state"]))
+            return []
+
+        _runs.execute(rec["id"], _observe)
+        assert seen_state == ["running"]
+
+
+class TestConcurrentCreate:
+    def test_concurrent_create_run_never_loses_a_record(self, runs_file: Path) -> None:
+        """A locked read-modify-write: N threads creating runs concurrently must
+        all land in the file — the same race that was closed for the task
+        queue, applied to the run registry."""
+        n = 20
+        barrier = threading.Barrier(n)
+
+        def _create(i: int) -> None:
+            barrier.wait(timeout=5)
+            _runs.create_run("sweep", f"proj-{i}")
+
+        threads = [new_thread(target=_create, args=(i,)) for i in range(n)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        assert len(_runs.list_runs()) == n
+
+
+def _bare_run(
+    run_id: str, state: str, finished_at: str | None, project: str = "proj"
+) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "source": "sweep",
+        "project": project,
+        "state": state,
+        "taskIds": [],
+        "error": "",
+        "created": finished_at or "2020-01-01T00:00:00+00:00",
+        "startedAt": finished_at,
+        "finishedAt": finished_at,
+        "pids": [],
+        "variables": {},
+    }
+
+
+class TestPruneTerminal:
+    def test_prune_removes_old_terminal_keeps_running_and_recent(self, runs_file: Path) -> None:
+        """Acceptance oracle: 10,000 old terminal runs plus 1 running run — after the
+        sweep only the running run and the recent ones remain."""
+        old = "2020-01-01T00:00:00+00:00"
+        recent = _dt.datetime.now(_dt.UTC).isoformat()
+        runs = [_bare_run(f"run-old-{i}", "succeeded", old) for i in range(10_000)]
+        runs.append(_bare_run("run-running", "running", None))
+        runs.append(_bare_run("run-recent", "failed", recent))
+        runs_file.write_text(json.dumps({"runs": runs}), encoding="utf-8")
+
+        removed = _runs.prune_terminal()
+
+        assert removed == 10_000
+        remaining_ids = {r["id"] for r in _runs.list_runs()}
+        assert remaining_ids == {"run-running", "run-recent"}
+
+    def test_prune_with_a_project_leaves_other_pods_records(self, runs_file: Path) -> None:
+        old = "2020-01-01T00:00:00+00:00"
+        runs = [_bare_run("run-a", "succeeded", old, "a"), _bare_run("run-b", "failed", old, "b")]
+        runs_file.write_text(json.dumps({"runs": runs}), encoding="utf-8")
+
+        assert _runs.prune_terminal(project="a", dry_run=True) == 1
+        assert _runs.prune_terminal(project="a") == 1
+
+        assert {r["id"] for r in _runs.list_runs()} == {"run-b"}
+
+    def test_prune_dry_run_reports_without_deleting(self, runs_file: Path) -> None:
+        old = "2020-01-01T00:00:00+00:00"
+        runs_file.write_text(
+            json.dumps({"runs": [_bare_run("run-old", "succeeded", old)]}), encoding="utf-8"
+        )
+
+        removed = _runs.prune_terminal(dry_run=True)
+
+        assert removed == 1
+        assert len(_runs.list_runs()) == 1
+
+    def test_prune_never_touches_queued_or_running_regardless_of_age(self, runs_file: Path) -> None:
+        old = "2020-01-01T00:00:00+00:00"
+        runs_file.write_text(
+            json.dumps(
+                {"runs": [_bare_run("run-queued", "queued", None), _bare_run("r2", "running", old)]}
+            ),
+            encoding="utf-8",
+        )
+
+        removed = _runs.prune_terminal()
+
+        assert removed == 0
+        assert {r["id"] for r in _runs.list_runs()} == {"run-queued", "r2"}
+
+    def test_prune_respects_custom_retention_window(self, runs_file: Path) -> None:
+        recent = _dt.datetime.now(_dt.UTC).isoformat()
+        runs_file.write_text(
+            json.dumps({"runs": [_bare_run("run-recent", "succeeded", recent)]}), encoding="utf-8"
+        )
+
+        # A window of 0 seconds makes even a just-finished run eligible.
+        removed = _runs.prune_terminal(retention_s=0)
+
+        assert removed == 1

@@ -2,7 +2,7 @@
 
 Unlike most routes, not a thin wrapper over a pre-existing `core/` function: the real
 provisioning path prints through `ui.py`, and `serve.py` never imports `docket.cli`.
-`core.pod_provisioning.provision_pod` is the UI-free extraction of that path's decisions and
+`teams.pod_provisioning.provision_pod` is the UI-free extraction of that path's decisions and
 effects; `docket pod add`'s pod path and this route both call it, so the two cannot drift apart.
 Covers auth (401), bad requests (400, nothing touched), the happy path (workspaces really exist on
 disk), idempotence (409, existing pod untouched), rollback (a real induced mid-provisioning
@@ -23,17 +23,17 @@ from typing import Any
 
 import pytest
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pod_provisioning as _pp
-from docket.core import pod_report as _pod_report
-from docket.edges import store as _store
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
-from docket.serve import _DocketHandler
+from docket.pipeline.application import steps as _steps
+from docket.platform import store as _store
+from docket.teams import fleet as _fleet
+from docket.teams import pod_provisioning as _pp
+from docket.teams import report as _pod_report
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 _TEST_TOKEN = "test-serve-token-pods-p22-5"
 
@@ -438,7 +438,7 @@ class TestSharedProvisioningPath:
 
         monkeypatch.setattr(_pp, "provision_pod", spy)
 
-        # The CLI path: what cli/_agents.py::run_add calls for the interactive
+        # The CLI path: what interfaces/cli/commands/agents.py::run_add calls for the interactive
         # flow (build_pod_from_blueprint is a thin rendering wrapper over
         # provision_pod).
         cli_created = _pod.build_pod_from_blueprint(
@@ -583,7 +583,7 @@ class TestReadPods:
         assert status == 200
         assert set(_pod_report.pod_report("demo")) <= set(body)
         assert body["profile"] == {"name": "attended", "violations": []}
-        assert body["pipelineSource"] == _dispatch.effective_pipeline_source("demo")
+        assert body["pipelineSource"] == _steps.effective_pipeline_source("demo")
         assert body["repoConfigDir"] == "/src/demo/.docket"
 
     def test_repo_config_dir_names_the_pods_team_dir(
@@ -600,7 +600,7 @@ class TestReadPods:
         self, live_server: tuple[str, str], tmp_path: Path
     ) -> None:
         """`readOnly` is the machine's grants the pod keeps; `settings.readOnly` its choice."""
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         url, token = live_server
         node, py = tmp_path / "node", tmp_path / "py"

@@ -2,8 +2,8 @@
 
 Two invariants pinned here: (1) **fleet.json has exactly one writer** --
 agent registration, channel bindings, and gates/isolation flags are
-docket-owned and read/written through `core/fleet.py`, which goes through
-`edges/store.py`; a second module reaching for `Home.fleet_file` directly
+docket-owned and read/written through `teams/fleet.py`, which goes through
+`platform/store.py`; a second module reaching for `Home.fleet_file` directly
 would reopen second-writer drift. (2) **The fleet registry does not
 duplicate what `.docket-meta.json` already owns** -- `FleetAgent` tracks
 only the bare `id`, no `model`/`sessionKey`; re-adding either would recreate
@@ -18,22 +18,22 @@ from typing import ClassVar
 
 import pytest
 
-from docket.core.fleet import FleetAgent
+from docket.teams.fleet import FleetAgent
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKET_SRC = REPO_ROOT / "src" / "docket"
 
 
 class TestFleetSingleWriter:
-    """Only core/fleet.py (and kernel/home.py, which defines the path) may open fleet.json.
+    """Only teams/fleet.py (and kernel/home.py, which defines the path) may open fleet.json.
     The two CLI modules below only name its path, to tighten its mode and to report it.
     Mirrors test_tool_registry.py's 'only the chokepoint imports the handler module' guard."""
 
     ALLOWED_REFERRERS: ClassVar[set[str]] = {
         "kernel/home.py",
-        "core/fleet.py",
-        "cli/_setup.py",
-        "cli/_setup_check.py",
+        "teams/fleet.py",
+        "interfaces/cli/commands/setup.py",
+        "interfaces/cli/commands/setup_check.py",
     }
 
     @staticmethod

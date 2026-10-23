@@ -624,23 +624,23 @@ steps:
 
 Where the names used above live today.
 
-- `src/docket/core/pipeline.py`: `PipelineSpec`, `Step`, `MechanicalGate`, `VerdictGate`,
+- `src/docket/pipeline/domain/spec.py`: `PipelineSpec`, `Step`, `MechanicalGate`, `VerdictGate`,
   `ApprovalGate`, `ExternalGate`, `ReworkEdge`, `Variable`, `When`, `InputSpec`, `VariableError`,
   `PipelineLoadResult`, `load_pipeline`, `normalize_pipeline`, `default_pipeline`,
   `resolve_variables`, `step_instructions_by_id`, `unresolved_step_variables`,
   `interpolate_instructions`
-- `src/docket/core/orchestrator.py`: `resolve_gate`, `resolve_plan`, `render_plan`, `parse_verdict`
+- `src/docket/pipeline/domain/plan.py`: `resolve_gate`, `resolve_plan`, `render_plan`, `parse_verdict`
   (the verdict-line rule of Gates Requirement 3), `run_group`; it holds no step loop
 - `src/docket/core/dispatch.py`: `PIPELINE_ORDER`, `effective_pipeline`, `dispatch_pod` (the
   unresolved-variable refusal), `_run_pipeline` (the step loop), `_run_command_step`
   (`_command_outcome_label`), `_route_outcome`
-- `src/docket/core/config_docs.py`: `validate_path`, `load_document` (`docket pod validate`, and the
+- `src/docket/teams/config_docs.py`: `validate_path`, `load_document` (`docket pod validate`, and the
   provider-existence check of a step `model`)
-- `src/docket/core/archetypes.py`: the `gateContract` fallback used by the Zero migration invariant
-- `src/docket/cli/_pod_config.py`: `docket pod plan`; `src/docket/cli/_pod.py`:
-  `docket pod set pipeline`; `src/docket/cli/_run.py`: `docket run --pipeline`/`--var`
+- `src/docket/teams/roles.py`: the `gateContract` fallback used by the Zero migration invariant
+- `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod plan`; `src/docket/interfaces/cli/commands/pod.py`:
+  `docket pod set pipeline`; `src/docket/interfaces/cli/commands/run.py`: `docket run --pipeline`/`--var`
 - `src/docket/serve.py`: the dispatch webhook's variable resolution
 - `src/docket/edges/adapters/system.py`: `credential_names` (the credential strip used by `env`)
-- `tests/unit/core/test_pipeline__spec.py` (`TestZeroMigration` and the format),
-  `tests/unit/core/test_pipeline__external_gate.py`, `tests/unit/core/test_pipeline__step_env.py`,
-  `tests/unit/core/test_pipeline__webhook_variables.py`, `tests/integration/test_archetypes.py`
+- `tests/unit/pipeline/domain/test_spec__spec.py` (`TestZeroMigration` and the format),
+  `tests/unit/pipeline/domain/test_spec__external_gate.py`, `tests/unit/pipeline/domain/test_spec__step_env.py`,
+  `tests/unit/pipeline/domain/test_spec__webhook_variables.py`, `tests/integration/test_archetypes.py`

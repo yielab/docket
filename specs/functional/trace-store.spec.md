@@ -391,28 +391,28 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 
 ## Implementation
 
-- `src/docket/core/trace.py`: `trace_event`, `TraceStatus`, `TraceSink`, `EVENT_TYPES`,
+- `src/docket/observability/trace.py`: `trace_event`, `TraceStatus`, `TraceSink`, `EVENT_TYPES`,
   `subscribe`, `add_subscriber`, `redact`, `sweep_all`, `expire_old_traces`,
   `ExpiredTrace`, `TraceExpiryReport`, `read_trace`, `find_trace`, `project_trace_dir`,
   `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
 - `src/docket/kernel/home.py`: the `Home` members `traces_dir`, `trace_retention_days`,
   `trace_retention_s`, `session_timeout`, `context_bytes_per_token`, `metrics_window`
 - `src/docket/edges/adapters/system.py`: `no_trace` (`DOCKET_NO_TRACE`, read live)
-- `src/docket/core/secrets.py`: `secret_values` (the stored values requirement 8 scrubs)
-- `src/docket/core/agent_loop.py`: the `llm_call` and `tool_result` payload builders
+- `src/docket/governance/secrets.py`: `secret_values` (the stored values requirement 8 scrubs)
+- `src/docket/agent/loop.py`: the `llm_call` and `tool_result` payload builders
   (requirements 21-28)
-- `src/docket/core/telemetry.py`: `capture_classes`, and the exporter pipeline that registers
+- `src/docket/observability/telemetry.py`: `capture_classes`, and the exporter pipeline that registers
   through `add_subscriber`
-- `src/docket/core/llm.py`: `ChatResponse.request_bytes`
-- `src/docket/core/session.py`: `TokenUsage.cache_write_tokens`
-- `src/docket/edges/adapters/llm.py`: `request_part_bytes`
-- `src/docket/edges/adapters/toolbox.py`: `run_bash` (the `on_process` reports)
-- `src/docket/core/tools.py`: `ToolContext.on_process`, the `bash` handler's `"tool": "bash"` tag
-- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver` (turns `on_process` reports into
+- `src/docket/agent/llm.py`: `ChatResponse.request_bytes`
+- `src/docket/agent/session.py`: `TokenUsage.cache_write_tokens`
+- `src/docket/models/adapters/openai_http.py`: `request_part_bytes`
+- `src/docket/agent/tools/builtins/toolbox.py`: `run_bash` (the `on_process` reports)
+- `src/docket/agent/tools/registry.py`: `ToolContext.on_process`, the `bash` handler's `"tool": "bash"` tag
+- `src/docket/agent/driver.py`: `DocketDriver` (turns `on_process` reports into
   `process_*` events, registers pgids)
-- `src/docket/core/runs.py`: `current_run_id`, `add_hop_pid`, `remove_hop_pid`
+- `src/docket/tasks/application/runs.py`: `current_run_id`, `add_hop_pid`, `remove_hop_pid`
 - `src/docket/serve.py`: the periodic sweep that calls `sweep_all` then `expire_old_traces`
-- `src/docket/cli/_progress.py`: the `docket run` progress view's `subscribe` consumer
-- `src/docket/cli/_task.py`: `docket task trace` (`--tail` polls the file), `docket task prune
+- `src/docket/interfaces/cli/render/progress.py`: the `docket run` progress view's `subscribe` consumer
+- `src/docket/interfaces/cli/commands/task.py`: `docket task trace` (`--tail` polls the file), `docket task prune
   --traces`
-- `src/docket/cli/_status.py`: the `docket status` caller of `terminal_outcomes`
+- `src/docket/interfaces/cli/commands/status.py`: the `docket status` caller of `terminal_outcomes`

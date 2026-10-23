@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from docket.cli import _log as audit_cli
-from docket.core import audit as audit_core
-from docket.core import trace as trace_core
+from docket.governance import audit as audit_core
+from docket.interfaces.cli.commands import log as audit_cli
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as trace_core
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.governance"
 
 
 @pytest.fixture()

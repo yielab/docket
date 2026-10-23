@@ -15,11 +15,11 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import _contract
-from docket.cli import app as _app
+from docket.interfaces.cli.app import app as _app
+from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 _runner = CliRunner()
 
@@ -134,7 +134,7 @@ class TestCmdUnbind:
 
 class TestCmdBind:
     """`setup notify bind` discovers Telegram groups through docket's bot, retaining manual entry as
-    a fallback. The binding it records is the entire authorization boundary (core/telegram.py),
+    a fallback. The binding it records is the entire authorization boundary (interfaces/telegram/bot.py),
     so the output states that plainly."""
 
     def test_bind_discovers_group_without_numeric_id_entry(
@@ -142,8 +142,8 @@ class TestCmdBind:
     ) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
-        from docket.core import telegram
+        from docket.interfaces.cli.app import app
+        from docket.interfaces.telegram import bot as telegram
 
         home = _setup_agent(tmp_path)
         with use_home(Home(home)):

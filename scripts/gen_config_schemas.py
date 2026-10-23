@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gen_config_schemas.py -- render
 docs/contracts/config-v1/{role,pipeline,policy,pod,exporter,channel,mcp-server}.schema.json from the
-Pydantic models in ``core.config_docs``.
+Pydantic models in ``teams.config_docs``.
 
 Four are short-form models used only for schema generation and error refinement; ``ExporterSpec``,
 ``ChannelSpec`` and ``McpServerDocument`` are different -- each IS the canonical, only-parsed shape of
@@ -30,7 +30,7 @@ KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "exporter", "chan
 
 def render(kind: str) -> str:
     """Return the generated ``<kind>.schema.json`` content, trailing newline included."""
-    from docket.core import config_docs
+    from docket.teams import config_docs
 
     model = config_docs._MODEL_FOR_KIND[kind]
     schema = model.model_json_schema()

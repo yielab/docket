@@ -18,14 +18,14 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _mcp
-from docket.cli import _pod as _pod_cli
-from docket.core import approval as _approval
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
+from docket.governance import approval as _approval
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import mcp as _mcp
+from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import queue as _queue
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.governance"
 
 _PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
 
@@ -49,7 +49,7 @@ class TestSingleCodePathOnRealSdk:
     def test_fastmcp_module_no_longer_exists(self) -> None:
         """`mcp.server.fastmcp` is removed outright, not deprecated in place."""
         # Nothing left to fall back to, and no reason for a version-sniffing
-        # shim in cli/_mcp.py.
+        # shim in interfaces/cli/commands/mcp.py.
         pytest.importorskip("mcp")
         with pytest.raises(ModuleNotFoundError):
             import mcp.server.fastmcp  # noqa: F401
@@ -218,7 +218,7 @@ class TestNoBypassThroughRealTransport:
             assert result.is_error is False
             assert result.structured_content["description"] == "ship the migration"
 
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert [t["description"] for t in tasks] == ["ship the migration"]
 
     def test_approvals_grant_through_the_real_sdk_calls_the_same_core_function(
@@ -235,18 +235,18 @@ class TestNoBypassThroughRealTransport:
             result = asyncio.run(_call(server, "approvals_grant", {"token": token}))
             assert result.is_error is False
             assert result.structured_content == {"ok": True, "token": token, "state": "granted"}
-            # The exact core.approval state transition happened — not a parallel one.
+            # The exact governance.approval state transition happened — not a parallel one.
             assert _approval.approval_get(token)["state"] == "granted"
             entry = _audit_actions("approval.grant")[-1]
             assert entry["detail"] == f"token={token} project=demo channel=mcp"
 
 
-# ── stdio discipline sanity: no tool import ever pulls in docket.ui ────────
+# ── stdio discipline sanity: no tool import ever pulls in docket.interfaces.cli.render.ui ────────
 
 
 class TestNoUiImportEvenWithTheSdkInstalled:
     def test_mcp_module_source_never_references_ui(self) -> None:
-        """`cli/_mcp.py` never imports or calls `docket.ui`."""
+        """`interfaces/cli/commands/mcp.py` never imports or calls `docket.interfaces.cli.render.ui`."""
         # Rich output to stdout would corrupt the stdio JSON-RPC stream;
         # re-checked here with the real SDK installed.
         pytest.importorskip("mcp")
@@ -258,5 +258,8 @@ class TestNoUiImportEvenWithTheSdkInstalled:
             for ln in Path(_mcp.__file__).read_text().splitlines()
             if ln.strip().startswith(("import ", "from "))
         ]
-        assert not any("docket.ui" in ln or "docket import ui" in ln for ln in import_lines)
+        assert not any(
+            "docket.interfaces.cli.render.ui" in ln or "docket import ui" in ln
+            for ln in import_lines
+        )
         assert "ui" not in dir(_mcp)

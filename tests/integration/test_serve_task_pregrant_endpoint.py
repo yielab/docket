@@ -1,7 +1,7 @@
 """POST /tasks/<id>/pregrants — recording a single-use pre-grant over HTTP.
 
 The HTTP counterpart of `docket task approve <id> --for` and the MCP `task_pregrant` tool: same
-`core.interruptions.record_pregrant` call (`channel="http"`), so the recorded pre-grant is
+`tasks.application.interruptions.record_pregrant` call (`channel="http"`), so the recorded pre-grant is
 byte-for-byte identical to every other surface. Covers auth, the happy path (the token, and the
 task's own `pregrants` list), and the error mappings (`404`/`400`).
 """
@@ -19,13 +19,13 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.tasks.application import queue as _queue
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _TEST_TOKEN = "test-serve-token-task-pregrant-p34-15"
 
@@ -86,7 +86,7 @@ class TestHappyPath:
     def test_records_a_pregrant_and_returns_a_token(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
+        task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
         status, body = _post(
             f"{url}/tasks/{task['id']}/pregrants",
@@ -97,14 +97,14 @@ class TestHappyPath:
         assert status == 200
         assert body["ok"] is True
         assert body["token"]
-        stored = _dispatch.read_tasks("demo")[0]
+        stored = _queue.read_tasks("demo")[0]
         assert stored["pregrants"][0]["token"] == body["token"]
         assert stored["pregrants"][0]["tool"] == "bash"
 
     def test_custom_tool_is_honoured(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
+        task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
         status, _body = _post(
             f"{url}/tasks/{task['id']}/pregrants",
@@ -113,7 +113,7 @@ class TestHappyPath:
         )
 
         assert status == 200
-        stored = _dispatch.read_tasks("demo")[0]
+        stored = _queue.read_tasks("demo")[0]
         assert stored["pregrants"][0]["tool"] == "write"
 
 

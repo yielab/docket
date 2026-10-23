@@ -15,11 +15,11 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.cli import app as _app
+from docket.interfaces.cli.app import app as _app
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 _runner = CliRunner()
 

@@ -1,4 +1,4 @@
-"""`core/pod_memory.py`: deciding, storing and rendering entries against a real git repository."""
+"""`teams/memory.py`: deciding, storing and rendering entries against a real git repository."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from typing import Any
 
 import pytest
 
-from docket.core import pod_memory as pm
-from docket.core import policy as _policy
-from docket.core import trace as _trace
+from docket.governance import policy as _policy
 from docket.kernel.home import current_home, use_home
+from docket.observability import trace as _trace
+from docket.teams import memory as pm
 
-SUBJECT = "docket.core.pod_memory"
+SUBJECT = "docket.teams.memory"
 
 _PROJECT = "demo"
 _TASK = "job-1"

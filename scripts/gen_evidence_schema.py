@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gen_evidence_schema.py -- render the evidence contract's schema.json (1.1.0).
 
-``core.evidence``'s Pydantic models are the source of truth; this script only serializes
+``tasks.application.evidence``'s Pydantic models are the source of truth; this script only serializes
 them, so `--check` failing means the wire shape moved without regenerating the published
 artifact in the same change.
 
@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 def render(version: str) -> str:
     """Return the generated schema.json content for *version*, trailing newline included."""
-    from docket.core import evidence
+    from docket.tasks.application import evidence
 
     model = evidence.TaskEvidence11
     document = {

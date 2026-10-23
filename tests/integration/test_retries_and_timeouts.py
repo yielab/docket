@@ -20,14 +20,23 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import runtime_driver as _rd
-from docket.core import trace as _trace
+from docket.agent import ports as _rd
+from docket.hops.application import runner as _application_runner
+from docket.hops.gates import pre_hop as _pre_hop_c
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.pipeline.application import executor as _executor
+from docket.pipeline.application import steps as _steps_c
+from docket.sandbox import launch as _launch
+from docket.tasks.application import lifecycle as _lifecycle
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_verify_gate.py / test_hop_carryover.py) ──
 
@@ -92,7 +101,7 @@ def _no_sleep(_seconds: float) -> None:
 # ── failure_kind classification ────────────────────────────────────────────────
 #
 # There is no daemon-facing driver and no subprocess-backed `agent_run` to
-# classify failures through. `edges/adapters/llm.py`'s `OpenAIChatClient`
+# classify failures through. `models/adapters/openai_http.py`'s `OpenAIChatClient`
 # (the one shipped `ChatBackend` DocketDriver calls through) is the only
 # failure_kind classifier now; its coverage
 # (timeout / HTTP-status-based daemon_error/nonzero_exit / invalid_output) is
@@ -114,13 +123,13 @@ class TestFailureKindClassification:
 
 class TestRetryPolicy:
     def test_only_timeout_and_daemon_error_are_retryable(self) -> None:
-        assert {"timeout", "daemon_error"} == _dispatch._RETRYABLE_FAILURE_KINDS
-        assert "nonzero_exit" not in _dispatch._RETRYABLE_FAILURE_KINDS
-        assert "invalid_output" not in _dispatch._RETRYABLE_FAILURE_KINDS
+        assert {"timeout", "daemon_error"} == _application_runner._RETRYABLE_FAILURE_KINDS
+        assert "nonzero_exit" not in _application_runner._RETRYABLE_FAILURE_KINDS
+        assert "invalid_output" not in _application_runner._RETRYABLE_FAILURE_KINDS
 
     def test_unknown_role_falls_back_to_default_budget(self) -> None:
         assert (
-            _dispatch._retries_for_role("some-future-role")
+            _settings._retries_for_role("some-future-role")
             == current_home().dispatch_retries_default
         )
 
@@ -167,7 +176,7 @@ class TestHopRetryLoop:
             }
         )
         task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
         assert res.status == "done"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
         assert impl_hop.attempts == 3
@@ -199,7 +208,7 @@ class TestHopRetryLoop:
             return _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout")
 
         task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_always_timeout, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=_always_timeout, sleep=_no_sleep)
         assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
         # 2 retries configured => 3 total attempts (1 first try + 2 retries).
@@ -225,7 +234,7 @@ class TestHopRetryLoop:
             return _rd.TurnResult(False, "", 0.0, {}, "exit 1", failure_kind="nonzero_exit")
 
         task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
         assert impl_hop.attempts == 1
@@ -252,7 +261,7 @@ class TestHopRetryLoop:
             return _rd.TurnResult(True, output, 0.0, {})
 
         task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         assert res.status == "failed"
         assert "unparseable" in res.reason
         assert calls.count("myapp-tester") == 1
@@ -269,7 +278,7 @@ class TestHopRetryLoop:
             }
         )
         task: dict[str, Any] = {"id": "t5", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
+        _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
 
         events = _trace_events("myapp")
         retries = [e for e in events if e["event_type"] == "hop_retry"]
@@ -291,7 +300,7 @@ class TestHopRetryLoop:
         )
         touches: list[None] = []
         task: dict[str, Any] = {"id": "t6", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task(
+        _executor.dispatch_task(
             "myapp",
             task,
             runner=runner,
@@ -314,7 +323,7 @@ class TestHopRetryLoop:
         )
         sleeps: list[float] = []
         task: dict[str, Any] = {"id": "t7", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=runner, sleep=lambda s: sleeps.append(s))
+        _executor.dispatch_task("myapp", task, runner=runner, sleep=lambda s: sleeps.append(s))
         assert sleeps == [
             current_home().dispatch_retry_backoff_s * 1,
             current_home().dispatch_retry_backoff_s * 2,
@@ -337,7 +346,7 @@ class TestHopRetryLoop:
         )
         sleeps: list[float] = []
         task: dict[str, Any] = {"id": "t9", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
         )
         assert res.status == "done"
@@ -371,7 +380,7 @@ class TestHopRetryLoop:
             )
             sleeps: list[float] = []
             task: dict[str, Any] = {"id": "t10", "description": "work", "status": "pending"}
-            res = _dispatch.dispatch_task(
+            res = _executor.dispatch_task(
                 "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
             )
             assert res.status == "done"
@@ -384,28 +393,28 @@ class TestHopRetryLoop:
 class TestTimeoutResolution:
     def test_defaults_to_default_timeout_when_nothing_set(self) -> None:
         _write_meta("myapp-lead")
-        assert _dispatch._resolve_timeout(None, _dispatch.pod_turn_timeout("myapp")) == (
-            _dispatch.DEFAULT_TIMEOUT
+        assert _settings._resolve_timeout(None, _settings.pod_turn_timeout("myapp")) == (
+            _settings.DEFAULT_TIMEOUT
         )
 
     def test_lead_meta_turn_timeout_used_when_set(self) -> None:
         _write_meta("myapp-lead", {"turnTimeoutS": 45})
-        assert _dispatch.pod_turn_timeout("myapp") == 45
-        assert _dispatch.pod_verify_timeout("myapp") is None
+        assert _settings.pod_turn_timeout("myapp") == 45
+        assert _settings.pod_verify_timeout("myapp") is None
 
     def test_lead_meta_verify_timeout_independent_of_turn_timeout(self) -> None:
         _write_meta("myapp-lead", {"turnTimeoutS": 45, "verifyTimeoutS": 1200})
-        assert _dispatch.pod_turn_timeout("myapp") == 45
-        assert _dispatch.pod_verify_timeout("myapp") == 1200
+        assert _settings.pod_turn_timeout("myapp") == 45
+        assert _settings.pod_verify_timeout("myapp") == 1200
 
     def test_explicit_override_wins_over_lead_meta(self) -> None:
         _write_meta("myapp-lead", {"turnTimeoutS": 45})
-        assert _dispatch._resolve_timeout(90, _dispatch.pod_turn_timeout("myapp")) == 90
+        assert _settings._resolve_timeout(90, _settings.pod_turn_timeout("myapp")) == 90
 
     def test_invalid_lead_meta_value_refuses_instead_of_defaulting(self) -> None:
         _write_meta("myapp-lead", {"turnTimeoutS": "not-a-number"})
-        with pytest.raises(_dispatch.DispatchError, match="turnTimeoutS"):
-            _dispatch.pod_turn_timeout("myapp")
+        with pytest.raises(_task.DispatchError, match="turnTimeoutS"):
+            _settings.pod_turn_timeout("myapp")
 
     def test_turn_and_verify_timeouts_independently_applied_to_calls(self, tmp_path: Path) -> None:
         """End-to-end through dispatch_task: the agent-turn call gets
@@ -427,7 +436,7 @@ class TestTimeoutResolution:
             return _rd.TurnResult(True, "done", 0.0, {})
 
         seen_verify_timeouts: list[int] = []
-        real_run_command = _dispatch._sys.run_command
+        real_run_command = _launch.run_command
 
         def _spy_run_command(cmd: str, cwd: str, timeout: int) -> tuple[int | None, str]:
             seen_verify_timeouts.append(timeout)
@@ -437,9 +446,9 @@ class TestTimeoutResolution:
 
         mp = _pytest.MonkeyPatch()
         try:
-            mp.setattr(_dispatch._sys, "run_command", _spy_run_command)
+            mp.setattr(_launch, "run_command", _spy_run_command)
             task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
-            res = _dispatch.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+            res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         finally:
             mp.undo()
 
@@ -461,7 +470,7 @@ class TestRetryDoesNotTripStaleClaimSweep:
         CLAIM_STALE_TIMEOUT before failing retryably, so only a refreshed `claimedAt` lets the
         second attempt's simulated concurrent sweep leave the task alone."""
         oc_dir = _seed_pod(tmp_path)
-        _dispatch.enqueue_task_once("demo", "Retry me", channel="cli")
+        _queue.enqueue_task_once("demo", "Retry me", channel="cli")
         # Small but real threshold: the deliberate 0.3s sleep below comfortably
         # exceeds it (proving the *unrefreshed* claim would already be stale),
         # while the near-instant gap between an on_retry refresh and the very
@@ -492,15 +501,15 @@ class TestRetryDoesNotTripStaleClaimSweep:
                 # Second attempt: simulate a concurrent dispatcher's sweep landing
                 # here, immediately after on_retry refreshed claimedAt for the
                 # failed first attempt and right before this (successful) retry.
-                _dispatch._sweep_stale_claims("demo")
+                _lifecycle._sweep_stale_claims("demo")
                 return _rd.TurnResult(True, "done", 0.0, {})
 
-            results = _dispatch.dispatch_pod("demo", runner=_flaky_then_ok, sleep=_no_sleep)
+            results = _sweep.dispatch_pod("demo", runner=_flaky_then_ok, sleep=_no_sleep)
             assert len(results) == 1
             assert results[0].status == "done"
             assert calls["implementer"] == 2
 
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert tasks[0]["status"] == "done"
             assert tasks[0].get("failureKind") != "stale_claim"
 
@@ -520,9 +529,12 @@ class TestExistingStateMachineBehaviourUnaffected:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path)
-        _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
-        monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+        _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
+        monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+        monkeypatch.setattr(_pre_hop_c, "pod_recorded_cost", lambda _p: 5.0)
 
         def _runner(
             agent_id: str,
@@ -533,6 +545,6 @@ class TestExistingStateMachineBehaviourUnaffected:
         ) -> _rd.TurnResult:
             return _rd.TurnResult(True, "done", 0.0, {})
 
-        res = _dispatch.dispatch_pod("demo", runner=_runner)[0]
+        res = _sweep.dispatch_pod("demo", runner=_runner)[0]
         assert res.status == "blocked"
-        assert _dispatch.dispatch_pod("demo", runner=_runner) == []
+        assert _sweep.dispatch_pod("demo", runner=_runner) == []

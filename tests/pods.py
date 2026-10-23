@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from rich.markup import escape
 
-from docket import ui
-from docket.core import pod_provisioning as _pp
+from docket.interfaces.cli.render import ui
+from docket.teams import pod_provisioning as _pp
 
 
 def build_pod(

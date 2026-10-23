@@ -5,7 +5,7 @@ when the task has its own recorded worktree (``task["worktree"]``), verifying a 
 against stale or someone-else's code; and ``set-verify``/``--verify``
 accepting an unvalidated, unaudited value that is later run with ``shell=True``.
 
-TestResolveMemberCwd covers ``core/pod.py``'s shared ``resolve_member_cwd``, used by both the
+TestResolveMemberCwd covers ``teams/pod.py``'s shared ``resolve_member_cwd``, used by both the
 verify gate and ``_regenerate_member_tools`` so the two can't diverge; TestDispatchVerifyCwd
 proves the verify gate's real subprocess runs in the resolved directory; TestSetVerifyValidation
 covers NUL/newline rejection, the length cap, and the ``pod.set-verify`` audit entry.
@@ -23,16 +23,17 @@ import pytest
 import typer
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pod as _pod_core
-from docket.core import pod_provisioning as _pp
-from docket.core import runtime_driver as _rd
+from docket.agent import ports as _rd
+from docket.governance import audit as _audit
+from docket.hops.application import record as _record
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.pipeline.application import executor as _executor
+from docket.teams import fleet as _fleet
+from docket.teams import pod as _pod_core
+from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 # ── TestResolveMemberCwd: pure unit tests for core/pod.resolve_member_cwd ────
 
@@ -90,7 +91,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     _fleet.add_agent(member_id)
 
 
-def _fake_runner() -> _dispatch.Runner:
+def _fake_runner() -> _record.Runner:
     def _run(
         member_id: str,
         session_id: str,
@@ -143,7 +144,7 @@ class TestDispatchVerifyCwd:
             "status": "pending",
             "worktree": {"dir": str(worktree), "branch": "b", "baseCommit": ""},
         }
-        res = _dispatch.dispatch_task("myapp", task, runner=_fake_runner())
+        res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "done", res.reason
 
     def test_verify_falls_back_to_codebase_when_no_worktree(self, tmp_path: Path) -> None:
@@ -157,7 +158,7 @@ class TestDispatchVerifyCwd:
             {"codebase": str(codebase), "verifyCmd": "test -f CODEBASE_MARKER"},
         )
         task: dict[str, Any] = {"id": "cw2", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_fake_runner())
+        res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "done", res.reason
 
     def test_verify_falls_back_to_workspace_dir_when_neither_set(self, tmp_path: Path) -> None:
@@ -170,7 +171,7 @@ class TestDispatchVerifyCwd:
         (ws / "WORKSPACE_MARKER").touch()
 
         task: dict[str, Any] = {"id": "cw3", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_fake_runner())
+        res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "done", res.reason
 
     def test_verify_fails_if_run_against_wrong_tree(self, tmp_path: Path) -> None:
@@ -190,11 +191,11 @@ class TestDispatchVerifyCwd:
             "status": "pending",
             "worktree": {"dir": str(worktree), "branch": "b", "baseCommit": ""},
         }
-        res = _dispatch.dispatch_task("myapp", task, runner=_fake_runner())
+        res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "failed"
 
 
-# ── TestSetVerifyValidation: cli/_pod.py's set-verify / --verify ────────────
+# ── TestSetVerifyValidation: interfaces/cli/commands/pod.py's set-verify / --verify ────────────
 
 
 @contextmanager

@@ -1,8 +1,8 @@
 """Per-role tool sets + identity composition.
 
-`core/archetypes.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
-called once per turn by `core/agent_loop.py`) make a Reviewer structurally *unable* to edit code,
-not just told not to via SOUL.md prose. `core/identity.py`'s `compose_agent_prompt` reads
+`teams/roles.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
+called once per turn by `agent/loop.py`) make a Reviewer structurally *unable* to edit code,
+not just told not to via SOUL.md prose. `agent/identity.py`'s `compose_agent_prompt` reads
 SOUL.md, the member's AGENTS.md and bounded MEMORY.md state
 into one runtime-safe prompt, without replaying manual private-file instructions or widening roots.
 
@@ -20,25 +20,24 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import agent_loop as _loop
-from docket.core import archetypes as _archetypes
-from docket.core import audit as _audit
-from docket.core import context as _context
-from docket.core import identity as _identity
-from docket.core.llm import (
-    ChatMessage,
-    ChatResponse,
-    TokenUsage,
-    ToolCall,
-    ToolSpec,
-    assistant,
+from docket.agent import context as _context
+from docket.agent import identity as _identity
+from docket.agent import loop as _loop
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolRegistry,
+    builtin_registry,
+    dispatch_tool,
 )
-from docket.core.tools import Tool, ToolContext, ToolRegistry, builtin_registry, dispatch_tool
-from docket.edges import store as _store
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
+from docket.platform import store as _store
+from docket.teams import roles as _archetypes
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -349,7 +348,7 @@ class TestReviewerCannotDispatchAWrite:
 
 
 class TestComposeSystemPrompt:
-    """Pure composition -- `core.identity.compose_system_prompt`."""
+    """Pure composition -- `agent.identity.compose_system_prompt`."""
 
     def test_empty_everything_composes_to_empty(self) -> None:
         assert _identity.compose_system_prompt("", "") == ""
@@ -759,7 +758,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert all(m.role != "system" for m in sent)
 
     def test_the_system_message_is_never_persisted_to_session_history(self, tmp_path: Path) -> None:
-        from docket.core.session import load_session
+        from docket.agent.session import load_session
 
         ws = _write_meta("history-agent")
         (ws / "SOUL.md").write_text("# SOUL.md\nsecret identity text\n")

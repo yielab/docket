@@ -198,7 +198,7 @@ assert result.ok
 
 An embedding may place a `pre_tool_call` policy under `DOCKET_HOME/policies`.
 The example's call then follows the normal policy -> approval -> audit/trace ->
-dispatch flow. No `docket` or `docket.cli` import is required or supported.
+dispatch flow. No `docket` or `docket.interfaces.cli.app` import is required or supported.
 
 ## Syntax
 
@@ -270,12 +270,12 @@ compact example.
 - `packages/docket-runtime/src/docket_runtime/adapters/pydantic_ai.py`: `DocketToolset`
 - `packages/docket-runtime/hatch_build.py`: the build hook and its fixed module list (`_RUNTIME_FILES`), `DOCKET_RUNTIME_BUILD_TMPDIR`
 - `packages/docket-runtime/pyproject.toml`: package version, dependency floors, sdist `runtime-source/` force-include
-- `src/docket/core/tools.py`: `dispatch_tool`, `Tool`, `ToolContext`, `ToolResult`, `ToolRegistry.specs`
-- `src/docket/core/llm.py`: `TokenUsage` (`total_tokens`, `counted_tokens`), `ToolCall`, `ToolSpec`
-- `src/docket/core/approval.py`: the approval store the stub answers
-- `src/docket/core/trace.py`: `trace_event`
-- `src/docket/core/handoff.py`: `HandoffArtifact`
-- `src/docket/edges/adapters/toolbox.py`: `ToolOutcome`
+- `src/docket/agent/tools/registry.py`: `dispatch_tool`, `Tool`, `ToolContext`, `ToolResult`, `ToolRegistry.specs`
+- `src/docket/agent/llm.py`: `TokenUsage` (`total_tokens`, `counted_tokens`), `ToolCall`, `ToolSpec`
+- `src/docket/governance/approval.py`: the approval store the stub answers
+- `src/docket/observability/trace.py`: `trace_event`
+- `src/docket/agent/handoff.py`: `HandoffArtifact`
+- `src/docket/agent/tools/builtins/toolbox.py`: `ToolOutcome`
 - `tests/agent/release/test_runtime_package_boundary.py`: artifact boundary oracle
 - `tests/agent/release/test_runtime_adapter_parity.py`, `tests/agent/release/test_runtime_openhands_adapter.py`: adapter parity
 - `tests/agent/release/test_runtime_adapter_public_truth.py`: support boundary and protocol non-claims

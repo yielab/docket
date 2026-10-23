@@ -20,15 +20,16 @@ import pytest
 from tests.conftest import record_isolation_off
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.identity"
+SUBJECT = "docket.agent.identity"
 
 _PIPELINE = """\
 name: base-files
@@ -134,7 +135,7 @@ class _Runner:
             _git(root, "commit", "-m", "rewrite instructions")
             (root / ".git").write_text("gitdir: /nonexistent\n")  # the agent owns this file
             return TurnResult(True, "done", 0.0, {})
-        task = next(t for t in _dispatch.read_tasks("demo") if t.get("worktree"))
+        task = next(t for t in _queue.read_tasks("demo") if t.get("worktree"))
         result = self.driver.run_turn(
             agent_id, session_key, message, timeout, env,
             trace_project="demo", trace_task_id=task["id"],
@@ -165,8 +166,8 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **repo_kwargs: bool)
 def _run(skill_probe: bool = False) -> tuple[_Runner, _Backend]:
     backend = _Backend(skill_probe)
     runner = _Runner(backend)
-    _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
-    (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+    _queue.enqueue_task_once("demo", "do the thing", channel="cli")
+    (result,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
     assert result.status == "waiting_approval", result.reason
     assert ".docket/skills" in result.reason
     return runner, backend
@@ -222,8 +223,8 @@ def test_the_hop_records_each_composed_repository_file_with_its_sha256(
             return out
 
         runner.driver.run_turn = spy  # type: ignore[method-assign]
-        _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
-        (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        _queue.enqueue_task_once("demo", "do the thing", channel="cli")
+        (result,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
         assert result.status == "waiting_approval", result.reason
         assert ".docket/skills" in result.reason
         files = seen[-1].repo_files

@@ -55,9 +55,9 @@ def _plain_typer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 def _keep_pytest_dumpable(monkeypatch: pytest.MonkeyPatch) -> None:
     """An in-process turn must not make the pytest process non-dumpable for every later test;
     the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
-    from docket.edges.adapters import system as _system
+    from docket.platform import process as _process
 
-    monkeypatch.setattr(_system, "make_non_dumpable", lambda: None, raising=True)
+    monkeypatch.setattr(_process, "make_non_dumpable", lambda: None, raising=True)
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +90,7 @@ def register_local_provider(
     base_url: str = "http://127.0.0.1:9999/v1",
 ) -> None:
     """Write a keyless loopback provider document into *home*'s global catalog."""
-    from docket.core import provider as _provider
+    from docket.models import catalog as _provider
 
     with use_home(Home(home)):
         _provider.save_provider(

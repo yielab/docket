@@ -1,7 +1,7 @@
 """Guard: no hardcoded Telegram chat IDs in tracked files (they stay dynamic).
 
 Telegram group/chat IDs are runtime data -- they live only in docket's own
-``fleet.json`` bindings (``core/fleet.py``); a real ID leaking into a
+``fleet.json`` bindings (``teams/fleet.py``); a real ID leaking into a
 tracked file must fail CI, not slip into the public repo silently.
 
 Rules: ``src/`` must contain **no** Telegram-ID-shaped literal at all

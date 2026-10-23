@@ -2,7 +2,7 @@
 ``core/dispatch.py``'s ``_hop_message`` does not concatenate every prior hop's full raw output
 into the next hop's prompt, nor cap total bytes with one process-wide constant and truncate
 blindly once a hop's share is exceeded. Instead, each rendered ``HandoffArtifact`` is fit to a
-per-role token budget via ``core/context.py``'s ``compile_artifact``, which sheds the
+per-role token budget via ``agent/context.py``'s ``compile_artifact``, which sheds the
 artifact's less-valuable fields (``DROP_ORDER``) before truncating ``summary`` itself; there is
 no byte-cap machinery left. Covers: TestHopMessageCap (``_hop_message`` against the
 token-budget compiler: small tasks unchanged, the task description never truncated, truncation
@@ -22,13 +22,16 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import context as _context
-from docket.core import dispatch as _dispatch
-from docket.core import runtime_driver as _rd
+from docket.agent import context as _context
+from docket.agent import ports as _rd
+from docket.hops.application import compose as _compose
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_dispatch.py / test_verify_gate.py) ─────────
 
@@ -49,8 +52,8 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
         yield home
 
 
-def _hop(role: str, output: str, member_id: str = "") -> _dispatch.HopResult:
-    return _dispatch.HopResult(
+def _hop(role: str, output: str, member_id: str = "") -> _task.HopResult:
+    return _task.HopResult(
         role=role, member_id=member_id or f"demo-{role}", ok=True, output=output, cost_usd=0.0
     )
 
@@ -64,7 +67,7 @@ class TestHopMessageCap:
         any cap/budget mechanism existed."""
         task = {"description": "Fix the bug"}
         prior = [_hop("lead", "Plan: do X.")]
-        message, comp = _dispatch._hop_message(task, "implementer", prior)
+        message, comp = _compose._hop_message(task, "implementer", prior)
 
         expected = "\n".join(
             [
@@ -91,7 +94,7 @@ class TestHopMessageCap:
     def test_lead_hop_message_unaffected_by_cap(self) -> None:
         """The lead hop has no prior output to cap — its message is untouched."""
         task = {"description": "Ship it"}
-        message, comp = _dispatch._hop_message(task, "lead", [])
+        message, comp = _compose._hop_message(task, "lead", [])
         assert message == (
             "You are the pod Lead. Decompose this task into a concrete plan for "
             "the Implementer (you never edit code yourself):\n\nShip it"
@@ -106,10 +109,10 @@ class TestHopMessageCap:
         huge_desc = "D" * 500_000
         task = {"description": huge_desc}
 
-        lead_message, _lead_comp = _dispatch._hop_message(task, "lead", [])
+        lead_message, _lead_comp = _compose._hop_message(task, "lead", [])
         assert huge_desc in lead_message
 
-        message, comp = _dispatch._hop_message(task, "implementer", [_hop("lead", "small plan")])
+        message, comp = _compose._hop_message(task, "implementer", [_hop("lead", "small plan")])
         assert f"Task: {huge_desc}" in message
         assert comp.description_bytes == len(huge_desc.encode("utf-8"))
 
@@ -119,7 +122,7 @@ class TestHopMessageCap:
         monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: 20)
         task = {"description": "task"}
         prior = [_hop("lead", "L" * 5000)]
-        message, comp = _dispatch._hop_message(task, "implementer", prior)
+        message, comp = _compose._hop_message(task, "implementer", prior)
         assert "[... summary truncated" in message
         assert comp.truncated is True
         assert comp.sections[0]["truncated"] is True
@@ -134,7 +137,7 @@ class TestHopMessageCap:
             _hop("implementer", "B" * 20_000),
             _hop("reviewer", "C" * 20_000),
         ]
-        _message, comp = _dispatch._hop_message(task, "tester", prior)
+        _message, comp = _compose._hop_message(task, "tester", prior)
         assert [s["role"] for s in comp.sections] == ["lead", "implementer", "reviewer"]
         sent = {s["role"]: s["sent_bytes"] for s in comp.sections}
         # Chronological order is oldest -> newest; the most recent (reviewer)
@@ -151,7 +154,7 @@ class TestHopMessageCap:
         monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: cap_tokens)
         task = {"description": "task"}
         prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
-        message, comp = _dispatch._hop_message(task, "tester", prior)
+        message, comp = _compose._hop_message(task, "tester", prior)
 
         cap_bytes = cap_tokens * current_home().context_bytes_per_token
         total_carryover = sum(s["sent_bytes"] for s in comp.sections)
@@ -165,7 +168,7 @@ class TestHopMessageCap:
         """No regression for the common (small-output) multi-hop case either."""
         task = {"description": "Small task"}
         prior = [_hop("lead", "short plan"), _hop("implementer", "small diff")]
-        message, comp = _dispatch._hop_message(task, "reviewer", prior)
+        message, comp = _compose._hop_message(task, "reviewer", prior)
         expected = "\n".join(
             [
                 "Task: Small task",
@@ -187,7 +190,7 @@ class TestHopMessageCap:
 
 class _BigOutputRunner:
     """Large fixed ``*`` output, to force carryover truncation without tripping
-    ``core.trace.redact``'s secret-shaped patterns, which backtrack badly on a
+    ``observability.trace.redact``'s secret-shaped patterns, which backtrack badly on a
     single repeated letter or digit run this long."""
 
     def __init__(self, size: int = 50_000) -> None:
@@ -207,8 +210,8 @@ class _BigOutputRunner:
 class TestContextComposedTrace:
     def test_context_composed_emitted_per_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task_once("demo", "Trace the context", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=_BigOutputRunner())
+            _queue.enqueue_task_once("demo", "Trace the context", channel="cli")
+            _sweep.dispatch_pod("demo", runner=_BigOutputRunner())
 
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
@@ -235,7 +238,7 @@ class TestContextComposedTrace:
 
     def test_context_composed_not_truncated_for_small_outputs(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task_once("demo", "Small trace", channel="cli")
+            _queue.enqueue_task_once("demo", "Small trace", channel="cli")
 
             class _SmallRunner:
                 def __call__(
@@ -248,7 +251,7 @@ class TestContextComposedTrace:
                 ) -> _rd.TurnResult:
                     return _rd.TurnResult(True, "tiny output", 0.0, {})
 
-            _dispatch.dispatch_pod("demo", runner=_SmallRunner())
+            _sweep.dispatch_pod("demo", runner=_SmallRunner())
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             composed = [e for e in events if e["event_type"] == "context_composed"]

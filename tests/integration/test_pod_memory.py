@@ -11,14 +11,16 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import identity as _identity
-from docket.core import pod_memory as _pm
-from docket.core import trace as _trace
+from docket.agent import identity as _identity
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.observability import trace as _trace
+from docket.tasks.application import lifecycle as _lifecycle
+from docket.tasks.application import queue as _queue
+from docket.tasks.domain import task as _task
+from docket.teams import memory as _pm
 
-SUBJECT = "docket.core.pod_memory"
+SUBJECT = "docket.teams.memory"
 
 _MEMBER = "demo-implementer"
 
@@ -58,12 +60,12 @@ def _finish(
     root: Path, commit: str, output: str, *, events: list[tuple[str, dict[str, Any]]]
 ) -> str:
     """Enqueue a task, give its trace *events*, and finalize it with one implementer hop."""
-    task = _dispatch.enqueue_task_once("demo", "do the work", channel="cli")[0]
+    task = _queue.enqueue_task_once("demo", "do the work", channel="cli")[0]
     task_id = str(task["id"])
     session = f"agent:demo:{task_id}"
     for event_type, payload in events or [("session_start", {"source": "test"})]:
         _trace.trace_event("demo", session, "implementer", event_type, json.dumps(payload))
-    hop = _dispatch.HopResult(
+    hop = _task.HopResult(
         role="implementer",
         member_id=_MEMBER,
         ok=True,
@@ -71,7 +73,7 @@ def _finish(
         evidence={"commit": commit, "baseCommit": None, "diffStat": None},
         trace={"project": "demo", "session": session, "firstTs": "0", "lastTs": "9"},
     )
-    _dispatch._finalize_task("demo", task_id, _dispatch.TaskResult(task_id, "done", hops=[hop]))
+    _lifecycle._finalize_task("demo", task_id, _task.TaskResult(task_id, "done", hops=[hop]))
     return task_id
 
 

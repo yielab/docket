@@ -1,10 +1,10 @@
-"""`core/archetypes.py` — the declarative role-archetype registry.
+"""`teams/roles.py` — the declarative role-archetype registry.
 
 Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
 starter-library archetypes validating, the pod-overlay pattern (built-ins + starter library
 overlaid by a pod's own `config/roles.json`, the pod wins by name),
 `docket pod roles` list/show and `pod update <file>`, and that reviewer/tester gate-contract data resolved
-through `core.orchestrator` matches `core/pipeline.py`'s own hardcoded `default_pipeline()`
+through `pipeline.domain.plan` matches `pipeline/domain/spec.py`'s own hardcoded `default_pipeline()`
 verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
 constant (see `core/dispatch.py`'s docstring note on `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
 """
@@ -17,12 +17,12 @@ from typing import Any
 
 import pytest
 
-from docket.core import archetypes as arch
-from docket.core import orchestrator as _orch
-from docket.core import pipeline as _pipeline
 from docket.kernel.home import current_home
+from docket.pipeline.domain import plan as _orch
+from docket.pipeline.domain import spec as _pipeline
+from docket.teams import roles as arch
 
-SUBJECT = "docket.core.archetypes"
+SUBJECT = "docket.teams.roles"
 
 
 @pytest.fixture
@@ -128,15 +128,15 @@ class TestBuiltinAndStarterArchetypes:
 
     def test_every_builtin_and_starter_archetype_has_its_own_policy_row(self) -> None:
         """One vocabulary: an archetype's model row is its own name."""
-        from docket.core import models_policy as mp
+        from docket.models import selection as mp
 
         names = {*arch.BUILTIN_ARCHETYPES, *arch.STARTER_ARCHETYPES}
         assert set(mp.ROLE_CLASS) == names
         assert set(mp.ALL_ROLES) == names
 
     def test_reviewer_gate_matches_pipeline_default_verdict_gate(self) -> None:
-        """The archetype's `gateContract`, resolved through `core.orchestrator`, must produce
-        the same pattern/passValues as `core/pipeline.py`'s hardcoded reviewer step -- two
+        """The archetype's `gateContract`, resolved through `pipeline.domain.plan`, must produce
+        the same pattern/passValues as `pipeline/domain/spec.py`'s hardcoded reviewer step -- two
         independent sources describing the same role must agree."""
         found = arch.BUILTIN_ARCHETYPES["reviewer"]
         assert found.gate_contract.kind == "verdict"
@@ -307,7 +307,7 @@ class TestRolesCli:
     def _run(*args: str) -> Any:
         from typer.testing import CliRunner
 
-        from docket.cli import _pod
+        from docket.interfaces.cli.commands import pod as _pod
 
         return CliRunner().invoke(_pod.pod_app, list(args))
 

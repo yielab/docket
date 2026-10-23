@@ -21,14 +21,14 @@ from typing import Any
 
 import pytest
 
-import docket.serve as serve
-from docket.core import approval as _approval
-from docket.core.llm import ToolCall
-from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
-from docket.core.trace import trace_event
+from docket.agent.llm import ToolCall
+from docket.agent.tools.registry import ToolContext, builtin_registry, dispatch_tool
+from docket.governance import approval as _approval
+from docket.interfaces.http.routes import metrics
 from docket.kernel.home import current_home, use_home
+from docket.observability.trace import trace_event
 
-SUBJECT = "docket.core.tools"
+SUBJECT = "docket.agent.tools.registry"
 
 
 @pytest.fixture(autouse=True)
@@ -123,13 +123,13 @@ class TestToolCallsByDecision:
             ),
         )
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert _metric_value(text, 'docket_tool_calls_total{decision="allow"}') == "1"
         assert _metric_value(text, 'docket_tool_calls_total{decision="deny"}') == "2"
         assert _metric_value(text, 'docket_tool_calls_total{decision="ask"}') == "1"
 
     def test_no_data_keeps_headers_but_emits_no_label_lines(self) -> None:
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert "# HELP docket_tool_calls_total" in text
         assert "# TYPE docket_tool_calls_total counter" in text
         assert "docket_tool_calls_total{decision=" not in text
@@ -166,7 +166,7 @@ class TestPolicyHitsFromTrace:
             ),
         )
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert (
             _metric_value(
                 text,
@@ -199,7 +199,7 @@ class TestPolicyHitsFromToolGate:
         )
         assert res.denied
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert (
             _metric_value(
                 text,
@@ -209,7 +209,7 @@ class TestPolicyHitsFromToolGate:
         )
 
     def test_a_bare_command_classifier_denial_is_not_a_policy_hit(self, ctx: ToolContext) -> None:
-        """`rm x` is denied by core/security.py's classifier, no policy involved
+        """`rm x` is denied by governance/security.py's classifier, no policy involved
         at all -- it must not show up under docket_policy_hits_total."""
         res = dispatch_tool(
             ToolCall(id="c2", name="bash", arguments=json.dumps({"command": "rm x"})),
@@ -218,7 +218,7 @@ class TestPolicyHitsFromToolGate:
         )
         assert res.denied
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert 'hook="pre_tool_call"' not in text
 
 
@@ -233,7 +233,7 @@ class TestApprovalsByChannel:
         token_b = _approval.approval_create("proj-a", "lead", "rotate a secret")
         _approval.approval_deny(token_b, channel="telegram")
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert _metric_value(text, 'docket_approvals_total{channel="cli",outcome="granted"}') == "1"
         assert (
             _metric_value(text, 'docket_approvals_total{channel="telegram",outcome="denied"}')
@@ -251,13 +251,13 @@ class TestApprovalsByChannel:
         )
         assert res.denied
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert (
             _metric_value(text, 'docket_approvals_total{channel="timeout",outcome="denied"}') == "1"
         )
 
     def test_no_approvals_keeps_headers_but_emits_no_label_lines(self) -> None:
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert "# HELP docket_approvals_total" in text
         assert "# TYPE docket_approvals_total counter" in text
         assert "docket_approvals_total{channel=" not in text
@@ -293,7 +293,7 @@ class TestTurnDuration:
             ],
         )
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert _metric_value(text, "docket_turn_duration_seconds_sum") == "16.0"
         assert _metric_value(text, "docket_turn_duration_seconds_count") == "2"
 
@@ -304,12 +304,12 @@ class TestTurnDuration:
             [{"event_type": "session_start", "ts": "2026-08-01T10:00:00Z"}],
         )
 
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert _metric_value(text, "docket_turn_duration_seconds_sum") == "0.0"
         assert _metric_value(text, "docket_turn_duration_seconds_count") == "0"
 
     def test_no_traces_dir_returns_zero_not_an_error(self) -> None:
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert _metric_value(text, "docket_turn_duration_seconds_sum") == "0.0"
         assert _metric_value(text, "docket_turn_duration_seconds_count") == "0"
 
@@ -319,7 +319,7 @@ class TestTurnDuration:
 
 class TestMetricFormatting:
     def test_help_and_type_lines_present_for_every_new_metric(self) -> None:
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         for name, kind in (
             ("docket_tool_calls_total", "counter"),
             ("docket_policy_hits_total", "counter"),
@@ -332,7 +332,7 @@ class TestMetricFormatting:
         """Prometheus text exposition format: `_sum`/`_count` are members of
         one `summary` family declared on the bare metric name -- not two
         independent counters with their own HELP/TYPE pair."""
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         assert "# HELP docket_turn_duration_seconds " in text
         assert "# TYPE docket_turn_duration_seconds summary" in text
         # Exactly one HELP/TYPE pair for the family -- not one per suffix.
@@ -348,7 +348,7 @@ class TestMetricFormatting:
         # docket_agent_cost_usd/docket_agent_turns_total only ever emit label
         # lines when an agent exists (this fixture seeds none) -- check the
         # metrics with an unconditional HELP header instead.
-        text = serve.render_metrics()
+        text = metrics.render_metrics()
         for name in (
             "docket_agents_total",
             "docket_cost_usd_total",
@@ -357,4 +357,4 @@ class TestMetricFormatting:
             assert f"# HELP {name} " in text
 
     def test_no_trailing_newline(self) -> None:
-        assert not serve.render_metrics().endswith("\n")
+        assert not metrics.render_metrics().endswith("\n")

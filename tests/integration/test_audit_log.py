@@ -25,14 +25,14 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _log as audit_cli
-from docket.cli import _pod
-from docket.cli import _setup_model as keys_cli
-from docket.cli._agents import InitRequest, run_init
-from docket.core import audit as _audit
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import log as audit_cli
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import setup_model as keys_cli
+from docket.interfaces.cli.commands.agents import InitRequest, run_init
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 # ── shared helpers ───────────────────────────────────────────────────────────
 
@@ -79,14 +79,14 @@ def _hold_audit_lock(
 
 @pytest.fixture()
 def audit_home(tmp_path: Path) -> Iterator[Path]:
-    """A bare DOCKET_HOME for exercising core/audit.py directly."""
+    """A bare DOCKET_HOME for exercising governance/audit.py directly."""
     d = tmp_path / ".docket"
     d.mkdir()
     with use_home(Home(d)):
         yield d
 
 
-# ── hash chain: core/audit.py ───────────────────────────────────────────────
+# ── hash chain: governance/audit.py ───────────────────────────────────────────────
 
 
 class TestChainWriting:

@@ -815,31 +815,31 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   `MAX_POST_BODY_BYTES`, the `/traces` cursor and hold-back), the sweep pool started by
   `POST /tasks` under dispatch, `run_serve`
 - `src/docket/kernel/threads.py`: `ContextHTTPServer`, `new_thread`, `start_thread`, `submit`
-- `src/docket/core/escalation.py`: `count_escalation_metrics` (`docket_tasks_started_total`,
+- `src/docket/tasks/application/escalation.py`: `count_escalation_metrics` (`docket_tasks_started_total`,
   `docket_questions_total`, `docket_decision_latency_seconds`)
-- `src/docket/core/inbox.py`: `build_inbox`, `task_view`
-- `src/docket/core/operator_contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
-- `src/docket/core/runs.py`: `create_run`, `list_runs`, `get_run`, `execute`, `cancel_run`, the
+- `src/docket/operator/inbox.py`: `build_inbox`, `task_view`
+- `src/docket/operator/contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
+- `src/docket/tasks/application/runs.py`: `create_run`, `list_runs`, `get_run`, `execute`, `cancel_run`, the
   run record and its `cancellation` lifecycle
 - `src/docket/core/dispatch.py`: `read_tasks` (task-record normalization, `_TASK_SCALAR_DEFAULTS`),
   `enqueue_task_once`, `effective_pipeline`, `dispatch_pod`, `resolve_waiting_approval_detail`,
   `TASK_GRANT_CAP`
-- `src/docket/core/evidence.py`: `task_evidence`
-- `src/docket/core/trace.py`: `export_lines`, `trace_event`, `expire_old_traces`, `sweep_all`
-- `src/docket/core/audit.py`: `read_audit`, rotation at `AUDIT_LOG_MAX_BYTES`
-- `src/docket/core/approval.py`: `APPROVAL_CHANNELS`, `list_pending`, `approval_grant`,
+- `src/docket/tasks/application/evidence.py`: `task_evidence`
+- `src/docket/observability/trace.py`: `export_lines`, `trace_event`, `expire_old_traces`, `sweep_all`
+- `src/docket/governance/audit.py`: `read_audit`, rotation at `AUDIT_LOG_MAX_BYTES`
+- `src/docket/governance/approval.py`: `APPROVAL_CHANNELS`, `list_pending`, `approval_grant`,
   `approval_deny`, `approval_set_option`
-- `src/docket/core/answers.py`: `answer_task`
-- `src/docket/core/interruptions.py`: `record_pregrant`
-- `src/docket/core/pipeline.py`: `resolve_variables`
-- `src/docket/core/provisioning.py`: `validate_project_id`
-- `src/docket/core/pod_provisioning.py`: `provision_pod`, `validate_verify_cmd`
-- `src/docket/core/blueprints.py`: `DEFAULT_BLUEPRINT`, the blueprint registry
+- `src/docket/tasks/application/answers.py`: `answer_task`
+- `src/docket/tasks/application/interruptions.py`: `record_pregrant`
+- `src/docket/pipeline/domain/spec.py`: `resolve_variables`
+- `src/docket/teams/provisioning.py`: `validate_project_id`
+- `src/docket/teams/pod_provisioning.py`: `provision_pod`, `validate_verify_cmd`
+- `src/docket/teams/blueprints.py`: `DEFAULT_BLUEPRINT`, the blueprint registry
 - `src/docket/kernel/home.py`: the `Home` members `dispatch_sweep_workers`, `trace_retention_s`,
   `pod_work_dir`
 - Contract tests: `tests/unit/test_serve__read_api.py` (class `TestApiContract`),
-  `tests/unit/test_serve.py`, `tests/unit/test_serve__traces_cursor.py`,
-  `tests/unit/test_serve__contract_gaps.py`, `tests/unit/core/test_dispatch.py`,
-  `tests/unit/core/test_runs.py`, `tests/unit/core/test_approval.py` (class
+  `tests/unit/interfaces/http/routes/test_health.py`, `tests/unit/interfaces/http/routes/test_traces__traces_cursor.py`,
+  `tests/unit/interfaces/http/test_server__contract_gaps.py`, `tests/unit/tasks/application/test_queue.py`,
+  `tests/unit/tasks/application/test_runs.py`, `tests/unit/governance/test_approval.py` (class
   `TestApprovalChannel`), `tests/integration/test_serve_pods_endpoint.py`,
   `tests/integration/test_serve_tasks_endpoint.py`

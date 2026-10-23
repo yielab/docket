@@ -1,7 +1,7 @@
 """The real `files_changed`/`diff_ref` producer for an Implementer hop's artifact.
 
 `HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed fields
-(`core/handoff.py`'s module docstring documents the seam). Covers: TestHopDiffProbeUnit
+(`agent/handoff.py`'s module docstring documents the seam). Covers: TestHopDiffProbeUnit
 (`_hop_diff_probe` in isolation, with `edges/adapters/system.py`'s git calls
 monkeypatched out); TestDispatchPopulatesRealDiff (end to end through a real `dispatch_pod`
 claim against a real git repo: the hop's artifact carries the actual changed file and the
@@ -22,13 +22,16 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.edges.adapters import system as _sys
+from docket.hops.workspace import worktree as _worktree
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.pipeline.application import executor as _executor
+from docket.platform import git as _git
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── TestHopDiffProbeUnit: _hop_diff_probe in isolation ──────
 
@@ -38,51 +41,51 @@ class TestHopDiffProbeUnit:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_sys, "git_available", lambda: True)
-        monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: False)
-        assert _dispatch._hop_diff_probe("demo-lead", "lead", {}) == ([], None, None, "")
-        assert _dispatch._hop_diff_probe("demo-reviewer", "reviewer", {}) == ([], None, None, "")
+        monkeypatch.setattr(_git, "git_available", lambda: True)
+        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: False)
+        assert _worktree._hop_diff_probe("demo-lead", "lead", {}) == ([], None, None, "")
+        assert _worktree._hop_diff_probe("demo-reviewer", "reviewer", {}) == ([], None, None, "")
 
     def test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_sys, "git_available", lambda: True)
-        monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: True)
-        monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: ["notes/"])
-        monkeypatch.setattr(_sys, "git_diff", lambda _cwd, _base: "")
-        monkeypatch.setattr(_sys, "git_new_files_text", lambda _cwd, _limit: "--- new file: n\nx\n")
-        result = _dispatch._hop_diff_probe("demo-researcher", "researcher", {})
+        monkeypatch.setattr(_git, "git_available", lambda: True)
+        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: True)
+        monkeypatch.setattr(_git, "git_changed_files", lambda _cwd: ["notes/"])
+        monkeypatch.setattr(_git, "git_diff", lambda _cwd, _base: "")
+        monkeypatch.setattr(_git, "git_new_files_text", lambda _cwd, _limit: "--- new file: n\nx\n")
+        result = _worktree._hop_diff_probe("demo-researcher", "researcher", {})
         assert result == (["notes/"], None, None, "--- new file: n\nx\n")
-        same = _dispatch._hop_diff_probe("demo-critic", "critic", {}, "--- new file: n\nx\n")
+        same = _worktree._hop_diff_probe("demo-critic", "critic", {}, "--- new file: n\nx\n")
         assert same == ([], None, None, "")
 
     def test_missing_git_binary_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_sys, "git_available", lambda: False)
+        monkeypatch.setattr(_git, "git_available", lambda: False)
 
         def boom(*_a: Any, **_k: Any) -> Any:
             raise AssertionError("must not call git_is_repo when git is unavailable")
 
-        monkeypatch.setattr(_sys, "git_is_repo", boom)
-        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", {})
+        monkeypatch.setattr(_git, "git_is_repo", boom)
+        result = _worktree._hop_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
     def test_non_repo_cwd_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_sys, "git_available", lambda: True)
-        monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: False)
+        monkeypatch.setattr(_git, "git_available", lambda: True)
+        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: False)
 
         def boom(*_a: Any, **_k: Any) -> Any:
             raise AssertionError("must not call git_changed_files on a non-repo cwd")
 
-        monkeypatch.setattr(_sys, "git_changed_files", boom)
-        monkeypatch.setattr(_sys, "git_current_branch", boom)
-        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", {})
+        monkeypatch.setattr(_git, "git_changed_files", boom)
+        monkeypatch.setattr(_git, "git_current_branch", boom)
+        result = _worktree._hop_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
     def test_real_probe_resolves_task_worktree_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,18 +94,18 @@ class TestHopDiffProbeUnit:
         monkeypatch.setattr(
             _fleet, "meta_get", lambda _id, field, default="": meta.get(field, default)
         )
-        monkeypatch.setattr(_sys, "git_available", lambda: True)
+        monkeypatch.setattr(_git, "git_available", lambda: True)
         seen_cwds: list[str] = []
 
         def fake_is_repo(cwd: str) -> bool:
             seen_cwds.append(cwd)
             return True
 
-        monkeypatch.setattr(_sys, "git_is_repo", fake_is_repo)
-        monkeypatch.setattr(_sys, "git_changed_files", lambda cwd: ["a.py", "b.py"])
-        monkeypatch.setattr(_sys, "git_current_branch", lambda cwd: "pc/demo-implementer")
+        monkeypatch.setattr(_git, "git_is_repo", fake_is_repo)
+        monkeypatch.setattr(_git, "git_changed_files", lambda cwd: ["a.py", "b.py"])
+        monkeypatch.setattr(_git, "git_current_branch", lambda cwd: "pc/demo-implementer")
 
-        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", task)
+        result = _worktree._hop_diff_probe("demo-implementer", "implementer", task)
         files_changed, diff_ref, evidence, _diff = result
         assert (files_changed, diff_ref) == (["a.py", "b.py"], "pc/demo-implementer")
         # The commit/diffStat producers are real git calls against a nonexistent path here
@@ -119,11 +122,11 @@ class TestHopDiffProbeUnit:
             "meta_get",
             lambda _id, field, default="": {"codebase": "/src/demo"}.get(field, default),
         )
-        monkeypatch.setattr(_sys, "git_available", lambda: True)
-        monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: True)
-        monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: [])
-        monkeypatch.setattr(_sys, "git_current_branch", lambda _cwd: "")
-        result = _dispatch._hop_diff_probe("demo-implementer", "implementer", {})
+        monkeypatch.setattr(_git, "git_available", lambda: True)
+        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: True)
+        monkeypatch.setattr(_git, "git_changed_files", lambda _cwd: [])
+        monkeypatch.setattr(_git, "git_current_branch", lambda _cwd: "")
+        result = _worktree._hop_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
 
@@ -188,7 +191,7 @@ class _ImplementerWritesFile:
         timeout: int,
         env: dict[str, str] | None = None,
     ) -> Any:
-        from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
+        from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
@@ -213,7 +216,7 @@ class _PlainRunner:
         timeout: int,
         env: dict[str, str] | None = None,
     ) -> Any:
-        from docket.core.runtime_driver import TurnResult
+        from docket.agent.ports import TurnResult
 
         role = agent_id.rsplit("-", 1)[-1]
         text = {"lead": "plan", "implementer": "did it"}[role]
@@ -228,10 +231,10 @@ class TestDispatchPopulatesRealDiff:
         repo_dir = tmp_path / "repo"
         _init_git_repo(repo_dir)
         with _seed_pod(tmp_path, "demo", codebase=str(repo_dir)):
-            _dispatch.enqueue_task_once("demo", "add a feature", channel="cli")
+            _queue.enqueue_task_once("demo", "add a feature", channel="cli")
             runner = _ImplementerWritesFile()
-            (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
-            recorded = _dispatch.read_tasks("demo")[0]["worktree"]
+            (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
+            recorded = _queue.read_tasks("demo")[0]["worktree"]
             expected_branch = recorded["branch"]
             assert recorded["dir"] and expected_branch
             assert runner.roots == [recorded["dir"]]
@@ -278,7 +281,7 @@ class TestDegradePaths:
                 "description": "research something",
                 "status": "pending",
             }
-            res = _dispatch.dispatch_task("taskpod", task, runner=_PlainRunner())
+            res = _executor.dispatch_task("taskpod", task, runner=_PlainRunner())
 
             assert res.status == "done"
             implementer_hop = next(h for h in res.hops if h.role == "implementer")
@@ -301,11 +304,9 @@ class TestDegradePaths:
             implementer_id = "flatpod-implementer"
             assert _fleet.meta_get(implementer_id, "worktreeDir", "") == ""
 
-            _dispatch.enqueue_task_once("flatpod", "work", channel="cli")
-            (res,) = _dispatch.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
-            assert (
-                "not a git repo" in _dispatch.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
-            )
+            _queue.enqueue_task_once("flatpod", "work", channel="cli")
+            (res,) = _sweep.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
+            assert "not a git repo" in _queue.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
 
             assert res.status == "done"
             implementer_hop = next(h for h in res.hops if h.role == "implementer")
@@ -329,11 +330,11 @@ class TestDegradePaths:
         with _seed_pod(tmp_path, "gitless", codebase=str(repo_dir)):
             # Simulate "no git binary" only for the dispatch call itself -- the
             # pod was already provisioned (with real git) above.
-            monkeypatch.setattr(_sys, "git_available", lambda: False)
+            monkeypatch.setattr(_git, "git_available", lambda: False)
 
-            _dispatch.enqueue_task_once("gitless", "work", channel="cli")
-            (res,) = _dispatch.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
-            assert _dispatch.read_tasks("gitless")[0]["worktree"]["dir"] == ""
+            _queue.enqueue_task_once("gitless", "work", channel="cli")
+            (res,) = _sweep.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
+            assert _queue.read_tasks("gitless")[0]["worktree"]["dir"] == ""
 
             assert res.status == "done"
             implementer_hop = next(h for h in res.hops if h.role == "implementer")

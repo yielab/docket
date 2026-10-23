@@ -1,7 +1,7 @@
 """The observability export pipeline wired into a live turn.
 
-Covers `edges/adapters/docket_runtime.py::DocketDriver.run_turn`'s lazy, idempotent start of
-`core.telemetry`'s bounded pipeline, its flush on every return path (bounded even when the
+Covers `agent/driver.py::DocketDriver.run_turn`'s lazy, idempotent start of
+`observability.telemetry`'s bounded pipeline, its flush on every return path (bounded even when the
 destination hangs), and the `Home.exporters_health_file` write -- see
 observability-export.spec.md's "Pipeline" and "The module-level registry and wiring" sections,
 and agent-loop.spec.md requirements 72-74. Every HTTP target here is a local server this file
@@ -24,15 +24,15 @@ from typing import Any, ClassVar
 import pytest
 from tests.conftest import record_isolation_off
 
-from docket.core import exporter as _exporter
-from docket.core import telemetry as _telemetry
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.edges import store as _store
-from docket.edges.adapters import docket_runtime
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent import driver as docket_runtime
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import exporter as _exporter
+from docket.observability import telemetry as _telemetry
+from docket.platform import store as _store
 
-SUBJECT = "docket.edges.adapters.docket_runtime"
+SUBJECT = "docket.agent.driver"
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +45,7 @@ def _isolate_stores(tmp_path: Path) -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _reset_telemetry_registry() -> Iterator[None]:
-    """`core.telemetry`'s registry is module-global (`_REGISTRY`/`_UNSUBSCRIBE`); reset it
+    """`observability.telemetry`'s registry is module-global (`_REGISTRY`/`_UNSUBSCRIBE`); reset it
     around every test in this file so one test's enabled exporter never leaks a background
     thread or a live trace subscriber into the next."""
     _telemetry.close()
@@ -97,7 +97,7 @@ def _read_call_response(path: str) -> ChatResponse:
 
 def _enable_local_exporter(endpoint: str, privacy: str | None = "full", **extra: Any) -> None:
     """Write a global `kind: exporter` document named "local" -- not a built-in name, so no
-    inheritance kicks in -- straight through `edges/store.py`, the same file `core.exporter`
+    inheritance kicks in -- straight through `platform/store.py`, the same file `observability.exporter`
     reads back."""
     _store.write_json(
         current_home().exporters_file,
@@ -249,7 +249,7 @@ class TestRealPost:
 
 
 class TestExporterPrivacyGatesToolArguments:
-    """`ExporterSpec.privacy` wired through `core.telemetry.start` into the started
+    """`ExporterSpec.privacy` wired through `observability.telemetry.start` into the started
     `Pipeline`'s policy (observability-export.spec.md requirement 86): `actions` grants
     `toolArguments`; the default `minimal` grants nothing."""
 
@@ -368,7 +368,7 @@ class TestZeroExportersAndNoExport:
         _write_meta("solo-agent")
         backend = _ScriptedBackend([_final_response("hello")])
         driver = DocketDriver(backend_factory=lambda model: backend)
-        from docket.core import trace as _trace
+        from docket.observability import trace as _trace
 
         before = threading.active_count()
         result = driver.run_turn("solo-agent", "agent:solo-agent:default", "hi", 60)
@@ -438,7 +438,7 @@ class TestHungDestination:
             )
 
             # The bounded flush above gave up long before the background sender's own transport
-            # timeout could fire, so the eventual failure lands in `core.telemetry.health()` (the
+            # timeout could fire, so the eventual failure lands in `observability.telemetry.health()` (the
             # live, in-process registry) some time after `run_turn` already returned -- read that
             # directly rather than `Home.exporters_health_file`, which `run_turn` only snapshots
             # once, at the moment `flush` gave up (before the send had failed).

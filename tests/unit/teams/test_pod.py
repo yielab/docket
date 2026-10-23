@@ -1,0 +1,614 @@
+"""Pod composition model (teams/pod.py) — pure-logic unit tests."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from docket.agent.tools import mcp_tools as _mcp_tools
+from docket.kernel.home import current_home
+from docket.platform import store as _store
+from docket.teams import pod
+
+SUBJECT = "docket.teams.pod"
+
+
+def _write_meta(member_id: str, pod_name: str, role: str = "") -> None:
+    """Seed just enough of `.docket-meta.json` for `pod_of`'s meta-first read."""
+    path = current_home().meta_path(member_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(
+        path,
+        {"schemaVersion": 1, "kind": "project", "scope": "project", "role": role, "pod": pod_name},
+    )
+
+
+# A fixed role→model map so tests don't depend on the live registry.
+_MODELS = {
+    "lead": "anthropic/claude-haiku-4-5",
+    "implementer": "anthropic/claude-sonnet-4-6",
+    "reviewer": "anthropic/claude-haiku-4-5",
+    "tester": "anthropic/claude-haiku-4-5",
+}
+
+
+class TestMemberId:
+    def test_first_of_role_is_bare(self) -> None:
+        assert pod.member_id("shop", "implementer", 1) == "shop-implementer"
+
+    def test_duplicate_is_indexed(self) -> None:
+        assert pod.member_id("shop", "implementer", 2) == "shop-implementer-2"
+
+    def test_parse_round_trip(self) -> None:
+        assert pod.parse_member_id("shop-implementer", "shop") == ("implementer", 1)
+        assert pod.parse_member_id("shop-implementer-2", "shop") == ("implementer", 2)
+        assert pod.parse_member_id("shop-lead", "shop") == ("lead", 1)
+
+    def test_parse_rejects_foreign_or_unknown(self) -> None:
+        assert pod.parse_member_id("other-lead", "shop") is None
+        assert pod.parse_member_id("shop-wizard", "shop") is None
+        assert pod.parse_member_id("shop", "shop") is None
+
+
+class TestPodOf:
+    def test_resolves_member_to_project(self) -> None:
+        assert pod.pod_of("demo-lead") == "demo"
+        assert pod.pod_of("demo-implementer-2") == "demo"
+        assert pod.pod_of("my-shop-reviewer") == "my-shop"
+
+    def test_non_pod_ids_return_none(self) -> None:
+        assert pod.pod_of("myshop") is None  # legacy single agent, no dash
+        assert pod.pod_of("my-api") is None  # 'api' is not a pod role
+        assert pod.pod_of("manager") is None  # org specialist
+
+    def test_meta_wins_when_a_custom_role_name_ends_in_a_registered_role(self) -> None:
+        # 'proj-security-reviewer' string-parses as role 'reviewer' of project
+        # 'proj-security' -- wrong. Recorded meta is authoritative.
+        _write_meta("proj-security-reviewer", "proj", role="security-reviewer")
+        assert pod.pod_of("proj-security-reviewer") == "proj"
+
+    def test_falls_back_to_string_parsing_with_no_meta(self) -> None:
+        # No .docket-meta.json on disk for this id -- unchanged legacy behavior.
+        assert pod.pod_of("demo-lead") == "demo"
+
+    def test_falls_back_to_string_parsing_when_meta_has_no_pod_field(self) -> None:
+        path = current_home().meta_path("demo-lead")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _store.write_json(path, {"schemaVersion": 1, "kind": "project", "role": "lead"})
+        assert pod.pod_of("demo-lead") == "demo"
+
+    def test_alien_id_still_refused_even_with_unrelated_meta_present(self) -> None:
+        _write_meta("proj-security-reviewer", "proj", role="security-reviewer")
+        assert pod.pod_of("some-other-agent") is None
+
+
+class TestNormalizeRole:
+    def test_role_is_case_insensitive(self) -> None:
+        assert pod.normalize_role("Implementer") == "implementer"
+
+    def test_an_old_role_name_is_not_an_alias(self) -> None:
+        with pytest.raises(pod.PodError):
+            pod.normalize_role("programmer")
+
+    def test_unknown_role_raises(self) -> None:
+        with pytest.raises(pod.PodError):
+            pod.normalize_role("wizard")
+
+
+def _write_vetter_overlay(path: Path, denied_tools: list[str] | None = None) -> None:
+    """Same wire shape as ``tests/unit/core/test_archetypes.py::_write_vetter_overlay``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(
+        path,
+        {
+            "roles": {
+                "vetter": {
+                    "name": "vetter",
+                    "version": 1,
+                    "scope": "pod",
+                    "modelClass": "cheap",
+                    "soulTemplate": "x",
+                    "agentsTemplate": "y",
+                    "gateContract": {"kind": "none"},
+                    "toolProfile": "read-only",
+                    "deniedTools": denied_tools or [],
+                }
+            }
+        },
+    )
+
+
+class TestPodScopedRoleInRoster:
+    """A role defined only in a pod's own overlay (`pod_config_dir(project)/roles.json`)
+    must be recognized by the roster helpers a pipeline dispatch depends on, not only by
+    `docket pod roles`."""
+
+    def test_pod_scoped_role_resolves_in_the_roster(self) -> None:
+        _write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json")
+
+        assert pod.parse_member_id("acme-vetter", "acme") == ("vetter", 1)
+        found = pod.members_of(["acme-lead", "acme-vetter"], "acme")
+        assert ("acme-vetter", "vetter", 1) in found
+
+    def test_pod_scoped_role_does_not_leak_to_a_different_pod(self) -> None:
+        # Fail-closed / most-restrictive case: pod "acme"'s overlay must not authorize a
+        # same-named member id under an unrelated pod "beta".
+        _write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json")
+
+        assert pod.parse_member_id("beta-vetter", "beta") is None
+
+
+class TestDefaultPod:
+    def test_lean_default_is_lead_plus_implementer(self) -> None:
+        members = pod.plan_pod("shop", role_models=_MODELS)
+        assert [m.member_id for m in members] == ["shop-lead", "shop-implementer"]
+        assert [m.role for m in members] == ["lead", "implementer"]
+
+    def test_lead_gets_coordination_model_implementer_gets_codegen(self) -> None:
+        members = {m.role: m for m in pod.plan_pod("shop", role_models=_MODELS)}
+        # Lead -> lead row (cheap), Implementer -> implementer row (strong).
+        assert members["lead"].model == _MODELS["lead"]
+        assert members["implementer"].model == _MODELS["implementer"]
+
+    def test_all_members_share_base_metadata_session_key(self) -> None:
+        members = pod.plan_pod("shop", role_models=_MODELS)
+        keys = {m.session_key for m in members}
+        assert keys == {"agent:shop:default"}
+
+    def test_full_pod_has_four_roles(self) -> None:
+        members = pod.plan_pod("shop", pod.FULL_POD_ROLES, role_models=_MODELS)
+        assert [m.role for m in members] == ["lead", "implementer", "reviewer", "tester"]
+
+
+class TestDuplicateRoles:
+    def test_two_implementers_in_plan_are_indexed(self) -> None:
+        members = pod.plan_pod("shop", ("lead", "implementer", "implementer"), role_models=_MODELS)
+        ids = [m.member_id for m in members]
+        assert ids == ["shop-lead", "shop-implementer", "shop-implementer-2"]
+
+    def test_second_lead_in_plan_rejected(self) -> None:
+        with pytest.raises(pod.PodError):
+            pod.plan_pod("shop", ("lead", "lead"), role_models=_MODELS)
+
+
+class TestAddMember:
+    def test_add_second_implementer_gets_index_2(self) -> None:
+        existing = ["shop-lead", "shop-implementer"]
+        m = pod.plan_added_member("shop", "implementer", existing, role_models=_MODELS)
+        assert m.member_id == "shop-implementer-2"
+
+    def test_add_fills_lowest_free_index(self) -> None:
+        existing = ["shop-lead", "shop-implementer", "shop-implementer-3"]
+        m = pod.plan_added_member("shop", "implementer", existing, role_models=_MODELS)
+        assert m.member_id == "shop-implementer-2"
+
+    def test_add_first_reviewer_is_bare(self) -> None:
+        existing = ["shop-lead", "shop-implementer"]
+        m = pod.plan_added_member("shop", "reviewer", existing, role_models=_MODELS)
+        assert m.member_id == "shop-reviewer"
+
+    def test_add_second_lead_rejected(self) -> None:
+        existing = ["shop-lead", "shop-implementer"]
+        with pytest.raises(pod.PodError):
+            pod.plan_added_member("shop", "lead", existing, role_models=_MODELS)
+
+    def test_next_index_ignores_other_projects(self) -> None:
+        existing = ["shop-implementer", "other-implementer", "other-implementer-2"]
+        assert pod.next_index(existing, "shop", "implementer") == 2
+
+
+def _write_lead_meta(project: str, fields: dict[str, object] | None = None) -> None:
+    """Seed just the pod Lead's meta keys ``PodSettings`` reads."""
+    path = current_home().meta_path(pod.member_id(project, "lead"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data: dict[str, object] = {"schemaVersion": 1, "kind": "project", "scope": "project"}
+    if fields:
+        data.update(fields)
+    _store.write_json(path, data)
+
+
+class TestPodSettings:
+    def test_defaults_when_nothing_stored(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.budget_usd == 0.0
+        assert settings.max_rework_cycles == 1
+        assert settings.turn_timeout_s is None
+        assert settings.verify_timeout_s is None
+        assert settings.approval_mode == "wait"
+
+    def test_approval_mode_refuse_round_trips(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "refuse"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_mode == "refuse"
+
+    def test_invalid_approval_mode_names_the_key(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "sometimes"})
+        with pytest.raises(pod.PodSettingsError, match="approvalMode"):
+            pod.PodSettings.load_for("shop")
+
+    def test_coerce_names_a_rejected_value_not_a_stored_one(self) -> None:
+        with pytest.raises(pod.PodSettingsError) as err:
+            pod.PodSettings.coerce("budgetUsd", "notanumber")
+        assert str(err.value).startswith("budgetUsd: invalid value 'notanumber'")
+        assert "stored" not in str(err.value)
+
+    def test_coerce_accepts_approval_mode(self) -> None:
+        assert pod.PodSettings.coerce("approvalMode", "refuse") == "refuse"
+
+    def test_coerce_rejects_invalid_approval_mode(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="approvalMode"):
+            pod.PodSettings.coerce("approvalMode", "sometimes")
+
+    def test_accepts_numeric_strings_from_existing_installs(self) -> None:
+        _write_lead_meta(
+            "shop",
+            {
+                "budgetUsd": "5",
+                "maxReworkCycles": "2",
+                "turnTimeoutS": "45",
+                "verifyTimeoutS": "600",
+            },
+        )
+        settings = pod.PodSettings.load_for("shop")
+        assert (settings.budget_usd, settings.max_rework_cycles) == (5.0, 2)
+        assert (settings.turn_timeout_s, settings.verify_timeout_s) == (45, 600)
+
+    def test_invalid_stored_value_names_the_key(self) -> None:
+        _write_lead_meta("shop", {"turnTimeoutS": "not-a-number"})
+        with pytest.raises(pod.PodSettingsError, match="turnTimeoutS"):
+            pod.PodSettings.load_for("shop")
+
+    def test_negative_max_rework_cycles_is_invalid(self) -> None:
+        _write_lead_meta("shop", {"maxReworkCycles": "-1"})
+        with pytest.raises(pod.PodSettingsError, match="maxReworkCycles"):
+            pod.PodSettings.load_for("shop")
+
+    def test_coerce_accepts_a_valid_value(self) -> None:
+        assert pod.PodSettings.coerce("turnTimeoutS", "90") == 90
+
+    def test_coerce_rejects_non_positive_timeout(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="turnTimeoutS"):
+            pod.PodSettings.coerce("turnTimeoutS", "0")
+
+    def test_coerce_rejects_unknown_key(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="unknown"):
+            pod.PodSettings.coerce("definitelyNotARealSetting", "x")
+
+    def test_value_and_source_reports_set_vs_default(self) -> None:
+        _write_lead_meta("shop", {"maxReworkCycles": "3"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("maxReworkCycles", "shop") == (3, "set")
+        assert settings.value_and_source("budgetUsd", "shop") == (0.0, "default")
+
+    def test_value_and_source_reports_approval_mode(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "refuse"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("approvalMode", "shop") == ("refuse", "set")
+
+    def test_approval_mode_park_round_trips(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "park"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_mode == "park"
+
+    def test_coerce_accepts_park(self) -> None:
+        assert pod.PodSettings.coerce("approvalMode", "park") == "park"
+
+    def test_approval_expiry_hours_defaults_to_24(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_expiry_hours == 24
+
+    def test_input_expiry_hours_defaults_to_72(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.input_expiry_hours == 72
+
+    def test_approval_expiry_hours_round_trips(self) -> None:
+        _write_lead_meta("shop", {"approvalExpiryHours": "6"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_expiry_hours == 6
+
+    def test_input_expiry_hours_round_trips(self) -> None:
+        _write_lead_meta("shop", {"inputExpiryHours": "48"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.input_expiry_hours == 48
+
+    def test_approval_expiry_hours_rejects_non_positive(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="approvalExpiryHours"):
+            pod.PodSettings.coerce("approvalExpiryHours", "0")
+
+    def test_input_expiry_hours_rejects_non_positive(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="inputExpiryHours"):
+            pod.PodSettings.coerce("inputExpiryHours", "0")
+
+    def test_max_consultations_per_task_defaults_to_3_and_round_trips(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").max_consultations_per_task == 3
+        _write_lead_meta("shop", {"maxConsultationsPerTask": "1"})
+        assert pod.PodSettings.load_for("shop").max_consultations_per_task == 1
+
+    def test_max_consultations_per_task_rejects_negative(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="maxConsultationsPerTask"):
+            pod.PodSettings.coerce("maxConsultationsPerTask", "-1")
+
+    def test_require_verify_defaults_to_false(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.require_verify is False
+
+    def test_require_verify_true_round_trips(self) -> None:
+        _write_lead_meta("shop", {"requireVerify": True})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.require_verify is True
+
+    def test_coerce_accepts_require_verify(self) -> None:
+        assert pod.PodSettings.coerce("requireVerify", True) is True
+        assert pod.PodSettings.coerce("requireVerify", False) is False
+
+
+class TestPodSettingsSchedule:
+    """`PodSettings.schedule`: validated through the same `coerce` path as every other
+    setting; the CLI's dedicated write path is covered in
+    tests/integration/test_pod_config_settings.py."""
+
+    def test_defaults_to_none(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.schedule is None
+
+    def test_recognized_spec_round_trips(self) -> None:
+        _write_lead_meta("shop", {"schedule": "@every 30m"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.schedule == "@every 30m"
+
+    def test_invalid_spec_names_the_key(self) -> None:
+        _write_lead_meta("shop", {"schedule": "@every 3x"})
+        with pytest.raises(pod.PodSettingsError, match="schedule"):
+            pod.PodSettings.load_for("shop")
+
+    def test_coerce_accepts_a_recognized_spec(self) -> None:
+        assert pod.PodSettings.coerce("schedule", "@every 30m") == "@every 30m"
+
+    def test_coerce_rejects_an_unrecognized_spec(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="schedule"):
+            pod.PodSettings.coerce("schedule", "@every 3x")
+
+    def test_value_and_source_reports_set_schedule(self) -> None:
+        _write_lead_meta("shop", {"schedule": "09:00"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("schedule", "shop") == ("09:00", "set")
+
+
+class TestPodSettingsAllowCommands:
+    """`PodSettings.allowCommands`: a pod's own extra unattended binaries."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").allow_commands == ()
+
+    def test_parses_and_dedupes_a_comma_separated_list(self) -> None:
+        _write_lead_meta("shop", {"allowCommands": "tox, uv, tox"})
+        assert pod.PodSettings.load_for("shop").allow_commands == ("tox", "uv")
+
+    def test_a_bin_already_on_safe_bins_is_silently_dropped(self) -> None:
+        _write_lead_meta("shop", {"allowCommands": "tox, ls"})
+        assert pod.PodSettings.load_for("shop").allow_commands == ("tox",)
+
+    def test_rejects_a_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", "./pytest")
+
+    def test_rejects_a_shell_metacharacter(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", "pytest;rm")
+
+    @pytest.mark.parametrize("name", ["eval", "exec", "source", ".", "export"])
+    def test_rejects_opaque_or_scope_changing_names(self, name: str) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", name)
+
+    def test_rejects_a_high_risk_class_bin(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", "git")
+
+    def test_coerce_returns_the_canonical_comma_joined_form(self) -> None:
+        assert pod.PodSettings.coerce("allowCommands", "uv, tox") == "uv,tox"
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _write_lead_meta("shop", {"allowCommands": "tox,uv"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("allowCommands", "shop") == ("tox,uv", "set")
+
+
+class TestPodSettingsProjectInstructions:
+    """`PodSettings.projectInstructions`: opt-in relative paths inside the codebase
+    root, composed by `agent/identity.py` — see
+    tests/integration/test_role_tools_and_identity.py for the composition itself."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").project_instructions == ()
+
+    def test_parses_and_dedupes_a_comma_separated_list(self) -> None:
+        _write_lead_meta("shop", {"projectInstructions": "AGENTS.md, docs/style.md, AGENTS.md"})
+        assert pod.PodSettings.load_for("shop").project_instructions == (
+            "AGENTS.md",
+            "docs/style.md",
+        )
+
+    def test_rejects_an_absolute_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "/etc/passwd")
+
+    def test_rejects_a_home_relative_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "~/AGENTS.md")
+
+    def test_rejects_a_dot_dot_segment(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "../outside/AGENTS.md")
+
+    def test_a_dot_dot_segment_is_rejected_even_mid_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "docs/../../AGENTS.md")
+
+    def test_coerce_returns_the_canonical_comma_joined_form(self) -> None:
+        assert (
+            pod.PodSettings.coerce("projectInstructions", "AGENTS.md, CLAUDE.md")
+            == "AGENTS.md,CLAUDE.md"
+        )
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _write_lead_meta("shop", {"projectInstructions": "AGENTS.md"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("projectInstructions", "shop") == ("AGENTS.md", "set")
+
+
+class TestPodSettingsMcpServers:
+    """`PodSettings.mcpServers`: a pod's selection from the shared MCP server
+    catalog. `None` (the default) means "every configured server"."""
+
+    def test_defaults_to_none(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").mcp_servers is None
+
+    def test_coerce_accepts_names_in_the_live_catalog(self) -> None:
+        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="a", command="stub"))
+        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="b", command="stub"))
+        assert pod.PodSettings.coerce("mcpServers", "a, b") == "a,b"
+
+    def test_coerce_rejects_a_name_absent_from_the_catalog(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="mcpServers"):
+            pod.PodSettings.coerce("mcpServers", "zzz")
+
+    def test_load_for_rejects_a_stored_name_no_longer_in_the_catalog(self) -> None:
+        _write_lead_meta("shop", {"mcpServers": "gone"})
+        with pytest.raises(pod.PodSettingsError, match="mcpServers"):
+            pod.PodSettings.load_for("shop")
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="a", command="stub"))
+        _write_lead_meta("shop", {"mcpServers": "a"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("mcpServers", "shop") == ("a", "set")
+
+
+class TestPodSettingsReadOnly:
+    """`readOnly` narrows the machine's read-only jail grants and never widens them."""
+
+    @pytest.fixture
+    def grants(self, tmp_path: Path) -> tuple[Path, Path]:
+        from docket.teams import fleet as _fleet
+
+        node, py = tmp_path / "node", tmp_path / "py"
+        node.mkdir()
+        py.mkdir()
+        _fleet.add_read_only(str(node))
+        _fleet.add_read_only(str(py))
+        return node.resolve(), py.resolve()
+
+    def test_unset_keeps_every_machine_grant(self, grants: tuple[Path, Path]) -> None:
+        _write_lead_meta("shop")
+        assert pod.effective_read_only("shop") == grants
+
+    def test_a_list_keeps_only_the_named_grants(self, grants: tuple[Path, Path]) -> None:
+        _write_lead_meta("shop", {"readOnly": str(grants[1])})
+        assert pod.effective_read_only("shop") == (grants[1],)
+
+    def test_none_keeps_nothing(self, grants: tuple[Path, Path]) -> None:
+        _write_lead_meta("shop", {"readOnly": "none"})
+        assert pod.effective_read_only("shop") == ()
+
+    def test_a_grant_the_operator_removes_leaves_the_pod(self, grants: tuple[Path, Path]) -> None:
+        from docket.teams import fleet as _fleet
+
+        _write_lead_meta("shop", {"readOnly": f"{grants[0]},{grants[1]}"})
+        _fleet.remove_read_only(str(grants[0]))
+        assert pod.effective_read_only("shop") == (grants[1],)
+
+    def test_coerce_refuses_a_path_the_machine_has_not_granted(
+        self, grants: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        other = tmp_path / "other"
+        other.mkdir()
+        with pytest.raises(pod.PodSettingsError, match="readOnly"):
+            pod.PodSettings.coerce("readOnly", f"{grants[0]},{other}")
+
+    def test_coerce_stores_granted_paths_and_none(self, grants: tuple[Path, Path]) -> None:
+        assert pod.PodSettings.coerce("readOnly", f" {grants[1]} ") == str(grants[1])
+        assert pod.PodSettings.coerce("readOnly", "none") == "none"
+
+
+class TestPodSettingsPrepare:
+    """`prepare` is one install line, `none` to turn it off, `""` to leave it to the lockfile."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").prepare == ""
+
+    def test_coerce_keeps_the_stripped_line_and_none(self) -> None:
+        assert pod.PodSettings.coerce("prepare", " make deps ") == "make deps"
+        assert pod.PodSettings.coerce("prepare", "none") == "none"
+
+    @pytest.mark.parametrize("bad", ["a\nb", "a\x00b", "x" * 1001])
+    def test_coerce_refuses_a_multiline_nul_or_long_value(self, bad: str) -> None:
+        with pytest.raises(pod.PodSettingsError, match="prepare"):
+            pod.PodSettings.coerce("prepare", bad)
+
+    def test_a_stored_value_is_read_back(self) -> None:
+        _write_lead_meta("shop", {"prepare": "make deps"})
+        assert pod.PodSettings.load_for("shop").prepare == "make deps"
+
+
+class TestPodSettingsProtects:
+    """`protects` is a comma-joined list of repository globs; it only ever adds to the defaults."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").protects == ()
+
+    def test_coerce_joins_the_stripped_unique_globs(self) -> None:
+        assert pod.PodSettings.coerce("protects", " src/*.js , Makefile,src/*.js") == (
+            "src/*.js,Makefile"
+        )
+
+    @pytest.mark.parametrize("bad", ["/abs", "a/../b", "x" * 201])
+    def test_coerce_refuses_an_escaping_or_long_glob(self, bad: str) -> None:
+        with pytest.raises(pod.PodSettingsError, match="protects"):
+            pod.PodSettings.coerce("protects", bad)
+
+    def test_coerce_refuses_more_than_fifty_globs(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="protects"):
+            pod.PodSettings.coerce("protects", ",".join(f"d{n}/*" for n in range(51)))
+
+    def test_a_stored_value_is_read_back_as_a_tuple(self) -> None:
+        _write_lead_meta("shop", {"protects": "a/*,b"})
+        assert pod.PodSettings.load_for("shop").protects == ("a/*", "b")
+
+
+class TestPodSettingsDeniedTools:
+    """`PodSettings.deniedTools`: built-in tool names every role in this pod
+    additionally denies, unioned by `teams.roles.registry_for_role` -- see
+    `tests/unit/core/test_archetypes.py::TestPodDeniedTools` for the union itself."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").denied_tools == ()
+
+    def test_parses_and_dedupes_a_comma_separated_list(self) -> None:
+        _write_lead_meta("shop", {"deniedTools": "fetch, bash, fetch"})
+        assert pod.PodSettings.load_for("shop").denied_tools == ("fetch", "bash")
+
+    def test_coerce_accepts_a_known_tool_name(self) -> None:
+        assert pod.PodSettings.coerce("deniedTools", "fetch") == "fetch"
+
+    def test_coerce_rejects_an_unknown_tool_name(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="deniedTools"):
+            pod.PodSettings.coerce("deniedTools", "zzz")
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _write_lead_meta("shop", {"deniedTools": "fetch"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("deniedTools", "shop") == ("fetch", "set")

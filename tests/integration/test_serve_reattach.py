@@ -21,20 +21,22 @@ from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import answers as _answers
-from docket.core import approval as _ap
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pipeline as _pipeline
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
-from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent import driver as _dr
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.governance import approval as _ap
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import answers as _answers
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 _TOKEN = "test-serve-token-reattach"
 _CONSULT = {
@@ -90,7 +92,7 @@ def _call(method: str, url: str, body: dict[str, Any] | None = None) -> tuple[in
 
 
 def _task_list(project: str = "demo") -> list[dict[str, Any]]:
-    path = _dispatch.pod_task_list_path(project)
+    path = _settings.pod_task_list_path(project)
     return list(json.loads(path.read_text())["tasks"])
 
 
@@ -157,8 +159,8 @@ def _park_on_consult(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     backend = _Backend([_final("plan"), _consult(), _final("built with redis")])
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    queued = _dispatch.enqueue_task_once("demo", "in-place task", channel="cli")[0]
-    _dispatch.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
+    queued = _queue.enqueue_task_once("demo", "in-place task", channel="cli")[0]
+    _sweep.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
     return str(queued["id"])
 
 
@@ -167,8 +169,8 @@ class TestServedFromDisk:
         self,
     ) -> None:
         _gated_pod()
-        task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
-        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
+        _sweep.dispatch_pod("demo", runner=FakeDriver())
         token = _task_list()[0]["approvalToken"]
 
         with _server() as first:
@@ -200,9 +202,9 @@ class TestAnswerAcrossRestart:
         self,
     ) -> None:
         _gated_pod()
-        task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
+        task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
         runner = FakeDriver()
-        _dispatch.dispatch_pod("demo", runner=runner)
+        _sweep.dispatch_pod("demo", runner=runner)
         token = _task_list()[0]["approvalToken"]
         hops_before = len(runner.calls)
 
@@ -217,7 +219,7 @@ class TestAnswerAcrossRestart:
         assert parked["status"] == "pending"
         assert len(runner.calls) == hops_before
 
-        results = _dispatch.dispatch_pod("demo", runner=runner, resume=True)
+        results = _sweep.dispatch_pod("demo", runner=runner, resume=True)
         assert [r.status for r in results] == ["done"]
         final = next(t for t in _task_list() if t["id"] == task["id"])
         assert [h["role"] for h in final["hops"]][:2] == ["lead", "implementer"]
@@ -238,7 +240,7 @@ class TestAnswerAcrossRestart:
         assert status == 200
         assert _task_list()[0]["status"] == "pending"
 
-        _dispatch.dispatch_pod("demo", turn_timeout=60, max_tasks=1, resume=True)
+        _sweep.dispatch_pod("demo", turn_timeout=60, max_tasks=1, resume=True)
         assert _task_list()[0]["status"] == "done"
 
 
@@ -249,7 +251,7 @@ class TestIdempotencyKey:
             _, created = _call(
                 "POST", f"{first}/tasks/demo", {"description": "x", "idempotencyKey": "K:1"}
             )
-        _dispatch.dispatch_pod("demo", runner=FakeDriver(ok=False))
+        _sweep.dispatch_pod("demo", runner=FakeDriver(ok=False))
         assert _task_list()[0]["status"] == "failed"
 
         with _server() as second:
@@ -269,8 +271,8 @@ class TestExpiryStates:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         _gated_pod()
-        gated = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
-        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        gated = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
+        _sweep.dispatch_pod("demo", runner=FakeDriver())
         token = _task_list()[0]["approvalToken"]
         record = _ap.approval_get(token)
         record["expiresAt"] = "2000-01-01T00:00:00Z"
@@ -296,21 +298,21 @@ class TestExpiryStates:
 class TestStaleClaim:
     def test_a_stale_claim_failure_is_resumed_by_the_next_sweep(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
-        path = _dispatch.pod_task_list_path("demo")
+        task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
+        path = _settings.pod_task_list_path("demo")
         doc = json.loads(path.read_text())
         doc["tasks"][0].update(
             status="running", claimedAt="2000-01-01T00:00:00+00:00", claimId="gone"
         )
         path.write_text(json.dumps(doc))
 
-        _dispatch.dispatch_pod("demo", runner=FakeDriver(), max_tasks=0)
+        _sweep.dispatch_pod("demo", runner=FakeDriver(), max_tasks=0)
         with _server() as first:
             _, failed = _call("GET", f"{first}/tasks/demo/{task['id']}")
         assert failed["status"] == "failed"
         assert failed["failureKind"] == "stale_claim"
 
         with _server() as second:
-            _dispatch.dispatch_pod("demo", runner=FakeDriver(), resume=True)
+            _sweep.dispatch_pod("demo", runner=FakeDriver(), resume=True)
             _, resumed = _call("GET", f"{second}/tasks/demo/{task['id']}")
         assert resumed["status"] == "done"

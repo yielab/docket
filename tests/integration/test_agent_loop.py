@@ -1,7 +1,7 @@
-"""docket owns the turn loop (`core/agent_loop.py`), so every stop condition must be a
+"""docket owns the turn loop (`agent/loop.py`), so every stop condition must be a
 deliberate, reported exit -- never a silent hang or runaway loop. Covers: a single execution
 path (an architectural guard walks the module's own source to prove `run_agent_turn` never
-calls a tool handler except through `core.tools.dispatch_tool`); truncation safety (a
+calls a tool handler except through `agent.tools.registry.dispatch_tool`); truncation safety (a
 length-truncated response carrying tool calls is never dispatched or persisted); all four stop
 conditions -- final message, max_iterations, max_tool_calls, wall-clock timeout, token budget --
 each triggerable with the right `stop_reason`/`failure_kind`; durability (history persisted per
@@ -25,12 +25,9 @@ from typing import Any
 import pytest
 from tests.integration import llm_stub as _stub
 
-from docket.core import agent_loop as _loop
-from docket.core import approval as _approval
-from docket.core import session as _session
-from docket.core import tools as _tools
-from docket.core import trace as _trace
-from docket.core.llm import (
+from docket.agent import loop as _loop
+from docket.agent import session as _session
+from docket.agent.llm import (
     ChatMessage,
     ChatResponse,
     Endpoint,
@@ -39,19 +36,22 @@ from docket.core.llm import (
     ToolSpec,
     assistant,
 )
-from docket.core.session import append_messages as append_session_messages
-from docket.core.session import load_session
-from docket.core.tools import Tool as _Tool
-from docket.core.tools import ToolContext, ToolRegistry
-from docket.edges.adapters import llm as _llm_adapter
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.agent.session import append_messages as append_session_messages
+from docket.agent.session import load_session
+from docket.agent.tools import registry as _tools
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import Tool as _Tool
+from docket.agent.tools.registry import ToolContext, ToolRegistry
+from docket.governance import approval as _approval
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.models.adapters import openai_http as _llm_adapter
+from docket.observability import trace as _trace
 
-SUBJECT = "docket.core.agent_loop"
+SUBJECT = "docket.agent.loop"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "core" / "agent_loop.py"
+AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "agent" / "loop.py"
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
@@ -1581,7 +1581,7 @@ class TestSingleExecutionPath:
 
         imported_names: set[str] = set()
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "docket.core.tools":
+            if isinstance(node, ast.ImportFrom) and node.module == "docket.agent.tools.registry":
                 imported_names.update(alias.asname or alias.name for alias in node.names)
         assert "dispatch_tool" in imported_names
 

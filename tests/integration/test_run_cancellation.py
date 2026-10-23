@@ -1,7 +1,7 @@
 """Cancellation — `docket task cancel <id>` actually kills the in-flight hop's process group.
 
-Covers ``edges.adapters.system.kill_process_group`` (a real process group leader + child both
-die; an already-dead pid is a harmless no-op) and ``core/runs.py``'s registry additions:
+Covers ``platform.process.kill_process_group`` (a real process group leader + child both
+die; an already-dead pid is a harmless no-op) and ``tasks/application/runs.py``'s registry additions:
 ``current_run_id()``/``add_hop_pid``/``remove_hop_pid`` (the pid-tracking side channel shared via
 contextvars) and ``cancel_run`` (unknown run, already-terminal run, a real kill, and a concurrent
 cancel never clobbered back to "succeeded" by normal completion).
@@ -26,15 +26,15 @@ from typing import Any
 
 import pytest
 
-from docket.core import runs as _runs
-from docket.edges import store as _store
-from docket.edges.adapters import system as _sys
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.platform import process as _process
+from docket.platform import store as _store
+from docket.tasks.application import runs as _runs
 
-SUBJECT = "docket.core.runs"
+SUBJECT = "docket.tasks.application.runs"
 
-# ── edges.adapters.system.kill_process_group: raw OS mechanics ───────────────
+# ── platform.process.kill_process_group: raw OS mechanics ───────────────
 
 
 class TestKillProcessGroup:
@@ -49,7 +49,7 @@ class TestKillProcessGroup:
             time.sleep(0.02)
         child_pid = int(pid_file.read_text().strip())
 
-        assert _sys.kill_process_group(proc.pid) is True
+        assert _process.kill_process_group(proc.pid) is True
         proc.wait(timeout=5)
         assert proc.returncode is not None and proc.returncode != 0
 
@@ -68,10 +68,10 @@ class TestKillProcessGroup:
     def test_already_dead_pid_is_a_harmless_noop(self) -> None:
         proc = subprocess.Popen(["true"], start_new_session=True)
         proc.wait(timeout=5)
-        assert _sys.kill_process_group(proc.pid) is False
+        assert _process.kill_process_group(proc.pid) is False
 
 
-# ── core/runs.py: pid tracking + cancel_run ───────────────────────────────────
+# ── tasks/application/runs.py: pid tracking + cancel_run ───────────────────────────────────
 
 
 @pytest.fixture(autouse=True)
@@ -131,13 +131,13 @@ class TestCancelRun:
     def test_the_servers_second_signal_records_the_server_as_the_source(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket import serve as _serve
+        from docket.interfaces.http import server as _server
 
         record = _runs.create_run("sweep", "myapp")
-        monkeypatch.setattr(_serve, "_sweep_run_ids", {"myapp": record["id"]})
-        monkeypatch.setattr(_serve, "_sweep_inflight", {})
-        monkeypatch.setattr(_serve, "_sweep_pool", None)
-        _serve._abandon_sweeps(wait_s=0.1)
+        monkeypatch.setattr(_server, "_sweep_run_ids", {"myapp": record["id"]})
+        monkeypatch.setattr(_server, "_sweep_inflight", {})
+        monkeypatch.setattr(_server, "_sweep_pool", None)
+        _server._abandon_sweeps(wait_s=0.1)
         persisted = _runs.get_run(record["id"])
         assert persisted is not None and persisted["state"] == "cancelled"
         assert persisted["cancellation"]["source"] == "serve"
@@ -212,7 +212,7 @@ class TestCancelRun:
         killed: list[int] = []
         audited: list[tuple[str, str]] = []
         monkeypatch.setattr(
-            _sys,
+            _process,
             "kill_process_group",
             lambda pid: killed.append(pid) or True,
         )
@@ -261,7 +261,7 @@ class TestCancelRun:
         _runs.mark_running(record["id"])
         events: list[str] = []
         monkeypatch.setattr(
-            "docket.core.trace.trace_event",
+            "docket.observability.trace.trace_event",
             lambda _project, _session, _role, event, _payload: events.append(event) or "written",
         )
         assert _runs.cancel_run(record["id"]).ok is True
@@ -343,7 +343,7 @@ class TestCancelRun:
             env["RUNS_FILE"] = str(current_home().runs_file)
             code = (
                 "import json; from dataclasses import asdict; "
-                "from docket.core.runs import cancel_run; "
+                "from docket.tasks.application.runs import cancel_run; "
                 f"print(json.dumps(asdict(cancel_run({record['id']!r}))))"
             )
             completed = subprocess.run(

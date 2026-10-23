@@ -114,28 +114,28 @@ Two invariants matter most and are enforced by tests rather than convention alon
 move with the refactor:
 
 1. **Every tool call goes through the single tool dispatcher** (`dispatch_tool`, today in
-   `core/tools.py`). docket's governance stack — the policy engine, the approval store, the
+   `agent/tools/registry.py`). docket's governance stack — the policy engine, the approval store, the
    high-risk classifier, the audit log — only means anything if there is exactly one place a tool
    can execute from. An AST test enforces this:
    `tests/unit/core/test_tools.py::test_only_the_chokepoint_imports_the_handler_module`.
-2. **docket-owned JSON goes through the one store module** (today `edges/store.py`: atomic write
+2. **docket-owned JSON goes through the one store module** (today `platform/store.py`: atomic write
    + filelock + `.bak` rotation + 0600 perms) — never write those files directly. The one
-   documented exemption is append-only JSONL (`core/trace.py`, `core/audit.py`), which writes
+   documented exemption is append-only JSONL (`observability/trace.py`, `governance/audit.py`), which writes
    directly by design.
 
 Where things go today:
 
-- **Commands** are Typer functions in `src/docket/cli/` — add them to `cli/__init__.py`, or to
-  a `_<group>.py` module for a larger subcommand group (e.g. `cli/_gates.py`).
-- **Domain logic / helpers** go in `src/docket/core/` — Pydantic models in `core/models.py`,
+- **Commands** are Typer functions in `src/docket/cli/` — add them to `interfaces/cli/app/__init__.py`, or to
+  a `_<group>.py` module for a larger subcommand group (e.g. `interfaces/cli/app/_gates.py`).
+- **Domain logic / helpers** go in `src/docket/core/` — Pydantic models in `teams/models.py`,
   plus pure services (policy resolution, sync, security, audit, trace, the turn loop, the tool
   registry, the model-endpoint port).
 - **I/O and side effects** go in `src/docket/edges/`:
   - docket-owned JSON (`.docket-meta.json`, etc.) is read/written **only** through
-    `edges/store.py`, per invariant 2 above.
-  - the model endpoint (`edges/adapters/llm.py`), MCP client (`edges/adapters/mcp_client.py`),
-    Telegram Bot API (`edges/adapters/telegram.py`), the sandboxed-exec/fetch tool handlers
-    (`edges/adapters/toolbox.py`, `edges/adapters/fetch.py`), and shell-outs to `docker` / `git`
+    `platform/store.py`, per invariant 2 above.
+  - the model endpoint (`models/adapters/openai_http.py`), MCP client (`agent/tools/mcp_client.py`),
+    Telegram Bot API (`interfaces/telegram/client.py`), the sandboxed-exec/fetch tool handlers
+    (`agent/tools/builtins/toolbox.py`, `platform/fetch.py`), and shell-outs to `docker` / `git`
     (`edges/adapters/system.py`) each live behind their own adapter module — no other module
     should know their wire formats.
 - **Tests** go in `tests/` (see [Testing](#testing)); **specs** go in `specs/`;
@@ -221,8 +221,8 @@ docket follows spec-driven development (see [SSD-WORKFLOW.md](SSD-WORKFLOW.md)).
 command:
 
 1. Write a spec under `specs/functional/<command>.spec.md`.
-2. Register the command as a Typer function in `src/docket/cli/` (in `cli/__init__.py`, or a
-   `_<group>.py` module for a larger group) and wire its help into `cli/_help.py`.
+2. Register the command as a Typer function in `src/docket/cli/` (in `interfaces/cli/app/__init__.py`, or a
+   `_<group>.py` module for a larger group) and wire its help into `interfaces/cli/render/help.py`.
 3. Put domain logic in `core/` and any I/O behind `edges/` (`store.py` for docket JSON,
    `system.py` for shell-outs to `docker`/`git`).
 4. Add pytest coverage in the unit file named for the module (see [Testing](#testing)), and
@@ -233,7 +233,7 @@ command:
 
 - Update relevant documentation in `docs/`
 - `docs/commands.md` is generated from the Typer registry by `scripts/gen_cli_docs.py` and must
-  never be hand-edited; put command prose in the command's own help string (`cli/_help.py` or the
+  never be hand-edited; put command prose in the command's own help string (`interfaces/cli/render/help.py` or the
   Typer function) and regenerate with `uv run python scripts/gen_cli_docs.py`
 - `docs/recipes.md` is generated from the shipped recipes by `scripts/gen_recipe_docs.py`; put
   recipe prose in the recipe's own `README.md` and `pod.yaml` `description`, then regenerate with

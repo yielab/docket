@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import _pod
+from docket.interfaces.cli.commands import pod as _pod
 
-SUBJECT = "docket.cli._pod_config"
+SUBJECT = "docket.interfaces.cli.commands.pod_config"
 
 _GOOD_ROLE = (
     "kind: role\n"

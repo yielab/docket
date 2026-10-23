@@ -597,23 +597,23 @@ snake_case.
 
 ## Implementation
 
-- `src/docket/cli/_contract.py`: `emit_json`
-- `src/docket/cli/_status.py`: `cmd_status`, the pod summary, `_inventory`, `_history`
-- `src/docket/cli/_inbox.py`: `cmd_inbox`
-- `src/docket/cli/_task.py`: `cmd_list`, `cmd_show`, `cmd_diff`, `cmd_trace`
-- `src/docket/cli/_agents.py`: `init`, the refused-review answer
-- `src/docket/cli/_pod.py`, `src/docket/cli/_pod_show.py`: `pod show`, `pod memory list`, the text rendering
-- `src/docket/cli/_pod_config.py`: `pod update`, `pod roles`, `pod policies`, `pod recipes`
-- `src/docket/cli/_setup.py`: `setup --json`
-- `src/docket/cli/_setup_check.py`: `setup --fix --json`
-- `src/docket/cli/_setup_sandbox.py`: `sandbox_state`
-- `src/docket/cli/_setup_model.py`: `setup model`, `setup provider`
-- `src/docket/cli/_setup_notify.py`, `src/docket/cli/_setup_export.py`, `src/docket/cli/_setup_mcp.py`: the `list` / `show` / `preview` commands
-- `src/docket/core/pod_report.py`: `pod_report`, `member_report`
-- `src/docket/core/pod.py`: `PodSettings.KEYS`
-- `src/docket/core/task_options.py`: `TASK_STATUSES`, `TaskOptions`
-- `src/docket/core/interruptions.py`: `forecast`
-- `src/docket/core/runs.py`: `create_run`, the run record
-- `src/docket/core/profile.py`: `as_json`
-- `src/docket/core/operator_contract.py`: `InboxView`
+- `src/docket/interfaces/cli/commands/contract.py`: `emit_json`
+- `src/docket/interfaces/cli/commands/status.py`: `cmd_status`, the pod summary, `_inventory`, `_history`
+- `src/docket/interfaces/cli/commands/inbox.py`: `cmd_inbox`
+- `src/docket/interfaces/cli/commands/task.py`: `cmd_list`, `cmd_show`, `cmd_diff`, `cmd_trace`
+- `src/docket/interfaces/cli/commands/agents.py`: `init`, the refused-review answer
+- `src/docket/interfaces/cli/commands/pod.py`, `src/docket/interfaces/cli/commands/pod_show.py`: `pod show`, `pod memory list`, the text rendering
+- `src/docket/interfaces/cli/commands/pod_config.py`: `pod update`, `pod roles`, `pod policies`, `pod recipes`
+- `src/docket/interfaces/cli/commands/setup.py`: `setup --json`
+- `src/docket/interfaces/cli/commands/setup_check.py`: `setup --fix --json`
+- `src/docket/interfaces/cli/commands/setup_sandbox.py`: `sandbox_state`
+- `src/docket/interfaces/cli/commands/setup_model.py`: `setup model`, `setup provider`
+- `src/docket/interfaces/cli/commands/setup_notify.py`, `src/docket/interfaces/cli/commands/setup_export.py`, `src/docket/interfaces/cli/commands/setup_mcp.py`: the `list` / `show` / `preview` commands
+- `src/docket/teams/report.py`: `pod_report`, `member_report`
+- `src/docket/teams/pod.py`: `PodSettings.KEYS`
+- `src/docket/tasks/domain/options.py`: `TASK_STATUSES`, `TaskOptions`
+- `src/docket/tasks/application/interruptions.py`: `forecast`
+- `src/docket/tasks/application/runs.py`: `create_run`, the run record
+- `src/docket/governance/profile.py`: `as_json`
+- `src/docket/operator/contract.py`: `InboxView`
 - `src/docket/core/dispatch.py`: `read_tasks`, `task_diff`

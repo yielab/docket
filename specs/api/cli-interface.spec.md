@@ -1049,54 +1049,54 @@ when the error names its fix — optionally followed by a usage or recovery hint
 
 - `pyproject.toml`: the distribution metadata, `[project.scripts]` `docket`, the sdist excludes
 - `src/docket/__main__.py`: `main`
-- `src/docket/cli/__init__.py`: the command registry (`app`), the panel of each registration, the
+- `src/docket/interfaces/cli/app/__init__.py`: the command registry (`app`), the panel of each registration, the
   bare-`docket` guide lines
-- `src/docket/cli/_help.py`: `DocketGroup` (panel order, unknown-word suggestions)
-- `src/docket/cli/_target.py`: `resolve_pod`, `pod_option`
-- `src/docket/cli/_contract.py`: `confirm`, `emit_json`, `next_step`, `require_pod`, `is_tty`
-- `src/docket/cli/_agents.py`: `docket init` (`cmd_init`, `InitRequest`, `run_init`, the review)
-- `src/docket/cli/_status.py`: `docket status`
-- `src/docket/cli/_inbox.py`: `docket inbox`
-- `src/docket/cli/_task.py`: `docket task` and its verbs
-- `src/docket/cli/_run.py`: `docket run`, the repository pick-up before dispatch
-- `src/docket/cli/_progress.py`: the foreground progress view and in-place approval
-- `src/docket/cli/_pod.py`, `src/docket/cli/_pod_show.py`: `docket pod` roster, settings and memory verbs
-- `src/docket/cli/_pod_config.py`: `pod update|export|validate|plan|check|recipes|roles|policies`
-- `src/docket/cli/_log.py`: `docket log`
-- `src/docket/cli/_setup.py`: `docket setup`, `readiness`, `--version`
-- `src/docket/cli/_setup_check.py`: `setup --fix` health checks
-- `src/docket/cli/_setup_model.py`: `setup provider`, `setup model`
-- `src/docket/cli/_setup_sandbox.py`: `setup sandbox`, `setup profile`
-- `src/docket/cli/_setup_shell.py`: `setup shell`
-- `src/docket/cli/_setup_notify.py`: `setup notify`
-- `src/docket/cli/_setup_export.py`: `setup export`
-- `src/docket/cli/_setup_mcp.py`: `setup mcp`
-- `src/docket/cli/_service.py`: `docket start`, `docket stop`
-- `src/docket/ui.py`: `TAGLINE`, `guide`, `header`, `section`, `table`, `error`, `hint`, plain mode
-- `src/docket/core/task_ref.py`: `resolve_task`
-- `src/docket/core/provisioning.py`: `slugify`, `validate_project_id`
-- `src/docket/core/pod.py`: `PodSettings`, member ids
-- `src/docket/core/operator_contract.py`: `InboxView`, `TaskBrief`
-- `src/docket/core/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
-- `src/docket/core/answers.py`: `answer_task`
-- `src/docket/core/approval.py`: `approval_grant`, `approval_deny`, `ApprovalNoop`
+- `src/docket/interfaces/cli/render/help.py`: `DocketGroup` (panel order, unknown-word suggestions)
+- `src/docket/interfaces/cli/commands/target.py`: `resolve_pod`, `pod_option`
+- `src/docket/interfaces/cli/commands/contract.py`: `confirm`, `emit_json`, `next_step`, `require_pod`, `is_tty`
+- `src/docket/interfaces/cli/commands/agents.py`: `docket init` (`cmd_init`, `InitRequest`, `run_init`, the review)
+- `src/docket/interfaces/cli/commands/status.py`: `docket status`
+- `src/docket/interfaces/cli/commands/inbox.py`: `docket inbox`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task` and its verbs
+- `src/docket/interfaces/cli/commands/run.py`: `docket run`, the repository pick-up before dispatch
+- `src/docket/interfaces/cli/render/progress.py`: the foreground progress view and in-place approval
+- `src/docket/interfaces/cli/commands/pod.py`, `src/docket/interfaces/cli/commands/pod_show.py`: `docket pod` roster, settings and memory verbs
+- `src/docket/interfaces/cli/commands/pod_config.py`: `pod update|export|validate|plan|check|recipes|roles|policies`
+- `src/docket/interfaces/cli/commands/log.py`: `docket log`
+- `src/docket/interfaces/cli/commands/setup.py`: `docket setup`, `readiness`, `--version`
+- `src/docket/interfaces/cli/commands/setup_check.py`: `setup --fix` health checks
+- `src/docket/interfaces/cli/commands/setup_model.py`: `setup provider`, `setup model`
+- `src/docket/interfaces/cli/commands/setup_sandbox.py`: `setup sandbox`, `setup profile`
+- `src/docket/interfaces/cli/commands/setup_shell.py`: `setup shell`
+- `src/docket/interfaces/cli/commands/setup_notify.py`: `setup notify`
+- `src/docket/interfaces/cli/commands/setup_export.py`: `setup export`
+- `src/docket/interfaces/cli/commands/setup_mcp.py`: `setup mcp`
+- `src/docket/interfaces/cli/commands/service.py`: `docket start`, `docket stop`
+- `src/docket/interfaces/cli/render/ui.py`: `TAGLINE`, `guide`, `header`, `section`, `table`, `error`, `hint`, plain mode
+- `src/docket/tasks/domain/refs.py`: `resolve_task`
+- `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`
+- `src/docket/teams/pod.py`: `PodSettings`, member ids
+- `src/docket/operator/contract.py`: `InboxView`, `TaskBrief`
+- `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
+- `src/docket/tasks/application/answers.py`: `answer_task`
+- `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `ApprovalNoop`
 - `src/docket/core/dispatch.py`: task enqueue, `task_diff`, retry, cancel of a parked task,
   stale-claim settling, `resolve_waiting_approval`
-- `src/docket/core/runs.py`: `cancel_run`, `prune_terminal`
-- `src/docket/core/pod_apply.py`: `plan_apply`, `apply`, `resolve_recipe`, `list_recipes`,
+- `src/docket/tasks/application/runs.py`: `cancel_run`, `prune_terminal`
+- `src/docket/teams/apply/plan.py`: `plan_apply`, `apply`, `resolve_recipe`, `list_recipes`,
   `summarize_recipe`, `RecipeSummary`, `repo_config_dir`
-- `src/docket/core/config_docs.py`: `validate_path`
-- `src/docket/core/orchestrator.py`: `resolve_plan`, `render_plan`
-- `src/docket/core/plugins.py`: `discover`
-- `src/docket/core/exporter.py`: `activation_state`, `enable_exporter`, `set_privacy`, `is_widening`, `privacy_label`
-- `src/docket/core/telemetry.py`: `ExportPolicy`
-- `src/docket/core/privacy.py`: `describe`
-- `src/docket/core/channel.py`: `unreached_warning`
-- `src/docket/core/network_posture.py`: the `network <mode>` wording in the `isolation` string
-- `src/docket/core/tools.py`: `dispatch_tool`
+- `src/docket/teams/config_docs.py`: `validate_path`
+- `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `render_plan`
+- `src/docket/governance/plugins.py`: `discover`
+- `src/docket/observability/exporter.py`: `activation_state`, `enable_exporter`, `set_privacy`, `is_widening`, `privacy_label`
+- `src/docket/observability/telemetry.py`: `ExportPolicy`
+- `src/docket/governance/privacy.py`: `describe`
+- `src/docket/operator/channel.py`: `unreached_warning`
+- `src/docket/governance/network_posture.py`: the `network <mode>` wording in the `isolation` string
+- `src/docket/agent/tools/registry.py`: `dispatch_tool`
 - `src/docket/edges/adapters/system.py`: `trust_worktree`
-- `src/docket/edges/adapters/llm.py`: `resolve_endpoint`
-- `src/docket/edges/adapters/exporters/otlp_http.py`: `encode`
+- `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`
+- `src/docket/observability/adapters/otlp_http.py`: `encode`
 - `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`, `trace_retention_days`,
   `root`
 - `tests/guards/test_console_voice.py`: the shrink-only markup guard

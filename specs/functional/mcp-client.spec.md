@@ -541,25 +541,25 @@ dispatch_tool(
 
 ## Implementation
 
-- `src/docket/core/mcp_tools.py`: `McpServerConfig`, `McpServerRegistry`, `McpServerDocument`,
+- `src/docket/agent/tools/mcp_tools.py`: `McpServerConfig`, `McpServerRegistry`, `McpServerDocument`,
   `McpServerDocError`, `StdioLaunch`, `McpRemoteTool`, `McpListResult`, `McpToolSkip`,
   `McpServerLoadResult`, `ListToolsFn`, `CallToolFn`, `NAMESPACE_PREFIX`, `load_mcp_servers`,
   `add_mcp_server`, `remove_mcp_server`, `namespaced_tool_name`, `load_mcp_tools`,
   `load_mcp_server_document`, `pod_mcp_servers_file`, `load_pod_mcp_servers`,
   `write_pod_mcp_servers`, `pod_scoped_owner`
-- `src/docket/edges/adapters/mcp_client.py`: `list_remote_tools`, `call_remote_tool`,
+- `src/docket/agent/tools/mcp_client.py`: `list_remote_tools`, `call_remote_tool`,
   `MISSING_SDK_HINT`; the output truncation, the jail wrapping of a stdio server's argv, and the
   hard wall-clock bound (`anyio.fail_after`)
-- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver.mcp_loader` and its default wrapper
+- `src/docket/agent/driver.py`: `DocketDriver.mcp_loader` and its default wrapper
   (the pod `mcpServers` selection, the `StdioLaunch` built from the turn's context)
-- `src/docket/core/tools.py`: `screen_tool_result` (the untrusted-result screen used for MCP
+- `src/docket/agent/tools/registry.py`: `screen_tool_result` (the untrusted-result screen used for MCP
   results), `dispatch_tool`, `ToolRegistry`
-- `src/docket/core/pod.py`: `PodSettings` `mcpServers` validation (Requirement 38)
-- `src/docket/core/pod_apply.py`: recipe `mcp-servers/` planning and the pod-scoped file write
-- `src/docket/cli/_setup_mcp.py`: `docket setup mcp list/add/remove`
+- `src/docket/teams/pod.py`: `PodSettings` `mcpServers` validation (Requirement 38)
+- `src/docket/teams/apply/plan.py`: recipe `mcp-servers/` planning and the pod-scoped file write
+- `src/docket/interfaces/cli/commands/setup_mcp.py`: `docket setup mcp list/add/remove`
 - `src/docket/kernel/home.py`: the `Home` members `mcp_servers_file`, `mcp_client_timeout_s`,
   `mcp_client_max_timeout_s`, `tool_max_output_chars`, `pod_config_dir`
 - Tests: `tests/integration/test_mcp_client.py` (`TestCollisionRule`, `TestGatedExactlyLikeABuiltin`,
-  `TestOnlyTheInertResultTypeIsImported`), `tests/unit/core/test_mcp_tools.py`
+  `TestOnlyTheInertResultTypeIsImported`), `tests/unit/agent/tools/test_mcp_tools.py`
   (`TestZeroServersIsUnchanged`, `TestReviewerNeverGainsAWriteCapableMcpTool`),
   `tests/integration/test_mcp_servers_cli.py`, `tests/integration/test_recipe_mcp_servers.py`

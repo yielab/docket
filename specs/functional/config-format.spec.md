@@ -335,22 +335,22 @@ ok .docket/roles/custom.yaml (role custom)
 
 ## Implementation
 
-- `src/docket/core/config_docs.py`: `KINDS`, `Document`, `ConfigDocError`, `PathResult`,
+- `src/docket/teams/config_docs.py`: `KINDS`, `Document`, `ConfigDocError`, `PathResult`,
   `load_document`, `discover_config_paths`, `validate_directory`, `validate_path`, the four
   short-form models, the kind-to-model table, the short-form check and the location-to-kind
   table
-- `src/docket/core/pod_apply.py`: the pod manifest key set (`_MANIFEST_KEYS`), `export_pod` and
+- `src/docket/teams/apply/plan.py`: the pod manifest key set (`_MANIFEST_KEYS`), `export_pod` and
   its schema headers and `.schemas/` copy, `plan_apply`, `repo_config_dir`
-- `src/docket/core/archetypes.py`: `load_role_file`, `from_wire`
-- `src/docket/core/pipeline.py`: `load_pipeline`, `normalize_pipeline`
-- `src/docket/core/policy.py`: `validate_policy`, `read_policy`, `normalize_policy`
-- `src/docket/core/provider.py`: `load_provider_document`, `ProviderError`
-- `src/docket/core/exporter.py`: `load_exporter_document`, `ExporterSpec`, `ExporterError`
-- `src/docket/core/channel.py`: `load_channel_document`, `ChannelSpec`, `ChannelError`
-- `src/docket/core/mcp_tools.py`: `load_mcp_server_document`, `McpServerDocument`,
+- `src/docket/teams/roles.py`: `load_role_file`, `from_wire`
+- `src/docket/pipeline/domain/spec.py`: `load_pipeline`, `normalize_pipeline`
+- `src/docket/governance/policy.py`: `validate_policy`, `read_policy`, `normalize_policy`
+- `src/docket/models/catalog.py`: `load_provider_document`, `ProviderError`
+- `src/docket/observability/exporter.py`: `load_exporter_document`, `ExporterSpec`, `ExporterError`
+- `src/docket/operator/channel.py`: `load_channel_document`, `ChannelSpec`, `ChannelError`
+- `src/docket/agent/tools/mcp_tools.py`: `load_mcp_server_document`, `McpServerDocument`,
   `McpServerDocError`
-- `src/docket/cli/_pod_config.py`: `docket pod validate`, `pod update`, `pod plan --pipeline`
-- `src/docket/cli/_run.py`, `src/docket/cli/_agents.py`: the `docket run` pipeline file read
+- `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod validate`, `pod update`, `pod plan --pipeline`
+- `src/docket/interfaces/cli/commands/run.py`, `src/docket/interfaces/cli/commands/agents.py`: the `docket run` pipeline file read
   and the `docket init` directory validation
 - `scripts/gen_config_schemas.py`: the schema generator; `docs/contracts/config-v1/` and
   `src/docket/templates/schemas/` hold the two copies of each schema

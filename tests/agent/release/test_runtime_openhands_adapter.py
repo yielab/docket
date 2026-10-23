@@ -204,7 +204,7 @@ try:
     else:
         from docket_runtime import ExecutionLimits, Runtime, Tool, ToolContext, ToolOutcome
         from docket_runtime.adapters.openhands import OpenHandsAdapter
-        from docket_runtime._internal.docket.core.audit import verify_chain
+        from docket_runtime._internal.docket.governance.audit import verify_chain
 
         home = Path(os.environ["DOCKET_HOME"])
         if scenario["policy"] != "none":

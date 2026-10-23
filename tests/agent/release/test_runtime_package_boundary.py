@@ -172,7 +172,7 @@ def test_runtime_artifacts_are_disjoint_rebuildable_and_embed_without_cli(tmp_pa
         cwd=outside,
         env=env,
     )
-    _python(runtime_then_root, "import docket.core.tools", cwd=outside, env=env)
+    _python(runtime_then_root, "import docket.agent.tools.registry", cwd=outside, env=env)
 
     root_then_runtime = _venv(tmp_path, "root-then-runtime", env)
     _run(

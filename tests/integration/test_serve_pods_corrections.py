@@ -13,13 +13,13 @@ from urllib.parse import quote
 
 import pytest
 
-from docket.core import corrections as _corrections
-from docket.core import pod_provisioning as _pp
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.tasks.application import corrections as _corrections
+from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token-corrections"
 _TS = ["2026-10-01T10:00:00+00:00", "2026-10-01T10:00:05+00:00", "2026-10-01T10:00:09+00:00"]

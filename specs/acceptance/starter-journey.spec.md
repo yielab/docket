@@ -121,13 +121,13 @@ all use their production paths.
 - `examples/starter/README.md`, `examples/starter/requirements.lock`: the copy-and-run instructions and the exact locked dependencies.
 - `tests/agent/release/test_starter_journey.py`: the owning acceptance test (release lane).
 - `pyproject.toml`: the `docket` console entry point (`[project.scripts]`).
-- `src/docket/cli/_agents.py`: `init --from`.
-- `src/docket/cli/_setup_model.py`: `setup provider add`, `setup model set`.
-- `src/docket/cli/_task.py`: `task add`, `task show`, `task trace --export`, `task list`, `task approve`, `task deny`.
-- `src/docket/cli/_inbox.py`: `inbox --peek`.
-- `src/docket/cli/_run.py`: `run --pipeline`.
-- `src/docket/cli/_log.py`: `log verify`.
+- `src/docket/interfaces/cli/commands/agents.py`: `init --from`.
+- `src/docket/interfaces/cli/commands/setup_model.py`: `setup provider add`, `setup model set`.
+- `src/docket/interfaces/cli/commands/task.py`: `task add`, `task show`, `task trace --export`, `task list`, `task approve`, `task deny`.
+- `src/docket/interfaces/cli/commands/inbox.py`: `inbox --peek`.
+- `src/docket/interfaces/cli/commands/run.py`: `run --pipeline`.
+- `src/docket/interfaces/cli/commands/log.py`: `log verify`.
 - `src/docket/core/dispatch.py`: task statuses, `failureKind`, hop results, the approval gate's resume path.
-- `src/docket/core/approval.py`: approval transitions.
-- `src/docket/core/handoff.py`: `HandoffArtifact`.
-- `src/docket/core/telemetry.py`: approval trace event names and their fields.
+- `src/docket/governance/approval.py`: approval transitions.
+- `src/docket/agent/handoff.py`: `HandoffArtifact`.
+- `src/docket/observability/telemetry.py`: approval trace event names and their fields.

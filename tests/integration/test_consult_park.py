@@ -18,21 +18,23 @@ import pytest
 from tests.conftest import record_isolation_off
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import answers as _answers
-from docket.core import consult as _consult_mod
-from docket.core import corrections as _corrections
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import inbox as _inbox
-from docket.core import notify as _notify
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
-from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent import driver as _dr
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
+from docket.operator import inbox as _inbox
+from docket.operator import notify as _notify
+from docket.tasks.application import answers as _answers
+from docket.tasks.application import consult as _consult_mod
+from docket.tasks.application import corrections as _corrections
+from docket.tasks.application import lifecycle as _lifecycle
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.consult"
+SUBJECT = "docket.tasks.application.consult"
 
 _CONSULT = {
     "kind": "decision",
@@ -127,17 +129,17 @@ def _start(
         _fleet.meta_set("demo-lead", "pipeline", digest)
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    queued = _dispatch.enqueue_task_once("demo", "in-place task", channel="cli")[0]
-    _dispatch.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
+    queued = _queue.enqueue_task_once("demo", "in-place task", channel="cli")[0]
+    _sweep.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
     return _Run("demo", str(queued["id"]))
 
 
 def _task(run: _Run) -> dict[str, Any]:
-    return next(t for t in _dispatch.read_tasks(run.project) if t["id"] == run.task_id)
+    return next(t for t in _queue.read_tasks(run.project) if t["id"] == run.task_id)
 
 
 def _resume(run: _Run) -> dict[str, Any]:
-    _dispatch.dispatch_pod(run.project, turn_timeout=60, max_tasks=1)
+    _sweep.dispatch_pod(run.project, turn_timeout=60, max_tasks=1)
     return _task(run)
 
 
@@ -246,7 +248,7 @@ class TestParkedQuestionExpiry:
         assert _answers.sweep_expired_questions(later) == 1
         task = _task(run)
         assert (task["status"], task["blockedReason"]) == ("blocked", "input_expired")
-        assert _dispatch.retry_task(run.project, run.task_id)
+        assert _lifecycle.retry_task(run.project, run.task_id)
         assert _task(run)["status"] == "pending"
 
 

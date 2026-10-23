@@ -1,6 +1,6 @@
 """GET /tasks/<project> — the pod queue as JSON over HTTP.
 
-Exposes `core.dispatch.read_tasks` -- the exact normalized shape `docket pod <p> tasks` renders
+Exposes `tasks.application.queue.read_tasks` -- the exact normalized shape `docket pod <p> tasks` renders
 from -- behind the same Bearer auth as `/runs`. No new behaviour: adds no filtering, no reshaping,
 no 404 that `read_tasks` itself does not express (a project with no pod is `[]`, not an error).
 Covers auth rejection, a missing project segment (400), a project with no pod (200, `{"tasks":
@@ -21,14 +21,15 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.edges import store as _store
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.platform import store as _store
+from docket.tasks.application import queue as _application_queue
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token-tasks-p22-2"
 
@@ -127,10 +128,10 @@ class TestNoPodIsEmptyList:
 class TestQueueShapeMatchesReadTasks:
     def test_http_response_matches_read_tasks_directly(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "Ship the read API", channel="cli")
-            _dispatch.enqueue_task_once("demo", "Add a second task", channel="cli")
+            _application_queue.enqueue_task_once("demo", "Ship the read API", channel="cli")
+            _application_queue.enqueue_task_once("demo", "Add a second task", channel="cli")
 
-            expected = _dispatch.read_tasks("demo")
+            expected = _application_queue.read_tasks("demo")
             assert len(expected) == 2
 
             approvals_dir = tmp_path / "approvals"
@@ -175,11 +176,11 @@ def _post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  
 
 
 def _queue(project: str = "demo") -> list[dict]:  # type: ignore[type-arg]
-    return _dispatch.read_tasks(project)
+    return _application_queue.read_tasks(project)
 
 
 def _enqueue_entries() -> list[dict]:  # type: ignore[type-arg]
-    from docket.core import audit as _audit
+    from docket.governance import audit as _audit
 
     return [e for e in _audit.read_audit() if e.get("action") == "task.enqueue"]
 
@@ -329,11 +330,11 @@ class TestPostEnqueueSweep:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """POST /tasks/<pod> with dispatch on submits one sweep for that pod."""
-        from docket import serve
+        from docket.interfaces.http import server as _server
 
         with _seed_pod(tmp_path), _live_server(dispatch_on=True) as dispatching_server:
             submitted: list[str] = []
-            monkeypatch.setattr(serve, "_submit_pod_sweep", lambda p: submitted.append(p) or True)
+            monkeypatch.setattr(_server, "_submit_pod_sweep", lambda p: submitted.append(p) or True)
             url, token = dispatching_server
 
             status, _body = _post(f"{url}/tasks/demo", {"description": "go"}, token)
@@ -345,11 +346,11 @@ class TestPostEnqueueSweep:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Without dispatch the enqueue never submits a sweep."""
-        from docket import serve
+        from docket.interfaces.http import server as _server
 
         with _seed_pod(tmp_path), _live_server() as live_server:
             submitted: list[str] = []
-            monkeypatch.setattr(serve, "_submit_pod_sweep", lambda p: submitted.append(p) or True)
+            monkeypatch.setattr(_server, "_submit_pod_sweep", lambda p: submitted.append(p) or True)
             url, token = live_server
 
             _post(f"{url}/tasks/demo", {"description": "go"}, token)
@@ -386,6 +387,6 @@ class TestTokenBudget:
                         task["hops"] = [{"role": "lead", "usage": {"input": 1500, "output": 10}}]
                 return doc
 
-            _store.read_modify_write(_dispatch.pod_task_list_path("demo"), _spend)
+            _store.read_modify_write(_settings.pod_task_list_path("demo"), _spend)
             _status, spent = _get(f"{url}/tasks/demo/{created['task']}", token)
             assert spent["tokenBudget"] == 0

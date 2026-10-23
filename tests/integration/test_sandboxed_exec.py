@@ -26,16 +26,19 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import fleet as _fleet
-from docket.core.llm import ToolCall
-from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
-from docket.edges.adapters import system, toolbox
+from docket.agent.llm import ToolCall
+from docket.agent.tools.builtins import toolbox
+from docket.agent.tools.registry import ToolContext, builtin_registry, dispatch_tool
 from docket.kernel.home import current_home, use_home
+from docket.sandbox import docker as sandbox_docker
+from docket.sandbox import landlock as sandbox_landlock
+from docket.sandbox import launch, seatbelt
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.tools"
+SUBJECT = "docket.agent.tools.registry"
 
-DOCKER_UP = system.docker_daemon_reachable()
-LANDLOCK_UP = system.landlock_available()
+DOCKER_UP = sandbox_docker.docker_daemon_reachable()
+LANDLOCK_UP = sandbox_landlock.landlock_available()
 
 needs_docker = pytest.mark.skipif(
     not DOCKER_UP, reason="docker not installed or its daemon is not reachable on this host"
@@ -47,8 +50,8 @@ needs_landlock = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Tests here call `dispatch_tool` directly, which consults `core/policy.py` and
-    `core/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
+    """Tests here call `dispatch_tool` directly, which consults `governance/policy.py` and
+    `governance/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
     developer's real ``~/.docket/policies`` or blocks on an approval nothing will grant."""
     with use_home(
         dataclasses.replace(
@@ -95,10 +98,12 @@ def _pgrep_count(marker: str) -> int:
 
 class TestSandboxAvailabilityDetection:
     def test_env_override_wins_over_real_probes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(system, "landlock_available", lambda: True)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
+        monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-        availability = system.sandbox_availability("docker")
+        availability = launch.sandbox_availability("docker")
         assert availability.backend == "none"
         # The override forces the *choice*; it does not fake the underlying probes.
         assert availability.docker is True
@@ -108,24 +113,31 @@ class TestSandboxAvailabilityDetection:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(system, "landlock_available", lambda: True)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        assert system.sandbox_availability("auto").backend == "landlock"
+        monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
+        monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
+        assert launch.sandbox_availability("auto").backend == "landlock"
 
     def test_docker_is_used_when_chosen(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(system, "landlock_available", lambda: True)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        assert system.sandbox_availability("docker").backend == "docker"
+        monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
+        monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
+        assert launch.sandbox_availability("docker").backend == "docker"
 
     def test_none_when_nothing_usable_and_docker_is_not_probed_unless_chosen(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(system, "landlock_available", lambda: False)
-        monkeypatch.setattr(system, "seatbelt_available", lambda: False)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        availability = system.sandbox_availability("auto")
+        monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: False)
+        monkeypatch.setattr(launch, "landlock_available", lambda: False)
+        monkeypatch.setattr(seatbelt, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(launch, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
+        availability = launch.sandbox_availability("auto")
         assert availability.backend == "none"
         assert availability.docker is False
 
@@ -134,13 +146,13 @@ class TestSandboxAvailabilityDetection:
     ) -> None:
         """The binary-only check (`docker_available`) is not the bar —
         `docker_daemon_reachable` must actually talk to the daemon."""
-        monkeypatch.setattr(system, "docker_available", lambda: True)
+        monkeypatch.setattr(sandbox_docker, "docker_available", lambda: True)
         monkeypatch.setattr(
             subprocess,
             "run",
             lambda *a, **k: subprocess.CompletedProcess(a, returncode=1),
         )
-        assert system.docker_daemon_reachable() is False
+        assert sandbox_docker.docker_daemon_reachable() is False
 
 
 # ── argv construction: mechanism, no execution ──────────────────────────────
@@ -150,7 +162,7 @@ class TestArgvShape:
     def test_landlock_grants_each_root_read_write(self, workspace: Path, tmp_path: Path) -> None:
         second = tmp_path / "codebase"
         second.mkdir()
-        argv = system.landlock_argv((workspace, second), "echo hi")
+        argv = sandbox_landlock.landlock_argv((workspace, second), "echo hi")
         rw = [argv[i + 1] for i, a in enumerate(argv) if a == "--rw"]
         assert rw == [str(workspace.resolve()), str(second.resolve())]
         assert argv[-3:] == ["/bin/sh", "-c", "echo hi"]
@@ -166,7 +178,7 @@ class TestArgvShape:
         gitdir = Path(_git(wt, "rev-parse", "--absolute-git-dir")).resolve()
         common = (main / ".git").resolve()
         assert gitdir != common
-        landlock = system.landlock_argv((wt,), "true")
+        landlock = sandbox_landlock.landlock_argv((wt,), "true")
         grants = [landlock[i + 1] for i, a in enumerate(landlock) if a == "--rw"]
         assert grants == [
             str(wt.resolve()),
@@ -175,7 +187,7 @@ class TestArgvShape:
         ]
         assert [landlock[i + 1] for i, a in enumerate(landlock) if a == "--ro"] == [str(common)]
         assert str(common) not in grants and str(common / "hooks") not in grants
-        docker = system.docker_run_argv("c", (wt,), "true", None)
+        docker = sandbox_docker.docker_run_argv("c", (wt,), "true", None)
         mounts = [docker[i + 1] for i, a in enumerate(docker) if a == "-v"]
         assert f"{gitdir}:{gitdir}" in mounts and f"{common}:{common}" in mounts
 
@@ -186,7 +198,7 @@ class TestArgvShape:
         _git(main, "commit", "-q", "--allow-empty", "-m", "init")
         _git(main, "worktree", "add", "-q", str(wt))
         common = (main / ".git").resolve()
-        docker = system.docker_run_argv("c", (wt,), "true", None)
+        docker = sandbox_docker.docker_run_argv("c", (wt,), "true", None)
         ro = [
             docker[i + 1][: -len(":ro")].split(":")[0]
             for i, a in enumerate(docker)
@@ -212,11 +224,11 @@ class TestArgvShape:
         assert f"{wt.resolve()}/.git:{wt.resolve()}/.git:ro" in docker
 
     def test_a_root_outside_any_repo_gains_no_extra_mounts(self, workspace: Path) -> None:
-        argv = system.landlock_argv((workspace,), "true")
+        argv = sandbox_landlock.landlock_argv((workspace,), "true")
         assert argv.count("--rw") == 1
 
     def test_docker_run_mounts_each_root_and_runs_as_the_caller(self, workspace: Path) -> None:
-        argv = system.docker_run_argv("my-container", (workspace,), "echo hi", None)
+        argv = sandbox_docker.docker_run_argv("my-container", (workspace,), "echo hi", None)
         assert argv[:3] == ["docker", "run", "--rm"]
         assert "--name" in argv and "my-container" in argv
         assert f"{os.getuid()}:{os.getgid()}" in argv
@@ -228,7 +240,9 @@ class TestArgvShape:
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_HOST_SECRET_SHOULD_NOT_LEAK", "leak-me-not")
-        argv = system.docker_run_argv("c", (workspace,), "echo hi", {"DOCKET_SCRATCH_DIR": "/x"})
+        argv = sandbox_docker.docker_run_argv(
+            "c", (workspace,), "echo hi", {"DOCKET_SCRATCH_DIR": "/x"}
+        )
         assert "-e" in argv
         assert "DOCKET_SCRATCH_DIR=/x" in argv
         assert not any("DOCKET_HOST_SECRET_SHOULD_NOT_LEAK" in part for part in argv)
@@ -240,7 +254,7 @@ class TestArgvShape:
             raise FileNotFoundError("no docker")
 
         monkeypatch.setattr(subprocess, "run", _raise)
-        system.docker_kill("whatever")  # must not raise
+        sandbox_docker.docker_kill("whatever")  # must not raise
 
 
 # ── run_bash(sandbox="off"): the default is the original function ──────────
@@ -257,7 +271,8 @@ class TestSandboxOffIsUnchanged:
     def test_off_mode_never_reports_a_sandbox_tag_even_when_both_backends_are_real(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         out = toolbox.run_bash((workspace,), "echo hi")  # sandbox left at the "off" default
         assert out.content == "hi"
         assert "sandbox" not in out.content
@@ -271,9 +286,12 @@ class TestHonestReportingIsDeterministic:
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The gate allowed the command on the promise of a jail, so no jail means no run."""
-        monkeypatch.setattr(system, "landlock_available", lambda: False)
-        monkeypatch.setattr(system, "seatbelt_available", lambda: False)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
+        monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: False)
+        monkeypatch.setattr(launch, "landlock_available", lambda: False)
+        monkeypatch.setattr(seatbelt, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(launch, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: False)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: False)
         out = toolbox.run_bash((workspace,), "touch ran", sandbox="auto")
         assert not out.ok and not (workspace / "ran").exists()
         assert out.error.startswith("not run: no sandbox backend is usable")
@@ -287,8 +305,10 @@ class TestHonestReportingIsDeterministic:
     ) -> None:
         """A silent 'none' that looks identical whether or not a jail was
         possible is exactly the failure this card exists to prevent."""
-        monkeypatch.setattr(system, "landlock_available", lambda: True)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
+        monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         _fleet.set_sandbox_backend("docker")
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         out = toolbox.run_bash((workspace,), "echo hi", sandbox="auto")
@@ -327,7 +347,7 @@ class TestChokepointWiring:
         model-visible result."""
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         ctx = ToolContext(roots=(workspace,), sandbox="auto")
-        # `printf` (not `echo`) — it is on core.security's SAFE_BINS
+        # `printf` (not `echo`) — it is on governance.security's SAFE_BINS
         # allowlist, so the command classifier allows it outright and this
         # test is exercising the sandbox wiring, not the tool-call gate.
         res = dispatch_tool(self._call('{"command": "printf hi"}'), ctx, builtin_registry())
@@ -603,7 +623,7 @@ class TestGitMetadataTheHostLaterRuns:
         wt = tmp_path / "wt"
         _git(sup, "worktree", "add", "-q", str(wt))
 
-        _, ro = system._mount_dirs((sup,))
+        _, ro = sandbox_landlock._mount_dirs((sup,))
         for expected in (
             subgit / "hooks",
             subgit / "config",
@@ -612,7 +632,7 @@ class TestGitMetadataTheHostLaterRuns:
         ):
             assert str(expected) in ro, expected
 
-        rw, ro_wt = system._mount_dirs((wt,))
+        rw, ro_wt = sandbox_landlock._mount_dirs((wt,))
         admin = sup / ".git" / "worktrees" / "wt"
         for expected in (wt / ".git", admin / "gitdir", admin / "commondir"):
             assert str(expected) in ro_wt, expected
@@ -624,7 +644,7 @@ class TestGitMetadataTheHostLaterRuns:
         (deep / "hooks").mkdir(parents=True)
         (deep / "HEAD").write_text("ref: refs/heads/main\n")
         (deep / "config").write_text("")
-        _, ro = system._mount_dirs((sup,))
+        _, ro = sandbox_landlock._mount_dirs((sup,))
         assert str(deep / "hooks") in ro and str(deep / "config") in ro
 
     @needs_docker

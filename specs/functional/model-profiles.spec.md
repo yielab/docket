@@ -546,34 +546,34 @@ rank anchors  local/qwen3-30b-a3b -> local/qwen3-30b-a3b -> local/qwen3-30b-a3b
 
 Where the names above live today (the only place paths appear):
 
-- `src/docket/core/models_policy.py`: `ALL_ROLES`, `ROLE_CLASS`, `REPO_AGENT_ROLE`,
+- `src/docket/models/selection.py`: `ALL_ROLES`, `ROLE_CLASS`, `REPO_AGENT_ROLE`,
   `rank_anchors`, `presets`, `preset_table`, `known_presets`, `load_registry`,
   `find_registry_problems`, `write_registry`, `resolve_role_model`, `resolve_step_model`,
   `validate_model`, `role_why`, `reapply_role_policy`, `RoleRepoint`, `is_local_provider`,
   `is_marketplace`, `price_for`, `prices_as_of`, `pricing_label`
-- `src/docket/core/provider.py`: `ProviderSpec`, `load_provider_document`, `load_catalog`,
+- `src/docket/models/catalog.py`: `ProviderSpec`, `load_provider_document`, `load_catalog`,
   `Catalog`, `rank_anchors_of`, `check_rank_anchors`, `save_provider`, `delete_provider`, `remove_provider`, `export_provider`,
   `resolve_credential`, `resolve_limits`, `observed_limits`, `record_observed_models`,
   `refresh_observed_models_due`, `verify_endpoint`, `probe_spec`, `register_provider`,
   `model_readiness`
-- `src/docket/core/archetypes.py`: `BUILTIN_ARCHETYPES`, `STARTER_ARCHETYPES`, `load_registry`
+- `src/docket/teams/roles.py`: `BUILTIN_ARCHETYPES`, `STARTER_ARCHETYPES`, `load_registry`
   (`model_class`)
-- `src/docket/core/utils.py`: `estimate_cost_usd`, `project_ids`
-- `src/docket/core/llm.py`: `Endpoint`
-- `src/docket/core/fleet.py`: `set_model_both`
-- `src/docket/core/pod_report.py`: the `docket pod show <member> --json` report
-- `src/docket/core/dispatch.py`, `src/docket/core/config_docs.py`: step-model resolution at a hop
+- `src/docket/teams/utils.py`: `estimate_cost_usd`, `project_ids`
+- `src/docket/agent/llm.py`: `Endpoint`
+- `src/docket/teams/fleet.py`: `set_model_both`
+- `src/docket/teams/report.py`: the `docket pod show <member> --json` report
+- `src/docket/core/dispatch.py`, `src/docket/teams/config_docs.py`: step-model resolution at a hop
   and in `docket pod validate`
-- `src/docket/edges/adapters/llm.py`: `resolve_endpoint`, `endpoint_from_spec`, `client_for`,
+- `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`, `endpoint_from_spec`, `client_for`,
   `build_payload`, `request_part_bytes`, `probe_models`, `ProbeResult`, the chat client's header
   and response handling
-- `src/docket/cli/_setup_model.py`: `docket setup model` and `docket setup provider`
-- `src/docket/cli/_setup.py`, `src/docket/cli/_setup_check.py`: the first-run report and the
+- `src/docket/interfaces/cli/commands/setup_model.py`: `docket setup model` and `docket setup provider`
+- `src/docket/interfaces/cli/commands/setup.py`, `src/docket/interfaces/cli/commands/setup_check.py`: the first-run report and the
   registry and provider-catalog checks
-- `src/docket/cli/_pod_show.py`: the `docket pod show` render
+- `src/docket/interfaces/cli/commands/pod_show.py`: the `docket pod show` render
 - `src/docket/serve.py`: the sweep that calls `refresh_observed_models_due`
 - `src/docket/kernel/home.py`: the `Home` members `default_model`, `model_registry_file`,
   `providers_file`, `provider_models_file`
 - `src/docket/kernel/templates.py`: `PROVIDER_TEMPLATES_DIR`
-- `src/docket/core/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
+- `src/docket/models/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
 - `src/docket/templates/providers/*.yaml`: the built-in provider documents (prices, presets)

@@ -203,13 +203,13 @@ $ docket run --resume
 
 ## Implementation
 
-- `src/docket/core/utils.py`: `aggregate_cost`, `cost_history`, `estimate_cost_usd`, `gating_cost`
+- `src/docket/teams/utils.py`: `aggregate_cost`, `cost_history`, `estimate_cost_usd`, `gating_cost`
 - `src/docket/core/dispatch.py`: `pod_gating_cost`, `pod_recorded_cost`, `pod_budget`, `unpriced_budget_models`, `unblock_pod`, the pre-hop budget gate, the Lead pause writer, the claim-time pause check
-- `src/docket/core/models_policy.py`: `price_for`
-- `src/docket/core/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `budget_warning`, `paused_refused`)
-- `src/docket/core/runtime_driver.py`: `TurnResult.cost_usd`, `UsageReport`, `DriverCapabilities.reports_cost_usd`
-- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver.usage`, `DocketDriver.capabilities`
-- `src/docket/cli/_status.py`: `docket status`, the per-pod usage summary, the fleet inventory, `cost_snapshot` (the MCP `cost` tool reads it)
-- `src/docket/cli/_pod.py`: `docket pod set|unset budgetUsd`
-- `src/docket/cli/_run.py`: `docket run --resume`, the cap header
-- `src/docket/cli/_setup_check.py`: the `docket setup` budget and runaway checks
+- `src/docket/models/selection.py`: `price_for`
+- `src/docket/observability/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `budget_warning`, `paused_refused`)
+- `src/docket/agent/ports.py`: `TurnResult.cost_usd`, `UsageReport`, `DriverCapabilities.reports_cost_usd`
+- `src/docket/agent/driver.py`: `DocketDriver.usage`, `DocketDriver.capabilities`
+- `src/docket/interfaces/cli/commands/status.py`: `docket status`, the per-pod usage summary, the fleet inventory, `cost_snapshot` (the MCP `cost` tool reads it)
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset budgetUsd`
+- `src/docket/interfaces/cli/commands/run.py`: `docket run --resume`, the cap header
+- `src/docket/interfaces/cli/commands/setup_check.py`: the `docket setup` budget and runaway checks

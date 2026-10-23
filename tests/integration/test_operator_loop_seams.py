@@ -24,25 +24,26 @@ from tests.conftest import record_isolation_off
 from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod
-from docket.core import answers as _answers
-from docket.core import approval as _approval
-from docket.core import channel as _channel
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import notify as _notify
-from docket.core import pipeline as _pipeline
-from docket.core import runtime_driver as _rd
-from docket.core import secrets as _secrets
-from docket.core.llm import ChatResponse, TokenUsage, ToolCall, assistant
-from docket.edges.adapters import channels as _channel_adapters
-from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent import driver as _dr
+from docket.agent import ports as _rd
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatResponse, TokenUsage, ToolCall, assistant
+from docket.governance import approval as _approval
+from docket.governance import secrets as _secrets
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.operator import adapters as _channel_adapters
+from docket.operator import channel as _channel
+from docket.operator import notify as _notify
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import answers as _answers
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 
 @pytest.fixture(autouse=True)
@@ -96,7 +97,7 @@ class TestHttpGrantConsumesThePregrant:
         """A real policy-gated bash call parks; the operator grants it over real HTTP; a real
         re-dispatch's identical call is admitted once via the pre-grant, then the hop
         finishes."""
-        from docket.core.policy import install_policies
+        from docket.governance.policy import install_policies
 
         with (
             _seed_pod(tmp_path) as home,
@@ -120,11 +121,11 @@ class TestHttpGrantConsumesThePregrant:
             driver = DocketDriver(backend_factory=lambda model: park_backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
-            parked = _dispatch.dispatch_pod("demo")
+            _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
+            parked = _sweep.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
-            assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_approval"
+            assert _queue.read_tasks("demo")[0]["status"] == "waiting_approval"
 
             # The real HTTP write route -- not `approval.approval_grant` called directly.
             class _Handler(_DocketHandler):
@@ -154,7 +155,7 @@ class TestHttpGrantConsumesThePregrant:
             assert status == 200
             assert body == {"ok": True, "token": token, "state": "granted"}
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "pending"
             assert len(task["pregrants"]) == 1
             assert task["pregrants"][0]["token"] == token
@@ -176,10 +177,10 @@ class TestHttpGrantConsumesThePregrant:
             driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
 
-            second = _dispatch.dispatch_pod("demo")
+            second = _sweep.dispatch_pod("demo")
 
             assert second[0].status == "done", second[0].reason
-            final = _dispatch.read_tasks("demo")[0]
+            final = _queue.read_tasks("demo")[0]
             assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
             assert final["hops"][1]["parked"] is True
             assert final["hops"][-1]["parked"] is False
@@ -291,7 +292,7 @@ class TestChannelContentLevelEnforcedAtDelivery:
 
                 # The signature really verifies -- a genuine Standard Webhooks round trip,
                 # not just a header's presence.
-                from docket.edges.adapters.channels.webhook import _sign
+                from docket.operator.adapters.webhook import _sign
 
                 secret_value = _secrets.secret_value("WEBHOOK_SECRET")
                 assert secret_value is not None
@@ -379,12 +380,12 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
         message must contain `## Operator answers` with both exact values."""
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            task = _dispatch.enqueue_task_once("demo", "build the widget", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "build the widget", channel="cli")[0]
             runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
-            first = _dispatch.dispatch_pod("demo", runner=runner)
+            first = _sweep.dispatch_pod("demo", runner=runner)
             assert first[0].status == "waiting_input"
-            question = _dispatch.read_tasks("demo")[0]["question"]
+            question = _queue.read_tasks("demo")[0]["question"]
             assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
             assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
 
@@ -397,7 +398,7 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
                 actor="op",
             )
 
-            final = _dispatch.dispatch_pod("demo", runner=runner)
+            final = _sweep.dispatch_pod("demo", runner=runner)
             assert final[0].status == "done"
 
             lead_messages = [msg for role, msg in runner.calls if role == "lead"]

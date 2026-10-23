@@ -20,14 +20,15 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import trace as _trace
-from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.prepare"
+SUBJECT = "docket.hops.workspace.prepare"
 
 _FAKE_NPM = """\
 #!/bin/sh
@@ -135,14 +136,14 @@ def test_the_implementer_hop_finds_the_installed_tool_and_the_task_records_it(
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task_once("demo", "work", channel="cli")
+        _queue.enqueue_task_once("demo", "work", channel="cli")
         runner = _Runner()
 
-        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
         assert [s["tool"] for s in runner.seen] == [True]
-        task = _dispatch.read_tasks("demo")[0]
+        task = _queue.read_tasks("demo")[0]
         assert task["prepared"]["command"] == "npm ci"
         assert task["prepared"]["source"] == "lockfile"
         assert task["prepared"]["cacheHit"] is False
@@ -160,16 +161,16 @@ def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(tmp_path: Path, npm
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task_once("demo", "first", channel="cli")
-        _dispatch.enqueue_task_once("demo", "second", channel="cli")
+        _queue.enqueue_task_once("demo", "first", channel="cli")
+        _queue.enqueue_task_once("demo", "second", channel="cli")
         runner = _Runner()
 
-        results = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=2)
+        results = _sweep.dispatch_pod("demo", runner=runner, max_tasks=2)
 
         assert [r.status for r in results] == ["done", "done"]
         assert [s["tool"] for s in runner.seen] == [True, True]
         assert _npm_calls(npm_log) == ["ci"]
-        tasks = _dispatch.read_tasks("demo")
+        tasks = _queue.read_tasks("demo")
         assert sorted(t["prepared"]["cacheHit"] for t in tasks) == [False, True]
         hit = next(t for t in tasks if t["prepared"]["cacheHit"])
         (event,) = _prepare_events(hit["id"])
@@ -180,12 +181,12 @@ def test_a_broken_lockfile_fails_the_task_before_any_hop(tmp_path: Path) -> None
     repo = tmp_path / "repo"
     _init_repo(repo, lock="broken")
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task_once("demo", "work", channel="cli")
+        _queue.enqueue_task_once("demo", "work", channel="cli")
         runner = _Runner()
 
-        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-        task = _dispatch.read_tasks("demo")[0]
+        task = _queue.read_tasks("demo")[0]
         assert (res.status, res.failure_kind) == ("failed", "prepare")
         assert task["failureKind"] == "prepare"
         assert "lockfile is broken" in task["reason"] and "npm ci" in task["reason"]
@@ -200,15 +201,15 @@ def test_a_blank_task_prepare_skips_the_install(tmp_path: Path, npm_log: Path) -
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task_once("demo", "work", channel="cli", prepare="")
+        _queue.enqueue_task_once("demo", "work", channel="cli", prepare="")
         runner = _Runner()
 
-        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
         assert [s["tool"] for s in runner.seen] == [False]
         assert _npm_calls(npm_log) == []
-        task = _dispatch.read_tasks("demo")[0]
+        task = _queue.read_tasks("demo")[0]
         assert "prepared" not in task and _prepare_events(task["id"]) == []
 
 
@@ -217,9 +218,9 @@ def test_a_pods_prepare_setting_wins_over_the_lockfile(tmp_path: Path, npm_log: 
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "prepare", "none")
-        _dispatch.enqueue_task_once("demo", "work", channel="cli")
+        _queue.enqueue_task_once("demo", "work", channel="cli")
 
-        (res,) = _dispatch.dispatch_pod("demo", runner=_Runner(), max_tasks=1)
+        (res,) = _sweep.dispatch_pod("demo", runner=_Runner(), max_tasks=1)
 
         assert res.status == "done", res.reason
         assert _npm_calls(npm_log) == []

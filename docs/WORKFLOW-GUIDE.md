@@ -176,7 +176,7 @@ unattended caller); see [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s operator-loop
 how a human finds out and answers.
 
 The dispatch orchestrator invokes each hop through its own turn loop
-(`core/agent_loop.py`), captures the result, and threads it to the next role. The Lead plans,
+(`agent/loop.py`), captures the result, and threads it to the next role. The Lead plans,
 the Implementer is the **single writer**, the Reviewer can **veto** the diff, the Tester gives
 an independent PASS/FAIL.
 
@@ -293,7 +293,7 @@ docket start               # READ-ONLY monitor — health checks only, never dis
 
 Everything in Step 6 above — Lead → Implementer → Reviewer → Tester, one hop per role — is
 docket's **built-in pipeline**. It is not hardcoded prose; it is a real, typed pipeline document
-(`core/pipeline.py`) that `docket run` runs whenever a pod has no pipeline
+(`pipeline/domain/spec.py`) that `docket run` runs whenever a pod has no pipeline
 file of its own. Writing a pipeline file lets you change the step order, add a parallel fan-out,
 or swap in a different gate — without touching pod membership at all.
 
@@ -322,7 +322,7 @@ $ docket pod validate workflows/broken.yml
 
 ### `docket pod plan` — see what would actually run, without running it
 
-`plan` renders straight from the real executor (`core.orchestrator.resolve_plan`/`render_plan`)
+`plan` renders straight from the real executor (`pipeline.domain.plan.resolve_plan`/`render_plan`)
 — never a second, drift-prone pretty-printer, and never a token spent:
 
 ```bash

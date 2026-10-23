@@ -10,12 +10,13 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.pipeline.application import steps as _steps
+from docket.tasks.application import queue as _queue
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _VALID_PIPELINE = """\
 kind: pipeline
@@ -175,7 +176,7 @@ class TestPipelinePlanCli:
         assert "Source: blueprint 'research'" in result.output
 
     def test_bound_pipeline_plan_names_the_bound_source(self, tmp_path: Path) -> None:
-        from docket.cli._pod import _pod_config_set_pipeline
+        from docket.interfaces.cli.commands.pod import _pod_config_set_pipeline
 
         _write_meta("demo-lead")
         _write_meta("demo-implementer")
@@ -196,19 +197,19 @@ class TestPipelinePlanCli:
         assert _plan("--pipeline", str(f)).exit_code == 1
 
     def test_plan_renders_from_the_real_executor_not_a_second_printer(self) -> None:
-        """`plan`'s output must come from core.orchestrator.render_plan/resolve_plan -- the
+        """`plan`'s output must come from pipeline.domain.plan.render_plan/resolve_plan -- the
         exact same function the real executor calls."""
-        from docket.core import archetypes as _archetypes
-        from docket.core import orchestrator as _orch
+        from docket.pipeline.domain import plan as _orch
+        from docket.teams import roles as _archetypes
 
         _write_meta("demo-lead")
         result = _plan()
         assert result.exit_code == 0
 
-        expected_spec = _dispatch.effective_pipeline("demo", None)
+        expected_spec = _steps.effective_pipeline("demo", None)
         expected_plan = _orch.resolve_plan(
             expected_spec,
-            _dispatch.pod_full_roster("demo"),
+            _queue.pod_full_roster("demo"),
             registry=_archetypes.load_registry(),
         )
         assert _orch.render_plan(expected_plan) in result.output

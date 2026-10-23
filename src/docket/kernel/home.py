@@ -49,12 +49,12 @@ class Home:
     schedule_file_override: Path | None = None
     runs_file_override: Path | None = None
     # A trace idle longer than this with no session_end is closed by the sweep
-    # (core/trace.py::sweep_all).
+    # (observability/trace.py::sweep_all).
     session_timeout: int = 3600
     # How long a task waits in `waiting_approval`. Nothing is blocked while it waits, so
     # 15 minutes costs only wall clock and gives a human time to notice; expiry denies.
     approval_timeout: int = 900
-    # How long a gated tool call blocks inside a turn (core/approval.py::wait_for_approval).
+    # How long a gated tool call blocks inside a turn (governance/approval.py::wait_for_approval).
     # It holds a thread and, under `docket start`, a dispatch worker, so it stays well
     # under one hop's 300 s budget: a grant still leaves the tool time to run. Expiry denies.
     tool_approval_timeout: int = 120
@@ -74,20 +74,20 @@ class Home:
     # an expiry.
     key_max_age_days: int = 90
     # How long a finished trace (one with session_end) survives `docket task prune
-    # --traces`. An open trace is never deleted by age (core/trace.py::expire_old_traces),
+    # --traces`. An open trace is never deleted by age (observability/trace.py::expire_old_traces),
     # and audit.log is never pruned.
     trace_retention_days: int = 30
     # Cap on the diff one hop hands the next (HandoffArtifact.diff).
     handoff_diff_max_chars: int = 8000
-    # Cap on the repository map a hop message carries (core/repo_map.py).
+    # Cap on the repository map a hop message carries (hops/workspace/repo_map.py).
     repo_map_max_chars: int = 1600
     # The static-context budget when CONTEXT_TOKEN_BUDGET is unset and the model's window
-    # is unknown. Kept apart so core/identity.py can tell an explicit value from none.
+    # is unknown. Kept apart so agent/identity.py can tell an explicit value from none.
     context_token_budget_default: int = 6000
     context_token_budget_override: int | None = None
-    # Bounds the summarising turn session compaction runs (core/session.py).
+    # Bounds the summarising turn session compaction runs (agent/session.py).
     distill_timeout_s: int = 120
-    # Pod memory bounds (core/pod_memory.py). Accepted and undecided entries are capped
+    # Pod memory bounds (teams/memory.py). Accepted and undecided entries are capped
     # apart, so a flood of pending ones never pushes an accepted one out.
     pod_memory_max_accepted: int = 40
     pod_memory_max_undecided: int = 40
@@ -109,7 +109,7 @@ class Home:
     meta_file: str = ".docket-meta.json"
     default_model: str = "anthropic/claude-sonnet-4-6"
     sessions_dir_override: Path | None = None
-    # Turn-loop bounds (core/agent_loop.py). Each is a stop condition against a confused
+    # Turn-loop bounds (agent/loop.py). Each is a stop condition against a confused
     # model, not a throughput knob: model round-trips, then tool calls however they are
     # batched, then denials in a row (one lets the model correct course), then rounds that
     # only repeat earlier call/result pairs (0 disables).
@@ -125,13 +125,13 @@ class Home:
     # trace, small enough to keep the task record small.
     verify_evidence_tail_chars: int = 4000
     # Bound on a task worktree's install, and the cached installs kept per codebase
-    # (core/prepare.py).
+    # (hops/workspace/prepare.py).
     prepare_timeout_s: int = 900
     prepare_cache_keep: int = 3
     # Default turn budget, checked between iterations. DocketDriver.run_turn passes the
     # hop's own timeout, so this applies only to run_agent_turn() without a LoopConfig.
     agent_loop_wall_clock_timeout_s: float = 300.0
-    # Cap on a turn's measured token usage (core.llm.TokenUsage), never an estimate.
+    # Cap on a turn's measured token usage (agent.llm.TokenUsage), never an estimate.
     agent_loop_token_budget: int = 100000
     # Output reserve for a model that registers no maximum, so the window checks run.
     default_max_output_tokens: int = 4096
@@ -164,7 +164,7 @@ class Home:
     telegram_bot_token_key: str = "TELEGRAM_BOT_TOKEN"
     # Telegram's long-poll wait; an empty reply after it is normal. The request timeout
     # must exceed it or an empty poll looks like a local timeout, so
-    # core/telegram.py::_resolved_request_timeout clamps a smaller one up.
+    # interfaces/telegram/bot.py::_resolved_request_timeout clamps a smaller one up.
     telegram_poll_timeout_s: int = 25
     telegram_request_timeout_s: float = 35.0
     # The libsecret service secrets live under with the keyring backend.
@@ -180,7 +180,7 @@ class Home:
     dispatch_retries_by_role: tuple[tuple[str, int], ...] = ()
     # Serve-wide timeouts for a hop's turn and verify step, read only by serve.py. A set
     # value overrides the pod's Lead meta for the dispatches `docket start` runs; None
-    # leaves core/dispatch.py::_resolve_timeout to decide.
+    # leaves teams/settings.py::_resolve_timeout to decide.
     dispatch_turn_timeout_s: int | None = None
     dispatch_verify_timeout_s: int | None = None
     # Exact hostnames `fetch` may reach (comma-separated in the environment, lowercased).
@@ -321,7 +321,7 @@ class Home:
             return self.plugins_dir_override
         return self.root / "plugins"
 
-    # The operator's skills, the outermost of the three scopes core/skills.py reads.
+    # The operator's skills, the outermost of the three scopes agent/skills.py reads.
     @property
     def skills_dir(self) -> Path:
         if self.skills_dir_override is not None:
@@ -426,7 +426,7 @@ class Home:
             return self.channels_file_override
         return self.root / "docket-channels.json"
 
-    # What core/notify.py::flush already delivered. Saved before delivering, so a crash
+    # What operator/notify.py::flush already delivered. Saved before delivering, so a crash
     # mid-delivery never sends an event twice (at most once).
     @property
     def notify_state_file(self) -> Path:
@@ -463,7 +463,7 @@ class Home:
     def reviewed_repos_file(self) -> Path:
         return self.root / "reviewed-repos.json"
 
-    # Stored provider credentials and their added/rotated bookkeeping (core/secrets.py).
+    # Stored provider credentials and their added/rotated bookkeeping (governance/secrets.py).
     @property
     def secrets_file(self) -> Path:
         return self.root / "secrets.json"

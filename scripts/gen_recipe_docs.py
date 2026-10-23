@@ -2,7 +2,7 @@
 """gen_recipe_docs.py -- render docs/recipes.md from the shipped recipe library.
 
 Every recipe under ``src/docket/templates/recipes/<name>/`` is documented from what it ships:
-its ``pod.yaml`` description, the summary ``core.pod_apply.summarize_recipe`` derives from the
+its ``pod.yaml`` description, the summary ``teams.apply.plan.summarize_recipe`` derives from the
 directory, the two commands that apply it, and its own README body. Nothing is typed a second
 time, so a recipe cannot be documented differently from what the wheel carries.
 
@@ -22,8 +22,8 @@ RECIPES_MD = ROOT / "docs" / "recipes.md"
 
 sys.path.insert(0, str(SRC))
 
-from docket.core import pod_apply as _pod_apply  # noqa: E402
 from docket.kernel import templates as _templates  # noqa: E402
+from docket.teams.apply import plan as _pod_apply  # noqa: E402
 
 HEADER = """# The recipe library
 

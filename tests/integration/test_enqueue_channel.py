@@ -11,15 +11,15 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import app as _app
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import telegram as _tg
+from docket.governance import audit as _audit
+from docket.interfaces.cli.app import app as _app
+from docket.interfaces.http.server import _DocketHandler
+from docket.interfaces.telegram import bot as _tg
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.tasks.application import queue as _queue
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _TOKEN = "test-serve-token-channel"
 
@@ -61,7 +61,7 @@ def test_a_cli_enqueue_records_the_cli_channel() -> None:
     _seed()
     result = CliRunner().invoke(_app, ["task", "add", "fix it", "--pod", "demo"])
     assert result.exit_code == 0, result.output
-    task = _dispatch.read_tasks("demo")[0]
+    task = _queue.read_tasks("demo")[0]
     assert task["channel"] == "cli"
     assert task["source"] == "operator"
     assert "channel=cli" in str(_entries("task.enqueue")[0]["detail"])
@@ -70,7 +70,7 @@ def test_a_cli_enqueue_records_the_cli_channel() -> None:
 def test_an_http_enqueue_records_the_http_channel_and_keeps_source(live_server: str) -> None:
     _seed()
     resp = _post(f"{live_server}/tasks/demo", {"description": "from http"})
-    task = _dispatch.read_tasks("demo")[0]
+    task = _queue.read_tasks("demo")[0]
     assert task["id"] == resp["task"]
     assert task["channel"] == "http"
     assert task["source"] == "operator"
@@ -83,7 +83,7 @@ def test_a_telegram_delegate_records_the_telegram_channel() -> None:
     _fleet.upsert_binding("demo-lead", "-100300", "telegram")
     msg = _tg.InboundMessage(chat_id="-100300", user_id="9", text="/delegate do it", update_id=1)
     assert _tg.handle_message(msg).ok
-    task = _dispatch.read_tasks("demo")[0]
+    task = _queue.read_tasks("demo")[0]
     assert task["channel"] == "telegram"
     assert "channel=telegram" in str(_entries("task.enqueue")[0]["detail"])
 
@@ -91,7 +91,7 @@ def test_a_telegram_delegate_records_the_telegram_channel() -> None:
 def test_a_dispatch_post_writes_a_run_dispatch_entry(
     live_server: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("docket.core.dispatch.dispatch_pod", lambda proj, **kw: [])
+    monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", lambda proj, **kw: [])
     resp = _post(f"{live_server}/dispatch/demo", {})
     detail = str(_entries("run.dispatch")[0]["detail"])
     assert resp["run"] in detail and "demo" in detail and "channel=http" in detail
@@ -100,4 +100,4 @@ def test_a_dispatch_post_writes_a_run_dispatch_entry(
 def test_enqueue_requires_a_channel() -> None:
     _seed()
     with pytest.raises(TypeError):
-        _dispatch.enqueue_task_once("demo", "x")  # type: ignore[call-arg]
+        _queue.enqueue_task_once("demo", "x")  # type: ignore[call-arg]

@@ -24,14 +24,18 @@ from pydantic import ValidationError
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import context as _context
-from docket.core import dispatch as _dispatch
-from docket.core import handoff as _handoff
-from docket.core import pipeline as _pipeline
+from docket.agent import context as _context
+from docket.agent import handoff as _handoff
+from docket.hops.application import record as _record
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.pipeline.application import executor as _executor
+from docket.pipeline.domain import plan as _plan
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import queue as _queue
+from docket.tasks.domain import task as _task
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 # ── HandoffArtifact: the pure model ──────────────────────────────────────────
 
@@ -112,8 +116,8 @@ class TestHandoffArtifactModel:
 # ── HopResult: artifact always populated, whatever the construction path ────
 
 
-def _hop(role: str, output: str, member_id: str = "") -> _dispatch.HopResult:
-    return _dispatch.HopResult(
+def _hop(role: str, output: str, member_id: str = "") -> _task.HopResult:
+    return _task.HopResult(
         role=role, member_id=member_id or f"demo-{role}", ok=True, output=output, cost_usd=0.0
     )
 
@@ -127,7 +131,7 @@ class TestHopResultArtifactBackfill:
 
     def test_explicit_artifact_is_not_overwritten(self) -> None:
         art = _handoff.HandoffArtifact(summary="custom", verdict="approve")
-        hop = _dispatch.HopResult(
+        hop = _task.HopResult(
             role="reviewer", member_id="demo-reviewer", ok=True, output="raw", artifact=art
         )
         assert hop.artifact is art
@@ -146,16 +150,16 @@ class TestHopResultArtifactBackfill:
 class TestHopRecordRoundTrip:
     def test_hop_record_persists_and_restores_artifact_exactly(self) -> None:
         art = _handoff.HandoffArtifact(summary="s", verdict="fail", files_changed=["x.py"])
-        hop = _dispatch.HopResult(
+        hop = _task.HopResult(
             role="tester", member_id="demo-tester", ok=True, output="s", artifact=art
         )
-        rec = _dispatch._hop_record(hop)
+        rec = _record._hop_record(hop)
         assert rec["artifact"] == art.model_dump()
         # verification_skipped is a this-run-only signal, not part of the
         # durable record (see HopResult's own docstring) -- not persisted.
         assert "verification_skipped" not in rec
 
-        restored = _dispatch._hop_from_record(rec)
+        restored = _record._hop_from_record(rec)
         assert restored.artifact == art
 
     def test_a_record_with_no_artifact_key_degrades_to_summary(self) -> None:
@@ -170,7 +174,7 @@ class TestHopRecordRoundTrip:
             "attempts": 1,
             "stepId": "implementer",
         }
-        restored = _dispatch._hop_from_record(rec)
+        restored = _record._hop_from_record(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "old raw text"
         assert restored.artifact.verdict is None
@@ -184,7 +188,7 @@ class TestHopRecordRoundTrip:
             "output": "raw",
             "artifact": {"not": "a valid HandoffArtifact shape"},
         }
-        restored = _dispatch._hop_from_record(rec)
+        restored = _record._hop_from_record(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "raw"
 
@@ -196,7 +200,7 @@ class TestHopRecordRoundTrip:
             "output": "raw",
             "artifact": None,
         }
-        restored = _dispatch._hop_from_record(rec)
+        restored = _record._hop_from_record(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "raw"
 
@@ -213,14 +217,14 @@ class TestHopRecordRoundTrip:
             "attempts": 1,
             "stepId": "implementer",
         }
-        restored = _dispatch._hop_from_record(rec)
+        restored = _record._hop_from_record(rec)
         assert restored.verify is None
         assert restored.evidence is None
 
     def test_verify_and_evidence_round_trip_exactly(self) -> None:
         verify = {"cmd": "pytest -q", "exitCode": 0, "durationS": 1.5, "outputTail": "3 passed"}
         evidence = {"commit": "a" * 40, "baseCommit": "b" * 40, "diffStat": {"files": 1}}
-        hop = _dispatch.HopResult(
+        hop = _task.HopResult(
             role="implementer",
             member_id="demo-implementer",
             ok=True,
@@ -228,11 +232,11 @@ class TestHopRecordRoundTrip:
             verify=verify,
             evidence=evidence,
         )
-        rec = _dispatch._hop_record(hop)
+        rec = _record._hop_record(hop)
         assert rec["verify"] == verify
         assert rec["evidence"] == evidence
 
-        restored = _dispatch._hop_from_record(rec)
+        restored = _record._hop_from_record(rec)
         assert restored.verify == verify
         assert restored.evidence == evidence
 
@@ -261,7 +265,7 @@ class TestDispatchBuildsTypedArtifacts:
     def test_two_hop_dispatch_produces_typed_artifacts_not_strings(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
-            res = _dispatch.dispatch_task("demo", task, runner=FakeDriver())
+            res = _executor.dispatch_task("demo", task, runner=FakeDriver())
 
             assert res.status == "done"
             assert [h.role for h in res.hops] == ["lead", "implementer"]
@@ -284,7 +288,7 @@ class TestDispatchBuildsTypedArtifacts:
                     timeout: int,
                     env: dict[str, str] | None = None,
                 ) -> Any:
-                    from docket.core.runtime_driver import TurnResult
+                    from docket.agent.ports import TurnResult
 
                     role = agent_id.rsplit("-", 1)[-1]
                     text = {
@@ -296,7 +300,7 @@ class TestDispatchBuildsTypedArtifacts:
                     return TurnResult(True, text, 0.01, {})
 
             task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
-            res = _dispatch.dispatch_task("demo", task, runner=_Runner())
+            res = _executor.dispatch_task("demo", task, runner=_Runner())
             assert res.status == "done"
 
             reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
@@ -316,7 +320,7 @@ class TestDispatchBuildsTypedArtifacts:
         "Verdict: approve" line the raw reviewer text never contained -- proving the message
         is built from ``HandoffArtifact.render()``, not straight from ``HopResult.output``."""
         with _seed_pod(tmp_path, full=True):
-            from docket.core.runtime_driver import TurnResult
+            from docket.agent.ports import TurnResult
 
             calls: list[tuple[str, str]] = []
 
@@ -340,7 +344,7 @@ class TestDispatchBuildsTypedArtifacts:
                     return TurnResult(True, text, 0.01, {})
 
             task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
-            res = _dispatch.dispatch_task("demo", task, runner=_Runner())
+            res = _executor.dispatch_task("demo", task, runner=_Runner())
             assert res.status == "done"
 
             tester_message = next(msg for role, msg in calls if role == "tester")
@@ -360,7 +364,7 @@ class TestDispatchBuildsTypedArtifacts:
             # -> 56 tokens).
             monkeypatch.setattr(_context, "hop_share", lambda rank, total: 53)
 
-            from docket.core.runtime_driver import TurnResult
+            from docket.agent.ports import TurnResult
 
             calls: list[tuple[str, str]] = []
 
@@ -384,7 +388,7 @@ class TestDispatchBuildsTypedArtifacts:
                     return TurnResult(True, text, 0.01, {})
 
             task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
-            res = _dispatch.dispatch_task("demo", task, runner=_Runner())
+            res = _executor.dispatch_task("demo", task, runner=_Runner())
             assert res.status == "done"
             reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
             assert reviewer_hop.artifact is not None
@@ -405,9 +409,9 @@ class TestDispatchBuildsTypedArtifacts:
         thread the *persisted artifact* into later hops' prompts, not just
         raw text -- proving --resume recovers the structured record."""
         with _seed_pod(tmp_path, full=True):
-            task = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "work", channel="cli")[0]
 
-            from docket.core.runtime_driver import TurnResult
+            from docket.agent.ports import TurnResult
 
             class _ReviewerOnlyRunner:
                 def __call__(
@@ -431,17 +435,17 @@ class TestDispatchBuildsTypedArtifacts:
             # hand-build the resume_from list the way a real crash-and-restart
             # would load it (through the persisted-record round trip).
             prior_hops = [
-                _dispatch.HopResult(
+                _task.HopResult(
                     role="lead", member_id="demo-lead", ok=True, output="plan", cost_usd=0.0
                 ),
-                _dispatch.HopResult(
+                _task.HopResult(
                     role="implementer",
                     member_id="demo-implementer",
                     ok=True,
                     output="did it",
                     cost_usd=0.0,
                 ),
-                _dispatch.HopResult(
+                _task.HopResult(
                     role="reviewer",
                     member_id="demo-reviewer",
                     ok=True,
@@ -452,17 +456,17 @@ class TestDispatchBuildsTypedArtifacts:
             ]
             # Round-trip through the persisted-record shape, exactly like a real
             # crash-and-`--resume` would load them from TASK_LIST.json.
-            records = [_dispatch._hop_record(h) for h in prior_hops]
-            resumed_hops = [_dispatch._hop_from_record(r) for r in records]
+            records = [_record._hop_record(h) for h in prior_hops]
+            resumed_hops = [_record._hop_from_record(r) for r in records]
 
-            real_parse_verdict = _dispatch._orch.parse_verdict
+            real_parse_verdict = _plan.parse_verdict
 
             def _reject_reparse(gate: _pipeline.VerdictGate, output: str) -> str | None:
                 if output == "APPROVE - solid":
                     raise AssertionError("resume reparsed persisted reviewer prose")
                 return real_parse_verdict(gate, output)
 
-            monkeypatch.setattr(_dispatch._orch, "parse_verdict", _reject_reparse)
+            monkeypatch.setattr(_plan, "parse_verdict", _reject_reparse)
 
             calls: list[tuple[str, str]] = []
 
@@ -479,7 +483,7 @@ class TestDispatchBuildsTypedArtifacts:
                     calls.append((role, message))
                     return TurnResult(True, "PASS - works", 0.01, {})
 
-            res = _dispatch.dispatch_task(
+            res = _executor.dispatch_task(
                 "demo", task, runner=_TesterRunner(), resume_from=resumed_hops
             )
             assert res.status == "done"

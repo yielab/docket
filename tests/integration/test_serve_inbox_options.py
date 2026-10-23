@@ -13,14 +13,14 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import app as _app
-from docket.core import dispatch as _dispatch
-from docket.edges import store as _store
+from docket.interfaces.cli.app import app as _app
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.platform import store as _store
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _TOKEN = "test-serve-token-inbox-options"
 _SCHEMA = Path(__file__).resolve().parents[2] / "docs/contracts/operator-v1/inbox.schema.json"
@@ -62,7 +62,7 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
             "created": "2026-10-19T00:00:00+00:00",
             "question": _QUESTION,
         }
-        _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": [task]})
+        _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": [task]})
 
         class _Handler(_DocketHandler):
             serve_token = _TOKEN

@@ -1,8 +1,8 @@
 """`docket pod show` -- the pod and a member's effective configuration, with provenance.
 
-Composes existing resolvers only (model policy, `core.identity`'s prompt composer,
-role/tool denial, the guardrail policy engine, `core.pod.PodSettings`, and
-`core.dispatch.effective_pipeline_source`); writes nothing and adds no new core
+Composes existing resolvers only (model policy, `agent.identity`'s prompt composer,
+role/tool denial, the guardrail policy engine, `teams.pod.PodSettings`, and
+`pipeline.application.steps.effective_pipeline_source`); writes nothing and adds no new core
 surface. See specs/data/cli-json-shapes.spec.md, "`docket pod show --json`". The oracle
 case (`TestPodShowMatchesRealDispatch`) cross-checks the reports against what a real pod
 dispatch (FakeDriver) actually used for the hop.
@@ -21,17 +21,21 @@ from tests.fakes import FakeDriver
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.core import archetypes as _archetypes
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import mcp_tools as _mcp_tools
-from docket.core import pod, pod_report
-from docket.core import policy as _policy
-from docket.edges import store as _store
+from docket.agent.tools import mcp_tools as _mcp_tools
+from docket.governance import policy as _policy
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.pipeline.application import steps as _steps
+from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
+from docket.teams import pod
+from docket.teams import report as pod_report
+from docket.teams import roles as _archetypes
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.cli._pod_show"
+SUBJECT = "docket.interfaces.cli.commands.pod_show"
 
 _runner = CliRunner()
 
@@ -106,9 +110,9 @@ class TestPodShowMatchesRealDispatch:
             _fleet.meta_set(lead, "approvalMode", "refuse")
             _fleet.meta_set(lead, "allowCommands", "curl")
 
-            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
+            _queue.enqueue_task_once("demo", "do the thing", channel="cli")
             runner = FakeDriver(cost=0.01)
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
             assert results[0].status == "done"
 
             # The implementer hop actually received this pod's configured timeout
@@ -131,7 +135,7 @@ class TestPodShowMatchesRealDispatch:
             assert report["podSettings"]["verifyTimeoutS"] == {"value": 42, "source": "set"}
             assert report["podSettings"]["approvalMode"] == {"value": "refuse", "source": "set"}
             assert report["podSettings"]["allowCommands"] == {"value": "curl", "source": "set"}
-            assert report["pipeline"] == {"source": _dispatch.effective_pipeline_source("demo")}
+            assert report["pipeline"] == {"source": _steps.effective_pipeline_source("demo")}
             # Implementer is full-repo -- the archetype denies nothing.
             assert report["tools"]["denied"] == []
             assert report["roleScope"] == "built-in"
@@ -379,7 +383,7 @@ class TestPodShowProvider:
     def test_agent_on_a_global_provider_document(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.core import provider as _prov
+        from docket.models import catalog as _prov
 
         with _seed(tmp_path):
             _prov.save_provider(
@@ -414,9 +418,9 @@ class TestPodShowProvider:
     def test_observed_and_unknown_limits_name_their_source(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.core import provider as _prov
-        from docket.core.llm import ModelLimits
-        from docket.edges.adapters.llm import ProbeResult
+        from docket.agent.llm import ModelLimits
+        from docket.models import catalog as _prov
+        from docket.models.adapters.openai_http import ProbeResult
 
         with _seed(tmp_path):
             spec = _prov.ProviderSpec(
@@ -452,7 +456,7 @@ class TestPodShowProvider:
 
 class TestPodShowPod:
     """The pod view names each member's verify command and the approval mode the dispatcher
-    resolves, pinned to ``core.dispatch.pod_approval_mode`` itself."""
+    resolves, pinned to ``teams.settings.pod_approval_mode`` itself."""
 
     def test_pod_view_names_the_verify_command_and_the_dispatchers_approval_mode(
         self, tmp_path: Path
@@ -465,7 +469,7 @@ class TestPodShowPod:
             report = json.loads(out)
             by_id = {m["id"]: m for m in report["members"]}
             assert by_id[implementer]["verifyCmd"] == "make check"
-            assert report["approvalMode"]["effective"] == _dispatch.pod_approval_mode(
+            assert report["approvalMode"]["effective"] == _settings.pod_approval_mode(
                 "demo", caller_default="park"
             )
             assert report["approvalMode"]["source"] == "unset"
@@ -478,7 +482,7 @@ class TestPodShowPod:
             _fleet.meta_set(pod.member_id("demo", "lead"), "approvalMode", mode)
             report = json.loads(_show("--json")[1])
             assert report["approvalMode"] == {"effective": mode, "source": "set"}
-            assert _dispatch.pod_approval_mode("demo") == mode
+            assert _settings.pod_approval_mode("demo") == mode
 
     def test_settings_carry_their_source(self, tmp_path: Path) -> None:
         with _seed(tmp_path):

@@ -14,12 +14,12 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import app
-from docket.edges import store
+from docket.interfaces.cli.app import app
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.platform import store
 
-SUBJECT = "docket.edges.store"
+SUBJECT = "docket.platform.store"
 
 _CORRUPT_PRIMARY = b"{broken"
 

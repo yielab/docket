@@ -1,7 +1,7 @@
 """Pod runtime-resource isolation — pure logic + integration tests.
 
 Two layers:
-  * TestPortAllocation — pure logic tests for core/resources.py (no I/O).
+  * TestPortAllocation — pure logic tests for teams/resources.py (no I/O).
   * TestPodResources   — hermetic integration tests: build_pod allocates
     resources, TOOLS.md is written, two pods get disjoint ranges, teardown
     reclaims the range and scratch dir.
@@ -18,14 +18,14 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import pod_provisioning as _pp
-from docket.core import resources as _res
-from docket.edges import store as _store
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.platform import store as _store
+from docket.teams import pod_provisioning as _pp
+from docket.teams import resources as _res
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 # ── hermetic helpers ─────────────────────────────────────────────────────────
 

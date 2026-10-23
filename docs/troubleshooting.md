@@ -156,7 +156,7 @@ rather than assuming something is broken.
 ## Model / Endpoint Errors
 
 ### "no endpoint configured for this model"
-**Cause:** `edges/adapters/llm.py`'s `resolve_endpoint` couldn't find a base URL for the model's
+**Cause:** `models/adapters/openai_http.py`'s `resolve_endpoint` couldn't find a base URL for the model's
 provider — no `DOCKET_LLM_BASE_URL`, no registered global document, and the provider isn't one of
 the built-in catalog documents (`docket setup provider list`). Every built-in document has a
 mapping now — not only OpenRouter (`openrouter/...`) and Vercel AI Gateway (`ai-gateway/...`), but

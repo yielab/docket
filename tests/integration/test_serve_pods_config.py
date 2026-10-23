@@ -11,13 +11,13 @@ from typing import Any
 
 import pytest
 
-from docket.core import audit as _audit
-from docket.core import fleet as _fleet
+from docket.governance import audit as _audit
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.governance"
 
 _TOKEN = "test-serve-token-pods-config"
 

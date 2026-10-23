@@ -1,10 +1,10 @@
-"""`core/pod.py`'s role model resolves against the archetype registry
+"""`teams/pod.py`'s role model resolves against the archetype registry
 instead of a hardcoded 4-tuple — `normalize_role`/`member_id`
 must keep returning the exact same values for the four legacy roles, while
 also accepting a starter-library/user-defined role without a single new
-hardcoded string in `core/pod.py`.
+hardcoded string in `teams/pod.py`.
 
-Also covers `core/models_policy.py`'s archetype-modelClass fallback (a role
+Also covers `models/selection.py`'s archetype-modelClass fallback (a role
 with no named `ALL_ROLES` row resolves through its own `modelClass` against
 the live rank anchors) and an end-to-end `docket pod add
 <starter-role>` provisioning smoke test.
@@ -21,14 +21,14 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.core import archetypes as _arch
-from docket.core import fleet as _fleet
-from docket.core import models_policy as _mp
-from docket.core import pod
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.models import selection as _mp
+from docket.teams import fleet as _fleet
+from docket.teams import pod
+from docket.teams import roles as _arch
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 
 @pytest.fixture(autouse=True)

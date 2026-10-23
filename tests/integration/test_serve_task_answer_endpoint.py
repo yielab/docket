@@ -1,12 +1,12 @@
 """POST /tasks/<id>/answer — resolving a parked question over HTTP.
 
 The HTTP counterpart of `docket task answer` and the MCP `task_answer` tool: same
-`core.answers.answer_task` call (`channel="http"`), so validation/screening/resume are
+`tasks.application.answers.answer_task` call (`channel="http"`), so validation/screening/resume are
 byte-for-byte identical to every other surface. Covers auth, the happy path (a `TaskView`
 response, the durably appended answer, the `actor` field), the error mappings (`422`/`409`/
 `404`/`400`), and `POST /tasks/<project>`'s optional `brief` field -- `422` on a malformed one,
-and `422` again on a well-formed one naming the `core.dispatch.enqueue_task_once` parameter it still
-lacks (see `cli/_pod.py::_pod_delegate`'s identical contention note).
+and `422` again on a well-formed one naming the `tasks.application.queue.enqueue_task_once` parameter it still
+lacks (see `interfaces/cli/commands/pod.py::_pod_delegate`'s identical contention note).
 """
 
 from __future__ import annotations
@@ -25,15 +25,16 @@ import pytest
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.governance"
 
 _TEST_TOKEN = "test-serve-token-task-answer-p34-13"
 
@@ -110,9 +111,9 @@ def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task_once(project, "needs a decision", channel="cli")
-    _dispatch.dispatch_pod(project, runner=FakeDriver())
-    return _dispatch.read_tasks(project)[0]
+    _queue.enqueue_task_once(project, "needs a decision", channel="cli")
+    _sweep.dispatch_pod(project, runner=FakeDriver())
+    return _queue.read_tasks(project)[0]
 
 
 class TestAuth:
@@ -160,7 +161,7 @@ class TestHappyPath:
             assert body["id"] == task["id"]
             assert body["pod"] == "demo"
 
-            after = _dispatch.read_tasks("demo")[0]
+            after = _queue.read_tasks("demo")[0]
             assert after["answers"][0]["content"] == {"answer": "ship it"}
             assert after["answers"][0]["channel"] == "http"
             assert after["answers"][0]["actor"] == "http"
@@ -214,7 +215,7 @@ class TestErrorMapping:
     def test_not_waiting_input_is_409(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        plain_task = _dispatch.enqueue_task_once("demo", "plain task", channel="cli")[0]
+        plain_task = _queue.enqueue_task_once("demo", "plain task", channel="cli")[0]
         status, body = _post(
             f"{url}/tasks/{plain_task['id']}/answer",
             {"pod": "demo", "action": "accept", "content": {"answer": "x"}},
@@ -239,7 +240,7 @@ class TestErrorMapping:
     ) -> None:
         url, token = live_server
         task = _seed_parked_task("demo")
-        from docket.core import policy as _policy
+        from docket.governance import policy as _policy
 
         monkeypatch.setattr(
             _policy,
@@ -279,7 +280,7 @@ class TestCreateWithBrief:
             token=token,
         )
         assert status == 422
-        assert _dispatch.read_tasks("demo") == []
+        assert _queue.read_tasks("demo") == []
 
     def test_a_valid_brief_is_enqueued_and_stored_on_the_task(
         self, live_server: tuple[str, str]
@@ -292,7 +293,7 @@ class TestCreateWithBrief:
             token=token,
         )
         assert status == 201
-        tasks = _dispatch.read_tasks("demo")
+        tasks = _queue.read_tasks("demo")
         assert len(tasks) == 1
         assert tasks[0]["id"] == body["task"]
         assert tasks[0]["brief"]["objective"] == "fix the flaky test"
@@ -304,7 +305,7 @@ class TestCreateWithBrief:
             f"{url}/tasks/demo", {"description": "fix it", "brief": "not an object"}, token=token
         )
         assert status == 400
-        assert _dispatch.read_tasks("demo") == []
+        assert _queue.read_tasks("demo") == []
 
     def test_no_brief_is_unaffected(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

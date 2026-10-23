@@ -7,7 +7,7 @@ Before this card, `core/dispatch.py`'s hop-message builder gave any role outside
 lead/implementer/reviewer/tester an empty instruction (dispatch.py:571-572,639) --
 a custom verdict-gated role depended entirely on its SOUL template to know its own
 marker convention, and a pipeline's declared `variables` were validated and stored on
-the run record (`core/runs.py`) but never reached a hop's prompt.
+the run record (`tasks/application/runs.py`) but never reached a hop's prompt.
 """
 
 from __future__ import annotations
@@ -21,15 +21,17 @@ import pytest
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import archetypes as _arch
-from docket.core import dispatch as _dispatch
-from docket.core import pipeline as _pipeline
-from docket.core import pod
-from docket.core import runtime_driver as _rd
+from docket.agent import ports as _rd
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import pod
+from docket.teams import roles as _arch
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +92,7 @@ def _prep_pod(
         _register_security_reviewer()
         build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
         _pod.add_members("proj", "security-reviewer")
-        _dispatch.enqueue_task_once("proj", "ship the security review", channel="cli")
+        _queue.enqueue_task_once("proj", "ship the security review", channel="cli")
         yield
 
 
@@ -112,7 +114,7 @@ class TestCustomRoleGeneratedHopInstruction:
                     return _rd.TurnResult(True, "APPROVE - clean", 0.0, {"output": "x"})
                 return driver(agent_id, session_key, message, timeout, env)
 
-            results = _dispatch.dispatch_pod("proj", runner=_runner, spec=_review_pipeline())
+            results = _sweep.dispatch_pod("proj", runner=_runner, spec=_review_pipeline())
 
             assert results[0].status == "done", results[0].reason
             assert "APPROVE or REQUEST-CHANGES" in seen["review"]
@@ -140,7 +142,7 @@ class TestStepInstructionsOverrideAndInterpolation:
                 return driver(agent_id, session_key, message, timeout, env)
 
             spec = _review_pipeline(instructions="Focus on ${area}")
-            results = _dispatch.dispatch_pod(
+            results = _sweep.dispatch_pod(
                 "proj", runner=_runner, spec=spec, variables={"area": "auth"}
             )
 
@@ -165,7 +167,7 @@ class TestUnresolvedVariableRefusesBeforeAnyHop:
                 return _rd.TurnResult(True, "APPROVE", 0.0, {"output": "x"})
 
             spec = _review_pipeline(instructions="Focus on ${area}")
-            with pytest.raises(_dispatch.DispatchError, match="area"):
-                _dispatch.dispatch_pod("proj", runner=_runner, spec=spec)
+            with pytest.raises(_task.DispatchError, match="area"):
+                _sweep.dispatch_pod("proj", runner=_runner, spec=spec)
 
             assert calls == []

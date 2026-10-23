@@ -1,5 +1,5 @@
 """A stdio MCP server spawned for a turn starts in that turn's resolved root
-(`edges/adapters/mcp_client.py`, `core/mcp_tools.py`, `DocketDriver.run_turn`)."""
+(`agent/tools/mcp_client.py`, `agent/tools/mcp_tools.py`, `DocketDriver.run_turn`)."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.unit.core.test_mcp_tools import _final, _ScriptedBackend, _write_meta
+from tests.unit.agent.tools.test_mcp_tools import _final, _ScriptedBackend, _write_meta
 
-import docket.core.mcp_tools as _mt
-from docket.core import fleet as _fleet
-from docket.core.tools import ToolContext, ToolOutcome, ToolRegistry
-from docket.edges.adapters import mcp_client as _client
-from docket.edges.adapters.docket_runtime import DocketDriver, _load_mcp_tools
+import docket.agent.tools.mcp_tools as _mt
+from docket.agent.driver import DocketDriver, _load_mcp_tools
+from docket.agent.tools import mcp_client as _client
+from docket.agent.tools.registry import ToolContext, ToolOutcome, ToolRegistry
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.edges.adapters.mcp_client"
+SUBJECT = "docket.agent.tools.mcp_client"
 
 _needs_sdk = pytest.mark.skipif(
     not _client._sdk_available(), reason="the optional mcp SDK is absent"

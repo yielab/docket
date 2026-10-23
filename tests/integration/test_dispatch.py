@@ -17,6 +17,7 @@ import dataclasses
 import json
 import threading
 import time
+import time as _time
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -29,25 +30,35 @@ from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod
-from docket.core import answers as _answers
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import operator_contract as _oc
-from docket.core import pipeline as _pipeline
-from docket.core import resources as _res
-from docket.core import runtime_driver as _rd
-from docket.core import secrets as _secrets
-from docket.core import session as _session
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
-from docket.core.models import AgentMeta as _AgentMeta
-from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent import driver as _dr
+from docket.agent import ports as _rd
+from docket.agent import session as _session
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.governance import audit as _audit
+from docket.governance import secrets as _secrets
+from docket.hops.application import record as _record
+from docket.hops.application import runner as _runner
+from docket.hops.gates import pre_hop as _pre_hop
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.operator import contract as _oc
+from docket.pipeline.application import executor as _executor
+from docket.pipeline.application import steps as _steps_c
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import actions as _actions
+from docket.tasks.application import answers as _answers
+from docket.tasks.application import lifecycle as _lifecycle
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import resources as _res
+from docket.teams import settings as _settings
+from docket.teams.models import AgentMeta as _AgentMeta
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks.application.queue"
 
 # ── hermetic environment (mirrors test_pod_provisioning) ─────────────────────────
 
@@ -59,10 +70,10 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _endpoint_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     """`docket run` refuses without a model endpoint; these tests drive a FakeDriver."""
-    from docket.cli._setup import Piece, Readiness
+    from docket.interfaces.cli.commands.setup import Piece, Readiness
 
     ready = Readiness(endpoint=Piece("model endpoint", True, "", ""))
-    monkeypatch.setattr("docket.cli._run.readiness", lambda: ready)
+    monkeypatch.setattr("docket.interfaces.cli.commands.run.readiness", lambda: ready)
 
 
 @contextmanager
@@ -87,7 +98,7 @@ class TestTaskAddCliBoundary:
     def test_quoted_task_text_reaches_the_queue_losslessly(self, tmp_path: Path) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         with _seed_pod(tmp_path):
             description = "create a file called test.md"
@@ -95,7 +106,7 @@ class TestTaskAddCliBoundary:
             result = CliRunner().invoke(app, ["task", "add", description, "--pod", "demo"])
 
             assert result.exit_code == 0, result.output
-            assert [task["description"] for task in _dispatch.read_tasks("demo")] == [description]
+            assert [task["description"] for task in _queue.read_tasks("demo")] == [description]
 
     @pytest.mark.parametrize(
         ("args", "code"),
@@ -111,25 +122,25 @@ class TestTaskAddCliBoundary:
     ) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         with _seed_pod(tmp_path):
             result = CliRunner().invoke(app, args)
 
             assert result.exit_code == code
-            assert _dispatch.read_tasks("demo") == []
+            assert _queue.read_tasks("demo") == []
 
     def test_length_limit_applies_to_the_text(self, tmp_path: Path) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         with _seed_pod(tmp_path):
             result = CliRunner().invoke(app, ["task", "add", "a" * 501, "--pod", "demo"])
 
             assert result.exit_code == 1
             assert "501 chars" in result.output
-            assert _dispatch.read_tasks("demo") == []
+            assert _queue.read_tasks("demo") == []
 
 
 class TestEnqueueTaskPreBrief:
@@ -137,7 +148,7 @@ class TestEnqueueTaskPreBrief:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task_once(
+            task = _queue.enqueue_task_once(
                 "demo",
                 "add rate limiting",
                 brief={"objective": "add rate limiting", "acceptance": ["429 after 100 req/min"]},
@@ -147,24 +158,24 @@ class TestEnqueueTaskPreBrief:
             assert "## Pre-brief" in task["description"]
             assert "429 after 100 req/min" in task["description"]
             assert task["brief"]["objective"] == "add rate limiting"
-            stored = _dispatch.read_tasks("demo")[0]
+            stored = _queue.read_tasks("demo")[0]
             assert stored["brief"]["objective"] == "add rate limiting"
 
     def test_an_invalid_brief_raises_and_persists_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             try:
-                _dispatch.enqueue_task_once(
+                _queue.enqueue_task_once(
                     "demo", "add rate limiting", brief={"objective": ""}, channel="cli"
                 )
-            except _dispatch.DispatchError:
+            except _task.DispatchError:
                 pass
             else:
                 raise AssertionError("an empty objective should have raised DispatchError")
-            assert _dispatch.read_tasks("demo") == []
+            assert _queue.read_tasks("demo") == []
 
     def test_no_brief_leaves_the_description_and_task_shape_unchanged(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task_once("demo", "plain task, no brief", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "plain task, no brief", channel="cli")[0]
 
             assert task["description"] == "plain task, no brief"
             assert "brief" not in task
@@ -178,8 +189,8 @@ class TestEnqueueTaskPreBrief:
 
 # There is no daemon-facing driver, no subprocess-backed `agent_run`, and no
 # daemon JSON shape to shell out to any more. The equivalent coverage lives
-# in `edges/adapters/llm.py`'s `OpenAIChatClient` (response parsing, see
-# test_llm_port.py) and `edges/adapters/docket_runtime.py`'s
+# in `models/adapters/openai_http.py`'s `OpenAIChatClient` (response parsing, see
+# test_llm_port.py) and `agent/driver.py`'s
 # `DocketDriver` (env passed through to a tool call, see
 # test_docket_driver.py's `test_env_kwarg_reaches_a_tool_call` and
 # `test_on_spawn_is_accepted_and_ignored`).
@@ -191,9 +202,9 @@ class TestEnqueueTaskPreBrief:
 class TestPipeline:
     def test_lean_pod_runs_lead_then_implementer(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Fix the bug", channel="cli")
+            _queue.enqueue_task_once("demo", "Fix the bug", channel="cli")
             runner = FakeDriver()
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
             assert len(results) == 1
             res = results[0]
             assert res.status == "done"
@@ -236,7 +247,7 @@ class TestPipeline:
                     "baseCommit": "abc",
                 },
             }
-            result = _dispatch.dispatch_task("demo", task, runner=runner)
+            result = _executor.dispatch_task("demo", task, runner=runner)
 
             assert result.status == "done", result.reason
             by_agent = {agent_id: (message, env) for agent_id, message, env in calls}
@@ -275,7 +286,7 @@ class TestPipeline:
                 return _rd.TurnResult(True, "done", 0.0, {})
 
             task: dict[str, Any] = {"id": "am1", "description": "work", "status": "pending"}
-            result = _dispatch.dispatch_task("demo", task, runner=runner)
+            result = _executor.dispatch_task("demo", task, runner=runner)
 
             assert result.status == "done", result.reason
             assert len(calls) == 2
@@ -299,14 +310,14 @@ class TestPipeline:
                 return _rd.TurnResult(True, "done", 0.0, {})
 
             task: dict[str, Any] = {"id": "at1", "description": "work", "status": "pending"}
-            result = _dispatch.dispatch_task("demo", task, runner=runner, approval_timeout=9)
+            result = _executor.dispatch_task("demo", task, runner=runner, approval_timeout=9)
 
             assert result.status == "done", result.reason
             assert len(calls) == 2
             assert all(env is not None and env[_rd.DOCKET_APPROVAL_TIMEOUT] == "9" for env in calls)
             calls.clear()
             again: dict[str, Any] = {"id": "at2", "description": "work", "status": "pending"}
-            _dispatch.dispatch_task("demo", again, runner=runner)
+            _executor.dispatch_task("demo", again, runner=runner)
             assert all(env is None or _rd.DOCKET_APPROVAL_TIMEOUT not in env for env in calls)
 
     def test_refuse_approval_mode_threads_into_every_hop_env(self, tmp_path: Path) -> None:
@@ -328,7 +339,7 @@ class TestPipeline:
                 return _rd.TurnResult(True, "done", 0.0, {})
 
             task: dict[str, Any] = {"id": "am2", "description": "work", "status": "pending"}
-            result = _dispatch.dispatch_task("demo", task, runner=runner)
+            result = _executor.dispatch_task("demo", task, runner=runner)
 
             assert result.status == "done", result.reason
             assert len(calls) == 2
@@ -345,17 +356,17 @@ class TestPipeline:
 
     def test_task_persisted_with_status_and_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver(cost=0.05))
-            tasks = _dispatch.read_tasks("demo")
+            _queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver(cost=0.05))
+            tasks = _queue.read_tasks("demo")
             assert tasks[0]["status"] == "done"
             assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
             assert tasks[0]["costUsd"] == pytest.approx(0.10)
 
     def test_traces_written_per_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task_once("demo", "Trace me", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _queue.enqueue_task_once("demo", "Trace me", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
             events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
@@ -372,9 +383,9 @@ class TestPipeline:
 
     def test_failed_hop_stops_pipeline(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
-            _dispatch.enqueue_task_once("demo", "Break early", channel="cli")
+            _queue.enqueue_task_once("demo", "Break early", channel="cli")
             runner = FakeDriver(fail_role="implementer")
-            res = _dispatch.dispatch_pod("demo", runner=runner)[0]
+            res = _sweep.dispatch_pod("demo", runner=runner)[0]
             assert res.status == "failed"
             # Lead + Implementer ran; Reviewer + Tester never got dispatched.
             roles_called = [c[0].rsplit("-", 1)[-1] for c in runner.calls]
@@ -382,7 +393,7 @@ class TestPipeline:
 
     def test_typed_run_cancellation_cancels_task_and_stops_pipeline(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task_once("demo", "Stop cleanly", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "Stop cleanly", channel="cli")[0]
             calls = 0
 
             def runner(*_args: object, **_kwargs: object) -> _rd.TurnResult:
@@ -397,12 +408,12 @@ class TestPipeline:
                     failure_kind="run_cancelled",
                 )
 
-            result = _dispatch.dispatch_pod("demo", runner=runner)[0]
+            result = _sweep.dispatch_pod("demo", runner=runner)[0]
 
             assert calls == 1
             assert result.task_id == task["id"]
             assert result.status == "cancelled"
-            persisted = _dispatch.read_tasks("demo")[0]
+            persisted = _queue.read_tasks("demo")[0]
             assert persisted["status"] == "cancelled"
             assert persisted["completedAt"]
 
@@ -410,24 +421,27 @@ class TestPipeline:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
-            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+            _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
             runner = FakeDriver()
-            res = _dispatch.dispatch_pod("demo", runner=runner)[0]
+            res = _sweep.dispatch_pod("demo", runner=runner)[0]
             assert res.status == "blocked"
             assert runner.calls == []  # nothing dispatched
             # A blocked task stays blocked (it is never silently rewritten back
             # to pending) — it only re-enters pending via unblock_pod/retry_task.
-            assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
+            assert _queue.read_tasks("demo")[0]["status"] == "blocked"
 
     def test_no_cross_pod_dispatch(self, tmp_path: Path) -> None:
         # Two pods exist; dispatching 'demo' must never touch 'other'.
         with _seed_pod(tmp_path, project="demo") as oc_dir:
             build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/other")
-            _dispatch.enqueue_task_once("demo", "Stay in my lane", channel="cli")
+            _queue.enqueue_task_once("demo", "Stay in my lane", channel="cli")
             runner = FakeDriver()
-            _dispatch.dispatch_pod("demo", runner=runner)
+            _sweep.dispatch_pod("demo", runner=runner)
             assert runner.calls, "expected dispatch to run"
             assert all(c[0].startswith("demo-") for c in runner.calls)
             assert (oc_dir / "traces" / "other").exists() is False
@@ -436,8 +450,8 @@ class TestPipeline:
         with _seed_pod(tmp_path):
             # Remove the lead from the fleet registry → no dispatchable pod.
             _fleet.remove_agent("demo-lead")
-            with pytest.raises(_dispatch.DispatchError):
-                _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            with pytest.raises(_task.DispatchError):
+                _sweep.dispatch_pod("demo", runner=FakeDriver())
 
 
 # ── HopResult.verify: real mechanical-gate evidence persisted alongside a hop ────
@@ -451,12 +465,12 @@ class TestHopEvidence:
         with _seed_pod(tmp_path):
             _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
             _fleet.meta_set("demo-implementer", "verifyCmd", "echo ok")
-            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
+            _queue.enqueue_task_once("demo", "Ship it", channel="cli")
 
-            res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
             assert res.status == "done"
-            persisted = _dispatch.read_tasks("demo")[0]
+            persisted = _queue.read_tasks("demo")[0]
             implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
             verify = implementer_rec["verify"]
             assert verify is not None
@@ -473,12 +487,12 @@ class TestHopEvidence:
             secret_value = "zzqx-unleakable-canary-9000"
             _secrets.save_secrets({"LEAKY_KEY": secret_value})
             _fleet.meta_set("demo-implementer", "verifyCmd", f"echo {secret_value}; exit 1")
-            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
+            _queue.enqueue_task_once("demo", "Ship it", channel="cli")
 
-            res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
             assert res.status == "failed"
-            persisted = _dispatch.read_tasks("demo")[0]
+            persisted = _queue.read_tasks("demo")[0]
             implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
             verify = implementer_rec["verify"]
             assert verify is not None
@@ -490,9 +504,9 @@ class TestHopEvidence:
 
     def test_no_verify_cmd_leaves_verify_unset(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "no verify configured", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
-            persisted = _dispatch.read_tasks("demo")[0]
+            _queue.enqueue_task_once("demo", "no verify configured", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            persisted = _queue.read_tasks("demo")[0]
             implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
             assert implementer_rec["verify"] is None
 
@@ -505,11 +519,11 @@ class TestHopEnvInjection:
     actual env, not just TOOLS.md prose."""
 
     def test_hop_env_none_for_lead(self) -> None:
-        assert _dispatch.hop_env("demo-lead", "lead") is None
+        assert _record.hop_env("demo-lead", "lead") is None
 
     def test_hop_env_none_for_reviewer_and_tester(self) -> None:
-        assert _dispatch.hop_env("demo-reviewer", "reviewer") is None
-        assert _dispatch.hop_env("demo-tester", "tester") is None
+        assert _record.hop_env("demo-reviewer", "reviewer") is None
+        assert _record.hop_env("demo-tester", "tester") is None
 
     def test_hop_env_none_for_implementer_without_allocation(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -521,11 +535,11 @@ class TestHopEnvInjection:
             raw.pop("portRangeCount", None)
             raw.pop("scratchDir", None)
             path.write_text(json.dumps(raw))
-            assert _dispatch.hop_env("demo-implementer", "implementer") is None
+            assert _record.hop_env("demo-implementer", "implementer") is None
 
     def test_hop_env_set_for_implementer_with_allocation(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            env = _dispatch.hop_env("demo-implementer", "implementer")
+            env = _record.hop_env("demo-implementer", "implementer")
             assert env is not None
             assert env["DOCKET_PORT_BASE"] == str(_res.PORT_BASE)
             assert env["DOCKET_PORT_COUNT"] == str(_res.PORT_RANGE_SIZE)
@@ -535,9 +549,9 @@ class TestHopEnvInjection:
         """Integration: dispatch_pod passes env=<dict> to the implementer hop's
         runner call and env=None to the lead hop — the acceptance gate end to end."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Use my env", channel="cli")
+            _queue.enqueue_task_once("demo", "Use my env", channel="cli")
             runner = FakeDriver()
-            _dispatch.dispatch_pod("demo", runner=runner)
+            _sweep.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
             assert by_role["lead"] is None
             impl_env = by_role["implementer"]
@@ -556,9 +570,9 @@ class TestHopEnvInjection:
             raw.pop("portRangeCount", None)
             raw.pop("scratchDir", None)
             path.write_text(json.dumps(raw))
-            _dispatch.enqueue_task_once("demo", "No allocation here", channel="cli")
+            _queue.enqueue_task_once("demo", "No allocation here", channel="cli")
             runner = FakeDriver()
-            _dispatch.dispatch_pod("demo", runner=runner)
+            _sweep.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
             assert by_role["implementer"] is None
 
@@ -566,8 +580,8 @@ class TestHopEnvInjection:
 # ── end-to-end: driver → real agent_loop → real gated tool chokepoint ────────────
 #
 # No injected runner means `dispatch_pod` resolves
-# `edges.adapters.docket_runtime.default_driver()`: docket's own
-# `core/agent_loop.py`, dispatching every tool call through `core/tools.py`'s
+# `agent.driver.default_driver()`: docket's own
+# `agent/loop.py`, dispatching every tool call through `agent/tools/registry.py`'s
 # gated chokepoint. `TestEndToEnd` below proves a real dispatch actually
 # executes through it.
 
@@ -612,14 +626,14 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "End to end", channel="cli")
-            results = _dispatch.dispatch_pod("demo")
+            _queue.enqueue_task_once("demo", "End to end", channel="cli")
+            results = _sweep.dispatch_pod("demo")
             assert results[0].status == "done"
             # cost_usd stays 0.0 through DocketDriver — CLAUDE.md's standing rule
             # against turning a measured-token estimate into a billing claim.
             assert results[0].cost_usd == 0.0
             assert len(backend.calls) == 2  # one turn per pod hop (lead, implementer)
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert tasks[0]["status"] == "done"
             assert (oc_dir / "traces" / "demo").is_dir()
 
@@ -636,8 +650,8 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            task = _dispatch.enqueue_task_once("demo", "Trace task id", channel="cli")[0]
-            results = _dispatch.dispatch_pod("demo")
+            task = _queue.enqueue_task_once("demo", "Trace task id", channel="cli")[0]
+            results = _sweep.dispatch_pod("demo")
             assert results[0].status == "done"
 
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
@@ -658,7 +672,7 @@ class TestEndToEnd:
         """The measured trigger this card closes: a real policy-gated `bash` call, through the
         real `DocketDriver`, ends the hop well under `TOOL_APPROVAL_TIMEOUT` and fails the task
         with the `approval_unavailable` reason recorded, instead of blocking on nobody."""
-        from docket.core.policy import install_policies
+        from docket.governance.policy import install_policies
 
         with (
             _seed_pod(tmp_path) as oc_dir,
@@ -667,7 +681,7 @@ class TestEndToEnd:
             install_policies()
             _fleet.meta_set("demo-lead", "approvalMode", "refuse")
 
-            # "lead" denies the `bash` tool outright (core/archetypes.py); the gated call has
+            # "lead" denies the `bash` tool outright (teams/roles.py); the gated call has
             # to be the Implementer's, so the Lead's turn gets an ordinary final response first.
             call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
             backend = _ScriptedBackend(
@@ -684,15 +698,15 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
+            _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
             started = time.monotonic()
-            results = _dispatch.dispatch_pod("demo")
+            results = _sweep.dispatch_pod("demo")
             elapsed = time.monotonic() - started
 
             assert elapsed < 1.0, f"took {elapsed:.2f}s -- refuse mode should not wait"
             assert results[0].status == "failed"
             assert "approval_unavailable" in results[0].reason
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert tasks[0]["status"] == "failed"
             assert "approval_unavailable" in tasks[0]["reason"]
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
@@ -709,7 +723,7 @@ class TestEndToEnd:
     ) -> None:
         """A real policy-gated `bash` call, through the real `DocketDriver`, ends the hop
         well under `TOOL_APPROVAL_TIMEOUT` and parks the task, token recorded."""
-        from docket.core.policy import install_policies
+        from docket.governance.policy import install_policies
 
         with (
             _seed_pod(tmp_path) as oc_dir,
@@ -733,15 +747,15 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
+            _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
             started = time.monotonic()
-            results = _dispatch.dispatch_pod("demo")
+            results = _sweep.dispatch_pod("demo")
             elapsed = time.monotonic() - started
 
             assert elapsed < 1.0, f"took {elapsed:.2f}s -- park mode should not wait"
             assert results[0].status == "waiting_approval", results[0].reason
             assert results[0].approval_token
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert tasks[0]["status"] == "waiting_approval"
             assert tasks[0]["approvalToken"] == results[0].approval_token
             # The parked hop is persisted (audit/trace history stays true) --
@@ -765,8 +779,8 @@ class TestEndToEnd:
         """The resume path: `docket task approve <t>` then `docket run` re-runs the
         implementer hop (not the lead's already-persisted one) at its own index, and the exact
         same tool call the human approved passes once via a single-use pre-grant."""
-        from docket.core import approval as _approval_mod
-        from docket.core.policy import install_policies
+        from docket.governance import approval as _approval_mod
+        from docket.governance.policy import install_policies
 
         with (
             _seed_pod(tmp_path),
@@ -790,15 +804,15 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: park_backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
-            parked = _dispatch.dispatch_pod("demo")
+            _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
+            parked = _sweep.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
 
             # docket task approve <token>
             _approval_mod.approval_grant(token, channel="cli")
-            assert _dispatch.resolve_waiting_approval(token, "granted") is True
-            task = _dispatch.read_tasks("demo")[0]
+            assert _actions.resolve_waiting_approval(token, "granted") is True
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "pending"
             assert len(task["pregrants"]) == 1
             assert task["pregrants"][0]["token"] == token
@@ -825,10 +839,10 @@ class TestEndToEnd:
             driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
 
-            second = _dispatch.dispatch_pod("demo")
+            second = _sweep.dispatch_pod("demo")
 
             assert second[0].status == "done", second[0].reason
-            final = _dispatch.read_tasks("demo")[0]
+            final = _queue.read_tasks("demo")[0]
             # Lead's already-persisted hop was not re-run; the implementer step
             # appears twice -- the parked attempt and the real one -- exactly the
             # same "each attempt is its own audit record" shape a rework cycle's
@@ -842,8 +856,8 @@ class TestEndToEnd:
     def test_park_deny_fails_the_task_approval_denied(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.core import approval as _approval_mod
-        from docket.core.policy import install_policies
+        from docket.governance import approval as _approval_mod
+        from docket.governance.policy import install_policies
 
         with (
             _seed_pod(tmp_path),
@@ -867,14 +881,14 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
-            parked = _dispatch.dispatch_pod("demo")
+            _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
+            parked = _sweep.dispatch_pod("demo")
             token = parked[0].approval_token
 
             _approval_mod.approval_deny(token, channel="cli")
-            assert _dispatch.resolve_waiting_approval(token, "denied") is True
+            assert _actions.resolve_waiting_approval(token, "denied") is True
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "failed"
             assert task["failureKind"] == "approval_denied"
 
@@ -884,8 +898,8 @@ class TestEndToEnd:
         """A parked approval's own `expiresAt` (not the default APPROVAL_TIMEOUT) governs it,
         and the fail-closed sweep denies it once past that deadline -- same resolution path as
         an explicit human deny."""
-        from docket.core import approval as _approval_mod
-        from docket.core.policy import install_policies
+        from docket.governance import approval as _approval_mod
+        from docket.governance.policy import install_policies
 
         with (
             _seed_pod(tmp_path),
@@ -909,13 +923,13 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
-            parked = _dispatch.dispatch_pod("demo")
+            _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
+            parked = _sweep.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
 
             # Force this record's own expiresAt into the past -- the parked
-            # record carries its own deadline (core/tools.py's `_park_call`),
+            # record carries its own deadline (agent/tools/registry.py's `_park_call`),
             # never the generic APPROVAL_TIMEOUT.
             rec_path = current_home().approvals_dir / f"{token}.json"
             rec = json.loads(rec_path.read_text(encoding="utf-8"))
@@ -926,7 +940,7 @@ class TestEndToEnd:
             swept = _approval_mod.approval_sweep_expired()
             assert swept == 1
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "failed"
             assert task["failureKind"] == "approval_denied"
 
@@ -949,15 +963,15 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            task = _dispatch.enqueue_task_once("demo", "Keep context bounded", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "Keep context bounded", channel="cli")[0]
             legacy_task_key = f"agent:demo:{task['id']}"
             legacy_message = assistant("LEGACY_TASK_WIDE_HISTORY")
             _session.append_messages(legacy_task_key, [legacy_message])
-            result = _dispatch.dispatch_pod("demo")[0]
+            result = _sweep.dispatch_pod("demo")[0]
             assert result.status == "done"
 
-            lead_key = _dispatch.step_session_key("demo-lead", "demo", task["id"], "lead")
-            implementer_key = _dispatch.step_session_key(
+            lead_key = _runner.step_session_key("demo-lead", "demo", task["id"], "lead")
+            implementer_key = _runner.step_session_key(
                 "demo-implementer", "demo", task["id"], "implementer"
             )
             assert lead_key != implementer_key
@@ -1003,8 +1017,8 @@ class TestEndToEnd:
             assert {path.name for path in (home / "traces").iterdir()} == {"demo"}
 
     def test_step_history_key_encodes_custom_step_ids_without_collisions(self) -> None:
-        colon = _dispatch.step_session_key("member", "demo", "task-1", "review:security")
-        slash = _dispatch.step_session_key("member", "demo", "task-1", "review/security")
+        colon = _runner.step_session_key("member", "demo", "task-1", "review:security")
+        slash = _runner.step_session_key("member", "demo", "task-1", "review/security")
 
         assert colon.endswith(":step:review%3Asecurity")
         assert slash.endswith(":step:review%2Fsecurity")
@@ -1029,14 +1043,14 @@ class TestEndToEnd:
             runner = FakeDriver()
             task = {"id": "task-parallel", "description": "compare", "status": "pending"}
 
-            result = _dispatch.dispatch_task("demo", task, runner=runner, spec=spec)
+            result = _executor.dispatch_task("demo", task, runner=runner, spec=spec)
 
             assert result.status == "done"
             assert {call[1] for call in runner.calls} == {
-                _dispatch.step_session_key(
+                _runner.step_session_key(
                     "demo-implementer", "demo", "task-parallel", "implement-a"
                 ),
-                _dispatch.step_session_key(
+                _runner.step_session_key(
                     "demo-implementer", "demo", "task-parallel", "implement-b"
                 ),
             }
@@ -1056,7 +1070,7 @@ class TestConcurrentDispatch:
         with _seed_pod(tmp_path):
             n_tasks = 8
             for i in range(n_tasks):
-                _dispatch.enqueue_task_once("demo", f"task {i}", channel="cli")
+                _queue.enqueue_task_once("demo", f"task {i}", channel="cli")
 
             calls: list[str] = []
             calls_lock = threading.Lock()
@@ -1082,7 +1096,7 @@ class TestConcurrentDispatch:
 
             def _run() -> None:
                 try:
-                    _dispatch.dispatch_pod("demo", runner=runner)
+                    _sweep.dispatch_pod("demo", runner=runner)
                 except BaseException as exc:  # surfaced via `errors`, not swallowed
                     errors.append(exc)
 
@@ -1101,7 +1115,7 @@ class TestConcurrentDispatch:
             assert len(counts) == n_tasks, f"expected {n_tasks} distinct tasks, got {counts}"
             assert all(c == 2 for c in counts.values()), counts
             assert len(set(calls)) == n_tasks * 2
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert len(tasks) == n_tasks
             assert all(t["status"] == "done" for t in tasks)
             assert len({t["id"] for t in tasks}) == n_tasks  # uuid4 ids never collide
@@ -1168,8 +1182,8 @@ class TestSweepDoesNotStallOnAParkedPod:
     def test_sweep_parks_one_pod_and_still_finishes_another_in_the_same_call(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import docket.serve as _serve
-        from docket.core.policy import install_policies
+        from docket.governance.policy import install_policies
+        from docket.interfaces.http import server as _server
 
         # Deliberately slow -- if the sweep's "park" default did not fire, alpha's
         # `wait`-mode ask would block on nobody for up to this long, and beta's
@@ -1212,17 +1226,17 @@ class TestSweepDoesNotStallOnAParkedPod:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("alpha", "gated work", channel="cli")
-            _dispatch.enqueue_task_once("beta", "plain work", channel="cli")
+            _queue.enqueue_task_once("alpha", "gated work", channel="cli")
+            _queue.enqueue_task_once("beta", "plain work", channel="cli")
 
             started = time.monotonic()
-            _serve._run_sweeps(True)
-            assert _serve._drain_sweeps(timeout=30)
+            _server._run_sweeps(True)
+            assert _server._drain_sweeps(timeout=30)
             elapsed = time.monotonic() - started
 
             assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
-            alpha_task = _dispatch.read_tasks("alpha")[0]
-            beta_task = _dispatch.read_tasks("beta")[0]
+            alpha_task = _queue.read_tasks("alpha")[0]
+            beta_task = _queue.read_tasks("beta")[0]
             assert alpha_task["status"] == "waiting_approval", alpha_task.get("reason")
             assert beta_task["status"] == "done", beta_task.get("reason")
 
@@ -1230,16 +1244,16 @@ class TestSweepDoesNotStallOnAParkedPod:
 class TestCrashRecovery:
     def test_resume_skips_already_completed_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
-            _dispatch.enqueue_task_once("demo", "Resume me", channel="cli")
+            _queue.enqueue_task_once("demo", "Resume me", channel="cli")
 
             crasher = _CrashOnRoleRunner(crash_role="reviewer")
             with pytest.raises(RuntimeError, match="simulated crash"):
-                _dispatch.dispatch_pod("demo", runner=crasher)
+                _sweep.dispatch_pod("demo", runner=crasher)
             # lead + implementer completed (and were persisted incrementally);
             # reviewer's request went out but the process "died" before a result.
             assert crasher.calls == ["lead", "implementer", "reviewer"]
 
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert len(tasks) == 1
             assert tasks[0]["status"] == "running"  # never got to a terminal status
             assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
@@ -1247,7 +1261,7 @@ class TestCrashRecovery:
             # Force the claim stale — simulate enough wall-clock time having passed.
             with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
                 resumer = _VerdictAwareRunner()
-                results = _dispatch.dispatch_pod("demo", runner=resumer, resume=True)
+                results = _sweep.dispatch_pod("demo", runner=resumer, resume=True)
                 assert len(results) == 1
                 assert results[0].status == "done"
                 # Only the hops that hadn't completed before the crash run again —
@@ -1255,7 +1269,7 @@ class TestCrashRecovery:
                 roles_called = [c[0].rsplit("-", 1)[-1] for c in resumer.calls]
                 assert roles_called == ["reviewer", "tester"]
 
-                final = _dispatch.read_tasks("demo")[0]
+                final = _queue.read_tasks("demo")[0]
                 assert final["status"] == "done"
                 assert [h["role"] for h in final["hops"]] == [
                     "lead",
@@ -1268,29 +1282,29 @@ class TestCrashRecovery:
     def test_stale_claim_without_resume_is_not_reclaimed(self, tmp_path: Path) -> None:
         """The default (non-resume) dispatch never auto-retries a crashed task."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Crash me", channel="cli")
+            _queue.enqueue_task_once("demo", "Crash me", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
             with pytest.raises(RuntimeError):
-                _dispatch.dispatch_pod("demo", runner=crasher)
+                _sweep.dispatch_pod("demo", runner=crasher)
 
             with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
                 runner = FakeDriver()
-                results = _dispatch.dispatch_pod("demo", runner=runner)  # resume defaults to False
+                results = _sweep.dispatch_pod("demo", runner=runner)  # resume defaults to False
                 assert results == []  # nothing eligible without --resume
                 assert runner.calls == []
-                task = _dispatch.read_tasks("demo")[0]
+                task = _queue.read_tasks("demo")[0]
                 assert task["status"] == "failed"
                 assert task["failureKind"] == "stale_claim"
 
     def test_stale_claim_sweep_emits_trace_event(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task_once("demo", "Crash me too", channel="cli")
+            _queue.enqueue_task_once("demo", "Crash me too", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
             with pytest.raises(RuntimeError):
-                _dispatch.dispatch_pod("demo", runner=crasher)
+                _sweep.dispatch_pod("demo", runner=crasher)
 
             with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
-                _dispatch.dispatch_pod("demo", runner=FakeDriver())
+                _sweep.dispatch_pod("demo", runner=FakeDriver())
 
                 trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
                 events = [
@@ -1321,10 +1335,10 @@ class TestDeterministicRefusalSettlesTheClaim:
 
     def test_refusal_fails_the_task_not_the_whole_dispatch(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "task one", channel="cli")
-            _dispatch.enqueue_task_once("demo", "task two", channel="cli")
+            _queue.enqueue_task_once("demo", "task one", channel="cli")
+            _queue.enqueue_task_once("demo", "task two", channel="cli")
 
-            results = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
+            results = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
 
             # Both queued tasks are attempted — the first task's deterministic refusal does not
             # abort the dispatch_pod loop before the second is even claimed.
@@ -1332,7 +1346,7 @@ class TestDeterministicRefusalSettlesTheClaim:
             assert [r.status for r in results] == ["failed", "failed"]
             assert all("refusing cross-pod dispatch" in r.reason for r in results)
 
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert [t["status"] for t in tasks] == ["failed", "failed"]
             assert all(t["claimId"] is None for t in tasks)  # settled, not orphaned
             assert all(t["failureKind"] == "dispatch_refused" for t in tasks)
@@ -1344,11 +1358,11 @@ class TestDeterministicRefusalSettlesTheClaim:
         """No CLAIM_STALE_TIMEOUT override and no decoy task needed — unlike a swept crash, a
         settled deterministic refusal is immediately resumable once its cause is fixed."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "fix me", channel="cli")
+            _queue.enqueue_task_once("demo", "fix me", channel="cli")
 
-            first = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
+            first = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
             assert first[0].status == "failed"
-            assert _dispatch.read_tasks("demo")[0]["failureKind"] == "dispatch_refused"
+            assert _queue.read_tasks("demo")[0]["failureKind"] == "dispatch_refused"
 
             fixed_spec = _pipeline.PipelineSpec(
                 name="fixed",
@@ -1359,13 +1373,13 @@ class TestDeterministicRefusalSettlesTheClaim:
             )
             resumer = FakeDriver()
 
-            second = _dispatch.dispatch_pod("demo", runner=resumer, resume=True, spec=fixed_spec)
+            second = _sweep.dispatch_pod("demo", runner=resumer, resume=True, spec=fixed_spec)
 
             assert len(second) == 1
             assert second[0].status == "done"
             # The lead hop persisted before the refusal is not re-run.
             assert [c[0].rsplit("-", 1)[-1] for c in resumer.calls] == ["implementer"]
-            final = _dispatch.read_tasks("demo")[0]
+            final = _queue.read_tasks("demo")[0]
             assert final["status"] == "done"
             assert [h["role"] for h in final["hops"]] == ["lead", "implementer"]
             assert "failureKind" not in final
@@ -1383,7 +1397,7 @@ class TestDeterministicRefusalSettlesTheClaim:
                 monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
                 action = "isolation.refused"
             slept: list[float] = []
-            monkeypatch.setattr(_dispatch._time, "sleep", slept.append)
+            monkeypatch.setattr(_time, "sleep", slept.append)
             calls: list[str] = []
 
             def _never(model: str) -> Any:
@@ -1391,12 +1405,12 @@ class TestDeterministicRefusalSettlesTheClaim:
                 raise AssertionError("the model backend must not be reached")
 
             monkeypatch.setattr(_dr, "default_driver", lambda: DocketDriver(backend_factory=_never))
-            _dispatch.enqueue_task_once("demo", "refused posture", channel="cli")
+            _queue.enqueue_task_once("demo", "refused posture", channel="cli")
 
-            results = _dispatch.dispatch_pod("demo")
+            results = _sweep.dispatch_pod("demo")
 
             assert [r.status for r in results] == ["failed"]
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "failed"
             assert task["failureKind"] == "dispatch_refused"
             assert not calls
@@ -1414,7 +1428,7 @@ class TestDeterministicRefusalSettlesTheClaim:
                 _dr, "default_driver", lambda: DocketDriver(backend_factory=lambda model: backend)
             )
 
-            resumed = _dispatch.dispatch_pod("demo", resume=True)
+            resumed = _sweep.dispatch_pod("demo", resume=True)
 
             assert [r.status for r in resumed] == ["done"]
 
@@ -1425,13 +1439,13 @@ class TestDeterministicRefusalSettlesTheClaim:
         other exception) is unaffected — the task stays 'running', recoverable only through the
         existing stale-claim sweep, never settled outright."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "crash me", channel="cli")
+            _queue.enqueue_task_once("demo", "crash me", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
 
             with pytest.raises(RuntimeError, match="simulated crash"):
-                _dispatch.dispatch_pod("demo", runner=crasher)
+                _sweep.dispatch_pod("demo", runner=crasher)
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "running"
             assert task["claimId"] is not None
 
@@ -1446,17 +1460,17 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
     ) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "crash me", channel="cli")
+            _queue.enqueue_task_once("demo", "crash me", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
             with pytest.raises(RuntimeError):
-                _dispatch.dispatch_pod("demo", runner=crasher)
+                _sweep.dispatch_pod("demo", runner=crasher)
 
             # Orphaned: `running`, no decoy `pending` task exists, and it hasn't been swept yet
             # (the sweep only runs at the top of a `dispatch_pod` call).
-            tasks_before = _dispatch.read_tasks("demo")
+            tasks_before = _queue.read_tasks("demo")
             assert tasks_before[0]["status"] == "running"
             assert not any(t.get("status") == "pending" for t in tasks_before)
 
@@ -1467,14 +1481,14 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
                 result = CliRunner().invoke(app, ["run", "--pod", "demo", "--resume"])
 
                 assert "No pending tasks" not in result.output
-                assert _dispatch.read_tasks("demo")[0]["status"] == "done"
+                assert _queue.read_tasks("demo")[0]["status"] == "done"
 
     def test_resume_still_warns_with_nothing_pending_resumable_or_running(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         with _seed_pod(tmp_path):
             _endpoint_ready(monkeypatch)
@@ -1491,48 +1505,57 @@ class TestBlockedStaysBlocked:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
-            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+            _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
             runner = FakeDriver()
 
-            first = _dispatch.dispatch_pod("demo", runner=runner)
+            first = _sweep.dispatch_pod("demo", runner=runner)
             assert first[0].status == "blocked"
             # Once blocked, a `blocked` task is not even eligible to claim again —
             # repeated dispatch_pod calls find nothing to do (never re-attempted,
             # let alone re-attempted forever).
             for _ in range(3):
-                assert _dispatch.dispatch_pod("demo", runner=runner) == []
+                assert _sweep.dispatch_pod("demo", runner=runner) == []
             assert runner.calls == []  # never actually dispatched
-            assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
+            assert _queue.read_tasks("demo")[0]["status"] == "blocked"
 
     def test_retry_task_unblocks_a_single_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")[0]
-            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
-            assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
+            task = _queue.enqueue_task_once("demo", "Too expensive", channel="cli")[0]
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            assert _queue.read_tasks("demo")[0]["status"] == "blocked"
 
-            assert _dispatch.retry_task("demo", task["id"]) is True
-            assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
+            assert _lifecycle.retry_task("demo", task["id"]) is True
+            assert _queue.read_tasks("demo")[0]["status"] == "pending"
             # Retrying a task that isn't blocked is a no-op.
-            assert _dispatch.retry_task("demo", task["id"]) is False
-            assert _dispatch.retry_task("demo", "no-such-task") is False
+            assert _lifecycle.retry_task("demo", task["id"]) is False
+            assert _lifecycle.retry_task("demo", "no-such-task") is False
 
     def test_unblock_pod_unblocks_every_blocked_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "One", channel="cli")
-            _dispatch.enqueue_task_once("demo", "Two", channel="cli")
-            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+            _queue.enqueue_task_once("demo", "One", channel="cli")
+            _queue.enqueue_task_once("demo", "Two", channel="cli")
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
             lead_id = _pod.pod.member_id("demo", "lead")
 
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
             # The first cap breach also pauses the Lead, so a second dispatch
             # call is refused outright at claim time — task Two is never even
             # attempted (still "pending"). Clear the pause (what a real
@@ -1540,19 +1563,19 @@ class TestBlockedStaysBlocked:
             # call can claim and block it too, exercising the same
             # `unblock_pod` contract the original test covered.
             _fleet.meta_set(lead_id, "paused", False)
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
-            tasks = _dispatch.read_tasks("demo")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            tasks = _queue.read_tasks("demo")
             assert len(tasks) == 2
             assert all(t["status"] == "blocked" for t in tasks)
             assert _AgentMeta.coerce_paused(
                 _fleet.meta_get(lead_id, "paused", "")
             )  # re-paused by the second breach
 
-            assert _dispatch.unblock_pod("demo") == 2
-            tasks = _dispatch.read_tasks("demo")
+            assert _lifecycle.unblock_pod("demo") == 2
+            tasks = _queue.read_tasks("demo")
             assert all(t["status"] == "pending" for t in tasks)
             # Nothing left blocked — a second call is a no-op.
-            assert _dispatch.unblock_pod("demo") == 0
+            assert _lifecycle.unblock_pod("demo") == 0
 
 
 # ── backward compatibility — a legacy-shape TASK_LIST.json still loads/dispatches ─
@@ -1561,7 +1584,7 @@ class TestBlockedStaysBlocked:
 class TestLegacyQueueLoads:
     def test_legacy_task_without_v2_fields_loads_and_dispatches(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            legacy_path = _dispatch.pod_task_list_path("demo")
+            legacy_path = _settings.pod_task_list_path("demo")
             legacy_path.parent.mkdir(parents=True, exist_ok=True)
             legacy_path.write_text(
                 json.dumps(
@@ -1584,7 +1607,7 @@ class TestLegacyQueueLoads:
                 )
             )
 
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert len(tasks) == 1
             assert (
                 tasks[0]["id"] == "task-1700000000000"
@@ -1592,16 +1615,16 @@ class TestLegacyQueueLoads:
             assert tasks[0]["claimId"] is None
             assert tasks[0]["claimedAt"] is None
 
-            results = _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            results = _sweep.dispatch_pod("demo", runner=FakeDriver())
             assert results[0].status == "done"
-            assert _dispatch.read_tasks("demo")[0]["status"] == "done"
+            assert _queue.read_tasks("demo")[0]["status"] == "done"
 
     def test_legacy_queue_missing_tasks_key_loads_empty(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            legacy_path = _dispatch.pod_task_list_path("demo")
+            legacy_path = _settings.pod_task_list_path("demo")
             legacy_path.parent.mkdir(parents=True, exist_ok=True)
             legacy_path.write_text(json.dumps({}))
-            assert _dispatch.read_tasks("demo") == []
+            assert _queue.read_tasks("demo") == []
 
 
 # ── `docket run`'s prologue names the resolved pipeline's roles ──
@@ -1617,7 +1640,7 @@ class TestRunCliPrologue:
     ) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
@@ -1626,7 +1649,7 @@ class TestRunCliPrologue:
             record_isolation_off(home)
 
             _pod.build_pod_from_blueprint("rsch", "research", location="", description="")
-            _dispatch.enqueue_task_once("rsch", "look into it", channel="cli")
+            _queue.enqueue_task_once("rsch", "look into it", channel="cli")
             monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
 
             _endpoint_ready(monkeypatch)
@@ -1696,13 +1719,13 @@ class TestOperatorInputStepsPark:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
+            _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
 
-            results = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
+            results = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
 
             assert len(results) == 1
             assert results[0].status == "waiting_input"
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "waiting_input"
             # Only the Lead's real hop is persisted -- the park itself leaves no hop, the same
             # posture as the pre-hop require_approval gate's `waiting_approval`.
@@ -1725,13 +1748,13 @@ class TestOperatorInputStepsPark:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
-            assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+            _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
+            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
 
             for _ in range(3):
-                assert _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec()) == []
-            assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+                assert _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec()) == []
+            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
 
 
 class TestAnswerTaskResumesDispatch:
@@ -1741,16 +1764,16 @@ class TestAnswerTaskResumesDispatch:
     def test_an_accepted_answer_resumes_straight_through_to_done(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_pipeline("demo", _ASK_PIPELINE_YAML)
-            task = _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
-            assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+            task = _queue.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
 
             result = _answers.answer_task(
                 "demo", task["id"], "accept", {"answer": "go ahead"}, channel="cli", actor="op"
             )
             assert result.action == "accept"
 
-            parked = _dispatch.read_tasks("demo")[0]
+            parked = _queue.read_tasks("demo")[0]
             assert parked["status"] == "pending"
             assert parked["answers"][0]["content"] == {"answer": "go ahead"}
             assert [h["role"] for h in parked["hops"]] == ["lead", "operator"]
@@ -1759,9 +1782,9 @@ class TestAnswerTaskResumesDispatch:
             # The crash/resume boundary: a fresh `dispatch_pod` call (as `serve --dispatch`'s
             # next sweep would make) claims the re-opened task and must continue past `ask`
             # straight to `implementer`, never re-asking.
-            final_results = _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            final_results = _sweep.dispatch_pod("demo", runner=FakeDriver())
             assert final_results[0].status == "done"
-            final = _dispatch.read_tasks("demo")[0]
+            final = _queue.read_tasks("demo")[0]
             assert [h["role"] for h in final["hops"]] == ["lead", "operator", "implementer"]
 
     def test_a_declined_answer_routes_backward_and_a_second_decline_exhausts_its_cap(
@@ -1771,27 +1794,27 @@ class TestAnswerTaskResumesDispatch:
         on resume: the second decline, a brand new `answer_task` call, must still see it."""
         with _seed_pod(tmp_path):
             _bind_pipeline("demo", _ASK_DECLINE_CAP_PIPELINE_YAML)
-            task = _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
-            assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+            task = _queue.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
 
             _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
-            after_first = _dispatch.read_tasks("demo")[0]
+            after_first = _queue.read_tasks("demo")[0]
             assert after_first["status"] == "pending"
             assert after_first["hops"][-1]["nextStep"] == "lead"
 
             # Resume: replays back to `lead`, re-runs it (a fresh hop), reaches `ask` again and
             # parks with a brand new question -- `route_counts` for ("ask", "declined") is now 1,
             # rebuilt purely from the first operator hop's own persisted `nextStep`.
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
-            reparked = _dispatch.read_tasks("demo")[0]
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            reparked = _queue.read_tasks("demo")[0]
             assert reparked["status"] == "waiting_input"
             assert [h["role"] for h in reparked["hops"]] == ["lead", "operator", "lead"]
 
             # A second decline exhausts the `max: 1` budget -- `answer_task` settles the task
             # `failed` right here (no live dispatch context exists to do it for it).
             _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
-            final = _dispatch.read_tasks("demo")[0]
+            final = _queue.read_tasks("demo")[0]
             assert final["status"] == "failed"
             assert final["hops"][-1]["nextStep"] is None
             assert final["hops"][-1]["role"] == "operator"
@@ -1879,31 +1902,31 @@ class TestCheckBriefResources:
     def test_an_unconfigured_secret_is_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             brief = _oc.TaskBrief(objective="x", resources=["secret:NOPE"])
-            assert _dispatch._check_brief_resources("demo", brief) == ["secret:NOPE"]
+            assert _pre_hop._check_brief_resources("demo", brief) == ["secret:NOPE"]
 
     def test_a_configured_secret_is_not_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _secrets.save_secrets({"YES": "shh"})
             brief = _oc.TaskBrief(objective="x", resources=["secret:YES"])
-            assert _dispatch._check_brief_resources("demo", brief) == []
+            assert _pre_hop._check_brief_resources("demo", brief) == []
 
     def test_a_missing_path_is_reported(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             missing = str(tmp_path / "does-not-exist.txt")
             brief = _oc.TaskBrief(objective="x", resources=[f"path:{missing}"])
-            assert _dispatch._check_brief_resources("demo", brief) == [f"path:{missing}"]
+            assert _pre_hop._check_brief_resources("demo", brief) == [f"path:{missing}"]
 
     def test_an_existing_path_is_not_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             present = tmp_path / "exists.txt"
             present.write_text("x")
             brief = _oc.TaskBrief(objective="x", resources=[f"path:{present}"])
-            assert _dispatch._check_brief_resources("demo", brief) == []
+            assert _pre_hop._check_brief_resources("demo", brief) == []
 
     def test_verify_is_missing_with_no_configured_verify_cmd(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             brief = _oc.TaskBrief(objective="x", resources=["verify"])
-            assert _dispatch._check_brief_resources("demo", brief) == ["verify"]
+            assert _pre_hop._check_brief_resources("demo", brief) == ["verify"]
 
     def test_verify_is_not_missing_once_the_implementer_has_a_verify_cmd(
         self, tmp_path: Path
@@ -1911,11 +1934,11 @@ class TestCheckBriefResources:
         with _seed_pod(tmp_path):
             _fleet.meta_set(_pod.pod.member_id("demo", "implementer"), "verifyCmd", "pytest -q")
             brief = _oc.TaskBrief(objective="x", resources=["verify"])
-            assert _dispatch._check_brief_resources("demo", brief) == []
+            assert _pre_hop._check_brief_resources("demo", brief) == []
 
     def test_a_brief_with_no_resources_has_nothing_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            assert _dispatch._check_brief_resources("demo", _oc.TaskBrief(objective="x")) == []
+            assert _pre_hop._check_brief_resources("demo", _oc.TaskBrief(objective="x")) == []
 
 
 class TestRequireVerify:
@@ -1932,8 +1955,8 @@ class TestRequireVerify:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "Should fail verification", channel="cli")
-            results = _dispatch.dispatch_pod("demo")
+            _queue.enqueue_task_once("demo", "Should fail verification", channel="cli")
+            results = _sweep.dispatch_pod("demo")
             assert results[0].status == "failed"
             assert "verifyCmd required but not set" in results[0].reason
 
@@ -1951,8 +1974,8 @@ class TestRequireVerify:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task_once("demo", "Should skip verification", channel="cli")
-            results = _dispatch.dispatch_pod("demo")
+            _queue.enqueue_task_once("demo", "Should skip verification", channel="cli")
+            results = _sweep.dispatch_pod("demo")
             assert results[0].status == "done"
 
 
@@ -1962,12 +1985,12 @@ class TestIntakeRecipeTaskBrief:
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            task = _dispatch.enqueue_task_once("demo", "build the widget", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "build the widget", channel="cli")[0]
             runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
-            first = _dispatch.dispatch_pod("demo", runner=runner)
+            first = _sweep.dispatch_pod("demo", runner=runner)
             assert first[0].status == "waiting_input"
-            question = _dispatch.read_tasks("demo")[0]["question"]
+            question = _queue.read_tasks("demo")[0]["question"]
             assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
             assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
             assert question["requestedSchema"]["required"] == ["q1", "q2"]
@@ -1982,7 +2005,7 @@ class TestIntakeRecipeTaskBrief:
                 actor="op",
             )
 
-            final = _dispatch.dispatch_pod("demo", runner=runner)
+            final = _sweep.dispatch_pod("demo", runner=runner)
             assert final[0].status == "done"
 
             implementer_messages = [msg for role, msg in runner.calls if role == "implementer"]
@@ -1999,13 +2022,13 @@ class TestIntakeRecipeTaskBrief:
     def test_a_brief_naming_a_missing_secret_blocks_with_resources(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task_once("demo", "call the API", channel="cli")
+            _queue.enqueue_task_once("demo", "call the API", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
 
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert results[0].status == "blocked"
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "blocked"
             assert task["blockedReason"] == "resources"
             assert "secret:MISSING_KEY" in task["reason"]
@@ -2018,11 +2041,11 @@ class TestIntakeRecipeTaskBrief:
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task_once("demo", "call the API", channel="cli")
-            _dispatch.enqueue_task_once("demo", "do the plain thing", channel="cli")
+            _queue.enqueue_task_once("demo", "call the API", channel="cli")
+            _queue.enqueue_task_once("demo", "do the plain thing", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY, _LEAD_READY_NO_BRIEF_REPLY])
 
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert [r.status for r in results] == ["blocked", "done"]
 
@@ -2030,10 +2053,10 @@ class TestIntakeRecipeTaskBrief:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
             _secrets.save_secrets({"MISSING_KEY": "shh"})
-            _dispatch.enqueue_task_once("demo", "call the API", channel="cli")
+            _queue.enqueue_task_once("demo", "call the API", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
 
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert results[0].status == "done"
 
@@ -2042,24 +2065,24 @@ class TestIntakeRecipeTaskBrief:
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task_once("demo", "do the plain thing", channel="cli")
+            _queue.enqueue_task_once("demo", "do the plain thing", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_NO_BRIEF_REPLY])
 
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert results[0].status == "done"
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert [h["role"] for h in task["hops"]] == ["lead", "implementer", "reviewer"]
 
     def test_reject_fails_the_task_as_rejected(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task_once("demo", "delete production", channel="cli")
+            _queue.enqueue_task_once("demo", "delete production", channel="cli")
             runner = _IntakeRunner([_LEAD_REJECT_REPLY])
 
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert results[0].status == "failed"
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["failureKind"] == "rejected"
             assert _oc.a2a_state("failed", failure_kind=task["failureKind"]) == "REJECTED"

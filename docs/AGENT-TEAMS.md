@@ -78,7 +78,7 @@ A pod has **exactly one Lead** (its single orchestrator); every other role may b
 
 A pod role is not a closed set wired into code, and adding a fifth role needs no code change.
 Every role — including the four built-in ones — is a **role archetype**
-(`core/archetypes.py`): a versioned, declarative record of its scope, model class, identity
+(`teams/roles.py`): a versioned, declarative record of its scope, model class, identity
 templates, gate contract, denied tools, and tool profile.
 
 ```bash
@@ -125,7 +125,7 @@ next section.
 ## Pod blueprints — named pod shapes
 
 `docket init` doesn't have to produce a Lead+Implementer pod against a codebase. A **pod blueprint**
-(`core/blueprints.py`) is a named, versioned pod shape: a roster of archetypes, a default
+(`teams/blueprints.py`) is a named, versioned pod shape: a roster of archetypes, a default
 pipeline, a workspace kind, and an optional default budget cap — provisioned in one command.
 
 ```bash
@@ -199,7 +199,7 @@ Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
 That is the built-in order when no pipeline is bound; a `kind: pipeline` in `.docket/` (or a
 recipe) sets the order, the gates and the rework instead. Only the roles a pod actually has take
 part (a lean pod runs two hops). docket stays the
-orchestrator — it invokes each hop through its own turn loop (`core/agent_loop.py`), captures the
+orchestrator — it invokes each hop through its own turn loop (`agent/loop.py`), captures the
 result, and threads it to the next role. This is the **real fix for "delegation wasn't real."**
 
 ```bash
@@ -296,7 +296,7 @@ inherit-the-parent-env behavior.
 A pod Lead's `HEARTBEAT.md` carries the same resume/durability contract every agent workspace
 has: in-flight work is written down before it starts, so a context reset can resume it. Dispatch
 maintains that ledger **mechanically**, so it is not only as honest as the agent's own compliance: a delimited, docket-owned region inside `## Active Tasks`
-(`core/memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
+(`agent/memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
 every claim, every hop completion, and every retry — the entry for a task exists before its first
 hop ever runs, whether or not the agent would have written it down itself. Everything outside that
 region — an agent's own hand-written notes, every other heading in the file — is never touched by

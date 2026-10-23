@@ -1,7 +1,7 @@
 """MCP client -- pluggable external tool servers.
 docket already ships an MCP server; this is the client half: connect to a configured external
-MCP server, enumerate its tools, adapt each into an ordinary ``core.tools.Tool``, and register
-it via the existing public ``register`` API only -- ``core/tools.py`` is never edited. Pins:
+MCP server, enumerate its tools, adapt each into an ordinary ``agent.tools.registry.Tool``, and register
+it via the existing public ``register`` API only -- ``agent/tools/registry.py`` is never edited. Pins:
 the chokepoint holds for an MCP-provided tool exactly as for a built-in one (`pre_tool_call`
 gates it through the real `dispatch_tool`, handler proven never to run); namespacing (`mcp__`
 prefix plus server name) makes a built-in collision structurally impossible; failure isolation
@@ -25,15 +25,15 @@ from typing import Any
 
 import pytest
 
-from docket.core import approval as _approval
-from docket.core import audit as _audit
-from docket.core import mcp_tools as _mt
-from docket.core.llm import ToolCall
-from docket.core.tools import ToolContext, ToolRegistry, builtin_registry, dispatch_tool
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.agent.llm import ToolCall
+from docket.agent.tools import mcp_tools as _mt
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import ToolContext, ToolRegistry, builtin_registry, dispatch_tool
+from docket.governance import approval as _approval
+from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.edges.adapters"
+SUBJECT = "docket.agent.tools.mcp_client"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -121,9 +121,9 @@ def _ok_list(tools: tuple[_mt.McpRemoteTool, ...]) -> _mt.ListToolsFn:
 class TestOnlyTheInertResultTypeIsImported:
     """The file-level toolbox-import allowlist (`ToolOutcome` only, for these two files) would
     not by itself notice them importing an actual handler function instead -- a second,
-    ungated path to the handlers `core/tools.py`'s chokepoint guards. This test closes that gap."""
+    ungated path to the handlers `agent/tools/registry.py`'s chokepoint guards. This test closes that gap."""
 
-    FILES: tuple[str, ...] = ("core/mcp_tools.py", "edges/adapters/mcp_client.py")
+    FILES: tuple[str, ...] = ("agent/tools/mcp_tools.py", "agent/tools/mcp_client.py")
     ALLOWED_TOOLBOX_NAMES: frozenset[str] = frozenset({"ToolOutcome"})
 
     def _toolbox_imports(self, tree: ast.AST) -> set[str]:
@@ -353,7 +353,7 @@ class TestDescriptionScreening:
 
 class TestGatedExactlyLikeABuiltin:
     """A policy hooked on `pre_tool_call` gates an MCP-provided tool exactly as it gates a
-    built-in one: both are dispatched through the real, unmodified `core.tools.dispatch_tool`,
+    built-in one: both are dispatched through the real, unmodified `agent.tools.registry.dispatch_tool`,
     with nothing here special-casing the MCP tool."""
 
     def _registry_with_mcp_tool(self, ran: dict[str, bool]) -> ToolRegistry:
@@ -457,7 +457,7 @@ class TestGatedExactlyLikeABuiltin:
         assert ran["mcp_handler"] is True
 
 
-# ── server config persistence (docket-owned state, through edges/store.py) ──
+# ── server config persistence (docket-owned state, through platform/store.py) ──
 
 
 class TestServerConfigPersistence:
@@ -508,7 +508,7 @@ class TestTimeoutClamping:
             assert _config(timeout=999_999).resolved_timeout() == 60.0
 
 
-# ── edges/adapters/mcp_client.py: the SDK boundary itself ───────────────────
+# ── agent/tools/mcp_client.py: the SDK boundary itself ───────────────────
 
 
 class TestMissingSdkRealAbsence:
@@ -522,7 +522,7 @@ class TestMissingSdkRealAbsence:
         else:
             pytest.skip("mcp SDK installed in this environment; cannot test genuine absence")
 
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 1.0)
         assert result.ok is False
@@ -551,7 +551,7 @@ class TestMissingSdkSimulated:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._block_mcp_client(monkeypatch)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 1.0)
         assert result == _mt.McpListResult(ok=False, error=_client.MISSING_SDK_HINT)
@@ -560,7 +560,7 @@ class TestMissingSdkSimulated:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._block_mcp_client(monkeypatch)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.call_remote_tool(_config(), "get_forecast", {"city": "Berlin"}, 1.0)
         assert result == ToolOutcome(False, error=_client.MISSING_SDK_HINT)
@@ -617,7 +617,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_list=_on_list)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 5.0)
         assert result.ok is True
@@ -636,7 +636,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_call=_on_call)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.call_remote_tool(_config(), "get_forecast", {"city": "Berlin"}, 5.0)
         assert result == ToolOutcome(True, content="It is sunny.")
@@ -650,7 +650,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_call=_on_call)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         with use_home(dataclasses.replace(current_home(), tool_max_output_chars=8)):
             first = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
@@ -673,7 +673,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_call=_on_call)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.call_remote_tool(_config(), "get_forecast", {"city": "??"}, 5.0)
         assert result.ok is False
@@ -686,7 +686,7 @@ class TestRealSdkStubbed:
             raise ConnectionRefusedError("no one is listening")
 
         self._install_fake_client(monkeypatch, on_list=_on_list)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 5.0)
         assert result.ok is False
@@ -705,7 +705,7 @@ class TestRealSdkStubbed:
             raise AssertionError("unreachable: the timeout should have cancelled this first")
 
         self._install_fake_client(monkeypatch, on_list=_hang)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         started = time.monotonic()
         result = _client.list_remote_tools(_config(), 0.05)

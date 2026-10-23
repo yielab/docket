@@ -191,18 +191,18 @@ budget is specified, and validation results are not cached.
 
 Where the names above live today:
 
-- `src/docket/core/provisioning.py`: `slugify`, `validate_project_id`, `ProjectIdError`
-- `src/docket/core/pod_provisioning.py`: `provision_pod`, `PodAlreadyExistsError`, `validate_verify_cmd`, `VerifyCmdError`
-- `src/docket/core/models_policy.py`: `validate_model`
-- `src/docket/core/models.py`: `AgentMeta`, `AgentKind`, `AgentScope`, `WorkspaceKind`
-- `src/docket/core/fleet.py`: `meta_set` (validates the record before writing)
+- `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`, `ProjectIdError`
+- `src/docket/teams/pod_provisioning.py`: `provision_pod`, `PodAlreadyExistsError`, `validate_verify_cmd`, `VerifyCmdError`
+- `src/docket/models/selection.py`: `validate_model`
+- `src/docket/teams/models.py`: `AgentMeta`, `AgentKind`, `AgentScope`, `WorkspaceKind`
+- `src/docket/teams/fleet.py`: `meta_set` (validates the record before writing)
 - `src/docket/serve.py`: the project-segment check on every route with a project segment, and `POST /pods`
-- `src/docket/cli/_agents.py`: `docket init`, `docket init --from`
-- `src/docket/cli/_pod.py`: `build_pod_from_blueprint`, `docket pod set verify`
-- `src/docket/cli/_setup_model.py`: `docket setup model set`, `docket setup provider add|rotate`, the credential prefix check and name derivation
-- `src/docket/cli/__init__.py`: the command and group registry that declares the verbs
-- `src/docket/core/provider.py`: the provider catalog (`credentialPrefix`); shipped entries under `src/docket/templates/providers/`
+- `src/docket/interfaces/cli/commands/agents.py`: `docket init`, `docket init --from`
+- `src/docket/interfaces/cli/commands/pod.py`: `build_pod_from_blueprint`, `docket pod set verify`
+- `src/docket/interfaces/cli/commands/setup_model.py`: `docket setup model set`, `docket setup provider add|rotate`, the credential prefix check and name derivation
+- `src/docket/interfaces/cli/app/__init__.py`: the command and group registry that declares the verbs
+- `src/docket/models/catalog.py`: the provider catalog (`credentialPrefix`); shipped entries under `src/docket/templates/providers/`
 - `src/docket/edges/adapters/system.py`: `run_command`, the one shell invocation
-- `src/docket/edges/adapters/toolbox.py`: `resolve_within`, the allowed-roots check for file tools
-- `src/docket/edges/store.py`: the atomic JSON writer
-- Tests: `tests/unit/core/test_provisioning.py`, `tests/integration/test_pod_blueprint_provisioning.py`, `tests/integration/test_serve_pods_endpoint.py`, `tests/integration/test_provider_agnosticism.py`, `tests/integration/test_data_layer.py`, `tests/unit/cli/test__setup_model.py`, `tests/unit/cli/test__task.py`
+- `src/docket/agent/tools/builtins/toolbox.py`: `resolve_within`, the allowed-roots check for file tools
+- `src/docket/platform/store.py`: the atomic JSON writer
+- Tests: `tests/unit/teams/test_provisioning.py`, `tests/integration/test_pod_blueprint_provisioning.py`, `tests/integration/test_serve_pods_endpoint.py`, `tests/integration/test_provider_agnosticism.py`, `tests/integration/test_data_layer.py`, `tests/unit/interfaces/cli/commands/test_setup_model.py`, `tests/unit/interfaces/cli/commands/test_task.py`

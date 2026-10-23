@@ -1806,7 +1806,7 @@ def _run(
 # Two real pods (alpha, beta) dispatched through one real `docket start
 # --dispatch` sweep. alpha's first task issues a high-risk bash command that
 # the baseline security classifier asks about; nobody ever answers it, so it
-# times out. Because `serve.py::_run_sweeps` dispatches one pod fully before
+# times out. Because `interfaces/http/server.py::_run_sweeps` dispatches one pod fully before
 # moving to the next (a plain `for` loop, not concurrent), that unanswered
 # approval blocks the whole fleet, not just alpha -- this scenario measures
 # exactly how long.
@@ -2100,7 +2100,7 @@ def _oploop_parse_ts(value: str) -> _dt.datetime:
 
 def _oploop_sweep_blocked_seconds(home: Path, alpha: str, beta: str) -> float:
     """alpha's first ``approval_requested`` ts, against beta's first ``session_start`` ts --
-    the gap is how long the sweep's plain per-pod ``for`` loop (serve.py::_run_sweeps) left
+    the gap is how long the sweep's plain per-pod ``for`` loop (interfaces/http/server.py::_run_sweeps) left
     beta's whole queue untouched while alpha blocked on an approval nobody answered."""
     alpha_asks = sorted(
         _oploop_parse_ts(str(event["ts"]))
@@ -2139,7 +2139,7 @@ def _oploop_approval_counts(home: Path) -> dict[str, int]:
         elif state in ("denied", "expired"):
             # This scenario never runs `docket task approve`/`docket task deny`, so every
             # resolved record here was resolved by TOOL_APPROVAL_TIMEOUT's own
-            # timeout-as-denied path (core/approval.py::_resolve_timeout_as_denied),
+            # timeout-as-denied path (governance/approval.py::_resolve_timeout_as_denied),
             # not an explicit operator decision -- there is no persisted "channel"
             # field on the record itself to distinguish the two directly.
             counts["timeout"] += 1
@@ -2156,7 +2156,7 @@ def _oploop_lead_asked(tasks_by_project: dict[str, list[dict[str, Any]]]) -> boo
 
 def _oploop_events_delivered(home: Path) -> int:
     """Sum of every channel's own ``delivered`` counter in ``channels-health.json``
-    (``core.notify.flush``'s own shape: one entry per channel name, not a top-level
+    (``operator.notify.flush``'s own shape: one entry per channel name, not a top-level
     ``deliveries`` list -- the original key this function read never existed)."""
     path = home / "channels-health.json"
     if not path.is_file():
@@ -2323,7 +2323,7 @@ def _run_operator_loop_scenario(
             # `implementer hop failed: consecutive tool denials reached configured
             # limit: ... kinds=approval_timeout,...` is the real persisted reason
             # (core/dispatch.py) -- it names the denial_kind code, not the prose
-            # `core/tools.py` uses for the underlying tool result ("approval timed
+            # `agent/tools/registry.py` uses for the underlying tool result ("approval timed
             # out and was denied"). Surface that prose too so the report reads the
             # same way a human would describe what happened.
             if "approval_timeout" in reason and "approval timed out" not in reason:

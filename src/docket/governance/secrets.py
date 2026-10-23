@@ -1,0 +1,117 @@
+"""docket-owned secrets storage: ~/.docket/secrets.json + secrets.meta.json.
+
+Provider API keys `docket setup provider` manages, and their bookkeeping metadata
+(added/rotated timestamps). Always docket-owned — never an external-runtime file
+format — and living under ``DOCKET_HOME``.
+
+Consumers share this module rather than reading files directly: the keys CLI,
+doctor checks, model endpoint resolver, and trace redaction. Centralising those
+lookups keeps file/keyring behavior and secret handling consistent.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from docket.kernel import clock as _clock
+from docket.kernel.errors import Unavailable
+from docket.kernel.home import current_home
+from docket.platform import process as _process
+from docket.platform import store
+
+
+def load_secrets() -> dict[str, str]:
+    """Return the stored {KEY_NAME: value} map ({} if absent/malformed)."""
+    raw = store.read_json(current_home().secrets_file)
+    return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+
+
+def save_secrets(secrets: dict[str, str]) -> None:
+    store.write_json(current_home().secrets_file, secrets)
+
+
+def load_secrets_meta() -> dict[str, Any]:
+    """Return the raw secrets.meta.json contents ({} if absent/malformed)."""
+    raw = store.read_json(current_home().secrets_meta_file)
+    return raw if isinstance(raw, dict) else {}
+
+
+def save_secrets_meta(meta: dict[str, Any]) -> None:
+    store.write_json(current_home().secrets_meta_file, meta)
+
+
+def secrets_keys() -> set[str]:
+    """Return the set of stored key names."""
+    return set(load_secrets().keys())
+
+
+def secret_value(name: str) -> str | None:
+    """Resolve one stored secret without exposing unrelated credentials."""
+    raw = load_secrets()
+    if name not in raw:
+        return None
+    if _process.secrets_backend_requested() == "keyring" and _process.secret_tool_available():
+        value = _process.secret_tool_lookup(current_home().keyring_service, name)
+    else:
+        value = raw.get(name)
+    clean = str(value or "").strip()
+    return clean or None
+
+
+def store_backend() -> str:
+    """The backend a credential write goes to: ``"keyring"`` or ``"file"``. Raises ``Unavailable``
+    when the keyring was requested and ``secret-tool`` is not on ``PATH``, so a write never
+    falls back to plaintext in silence."""
+    if _process.secrets_backend_requested() != "keyring":
+        return "file"
+    if not _process.secret_tool_available():
+        raise Unavailable(
+            "DOCKET_SECRETS_BACKEND=keyring but secret-tool is not on PATH",
+            "Install libsecret-tools, or unset DOCKET_SECRETS_BACKEND to store in secrets.json",
+        )
+    return "keyring"
+
+
+def secret_values() -> list[str]:
+    """Return the stored secret VALUES (for trace/Telegram redaction).
+
+    Mirrors the file-vs-keyring backend split ``docket setup provider`` uses: the file
+    backend stores ``{KEY: value}`` in secrets.json, so the values are the
+    dict values; the keyring backend keeps only an index there (no values at
+    rest), so it returns nothing. Empty/short values are the caller's concern.
+    """
+    raw = load_secrets()
+    if not raw:
+        return []
+    backend = "file"
+    if _process.secrets_backend_requested() == "keyring" and _process.secret_tool_available():
+        backend = "keyring"
+    if backend == "keyring":
+        service = current_home().keyring_service
+        out: list[str] = []
+        for key in raw:
+            value = _process.secret_tool_lookup(service, str(key))
+            if value:
+                out.append(value)
+        return out
+    return [v for v in raw.values() if v]
+
+
+def touch_meta(name: str, event: str) -> None:
+    """Record an add/rotate/remove event for *name* in secrets.meta.json.
+
+    ``event``: "added" | "rotated" | "removed". Mirrors the timestamps
+    ``docket setup --fix``'s key-hygiene report reads.
+    """
+
+    meta = load_secrets_meta()
+    now = _clock.stamp()
+    if event == "removed":
+        meta.pop(name, None)
+    else:
+        entry: dict[str, Any] = meta.get(name) or {}
+        entry.setdefault("added_at", now)
+        if event == "rotated":
+            entry["rotated_at"] = now
+        meta[name] = entry
+    save_secrets_meta(meta)

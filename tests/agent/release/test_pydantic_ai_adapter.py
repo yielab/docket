@@ -152,7 +152,7 @@ def _scenario_source(scenario: GovernanceScenario, *, parity: bool = False) -> s
             ToolOutcome,
         )
         from docket_runtime.adapters.pydantic_ai import DocketToolset
-        from docket_runtime._internal.docket.core.audit import verify_chain
+        from docket_runtime._internal.docket.governance.audit import verify_chain
         from pydantic_ai import Agent
         from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
         from pydantic_ai.models.function import FunctionModel

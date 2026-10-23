@@ -20,14 +20,15 @@ from typing import Any
 
 import pytest
 
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import runtime_driver as _rd
-from docket.core import trace as _trace
-from docket.edges.adapters import system as _sys
+from docket.agent import ports as _rd
+from docket.hops.application import record as _record
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.pipeline.application import executor as _executor
+from docket.sandbox import launch as _launch
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 # ── hermetic helpers (mirror test_pod_provisioning.py) ───────────────────────
 
@@ -82,33 +83,33 @@ def _trace_events(project: str) -> list[dict[str, Any]]:
 
 class TestRunCommand:
     def test_passing_command_exits_zero(self, tmp_path: Path) -> None:
-        code, _ = _sys.run_command("true", str(tmp_path))
+        code, _ = _launch.run_command("true", str(tmp_path))
         assert code == 0
 
     def test_failing_command_exits_nonzero(self, tmp_path: Path) -> None:
-        code, _ = _sys.run_command("false", str(tmp_path))
+        code, _ = _launch.run_command("false", str(tmp_path))
         assert code == 1
 
     def test_output_captured_on_pass(self, tmp_path: Path) -> None:
-        code, output = _sys.run_command("echo hello", str(tmp_path))
+        code, output = _launch.run_command("echo hello", str(tmp_path))
         assert code == 0
         assert "hello" in output
 
     def test_output_captured_on_fail(self, tmp_path: Path) -> None:
         # Write something to stderr then exit non-zero.
-        code, output = _sys.run_command("echo fail-output >&2; exit 1", str(tmp_path))
+        code, output = _launch.run_command("echo fail-output >&2; exit 1", str(tmp_path))
         assert code == 1
         assert "fail-output" in output
 
     def test_output_capped_at_max(self, tmp_path: Path) -> None:
         # Generate output beyond the 4 KB cap.
         big = "x" * 10_000
-        code, output = _sys.run_command(f"echo '{big}'", str(tmp_path))
+        code, output = _launch.run_command(f"echo '{big}'", str(tmp_path))
         assert code == 0
-        assert len(output) <= _sys._VERIFY_MAX_OUTPUT
+        assert len(output) <= _launch._VERIFY_MAX_OUTPUT
 
     def test_timeout_has_no_exit_status(self, tmp_path: Path) -> None:
-        code, output = _sys.run_command("sleep 10", str(tmp_path), timeout=1)
+        code, output = _launch.run_command("sleep 10", str(tmp_path), timeout=1)
         assert code is None
         assert "timed out" in output
 
@@ -120,7 +121,7 @@ class TestRunCommand:
         # kills only the immediate `sh` child on TimeoutExpired, leaving this orphan alive.
         pid_file = tmp_path / "grandchild.pid"
         cmd = f"(sleep 30 & echo $! > {pid_file}) & wait"
-        code, output = _sys.run_command(cmd, str(tmp_path), timeout=1)
+        code, output = _launch.run_command(cmd, str(tmp_path), timeout=1)
         assert code is None
         assert "timed out" in output
 
@@ -149,7 +150,7 @@ class TestRunCommand:
                 os.kill(pid, 9)
 
     def test_invalid_cwd_has_no_exit_status(self) -> None:
-        code, output = _sys.run_command("true", "/nonexistent/path/xyz")
+        code, output = _launch.run_command("true", "/nonexistent/path/xyz")
         assert code is None
         assert output  # some error message
 
@@ -157,7 +158,7 @@ class TestRunCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
-        code, output = _sys.run_command(
+        code, output = _launch.run_command(
             'echo "$DOCKET_TASK_ID/$DOCKET_INHERITED_PROBE"',
             str(tmp_path),
             env={"DOCKET_TASK_ID": "t-123"},
@@ -169,7 +170,7 @@ class TestRunCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
-        code, output = _sys.run_command('echo "$DOCKET_INHERITED_PROBE"', str(tmp_path))
+        code, output = _launch.run_command('echo "$DOCKET_INHERITED_PROBE"', str(tmp_path))
         assert code == 0
         assert output.strip() == "kept"
 
@@ -180,7 +181,7 @@ class TestRunCommand:
 class TestDispatchVerifyGate:
     """Hermetic dispatch tests using a fake runner instead of the real daemon."""
 
-    def _fake_runner(self, output: str = "ok", ok: bool = True) -> _dispatch.Runner:
+    def _fake_runner(self, output: str = "ok", ok: bool = True) -> _record.Runner:
         def _run(
             member_id: str,
             session_id: str,
@@ -202,7 +203,7 @@ class TestDispatchVerifyGate:
             "description": "do work",
             "status": "pending",
         }
-        res = _dispatch.dispatch_task("myapp", task, runner=self._fake_runner())
+        res = _executor.dispatch_task("myapp", task, runner=self._fake_runner())
         assert res.status == "done"
 
     def test_verify_fail_blocks_done(self, tmp_path: Path) -> None:
@@ -214,7 +215,7 @@ class TestDispatchVerifyGate:
             "description": "do work",
             "status": "pending",
         }
-        res = _dispatch.dispatch_task("myapp", task, runner=self._fake_runner())
+        res = _executor.dispatch_task("myapp", task, runner=self._fake_runner())
         assert res.status == "failed"
         assert "verifyCmd failed" in res.reason
 
@@ -223,7 +224,7 @@ class TestDispatchVerifyGate:
         _write_meta("myapp-implementer", {"verifyCmd": "false"})
 
         task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=self._fake_runner())
+        _executor.dispatch_task("myapp", task, runner=self._fake_runner())
 
         events = _trace_events("myapp")
         types = [e["event_type"] for e in events]
@@ -234,7 +235,7 @@ class TestDispatchVerifyGate:
         _write_meta("myapp-implementer", {"verifyCmd": "false"})
 
         task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=self._fake_runner())
+        _executor.dispatch_task("myapp", task, runner=self._fake_runner())
 
         events = _trace_events("myapp")
         vf = next(e for e in events if e["event_type"] == "verification_failed")
@@ -249,7 +250,7 @@ class TestDispatchVerifyGate:
         _write_meta("myapp-implementer", {"verifyCmd": cmd})
 
         task: dict[str, Any] = {"id": "t5", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=self._fake_runner())
+        _executor.dispatch_task("myapp", task, runner=self._fake_runner())
 
         events = _trace_events("myapp")
         vf = next(e for e in events if e["event_type"] == "verification_failed")
@@ -259,13 +260,13 @@ class TestDispatchVerifyGate:
     def test_verify_unset_skips_with_log(self, tmp_path: Path) -> None:
         # No verifyCmd set — the skip must be visible, but that
         # signal was moved out of a bare print() (core/ never prints): it is the
-        # hop's own `verification_skipped` flag (rendered by `cli/_pod.py`)
+        # hop's own `verification_skipped` flag (rendered by `interfaces/cli/commands/pod.py`)
         # plus a `tool_result` trace event carrying the same fact.
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")  # no verifyCmd
 
         task: dict[str, Any] = {"id": "t6", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=self._fake_runner())
+        res = _executor.dispatch_task("myapp", task, runner=self._fake_runner())
 
         # Task still completes (unset is not a failure).
         assert res.status == "done"
@@ -302,7 +303,7 @@ class TestDispatchVerifyGate:
             return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t7", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+        res = _executor.dispatch_task("myapp", task, runner=_runner)
 
         assert res.status == "failed"
         assert "lead" in ran
@@ -333,7 +334,7 @@ class TestDispatchVerifyGate:
             return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+        res = _executor.dispatch_task("myapp", task, runner=_runner)
 
         assert res.status == "done"
         assert "reviewer" in ran
@@ -344,7 +345,7 @@ class TestDispatchVerifyGate:
         _write_meta("myapp-implementer", {"verifyCmd": "false"})
 
         task: dict[str, Any] = {"id": "t9", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=self._fake_runner(ok=False, output="lead error")
         )
         assert res.status == "failed"
@@ -359,7 +360,7 @@ class TestDispatchTesterGate:
     call (``run_res.ok``) only means the Tester ran, not what it found. Exercises the marker
     parser wired into ``dispatch_task`` for a full pod; a pod with no tester is unaffected."""
 
-    def _runner_with_tester_output(self, tester_output: str) -> _dispatch.Runner:
+    def _runner_with_tester_output(self, tester_output: str) -> _record.Runner:
         def _run(
             member_id: str,
             session_id: str,
@@ -381,7 +382,7 @@ class TestDispatchTesterGate:
 
         return _run
 
-    def _fake_runner(self, output: str = "ok", ok: bool = True) -> _dispatch.Runner:
+    def _fake_runner(self, output: str = "ok", ok: bool = True) -> _record.Runner:
         def _run(
             member_id: str,
             session_id: str,
@@ -402,7 +403,7 @@ class TestDispatchTesterGate:
     def test_tester_pass_allows_done(self, tmp_path: Path) -> None:
         self._seed_full_pod()
         task: dict[str, Any] = {"id": "tt1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=self._runner_with_tester_output("PASS\nall good")
         )
         assert res.status == "done"
@@ -410,7 +411,7 @@ class TestDispatchTesterGate:
     def test_tester_pass_is_case_insensitive(self, tmp_path: Path) -> None:
         self._seed_full_pod()
         task: dict[str, Any] = {"id": "tt1b", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=self._runner_with_tester_output("pass — looks good")
         )
         assert res.status == "done"
@@ -418,7 +419,7 @@ class TestDispatchTesterGate:
     def test_tester_fail_blocks_pipeline(self, tmp_path: Path) -> None:
         self._seed_full_pod()
         task: dict[str, Any] = {"id": "tt2", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=self._runner_with_tester_output("FAIL\nrepro steps: ...")
         )
         assert res.status == "failed"
@@ -427,7 +428,7 @@ class TestDispatchTesterGate:
     def test_tester_fail_emits_distinct_trace_event(self, tmp_path: Path) -> None:
         self._seed_full_pod()
         task: dict[str, Any] = {"id": "tt3", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task(
+        _executor.dispatch_task(
             "myapp", task, runner=self._runner_with_tester_output("fail\nbroken")
         )
         events = _trace_events("myapp")
@@ -437,7 +438,7 @@ class TestDispatchTesterGate:
     def test_tester_unparseable_blocks_distinctly_from_fail(self, tmp_path: Path) -> None:
         self._seed_full_pod()
         task: dict[str, Any] = {"id": "tt4", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=self._runner_with_tester_output("looks fine to me")
         )
         assert res.status == "failed"
@@ -451,7 +452,7 @@ class TestDispatchTesterGate:
     def test_tester_empty_output_is_unparseable_not_fail(self, tmp_path: Path) -> None:
         self._seed_full_pod()
         task: dict[str, Any] = {"id": "tt5", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=self._runner_with_tester_output(""))
+        res = _executor.dispatch_task("myapp", task, runner=self._runner_with_tester_output(""))
         assert res.status == "failed"
         assert "unparseable" in res.reason
 
@@ -461,7 +462,7 @@ class TestDispatchTesterGate:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
         task: dict[str, Any] = {"id": "tt6", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=self._fake_runner(output="no PASS/FAIL marker here")
         )
         assert res.status == "done"
@@ -470,7 +471,7 @@ class TestDispatchTesterGate:
         secret_output = "FAIL\nMYAPP_API_KEY=sk-ant-1234567890abcdefghijklmnop"
         self._seed_full_pod()
         task: dict[str, Any] = {"id": "tt7", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task(
+        _executor.dispatch_task(
             "myapp", task, runner=self._runner_with_tester_output(secret_output)
         )
         events = _trace_events("myapp")

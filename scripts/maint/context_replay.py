@@ -25,11 +25,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from docket.core import orchestrator, pipeline
-from docket.core.llm import ChatMessage, ToolCall
-from docket.core.session import condense_history
-from docket.edges.adapters.toolbox import read_file, text_outcome
+from docket.agent.llm import ChatMessage, ToolCall
+from docket.agent.session import condense_history
+from docket.agent.tools.builtins.toolbox import read_file, text_outcome
 from docket.kernel.home import current_home
+from docket.pipeline.domain import plan as orchestrator
+from docket.pipeline.domain import spec as pipeline
 
 Messages = list[dict[str, Any]]
 Policy = Callable[[Messages], Messages]

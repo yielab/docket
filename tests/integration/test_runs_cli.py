@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import runs as _runs
 from docket.kernel.home import current_home, use_home
+from docket.tasks.application import runs as _runs
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 
 @pytest.fixture()
@@ -27,7 +27,7 @@ class TestRunsPruneCli:
     def _prune(self, *extra: str) -> int:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         args = ["task", "prune", "--traces", "--days", "0", "--pod", "demo", *extra]
         return CliRunner().invoke(app, args).exit_code

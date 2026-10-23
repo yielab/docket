@@ -95,5 +95,5 @@ state.json.bak     {"generation": 1}
 
 ## Implementation
 
-- `src/docket/edges/store.py`: `read_json`, `write_json`, `read_modify_write`, `StoreRecoveryError`
-- `src/docket/cli/_task.py`: the `docket task prune` command, which reads the run registry through the store
+- `src/docket/platform/store.py`: `read_json`, `write_json`, `read_modify_write`, `StoreRecoveryError`
+- `src/docket/interfaces/cli/commands/task.py`: the `docket task prune` command, which reads the run registry through the store

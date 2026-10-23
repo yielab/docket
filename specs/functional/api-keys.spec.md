@@ -133,8 +133,8 @@ Enter value for ANTHROPIC_API_KEY (hidden):
 
 - `src/docket/kernel/home.py`: the `Home` members `root`, `keyring_service`
 - `src/docket/kernel/home.py`: `Home.secrets_file` (`secrets.json`), `Home.secrets_meta_file` (`secrets.meta.json`)
-- `src/docket/core/secrets.py`: `secret_value`, `secret_values`, `store_backend`, `touch_meta`
-- `src/docket/cli/_setup_model.py`: `provider add`, `provider rotate`, `provider remove` and the credential writes they share
-- `src/docket/core/provider.py`: `resolve_credential`, `model_readiness`, `ProviderSpec` (`credentialPrefix`, `auth.credentials`) and its name validator
+- `src/docket/governance/secrets.py`: `secret_value`, `secret_values`, `store_backend`, `touch_meta`
+- `src/docket/interfaces/cli/commands/setup_model.py`: `provider add`, `provider rotate`, `provider remove` and the credential writes they share
+- `src/docket/models/catalog.py`: `resolve_credential`, `model_readiness`, `ProviderSpec` (`credentialPrefix`, `auth.credentials`) and its name validator
 - `src/docket/edges/adapters/system.py`: `secrets_backend_requested` (`DOCKET_SECRETS_BACKEND`, read live), `secret_tool_available`, `secret_tool_store`, `secret_tool_lookup`, `secret_tool_clear`
 - `src/docket/templates/providers/`: the built-in `kind: provider` documents

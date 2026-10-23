@@ -822,54 +822,54 @@ Each JSONL line is a JSON object with these fields:
 
 ## Implementation
 
-- `src/docket/core/operator_contract.py`: `A2AState`, `EVENT_KINDS`, `a2a_state`, `TaskBrief`,
+- `src/docket/operator/contract.py`: `A2AState`, `EVENT_KINDS`, `a2a_state`, `TaskBrief`,
   `validate_requested_schema`, `QuestionSchema`, `new_question_id`, `Question`, `AnswerResult`,
   `QuestionKind`, `Option`, `Recommendation`, `QuestionV11`, `AnswerResultV11`,
   `validate_answer`, `validate_answer_v11`, `ApprovalView`, `TaskView`, `InboxView`,
   `CloudEvent`, `make_event`, `canonical_args_digest`
-- `src/docket/core/inbox.py`: `build_inbox`, `task_view`, `pending_memory`, `MemoryItem`
-- `src/docket/core/notify.py`: `diff_events`, `render_data`, `render_text`, `flush`,
+- `src/docket/operator/inbox.py`: `build_inbox`, `task_view`, `pending_memory`, `MemoryItem`
+- `src/docket/operator/notify.py`: `diff_events`, `render_data`, `render_text`, `flush`,
   `FlushReport`, `NotifyEvent`, `build_test_event`, `read_state`, `resolve_secret`
-- `src/docket/core/channel.py`: `ChannelSpec`, `DIALECT_MAX`, `SILENT_DIALECTS`, `ON_KINDS`,
+- `src/docket/operator/channel.py`: `ChannelSpec`, `DIALECT_MAX`, `SILENT_DIALECTS`, `ON_KINDS`,
   `Catalog`, `load_catalog`, `load_channel_document`, `enable_channel`, `disable_channel`,
   `set_content`, `is_widening`, `export_channel`, `unreached_warning`
-- `src/docket/edges/adapters/channels/__init__.py`: `sink_for`
-- `src/docket/edges/adapters/channels/webhook.py`: `deliver`, `DeliveryResult`
+- `src/docket/operator/adapters/__init__.py`: `sink_for`
+- `src/docket/operator/adapters/webhook.py`: `deliver`, `DeliveryResult`
 - `src/docket/edges/adapters/channels/{console,command,ntfy,desktop,email,telegram}.py`: each
   dialect's `deliver`
 - `src/docket/templates/channels/01-console.yaml` … `07-telegram.yaml`: the seven built-in
   channel documents
-- `src/docket/core/answers.py`: `answer_task`, `AnswerError`, `AnswerRejected`,
+- `src/docket/tasks/application/answers.py`: `answer_task`, `AnswerError`, `AnswerRejected`,
   `sweep_expired_questions`
-- `src/docket/core/interruptions.py`: `forecast`, `Interruption`, `ASK_KINDS`,
+- `src/docket/tasks/application/interruptions.py`: `forecast`, `Interruption`, `ASK_KINDS`,
   `NOTHING_WILL_ASK`, `record_pregrant`, `InterruptionsError`
-- `src/docket/core/consult.py`: the `consult` handler, `park_token`, `parked_question`,
+- `src/docket/tasks/application/consult.py`: the `consult` handler, `park_token`, `parked_question`,
   `ConsultParked`, `ConsultUnavailable`, `DEFAULT_MAX_CONSULTATIONS`
-- `src/docket/core/corrections.py`: `record`, `read`, `utc_cursor`
-- `src/docket/core/tools.py`: `ToolContext` (`approval_mode`, `max_consultations`,
+- `src/docket/tasks/application/corrections.py`: `record`, `read`, `utc_cursor`
+- `src/docket/agent/tools/registry.py`: `ToolContext` (`approval_mode`, `max_consultations`,
   `consult_park`, `pregrants`), the park path (`_park_call`, `context.taskId`), the pre-grant
   matcher, the `approve_task` in-turn pre-grant
 - `src/docket/core/dispatch.py`: `pod_approval_mode`, `effective_pipeline`, `read_tasks`,
   `resolve_waiting_approval`, `TASK_GRANT_CAP`, task-grant minting in `_compose_hop`,
   `_run_input_step` (`input_requested`), consult park conversion, `_park_if_check_changed`
-- `src/docket/core/approval.py`: `create_pregrant`, `consume_pregrant`, `approval_set_option`,
+- `src/docket/governance/approval.py`: `create_pregrant`, `consume_pregrant`, `approval_set_option`,
   `approval_sweep_expired`, the `deny_reason` correction
-- `src/docket/core/profile.py`: `project_violations`, `gather_facts`, `lights_out_violations`,
+- `src/docket/governance/profile.py`: `project_violations`, `gather_facts`, `lights_out_violations`,
   `lights_out_report`, `as_json`
-- `src/docket/core/telegram.py`: `/status` rendering from `build_inbox`
+- `src/docket/interfaces/telegram/bot.py`: `/status` rendering from `build_inbox`
 - `src/docket/kernel/home.py`: the `Home` members `inbox_cursor_file`, `channels_file`,
   `notify_state_file`, `channels_health_file`, `consult_parked_dir`, `corrections_dir`
 - `src/docket/kernel/templates.py`: `CHANNEL_TEMPLATES_DIR`
-- `src/docket/core/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
-- `src/docket/cli/_inbox.py`: `docket inbox`
-- `src/docket/cli/_setup_notify.py`: `docket setup notify`, `send_test`
-- `src/docket/cli/_task.py`: `docket task add|show|approve|deny|answer|retry`
-- `src/docket/cli/_setup.py`, `src/docket/cli/_setup_check.py`: the `notifications` piece, the
+- `src/docket/models/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
+- `src/docket/interfaces/cli/commands/inbox.py`: `docket inbox`
+- `src/docket/interfaces/cli/commands/setup_notify.py`: `docket setup notify`, `send_test`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task add|show|approve|deny|answer|retry`
+- `src/docket/interfaces/cli/commands/setup.py`, `src/docket/interfaces/cli/commands/setup_check.py`: the `notifications` piece, the
   desktop/Telegram offers, the health report's `Notifications:` and `Profile:` blocks
-- `src/docket/cli/_agents.py`: `docket init`'s warning and desktop offer
-- `src/docket/cli/_run.py`: the post-run flush and the TTY approval default
-- `src/docket/cli/_status.py`: the `Profile` row
-- `src/docket/cli/_mcp.py`: MCP `inbox`, `task_answer`, `task_pregrant`
+- `src/docket/interfaces/cli/commands/agents.py`: `docket init`'s warning and desktop offer
+- `src/docket/interfaces/cli/commands/run.py`: the post-run flush and the TTY approval default
+- `src/docket/interfaces/cli/commands/status.py`: the `Profile` row
+- `src/docket/interfaces/cli/commands/mcp.py`: MCP `inbox`, `task_answer`, `task_pregrant`
 - `src/docket/serve.py`: `GET /inbox`, `GET /metrics`, `POST /tasks/<id>/answer`,
   `POST /tasks/<id>/pregrants`, `POST /tasks/<project>` `brief`, the periodic sweep
   (`sweep_expired_questions`, `flush`), the startup warning

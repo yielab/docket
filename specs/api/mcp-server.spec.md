@@ -86,7 +86,7 @@ process and speaks the protocol over its stdin/stdout pipes.
 ### stdio discipline
 
 An MCP stdio server's stdout **IS** the protocol channel — any stray non-protocol byte on stdout
-corrupts the stream. The MCP tool functions MUST NOT import or call `docket.ui` (which
+corrupts the stream. The MCP tool functions MUST NOT import or call `docket.interfaces.cli.render.ui` (which
 prints Rich-formatted output to stdout for every other command) and MUST return plain data, never
 print. The one human-readable line `docket start --mcp` itself prints (confirming the tool count at
 startup) MUST go to stderr, never stdout.
@@ -355,7 +355,7 @@ not as a process exit code — the server process itself only exits when the tra
 - `dispatch` MUST create a run record (source `"mcp"`) and return its id before the dispatch
   pipeline itself has necessarily finished (or even started) running.
 - `approvals_grant`/`approvals_deny` MUST tag the approval's audit entry with `channel="mcp"`.
-- No tool function may import or call `docket.ui`, or otherwise print to stdout.
+- No tool function may import or call `docket.interfaces.cli.render.ui`, or otherwise print to stdout.
 - A missing `mcp` SDK MUST produce the actionable hint above (stderr) and exit `1`, not a bare
   `ImportError` traceback.
 
@@ -402,16 +402,16 @@ concern, not docket's — see Scope above).
 
 ## Implementation
 
-- `src/docket/cli/_mcp.py`: the thirteen tool functions (`tool_status` ... `tool_task_pregrant`),
+- `src/docket/interfaces/cli/commands/mcp.py`: the thirteen tool functions (`tool_status` ... `tool_task_pregrant`),
   `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
-- `src/docket/cli/_service.py`: the `docket start` command and its `--mcp` flag handling
+- `src/docket/interfaces/cli/commands/service.py`: the `docket start` command and its `--mcp` flag handling
 - `src/docket/core/dispatch.py`: `dispatch_pod`, `enqueue_task_once`, `retry_task`, `read_tasks`,
   `pod_roster`, `resolve_waiting_approval`, `resolve_waiting_approval_detail`
-- `src/docket/core/approval.py`: `approval_grant`, `approval_deny`, `approval_set_option`,
+- `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `approval_set_option`,
   `list_pending`
-- `src/docket/core/answers.py`: `answer_task`
-- `src/docket/core/interruptions.py`: `record_pregrant`
-- `src/docket/core/inbox.py`, `src/docket/core/operator_contract.py`: `build_inbox`, `InboxView`
-- `src/docket/core/runs.py`: `create_run`, `execute`, `get_run`, `list_runs`, `RunSource`
+- `src/docket/tasks/application/answers.py`: `answer_task`
+- `src/docket/tasks/application/interruptions.py`: `record_pregrant`
+- `src/docket/operator/inbox.py`, `src/docket/operator/contract.py`: `build_inbox`, `InboxView`
+- `src/docket/tasks/application/runs.py`: `create_run`, `execute`, `get_run`, `list_runs`, `RunSource`
 - `src/docket/serve.py`: `build_status`, `SERVE_API_VERSION`
 - `pyproject.toml`: the `mcp` extra

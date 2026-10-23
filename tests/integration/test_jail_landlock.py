@@ -1,6 +1,6 @@
 """The Landlock jail on a real kernel: filesystem rights and network, judged by the child's own result.
 
-Skips cleanly when the kernel has no Landlock. The jail is the real ``python -m docket.jail``
+Skips cleanly when the kernel has no Landlock. The jail is the real ``python -m docket.sandbox.jail``
 entry run in a subprocess; nothing is stubbed. See specs/functional/security-gates.spec.md item 10.
 """
 
@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from docket.edges.adapters import system
+from docket.sandbox import landlock
 
-SUBJECT = "docket.jail"
+SUBJECT = "docket.sandbox.jail"
 
-pytestmark = pytest.mark.skipif(not system.landlock_available(), reason="Landlock not available")
+pytestmark = pytest.mark.skipif(not landlock.landlock_available(), reason="Landlock not available")
 
 
 def _env(rw: Path) -> dict[str, str]:
@@ -29,7 +29,17 @@ def _env(rw: Path) -> dict[str, str]:
 
 
 def _jail(rw: Path, net: str, code: str, *extra: str) -> subprocess.CompletedProcess[str]:
-    argv = [sys.executable, "-m", "docket.jail", "--rw", str(rw), *extra, "--net", net, "--"]
+    argv = [
+        sys.executable,
+        "-m",
+        "docket.sandbox.jail",
+        "--rw",
+        str(rw),
+        *extra,
+        "--net",
+        net,
+        "--",
+    ]
     argv += ["python3", "-c", code]
     return subprocess.run(argv, capture_output=True, text=True, timeout=60, cwd=rw, env=_env(rw))
 
@@ -106,7 +116,7 @@ def test_network_open_connects(tmp_path: Path, listener: int) -> None:
 def test_the_argv_builder_output_runs_the_command_in_the_jail(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()
-    argv = system.landlock_argv((root,), "echo hi > in.txt; echo no > ../out.txt", network=False)
+    argv = landlock.landlock_argv((root,), "echo hi > in.txt; echo no > ../out.txt", network=False)
     done = subprocess.run(
         argv, capture_output=True, text=True, timeout=60, cwd=root, env=_env(root)
     )
@@ -118,7 +128,7 @@ def test_the_argv_builder_output_runs_the_command_in_the_jail(tmp_path: Path) ->
 def test_run_bash_reports_and_applies_the_landlock_backend(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from docket.edges.adapters import toolbox
+    from docket.agent.tools.builtins import toolbox
 
     root = tmp_path / "root"
     root.mkdir()
@@ -138,7 +148,7 @@ def test_a_file_outside_the_grants_cannot_run_and_says_why(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Exit 126 in a jail names the grant that fixes it; with the grant the same call runs."""
-    from docket.edges.adapters import toolbox
+    from docket.agent.tools.builtins import toolbox
 
     root, tools = tmp_path / "root", tmp_path / "tools"
     root.mkdir()

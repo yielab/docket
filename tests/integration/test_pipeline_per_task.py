@@ -18,13 +18,15 @@ from tests.fakes import FakeDriver
 from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import trace as _trace
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.tasks.application import queue as _application_queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _TWO = (
     "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
@@ -67,12 +69,12 @@ def stub() -> Iterator[_ScriptedLLMServer]:
 
 
 def _queue(**extra: Any) -> str:
-    from docket.edges import store as _store
+    from docket.platform import store as _store
 
-    _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
-    tasks = _dispatch.read_tasks("demo")
+    _application_queue.enqueue_task_once("demo", "ship it", channel="cli")
+    tasks = _application_queue.read_tasks("demo")
     tasks[0].update(extra)
-    _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})
+    _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": tasks})
     return str(tasks[0]["id"])
 
 
@@ -92,12 +94,12 @@ class TestPipelineOnTheStubServer:
         _pod_pipeline("two", _TWO)
         _queue(pipeline="two")
 
-        results = _dispatch.dispatch_pod("demo")
+        results = _sweep.dispatch_pod("demo")
 
         assert results[0].status == "done", results[0].reason
         assert [h.step_id for h in results[0].hops] == ["kickoff", "assemble"]
         assert len(stub.requests) >= 2
-        assert _dispatch.read_tasks("demo")[0]["pipelineSource"] == "pod:two"
+        assert _application_queue.read_tasks("demo")[0]["pipelineSource"] == "pod:two"
 
 
 def _implementer_only(home: Path) -> None:
@@ -110,7 +112,7 @@ class TestTaskGateAfterVerifyCmd:
         _implementer_only(home)
         task_id = _queue(pipeline="build", gate={"command": "false"})
 
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+        res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
         assert res.status == "failed"
         assert res.failure_kind == "gate_failed"
@@ -121,7 +123,7 @@ class TestTaskGateAfterVerifyCmd:
         failed = _task_events(task_id, "verification_failed")
         assert [e["payload"]["source"] for e in failed] == ["task"]
         assert failed[0]["payload"]["cmd"] == "false"
-        assert _dispatch.read_tasks("demo")[0]["gateApplied"] is True
+        assert _application_queue.read_tasks("demo")[0]["gateApplied"] is True
 
     def test_a_passing_task_gate_keeps_the_verify_evidence_and_nests_its_own(
         self, home: Path
@@ -130,7 +132,7 @@ class TestTaskGateAfterVerifyCmd:
         _implementer_only(home)
         _queue(pipeline="build", gate={"command": "echo accepted"})
 
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+        res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
         assert res.status == "done", res.reason
         verify = res.hops[0].verify
@@ -144,7 +146,7 @@ class TestTaskGateAfterVerifyCmd:
         _implementer_only(home)
         task_id = _queue(pipeline="build", gate={"command": f"touch {marker}"})
 
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+        res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
         assert res.status == "failed"
         assert not marker.exists()
@@ -162,7 +164,7 @@ class TestTaskGateAfterVerifyCmd:
         )
         _queue(pipeline="twice", gate={"command": f"echo x >> {marker}"})
 
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+        res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
         assert res.status == "done", res.reason
         assert marker.read_text().count("x") == 1
@@ -177,7 +179,7 @@ class TestTaskGateAfterVerifyCmd:
         )
         _queue(pipeline="routed", gate={"command": "false"})
 
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+        res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
         assert res.status == "done"
         assert res.hops[0].verify["label"] == "fail"

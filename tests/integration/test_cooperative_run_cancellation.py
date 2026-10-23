@@ -17,20 +17,23 @@ import pytest
 from tests.conftest import record_isolation_off
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import agent_loop as _agent_loop
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import runs as _runs
-from docket.core import trace as _trace
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.edges import store as _store
-from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent import driver as _dr
+from docket.agent import loop as _agent_loop
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
+from docket.observability import trace as _trace
+from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import runs as _runs
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.core.runs"
+SUBJECT = "docket.tasks.application.runs"
 
 
 @contextmanager
@@ -97,13 +100,13 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
             raise AssertionError("a cancellation race loser dispatched a tool")
 
         monkeypatch.setattr(_agent_loop, "dispatch_tool", _unexpected_dispatch)
-        task = _dispatch.enqueue_task_once("demo", "cancel this live turn", channel="cli")[0]
+        task = _queue.enqueue_task_once("demo", "cancel this live turn", channel="cli")[0]
         run = _runs.create_run("cli", "demo")
         returned: list[object] = []
 
         thread = new_thread(
             target=lambda: returned.append(
-                _runs.execute(run["id"], lambda: _dispatch.dispatch_pod("demo", max_tasks=1))
+                _runs.execute(run["id"], lambda: _sweep.dispatch_pod("demo", max_tasks=1))
             )
         )
         thread.start()
@@ -138,7 +141,7 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
         assert isinstance(results, list)
         assert results[0].task_id == task["id"]
         assert results[0].status == "cancelled"
-        persisted_task = _dispatch.read_tasks("demo")[0]
+        persisted_task = _queue.read_tasks("demo")[0]
         assert persisted_task["status"] == "cancelled"
         assert persisted_task["completedAt"]
 
@@ -163,7 +166,7 @@ def test_returned_cancelled_task_terminalizes_the_run(tmp_path: Path) -> None:
     with use_home(Home(home)):
         record_isolation_off(home)
         run = _runs.create_run("cli", "demo")
-        result = _dispatch.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
+        result = _task.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
 
         assert _runs.execute(run["id"], lambda: [result]) == [result]
 
@@ -211,7 +214,7 @@ def _mark_running(project: str, task_id: str) -> None:
                 t["status"] = "running"
         return doc
 
-    _store.read_modify_write(_dispatch.pod_task_list_path(project), _fn)
+    _store.read_modify_write(_settings.pod_task_list_path(project), _fn)
 
 
 def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
@@ -228,7 +231,7 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
         codebase.mkdir()
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         agent_id = _pod.pod.member_id("demo", "implementer")
-        task = _dispatch.enqueue_task_once("demo", "sleep in bash", channel="cli")[0]
+        task = _queue.enqueue_task_once("demo", "sleep in bash", channel="cli")[0]
         _mark_running("demo", task["id"])
 
         # `python3` is on the command classifier's curated allowlist, so this
@@ -243,7 +246,7 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
         def _fn() -> list[Any]:
             turn = driver.run_turn(agent_id, f"agent:{agent_id}:demo", "run the long command", 60)
             status = "cancelled" if turn.failure_kind == "run_cancelled" else "failed"
-            return [_dispatch.TaskResult("task-1", status, turn.error)]
+            return [_task.TaskResult("task-1", status, turn.error)]
 
         thread = new_thread(target=lambda: results.append(_runs.execute(run["id"], _fn)))
         thread.start()

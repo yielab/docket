@@ -390,15 +390,15 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 - `src/docket/core/dispatch.py`: `enqueue_task_once`, `read_tasks`, `cancel_task`, `retry_task`,
   `task_diff`, `dispatchable_pods`, the claim-time refusals (`base_ref`, `pipeline`, `prepare`),
   the task token budget.
-- `src/docket/core/task_options.py`: addressable-task and `restrictions` validation,
+- `src/docket/tasks/domain/options.py`: addressable-task and `restrictions` validation,
   `TASK_STATUSES`.
-- `src/docket/core/pod_report.py`: the `GET /pods` row (`pod_summary`) and `GET /pods/<p>`
+- `src/docket/teams/report.py`: the `GET /pods` row (`pod_summary`) and `GET /pods/<p>`
   (`pod_detail`).
-- `src/docket/core/pod_apply.py`: `apply_directory`; `src/docket/core/reviewed_repos.py`: the
+- `src/docket/teams/apply/plan.py`: `apply_directory`; `src/docket/governance/review.py`: the
   review code and `repo.allow`.
-- `src/docket/core/pod_provisioning.py`: `provision_pod`.
-- `src/docket/core/corrections.py`: `read` and the cursor helpers.
-- `src/docket/core/trace.py`: `hop_started`, `hop_finished` in `EVENT_TYPES`.
+- `src/docket/teams/pod_provisioning.py`: `provision_pod`.
+- `src/docket/tasks/application/corrections.py`: `read` and the cursor helpers.
+- `src/docket/observability/trace.py`: `hop_started`, `hop_finished` in `EVENT_TYPES`.
 - `src/docket/edges/adapters/system.py`: `git_diff_range`, `git_untracked`, `DIFF_MAX_CHARS`.
 - `tests/integration/test_serve_reattach.py`, `test_serve_tasks_endpoint.py`,
   `test_serve_task_lifecycle.py`, `test_serve_pods_endpoint.py`, `test_serve_pods_config.py`,

@@ -850,41 +850,41 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 
 ## Implementation
 
-- `src/docket/core/agent_loop.py`: `run_agent_turn`, `LoopConfig`, `AgentLoopResult`,
+- `src/docket/agent/loop.py`: `run_agent_turn`, `LoopConfig`, `AgentLoopResult`,
   `StopReason`, `MIN_OUTPUT_TOKENS`, `approval_unavailable_error`, `approval_parked_error`; the
   `prompt_composed`, `session_compaction`, `request_fit`, `budget_warning`, `llm_call`,
   `tool_call` and `tool_result` emitters
-- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver`, `default_driver`, the default
+- `src/docket/agent/driver.py`: `DocketDriver`, `default_driver`, the default
   `mcp_loader`, root resolution, the base-commit `RepoView` construction, the export start/flush
-- `src/docket/core/runtime_driver.py`: `RuntimeDriver`, `TurnResult`, `DriverCapabilities`,
+- `src/docket/agent/ports.py`: `RuntimeDriver`, `TurnResult`, `DriverCapabilities`,
   `SessionSummary`, `UsageReport`
 - `tests/fakes.py`: `FakeDriver`, the port's canonical fake
-- `src/docket/core/identity.py`: `compose_agent_prompt`, `compose_system_prompt`,
+- `src/docket/agent/identity.py`: `compose_agent_prompt`, `compose_system_prompt`,
   `project_instruction_files`, `resolve_static_context_budget`, `memory_has_content`,
   `PromptSectionReport`, `REPO_INSTRUCTIONS_FRAME`, `REPO_SKILLS_FRAME`, `POD_MEMORY_FRAME`
-- `src/docket/core/context.py`: `resolve_window_share_tokens`, `WINDOW_SHARE`,
+- `src/docket/agent/context.py`: `resolve_window_share_tokens`, `WINDOW_SHARE`,
   `TOOL_SCHEMA_RESERVE_TOKENS`, `estimate_tokens`, `budget_for_role`
-- `src/docket/core/session.py`: `append_messages`, `load_messages`, `compact_session`,
+- `src/docket/agent/session.py`: `append_messages`, `load_messages`, `compact_session`,
   `condense_history`
-- `src/docket/core/archetypes.py`: `registry_for_role`
-- `src/docket/core/tools.py`: `dispatch_tool`, `ToolContext`, `ToolResult`, `builtin_registry`,
+- `src/docket/teams/roles.py`: `registry_for_role`
+- `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolContext`, `ToolResult`, `builtin_registry`,
   `screen_tool_result`, the `skill`, `consult` and `fetch` tools
-- `src/docket/edges/adapters/toolbox.py`: `SKIPPED_DIRS`, `READ_DEFAULT_LINES`,
+- `src/docket/agent/tools/builtins/toolbox.py`: `SKIPPED_DIRS`, `READ_DEFAULT_LINES`,
   `READ_DEFAULT_CHARS`, `read_file`, `glob_files`, `grep_files`, `run_bash`, the output truncation
-- `src/docket/core/skills.py`: `discover_skills`
-- `src/docket/core/repo_view.py`: `RepoView`
+- `src/docket/agent/skills.py`: `discover_skills`
+- `src/docket/hops/workspace/repo_view.py`: `RepoView`
 - `src/docket/edges/adapters/system.py`: `git_read_blob`, `git_list_tree_dirs`
-- `src/docket/core/pod_memory.py`: `render_entries`
-- `src/docket/core/pod.py`: `PodSettings` (`projectInstructions`, `mcpServers`)
-- `src/docket/core/pod_report.py`: the `docket pod show` report of project instructions
-- `src/docket/core/llm.py`: `ChatBackend`, `ChatResponse`, `TokenUsage`, `FailureKind`, `Endpoint`
-- `src/docket/edges/adapters/llm.py`: `client_for`, `resolve_endpoint`, `endpoint_from_spec`
-- `src/docket/core/provider.py`: `resolve_limits`
-- `src/docket/core/runs.py`: `RunCancellationSignal`, `current_cancellation_signal`
+- `src/docket/teams/memory.py`: `render_entries`
+- `src/docket/teams/pod.py`: `PodSettings` (`projectInstructions`, `mcpServers`)
+- `src/docket/teams/report.py`: the `docket pod show` report of project instructions
+- `src/docket/agent/llm.py`: `ChatBackend`, `ChatResponse`, `TokenUsage`, `FailureKind`, `Endpoint`
+- `src/docket/models/adapters/openai_http.py`: `client_for`, `resolve_endpoint`, `endpoint_from_spec`
+- `src/docket/models/catalog.py`: `resolve_limits`
+- `src/docket/tasks/application/runs.py`: `RunCancellationSignal`, `current_cancellation_signal`
 - `src/docket/core/dispatch.py`: `DispatchError`, the hop retry classification
-- `src/docket/core/mcp_tools.py`: `load_mcp_tools`
-- `src/docket/core/trace.py`: `trace_event`
-- `src/docket/core/telemetry.py`: `start`, `flush`, `health`, `capture_classes`
+- `src/docket/agent/tools/mcp_tools.py`: `load_mcp_tools`
+- `src/docket/observability/trace.py`: `trace_event`
+- `src/docket/observability/telemetry.py`: `start`, `flush`, `health`, `capture_classes`
 - `src/docket/kernel/home.py`: the `Home` members `agent_loop_*`, `default_max_output_tokens`,
   `context_token_budget`, `context_token_budget_default`, `context_bytes_per_token`,
   `pod_memory_render_max_bytes`, `skills_dir`, `tool_max_output_chars`, `fetch_allowed_domains`,

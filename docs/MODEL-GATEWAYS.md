@@ -63,7 +63,7 @@ the selected endpoint's context/output limits unknown.
 
 The shipped wire is a non-streaming `POST /chat/completions` request with OpenAI function-tool
 shapes. Every provider — built-in or your own — is a `kind: provider` document
-(`core.provider.ProviderSpec`; see `docs/CONFIGURATION.md` §3.1 and
+(`models.catalog.ProviderSpec`; see `docs/CONFIGURATION.md` §3.1 and
 `specs/functional/model-profiles.spec.md` "Provider catalog"): `name`, `dialect`, `baseUrl`,
 `auth` (`bearer`/`header`/`none` plus credential names, never values), optional `headers` for a
 static header a gateway requires, and `models[]` with each id's optional declared

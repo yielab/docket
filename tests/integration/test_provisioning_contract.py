@@ -11,10 +11,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from docket.core import memory as _mem
-from docket.core import provisioning as _prov
+from docket.agent import memory as _mem
+from docket.teams import provisioning as _prov
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 
 class TestUxHelpers:

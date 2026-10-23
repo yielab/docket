@@ -305,7 +305,7 @@ safe characters.
 
 ```python
 from docket.core import session as sess
-from docket.core.llm import ToolCall, assistant, tool_result, user
+from docket.agent.llm import ToolCall, assistant, tool_result, user
 
 call = ToolCall(id="call_1", name="read", arguments='{"path": "notes.md"}')
 sess.append_messages("agent:demo-lead:demo", [
@@ -371,13 +371,13 @@ result = sess.compact_session(
 
 ## Implementation
 
-- `src/docket/core/session.py`: `load_session`, `load_messages`, `append_messages`,
+- `src/docket/agent/session.py`: `load_session`, `load_messages`, `append_messages`,
   `group_atomic_units`, `find_orphaned_tool_messages`, `find_unanswered_tool_calls`,
   `plan_compaction`, `compact_session`, `condense_history`, `SessionSummaryRunner`,
   `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_LOW_WATER_CHARS`
-- `src/docket/core/context.py`: `estimate_tokens`, `budget_for_role`
-- `src/docket/core/agent_loop.py`: the live caller (`run_compaction`, `summarize_without_reentry`,
+- `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
+- `src/docket/agent/loop.py`: the live caller (`run_compaction`, `summarize_without_reentry`,
   the request builder that applies `condense_history`)
-- `src/docket/core/llm.py`: `ChatMessage`, `ToolCall`, `TokenUsage` (the Examples import `docket.core.session` and `docket.core.llm`)
+- `src/docket/agent/llm.py`: `ChatMessage`, `ToolCall`, `TokenUsage` (the Examples import `docket.agent.session` and `docket.agent.llm`)
 - `src/docket/kernel/home.py`: the `Home` members `sessions_dir`, `distill_timeout_s`
-- `src/docket/edges/store.py`: the locked atomic read-modify-write underneath
+- `src/docket/platform/store.py`: the locked atomic read-modify-write underneath

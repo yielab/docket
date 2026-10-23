@@ -21,17 +21,22 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import app as _app
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import models_policy as _mp
-from docket.core import pod as _podcore
-from docket.core import runtime_driver as _rd
-from docket.core import utils as _utils
-from docket.core.models import AgentMeta
+from docket.agent import ports as _rd
+from docket.hops.gates import pre_hop as _pre_hop
+from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, current_home, use_home
+from docket.models import selection as _mp
+from docket.pipeline.application import executor as _executor_c
+from docket.pipeline.application import steps as _steps_c
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
+from docket.teams import pod as _podcore
+from docket.teams import settings as _settings
+from docket.teams import utils as _utils
+from docket.teams.models import AgentMeta
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
 
@@ -77,7 +82,7 @@ class _RecordingRunner:
 
 def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tokens: int) -> None:
     """Seeds a docket-native session with real token counts and no cost -- ``DocketDriver``
-    never reports a USD cost (see ``core/runtime_driver.py``'s ``TurnResult.cost_usd``), so
+    never reports a USD cost (see ``agent/ports.py``'s ``TurnResult.cost_usd``), so
     this is the normal shape; ``oc_dir`` is unused but kept so call sites stay untouched."""
     from urllib.parse import quote
 
@@ -136,11 +141,14 @@ class TestAutoPauseDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
-            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+            _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
 
-            results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+            results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
             assert results[0].status == "blocked"
 
             lead_id = _podcore.member_id("demo", "lead")
@@ -151,20 +159,23 @@ class TestAutoPauseDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task_once("demo", "One", channel="cli")
-            _dispatch.enqueue_task_once("demo", "Two", channel="cli")
-            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
-            _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+            _queue.enqueue_task_once("demo", "One", channel="cli")
+            _queue.enqueue_task_once("demo", "Two", channel="cli")
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
+            _sweep.dispatch_pod("demo", runner=_RecordingRunner())
 
             # Second dispatch: the pod is now paused — nothing should even be
             # claimed (task "Two" stays exactly "pending", untouched), and no
             # further agent turn should run (no wasted cost).
             runner = _RecordingRunner()
-            results = _dispatch.dispatch_pod("demo", runner=runner)
+            results = _sweep.dispatch_pod("demo", runner=runner)
             assert results == []
             assert runner.calls == []
-            tasks = {t["description"]: t["status"] for t in _dispatch.read_tasks("demo")}
+            tasks = {t["description"]: t["status"] for t in _queue.read_tasks("demo")}
             assert tasks["Two"] == "pending"
 
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
@@ -211,8 +222,9 @@ class TestEstimateFallback:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 3.5)
-            spent, estimated = _dispatch.pod_gating_cost("demo")
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 3.5)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 3.5)
+            spent, estimated = _pre_hop.pod_gating_cost("demo")
             assert spent == 3.5
             assert estimated is False
 
@@ -224,7 +236,7 @@ class TestEstimateFallback:
             _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
             _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
-            spent, estimated = _dispatch.pod_gating_cost("demo")
+            spent, estimated = _pre_hop.pod_gating_cost("demo")
             assert estimated is True
             assert spent == pytest.approx(4.8)  # 1M*$0.80/M + 1M*$4.00/M
 
@@ -239,9 +251,9 @@ class TestEstimateFallback:
             _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
             _fleet.meta_set(lead_id, "budgetUsd", "1")
             _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
+            _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
 
-            results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+            results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
             assert results[0].status == "blocked"
             assert "estimated" in results[0].reason
             assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
@@ -304,7 +316,7 @@ class TestUnpricedModelSurfaces:
             yield model
 
     def test_the_pod_report_names_the_unpriced_model(self, tmp_path: Path) -> None:
-        from docket.core import pod_report
+        from docket.teams import report as pod_report
 
         with self._budgeted_pod(tmp_path) as model:
             assert pod_report.pod_report("demo")["budgetUnpriced"] == [model]

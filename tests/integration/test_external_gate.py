@@ -19,15 +19,17 @@ from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import answers as _answers
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pipeline as _pipeline
-from docket.core import secrets as _secrets
+from docket.governance import secrets as _secrets
+from docket.hops.gates import post_hop as _post_hop
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import answers as _answers
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 REASON = "zz-unique-reason-5521"
 
@@ -82,9 +84,9 @@ def _spec(script: Path, on: str = "", timeout: str = "") -> _pipeline.PipelineSp
 def _run(tmp_path: Path, body: str, **kw: str) -> Iterator[tuple[Any, FakeDriver]]:
     with _seed(tmp_path):
         script = _script(tmp_path, body)
-        _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
+        _queue.enqueue_task_once("demo", "Ship it", channel="cli")
         driver = FakeDriver()
-        res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(script, **kw))[0]
+        res = _sweep.dispatch_pod("demo", runner=driver, spec=_spec(script, **kw))[0]
         yield res, driver
 
 
@@ -115,7 +117,7 @@ class TestExitMapping:
         with _run(tmp_path, body) as (res, _driver):
             tail = _build_hops(res)[0].verify["outputTail"]
             assert f"task={res.task_id}" in tail
-            path = _dispatch._gate_reasons_path("demo", res.task_id, "build")
+            path = _post_hop._gate_reasons_path("demo", res.task_id, "build")
             assert f"file={path}" in tail
 
     @pytest.mark.parametrize(
@@ -135,7 +137,7 @@ class TestExitMapping:
             verify = _build_hops(res)[0].verify
             assert verify["label"] == label
             assert verify["exitCode"] == code
-            assert _dispatch.read_tasks("demo")[0]["failureKind"] == kind
+            assert _queue.read_tasks("demo")[0]["failureKind"] == kind
 
     def test_the_exit_code_cannot_be_forged_from_inside_the_command(self, tmp_path: Path) -> None:
         # The command (agent-written tests, in practice) plants a "0" anywhere docket might read
@@ -168,8 +170,8 @@ class TestExitMapping:
                 "    gate: {external: 'definitely-not-a-command-zz9'}\n"
             ).spec
             assert spec is not None
-            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
-            res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=spec)[0]
+            _queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=spec)[0]
 
             assert res.failure_kind in ("gate_error", "gate_failed")
             assert _build_hops(res)[0].verify["label"] == "error"
@@ -236,15 +238,15 @@ class TestReasons:
 
     def test_a_pre_existing_reasons_file_is_deleted_and_never_read(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
-            planted = _dispatch._gate_reasons_path("demo", task["id"], "build")
+            task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
+            planted = _post_hop._gate_reasons_path("demo", task["id"], "build")
             planted.parent.mkdir(parents=True, exist_ok=True)
             planted.write_text(json.dumps({"reasons": [{"summary": "PLANTED"}]}), encoding="utf-8")
             script = _script(
                 tmp_path,
                 'test -e "$DOCKET_GATE_REASONS_FILE" && echo STILL-THERE || echo GONE\nexit 1\n',
             )
-            res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
 
             verify = _build_hops(res)[0].verify
             assert "GONE" in verify["outputTail"]
@@ -257,10 +259,10 @@ class TestReasons:
             _secrets.save_secrets({"LEAKY_KEY": canary})
             payload = json.dumps({"reasons": [{"summary": f"token {canary} leaked"}]})
             script = _script(tmp_path, _reasons_script(payload, 1))
-            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
-            res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
+            _queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
 
-            persisted = json.dumps(_dispatch.read_tasks("demo")[0]["hops"])
+            persisted = json.dumps(_queue.read_tasks("demo")[0]["hops"])
             assert canary not in persisted
             assert "[REDACTED]" in persisted
             assert res.status == "failed"
@@ -268,7 +270,7 @@ class TestReasons:
     def test_reasons_pass_the_untrusted_content_screen(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.core import tools as _tools
+        from docket.agent.tools import registry as _tools
 
         seen: list[str] = []
         real = _tools.screen_tool_result
@@ -322,17 +324,17 @@ class TestNeedsHumanSeam:
                 tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
             )
             _bind("demo", _SEAM.format(script=script))
-            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
             driver = FakeDriver()
 
-            first = _dispatch.dispatch_pod("demo", runner=driver)[0]
+            first = _sweep.dispatch_pod("demo", runner=driver)[0]
             assert first.status == "waiting_input", first.reason
             assert len(_implementer_messages(driver)) == 1
 
             _answers.answer_task(
                 "demo", task["id"], "accept", {"answer": "go"}, channel="cli", actor="op"
             )
-            final = _dispatch.dispatch_pod("demo", runner=driver)[0]
+            final = _sweep.dispatch_pod("demo", runner=driver)[0]
 
             assert final.status == "done", final.reason
             messages = _implementer_messages(driver)
@@ -351,18 +353,18 @@ class TestNeedsHumanSeam:
                 tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
             )
             _bind("demo", _SEAM.format(script=script))
-            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
             driver = FakeDriver()
 
-            _dispatch.dispatch_pod("demo", runner=driver)
-            question = _dispatch.read_tasks("demo")[0]["question"]
+            _sweep.dispatch_pod("demo", runner=driver)
+            question = _queue.read_tasks("demo")[0]["question"]
             assert REASON in question["message"], "the operator must see why the verifier asked"
 
             note = "zz-operator-note-8812"
             _answers.answer_task(
                 "demo", task["id"], "accept", {"answer": note}, channel="cli", actor="op"
             )
-            _dispatch.dispatch_pod("demo", runner=driver)
+            _sweep.dispatch_pod("demo", runner=driver)
             retry = _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
             assert note in retry, "the answer must reach the hop it routes back to"
 
@@ -370,19 +372,19 @@ class TestNeedsHumanSeam:
         with _seed(tmp_path):
             script = _script(tmp_path, "exit 2\n")
             _bind("demo", _SEAM.format(script=script))
-            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
             driver = FakeDriver()
 
-            assert _dispatch.dispatch_pod("demo", runner=driver)[0].status == "waiting_input"
+            assert _sweep.dispatch_pod("demo", runner=driver)[0].status == "waiting_input"
             _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
 
-            persisted = _dispatch.read_tasks("demo")[0]
+            persisted = _queue.read_tasks("demo")[0]
             assert persisted["status"] == "failed"
 
 
 def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(tmp_path: Path) -> None:
     # Seam: dispatch writes hop.verify, evidence 1.1.0 reads it back; real code on both sides.
-    from docket.core import evidence as _evidence
+    from docket.tasks.application import evidence as _evidence
 
     with _run(tmp_path, "echo broke\nexit 1\n") as (res, _):
         doc = _evidence.task_evidence("demo", res.task_id, "1.1.0").model_dump(by_alias=True)

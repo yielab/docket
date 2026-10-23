@@ -16,11 +16,11 @@ from tests.fakes import FakeDriver
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.edges.adapters import docket_runtime as _dr
+from docket.agent import driver as _dr
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.cli._pod"
+SUBJECT = "docket.interfaces.cli.commands.pod"
 
 _runner = CliRunner()
 _MEMBER = "demo-implementer"
