@@ -397,7 +397,8 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   `ExpiredTrace`, `TraceExpiryReport`, `read_trace`, `find_trace`, `project_trace_dir`,
   `latest_trace_file`, `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
 - `src/docket/config.py`: `TRACES_DIR`, `TRACE_RETENTION_DAYS`/`TRACE_RETENTION_S`,
-  `SESSION_TIMEOUT`, `CONTEXT_BYTES_PER_TOKEN`, `METRICS_WINDOW`, `no_trace` (`DOCKET_NO_TRACE`)
+  `SESSION_TIMEOUT`, `CONTEXT_BYTES_PER_TOKEN`, `METRICS_WINDOW`
+- `src/docket/edges/adapters/system.py`: `no_trace` (`DOCKET_NO_TRACE`, read live)
 - `src/docket/core/secrets.py`: `secret_values` (the stored values requirement 8 scrubs)
 - `src/docket/core/agent_loop.py`: the `llm_call` and `tool_result` payload builders
   (requirements 21-28)

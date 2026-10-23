@@ -12,7 +12,6 @@ CLI surface live elsewhere.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +24,7 @@ import docket.config as _cfg
 from docket.core import privacy as _privacy
 from docket.core.trace import EVENT_TYPES
 from docket.edges import store as _store
+from docket.edges.adapters import system as _system
 from docket.kernel.errors import DocumentError, InvalidInput
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -518,7 +518,7 @@ def resolve_credentials(spec: ExporterSpec) -> tuple[list[str], str]:
     values: list[str] = []
     sources: set[str] = set()
     for name in spec.auth.credentials:
-        env_value = os.environ.get(name, "").strip()
+        env_value = _system.env_value(name)
         if env_value:
             values.append(env_value)
             sources.add("env")

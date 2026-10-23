@@ -16,7 +16,6 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import approval as _ap
-from docket.core import secrets as _secrets
 from docket.core import trace as _trace
 
 SUBJECT = "docket.serve"
@@ -103,7 +102,6 @@ class TestApprovalTrace:
 class TestStoredSecretRedaction:
     def test_redacts_stored_secret_value(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # File-backend secrets.json maps KEY -> value.
-        monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
         secret = "supersecretvalue1234567890"
         (home / "secrets.json").write_text(json.dumps({"MY_TOKEN": secret}))
         out = _trace.redact(f"the token is {secret} ok")
@@ -114,12 +112,10 @@ class TestStoredSecretRedaction:
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # redact.sh only redacts stored values longer than 8 chars.
-        monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
         (home / "secrets.json").write_text(json.dumps({"SHORT": "abc123"}))
         assert _trace.redact("value abc123 here") == "value abc123 here"
 
     def test_redaction_in_trace_event(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
         secret = "anothersecretvalue0987654321"
         (home / "secrets.json").write_text(json.dumps({"K": secret}))
         _trace.trace_event("p", "s", "r", "tool_call", json.dumps({"text": f"x {secret} y"}))

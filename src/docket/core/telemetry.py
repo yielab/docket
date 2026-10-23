@@ -20,6 +20,7 @@ from typing import Any, Protocol
 import docket.config as _cfg
 from docket.core import exporter as _exporter
 from docket.core import trace
+from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel import threads as _threads
@@ -977,7 +978,7 @@ def start(specs: Sequence[Any], sink_for: SinkFactory) -> int:
     subscribing one fan-out sink through `core.trace.add_subscriber`. Returns the count of
     pipelines actually started."""
     global _UNSUBSCRIBE
-    if _cfg.no_export():
+    if _system.no_export():
         return 0
     with _REGISTRY_LOCK:
         if _REGISTRY or _UNSUBSCRIBE is not None:

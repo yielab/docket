@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import patch_home, repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
@@ -437,7 +437,7 @@ class TestSystemPromptForAgent:
         assert "DURABLE-MEMORY" not in refreshed
 
     def test_oversized_memory_is_visibly_truncated(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 350, raising=True)
+        patch_home(monkeypatch, context_token_budget_override=350)
         ws = _write_meta("bounded-context-agent")
         (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
         (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
@@ -448,7 +448,7 @@ class TestSystemPromptForAgent:
 
         assert "KEEP-AGENT-RULE" in prompt
         assert "[... MEMORY.md truncated:" in prompt
-        assert _context.estimate_tokens(prompt) <= _cfg.CONTEXT_TOKEN_BUDGET
+        assert _context.estimate_tokens(prompt) <= 350
 
     def test_oversized_soul_does_not_erase_the_contract_or_memory(self) -> None:
         """A SOUL.md alone larger than the whole budget must not blank every section."""

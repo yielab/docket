@@ -16,13 +16,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import patch_home, repoint_docket_home
 
 import docket.config as _cfg
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import fetch as _fetch
-from docket.edges.adapters import toolbox
 
 SUBJECT = "docket.edges.adapters.fetch"
 
@@ -163,7 +162,7 @@ class TestResponseSizeCap:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _allow(monkeypatch, server)
-        monkeypatch.setattr(toolbox, "MAX_OUTPUT_CHARS", 100, raising=True)
+        patch_home(monkeypatch, tool_max_output_chars=100)
         out = _fetch.fetch_url(f"{server}/big")
         assert out.ok and "more characters]" in out.content
         assert len(out.content) <= 100 + 60

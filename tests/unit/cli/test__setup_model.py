@@ -22,6 +22,7 @@ from docket.cli import _setup_model, app
 from docket.core import models_policy as _mp
 from docket.core import provider as _prov
 from docket.core import secrets as _secrets
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._setup_model"
 
@@ -112,7 +113,7 @@ class TestKeyringBackendStores:
 
         assert ok is True
         assert stored == {"ANTHROPIC_API_KEY": "fake-ant-realvalue0000000"}
-        on_disk = json.loads(_secrets.SECRETS_FILE.read_text())
+        on_disk = json.loads(current_home().secrets_file.read_text())
         assert on_disk["ANTHROPIC_API_KEY"] == ""
 
     def test_add_fails_closed_when_secret_tool_store_fails(
@@ -125,8 +126,8 @@ class TestKeyringBackendStores:
         ok = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
         assert ok is False
-        assert not _secrets.SECRETS_FILE.exists() or "ANTHROPIC_API_KEY" not in json.loads(
-            _secrets.SECRETS_FILE.read_text() or "{}"
+        assert not current_home().secrets_file.exists() or "ANTHROPIC_API_KEY" not in json.loads(
+            current_home().secrets_file.read_text() or "{}"
         )
 
     def test_rotate_stores_through_secret_tool(
@@ -152,7 +153,7 @@ class TestKeyringBackendStores:
 
         assert rc == 0
         assert stored == {"ANTHROPIC_API_KEY": "fake-ant-rotated000000000"}
-        on_disk = json.loads(_secrets.SECRETS_FILE.read_text())
+        on_disk = json.loads(current_home().secrets_file.read_text())
         assert on_disk["ANTHROPIC_API_KEY"] == ""
 
     def test_remove_clears_the_keyring_entry(
@@ -174,7 +175,7 @@ class TestKeyringBackendStores:
 
         assert rc == 0
         assert cleared == ["ANTHROPIC_API_KEY"]
-        assert "ANTHROPIC_API_KEY" not in json.loads(_secrets.SECRETS_FILE.read_text())
+        assert "ANTHROPIC_API_KEY" not in json.loads(current_home().secrets_file.read_text())
 
 
 class TestFileBackendUnaffected:
@@ -185,7 +186,7 @@ class TestFileBackendUnaffected:
         stored = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
         assert stored is True
-        on_disk = json.loads(_secrets.SECRETS_FILE.read_text())
+        on_disk = json.loads(current_home().secrets_file.read_text())
         assert on_disk["ANTHROPIC_API_KEY"] == "fake-ant-realvalue0000000"
 
 
@@ -542,7 +543,7 @@ class TestProviderAddStoresNothingOnTransportFailure:
         assert result.exit_code == 1
         assert "Nothing was registered" in result.stderr
         assert _secrets.load_secrets() == {}
-        assert not _secrets.SECRETS_META_FILE.exists()
+        assert not current_home().secrets_meta_file.exists()
         assert _global_providers(home) == {}
 
     def test_a_reachable_endpoint_stores_the_credential_after_the_probe(
@@ -604,7 +605,7 @@ class TestKeyringRequestedWithoutSecretTool:
         stored = _setup_model._write_credential("ANTHROPIC_API_KEY", "sk-ant-secret1", "add")
 
         assert stored is False
-        assert not _secrets.SECRETS_FILE.exists()
+        assert not current_home().secrets_file.exists()
         err = capsys.readouterr().err
         assert "secret-tool" in err
         assert "DOCKET_SECRETS_BACKEND" in err
@@ -623,7 +624,7 @@ class TestKeyringRequestedWithoutSecretTool:
 
         assert result.exit_code == 1
         assert "secret-tool" in result.stderr
-        assert not _secrets.SECRETS_FILE.exists()
+        assert not current_home().secrets_file.exists()
         assert _global_providers(home) == {}
 
     def test_a_keyless_provider_does_not_need_the_keyring(

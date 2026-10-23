@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import docket.config as _cfg
+from docket.edges import store
+from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 
 # A sink receives the exact record trace_event is about to append (after
@@ -150,11 +152,11 @@ def _stored_secret_values() -> list[str]:
         values.extend(v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8)
     except Exception:
         pass
-    for name, raw in os.environ.items():
-        if name in _ENV_CREDENTIAL_NAMES or name.endswith(_ENV_CREDENTIAL_SUFFIXES):
-            value = raw.strip()
-            if len(value) > 8:
-                values.append(value)
+    values.extend(
+        v
+        for v in _system.credential_env_values(_ENV_CREDENTIAL_NAMES, _ENV_CREDENTIAL_SUFFIXES)
+        if len(v) > 8
+    )
     return values
 
 
@@ -196,7 +198,7 @@ def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
     if not records:
         return
     is_new = not tracefile.exists()
-    _cfg.mkdir_private(tracefile.parent)
+    store.mkdir_private(tracefile.parent)
     with tracefile.open("a", encoding="utf-8") as f:
         for r in records:
             f.write(json.dumps(r) + "\n")
@@ -268,7 +270,7 @@ def trace_event(
     ``"suppressed"`` under DOCKET_NO_TRACE=1 -- three outcomes a caller can
     tell apart, so a suppressed write is never mistaken for a real one.
     payload is parsed as JSON when possible, else wrapped as ``{"text": ...}``."""
-    if _cfg.no_trace():
+    if _system.no_trace():
         return "suppressed"
     if event_type not in EVENT_TYPES:
         return "rejected"
@@ -320,7 +322,7 @@ def sweep_all() -> None:
     """Append a synthetic 'aborted' session_end, after notifying subscribers, to every trace
     older than SESSION_TIMEOUT that has none (called by docket start).
     No-ops under DOCKET_NO_TRACE=1."""
-    if _cfg.no_trace():
+    if _system.no_trace():
         return
     traces_root = _cfg.TRACES_DIR
     if not traces_root.is_dir():

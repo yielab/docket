@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib as _hashlib
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -23,7 +22,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.cli import _pod_show as _show
-from docket.cli._target import TargetError, pod_option, resolve_pod
+from docket.cli._target import TargetError, pod_option
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -199,7 +198,7 @@ def build_pod_from_blueprint(
 def _pod_name(name: str | None) -> str:
     """The pod a leaf acts on: ``--pod``, ``DOCKET_POD``, then the cwd; exit 1 when none."""
     try:
-        return resolve_pod(name, env=os.environ, cwd=Path.cwd())
+        return _contract.resolve_pod_here(name)
     except TargetError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc

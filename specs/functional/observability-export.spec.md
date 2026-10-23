@@ -978,8 +978,8 @@ ok Exporter privacy updated: langfuse
 - `src/docket/core/dispatch.py`: the hop marker and hop reply (requirement 108) and the
   `session_end` write (requirement 106)
 - `src/docket/config.py`: `EXPORTER_TEMPLATES_DIR`, `EXPORTERS_FILE`, `EXPORTERS_HEALTH_FILE`,
-  `EXPORT_QUEUE_MAX`, `EXPORT_FLUSH_TIMEOUT_S`, `DISPATCH_RETRY_MAX_WAIT_S`, `TRACES_DIR`,
-  `no_export` (`DOCKET_NO_EXPORT`)
+  `EXPORT_QUEUE_MAX`, `EXPORT_FLUSH_TIMEOUT_S`, `DISPATCH_RETRY_MAX_WAIT_S`, `TRACES_DIR`
+- `src/docket/edges/adapters/system.py`: `no_export` (`DOCKET_NO_EXPORT`, read live)
 - `src/docket/templates/exporters/`: the five built-in documents
 - `src/docket/cli/_setup_export.py`: `docket setup export` (requirements 60-63, 90-102)
 - `src/docket/cli/_setup_check.py`: the `docket setup` exporter lines (requirement 97)

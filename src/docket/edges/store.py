@@ -38,6 +38,19 @@ class _NotJSONObject(ValueError):
     """A parsed Docket JSON document has the wrong top-level type."""
 
 
+def mkdir_private(path: Path) -> None:
+    """Create *path* and any missing parents; every directory this call creates is 0700,
+    whatever the umask. An existing directory's mode is never changed."""
+    missing: list[Path] = []
+    current = path
+    while not current.exists() and current != current.parent:
+        missing.append(current)
+        current = current.parent
+    path.mkdir(parents=True, exist_ok=True)
+    for made in missing:
+        os.chmod(made, 0o700)
+
+
 def _lock_path(target: Path) -> Path:
     # Shared lock file per directory so concurrent writes to any file in the
     # same dir are serialised without deadlock (a single lock per dir, never nested).

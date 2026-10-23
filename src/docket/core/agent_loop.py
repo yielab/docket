@@ -180,6 +180,7 @@ from docket.core.tools import ToolContext, ToolDenialKind, ToolRegistry, ToolRes
 from docket.core.trace import trace_event
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel.home import current_home
 
 __all__ = [
     "AgentLoopResult",
@@ -218,9 +219,9 @@ MIN_OUTPUT_TOKENS = 256
 @dataclass(frozen=True)
 class LoopConfig:
     """Bounds for one ``run_agent_turn`` call. See the module docstring for
-    what each one guards against; defaults come from ``config.py``'s
-    ``AGENT_LOOP_*`` constants so every tunable here is env-overridable the
-    same way every other docket tunable is.
+    what each one guards against; defaults come from the current ``Home``'s
+    ``agent_loop_*`` fields, read when the config is built, so every tunable here
+    is env-overridable the same way every other docket tunable is.
 
     ``max_tokens``/``temperature`` are passed straight through to
     ``ChatBackend.complete`` — ``None`` (the default for both) means "let the
@@ -230,13 +231,21 @@ class LoopConfig:
     rather than inventing an output bound.
     """
 
-    max_iterations: int = _cfg.AGENT_LOOP_MAX_ITERATIONS
-    max_tool_calls: int = _cfg.AGENT_LOOP_MAX_TOOL_CALLS
-    max_consecutive_tool_denials: int = _cfg.AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS
-    no_progress_rounds: int = _cfg.AGENT_LOOP_NO_PROGRESS_ROUNDS
-    wall_clock_timeout_s: float = _cfg.AGENT_LOOP_WALL_CLOCK_TIMEOUT_S
-    token_budget: int = _cfg.AGENT_LOOP_TOKEN_BUDGET
-    request_timeout_s: int = _cfg.AGENT_LOOP_REQUEST_TIMEOUT_S
+    max_iterations: int = field(default_factory=lambda: current_home().agent_loop_max_iterations)
+    max_tool_calls: int = field(default_factory=lambda: current_home().agent_loop_max_tool_calls)
+    max_consecutive_tool_denials: int = field(
+        default_factory=lambda: current_home().agent_loop_max_consecutive_tool_denials
+    )
+    no_progress_rounds: int = field(
+        default_factory=lambda: current_home().agent_loop_no_progress_rounds
+    )
+    wall_clock_timeout_s: float = field(
+        default_factory=lambda: current_home().agent_loop_wall_clock_timeout_s
+    )
+    token_budget: int = field(default_factory=lambda: current_home().agent_loop_token_budget)
+    request_timeout_s: int = field(
+        default_factory=lambda: current_home().agent_loop_request_timeout_s
+    )
     max_tokens: int | None = None
     temperature: float | None = None
     history_budget_tokens: int | None = None

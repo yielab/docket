@@ -47,3 +47,19 @@ def test_a_backup_is_0600_even_when_the_original_is_world_readable(tmp_path: Pat
     finally:
         os.umask(old)
     assert oct(os.stat(tmp_path / "fleet.json.bak").st_mode & 0o777) == "0o600"
+
+
+def test_mkdir_private_makes_new_directories_0700_and_leaves_existing_ones(
+    tmp_path: Path,
+) -> None:
+    existing = tmp_path / "existing"
+    existing.mkdir(mode=0o755)
+    existing.chmod(0o755)
+    old_umask = os.umask(0)
+    try:
+        store.mkdir_private(existing / "a" / "b")
+    finally:
+        os.umask(old_umask)
+    assert oct(os.stat(existing / "a").st_mode & 0o777) == "0o700"
+    assert oct(os.stat(existing / "a" / "b").st_mode & 0o777) == "0o700"
+    assert oct(os.stat(existing).st_mode & 0o777) == "0o755"

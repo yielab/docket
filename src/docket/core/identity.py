@@ -21,9 +21,8 @@ stale copy.
 
 from __future__ import annotations
 
-import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -37,6 +36,7 @@ from docket.core import repo_view as _repo_view
 from docket.core import skills as _skills
 from docket.core.audit import audit_log
 from docket.core.memory import MEMORY_FILE, REQUIRED_STARTUP_FILE
+from docket.kernel.home import current_home
 
 #: A composed prompt section's fit outcome, for the ``prompt_composed`` trace event
 #: `core/agent_loop.py` emits -- this module stays trace-free and only reports data.
@@ -103,7 +103,7 @@ class PromptComposition:
     # The static-context budget this composition was fit to, and where that number
     # came from (see resolve_static_context_budget) -- reported even for an empty
     # composition (no prompt material), describing what would have applied.
-    budget_tokens: int = _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+    budget_tokens: int = field(default_factory=lambda: current_home().context_token_budget_default)
     budget_source: _context.BudgetSource = "default"
 
 
@@ -269,28 +269,21 @@ def resolve_static_context_budget(
     """Resolve the static-context token budget (SOUL plus runtime workspace
     state) and name where its value came from: ``env``, ``window``, or ``default``.
     """
-    # An explicit CONTEXT_TOKEN_BUDGET override always wins, checked two ways so both
-    # a real deployment (the environment variable) and a test
-    # (monkeypatch.setattr(config, "CONTEXT_TOKEN_BUDGET", ...), which never touches
-    # the environment) count as "explicitly set": either the env var is present, or
-    # the resolved module constant no longer matches CONTEXT_TOKEN_BUDGET_DEFAULT.
-    # Otherwise the budget is a documented share of the resolved window (see
-    # core.context.resolve_window_share_tokens), floored at today's plain constant so
-    # an absent or unregistered window resolves to exactly today's behaviour.
-    if (
-        os.environ.get("CONTEXT_TOKEN_BUDGET")
-        or _cfg.CONTEXT_TOKEN_BUDGET != _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
-    ):
-        return _cfg.CONTEXT_TOKEN_BUDGET, "env"
+    # An explicit override (CONTEXT_TOKEN_BUDGET in the environment, or a Home that sets it)
+    # always wins. Otherwise the budget is a documented share of the resolved window (see
+    # core.context.resolve_window_share_tokens), floored at today's plain default so an
+    # absent or unregistered window resolves to exactly today's behaviour.
+    home = current_home()
+    if home.context_token_budget_override is not None:
+        return home.context_token_budget_override, "env"
+    default = home.context_token_budget_default
     tokens = _context.resolve_window_share_tokens(
         context_window_tokens=context_window_tokens,
         max_output_tokens=max_output_tokens,
-        floor_tokens=_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT,
+        floor_tokens=default,
         reserved_tokens=_context.TOOL_SCHEMA_RESERVE_TOKENS,
     )
-    source: _context.BudgetSource = (
-        "window" if tokens > _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT else "default"
-    )
+    source: _context.BudgetSource = "window" if tokens > default else "default"
     return tokens, source
 
 
@@ -336,7 +329,7 @@ def _runtime_workspace_context(
         return "", ()
 
     if max_bytes is None:
-        max_bytes = _cfg.CONTEXT_TOKEN_BUDGET * _cfg.CONTEXT_BYTES_PER_TOKEN
+        max_bytes = current_home().context_token_budget * _cfg.CONTEXT_BYTES_PER_TOKEN
     remaining = max_bytes - len(base_prompt.encode("utf-8"))
     if base_prompt:
         remaining -= len(b"\n\n---\n\n")

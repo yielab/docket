@@ -19,10 +19,10 @@ from datetime import datetime
 from typing import Any
 
 from docket import __version__
-from docket.config import DISPATCH_RETRY_MAX_WAIT_S
 from docket.core.telemetry import AttrValue, Span, SpanEvent
 from docket.edges.adapters.redirects import open_same_origin
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 _RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
 _STATUS_CODES: dict[str, int] = {"ok": 1, "error": 2}
@@ -210,7 +210,9 @@ class OtlpHttpSink:
         if status is not None and 200 <= status < 300:
             return SinkResult(accepted=len(spans), status=status, error="")
         if status in _RETRYABLE_STATUS:
-            wait = min(retry_after or _DEFAULT_RETRY_WAIT_S, DISPATCH_RETRY_MAX_WAIT_S)
+            wait = min(
+                retry_after or _DEFAULT_RETRY_WAIT_S, current_home().dispatch_retry_max_wait_s
+            )
             self._sleep(wait)
             status, error, retry_after = _post(
                 self._opener, self._endpoint, body, wire_headers, self._timeout_s

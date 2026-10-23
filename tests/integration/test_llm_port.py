@@ -22,6 +22,7 @@ from threading import Thread
 from typing import Any
 
 import pytest
+from tests.conftest import point_home_at
 
 from docket.core import llm
 from docket.core.dispatch import _RETRYABLE_FAILURE_KINDS
@@ -673,10 +674,8 @@ class TestEndpointResolution:
         monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
 
         from docket.cli import _setup_model
-        from docket.core import secrets as _secrets
 
-        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
-        monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
+        point_home_at(monkeypatch, tmp_path)
         monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
 
         assert _setup_model._write_credential("OPENROUTER_API_KEY", "sk-or-stored", "add")
@@ -826,7 +825,7 @@ class TestEndpointResolution:
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env")
         from docket.core import secrets as _secrets
 
-        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
+        point_home_at(monkeypatch, tmp_path)
         _secrets.save_secrets({"OPENROUTER_API_KEY": "sk-or-stored"})
 
         endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-haiku-4.5")

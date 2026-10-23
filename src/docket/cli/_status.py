@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +11,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.cli._setup_sandbox import _off_label, print_sandbox_block, sandbox_state
-from docket.cli._target import TargetError, pod_option, resolve_pod
+from docket.cli._target import TargetError, pod_option
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import network_posture as _np
@@ -432,7 +431,7 @@ def cmd_status(
             _render_all(summaries)
         return
     try:
-        project = resolve_pod(pod, env=os.environ, cwd=Path.cwd())
+        project = _contract.resolve_pod_here(pod)
     except TargetError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc

@@ -27,6 +27,7 @@ from typing import Any, Literal
 from filelock import FileLock, Timeout
 
 import docket.config as _cfg
+from docket.edges import store
 from docket.kernel import clock as _clock
 
 # Sentinel prev_hash for the first entry of a chain (fresh log, or the first
@@ -241,7 +242,7 @@ def audit_log(action: str, detail: str = "") -> AuditWriteResult:
     """
     logf = _cfg.AUDIT_LOG
     try:
-        _cfg.mkdir_private(logf.parent)
+        store.mkdir_private(logf.parent)
     except OSError:
         return AuditWriteResult("failed")
 

@@ -19,7 +19,6 @@ model-profiles.spec.md "Provider readiness" 3 and ADR 0011 §4.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 import docket.config as _cfg
 from docket.core.llm import ModelLimits
 from docket.edges import store as _store
+from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DocumentError, InvalidInput
 
@@ -423,13 +423,13 @@ def resolve_credential(spec: ProviderSpec) -> tuple[str, str]:
     """Resolve *spec*'s credential value: ``(value, source)``, source one of ``"override"``
     (``DOCKET_LLM_API_KEY``), ``"env"``, ``"store"`` or ``"none"``, checked in that order per
     name in ``auth.credentials``."""
-    override = os.environ.get("DOCKET_LLM_API_KEY", "").strip()
+    override = _system.env_value("DOCKET_LLM_API_KEY")
     if override:
         return override, "override"
     if spec.auth.type == "none":
         return "", "none"
     for name in spec.auth.credentials:
-        value = os.environ.get(name, "").strip()
+        value = _system.env_value(name)
         if value:
             return value, "env"
     from docket.core import secrets as _secrets
@@ -747,7 +747,7 @@ def model_readiness(model: str) -> ModelReadiness:
     credential_names = tuple(spec.auth.credentials) if spec else ()
     credential_name = credential_names[0] if credential_names else ""
     credential_present = any(
-        bool(os.environ.get(name, "").strip()) or bool(_secrets.secret_value(name))
+        bool(_system.env_value(name)) or bool(_secrets.secret_value(name))
         for name in credential_names
     )
     endpoint = _llm.resolve_endpoint(model)

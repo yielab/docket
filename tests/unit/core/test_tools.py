@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import pytest
+from tests.conftest import patch_home
 
 import docket.config as _cfg
 from docket.core import approval as core_approval
@@ -34,6 +35,7 @@ from docket.core.tools import (
 )
 from docket.edges.adapters import toolbox
 from docket.edges.adapters.toolbox import PathEscapeError, ToolOutcome, resolve_within
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.tools"
 
@@ -544,7 +546,7 @@ class TestBuiltinHandlers:
         assert out.ok and out.content == "ok"
 
     def test_output_is_truncated_with_an_announcement(self, workspace: Path) -> None:
-        big = "x" * (toolbox.MAX_OUTPUT_CHARS + 500)
+        big = "x" * (current_home().tool_max_output_chars + 500)
         (workspace / "big.txt").write_text(big)
         out = toolbox.read_file((workspace,), "big.txt")
         assert out.ok and "[truncated:" in out.content
@@ -557,7 +559,7 @@ class TestBuiltinHandlers:
         (workspace / "mid.txt").write_text(body)
         assert "[truncated:" not in toolbox.read_file((workspace,), "mid.txt").content
 
-        monkeypatch.setattr(toolbox, "MAX_OUTPUT_CHARS", 1_000)
+        patch_home(monkeypatch, tool_max_output_chars=1_000)
         out = toolbox.read_file((workspace,), "mid.txt")
         numbered_length = len(f"{1}\t{body}")
         assert out.ok and f"[truncated: {numbered_length - 1_000} more characters]" in out.content

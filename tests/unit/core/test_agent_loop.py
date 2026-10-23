@@ -7,6 +7,7 @@ The full turn is still `tests/integration/test_agent_loop.py`'s job.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from docket.core.llm import ChatResponse
 from docket.core.tools import Tool as _Tool
 from docket.core.tools import ToolContext, ToolRegistry, ToolResult
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.agent_loop"
 
@@ -188,3 +190,29 @@ class TestApprovalParkedError:
             "approval_parked: tool='bash' call_id='call-1' policy_id='test-ask-echo' "
             "reason='require_approval' approval_token='apr-abc123'"
         )
+
+
+def test_the_loop_bounds_default_to_the_current_home(tmp_path: Path) -> None:
+    """The defaults are read when a LoopConfig is built, not when the module is imported."""
+    tuned = dataclasses.replace(
+        current_home(),
+        agent_loop_max_iterations=7,
+        agent_loop_max_tool_calls=8,
+        agent_loop_max_consecutive_tool_denials=9,
+        agent_loop_no_progress_rounds=10,
+        agent_loop_wall_clock_timeout_s=11.5,
+        agent_loop_token_budget=12,
+        agent_loop_request_timeout_s=13,
+    )
+    with use_home(tuned):
+        config = _loop.LoopConfig()
+    assert (
+        config.max_iterations,
+        config.max_tool_calls,
+        config.max_consecutive_tool_denials,
+        config.no_progress_rounds,
+        config.wall_clock_timeout_s,
+        config.token_budget,
+        config.request_timeout_s,
+    ) == (7, 8, 9, 10, 11.5, 12, 13)
+    assert _loop.LoopConfig().max_iterations == current_home().agent_loop_max_iterations

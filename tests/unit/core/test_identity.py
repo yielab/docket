@@ -5,10 +5,12 @@ The display name is a pure function of docket metadata (name → role).
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import patch_home
 
 import docket.config as _cfg
 from docket.core import identity as I
@@ -16,6 +18,7 @@ from docket.core import memory as _mem
 from docket.core import pod as _pod
 from docket.core.models import AgentMeta
 from docket.edges import store as _store
+from docket.kernel.home import current_home, use_home
 
 _LOCAL_WINDOW = 16_384
 _LOCAL_MAX_OUTPUT = 8_192
@@ -101,7 +104,7 @@ class TestRuntimeWorkspaceContextReporting:
     def test_an_oversized_memory_is_truncated_visibly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 130, raising=True)
+        patch_home(monkeypatch, context_token_budget_override=130)
         (tmp_path / "MEMORY.md").write_text("## Facts\n" + ("M" * 800) + "\n")
 
         text, sections = I._runtime_workspace_context(tmp_path, "")
@@ -113,7 +116,7 @@ class TestRuntimeWorkspaceContextReporting:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Even when the whole framed block cannot fit, the section still gets a marker."""
-        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 50, raising=True)
+        patch_home(monkeypatch, context_token_budget_override=50)
         (tmp_path / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
 
         text, sections = I._runtime_workspace_context(tmp_path, "")
@@ -127,18 +130,18 @@ class TestResolveStaticContextBudget:
 
     def test_no_window_resolves_to_the_default(self) -> None:
         tokens, source = I.resolve_static_context_budget(None, None)
-        assert (tokens, source) == (_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT, "default")
+        assert (tokens, source) == (current_home().context_token_budget_default, "default")
 
     def test_a_small_registered_window_keeps_the_default(self) -> None:
         """Today's only deployed window (local llama.cpp, 16384/8192) must not change
         the resolved static budget -- the floor, not the share, wins here."""
         tokens, source = I.resolve_static_context_budget(_LOCAL_WINDOW, _LOCAL_MAX_OUTPUT)
-        assert (tokens, source) == (_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT, "default")
+        assert (tokens, source) == (current_home().context_token_budget_default, "default")
 
     def test_a_large_registered_window_resolves_a_bigger_share(self) -> None:
         tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
         assert source == "window"
-        assert tokens > _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        assert tokens > current_home().context_token_budget_default
 
     def test_env_style_override_wins_even_with_a_large_window(
         self, monkeypatch: pytest.MonkeyPatch
@@ -146,16 +149,18 @@ class TestResolveStaticContextBudget:
         """A test-style override (module attribute, never the environment) must still be
         honoured as an explicit override -- the same path a real CONTEXT_TOKEN_BUDGET env
         var takes, since the module constant is what every reader actually sees."""
-        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 350, raising=True)
+        patch_home(monkeypatch, context_token_budget_override=350)
         tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
         assert (tokens, source) == (350, "env")
 
     def test_real_env_var_wins_even_when_equal_to_the_default(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("CONTEXT_TOKEN_BUDGET", str(_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT))
+        patch_home(
+            monkeypatch, context_token_budget_override=current_home().context_token_budget_default
+        )
         tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
-        assert (tokens, source) == (_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT, "env")
+        assert (tokens, source) == (current_home().context_token_budget_default, "env")
 
 
 class TestComposeAgentPromptIsWindowAware:
@@ -189,7 +194,7 @@ class TestComposeAgentPromptIsWindowAware:
         assert "DURABLE-MEMORY-LINE" in composition.text
         assert "ACTIVE-LEDGER-LINE" not in composition.text
         assert "VERIFY-GATE-LINE" not in composition.text
-        assert composition.budget_tokens == _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        assert composition.budget_tokens == current_home().context_token_budget_default
         assert composition.budget_source == "default"
 
     def test_a_large_registered_window_fits_every_section_in_full(self) -> None:
@@ -413,10 +418,10 @@ class TestPodMemoryIsTheLastFramedSection:
         self._accepted("tight", "a.js")
         (tmp_path / "a.js").write_text("x")
         base = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
-        monkeypatch.setattr(
-            _cfg,
-            "CONTEXT_TOKEN_BUDGET",
-            len(base.text.encode()) // _cfg.CONTEXT_BYTES_PER_TOKEN - 40,
+        patch_home(
+            monkeypatch,
+            context_token_budget_override=len(base.text.encode()) // _cfg.CONTEXT_BYTES_PER_TOKEN
+            - 40,
         )
 
         composition = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
@@ -467,3 +472,9 @@ class TestScreensSeeThePodPolicy:
             "implementer", "deploy", "CANARY-PHRASE here", project="mypod"
         )
         assert status == "omitted"
+
+
+def test_a_composition_defaults_its_budget_from_the_current_home() -> None:
+    with use_home(dataclasses.replace(current_home(), context_token_budget_default=777)):
+        assert I.PromptComposition(text="").budget_tokens == 777
+        assert I.resolve_static_context_budget(None, None) == (777, "default")

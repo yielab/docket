@@ -12,7 +12,7 @@ from rich.markup import escape
 from docket import ui
 from docket.cli import _contract, _progress
 from docket.cli._setup import readiness
-from docket.cli._target import TargetError, pod_option, resolve_pod
+from docket.cli._target import TargetError, pod_option
 from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import dispatch as _dispatch
@@ -340,10 +340,9 @@ def cmd_run(
 
     Example: docket run --dry-run
     """
-    import os
 
     try:
-        project = resolve_pod(pod, env=os.environ, cwd=Path.cwd())
+        project = _contract.resolve_pod_here(pod)
     except TargetError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc

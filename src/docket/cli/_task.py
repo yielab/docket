@@ -18,7 +18,7 @@ from rich.markup import escape
 
 from docket import ui
 from docket.cli import _contract
-from docket.cli._target import TargetError, pod_option, resolve_pod
+from docket.cli._target import TargetError, pod_option
 from docket.core import answers as _answers
 from docket.core import approval as _ap
 from docket.core import corrections as _corrections
@@ -56,7 +56,7 @@ def _say(text: str) -> None:
 
 def _pod_name(pod: str | None) -> str:
     try:
-        return resolve_pod(pod, env=os.environ, cwd=Path.cwd())
+        return _contract.resolve_pod_here(pod)
     except TargetError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc

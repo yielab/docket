@@ -2102,7 +2102,7 @@ def _hop_usage(run_res: _rd.TurnResult) -> dict[str, int] | None:
 def _hop_trace_link(ctx: _UnitContext, first_ts: str) -> dict[str, str] | None:
     """The hop's trace link; ``lastTs`` is refreshed once the hop's closing events are written
     (``_persist_hop_and_trace``). ``None`` under ``DOCKET_NO_TRACE``."""
-    if _cfg.no_trace() or not first_ts:
+    if _sys.no_trace() or not first_ts:
         return None
     return {
         "project": ctx.project,

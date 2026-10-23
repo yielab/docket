@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import dataclasses
 import json
 import socket
 import threading
@@ -12,6 +13,7 @@ from typing import Any, ClassVar
 
 from docket.core import telemetry
 from docket.edges.adapters.exporters import otlp_http
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.edges.adapters.exporters.otlp_http"
 
@@ -145,6 +147,17 @@ class TestEmitRetry:
             assert result.accepted == len(spans)
             assert result.status == 200
             assert sleeps == [1.0]
+        finally:
+            srv.shutdown()
+
+    def test_the_wait_is_capped_by_the_current_home(self) -> None:
+        srv, url = _server([(429, {"Retry-After": "30"}), (200, {})])
+        try:
+            sleeps: list[float] = []
+            sink = otlp_http.OtlpHttpSink(endpoint=url, auth_header=None, sleep=sleeps.append)
+            with use_home(dataclasses.replace(current_home(), dispatch_retry_max_wait_s=2.5)):
+                sink.emit(_projected_spans())
+            assert sleeps == [2.5]
         finally:
             srv.shutdown()
 

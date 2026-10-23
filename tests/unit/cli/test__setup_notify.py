@@ -15,6 +15,7 @@ from docket.cli import _contract, _setup_notify, app
 from docket.core import channel as _chan
 from docket.core import fleet as _fleet
 from docket.core import secrets as _secrets
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._setup_notify"
 
@@ -137,7 +138,7 @@ class TestStoreSecretBackend:
         with pytest.raises(_setup_notify.NotifySetupError, match="secret-tool"):
             _setup_notify.store_secret("TELEGRAM_BOT_TOKEN", "123:plaintext-must-not-land")
         assert _secrets.load_secrets() == {}
-        assert not _secrets.SECRETS_FILE.exists()
+        assert not current_home().secrets_file.exists()
 
     def test_enable_telegram_checks_the_backend_before_it_enables_the_channel(
         self, tmp_path: Path, two_pods: list[str], monkeypatch: pytest.MonkeyPatch

@@ -31,11 +31,7 @@ from docket.core.utils import aggregate_cost, gating_cost, project_ids
 from docket.edges import store
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
-
-TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
-RUNAWAY_TURNS_THRESHOLD = _cfg.RUNAWAY_TURNS_THRESHOLD
-RUNAWAY_COST_THRESHOLD = _cfg.RUNAWAY_COST_THRESHOLD
-KEY_MAX_AGE_DAYS = _cfg.KEY_MAX_AGE_DAYS
+from docket.kernel.home import current_home
 
 _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
 
@@ -276,7 +272,10 @@ def _check_runaway(ids: list[str], cost: dict[str, tuple[str, float, int]]) -> i
     issues = 0
     for aid in ids:
         _budget, cost_f, turns = cost.get(aid, ("", 0.0, 0))
-        runaway = turns > RUNAWAY_TURNS_THRESHOLD or cost_f >= RUNAWAY_COST_THRESHOLD
+        runaway = (
+            turns > current_home().runaway_turns_threshold
+            or cost_f >= current_home().runaway_cost_threshold
+        )
         if runaway:
             ui.console.print(f"[red]✗[/red]   {aid}: runaway — {turns} turns, ${cost_f:.6f}")
             issues += 1
@@ -294,7 +293,7 @@ def _check_key_hygiene() -> int:
     if _secrets_backend() == "keyring":
         ui.success("  Backend: keyring (values in OS keyring, not plaintext at rest)")
     else:
-        ui.warn(f"  Backend: file — secrets are plaintext at rest in {_secrets.SECRETS_FILE}")
+        ui.warn(f"  Backend: file — secrets are plaintext at rest in {current_home().secrets_file}")
         ui.dim("    For at-rest protection: DOCKET_SECRETS_BACKEND=keyring (libsecret)")
     stale = 0
     for state, name, detail in report:
@@ -306,7 +305,7 @@ def _check_key_hygiene() -> int:
         else:
             ui.success(f"  {name}: {detail}")
     if stale:
-        ui.dim(f"  Rotate keys older than {KEY_MAX_AGE_DAYS} days")
+        ui.dim(f"  Rotate keys older than {current_home().key_max_age_days} days")
     return 0
 
 
@@ -592,7 +591,9 @@ def _check_template_version(ids: list[str]) -> int:
     if not ids:
         return 0
     ui.console.print()
-    ui.console.print(f"[bold]Template version (current: v{TEMPLATE_VERSION}):[/bold]")
+    ui.console.print(
+        f"[bold]Template version (current: v{current_home().template_version}):[/bold]"
+    )
     from docket.core import pod as _pod
 
     drift = 0
@@ -606,8 +607,8 @@ def _check_template_version(ids: list[str]) -> int:
         if not tv:
             ui.warn(f"  {aid}: unstamped (pre-versioning)")
             drift += 1
-        elif tv != str(TEMPLATE_VERSION):
-            ui.warn(f"  {aid}: on v{tv}, current v{TEMPLATE_VERSION}")
+        elif tv != str(current_home().template_version):
+            ui.warn(f"  {aid}: on v{tv}, current v{current_home().template_version}")
             drift += 1
         else:
             ui.success(f"  {aid}: v{tv} (current)")
@@ -693,7 +694,7 @@ def _fmt_num(s: str) -> str:
 
 def _secrets_backend() -> str:
     """Resolve the secrets backend (keyring if requested + available, else file)."""
-    if _cfg.secrets_backend_requested() == "keyring" and shutil.which("secret-tool"):
+    if _sys.secrets_backend_requested() == "keyring" and shutil.which("secret-tool"):
         return "keyring"
     return "file"
 
@@ -726,7 +727,7 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
             continue
         age = max(0, (now - dt).days)
         verb = "since rotation" if rotated else "old"
-        state = "STALE" if age >= KEY_MAX_AGE_DAYS else "OK"
+        state = "STALE" if age >= current_home().key_max_age_days else "OK"
         out.append((state, key, f"{age}d {verb}"))
     return out
 
@@ -835,7 +836,10 @@ def _check_json_budget_runaway(
             budget_results.append(
                 {"id": aid, "costUsd": round(cost_f, 6), "budgetUsd": None, "ok": True}
             )
-        runaway = turns > RUNAWAY_TURNS_THRESHOLD or cost_f >= RUNAWAY_COST_THRESHOLD
+        runaway = (
+            turns > current_home().runaway_turns_threshold
+            or cost_f >= current_home().runaway_cost_threshold
+        )
         if runaway:
             issues += 1
         runaway_results.append(
@@ -901,8 +905,8 @@ def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
             {
                 "id": aid,
                 "agentVersion": tv_i,
-                "currentVersion": TEMPLATE_VERSION,
-                "ok": tv_i == TEMPLATE_VERSION,
+                "currentVersion": current_home().template_version,
+                "ok": tv_i == current_home().template_version,
             }
         )
     return tmpl_results

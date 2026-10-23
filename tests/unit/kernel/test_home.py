@@ -87,3 +87,9 @@ def test_the_default_reads_the_environment_once_until_reset(
     assert current_home().root == tmp_path / "first"
     reset_default()
     assert current_home().root == tmp_path / "second"
+
+
+def test_the_secrets_files_follow_the_root(tmp_path: Path) -> None:
+    home = Home(root=tmp_path)
+    assert home.secrets_file == tmp_path / "secrets.json"
+    assert home.secrets_meta_file == tmp_path / "secrets.meta.json"

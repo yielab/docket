@@ -3,7 +3,7 @@ ids 0
 text 3
 error-classes 0
 error-raises 0
-environ 95
-config-reads 404
-config-patches 197
+environ 86
+config-reads 369
+config-patches 192
 repointers 194

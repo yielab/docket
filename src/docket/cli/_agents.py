@@ -25,6 +25,7 @@ from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import provisioning as _prov
+from docket.edges import store
 from docket.kernel.errors import InvalidInput
 
 
@@ -283,7 +284,7 @@ def run_init(req: InitRequest) -> int:
     """Provision a project pod from the request, deriving ordinary defaults from the cwd
     (non-interactive: cwd is the location, its basename the pod id). ``from_file`` takes
     the declarative path instead."""
-    _cfg.mkdir_private(_cfg.PROJECTS_DIR)
+    store.mkdir_private(_cfg.PROJECTS_DIR)
 
     if req.from_file is not None:
         return _cmd_add_declarative(req.from_file)
