@@ -105,11 +105,11 @@ ships six more you can drop into any pod without writing a line of YAML:
 
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod add researcher`. A user-authored archetype (a standalone YAML file,
-`docket pod update`) can add a brand-new role name or override an existing one — merged into
-`~/.docket/docket-roles.json`, "user wins" by name; `--pod <p>` scopes it to one pod. A denied tool
-is absent from that role's turn, not merely discouraged: it is the only capability statement a role
-carries (`cannot:` in the short form), and denying a tool denies every tool of its kind, MCP tools
-included.
+`docket pod update`) can add a brand-new role name or override an existing one — merged into the
+pod's own `config/roles.json`, the pod wins by name. A denied tool is absent from that role's turn,
+not merely discouraged: it is the only capability statement a role carries (`cannot:` in the short
+form). Denying a built-in tool removes that tool alone; denying one also removes every MCP tool of
+its kind.
 
 A custom role's hop message is also data: an archetype can declare its own `hopInstruction` text;
 if it doesn't, one is generated from its `gateContract` (a verdict role, for example, is told its

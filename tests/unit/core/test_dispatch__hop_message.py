@@ -9,22 +9,12 @@ specs/functional/pipeline-format.spec.md ("Variables").
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
-import docket.config as _cfg
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 
 SUBJECT = "docket.core.dispatch"
 
 _TASK = {"description": "ship the feature"}
-
-
-@pytest.fixture(autouse=True)
-def _hermetic_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
 
 
 class TestBuiltinRolesByteIdenticalToBase:
@@ -77,9 +67,10 @@ class TestCustomRoleFallsBackToArchetype:
                 "agentsTemplate": "y",
                 "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
                 "toolProfile": "read-only",
-            }
+            },
+            "acme",
         )
-        message, _ = _dispatch._hop_message(_TASK, "security-reviewer", [])
+        message, _ = _dispatch._hop_message(_TASK, "security-reviewer", [], project="acme")
         assert "APPROVE or REQUEST-CHANGES" in message
 
     def test_registered_role_with_declared_hop_instruction_uses_it_verbatim(self) -> None:
@@ -94,9 +85,10 @@ class TestCustomRoleFallsBackToArchetype:
                 "gateContract": {"kind": "none"},
                 "toolProfile": "write",
                 "hopInstruction": "Draft the release notes.",
-            }
+            },
+            "acme",
         )
-        message, _ = _dispatch._hop_message(_TASK, "writer-plus", [])
+        message, _ = _dispatch._hop_message(_TASK, "writer-plus", [], project="acme")
         assert "Draft the release notes." in message
 
 
@@ -119,10 +111,11 @@ class TestStepInstructionsOverride:
                 "agentsTemplate": "y",
                 "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
                 "toolProfile": "read-only",
-            }
+            },
+            "acme",
         )
         message, _ = _dispatch._hop_message(
-            _TASK, "security-reviewer", [], step_instructions="Focus on auth."
+            _TASK, "security-reviewer", [], step_instructions="Focus on auth.", project="acme"
         )
         assert "Focus on auth." in message
         assert "APPROVE or REQUEST-CHANGES" not in message
@@ -152,7 +145,8 @@ class TestStepInstructionsOverride:
                 "gateContract": {"kind": "none"},
                 "toolProfile": "coordination",
                 "hopInstruction": "You are the Lead. Plan for the Researcher.",
-            }
+            },
+            "acme",
         )
-        message, _ = _dispatch._hop_message(_TASK, "lead", [])
+        message, _ = _dispatch._hop_message(_TASK, "lead", [], project="acme")
         assert message == "You are the Lead. Plan for the Researcher.\n\nship the feature"

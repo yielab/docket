@@ -289,12 +289,16 @@ def _infer_kind_from_location(path: Path) -> str | None:
 
 def _load_role(path: Path) -> dict[str, Any]:
     """The canonical wire dict for a role file: the short form is normalised first
-    (``core.archetypes.load_role_file``), then validated exactly as ``pod update`` does."""
+    (``core.archetypes.load_role_file``), then validated exactly as ``pod update`` does, and
+    both prose templates are rendered once against sample variables so a ``${typo}`` is
+    refused here and not at provisioning."""
     try:
         doc = _archetypes.load_role_file(str(path))
-        _archetypes.from_wire(str(doc.get("name", "")), doc)
     except _archetypes.ArchetypeError as exc:
         raise ConfigDocError(path, str(exc)) from exc
+    errors = _archetypes.validate_archetype_dict(str(doc.get("name", "")), doc)
+    if errors:
+        raise ConfigDocError(path, "; ".join(errors))
     return doc
 
 
@@ -378,6 +382,10 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
                 "no 'kind:' key, and its location does not indicate one",
                 field="kind",
                 valid=KINDS,
+            )
+        if _is_short_form(resolved, doc):
+            raise ConfigDocError(
+                p, "a short-form document needs a 'kind:' key", field="kind", valid=KINDS
             )
         effective_kind = resolved
         deprecated = True

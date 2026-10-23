@@ -27,7 +27,6 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
     _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
 
 
@@ -127,6 +126,52 @@ class TestSummarizeRecipe:
         assert not _cfg.pod_config_dir(project).exists()
 
 
+class TestRolesInEveryConfigFormat:
+    """`roles/` takes `.yaml`, `.yml` and `.json`, the file set `pod validate` counts."""
+
+    def test_a_yml_and_a_json_role_are_planned_and_applied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = "formats"
+        _seed_fixture_pod(tmp_path, monkeypatch, project)
+        recipe_dir = tmp_path / "recipe"
+        (recipe_dir / "roles").mkdir(parents=True)
+        base = {
+            "kind": "role",
+            "scope": "pod",
+            "modelClass": "cheap",
+            "soulTemplate": "You vet.",
+            "agentsTemplate": "Protocol.",
+        }
+        (recipe_dir / "roles" / "from-yml.yml").write_text(
+            "\n".join(f"{k}: {v}" for k, v in {**base, "name": "from-yml"}.items()),
+            encoding="utf-8",
+        )
+        (recipe_dir / "roles" / "from-json.json").write_text(
+            json.dumps({**base, "name": "from-json"}), encoding="utf-8"
+        )
+
+        plan = _pod_apply.plan_apply(project, recipe_dir)
+
+        assert sorted(i.name for i in plan.items if i.kind == "role") == ["from-json", "from-yml"]
+        _pod_apply.apply(plan)
+        roles = json.loads((_cfg.pod_config_dir(project) / "roles.json").read_text())["roles"]
+        assert {"from-yml", "from-json"} <= set(roles)
+
+    def test_a_json_role_that_drops_a_builtin_denial_is_a_run_item(self, tmp_path: Path) -> None:
+        root = _repo_dir(
+            tmp_path,
+            {
+                "roles/reviewer.json": json.dumps(
+                    {"kind": "role", "name": "reviewer", "model": "cheap", "description": "x"}
+                ),
+                "roles/reviewer.md": "Review.",
+            },
+        )
+        review = _pod_apply.classify_directory(root)
+        assert [(i.kind, i.name) for i in review.runs] == [("role-loosens", "reviewer")]
+
+
 class TestRecipeExporters:
     """A recipe may name an observability destination without carrying one (ADR 0014 rule
     7): `apply` records the names and reports state, and never activates or writes an
@@ -207,7 +252,7 @@ class TestPrepare:
     def _recipe(self, tmp_path: Path, text: str) -> Path:
         recipe = tmp_path / "recipe"
         recipe.mkdir()
-        (recipe / "pod.yaml").write_text(text, encoding="utf-8")
+        (recipe / "pod.yaml").write_text("kind: pod\nname: x\n" + text, encoding="utf-8")
         return recipe
 
     def test_apply_stores_it_as_the_pods_setting_and_export_writes_it_back(
@@ -254,7 +299,7 @@ class TestPrepare:
         ]
         off = tmp_path / "off"
         off.mkdir()
-        (off / "pod.yaml").write_text("prepare: none\n", encoding="utf-8")
+        (off / "pod.yaml").write_text("kind: pod\nname: x\nprepare: none\n", encoding="utf-8")
         assert _pod_apply.classify_directory(off).runs == ()
 
     def test_a_repositorys_lockfile_command_is_a_run_item(self, tmp_path: Path) -> None:
@@ -280,7 +325,7 @@ class TestProtects:
     def _recipe(self, tmp_path: Path, text: str) -> Path:
         recipe = tmp_path / "recipe"
         recipe.mkdir()
-        (recipe / "pod.yaml").write_text(text, encoding="utf-8")
+        (recipe / "pod.yaml").write_text("kind: pod\nname: x\n" + text, encoding="utf-8")
         return recipe
 
     def test_apply_stores_the_list_and_export_writes_it_back(
@@ -302,7 +347,9 @@ class TestProtects:
     ) -> None:
         _seed_fixture_pod(tmp_path, monkeypatch, "guard")
         _pod_apply.apply(_pod_apply.plan_apply("guard", self._recipe(tmp_path, "protects: [a]\n")))
-        (tmp_path / "recipe" / "pod.yaml").write_text("protects: []\n", encoding="utf-8")
+        (tmp_path / "recipe" / "pod.yaml").write_text(
+            "kind: pod\nname: x\nprotects: []\n", encoding="utf-8"
+        )
         _pod_apply.apply(_pod_apply.plan_apply("guard", tmp_path / "recipe"))
         assert pod.PodSettings.load_for("guard").protects == ()
 
@@ -346,7 +393,7 @@ class TestClassifyDirectory:
             {
                 "pipeline.yaml": "name: p\nsteps:\n  - id: migrate\n    run: sh scripts/migrate.sh\n",
                 "mcp-servers/db.yaml": "kind: mcp-server\nname: db\ncommand: npx\nargs: [-y, '@acme/db-mcp@1.4.2']\n",
-                "pod.yaml": "settings:\n  network: open\n  allowCommands: [make]\n",
+                "pod.yaml": "kind: pod\nname: x\nsettings:\n  network: open\n  allowCommands: [make]\n",
             },
         )
         review = _pod_apply.classify_directory(root)
@@ -414,7 +461,9 @@ class TestClassifyDirectory:
         assert [(i.kind, i.name) for i in review.runs] == [("role-loosens", "reviewer")]
 
     def test_a_shell_in_allow_commands_is_refused(self, tmp_path: Path) -> None:
-        root = _repo_dir(tmp_path, {"pod.yaml": "settings:\n  allowCommands: [bash, make]\n"})
+        root = _repo_dir(
+            tmp_path, {"pod.yaml": "kind: pod\nname: x\nsettings:\n  allowCommands: [bash, make]\n"}
+        )
         assert _pod_apply.classify_directory(root).refused == ("bash",)
 
     def test_shipped_recipes_are_exempt_and_other_directories_are_not(self, tmp_path: Path) -> None:
@@ -444,7 +493,9 @@ class TestReviewDecision:
     """The review rule's verdict for a directory, an optional accept code and a repo root."""
 
     def _runs(self, tmp_path: Path) -> Path:
-        return _repo_dir(tmp_path, {"pod.yaml": "settings:\n  allowCommands: [make]\n"})
+        return _repo_dir(
+            tmp_path, {"pod.yaml": "kind: pod\nname: x\nsettings:\n  allowCommands: [make]\n"}
+        )
 
     def test_nothing_to_run_and_shipped_recipes_go(self, tmp_path: Path) -> None:
         plain = _repo_dir(tmp_path, {"policies/p.json": "{}"})
@@ -462,7 +513,9 @@ class TestReviewDecision:
         )
 
     def test_a_shell_is_refused_before_any_code_matters(self, tmp_path: Path) -> None:
-        directory = _repo_dir(tmp_path, {"pod.yaml": "settings:\n  allowCommands: [bash]\n"})
+        directory = _repo_dir(
+            tmp_path, {"pod.yaml": "kind: pod\nname: x\nsettings:\n  allowCommands: [bash]\n"}
+        )
         assert _pod_apply.review_decision(tmp_path, "a", directory, "x").status == "refused"
 
     def test_a_remembered_review_goes(self, tmp_path: Path) -> None:
@@ -568,10 +621,14 @@ class TestSkippedSettingsSayWhy:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_fixture_pod(tmp_path, monkeypatch, "demo")
-        root = _repo_dir(tmp_path, {"pod.yaml": "settings:\n  approvalMode: wait\n"})
+        root = _repo_dir(
+            tmp_path, {"pod.yaml": "kind: pod\nname: x\nsettings:\n  approvalMode: wait\n"}
+        )
         [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
         assert (item.action, item.note) == ("skip", "already the default")
-        root = _repo_dir(tmp_path / "b", {"pod.yaml": "settings:\n  maxReworkCycles: 4\n"})
+        root = _repo_dir(
+            tmp_path / "b", {"pod.yaml": "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 4\n"}
+        )
         _pod_apply.apply(_pod_apply.plan_apply("demo", root), channel="cli")
         [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
         assert (item.action, item.note) == ("skip", "")

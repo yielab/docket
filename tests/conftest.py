@@ -144,7 +144,6 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("REVIEWED_REPOS_FILE", "reviewed-repos.json"),
     ("INBOX_CURSOR_FILE", "inbox-cursor.json"),
     ("MODEL_REGISTRY_FILE", "docket-models.json"),
-    ("ARCHETYPE_REGISTRY_FILE", "docket-roles.json"),
     ("PROJECTS_DIR", "workspaces/projects"),
     ("AUDIT_LOG", "audit.log"),
     ("WORKSPACES_DIR", "workspaces"),

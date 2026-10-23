@@ -221,7 +221,9 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
     def test_a_shell_in_allow_commands_exits_2(self, tmp_path: Path) -> None:
         code = tmp_path / "code"
         (code / ".docket").mkdir(parents=True)
-        (code / ".docket" / "pod.yaml").write_text("settings:\n  allowCommands: [bash]\n")
+        (code / ".docket" / "pod.yaml").write_text(
+            "kind: pod\nname: x\nsettings:\n  allowCommands: [bash]\n"
+        )
         result = runner.invoke(app, ["init", "demo", str(code)])
         assert result.exit_code == 2 and not _pod_exists()
         assert "bash" in result.output and "make, npm" in result.output

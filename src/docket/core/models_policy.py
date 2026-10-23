@@ -7,6 +7,7 @@ import re
 from typing import Any, NamedTuple
 
 import docket.config as cfg
+from docket.core import archetypes as _arch
 from docket.core import provider as _provider
 from docket.edges import store as _store
 from docket.kernel.errors import InvalidInput
@@ -24,18 +25,11 @@ ALL_ROLES: tuple[str, ...] = (
     "monitor",
 )
 
-# cheap = high-volume / low reasoning-density; strong = reasoning-dense.
+# cheap = high-volume / low reasoning; strong = reasoning-dense. The class of each of the ten
+# named roles is its archetype's own `modelClass`.
 ROLE_CLASS: dict[str, str] = {
-    "lead": "cheap",
-    "reviewer": "cheap",
-    "tester": "cheap",
-    "monitor": "cheap",
-    "analyst": "cheap",
-    "writer": "cheap",
-    "implementer": "strong",
-    "critic": "strong",
-    "operator": "strong",
-    "researcher": "strong",
+    name: arch.model_class
+    for name, arch in {**_arch.BUILTIN_ARCHETYPES, **_arch.STARTER_ARCHETYPES}.items()
 }
 
 # The row a project agent that is not a pod member follows.
@@ -243,8 +237,6 @@ def resolve_role_model(
 def _resolve_via_archetype_class(role: str, project: str = "") -> str:
     """Resolve a role outside ``ALL_ROLES`` via its archetype's modelClass, looked up in
     *project*'s registry; an unknown role falls back to the registry's own default model."""
-    from docket.core import archetypes as _arch
-
     arch = _arch.load_registry(project).get(role)
     _, tiers, default_model = load_registry()
     if arch is None:
@@ -270,8 +262,6 @@ def resolve_step_model(model: str) -> str:
 
 def role_why(role: str) -> str:
     """The one-line reason shown beside a role: its archetype's own description."""
-    from docket.core import archetypes as _arch
-
     arch = _arch.load_registry().get(role)
     return arch.description if arch is not None else ""
 

@@ -29,11 +29,10 @@ tokens of prior-hop carryover `core/context.py` may thread into that role's
 hop prompt. It lives on the archetype, not a second registry, so identity and
 resource budget cannot drift apart; defaults to 6000 when unset.
 
-User archetypes overlay built-ins via `~/.docket/docket-roles.json` (same
-pattern as `docket-models.json`), tolerant on load (a malformed entry is
-skipped, never crashes a live fleet; `docket pod validate` explains why).
-The authoring format is a standalone YAML file (`docket pod update
-<file.yaml>`), merged into the JSON overlay. Built-in/starter archetypes stay
+A pod's own archetypes overlay the built-ins through `<pod>/config/roles.json`,
+tolerant on load (a malformed entry is skipped, never crashes a live fleet;
+`docket pod validate` explains why). The authoring format is a standalone YAML
+file (`docket pod update <file.yaml>`), merged into that JSON overlay. Built-in/starter archetypes stay
 Python literals here, matching the project's convention of generating
 workspace prose inline rather than loading shipped template files.
 
@@ -55,7 +54,7 @@ from docket.core.tools import ToolKind, ToolRegistry
 from docket.edges import store as _store
 from docket.kernel.errors import InvalidInput
 
-SCOPES: frozenset[str] = frozenset({"org", "pod"})
+SCOPES: frozenset[str] = frozenset({"pod"})
 MODEL_CLASSES: frozenset[str] = frozenset({"cheap", "strong"})
 GATE_KINDS: frozenset[str] = frozenset({"none", "verdict", "mechanical", "approval"})
 
@@ -115,7 +114,7 @@ class RoleArchetype:
 
     name: str
     version: int
-    scope: str  # closed: "org" | "pod"
+    scope: str  # closed: "pod"
     model_class: str  # closed: "cheap" | "strong"
     soul_template: str  # open prose; $-style variables, see `render`
     agents_template: str  # open prose; $-style variables, see `render`
@@ -538,7 +537,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         name="analyst",
         version=1,
         scope="pod",
-        model_class="strong",
+        model_class="cheap",
         soul_template=_STARTER_SOUL_HEAD + _ANALYST_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="none"),
@@ -564,7 +563,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         name="critic",
         version=1,
         scope="pod",
-        model_class="cheap",
+        model_class="strong",
         soul_template=_STARTER_SOUL_HEAD + _CRITIC_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("APPROVE", "REJECT")),
@@ -617,9 +616,9 @@ STARTER_ROLE_ORDER: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class ArchetypeRegistry:
-    """Built-ins + starter library + user overlay, merged (user wins by name).
+    """Built-ins + starter library + the pod overlay, merged (the pod wins by name).
     ``project`` records which pod's overlay this was resolved with, so ``source_of``
-    can report ``pod:<project>`` distinctly from the global ``user`` overlay."""
+    can report ``pod:<project>``."""
 
     archetypes: dict[str, RoleArchetype] = field(default_factory=dict)
     project: str = ""
@@ -637,31 +636,25 @@ class ArchetypeRegistry:
         return list(self.archetypes.items())
 
     def source_of(self, name: str) -> str:
-        """'built-in' | 'starter' | 'user' | 'pod:<project>' | '' (unknown) — for
-        `docket pod roles`. A role the pod overlay defines is reported distinctly from
-        the global 'user' overlay, even when both define the same name (pod wins)."""
+        """'built-in' | 'starter' | 'pod:<project>' | '' (unknown) -- for
+        `docket pod roles`. A role the pod overlay defines is reported as the pod's,
+        even when it shadows a built-in or starter name."""
         if name not in self.archetypes:
             return ""
         if self.project:
             raw_pod = _read_overlay_raw(_pod_roles_file(self.project))
             if name in raw_pod.get("roles", {}):
                 return f"pod:{self.project}"
-        path = cfg.ARCHETYPE_REGISTRY_FILE
-        if path.exists():
-            raw = _store.read_json(path)
-            if name in raw.get("roles", {}):
-                return "user"
         if name in BUILTIN_ARCHETYPES:
             return "built-in"
         if name in STARTER_ARCHETYPES:
             return "starter"
-        return "user"
+        return ""
 
 
 def _pod_roles_file(project: str) -> Path:
-    """The pod-scoped role overlay this ``project``'s pod resolves above the global
-    overlay -- ``pod_config_dir(project)/roles.json``, same wire shape as
-    ``docket-roles.json``."""
+    """The role overlay this ``project``'s pod resolves above the built-ins --
+    ``pod_config_dir(project)/roles.json``, shape ``{"roles": {name: archetype}}``."""
     return cfg.pod_config_dir(project) / "roles.json"
 
 
@@ -676,8 +669,7 @@ def _read_overlay_raw(path: Path) -> dict[str, Any]:
 
 def _overlay_problems(path: Path) -> list[tuple[str, str]]:
     """Return ``(role, reason)`` pairs for a malformed overlay entry at ``path`` (the
-    file path itself for an unreadable file) -- shared by ``find_overlay_problems``
-    across both the global overlay and, when given, a pod's own overlay."""
+    file path itself for an unreadable file)."""
     if not path.exists():
         return []
     try:
@@ -697,17 +689,11 @@ def _overlay_problems(path: Path) -> list[tuple[str, str]]:
 
 
 def load_registry(project: str = "") -> ArchetypeRegistry:
-    """Built-ins + starter library, overlaid by ``docket-roles.json``, then -- when
-    *project* is given -- by that pod's own overlay too (nearest wins: pod > global >
-    starter > built-in). Not cached; a malformed entry in either file is skipped."""
+    """Built-ins + starter library, overlaid -- when *project* is given -- by that pod's own
+    overlay (nearest wins: pod > starter > built-in). Not cached; a malformed entry in the
+    overlay is skipped."""
     archetypes: dict[str, RoleArchetype] = dict(BUILTIN_ARCHETYPES)
     archetypes.update(STARTER_ARCHETYPES)
-
-    for name, doc in _read_overlay_raw(cfg.ARCHETYPE_REGISTRY_FILE).get("roles", {}).items():
-        try:
-            archetypes[name] = from_wire(name, doc)
-        except ArchetypeError:
-            continue
 
     if project:
         for name, doc in _read_overlay_raw(_pod_roles_file(project)).get("roles", {}).items():
@@ -719,14 +705,10 @@ def load_registry(project: str = "") -> ArchetypeRegistry:
     return ArchetypeRegistry(archetypes, project=project)
 
 
-def find_overlay_problems(project: str = "") -> list[tuple[str, str]]:
-    """Return ``(role, reason)`` pairs for a malformed overlay entry ``load_registry``
-    silently skips -- for ``docket setup --fix``. Read-only. When *project* is given, also
-    covers that pod's own overlay file, not only the global one."""
-    problems = _overlay_problems(cfg.ARCHETYPE_REGISTRY_FILE)
-    if project:
-        problems += _overlay_problems(_pod_roles_file(project))
-    return problems
+def find_overlay_problems(project: str) -> list[tuple[str, str]]:
+    """Return ``(role, reason)`` pairs for a malformed entry in *project*'s overlay that
+    ``load_registry`` silently skips -- for ``docket setup --fix``. Read-only."""
+    return _overlay_problems(_pod_roles_file(project))
 
 
 # The capability each built-in tool name represents. `registry_for_role` maps a
@@ -799,15 +781,13 @@ def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolR
     literal built-in names, but `base` may also carry MCP-adapted tools registered
     under a namespaced name (`mcp__<server>__<tool>`) no denylist could ever spell
     out in advance -- and every adapted tool is registered `kind="write"`
-    unconditionally, since nothing can prove a remote tool is actually read-only.
-    So after the name-based removal, this also computes the set of `Tool.kind`s
-    implied by the union of denied names still present in *base* and removes every
-    remaining tool of those kinds via `ToolRegistry.without_kind()`. A no-op
-    against a builtins-only registry (today's shipped archetypes already name all
-    the built-ins of the kinds they deny); it only starts removing something new
-    once an MCP tool is actually present -- exactly the case a name-only denylist
-    cannot reach, so a role denied `write` can never regain a write-capable tool
-    just because it arrived through MCP instead of `core.tools.builtin_registry()`.
+    unless its server was declared otherwise, since nothing can prove a remote tool
+    is actually read-only. So after the name-based removal, this also maps each
+    denied built-in name through `BUILTIN_TOOL_KINDS` and removes every tool of
+    those kinds whose name is not a built-in. A built-in is removed only by its own
+    name: denying `fetch` leaves `read`. A role denied `write` can never regain a
+    write-capable tool just because it arrived through MCP instead of
+    `core.tools.builtin_registry()`.
     """
     archetype = load_registry(project).get(role)
     role_denied = archetype.denied_tools if archetype is not None else ()
@@ -817,7 +797,14 @@ def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolR
     narrowed = base.without(*denied)
     denied_kinds = {kind for name in denied if (kind := BUILTIN_TOOL_KINDS.get(name))}
     if denied_kinds:
-        narrowed = narrowed.without_kind(*denied_kinds)
+        extra = [
+            name
+            for name in narrowed.names()
+            if name not in BUILTIN_TOOL_KINDS
+            and (tool := narrowed.get(name)) is not None
+            and tool.kind in denied_kinds
+        ]
+        narrowed = narrowed.without(*extra)
     return narrowed
 
 
@@ -910,7 +897,7 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
         if model not in MODEL_CLASSES:
             raise ArchetypeError(
                 f"archetype {name!r}: model must be one of {sorted(MODEL_CLASSES)} "
-                f"(got {model!r}); to pin a model id, run: docket setup model set {name} <id>"
+                f"(got {model!r}); to run one hop on a specific model, set `model:` on its pipeline step"
             )
         canonical["modelClass"] = model
 
@@ -1019,29 +1006,27 @@ def load_role_file(path: str) -> dict[str, Any]:
     return normalize_role(doc, Path(path).parent)
 
 
-def add_user_archetype(doc: dict[str, Any], project: str = "") -> RoleArchetype:
-    """Validate `doc` and merge it into the user overlay, or -- when *project* is given
-    -- into that pod's own overlay, which resolves above the global one for that pod
-    alone. `doc` must carry a top-level `name`; naming an existing archetype overrides it."""
+def add_user_archetype(doc: dict[str, Any], project: str) -> RoleArchetype:
+    """Validate `doc` and merge it into *project*'s own overlay. `doc` must carry a
+    top-level `name`; naming an existing archetype overrides it."""
     name = str(doc.get("name", "")).strip()
     if not name:
         raise ArchetypeError("archetype definition must have a top-level 'name'")
     arch = from_wire(name, doc)  # raises ArchetypeError on any invalid field
 
-    path = _pod_roles_file(project) if project else cfg.ARCHETYPE_REGISTRY_FILE
+    path = _pod_roles_file(project)
 
     def _fn(current: dict[str, Any]) -> dict[str, Any]:
         current.setdefault("roles", {})[name] = arch.to_wire()
         return current
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    if project:
-        # path.parent is pod_config_dir(project); its parent is PODS_DIR/project.
-        # Both may be freshly created by the mkdir above and inherit umask -- harden
-        # them the same way pod_provisioning.py's scratch dir does.
-        with contextlib.suppress(OSError):
-            cfg.PODS_DIR.chmod(0o700)
-            path.parent.parent.chmod(0o700)
-            path.parent.chmod(0o700)
+    # path.parent is pod_config_dir(project); its parent is PODS_DIR/project.
+    # Both may be freshly created by the mkdir above and inherit umask -- harden
+    # them the same way pod_provisioning.py's scratch dir does.
+    with contextlib.suppress(OSError):
+        cfg.PODS_DIR.chmod(0o700)
+        path.parent.parent.chmod(0o700)
+        path.parent.chmod(0o700)
     _store.read_modify_write(path, _fn)
     return arch

@@ -35,7 +35,6 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     (home / "approvals").mkdir()
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
 
     class _Handler(_DocketHandler):
         serve_token = _TOKEN
@@ -79,7 +78,7 @@ _ROLE = {
     "roles/x-checker.yaml": "kind: role\nname: x-checker\nmodel: cheap\ndescription: x\ncannot: [write]\n",
     "roles/x-checker.md": "Check.",
 }
-_RUNS = {"pod.yaml": "settings:\n  allowCommands: [make]\n"}
+_RUNS = {"pod.yaml": "kind: pod\nname: x\nsettings:\n  allowCommands: [make]\n"}
 
 
 def _roles(project: str) -> dict[str, Any]:
@@ -136,7 +135,9 @@ def test_dry_run_writes_nothing(server: str, tmp_path: Path) -> None:
 
 def test_a_refused_shell_is_409_without_a_code(server: str, tmp_path: Path) -> None:
     """A directory allowing a shell is refused and offers no review code."""
-    directory = _directory(tmp_path, "shell", {"pod.yaml": "settings:\n  allowCommands: [bash]\n"})
+    directory = _directory(
+        tmp_path, "shell", {"pod.yaml": "kind: pod\nname: x\nsettings:\n  allowCommands: [bash]\n"}
+    )
     status, body = _post(f"{server}/pods/demo/apply", {"directory": str(directory)})
     assert status == 409
     assert "reviewCode" not in body

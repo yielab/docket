@@ -45,7 +45,6 @@ def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
     for project in ("shop", "other"):
         _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
 

@@ -216,7 +216,7 @@ overlay, policies, members, pipeline binding, settings) into one command.
    not an existing file resolves through requirement 8's `resolve_recipe` order, and an
    unresolvable name exits 1 naming the operator's and the shipped recipes) as these optional
    parts:
-   - `roles/*.yaml`: role definitions, the wire format `role-archetypes.spec.md` defines;
+   - `roles/*.yaml|yml|json`: role definitions, the wire format `role-archetypes.spec.md` defines;
    - `policies/*.yaml|yml|json`: guardrail policies, the schema `security-gates.spec.md` defines;
    - `plugins/*.py`: predicate plugins;
    - `skills/<name>/SKILL.md`: each `<name>/` a complete Agent Skill, applied whole into this
@@ -237,10 +237,9 @@ overlay, policies, members, pipeline binding, settings) into one command.
    An unrecognized top-level `pod.yaml` key, a `members`/`settings` value of the wrong type, a
    `description` that is not a string, or an `exporters` entry that is not a plain string naming a
    catalog exporter **MUST** be rejected before any other item is planned.
-2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
+2. A role in `roles/*.yaml|yml|json` **MUST** be written into *that pod's own* role overlay
    (`$DOCKET_HOME/workspaces/pods/<pod>/config/roles.json`), the same target `docket pod update
-   <file>` writes to (requirement 15), never the global user overlay
-   (`~/.docket/docket-roles.json`). The pod's roster resolution reads that pod's own overlay too, so
+   <file>` writes to (requirement 15). The pod's roster resolution reads that pod's own overlay too, so
    a role written into it is both provisionable as a member and resolvable back out of the roster a
    pipeline dispatches against, and stays invisible to every other pod.
 3. A file in `policies/` **MUST** be validated as a guardrail policy and, once valid, written
@@ -250,8 +249,8 @@ overlay, policies, members, pipeline binding, settings) into one command.
    `~/.docket/policies/`. A file whose parsed content already matches the pod's copy plans as
    `skip`; a different one already present plans as `replace`; an invalid policy file **MUST** be
    rejected before anything else is written, naming the offending file.
-4. `docket pod update` **MUST** validate everything before writing anything: each `roles/*.yaml`
-   definition (`role-archetypes.spec.md`'s schema), every policy file, every `pipelines/` file,
+4. `docket pod update` **MUST** validate everything before writing anything: each
+   `roles/*.yaml|yml|json` definition (`role-archetypes.spec.md`'s schema), every policy file, every `pipelines/` file,
    every `mcp-servers/` document (a name declared twice, or equal to a global MCP server, is
    refused rather than shadowed), every `members` entry against the role registry *as it would be
    after* the directory's own roles are added, the resolved bound pipeline against the roster *as
@@ -462,8 +461,8 @@ reproduced on a second machine.
    is the pod Lead's `codebase`) when omitted. The shape is the one `docket pod update` reads;
    every YAML file the command regenerates is in the **short form** (`config-format.spec.md`,
    "Short-form export") with a leading `# yaml-language-server:` header:
-   - `roles/<name>.yaml` for this pod's own role overlay entries only (not built-in, starter or
-     global ones), plus a paired `roles/<name>.md` holding that role's instructions (`soulTemplate`
+   - `roles/<name>.yaml` for this pod's own role overlay entries only (not built-in or starter
+     ones), plus a paired `roles/<name>.md` holding that role's instructions (`soulTemplate`
      and, when it is not the generated starter template, a `## AGENTS` section with
      `agentsTemplate`);
    - `policies/<stem>.yaml` for every file in this pod's own policy directory, regenerated from the
@@ -489,9 +488,8 @@ reproduced on a second machine.
    **MUST** also copy the role, pipeline, policy and pod JSON Schemas into `<dir>/.schemas/`
    (`config-format.spec.md`, "Published schemas") so every header resolves without reaching outside
    the export; apply never looks under `.schemas/`.
-2. Global scope is never exported: it is the operator's, not the team's. The global role overlay
-   (`~/.docket/docket-roles.json`), fleet-wide policies (`~/.docket/policies/`), global MCP
-   servers, other pods, and this pod's own secrets, sessions, traces, and task queue are all out
+2. Global scope is never exported: it is the operator's, not the team's. Fleet-wide policies
+   (`~/.docket/policies/`), global MCP servers, other pods, and this pod's own secrets, sessions, traces, and task queue are all out
    of scope; only what the pod's `config/` directory and the bound-pipeline copy hold is written.
 3. `docket pod export [<dir>]` **MUST** refuse a non-empty *dir*, including the defaulted
    `<codebase>/.docket/`, unless `--force` is given, so a stray argument (or an accidental bare

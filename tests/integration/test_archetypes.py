@@ -1,8 +1,8 @@
 """`core/archetypes.py` — the declarative role-archetype registry.
 
 Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
-starter-library archetypes validating, the user-overlay pattern (mirrors `docket-models.json`:
-built-ins + starter library overlaid by `~/.docket/docket-roles.json`, user wins by name),
+starter-library archetypes validating, the pod-overlay pattern (built-ins + starter library
+overlaid by a pod's own `config/roles.json`, the pod wins by name),
 `docket pod roles` list/show and `pod update <file>`, and that reviewer/tester gate-contract data resolved
 through `core.orchestrator` matches `core/pipeline.py`'s own hardcoded `default_pipeline()`
 verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
@@ -26,10 +26,9 @@ SUBJECT = "docket.core.archetypes"
 
 
 @pytest.fixture
-def registry_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    path = tmp_path / "docket-roles.json"
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", path, raising=True)
-    return path
+def registry_file() -> Path:
+    """The role overlay of the pod ``seeded_pod`` names (the autouse fixture isolates the home)."""
+    return _cfg.pod_config_dir("demo") / "roles.json"
 
 
 @pytest.fixture
@@ -193,7 +192,7 @@ class TestRender:
 
 class TestRegistryOverlay:
     def test_load_registry_without_overlay_has_ten_roles(self, registry_file: Path) -> None:
-        registry = arch.load_registry()
+        registry = arch.load_registry("demo")
         assert set(registry.role_names()) == set(arch.BUILTIN_ARCHETYPES) | set(
             arch.STARTER_ARCHETYPES
         )
@@ -211,18 +210,17 @@ class TestRegistryOverlay:
             "toolProfile": "x",
             "description": "coordinates content production",
         }
-        added = arch.add_user_archetype(doc)
+        added = arch.add_user_archetype(doc, "demo")
         assert added.name == "producer"
 
-        registry = arch.load_registry()
+        registry = arch.load_registry("demo")
         assert "producer" in registry
         assert registry.get("producer") is not None
         assert registry.get("producer").description == "coordinates content production"  # type: ignore[union-attr]
-        assert registry.source_of("producer") == "user"
+        assert registry.source_of("producer") == "pod:demo"
 
     def test_user_archetype_overrides_builtin(self, registry_file: Path) -> None:
-        """A user archetype named 'lead' overlays (replaces) the built-in — the same
-        'user wins' contract docket-models.json uses for per-role model overrides."""
+        """A pod archetype named 'lead' overlays (replaces) the built-in for that pod."""
         doc = {
             "name": "lead",
             "version": 2,
@@ -234,15 +232,15 @@ class TestRegistryOverlay:
             "toolProfile": "coordination",
             "description": "customized lead",
         }
-        arch.add_user_archetype(doc)
+        arch.add_user_archetype(doc, "demo")
 
-        registry = arch.load_registry()
+        registry = arch.load_registry("demo")
         found = registry.get("lead")
         assert found is not None
         assert found.version == 2
         assert found.model_class == "strong"
         assert found.soul_template == "custom lead soul for ${project}"
-        assert registry.source_of("lead") == "user"
+        assert registry.source_of("lead") == "pod:demo"
 
         # Built-in Python literal itself is untouched (module-level constant).
         assert arch.BUILTIN_ARCHETYPES["lead"].model_class == "cheap"
@@ -253,14 +251,28 @@ class TestRegistryOverlay:
             json.dumps({"roles": {"broken": {"name": "broken", "scope": "not-a-scope"}}}),
             encoding="utf-8",
         )
-        registry = arch.load_registry()
+        registry = arch.load_registry("demo")
         # Malformed 'broken' entry is silently skipped; built-ins/starters still load.
         assert "broken" not in registry
         assert "lead" in registry
 
     def test_add_user_archetype_requires_name(self, registry_file: Path) -> None:
         with pytest.raises(arch.ArchetypeError, match="name"):
-            arch.add_user_archetype({"version": 1})
+            arch.add_user_archetype({"version": 1}, "demo")
+
+    def test_a_global_roles_file_is_not_read(self, registry_file: Path) -> None:
+        stray = _cfg.DOCKET_HOME / "docket-roles.json"
+        stray.parent.mkdir(parents=True, exist_ok=True)
+        stray.write_text(
+            json.dumps({"roles": {"lead": {**arch.BUILTIN_ARCHETYPES["lead"].to_wire()}}}),
+            encoding="utf-8",
+        )
+        assert arch.load_registry("demo").source_of("lead") == "built-in"
+
+    def test_scope_org_is_not_a_scope(self) -> None:
+        assert set(arch.SCOPES) == {"pod"}
+        wire = {**arch.STARTER_ARCHETYPES["writer"].to_wire(), "scope": "org"}
+        assert arch.validate_archetype_dict("writer", wire)
 
     def test_parse_yaml_file(self, tmp_path: Path) -> None:
         p = tmp_path / "producer.yaml"

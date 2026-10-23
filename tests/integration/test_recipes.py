@@ -144,7 +144,6 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
     _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
 
 
@@ -197,7 +196,9 @@ def test_apply_with_an_invalid_setting_writes_nothing(
     _seed_fixture_pod(tmp_path, monkeypatch, project)
     bad_dir = tmp_path / "bad-recipe"
     bad_dir.mkdir()
-    (bad_dir / "pod.yaml").write_text("settings:\n  mcpServers: [zzz]\n", encoding="utf-8")
+    (bad_dir / "pod.yaml").write_text(
+        "kind: pod\nname: x\nsettings:\n  mcpServers: [zzz]\n", encoding="utf-8"
+    )
 
     with pytest.raises(_pod_apply.PodApplyError, match="zzz"):
         _pod_apply.plan_apply(project, bad_dir)
@@ -547,23 +548,11 @@ def test_export_then_apply_round_trip_matches_pod_show(
 def test_export_writes_only_this_pods_own_scope_never_global(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A global role and a fleet-wide policy, installed alongside this pod's own pod-scoped
-    role/policy, must never appear in an export."""
+    """A fleet-wide policy, installed alongside this pod's own pod-scoped role/policy, must
+    never appear in an export."""
     project = "guardedexp"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
 
-    _arch.add_user_archetype(
-        {
-            "name": "global-role",
-            "scope": "org",
-            "modelClass": "cheap",
-            "toolProfile": "full",
-            "tokenBudget": 4000,
-            "soulTemplate": "# SOUL\n",
-            "agentsTemplate": "# AGENTS\n",
-            "gateContract": {"kind": "none"},
-        }
-    )  # global overlay -- no `project` given
     _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
     (_cfg.POLICIES_DIR / "global-policy.json").write_text(
         json.dumps(
@@ -662,7 +651,7 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
     bad_dir = tmp_path / "bad-recipe"
     bad_dir.mkdir()
     (bad_dir / "pod.yaml").write_text(
-        "settings:\n  configDigest: " + "0" * 64 + "\n", encoding="utf-8"
+        "kind: pod\nname: x\nsettings:\n  configDigest: " + "0" * 64 + "\n", encoding="utf-8"
     )
     with pytest.raises(_pod_apply.PodApplyError, match="configDigest"):
         _pod_apply.plan_apply(project, bad_dir)
@@ -707,7 +696,6 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
     _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
 
     default_dir = codebase / ".docket"

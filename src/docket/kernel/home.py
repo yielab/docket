@@ -277,11 +277,6 @@ class Home:
     def model_registry_file(self) -> Path:
         return self.root / "docket-models.json"
 
-    # The operator's role overlay over the built-in archetypes (core/archetypes.py).
-    @property
-    def archetype_registry_file(self) -> Path:
-        return self.root / "docket-roles.json"
-
     # Pod members' workspaces live under projects/, per-pod runtime directories under pods/.
     @property
     def workspaces_dir(self) -> Path:

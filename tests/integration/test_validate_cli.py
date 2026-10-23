@@ -14,7 +14,7 @@ SUBJECT = "docket.cli._pod_config"
 _GOOD_ROLE = (
     "kind: role\n"
     "name: security-vetter\n"
-    "scope: org\n"
+    "scope: pod\n"
     "modelClass: cheap\n"
     "soulTemplate: You vet things.\n"
     "agentsTemplate: Vetting protocol.\n"
@@ -42,7 +42,7 @@ def test_a_directory_with_one_good_role_and_one_bad_kind_file_exits_one(tmp_path
 
 _ROLE_WITHOUT_KIND = (
     "name: plain-vetter\n"
-    "scope: org\n"
+    "scope: pod\n"
     "modelClass: cheap\n"
     "soulTemplate: You vet things.\n"
     "agentsTemplate: Vetting protocol.\n"
@@ -59,6 +59,30 @@ def test_a_role_file_without_kind_loads_ok_with_a_note(tmp_path: Path) -> None:
     assert rc == 0
     assert "ok " in out
     assert "no 'kind:'" in out
+
+
+def test_a_short_form_role_without_kind_is_refused_naming_the_kind_key(tmp_path: Path) -> None:
+    roles_dir = tmp_path / "roles"
+    roles_dir.mkdir()
+    (roles_dir / "plain.yaml").write_text("name: plain\nmodel: cheap\n", encoding="utf-8")
+
+    rc, out = _validate(tmp_path)
+
+    assert rc == 1
+    assert "kind" in out and "short-form" in out
+
+
+def test_a_role_template_with_an_unknown_variable_fails_validation(tmp_path: Path) -> None:
+    roles_dir = tmp_path / "roles"
+    roles_dir.mkdir()
+    (roles_dir / "typo.yaml").write_text(
+        _GOOD_ROLE.replace("You vet things.", "You vet ${typo}."), encoding="utf-8"
+    )
+
+    rc, out = _validate(tmp_path)
+
+    assert rc == 1
+    assert "soulTemplate" in out
 
 
 _REFUSED_PIPELINES = {

@@ -14,16 +14,12 @@ from pathlib import Path
 # Every docket-owned path in this file resolves under it.
 DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", Path.home() / ".docket"))
 
-# MODEL_REGISTRY_FILE / ARCHETYPE_REGISTRY_FILE / PROJECTS_DIR / AUDIT_LOG /
+# MODEL_REGISTRY_FILE / PROJECTS_DIR / AUDIT_LOG /
 # WORKSPACES_DIR / PODS_DIR: all docket-owned, all under DOCKET_HOME. No
 # migration/fallback by design: a pre-existing install's files at old
 # daemon-relative paths are simply not read again -- the workstation foundation bootstrap
 # re-creates a docket-native home from scratch.
 MODEL_REGISTRY_FILE = DOCKET_HOME / "docket-models.json"
-# ARCHETYPE_REGISTRY_FILE: user overlay for role archetypes — the same
-# overlay pattern as MODEL_REGISTRY_FILE (built-ins + starter library,
-# overlaid by a user `roles:` map). See core/archetypes.py.
-ARCHETYPE_REGISTRY_FILE = DOCKET_HOME / "docket-roles.json"
 # WORKSPACES_DIR: root of every managed workspace -- project pods live at
 # WORKSPACES_DIR/projects/<id> (PROJECTS_DIR below); pod
 # members live directly at WORKSPACES_DIR/<role-or-project>/...

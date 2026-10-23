@@ -64,9 +64,8 @@ class TestNormalizeRoleAgainstRegistry:
     def test_user_defined_role_accepted_after_overlay_add(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
         with pytest.raises(pod.PodError):
-            pod.normalize_role("producer")
+            pod.normalize_role("producer", "shop")
 
         _arch.add_user_archetype(
             {
@@ -78,9 +77,12 @@ class TestNormalizeRoleAgainstRegistry:
                 "agentsTemplate": "hi ${project}",
                 "gateContract": {"kind": "none"},
                 "toolProfile": "x",
-            }
+            },
+            "shop",
         )
-        assert pod.normalize_role("producer") == "producer"
+        assert pod.normalize_role("producer", "shop") == "producer"
+        with pytest.raises(pod.PodError):
+            pod.normalize_role("producer", "other")
 
 
 class TestMemberIdUnaffected:
@@ -127,7 +129,6 @@ class TestModelClassFallback:
     def test_unlisted_cheap_archetype_resolves_via_economy_anchor(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
         monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
         _, tiers, _ = _mp.load_registry()
         # 'monitor' is a starter-library role with modelClass=cheap and no named
@@ -138,7 +139,6 @@ class TestModelClassFallback:
     def test_unlisted_strong_archetype_resolves_via_standard_anchor(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
         monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
         _, tiers, _ = _mp.load_registry()
         assert _mp.resolve_role_model("researcher", {}) == tiers["standard"]
@@ -146,7 +146,6 @@ class TestModelClassFallback:
     def test_totally_unknown_role_falls_back_to_default_model(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
         monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
         assert _mp.resolve_role_model("totally-not-a-role", {}) == _cfg.DEFAULT_MODEL
 

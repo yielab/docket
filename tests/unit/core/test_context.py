@@ -113,11 +113,9 @@ class TestBudgetForRole:
         home = tmp_path / "docket-home"
         home.mkdir()
         monkeypatch.setenv("DOCKET_HOME", str(home))
-        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", home / "docket-roles.json")
-        (home / "docket-roles.json").write_text('{"roles": {}}', encoding="utf-8")
 
         role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
-        doc = _config_docs.load_document(role_file, kind="role")
+        doc = _config_docs.load_document(role_file)
         _arch.add_user_archetype(doc.doc, "mypod")
 
         found_budget = _ctx.budget_for_role("security-vetter", project="mypod")
