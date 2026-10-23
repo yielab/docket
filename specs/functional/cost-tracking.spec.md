@@ -1,6 +1,6 @@
 # Cost Tracking Specification
 
-**Version**: 1.11.0
+**Version**: 1.12.0
 **Status**: Implemented. Token usage is measured; docket records no dollar spend, so every dollar
 figure it shows is a labelled estimate. Caps and auto-pause act only on pod dispatch.
 **Last Updated**: 2026-10-23
@@ -40,10 +40,10 @@ pod-dispatch.spec.md).
    its `cost_usd` is always `0.0`), so this branch is the production case; the catalog's model
    prices power estimates only (see model-profiles.spec.md).
 4. The session-format parsing behind requirement 2 **MUST** live entirely inside `DocketDriver`
-   and **MUST NOT** appear in the domain layer. The domain's `aggregate_cost` and `cost_history`
-   are pure translations of whatever the default driver (`DocketDriver`, unconditionally)
-   reports into the `CostTotals` and `DayRecord` shapes; they open no session file themselves. A
-   guard test (`test_product_code_has_no_retired_daemon_reference`) fails the build if
+   and **MUST NOT** appear in the domain layer. The domain's `aggregate_cost` and
+   `cost_history` return whatever the default driver (`DocketDriver`, unconditionally) reports, as
+   the `UsageTotals` and `UsageDay` shapes the driver port defines; they open no session file
+   themselves. A guard test (`test_product_code_has_no_retired_daemon_reference`) fails the build if
    external-runtime coupling returns to `src/`.
 5. Wherever `docket run` shows a pod's cap, it **MUST** show it beside the labelled estimate the
    gate uses (`estimate so far ~$X.XX, no cost recorded`) and **MUST NOT** print a `spent` figure,
@@ -203,7 +203,7 @@ $ docket run --resume
 
 ## Implementation
 
-- `src/docket/core/utils.py`: `CostTotals`, `DayRecord`, `aggregate_cost`, `cost_history`, `estimate_cost_usd`, `gating_cost`
+- `src/docket/core/utils.py`: `aggregate_cost`, `cost_history`, `estimate_cost_usd`, `gating_cost`
 - `src/docket/core/dispatch.py`: `pod_gating_cost`, `pod_recorded_cost`, `pod_budget`, `unpriced_budget_models`, `unblock_pod`, the pre-hop budget gate, the Lead pause writer, the claim-time pause check
 - `src/docket/core/models_policy.py`: `price_for`
 - `src/docket/core/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `budget_warning`, `paused_refused`)

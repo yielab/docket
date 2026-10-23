@@ -170,8 +170,8 @@ class HopResult:
     # Real evidence from this hop's mechanical verify gate (``_evaluate_mechanical_gate``):
     # ``{"cmd", "exitCode", "durationS", "outputTail"}``, or ``None`` for a hop with no
     # verify gate, or one whose gate had no ``verifyCmd`` configured (see
-    # ``verification_skipped``). ``exitCode`` is ``0``/``1`` (``run_verify_cmd`` itself
-    # carries no numeric exit code to relay). ``outputTail`` is already redacted -- see
+    # ``verification_skipped``). ``exitCode`` is ``0``/``1`` for the verify gate and the
+    # command's own status for a ``run:`` step. ``outputTail`` is already redacted -- see
     # ``_evaluate_mechanical_gate``. ``_hop_record``/``_hop_from_record`` round-trip this
     # key; a record with no ``verify`` key at all defaults to ``None`` on read.
     verify: dict[str, Any] | None = None
@@ -198,11 +198,6 @@ class HopResult:
     def __post_init__(self) -> None:
         if self.artifact is None:
             self.artifact = _handoff.HandoffArtifact.from_output(self.output)
-
-    def rendered_artifact(self) -> str:
-        """This hop's artifact rendered to text — never ``None`` after construction."""
-        assert self.artifact is not None
-        return self.artifact.render()
 
 
 @dataclass
@@ -244,19 +239,6 @@ class TaskResult:
         return round(sum(h.cost_usd for h in self.hops), 6)
 
 
-def _parse_iso(ts: str) -> _dt.datetime | None:
-    """Parse an ISO timestamp produced by ``kernel.clock.iso()``; None on anything else."""
-    if not ts:
-        return None
-    try:
-        dt = _dt.datetime.fromisoformat(ts)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=_dt.UTC)
-    return dt
-
-
 def pod_task_list_path(project: str) -> Path:
     """The pod's task queue lives in its Lead's workspace: one queue per pod, keyed by
     the Lead, so pods never share a task list.
@@ -265,7 +247,7 @@ def pod_task_list_path(project: str) -> Path:
     return current_home().workspace_dir(lead_id) / "TASK_LIST.json"
 
 
-# Fields a task record may lack because enqueue_task does not write them.
+# Fields a task record may lack because enqueue_task_once does not write them.
 # ``hops`` is handled separately below — a shared mutable default would leak
 # the same list object across every backfilled task.
 _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
@@ -291,7 +273,7 @@ _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
 
 
 def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
-    """Fill every field ``enqueue_task`` does not write onto a task dict, in place (returns it)."""
+    """Fill every field ``enqueue_task_once`` does not write onto a task dict, in place (returns it)."""
     for key, default in _TASK_SCALAR_DEFAULTS.items():
         task.setdefault(key, default)
     if not isinstance(task.get("hops"), list):
@@ -374,22 +356,6 @@ def validate_task_options(**raw: Any) -> _task_options.TaskOptions:
 
 def _queued_with_key(tasks: list[dict[str, Any]], key: str) -> dict[str, Any] | None:
     return next((t for t in tasks if t.get("idempotencyKey") == key), None)
-
-
-def enqueue_task(
-    project: str,
-    description: str,
-    priority: str = "normal",
-    *,
-    channel: str,
-    trusted: bool | None = None,
-    brief: dict[str, Any] | None = None,
-    **options: Any,
-) -> dict[str, Any]:
-    """The task :func:`enqueue_task_once` queued, or the one already queued for the key."""
-    return enqueue_task_once(
-        project, description, priority, channel=channel, trusted=trusted, brief=brief, **options
-    )[0]
 
 
 def enqueue_task_once(
@@ -519,7 +485,7 @@ def pod_pipeline(project: str) -> list[tuple[str, str]]:
 def pod_full_roster(project: str) -> dict[str, str]:
     """Every role this pod has, first member per role (``role -> member_id``). Unlike
     :func:`pod_pipeline` (fixed to ``PIPELINE_ORDER``), this covers every role name so a
-    custom :class:`~docket.core.pipeline.PipelineSpec` can target a non-legacy role."""
+    custom :class:`~docket.core.pipeline.PipelineSpec` can target a role outside the default four."""
     all_ids = [a.id for a in _fleet.list_agents()]
     by_role: dict[str, str] = {}
     for mid, role, _idx in _pod.members_of(all_ids, project):
@@ -634,7 +600,7 @@ def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
     for suffix in (".yaml", ".yml"):
         if (pod_dir / f"{name}{suffix}").is_file():
             return pod_dir / f"{name}{suffix}", f"pod:{name}"
-    for root in (current_home().user_recipes_dir, _templates.recipes_dir()):
+    for root in (current_home().user_recipes_dir, _templates.RECIPES_DIR):
         if (root / name / "pipeline.yaml").is_file():
             return root / name / "pipeline.yaml", f"recipe:{name}"
     return None
@@ -1516,7 +1482,7 @@ def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
 
 def _verdict_event_names(role: str) -> tuple[str, str, str]:
     """(rework_event, rejected_event, unparseable_event) names for a verdict gate's non-pass
-    outcome. Keeps exact legacy names for ``reviewer``/``tester`` (pinned by
+    outcome. Keeps the established names for ``reviewer``/``tester`` (pinned by
     test_reviewer_gate.py/test_verify_gate.py) so gate logic stays generic without changing
     operator-visible trace names; other roles get generic ``verdict_*`` names."""
     if role == "reviewer":
@@ -2274,9 +2240,10 @@ def _persist_hop_and_trace(
         hop.trace["lastTs"] = _clock.stamp()
     duration_ms: int | None = None
     if hop.trace and hop.trace.get("firstTs") and hop.trace.get("lastTs"):
-        first = _dt.datetime.fromisoformat(hop.trace["firstTs"].replace("Z", "+00:00"))
-        last = _dt.datetime.fromisoformat(hop.trace["lastTs"].replace("Z", "+00:00"))
-        duration_ms = int((last - first).total_seconds() * 1000)
+        first = _clock.parse_iso(hop.trace["firstTs"])
+        last = _clock.parse_iso(hop.trace["lastTs"])
+        if first is not None and last is not None:
+            duration_ms = int((last - first).total_seconds() * 1000)
     verdict = hop.artifact.verdict if hop.artifact is not None else None
     gate: str | None = None
     if hop.verify is not None:
@@ -4058,7 +4025,7 @@ def _sweep_stale_claims(project: str) -> None:
         for t in tasks:
             if t.get("status") != "running":
                 continue
-            claimed_at = _parse_iso(str(t.get("claimedAt") or ""))
+            claimed_at = _clock.parse_iso(str(t.get("claimedAt") or ""))
             if claimed_at is None:
                 continue
             if (now - claimed_at).total_seconds() <= current_home().claim_stale_timeout:
@@ -4089,7 +4056,7 @@ def _claim_stale_reason(task: dict[str, Any], now: _dt.datetime, lease_s: int) -
     pid = task.get("claimPid")
     if isinstance(pid, int) and not _sys.process_alive(pid):
         return f"claimant pid {pid} is gone"
-    claimed_at = _parse_iso(str(task.get("claimedAt") or ""))
+    claimed_at = _clock.parse_iso(str(task.get("claimedAt") or ""))
     if claimed_at is None:
         return ""
     if (now - claimed_at).total_seconds() > lease_s:

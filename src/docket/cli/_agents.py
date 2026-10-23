@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json as _json
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +16,7 @@ import typer
 from rich.markup import escape
 
 from docket import ui
+from docket.cli import _contract
 from docket.core import blueprints as _bp
 from docket.core import config_docs as _config_docs
 from docket.core import fleet as _fleet
@@ -112,10 +112,6 @@ def _resolve_repo_apply_source(
                 ui.console.print(f"[red]{escape(str(config_error))}[/red]")
             return None, 1
     return apply_source, 0
-
-
-def _stdin_is_tty() -> bool:
-    return sys.stdin.isatty()
 
 
 def _refuse_shell(req: InitRequest, review: _pod_apply.PlanReview) -> int:
@@ -236,7 +232,7 @@ def review_repo_source(
     if decision.status == "code_mismatch":
         return _changed_since_review(req, loc_path, project, req.accept or "", review, command)
     if decision.status == "needs_code":
-        if not (_stdin_is_tty() and not req.json_out):
+        if not (_contract.is_tty() and not req.json_out):
             return _needs_review(req, review, decision.code, command)
         ui.console.print()
         render_review(review)
@@ -411,7 +407,7 @@ def _offer_desktop_channel() -> None:
         return
     ui.console.print()
     ui.warn(unreached)
-    if not sys.stdin.isatty() or not _sys.desktop_notifications_available():
+    if not _contract.is_tty() or not _sys.desktop_notifications_available():
         return
     ans = input("Enable desktop notifications now? [Y/n]: ").strip().lower()
     if ans in ("n", "no"):

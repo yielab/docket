@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.0.1
+**Version**: 9.0.2
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -74,7 +74,7 @@ This specification does NOT cover:
 
 ### Task lifecycle and identity
 
-1. A newly queued task (`enqueue_task`) **MUST** be created with a unique `task-<uuid4>` id (not a
+1. A newly queued task (`enqueue_task_once`) **MUST** be created with a unique `task-<uuid4>` id (not a
    timestamp: concurrent enqueues under the same millisecond would otherwise collide and leak
    false ordering), `status: "pending"`, a `created` timestamp, `priority` (`high`/`normal`/`low`;
    any other value is stored as `normal`), `source`, `channel`, an empty `hops` array,
@@ -100,7 +100,7 @@ refuse, exiting 1 without enqueueing, an empty text or a text longer than 500 ch
 
 #### Enqueue channel
 
-`enqueue_task` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram` or
+`enqueue_task_once` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram` or
 `mcp`, persist it on the task as `channel` beside `source`, and append `task.enqueue` to the audit
 log naming the project, the task and the channel. `source` stays the origin class (`operator`,
 `reviewer` for a rework task) and alone drives the `pre_input` trust default; `channel` never
@@ -109,7 +109,7 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
 
 #### Addressable task (ADR 0027)
 
-1. `enqueue_task` **MUST** accept `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
+1. `enqueue_task_once` **MUST** accept `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
    `gate`, `max_tokens`, `prepare` and `restrictions` as keyword arguments, validate them through
    `validate_task_options` (shape and narrowing only) before anything is persisted, and store each
    one that is set on the task record verbatim under its camelCase key: `externalRef`,
@@ -127,7 +127,7 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
 3. When `idempotency_key` is set and a task in this pod's queue already carries that
    `idempotencyKey`, the lookup runs inside the same locked read-modify-write that appends, the
    queue is left untouched, no `task.enqueue` is audited, and that existing record is returned.
-   `enqueue_task_once(...)` returns `(task, created)`; `enqueue_task(...)` returns the task alone.
+   `enqueue_task_once(...)` returns `(task, created)`.
 
 ### Task references
 
@@ -904,7 +904,7 @@ wired agent's conversation current with the task it is working.
    hop. Every other prior hop in the same message is unaffected and still goes through the ordinary
    token-budget compiler. A reply with no parseable brief is unaffected: the Implementer sees the
    Lead's prose.
-7. **A pre-brief at enqueue.** `enqueue_task(..., brief: dict | None = None)` validates *brief* as a
+7. **A pre-brief at enqueue.** `enqueue_task_once(..., brief: dict | None = None)` validates *brief* as a
    `TaskBrief` (an invalid one raises `DispatchError`, nothing persisted), folds `render_brief` of it
    into the enqueued `description` under its own `## Pre-brief` heading **before** the `pre_input`
    gate runs -- so the same screen that covers every other human-sent string at enqueue covers this
@@ -2218,7 +2218,7 @@ queue.)
 
 ## Implementation
 
-- `src/docket/core/dispatch.py`: the state machine. Public: `enqueue_task`, `enqueue_task_once`,
+- `src/docket/core/dispatch.py`: the state machine. Public: `enqueue_task_once`,
   `read_tasks`, `pod_task_list_path`, `validate_task_options`, `DispatchError`,
   `TaskRestrictionError`, `TaskRunRefusal`, `TaskNotFoundError`, `HopResult`, `TaskResult`,
   `step_session_key`, `PIPELINE_ORDER`, `DEFAULT_TIMEOUT`, `RESUMABLE_FAILURE_KINDS`,
@@ -2286,7 +2286,7 @@ queue.)
   `teardown_member`
 - `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver`, `default_driver`,
   `resolve_command_jail`, `PIPELINE_WORKTREE_ENV` and the other internal coordinates
-- `src/docket/edges/adapters/system.py`: `run_command`, `run_verify_cmd`, `process_alive`,
+- `src/docket/edges/adapters/system.py`: `run_command`, `process_alive`,
   `kill_process_group`, `task_environment`, `cache_environment`, `trust_worktree`,
   `git_worktree_add`, `git_commit_all`, `git_snapshot_commit`, `git_changed_files`,
   `git_current_branch`, `git_merge_base`, `git_diff_stat`, `git_diff_names`, `git_ls_files`

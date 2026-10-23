@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -52,7 +53,7 @@ def _seed(tmp_path: Path, verify_cmd: str) -> Iterator[None]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         _fleet.meta_set("demo-implementer", "verifyCmd", verify_cmd)
         yield
@@ -72,7 +73,7 @@ def _implementer_messages(driver: FakeDriver) -> list[str]:
 @contextmanager
 def _run(tmp_path: Path, verify_cmd: str, yaml: str) -> Iterator[tuple[Any, FakeDriver]]:
     with _seed(tmp_path, verify_cmd):
-        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
         driver = FakeDriver()
         results = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(yaml))
         yield results[0], driver

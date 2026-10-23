@@ -10,7 +10,7 @@ import typer
 from docket import ui
 from docket.cli import _contract
 from docket.cli._setup_sandbox import _off_label, print_sandbox_block, sandbox_state
-from docket.cli._target import TargetError, pod_option
+from docket.cli._target import pod_option
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import network_posture as _np
@@ -21,8 +21,8 @@ from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.models import AgentMeta
 from docket.core.pod_report import unpriced_text
+from docket.core.runtime_driver import UsageDay
 from docket.core.utils import (
-    DayRecord,
     aggregate_cost,
     cost_history,
     gating_cost,
@@ -36,7 +36,7 @@ from docket.kernel.home import current_home
 
 
 def pod_ids() -> list[str]:
-    """Return registered pod ids once each, excluding flat legacy agents."""
+    """Return registered pod ids once each, excluding flat non-pod agents."""
     projects: set[str] = set()
     for agent in _fleet.list_agents():
         raw = store.read_json(current_home().meta_path(agent.id))
@@ -357,7 +357,7 @@ def _render_all(summaries: list[dict[str, Any]]) -> None:
 
 
 def _history(pods: list[str], days: int, json_out: bool) -> None:
-    merged: dict[str, DayRecord] = {}
+    merged: dict[str, UsageDay] = {}
     registered = [a.id for a in _fleet.list_agents()]
     for pod_id in pods:
         for member_id, _role, _idx in _pod.members_of(registered, pod_id):
@@ -366,7 +366,7 @@ def _history(pods: list[str], days: int, json_out: bool) -> None:
                 merged[rec.date] = (
                     rec
                     if old is None
-                    else DayRecord(
+                    else UsageDay(
                         date=rec.date,
                         turns=old.turns + rec.turns,
                         input_tokens=old.input_tokens + rec.input_tokens,
@@ -430,11 +430,7 @@ def cmd_status(
         else:
             _render_all(summaries)
         return
-    try:
-        project = _contract.resolve_pod_here(pod)
-    except TargetError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
+    project = _contract.require_pod(pod)
     if history:
         _history([project], days, json_out)
         return

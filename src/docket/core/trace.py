@@ -15,7 +15,6 @@ directly rather than through ``edges/store.py``.
 from __future__ import annotations
 
 import contextlib
-import datetime as _dt
 import json
 import os
 import re
@@ -78,7 +77,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "run_cancellation_observed",  # execution first observed a persisted run request
         "run_cancelled",  # dispatch fully stopped and terminalized the requested run
         # Generic verdict-gate outcomes for any role/archetype beyond the two
-        # built-in ones (which keep emitting their own legacy names above —
+        # built-in ones (which keep emitting their own names above —
         # rework_started/review_rejected/reviewer_verdict_unparseable for
         # reviewer, tester_verdict_failed for tester — see
         # core/dispatch.py's _verdict_event_names).
@@ -182,15 +181,6 @@ def _redact_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_redact_value(v) for v in value]
     return value
-
-
-def _epoch_from_iso(ts: str) -> float | None:
-    """Parse the leading 'YYYY-MM-DDTHH:MM:SS' of *ts* as a UTC epoch."""
-    try:
-        dt = _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
-    except (ValueError, IndexError):
-        return None
-    return dt.replace(tzinfo=_dt.UTC).timestamp()
 
 
 def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
@@ -345,7 +335,7 @@ def sweep_all() -> None:
 
         if has_end or last_ts_str is None:
             continue
-        last_epoch = _epoch_from_iso(last_ts_str)
+        last_epoch = _clock.parse_epoch(last_ts_str)
         if last_epoch is None or (now - last_epoch) <= current_home().session_timeout:
             continue
 
@@ -438,7 +428,7 @@ def expire_old_traces(
         if not has_end:
             report.kept_open += 1
             continue
-        last_epoch = _epoch_from_iso(last_ts_str) if last_ts_str else None
+        last_epoch = _clock.parse_epoch(last_ts_str) if last_ts_str else None
         if last_epoch is None:
             # Terminated but no parseable timestamp anywhere -- can't judge
             # age, so keep it rather than guess.
@@ -506,14 +496,6 @@ def read_trace(tracefile: Path) -> list[dict[str, Any]]:
 
 def project_trace_dir(project: str) -> Path:
     return current_home().traces_dir / project
-
-
-def latest_trace_file(project: str) -> Path | None:
-    """Most-recently-modified *.jsonl for *project*, or None."""
-    files = list((current_home().traces_dir / project).glob("*.jsonl"))
-    if not files:
-        return None
-    return max(files, key=lambda p: p.stat().st_mtime)
 
 
 def export_lines(project: str, since: str = "") -> list[str]:
@@ -593,15 +575,9 @@ def terminal_outcomes(project: str, *, window: int) -> TerminalOutcomes:
         if outcome is None:
             continue
         duration: int | None = None
-        if start_ts and end_ts:
-            try:
-                fmt = "%Y-%m-%dT%H:%M:%S"
-                delta = _dt.datetime.strptime(end_ts[:19], fmt) - _dt.datetime.strptime(
-                    start_ts[:19], fmt
-                )
-                duration = int(delta.total_seconds() * 1000)
-            except ValueError:
-                duration = None
+        started, ended = _clock.parse_epoch(start_ts), _clock.parse_epoch(end_ts)
+        if started is not None and ended is not None:
+            duration = int((ended - started) * 1000)
         sessions.append((end_ts or "", outcome, duration))
     sessions.sort(key=lambda s: s[0])
     recent = sessions[-window:] if window > 0 else sessions

@@ -73,17 +73,6 @@ class AgentMeta(BaseModel):
 
     template_version: str = Field("", alias="templateVersion")
 
-    def display_name(self) -> str:
-        """The name a human sees: ``name`` → role. Never derived from a
-        self-authored ``IDENTITY.md`` — identity of record is docket metadata."""
-        return self.name or self.role or ""
-
-    def is_paused(self) -> bool:
-        """Real ``bool`` for the ``paused`` flag; the one place any caller should read
-        it, since pydantic coerces a string value on ``model_validate``. See
-        ``coerce_paused`` for the raw-dict equivalent."""
-        return self.paused
-
     @staticmethod
     def coerce_paused(value: object) -> bool:
         """Coerce a raw (possibly stringified) ``paused`` value to a real ``bool``. Guards a

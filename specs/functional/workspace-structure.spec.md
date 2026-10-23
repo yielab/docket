@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 2.1.1
+**Version**: 2.1.2
 **Status**: Complete. `DOCKET_HOME` is the only state root. Agent workspaces live under
 `~/.docket/workspaces/projects/`; a pod's runtime resources, configuration overlay and learned
 memory live under `~/.docket/workspaces/pods/<pod>/`. `docket init` provisions pods.
@@ -318,7 +318,7 @@ Where the names above live today; the only section that names source paths.
   `pod_memory_path`, `pod_config_dir`, `user_recipes_dir`, `pod_memory_max_accepted`,
   `pod_memory_max_undecided`, `pod_memory_max_per_task`, `pod_memory_note_max_chars`,
   `pod_memory_render_max_bytes`
-- `src/docket/kernel/templates.py`: `policy_templates_dir`, `recipes_dir`, `PROVIDER_TEMPLATES_DIR`,
+- `src/docket/kernel/templates.py`: `POLICY_TEMPLATES_DIR`, `RECIPES_DIR`, `PROVIDER_TEMPLATES_DIR`,
   `EXPORTER_TEMPLATES_DIR`, `CHANNEL_TEMPLATES_DIR`
 - `src/docket/core/pod_provisioning.py`: `provision_member`, `rendered_member_files`,
   `member_sync_status`, `resync_member`, `POD_TEMPLATE_VERSION`, `TASK_WORKTREES_DIRNAME`

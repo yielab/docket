@@ -20,13 +20,13 @@ from unittest import mock
 import pytest
 
 import docket.edges.adapters.system as _sys
-from docket.cli._pod import (
-    _provision_task_worktree,
-    _worktree_branch,
-    provision_member,
-    teardown_member,
-)
 from docket.core.pod import PodMember
+from docket.core.pod_provisioning import (
+    provision_member,
+    provision_task_worktree,
+    teardown_member,
+    worktree_branch,
+)
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._pod"
@@ -103,7 +103,7 @@ def git_repo(tmp_path: Path) -> Path:
 
 class TestWorktreeBranchName:
     def test_format(self) -> None:
-        assert _worktree_branch("myapp", "task-1") == "docket/myapp/task-1"
+        assert worktree_branch("myapp", "task-1") == "docket/myapp/task-1"
 
 
 # ── TestProvisionTaskWorktree ─────────────────────────────────────────────────
@@ -113,38 +113,34 @@ class TestProvisionTaskWorktree:
     def test_non_repo_codebase_fallback(self, tmp_path: Path, pod_home: Path) -> None:
         plain_dir = tmp_path / "notarepo"
         plain_dir.mkdir()
-        rec, reason = _provision_task_worktree("myapp-implementer", "myapp", "t1", str(plain_dir))
+        rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(plain_dir))
         assert rec == {}
         assert "not a git repo" in reason
 
     def test_git_unavailable_fallback(self, git_repo: Path, pod_home: Path) -> None:
         with mock.patch.object(_sys, "git_available", return_value=False):
-            rec, reason = _provision_task_worktree(
-                "myapp-implementer", "myapp", "t1", str(git_repo)
-            )
+            rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
         assert rec == {}
         assert reason
 
     def test_worktree_add_failure_fallback(self, git_repo: Path, pod_home: Path) -> None:
         with mock.patch.object(_sys, "git_worktree_add", return_value=(False, "some git error")):
-            rec, reason = _provision_task_worktree(
-                "myapp-implementer", "myapp", "t1", str(git_repo)
-            )
+            rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
         assert rec == {}
         assert "worktree add failed" in reason
 
     def test_worktree_created_under_member_tasks_dir(self, git_repo: Path, pod_home: Path) -> None:
-        rec, reason = _provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
+        rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
         assert reason == ""
         assert rec["dir"] == str(current_home().projects_dir / "myapp-implementer" / "tasks" / "t1")
         assert Path(rec["dir"]).is_dir()
-        assert rec["branch"] == _worktree_branch("myapp", "t1")
+        assert rec["branch"] == worktree_branch("myapp", "t1")
         assert _sys.git_current_branch(rec["dir"]) == rec["branch"]
         assert rec["baseCommit"] == _sys.git_head_sha(str(git_repo))
 
     def test_two_tasks_get_two_directories(self, git_repo: Path, pod_home: Path) -> None:
-        one, _ = _provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
-        two, _ = _provision_task_worktree("myapp-implementer", "myapp", "t2", str(git_repo))
+        one, _ = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
+        two, _ = provision_task_worktree("myapp-implementer", "myapp", "t2", str(git_repo))
         assert one["dir"] != two["dir"]
         assert one["branch"] != two["branch"]
 
@@ -195,7 +191,7 @@ class TestTeardownMemberWorktree:
         ws = current_home().projects_dir / member_id
         self._write_meta(ws, {"codebase": str(repo), "pod": project, "role": "implementer"})
         for task in tasks:
-            _rec, reason = _provision_task_worktree(member_id, project, task, str(repo))
+            _rec, reason = provision_task_worktree(member_id, project, task, str(repo))
             assert not reason, reason
         return repo, member_id
 

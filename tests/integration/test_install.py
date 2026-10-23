@@ -122,7 +122,7 @@ def test_step_policies_seeds_the_shipped_set_and_is_idempotent(
         second = capsys.readouterr().out
 
         installed = {f.name for f in (home / "policies").glob("*.json")}
-        assert installed == {f.name for f in _templates.policy_templates_dir().glob("*.json")}
+        assert installed == {f.name for f in _templates.POLICY_TEMPLATES_DIR.glob("*.json")}
         assert "Installed" in first
         assert "Installed" not in second
 

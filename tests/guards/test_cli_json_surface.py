@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import record_isolation_off, register_local_provider
+from tests.pods import build_pod
 from typer.core import TyperGroup
 from typer.main import get_command
 from typer.testing import CliRunner
@@ -87,11 +88,11 @@ def fixture_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[st
         record_isolation_off(home)
         code = tmp_path / "code"
         code.mkdir()
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
         register_local_provider(home, "loopback", [{"id": "tiny"}])
-        task = _dispatch.enqueue_task(
-            "demo", "a queued task", channel="cli"
-        )  # also the one audit entry
+        task = _dispatch.enqueue_task_once("demo", "a queued task", channel="cli")[
+            0
+        ]  # also the one audit entry
         monkeypatch.setenv("DOCKET_POD", "demo")
         monkeypatch.setenv("DOCKET_NO_HINTS", "1")
         monkeypatch.chdir(code)

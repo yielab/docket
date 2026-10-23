@@ -1,6 +1,6 @@
 """Budget honesty — auto-pause, the paused-flag type bug, labelled estimates.
 
-Covers: ``AgentMeta.coerce_paused``/``is_paused()`` (typed accessor fixing the string/bool
+Covers: ``AgentMeta.coerce_paused`` (typed accessor fixing the string/bool
 display bug: a writer stores a real ``bool`` while old code compared it to the string
 ``"true"``, which ``True`` never equals); the pause writer (per-hop budget gate marks the pod's
 Lead ``paused=True, pausedReason="budget"`` at the cap); claim-time refusal
@@ -18,9 +18,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -51,7 +51,7 @@ def _seed_pod(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        build_pod(project, roles, codebase=f"/src/{project}")
         yield home
 
 
@@ -99,7 +99,7 @@ def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tok
     (sdir / "session.json").write_text(json.dumps(record))
 
 
-# ── AgentMeta.coerce_paused / is_paused ────────────────────────────────────────────
+# ── AgentMeta.coerce_paused ────────────────────────────────────────────
 
 
 class TestCoercePaused:
@@ -127,15 +127,6 @@ class TestCoercePaused:
     def test_unrelated_string_is_false_not_an_error(self) -> None:
         assert AgentMeta.coerce_paused("yes") is False
 
-    def test_instance_accessor_reflects_pydantic_coercion(self) -> None:
-        # pydantic's own bool validator already coerces "true"/"false" on
-        # model_validate — is_paused() is the one accessor everyone should
-        # call rather than re-deriving this.
-        meta = AgentMeta.model_validate({"kind": "project", "paused": "true"})
-        assert meta.is_paused() is True
-        meta2 = AgentMeta.model_validate({"kind": "project", "paused": False})
-        assert meta2.is_paused() is False
-
 
 # ── dispatch: pause on cap breach + claim-time refusal ────────────────────────────
 
@@ -145,7 +136,7 @@ class TestAutoPauseDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
             monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
 
@@ -153,16 +144,15 @@ class TestAutoPauseDispatch:
             assert results[0].status == "blocked"
 
             lead_id = _podcore.member_id("demo", "lead")
-            meta = _fleet.meta_read(lead_id)
-            assert meta.is_paused() is True
-            assert meta.paused_reason == "budget"
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
+            assert _fleet.meta_get(lead_id, "pausedReason") == "budget"
 
     def test_paused_pod_refuses_claim_at_next_dispatch(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task("demo", "One", channel="cli")
-            _dispatch.enqueue_task("demo", "Two", channel="cli")
+            _dispatch.enqueue_task_once("demo", "One", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Two", channel="cli")
             monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
             _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
@@ -189,7 +179,7 @@ class TestAutoPauseDispatch:
 
 class TestEstimateFallback:
     def test_estimate_cost_usd_known_model(self) -> None:
-        totals = _utils.CostTotals(input_tokens=1_000_000, output_tokens=1_000_000)
+        totals = _rd.UsageTotals(input_tokens=1_000_000, output_tokens=1_000_000)
         est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
         price = _mp.price_for("anthropic/claude-haiku-4-5")
         assert price is not None
@@ -197,7 +187,7 @@ class TestEstimateFallback:
         assert est == pytest.approx(in_rate + out_rate)
 
     def test_estimate_cost_usd_does_not_charge_cache_reads_twice(self) -> None:
-        totals = _utils.CostTotals(input_tokens=1_000_000, cache_read=900_000)
+        totals = _rd.UsageTotals(input_tokens=1_000_000, cache_read=900_000)
         price = _mp.price_for("anthropic/claude-haiku-4-5")
         assert price is not None
         in_rate, _out, cache_read_rate, _cw = price
@@ -206,7 +196,7 @@ class TestEstimateFallback:
 
     def test_estimate_cost_usd_does_not_charge_cache_writes_twice(self) -> None:
         """Cache writes are part of input and are priced once, at the cache-write rate."""
-        totals = _utils.CostTotals(input_tokens=1_000_000, cache_read=500_000, cache_write=300_000)
+        totals = _rd.UsageTotals(input_tokens=1_000_000, cache_read=500_000, cache_write=300_000)
         price = _mp.price_for("anthropic/claude-haiku-4-5")
         assert price is not None
         in_rate, _out, cache_read_rate, cache_write_rate = price
@@ -214,7 +204,7 @@ class TestEstimateFallback:
         assert est == pytest.approx(0.2 * in_rate + 0.5 * cache_read_rate + 0.3 * cache_write_rate)
 
     def test_estimate_cost_usd_unknown_model_returns_none(self) -> None:
-        totals = _utils.CostTotals(input_tokens=1000, output_tokens=1000)
+        totals = _rd.UsageTotals(input_tokens=1000, output_tokens=1000)
         assert _utils.estimate_cost_usd("some-vendor/unknown-model", totals) is None
 
     def test_pod_gating_cost_prefers_recorded_when_nonzero(
@@ -249,12 +239,12 @@ class TestEstimateFallback:
             _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
             _fleet.meta_set(lead_id, "budgetUsd", "1")
             _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-            _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
 
             results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
             assert results[0].status == "blocked"
             assert "estimated" in results[0].reason
-            assert _fleet.meta_read(lead_id).is_paused() is True
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
 
 
 # ── recorded spend is never contaminated by an estimate ───────────────────────────

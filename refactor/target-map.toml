@@ -146,6 +146,10 @@ from = "docket.core.corrections"
 to = "docket.tasks.application.corrections"
 
 [[module]]
+from = "docket.core.document_fields"
+to = "docket.kernel.document_fields"
+
+[[module]]
 from = "docket.core.escalation"
 to = "docket.tasks.application.escalation"
 
@@ -489,7 +493,6 @@ names = [
     "_enqueue_pre_input_gate",
     "validate_task_options",
     "_queued_with_key",
-    "enqueue_task",
     "enqueue_task_once",
     "pod_full_roster",
     "_eligible_for_claim",
@@ -548,11 +551,6 @@ names = [
     "_persist_hop_and_trace",
     "_persist_hop",
 ]
-
-[[definition]]
-from = "docket.core.dispatch"
-to = "docket.kernel.clock"
-names = ["_parse_iso"]
 
 [[definition]]
 from = "docket.core.dispatch"
@@ -747,7 +745,6 @@ names = [
     "_TOOL_GATE_ACTIONS",
     "_APPROVAL_AUDIT_ACTIONS",
     "LoopMetrics",
-    "_epoch_seconds",
     "_collect_trace_loop_metrics",
     "_collect_audit_loop_metrics",
     "_loop_metrics",
@@ -838,7 +835,6 @@ names = [
     "secret_tool_available",
     "desktop_notifications_available",
     "secret_tool_lookup",
-    "keyring_secret",
     "secret_tool_store",
     "secret_tool_clear",
     "_SANDBOX_PROBE_TIMEOUT",
@@ -882,7 +878,6 @@ names = [
     "tmp_environment",
     "jailed_env",
     "jail_launch",
-    "run_verify_cmd",
     "run_command",
 ]
 

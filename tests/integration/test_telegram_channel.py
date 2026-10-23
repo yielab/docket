@@ -23,6 +23,7 @@ from typing import Any, ClassVar
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import approval as _approval
@@ -63,7 +64,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def _seed_pod(project: str = "demo") -> None:
-    _pod.build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
+    build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
 
 
 def _bind(agent_id: str, peer_id: str, channel: str = "telegram") -> None:
@@ -92,9 +93,9 @@ def _bind_pipeline(project: str, text: str) -> None:
 def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     """A real pod with a real ``waiting_input`` task (single-property ``answer`` schema),
     reached by actually dispatching through an ``input`` step."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task(project, "needs a decision", channel="cli")
+    _dispatch.enqueue_task_once(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
     return _dispatch.read_tasks(project)[0]
 
@@ -358,7 +359,7 @@ class TestStatus:
     def test_status_shows_a_blocked_task_scoped_to_this_pod(self) -> None:
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
-        _dispatch.enqueue_task("demo", "Do the thing", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Do the thing", channel="cli")
         tasks = _dispatch.read_tasks("demo")
         tasks[0]["status"] = "blocked"
         tasks[0]["blockedReason"] = "budget"
@@ -443,9 +444,9 @@ class TestDelegate:
         (current_home().policies_dir / "test-block-delegate.json").write_text(json.dumps(policy))
 
         def _boom(*_a: object, **_k: object) -> object:
-            raise AssertionError("enqueue_task must not be called when pre_input blocks")
+            raise AssertionError("enqueue_task_once must not be called when pre_input blocks")
 
-        monkeypatch.setattr(_dispatch, "enqueue_task", _boom, raising=True)
+        monkeypatch.setattr(_dispatch, "enqueue_task_once", _boom, raising=True)
 
         outcome = _tg.handle_message(_msg("-100300", "/delegate this has a forbidden-phrase in it"))
 
@@ -592,8 +593,8 @@ class TestAnswer:
 
 def _park_consult(project: str = "demo") -> dict[str, Any]:
     """A real pod whose one task is parked on a v1.1 consult question with two options."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    _dispatch.enqueue_task(project, "pick a design", channel="cli")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    _dispatch.enqueue_task_once(project, "pick a design", channel="cli")
     tasks = _dispatch.read_tasks(project)
     question = QuestionV11.model_validate(
         {
@@ -717,7 +718,7 @@ class TestTheBotReadsItsTokenThroughTheSecretsBackend:
 
 
 class TestOneEnqueueEntryPoint:
-    def test_telegram_and_the_mcp_tools_call_enqueue_task_once_not_enqueue_task(self) -> None:
+    def test_telegram_and_the_mcp_tools_call_enqueue_task_once(self) -> None:
         from docket.cli import _mcp
 
         for module in (_tg, _mcp):
@@ -727,7 +728,6 @@ class TestOneEnqueueEntryPoint:
                 for node in ast.walk(tree)
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
             }
-            assert "enqueue_task" not in called, module.__name__
             assert "enqueue_task_once" in called, module.__name__
 
 

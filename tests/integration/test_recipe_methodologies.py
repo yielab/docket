@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.cli import _pod as _cli_pod
@@ -28,7 +29,7 @@ from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_apply"
 
-RECIPES_DIR = _templates.recipes_dir()
+RECIPES_DIR = _templates.RECIPES_DIR
 RECIPE_NAMES = ("tdd", "spec-first", "reflexion", "dual-review", "frugal")
 
 
@@ -51,7 +52,7 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 
@@ -232,7 +233,7 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(tmp_path: Path)
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        _dispatch.enqueue_task(project, "harden the login handler", channel="cli")
+        _dispatch.enqueue_task_once(project, "harden the login handler", channel="cli")
         runner = _ReflexionRunner(project)
         results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
 

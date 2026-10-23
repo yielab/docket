@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import _agents, app
+from docket.cli import _agents, _contract, app
+from docket.edges.adapters import system as _system
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._agents"
@@ -135,7 +136,7 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
 
     @pytest.fixture(autouse=True)
     def _tty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+        monkeypatch.setattr(_contract, "is_tty", lambda: False)
 
     def test_no_terminal_creates_nothing_and_prints_the_code(self, tmp_path: Path) -> None:
         result = runner.invoke(app, ["init", "demo", str(_repo(tmp_path))])
@@ -187,12 +188,13 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
     def test_a_terminal_y_creates_the_pod_and_is_remembered_per_home(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: True)
+        monkeypatch.setattr(_contract, "is_tty", lambda: True)
+        monkeypatch.setattr(_system, "desktop_notifications_available", lambda: False)
         code = _repo(tmp_path)
         yes = runner.invoke(app, ["init", "demo", str(code)], input="y\n")
         assert yes.exit_code == 0 and _pod_exists()
         assert "Runs on this machine" in yes.output and "Adds to the team" in yes.output
-        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+        monkeypatch.setattr(_contract, "is_tty", lambda: False)
         import shutil
 
         shutil.rmtree(current_home().projects_dir / "demo-lead")
@@ -207,7 +209,7 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
     def test_a_terminal_n_creates_nothing(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: True)
+        monkeypatch.setattr(_contract, "is_tty", lambda: True)
         result = runner.invoke(app, ["init", "demo", str(_repo(tmp_path))], input="n\n")
         assert result.exit_code == 2 and not _pod_exists()
 

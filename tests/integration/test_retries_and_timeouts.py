@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -80,7 +81,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Path:
     """Full pod via ``build_pod`` (a real persisted TASK_LIST.json queue) — used
     only by the ``dispatch_pod``-level integration tests (stale-claim + timeouts
     that read the Lead's meta), not the direct ``dispatch_task`` unit tests."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     return current_home().root
 
 
@@ -460,7 +461,7 @@ class TestRetryDoesNotTripStaleClaimSweep:
         CLAIM_STALE_TIMEOUT before failing retryably, so only a refreshed `claimedAt` lets the
         second attempt's simulated concurrent sweep leave the task alone."""
         oc_dir = _seed_pod(tmp_path)
-        _dispatch.enqueue_task("demo", "Retry me", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Retry me", channel="cli")
         # Small but real threshold: the deliberate 0.3s sleep below comfortably
         # exceeds it (proving the *unrefreshed* claim would already be stale),
         # while the near-instant gap between an on_retry refresh and the very
@@ -519,7 +520,7 @@ class TestExistingStateMachineBehaviourUnaffected:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path)
-        _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
 

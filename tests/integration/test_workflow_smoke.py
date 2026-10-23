@@ -16,6 +16,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 from docket.core.pipeline import MechanicalGate, load_pipeline
 from docket.edges.adapters import toolbox
@@ -88,7 +89,7 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     from tests.conftest import record_isolation_off
     from typer.testing import CliRunner
 
-    from docket.cli import _pod, app
+    from docket.cli import app
     from docket.core import dispatch as _dispatch
 
     home = tmp_path / ".docket"
@@ -99,7 +100,7 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(
+        build_pod(
             "smoke",
             ("lead", "implementer", "reviewer", "tester"),
             codebase=str(codebase),

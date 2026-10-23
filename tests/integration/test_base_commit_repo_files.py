@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -152,7 +153,7 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **repo_kwargs: bool)
         record_isolation_off(home)
         repo = tmp_path / "repo"
         _init_repo(repo, **repo_kwargs)
-        _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES, codebase=str(repo))
+        build_pod("demo", _pod.pod.FULL_POD_ROLES, codebase=str(repo))
         path = _pod.pod.bound_pipeline_path("demo")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_PIPELINE, encoding="utf-8")
@@ -164,7 +165,7 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **repo_kwargs: bool)
 def _run(skill_probe: bool = False) -> tuple[_Runner, _Backend]:
     backend = _Backend(skill_probe)
     runner = _Runner(backend)
-    _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+    _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
     (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
     assert result.status == "waiting_approval", result.reason
     assert ".docket/skills" in result.reason
@@ -221,7 +222,7 @@ def test_the_hop_records_each_composed_repository_file_with_its_sha256(
             return out
 
         runner.driver.run_turn = spy  # type: ignore[method-assign]
-        _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+        _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
         (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
         assert result.status == "waiting_approval", result.reason
         assert ".docket/skills" in result.reason

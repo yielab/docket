@@ -208,7 +208,6 @@ class Document:
     name: str
     path: Path
     doc: dict[str, Any]
-    deprecated: bool
 
 
 class ConfigDocError(InvalidInput):
@@ -373,7 +372,6 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
     doc: dict[str, Any] = raw
 
     declared = doc.get("kind")
-    deprecated = False
     if declared is None:
         resolved = _infer_kind_from_location(p) or kind
         if resolved is None:
@@ -388,7 +386,6 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
                 p, "a short-form document needs a 'kind:' key", field="kind", valid=KINDS
             )
         effective_kind = resolved
-        deprecated = True
     else:
         if declared not in KINDS:
             raise ConfigDocError(
@@ -422,7 +419,7 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
         raise _refine_with_model(p, effective_kind, doc, exc) from exc
 
     name = str(doc.get("name", p.stem))
-    return Document(kind=effective_kind, name=name, path=p, doc=doc, deprecated=deprecated)
+    return Document(kind=effective_kind, name=name, path=p, doc=doc)
 
 
 def discover_config_paths(directory: str | Path) -> list[Path]:

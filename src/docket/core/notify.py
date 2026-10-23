@@ -13,7 +13,6 @@ call that discovered it.
 
 from __future__ import annotations
 
-import datetime as _dt
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -27,6 +26,7 @@ from docket.core.operator_contract import (
     make_event,
 )
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 
 __all__ = [
@@ -148,28 +148,16 @@ def _failed_kind(item: TaskView) -> str:
     return "task.rejected" if item.a2a_state == "REJECTED" else "task.failed"
 
 
-def _parse_iso(ts: str | None) -> _dt.datetime | None:
-    if not ts:
-        return None
-    try:
-        parsed = _dt.datetime.fromisoformat(ts)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=_dt.UTC)
-    return parsed
-
-
 def _expiring_events(inbox: InboxView, already_warned: set[str], now: str) -> list[NotifyEvent]:
-    now_dt = _parse_iso(now)
+    now_dt = _clock.parse_iso(now)
     if now_dt is None:
         return []
     events: list[NotifyEvent] = []
     for item in inbox.needs_you:
         if not isinstance(item, ApprovalView) or item.token in already_warned:
             continue
-        created = _parse_iso(item.created_at)
-        expires = _parse_iso(item.expires_at)
+        created = _clock.parse_iso(item.created_at)
+        expires = _clock.parse_iso(item.expires_at)
         if created is None or expires is None:
             continue
         total = (expires - created).total_seconds()

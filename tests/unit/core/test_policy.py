@@ -36,7 +36,7 @@ def policies_dir(tmp_path: Path) -> Iterator[Path]:
     with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
         # Copy every shipped template so we get the full baseline set -- JSON or YAML, since
         # the baseline templates ship as short-form YAML.
-        template_dir = _templates.policy_templates_dir()
+        template_dir = _templates.POLICY_TEMPLATES_DIR
         for pattern in ("*.json", "*.yaml", "*.yml"):
             for f in template_dir.glob(pattern):
                 shutil.copy(f, d / f.name)
@@ -235,26 +235,26 @@ class TestHighRiskTemplatesValid:
     """Every high-risk template must pass the schema validator."""
 
     def test_payment_template_valid(self) -> None:
-        p = _templates.policy_templates_dir() / "high-risk-payment.yaml"
+        p = _templates.POLICY_TEMPLATES_DIR / "high-risk-payment.yaml"
         assert p.exists(), "high-risk-payment.yaml template must exist"
         err = _policy.validate_policy(p)
         assert err == "", f"high-risk-payment.yaml invalid: {err}"
 
     def test_deploy_template_valid(self) -> None:
-        p = _templates.policy_templates_dir() / "high-risk-deploy.yaml"
+        p = _templates.POLICY_TEMPLATES_DIR / "high-risk-deploy.yaml"
         assert p.exists(), "high-risk-deploy.yaml template must exist"
         err = _policy.validate_policy(p)
         assert err == "", f"high-risk-deploy.yaml invalid: {err}"
 
     def test_credentials_template_valid(self) -> None:
-        p = _templates.policy_templates_dir() / "high-risk-credentials.yaml"
+        p = _templates.POLICY_TEMPLATES_DIR / "high-risk-credentials.yaml"
         assert p.exists(), "high-risk-credentials.yaml template must exist"
         err = _policy.validate_policy(p)
         assert err == "", f"high-risk-credentials.yaml invalid: {err}"
 
     def test_all_three_have_class_field(self) -> None:
         for name in ("high-risk-payment", "high-risk-deploy", "high-risk-credentials"):
-            p = _templates.policy_templates_dir() / f"{name}.yaml"
+            p = _templates.POLICY_TEMPLATES_DIR / f"{name}.yaml"
             doc = _policy.read_policy(p)
             assert doc.get("class") == "high-risk", f"{name}.yaml must have class: high-risk"
 

@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import answers as _answers
@@ -105,7 +106,7 @@ def _start(
 ) -> _Run:
     workspace = tmp_path / "codebase"
     workspace.mkdir()
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
+    build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
     _fleet.meta_set("demo-implementer", "codebase", str(workspace))
     _fleet.meta_set("demo-implementer", "verifyCmd", "true")
     _fleet.meta_set("demo-lead", "approvalMode", _pod.pod.PodSettings.coerce("approvalMode", mode))
@@ -126,7 +127,7 @@ def _start(
         _fleet.meta_set("demo-lead", "pipeline", digest)
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    queued = _dispatch.enqueue_task("demo", "in-place task", channel="cli")
+    queued = _dispatch.enqueue_task_once("demo", "in-place task", channel="cli")[0]
     _dispatch.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
     return _Run("demo", str(queued["id"]))
 

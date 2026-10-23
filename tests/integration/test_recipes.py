@@ -2,7 +2,7 @@
 
 Each recipe is data only: role YAML(s), a pipeline YAML, a small `pod.yaml`, and an optional
 policy pack, applied in one command (`docket pod update`, `core.pod_apply`). The tests below
-read exactly what the wheel ships (`kernel.templates.recipes_dir()`), so a recipe that fails to
+read exactly what the wheel ships (`kernel.templates.RECIPES_DIR`), so a recipe that fails to
 validate, resolve against a real roster, or actually dispatch fails here first, never only in an
 operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
 pod-blueprints.spec.md ("Pod manifests: apply").
@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 import typer
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
@@ -39,7 +40,7 @@ from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_apply"
 
-RECIPES_DIR = _templates.recipes_dir()
+RECIPES_DIR = _templates.RECIPES_DIR
 
 
 def _pod_cli(*args: str) -> Any:
@@ -137,7 +138,7 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 
@@ -416,7 +417,7 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        _dispatch.enqueue_task(project, "add a login endpoint", channel="cli")
+        _dispatch.enqueue_task_once(project, "add a login endpoint", channel="cli")
         runner = _SecureBuildRunner(project)
         results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
 
@@ -674,7 +675,7 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
 
         default_dir = codebase / ".docket"
         default_dir.mkdir()
@@ -712,7 +713,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
             encoding="utf-8",
         )
 
-        _pod_apply.apply(_pod_apply.plan_apply(project, _templates.recipes_dir() / "secure-build"))
+        _pod_apply.apply(_pod_apply.plan_apply(project, _templates.RECIPES_DIR / "secure-build"))
 
         from docket.core import fleet as _fleet
 

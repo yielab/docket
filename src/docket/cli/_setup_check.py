@@ -702,26 +702,18 @@ def _secrets_backend() -> str:
 def _keys_age_report() -> list[tuple[str, str, str]]:
     """Return [(state, name, detail)] for each stored secret key; state is OK,
     STALE, or UNKNOWN."""
-    import datetime as _dt
-
     keys = _secrets.secrets_keys()
     if not keys:
         return []
     meta = _secrets.load_secrets_meta()
     now = _clock.now()
 
-    def parse(ts: str) -> _dt.datetime | None:
-        try:
-            return _dt.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_dt.UTC)
-        except ValueError:
-            return None
-
     out: list[tuple[str, str, str]] = []
     for key in sorted(keys):
         entry = meta.get(key) or {}
         rotated = bool(entry.get("rotated_at"))
         ref = entry.get("rotated_at") or entry.get("added_at")
-        dt = parse(str(ref)) if ref else None
+        dt = _clock.parse_iso(str(ref)) if ref else None
         if dt is None:
             out.append(("UNKNOWN", key, "age unknown (added before tracking)"))
             continue

@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 3.0.2
+**Version**: 3.0.3
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
@@ -299,7 +299,6 @@ def expire_old_traces(
 def read_trace(tracefile: Path) -> list[dict[str, Any]]: ...
 def find_trace(session_id: str) -> Path | None: ...
 def project_trace_dir(project: str) -> Path: ...
-def latest_trace_file(project: str) -> Path | None: ...
 def export_lines(project: str, since: str = "") -> list[str]: ...
 def terminal_outcomes(project: str, *, window: int) -> TerminalOutcomes: ...
 
@@ -395,7 +394,7 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 - `src/docket/core/trace.py`: `trace_event`, `TraceStatus`, `TraceSink`, `EVENT_TYPES`,
   `subscribe`, `add_subscriber`, `redact`, `sweep_all`, `expire_old_traces`,
   `ExpiredTrace`, `TraceExpiryReport`, `read_trace`, `find_trace`, `project_trace_dir`,
-  `latest_trace_file`, `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
+  `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
 - `src/docket/kernel/home.py`: the `Home` members `traces_dir`, `trace_retention_days`,
   `trace_retention_s`, `session_timeout`, `context_bytes_per_token`, `metrics_window`
 - `src/docket/edges/adapters/system.py`: `no_trace` (`DOCKET_NO_TRACE`, read live)

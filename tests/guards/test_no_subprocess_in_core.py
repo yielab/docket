@@ -5,7 +5,7 @@ is the only side-effecting layer — every shell-out goes through ``edges/adapte
 ``core/dispatch.py`` in particular *orchestrates* agent turns but delegates the
 actual process execution to a driver (``edges/adapters/docket_runtime.py``'s
 ``DocketDriver``, which itself never shells out -- it makes in-process HTTP
-calls) and the system adapter (``_sys.run_verify_cmd``). A design-pattern audit
+calls) and the system adapter (``_sys.run_command``). A design-pattern audit
 once wrongly claimed dispatch ran subprocesses itself; this test locks in the
 real invariant so that concern can never become true by regression. (Sibling
 of ``test_no_ui_in_core_edges.py``.)

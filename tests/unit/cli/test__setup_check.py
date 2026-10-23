@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _setup_check
 from docket.core import channel as _channel
@@ -814,7 +815,7 @@ class TestPodConfigOverlays:
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with _point_config_at(home):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home
 
     def test_no_pods_is_healthy(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -887,7 +888,7 @@ class TestPodSyncCheck:
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with _point_config_at(home):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home
 
     def test_in_sync_pod_reports_healthy(
@@ -965,7 +966,7 @@ class TestJsonCoversEveryTextCheck:
         with _point_config_at(home):
             monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
             _channel.enable_channel("desktop")
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home
 
     def _json(self, capsys: pytest.CaptureFixture[str]) -> dict[str, Any]:

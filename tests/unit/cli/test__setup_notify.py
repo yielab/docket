@@ -82,7 +82,7 @@ class TestEnableTelegram:
         self, two_pods: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
-        monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+        monkeypatch.setattr(_contract, "is_tty", lambda: False)
         result = _runner.invoke(app, ["setup", "notify", "enable", "telegram", "--chat", "42"])
         assert result.exit_code == 1
         assert not current_home().channels_file.exists()
@@ -111,7 +111,7 @@ class TestBind:
     def test_bind_off_a_tty_without_a_chat_refuses(
         self, two_pods: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+        monkeypatch.setattr(_contract, "is_tty", lambda: False)
         result = _runner.invoke(app, ["setup", "notify", "bind", "alpha-lead"])
         assert result.exit_code == 1
         assert _bindings() == {}
@@ -120,7 +120,7 @@ class TestBind:
         self, two_pods: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _fleet.upsert_binding("alpha-lead", "9", "telegram")
-        monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+        monkeypatch.setattr(_contract, "is_tty", lambda: False)
         result = _runner.invoke(app, ["setup", "notify", "unbind", "alpha-lead"])
         assert result.exit_code == 1
         assert _bindings() == {"alpha-lead": "9"}
@@ -190,7 +190,7 @@ class TestCatalog:
         assert spec is not None and spec.config["topic"] == "myapp"
 
     def test_widening_content_off_a_tty_needs_yes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+        monkeypatch.setattr(_contract, "is_tty", lambda: False)
         refused = _runner.invoke(app, ["setup", "notify", "privacy", "console", "conversation"])
         assert refused.exit_code == 1
         allowed = _runner.invoke(

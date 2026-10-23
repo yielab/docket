@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import context as _context
@@ -122,7 +123,7 @@ class TestHopResultArtifactBackfill:
         hop = _hop("lead", "the plan")
         assert isinstance(hop.artifact, _handoff.HandoffArtifact)
         assert hop.artifact.summary == "the plan"
-        assert hop.rendered_artifact() == "the plan"
+        assert hop.artifact.render() == "the plan"
 
     def test_explicit_artifact_is_not_overwritten(self) -> None:
         art = _handoff.HandoffArtifact(summary="custom", verdict="approve")
@@ -130,13 +131,13 @@ class TestHopResultArtifactBackfill:
             role="reviewer", member_id="demo-reviewer", ok=True, output="raw", artifact=art
         )
         assert hop.artifact is art
-        assert hop.rendered_artifact() == "custom\nVerdict: approve"
+        assert hop.artifact.render() == "custom\nVerdict: approve"
 
     def test_empty_output_backfills_to_empty_artifact(self) -> None:
         hop = _hop("lead", "")
         assert hop.artifact is not None
         assert hop.artifact.summary == ""
-        assert hop.rendered_artifact() == ""
+        assert hop.artifact.render() == ""
 
 
 # ── Persisted-record round trip (the "hops[]" shape in TASK_LIST.json) ──────
@@ -173,7 +174,7 @@ class TestHopRecordRoundTrip:
         assert restored.artifact is not None
         assert restored.artifact.summary == "old raw text"
         assert restored.artifact.verdict is None
-        assert restored.rendered_artifact() == "old raw text"
+        assert restored.artifact.render() == "old raw text"
 
     def test_malformed_persisted_artifact_degrades_gracefully(self) -> None:
         rec: dict[str, Any] = {
@@ -246,7 +247,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo", *, full: bool = False) -> I
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         roles = _pod.pod.FULL_POD_ROLES if full else _pod.pod.DEFAULT_POD_ROLES
-        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        build_pod(project, roles, codebase=f"/src/{project}")
         yield home
 
 
@@ -390,7 +391,7 @@ class TestDispatchBuildsTypedArtifacts:
             assert reviewer_hop.artifact.verdict == "approve"
             # The full rendered text (summary + "\nVerdict: approve") is longer
             # than the raw summary alone -- the budget check must see *that*.
-            rendered_len = len(reviewer_hop.rendered_artifact().encode("utf-8"))
+            rendered_len = len(reviewer_hop.artifact.render().encode("utf-8"))
             assert rendered_len > len(reviewer_hop.artifact.summary.encode("utf-8"))
 
             tester_message = next(msg for role, msg in calls if role == "tester")
@@ -404,7 +405,7 @@ class TestDispatchBuildsTypedArtifacts:
         thread the *persisted artifact* into later hops' prompts, not just
         raw text -- proving --resume recovers the structured record."""
         with _seed_pod(tmp_path, full=True):
-            task = _dispatch.enqueue_task("demo", "work", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
 
             from docket.core.runtime_driver import TurnResult
 

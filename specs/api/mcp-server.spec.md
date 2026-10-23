@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.4
+**Version**: 1.9.5
 **Status**: Implemented
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 
@@ -53,7 +53,7 @@ Every tool call MUST go through the same paths a CLI invocation (or, where one e
    underlying operation runs, so a call is recorded even if that operation goes on to fail.
 2. **No parallel logic.** `dispatch`, `delegate`, `approvals_grant`, and `approvals_deny` call the
    *exact same* functions the CLI and `docket start`'s HTTP API already call
-   (`dispatch_pod`/`enqueue_task`, `approval_grant`/`approval_deny`).
+   (`dispatch_pod`/`enqueue_task_once`, `approval_grant`/`approval_deny`).
    There is no MCP-specific dispatch path, no auto-approve, and no shortcut around a budget or
    approval gate. The only MCP-specific behavior is tagging the approval channel as `"mcp"` and
    the run source as `"mcp"` — the same convention `"cli"`/`"http"`/`"webhook"` already establish.
@@ -175,7 +175,7 @@ The task is recorded with channel `mcp`. The tool takes only these three argumen
 `docket task add` inputs (`--brief`, `--external-ref`, `--idempotency-key`, `--base-ref`,
 `--pipeline`, `--gate`, `--max-tokens`, ...) and the matching `POST /tasks/<project>` fields are not
 available over MCP.
-**Output**: the created task record (bare, as `enqueue_task` returns it).
+**Output**: the created task record (the task of the `(task, created)` pair `enqueue_task_once` returns, bare).
 **Failure modes**: raises on an empty or >500-char description, an invalid `priority`, or a
 `project` with no provisioned pod — the same validation `docket task add` applies.
 
@@ -405,7 +405,7 @@ concern, not docket's — see Scope above).
 - `src/docket/cli/_mcp.py`: the thirteen tool functions (`tool_status` ... `tool_task_pregrant`),
   `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
 - `src/docket/cli/_service.py`: the `docket start` command and its `--mcp` flag handling
-- `src/docket/core/dispatch.py`: `dispatch_pod`, `enqueue_task`, `retry_task`, `read_tasks`,
+- `src/docket/core/dispatch.py`: `dispatch_pod`, `enqueue_task_once`, `retry_task`, `read_tasks`,
   `pod_roster`, `resolve_waiting_approval`, `resolve_waiting_approval_detail`
 - `src/docket/core/approval.py`: `approval_grant`, `approval_deny`, `approval_set_option`,
   `list_pending`

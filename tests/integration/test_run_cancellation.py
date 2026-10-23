@@ -102,7 +102,7 @@ class TestRunsPidTracking:
         _runs.execute(record["id"], _fn)
         assert seen == [record["id"]]
         assert signals == [_runs.RunCancellationSignal(record["id"])]
-        assert signals[0] is not None and signals[0].is_requested() is False
+        assert signals[0] is not None and signals[0].observe() is False
         assert _runs.current_run_id() is None  # reset after execute() returns
         assert _runs.current_cancellation_signal() is None
 
@@ -244,7 +244,6 @@ class TestCancelRun:
         assert _runs.cancel_run(record["id"]).ok is True
         signal = _runs.RunCancellationSignal(record["id"])
 
-        assert signal.is_requested() is True
         assert signal.observe() is True
         observed = _runs.get_run(record["id"])
         assert observed is not None
@@ -270,8 +269,8 @@ class TestCancelRun:
 
         assert signal.observe() is True
         assert signal.observe() is True
-        assert _runs._finish_run_transition(record["id"], state="succeeded") is False
-        assert _runs._finish_run_transition(record["id"], state="succeeded") is False
+        assert _runs.finish_run(record["id"], state="succeeded") is False
+        assert _runs.finish_run(record["id"], state="succeeded") is False
 
         assert events.count("run_cancellation_observed") == 1
         assert events.count("run_cancelled") == 1
@@ -303,7 +302,7 @@ class TestCancelRun:
         worker.start()
         try:
             assert cancel_reached_transition.wait(timeout=5)
-            assert _runs._finish_run_transition(record["id"], state="succeeded") is True
+            assert _runs.finish_run(record["id"], state="succeeded") is True
         finally:
             release_cancel.set()
             worker.join(timeout=5)
@@ -329,7 +328,7 @@ class TestCancelRun:
             assert signal is not None
             body_started.set()
             assert release_body.wait(timeout=10)
-            body_observed.append(signal.is_requested())
+            body_observed.append(signal.observe())
             return []
 
         executor = new_thread(
@@ -392,7 +391,6 @@ class TestCancelRun:
 
         _store.read_modify_write(current_home().runs_file, _corrupt)
         signal = _runs.RunCancellationSignal(record["id"])
-        assert signal.is_requested() is True
         assert signal.observe() is True
         assert _runs.get_run(record["id"])["cancellation"] == malformed
         outcome = _runs.cancel_run(record["id"])
@@ -425,7 +423,7 @@ class TestCancelRun:
 
         # PID death is not the full-stop oracle; the owner records stop while
         # folding its eventual return/exception.
-        assert _runs._finish_run_transition(record["id"], state="failed") is False
+        assert _runs.finish_run(record["id"], state="failed") is False
         stopped = _runs.get_run(record["id"])
         assert stopped is not None
         assert stopped["state"] == "cancelled"

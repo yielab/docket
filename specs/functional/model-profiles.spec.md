@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 5.0.2
+**Version**: 5.0.3
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-10-23
@@ -575,4 +575,5 @@ Where the names above live today (the only place paths appear):
 - `src/docket/kernel/home.py`: the `Home` members `default_model`, `model_registry_file`,
   `providers_file`, `provider_models_file`
 - `src/docket/kernel/templates.py`: `PROVIDER_TEMPLATES_DIR`
+- `src/docket/core/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
 - `src/docket/templates/providers/*.yaml`: the built-in provider documents (prices, presets)

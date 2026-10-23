@@ -9,10 +9,11 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod, _pod_config, app
+from docket.cli import _contract, _pod, _pod_config, app
 from docket.core import archetypes as _arch
 from docket.core import pod as _pod_core
 from docket.core import pod_apply as _pod_apply
@@ -40,7 +41,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path / "code"))
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path / "code"))
         yield home
 
 
@@ -118,7 +119,7 @@ class TestPodApply:
 
     def test_a_policy_file_is_copied_into_the_pod(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            source = sorted(_templates.policy_templates_dir().glob("*.yaml"))[0]
+            source = sorted(_templates.POLICY_TEMPLATES_DIR.glob("*.yaml"))[0]
             result = _pod_run("update", str(source), "--pod", "demo")
             assert result.exit_code == 0
             assert (current_home().pod_config_dir("demo") / "policies" / source.name).is_file()
@@ -162,10 +163,9 @@ class TestPodUpdateRenameAndReview:
     def test_off_a_terminal_a_repository_command_exits_2_and_installs_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.cli import _agents
 
         with _seed_pod(tmp_path):
-            monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+            monkeypatch.setattr(_contract, "is_tty", lambda: False)
             code = self._repo(tmp_path)
             result = _pod_run("update", str(code / ".docket"), "--pod", "demo")
             assert result.exit_code == 2
@@ -177,11 +177,10 @@ class TestPodUpdateRenameAndReview:
     def test_accept_with_the_printed_code_installs_and_remembers(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.cli import _agents
         from docket.core import reviewed_repos as _rr
 
         with _seed_pod(tmp_path):
-            monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+            monkeypatch.setattr(_contract, "is_tty", lambda: False)
             code = self._repo(tmp_path)
             items = _pod_apply.classify_directory(code / ".docket").runs
             wrong = _pod_run("update", str(code / ".docket"), "--pod", "demo", "--accept", "0" * 16)
@@ -201,10 +200,9 @@ class TestPodUpdateRenameAndReview:
     def test_a_dry_run_asks_nothing_and_writes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.cli import _agents
 
         with _seed_pod(tmp_path):
-            monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+            monkeypatch.setattr(_contract, "is_tty", lambda: False)
             code = self._repo(tmp_path)
             result = _pod_run("update", str(code / ".docket"), "--pod", "demo", "--dry-run")
             assert result.exit_code == 0

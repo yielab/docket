@@ -20,8 +20,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
-from docket.cli import _agents, _pod, _setup_check
+from docket.cli import _agents, _contract, _pod, _setup_check
 from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
@@ -193,7 +194,7 @@ class TestSoftwareParity:
                     "demo", "software", location="/src/demo", stack="Python", description="the app"
                 )
             else:
-                _pod.build_pod(
+                build_pod(
                     "demo",
                     _pod_core.DEFAULT_POD_ROLES,
                     codebase="/src/demo",
@@ -311,7 +312,7 @@ class TestUnknownBlueprintFailsCleanly:
     def test_interactive_add_unknown_blueprint_exits_one_before_any_prompt(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_agents.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(_contract, "is_tty", lambda: True)
 
         def _no_input(_prompt: str = "") -> str:
             raise AssertionError("must fail before prompting for anything")

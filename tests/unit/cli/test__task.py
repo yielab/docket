@@ -12,9 +12,10 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod, app
+from docket.cli import _contract, _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import interruptions as _interruptions
@@ -44,7 +45,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -76,7 +77,7 @@ def _seed_parked_task(
     ``input`` step."""
     with _seed_pod(tmp_path):
         _bind_ask_pipeline("demo")
-        _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         yield _dispatch.read_tasks("demo")[0]
 
@@ -116,7 +117,7 @@ def _seed_worktree_task(
         wt = tmp_path / "wt"
         wt.mkdir()
         base = "0123abc"
-        task = _dispatch.enqueue_task("demo", "bump x", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "bump x", channel="cli")[0]
         path = _dispatch.pod_task_list_path("demo")
         from docket.edges import store as _store
 
@@ -140,7 +141,7 @@ class TestTaskShow:
 
     def test_a_task_without_a_worktree_prints_no_worktree_block(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "plain", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "plain", channel="cli")[0]
 
             result = _runner.invoke(app, ["task", "show", task["id"], "--pod", "demo"])
 
@@ -157,8 +158,8 @@ class TestTaskShow:
 
     def test_an_ambiguous_prefix_lists_both_and_exits_one(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            first = _dispatch.enqueue_task("demo", "one", channel="cli")
-            second = _dispatch.enqueue_task("demo", "two", channel="cli")
+            first = _dispatch.enqueue_task_once("demo", "one", channel="cli")[0]
+            second = _dispatch.enqueue_task_once("demo", "two", channel="cli")[0]
 
             result = _runner.invoke(app, ["task", "show", "task-"])
 
@@ -175,7 +176,7 @@ class TestShowRunExitCode:
     def _run_for(self, status: str) -> str:
         from docket.core import runs as _runs
 
-        task = _dispatch.enqueue_task("demo", "x", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
 
         class _Result:
             task_id = task["id"]
@@ -203,7 +204,7 @@ class TestShowRunExitCode:
 class TestTaskList:
     def test_json_items_carry_the_worktree_path_or_null(self, tmp_path: Path) -> None:
         with _seed_worktree_task(tmp_path) as seeded:
-            _dispatch.enqueue_task("demo", "second", channel="cli")
+            _dispatch.enqueue_task_once("demo", "second", channel="cli")
 
             result = _runner.invoke(app, ["task", "list", "--json", "--pod", "demo"])
 
@@ -212,7 +213,7 @@ class TestTaskList:
 
     def test_the_table_prints_the_short_id(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "visible", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "visible", channel="cli")[0]
 
             result = _runner.invoke(app, ["task", "list", "--pod", "demo"])
 
@@ -231,7 +232,7 @@ class TestTaskList:
 class TestTaskDiff:
     def test_a_task_that_ran_in_place_has_nothing_to_diff(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "plain", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "plain", channel="cli")[0]
             assert _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo"]).exit_code == 1
 
 
@@ -240,7 +241,7 @@ class TestTaskCancelRendering:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "work", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
             seen: dict[str, Any] = {}
 
             def _cancel(project: str, task_id: str, **kwargs: Any) -> _dispatch.TaskCancelOutcome:
@@ -258,7 +259,7 @@ class TestTaskCancelRendering:
 
     def test_nothing_in_flight_exits_one(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "work", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
             result = _runner.invoke(app, ["task", "cancel", task["id"], "--pod", "demo"])
             assert result.exit_code == 1
             assert "Nothing is in flight to cancel" in result.output
@@ -269,7 +270,7 @@ class TestTaskDiffJson:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "work", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
             doc = {"task": task["id"], "patch": "diff --git a/x b/x\n", "worktreePresent": False}
             monkeypatch.setattr(_dispatch, "task_diff", lambda project, task_id: doc)
 
@@ -433,7 +434,7 @@ class TestShowForecast:
     def test_a_pipeline_gate_is_listed_with_the_park_posture(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
 
             result = _runner.invoke(app, ["task", "show", task["id"], "--pod", "demo"])
 
@@ -443,7 +444,7 @@ class TestShowForecast:
     def test_json_lists_the_interruption_kinds(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
 
             result = _runner.invoke(app, ["task", "show", task["id"], "--json", "--pod", "demo"])
 
@@ -461,7 +462,7 @@ def _write_trace(task_id: str, *events: tuple[str, dict[str, Any]]) -> None:
 class TestTaskTrace:
     def test_prints_the_tool_name_on_tool_call_lines(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
             _write_trace(task["id"], ("tool_call", {"tool": "grep", "callId": "c1"}))
 
             result = _runner.invoke(app, ["task", "trace", task["id"], "--pod", "demo"])
@@ -471,7 +472,7 @@ class TestTaskTrace:
 
     def test_model_text_with_markup_tags_prints_literally(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
             text = "ok [/bold] then [red]x[/red] for [task-1]"
             _write_trace(task["id"], ("tool_result", {"text": text}))
 
@@ -481,7 +482,7 @@ class TestTaskTrace:
 
     def test_tail_returns_once_the_session_has_ended(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
             _write_trace(task["id"], ("session_start", {}), ("session_end", {"status": "done"}))
 
             result = _runner.invoke(app, ["task", "trace", task["id"], "--tail", "--pod", "demo"])
@@ -491,7 +492,7 @@ class TestTaskTrace:
 
     def test_export_is_the_raw_jsonl(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
             _write_trace(task["id"], ("session_start", {}))
 
             result = _runner.invoke(app, ["task", "trace", task["id"], "--export", "--pod", "demo"])
@@ -500,7 +501,7 @@ class TestTaskTrace:
 
     def test_json_lists_the_events(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
             _write_trace(task["id"], ("session_start", {}))
 
             result = _runner.invoke(app, ["task", "trace", task["id"], "--json", "--pod", "demo"])
@@ -509,7 +510,7 @@ class TestTaskTrace:
 
     def test_a_task_that_never_ran_has_no_trace(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "x", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
             assert (
                 _runner.invoke(app, ["task", "trace", task["id"], "--pod", "demo"]).exit_code == 1
             )
@@ -569,7 +570,7 @@ class TestTaskApprove:
         from docket.core import approval as _ap
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             token = _park_on_approval("demo", task["id"])
 
             result = _task("approve", task["id"][:18])
@@ -582,7 +583,7 @@ class TestTaskApprove:
 
     def test_a_task_waiting_on_nothing_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             result = _task("approve", task["id"])
 
@@ -595,7 +596,7 @@ class TestTaskApprove:
         from docket.cli import _service
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _park_on_approval("demo", task["id"])
             monkeypatch.setattr(_service, "is_running", lambda: False)
 
@@ -609,7 +610,7 @@ class TestTaskApprove:
         from docket.cli import _service
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _park_on_approval("demo", task["id"])
             monkeypatch.setattr(_service, "is_running", lambda: True)
 
@@ -624,7 +625,7 @@ class TestTaskApprove:
         from docket.cli import _service
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _park_on_approval("demo", task["id"], kind="check_changed")
             monkeypatch.setattr(_service, "is_running", lambda: True)
 
@@ -640,7 +641,7 @@ class TestTaskApprove:
         from docket.cli import _service
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             token = _park_on_approval("demo", task["id"])
             monkeypatch.setattr(_service, "is_running", lambda: False)
 
@@ -652,7 +653,7 @@ class TestTaskApprove:
 
     def test_for_writes_a_single_use_pregrant_on_the_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             result = _task("approve", task["id"], "--for", "git push origin main")
 
@@ -663,7 +664,7 @@ class TestTaskApprove:
 
     def test_for_honours_the_tool_flag(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             _task("approve", task["id"], "--for", "some content", "--tool", "write")
 
@@ -675,7 +676,7 @@ class TestTaskApprove:
 
     def test_task_and_once_conflict(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             assert _task("approve", task["id"], "--once", "--task").exit_code == 2
 
@@ -689,7 +690,7 @@ class TestTaskDeny:
         from docket.core import approval as _ap
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             token = _park_on_approval("demo", task["id"])
 
             result = _task("deny", task["id"], "--reason", "too risky")
@@ -700,7 +701,7 @@ class TestTaskDeny:
 
     def test_the_reason_reaches_the_task_and_its_corrections(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _park_on_approval("demo", task["id"])
 
             assert _task("deny", task["id"], "--reason", "too risky").exit_code == 0
@@ -716,7 +717,7 @@ class TestTaskDeny:
 
     def test_a_task_waiting_on_nothing_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             assert _task("deny", task["id"]).exit_code == 1
 
@@ -785,7 +786,7 @@ class TestTaskAnswer:
 
     def test_a_task_without_a_question_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "plain task", channel="cli")[0]
 
             result = _task("answer", task["id"], "x")
 
@@ -815,11 +816,10 @@ class TestTaskAnswer:
     def test_on_a_tty_enter_takes_the_recommended_option_then_the_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.cli import _task as task_module
 
         with _seed_parked_task(tmp_path) as task:
             _give_options("demo", task["id"])
-            monkeypatch.setattr(task_module, "_interactive", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             replies = iter(["", "at the root"])
             monkeypatch.setattr("builtins.input", lambda _prompt="": next(replies))
 
@@ -838,7 +838,7 @@ class TestTaskRetry:
         from docket.edges import store as _store
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             def _fail(doc: dict[str, Any]) -> dict[str, Any]:
                 for t in doc["tasks"]:
@@ -855,7 +855,7 @@ class TestTaskRetry:
 
     def test_a_pending_task_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             result = _task("retry", task["id"])
 
@@ -882,7 +882,7 @@ class TestTaskCancel:
         from docket.core import runs as _runs
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _set_status("demo", task["id"], "running")
             run = _runs.create_run("cli", "demo")
             _runs.mark_running(run["id"])
@@ -896,7 +896,7 @@ class TestTaskCancel:
 
     def test_a_dead_dispatchs_claim_is_settled_as_failed(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _set_status(
                 "demo",
                 task["id"],
@@ -941,7 +941,7 @@ class TestTaskCancel:
         from docket.core import approval as _ap
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             token = _park_on_approval("demo", task["id"])
 
             result = _task("cancel", task["id"])
@@ -954,7 +954,7 @@ class TestTaskCancel:
 
     def test_a_task_with_nothing_in_flight_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             result = _task("cancel", task["id"])
 
@@ -967,7 +967,7 @@ class TestTaskCancel:
         from docket.core import runs as _runs
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _set_status("demo", task["id"], "running")
             run = _runs.create_run("cli", "demo")
             _runs.mark_running(run["id"])

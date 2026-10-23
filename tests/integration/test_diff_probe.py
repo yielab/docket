@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -160,7 +161,7 @@ def _seed_pod(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
         yield home
 
 
@@ -227,7 +228,7 @@ class TestDispatchPopulatesRealDiff:
         repo_dir = tmp_path / "repo"
         _init_git_repo(repo_dir)
         with _seed_pod(tmp_path, "demo", codebase=str(repo_dir)):
-            _dispatch.enqueue_task("demo", "add a feature", channel="cli")
+            _dispatch.enqueue_task_once("demo", "add a feature", channel="cli")
             runner = _ImplementerWritesFile()
             (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
             recorded = _dispatch.read_tasks("demo")[0]["worktree"]
@@ -300,7 +301,7 @@ class TestDegradePaths:
             implementer_id = "flatpod-implementer"
             assert _fleet.meta_get(implementer_id, "worktreeDir", "") == ""
 
-            _dispatch.enqueue_task("flatpod", "work", channel="cli")
+            _dispatch.enqueue_task_once("flatpod", "work", channel="cli")
             (res,) = _dispatch.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
             assert (
                 "not a git repo" in _dispatch.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
@@ -330,7 +331,7 @@ class TestDegradePaths:
             # pod was already provisioned (with real git) above.
             monkeypatch.setattr(_sys, "git_available", lambda: False)
 
-            _dispatch.enqueue_task("gitless", "work", channel="cli")
+            _dispatch.enqueue_task_once("gitless", "work", channel="cli")
             (res,) = _dispatch.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
             assert _dispatch.read_tasks("gitless")[0]["worktree"]["dir"] == ""
 

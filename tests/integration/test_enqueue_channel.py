@@ -8,9 +8,9 @@ import urllib.request
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
@@ -54,7 +54,7 @@ def _entries(action: str) -> list[dict[str, Any]]:
 
 
 def _seed() -> None:
-    _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+    build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
 
 
 def test_a_cli_enqueue_records_the_cli_channel() -> None:
@@ -100,4 +100,4 @@ def test_a_dispatch_post_writes_a_run_dispatch_entry(
 def test_enqueue_requires_a_channel() -> None:
     _seed()
     with pytest.raises(TypeError):
-        _dispatch.enqueue_task("demo", "x")  # type: ignore[call-arg]
+        _dispatch.enqueue_task_once("demo", "x")  # type: ignore[call-arg]

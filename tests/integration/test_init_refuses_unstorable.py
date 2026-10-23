@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import _agents, app
+from docket.cli import _contract, app
 from docket.core import fleet as _fleet
 from docket.kernel.home import Home, current_home, use_home
 
@@ -22,7 +22,7 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+    monkeypatch.setattr(_contract, "is_tty", lambda: False)
     home = tmp_path / "home"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

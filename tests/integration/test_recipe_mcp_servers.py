@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod as _cli_pod
 from docket.cli import _pod_config
 from docket.core import config_docs as _config_docs
 from docket.core import mcp_tools as _mt
@@ -47,7 +47,7 @@ def _home(tmp_path: Path) -> Iterator[None]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         for project in ("shop", "other"):
-            _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+            build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 
@@ -176,7 +176,7 @@ def test_validate_rejects_a_malformed_server_document(tmp_path: Path) -> None:
 
 
 def test_code_intel_validates_and_plans() -> None:
-    directory = _templates.recipes_dir() / "code-intel"
+    directory = _templates.RECIPES_DIR / "code-intel"
 
     assert _config_docs.validate_directory(directory) == []
     plan = _pod_apply.plan_apply("shop", directory)
@@ -215,6 +215,6 @@ def test_the_plan_summary_carries_no_unjailed_note(
 
 
 def test_code_intel_servers_declare_no_isolate_key() -> None:
-    directory = _templates.recipes_dir() / "code-intel"
+    directory = _templates.RECIPES_DIR / "code-intel"
     for path in (directory / "mcp-servers").glob("*.yaml"):
         assert "isolate" not in path.read_text(encoding="utf-8")

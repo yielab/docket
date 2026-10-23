@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _mcp
 from docket.cli import _pod as _pod_cli
@@ -60,7 +61,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod_cli.build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -98,7 +99,7 @@ def _seed_parked_task(tmp_path: Path, project: str = "demo") -> Iterator[dict[st
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     with _seed_pod(tmp_path, project=project):
         _bind_ask_pipeline(project)
-        _dispatch.enqueue_task(project, "needs a decision", channel="cli")
+        _dispatch.enqueue_task_once(project, "needs a decision", channel="cli")
         _dispatch.dispatch_pod(project, runner=FakeDriver())
         yield _dispatch.read_tasks(project)[0]
 
@@ -266,15 +267,15 @@ class TestToolDelegate:
 class TestToolQueue:
     def test_lists_queued_tasks(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "task one", channel="cli")
-            _dispatch.enqueue_task("demo", "task two", channel="cli")
+            _dispatch.enqueue_task_once("demo", "task one", channel="cli")
+            _dispatch.enqueue_task_once("demo", "task two", channel="cli")
             result = _mcp.tool_queue("demo")
             assert result["project"] == "demo"
             assert [t["description"] for t in result["tasks"]] == ["task one", "task two"]
 
     def test_retry_unblocks_a_blocked_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            task = _dispatch.enqueue_task("demo", "blocked task", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "blocked task", channel="cli")[0]
             # Hand-flip to blocked (mirrors how a budget cap would leave it).
             path = _dispatch.pod_task_list_path("demo")
             doc = json.loads(path.read_text())
@@ -308,7 +309,7 @@ class TestToolDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
 
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
                 return [_dispatch.TaskResult(task_id="task-x", status="done")]
@@ -475,7 +476,7 @@ class TestToolTaskAnswer:
 
     def test_a_task_not_waiting_input_raises(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            plain_task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
+            plain_task = _dispatch.enqueue_task_once("demo", "plain task", channel="cli")[0]
 
             with pytest.raises(_mcp.McpToolError):
                 _mcp.tool_task_answer("demo", plain_task["id"], "accept", {"answer": "x"})
@@ -499,7 +500,7 @@ class TestToolTaskAnswer:
 class TestToolInbox:
     def test_returns_the_same_shape_docket_inbox_json_prints(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
             result = _mcp.tool_inbox()
             assert set(result.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
 
@@ -586,7 +587,7 @@ class TestEveryToolCallIsAudited:
             # Parked with the real `dispatch_pod` -- before it is stubbed below -- so
             # `tool_task_answer` has a genuine `waiting_input` task to resolve.
             _bind_ask_pipeline("demo")
-            _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+            _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
             parked = next(t for t in _dispatch.read_tasks("demo") if t["status"] == "waiting_input")
 
@@ -639,7 +640,7 @@ def _gate_then_get_token(tmp_path: Path, project: str = "demo") -> Iterator[str]
     test_approval_gated_dispatch.py's ``_gate``/``_gate_then_grant`` build."""
     with _seed_pod(tmp_path, project=project):
         _gate_implementer(project)
-        _dispatch.enqueue_task(project, "Ship it", channel="cli")
+        _dispatch.enqueue_task_once(project, "Ship it", channel="cli")
         _dispatch.dispatch_pod(project, runner=_GateRunner())
         task = _dispatch.read_tasks(project)[0]
         assert task["status"] == "waiting_approval"

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _agents, _pod
@@ -55,13 +56,13 @@ def _meta(home: Path, member_id: str) -> dict:
 class TestBuildPod:
     def test_default_lean_pod_is_lead_plus_implementer(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            created = _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            created = build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             assert created == ["demo-lead", "demo-implementer"]
             assert set(_ids(home)) == {"demo-lead", "demo-implementer"}
 
     def test_members_have_correct_meta_and_shared_base_session_key(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             for mid, role in (("demo-lead", "lead"), ("demo-implementer", "implementer")):
                 m = _meta(home, mid)
                 assert m["kind"] == "project"
@@ -76,13 +77,11 @@ class TestBuildPod:
                 # the first metadata write after provisioning raise ValidationError).
                 from docket.core.models import AgentMeta
 
-                assert AgentMeta.model_validate(m).template_version == str(
-                    _pod.POD_TEMPLATE_VERSION
-                )
+                assert AgentMeta.model_validate(m).template_version == str(_pp.POD_TEMPLATE_VERSION)
 
     def test_managed_workspace_modes_are_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
 
             for mid in ("demo-lead", "demo-implementer"):
                 ws = home / "workspaces" / "projects" / mid
@@ -94,7 +93,7 @@ class TestBuildPod:
 
     def test_lead_soul_forbids_editing_implementer_has_codebase(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             lead = (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text()
             impl = (home / "workspaces" / "projects" / "demo-implementer" / "SOUL.md").read_text()
             assert "NEVER edit code" in lead
@@ -104,7 +103,7 @@ class TestBuildPod:
 
     def test_full_pod_has_four_members(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+            build_pod("demo", _pod.pod.FULL_POD_ROLES)
             assert set(_ids(home)) == {
                 "demo-lead",
                 "demo-implementer",
@@ -116,19 +115,19 @@ class TestBuildPod:
 class TestPodCommand:
     def test_add_second_implementer_is_indexed(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "implementer")
             assert "demo-implementer-2" in _ids(home)
 
     def test_add_reviewer(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "reviewer")
             assert "demo-reviewer" in _ids(home)
 
     def test_add_count_two_makes_two_implementers(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "implementer", count=2)
             ids = _ids(home)
             assert "demo-implementer-2" in ids
@@ -136,13 +135,13 @@ class TestPodCommand:
 
     def test_add_second_lead_rejected(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             with pytest.raises(typer.Exit):
                 _pod.add_members("demo", "lead")
 
     def test_remove_member(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "reviewer")
             _pod.remove_member("demo", "demo-reviewer", yes=True)
             assert "demo-reviewer" not in _ids(home)
@@ -150,14 +149,14 @@ class TestPodCommand:
 
     def test_remove_rejects_foreign_id(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             with pytest.raises(typer.Exit):
                 _pod.remove_member("demo", "other-lead", yes=True)
 
     def test_member_ids_lists_lead_first(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
-            assert _pod.pod_member_ids("demo")[0] == "demo-lead"
+            build_pod("demo", _pod.pod.FULL_POD_ROLES)
+            assert _pp.pod_member_ids("demo")[0] == "demo-lead"
 
 
 class TestPodRoles:
@@ -187,7 +186,7 @@ class TestDeletePod:
     def test_delete_pod_removes_all_members(self, tmp_path: Path) -> None:
 
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+            build_pod("demo", _pod.pod.FULL_POD_ROLES)
             code, _out = _pod_cli("delete", "--confirm", "demo")
             assert code == 0
             assert _ids(home) == []
@@ -200,8 +199,8 @@ class TestDeletePod:
     ) -> None:
 
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            members = _pod.pod_member_ids("demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            members = _pp.pod_member_ids("demo")
 
             (home / "workspaces" / "pods" / "demo" / ".scratch").mkdir(parents=True, exist_ok=True)
             for encoded_key in (
@@ -238,7 +237,7 @@ class TestDeletePod:
         """Pod teardown writes a single pod.delete line."""
 
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             code, _out = _pod_cli("delete", "--confirm", "demo")
             assert code == 0
 
@@ -254,14 +253,14 @@ class TestPodAddVerify:
 
     def test_add_implementer_with_verify_sets_meta(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "implementer", verify_cmd="npm test")
             m = _meta(home, "demo-implementer-2")
             assert m["verifyCmd"] == "npm test"
 
     def test_add_implementer_with_verify_writes_tools_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "implementer", verify_cmd="npm test")
             tools = (
                 home / "workspaces" / "projects" / "demo-implementer-2" / "TOOLS.md"
@@ -271,13 +270,13 @@ class TestPodAddVerify:
 
     def test_add_without_verify_omits_tools_md_section(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             tools = (home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md").read_text()
             assert "Verification Gate" not in tools
 
     def test_verify_ignored_for_non_implementer_role(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "reviewer", verify_cmd="npm test")
             m = _meta(home, "demo-reviewer")
             assert "verifyCmd" not in m
@@ -288,39 +287,39 @@ class TestPodSetVerify:
 
     def test_set_verify_updates_meta(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
             m = _meta(home, "demo-implementer")
             assert m["verifyCmd"] == "npm test"
 
     def test_set_verify_updates_tools_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.set_setting("demo", "verify", "make check", member="demo-implementer")
             tools = (home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md").read_text()
             assert "make check" in tools
 
     def test_set_verify_rejects_non_implementer(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+            build_pod("demo", _pod.pod.FULL_POD_ROLES)
             with pytest.raises(typer.Exit):
                 _pod.set_setting("demo", "verify", "npm test", member="demo-reviewer")
 
     def test_set_verify_rejects_foreign_id(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             with pytest.raises(typer.Exit):
                 _pod.set_setting("demo", "verify", "npm test", member="other-implementer")
 
     def test_set_verify_missing_cmd_errors(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             code, _out = _pod_cli("set", "verify", "--member", "demo-implementer")
             assert code == 2
 
     def test_set_verify_without_a_member_names_the_flag(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             code, out = _pod_cli("set", "verify", "npm test")
             assert code == 1
             assert "--member" in out
@@ -331,7 +330,7 @@ class TestPodAddRemoveAudit:
 
     def test_pod_add_writes_one_audit_entry(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "reviewer")
 
             entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
@@ -342,7 +341,7 @@ class TestPodAddRemoveAudit:
         self, tmp_path: Path
     ) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "implementer", count=2)
 
             entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
@@ -352,7 +351,7 @@ class TestPodAddRemoveAudit:
 
     def test_pod_remove_writes_one_audit_entry(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+            build_pod("demo", _pod.pod.FULL_POD_ROLES)
             _pod.remove_member("demo", "demo-reviewer", yes=True)
 
             entries = [e for e in _audit.read_audit() if e["action"] == "pod.remove"]
@@ -361,7 +360,7 @@ class TestPodAddRemoveAudit:
 
     def test_pod_add_remove_never_log_secret_values(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             _pod.add_members("demo", "reviewer")
             _pod.remove_member("demo", "demo-reviewer", yes=True)
 
@@ -376,7 +375,7 @@ class TestMemberSync:
 
     def test_freshly_provisioned_member_is_not_stale(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             status = _pp.member_sync_status("demo-lead")
             assert status is not None
             assert status.stale is False
@@ -384,7 +383,7 @@ class TestMemberSync:
 
     def test_stale_content_is_detected_and_diffed(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
@@ -399,7 +398,7 @@ class TestMemberSync:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             monkeypatch.setattr(_pp, "POD_TEMPLATE_VERSION", _pp.POD_TEMPLATE_VERSION + 1)
 
             status = _pp.member_sync_status("demo-lead")
@@ -411,7 +410,7 @@ class TestMemberSync:
         self, tmp_path: Path
     ) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             _pod._fleet.meta_set("demo-lead", "templateVersion", "4")
 
             status = _pp.member_sync_status("demo-lead")
@@ -422,7 +421,7 @@ class TestMemberSync:
 
     def test_resync_rewrites_stale_files_and_stamps_the_version(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
@@ -434,7 +433,7 @@ class TestMemberSync:
 
     def test_resync_is_a_no_op_on_an_already_current_member(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             before = soul_path.read_text()
 
@@ -449,7 +448,7 @@ class TestMemberSync:
         import json
 
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             ws = home / "workspaces" / "projects" / "demo-implementer"
             (ws / "SOUL.md").write_text("## Codebase\n/src/demo\n- `<promise>DONE</promise>`\n")
             (ws / "AGENTS.md").write_text("## Session Startup\n2. Read HEARTBEAT.md\n")
@@ -472,7 +471,7 @@ class TestMemberSync:
 
     def test_resync_never_touches_instructions_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             ws = home / "workspaces" / "projects" / "demo-lead"
             (ws / "SOUL.md").write_text("STALE-HAND-EDITED-SOUL\n")
             (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
@@ -500,7 +499,7 @@ class TestPodSync:
 
     def test_dry_run_reports_without_writing(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
@@ -510,7 +509,7 @@ class TestPodSync:
 
     def test_sync_applies_and_audits(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
@@ -523,7 +522,7 @@ class TestPodSync:
 
     def test_untouched_pod_is_a_no_op(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             before = (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text()
 
             output = _sync()
@@ -536,7 +535,7 @@ class TestPodSync:
 
     def test_sync_never_touches_instructions_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             ws = home / "workspaces" / "projects" / "demo-lead"
             (ws / "SOUL.md").write_text("STALE-HAND-EDITED-SOUL\n")
             (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
@@ -556,7 +555,7 @@ class TestSetVerifyPreservesOperatorInstructions:
         it does not survive set-verify -- that is exactly why INSTRUCTIONS.md exists
         as the durable alternative."""
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
             tools_path.write_text(tools_path.read_text() + "\nHAND-WRITTEN-NOTE\n")
 
@@ -566,7 +565,7 @@ class TestSetVerifyPreservesOperatorInstructions:
 
     def test_instructions_md_survives_set_verify(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             ws = home / "workspaces" / "projects" / "demo-implementer"
             (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
 

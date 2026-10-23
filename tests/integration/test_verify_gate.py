@@ -80,36 +80,36 @@ def _trace_events(project: str) -> list[dict[str, Any]]:
 # ── pure system adapter tests ─────────────────────────────────────────────────
 
 
-class TestRunVerifyCmd:
-    def test_passing_command_returns_true(self, tmp_path: Path) -> None:
-        passed, _ = _sys.run_verify_cmd("true", str(tmp_path))
-        assert passed is True
+class TestRunCommand:
+    def test_passing_command_exits_zero(self, tmp_path: Path) -> None:
+        code, _ = _sys.run_command("true", str(tmp_path))
+        assert code == 0
 
-    def test_failing_command_returns_false(self, tmp_path: Path) -> None:
-        passed, _ = _sys.run_verify_cmd("false", str(tmp_path))
-        assert passed is False
+    def test_failing_command_exits_nonzero(self, tmp_path: Path) -> None:
+        code, _ = _sys.run_command("false", str(tmp_path))
+        assert code == 1
 
     def test_output_captured_on_pass(self, tmp_path: Path) -> None:
-        passed, output = _sys.run_verify_cmd("echo hello", str(tmp_path))
-        assert passed is True
+        code, output = _sys.run_command("echo hello", str(tmp_path))
+        assert code == 0
         assert "hello" in output
 
     def test_output_captured_on_fail(self, tmp_path: Path) -> None:
         # Write something to stderr then exit non-zero.
-        passed, output = _sys.run_verify_cmd("echo fail-output >&2; exit 1", str(tmp_path))
-        assert passed is False
+        code, output = _sys.run_command("echo fail-output >&2; exit 1", str(tmp_path))
+        assert code == 1
         assert "fail-output" in output
 
     def test_output_capped_at_max(self, tmp_path: Path) -> None:
         # Generate output beyond the 4 KB cap.
         big = "x" * 10_000
-        passed, output = _sys.run_verify_cmd(f"echo '{big}'", str(tmp_path))
-        assert passed is True
+        code, output = _sys.run_command(f"echo '{big}'", str(tmp_path))
+        assert code == 0
         assert len(output) <= _sys._VERIFY_MAX_OUTPUT
 
-    def test_timeout_returns_false(self, tmp_path: Path) -> None:
-        passed, output = _sys.run_verify_cmd("sleep 10", str(tmp_path), timeout=1)
-        assert passed is False
+    def test_timeout_has_no_exit_status(self, tmp_path: Path) -> None:
+        code, output = _sys.run_command("sleep 10", str(tmp_path), timeout=1)
+        assert code is None
         assert "timed out" in output
 
     @pytest.mark.skipif(os.name != "posix", reason="process groups are a POSIX concept")
@@ -120,8 +120,8 @@ class TestRunVerifyCmd:
         # kills only the immediate `sh` child on TimeoutExpired, leaving this orphan alive.
         pid_file = tmp_path / "grandchild.pid"
         cmd = f"(sleep 30 & echo $! > {pid_file}) & wait"
-        passed, output = _sys.run_verify_cmd(cmd, str(tmp_path), timeout=1)
-        assert passed is False
+        code, output = _sys.run_command(cmd, str(tmp_path), timeout=1)
+        assert code is None
         assert "timed out" in output
 
         deadline = time.monotonic() + 2
@@ -148,29 +148,29 @@ class TestRunVerifyCmd:
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.kill(pid, 9)
 
-    def test_invalid_cwd_returns_false(self) -> None:
-        passed, output = _sys.run_verify_cmd("true", "/nonexistent/path/xyz")
-        assert passed is False
+    def test_invalid_cwd_has_no_exit_status(self) -> None:
+        code, output = _sys.run_command("true", "/nonexistent/path/xyz")
+        assert code is None
         assert output  # some error message
 
     def test_env_is_merged_over_the_inherited_environment(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
-        passed, output = _sys.run_verify_cmd(
+        code, output = _sys.run_command(
             'echo "$DOCKET_TASK_ID/$DOCKET_INHERITED_PROBE"',
             str(tmp_path),
             env={"DOCKET_TASK_ID": "t-123"},
         )
-        assert passed is True
+        assert code == 0
         assert output.strip() == "t-123/kept"
 
     def test_without_env_the_command_inherits_the_environment(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
-        passed, output = _sys.run_verify_cmd('echo "$DOCKET_INHERITED_PROBE"', str(tmp_path))
-        assert passed is True
+        code, output = _sys.run_command('echo "$DOCKET_INHERITED_PROBE"', str(tmp_path))
+        assert code == 0
         assert output.strip() == "kept"
 
 

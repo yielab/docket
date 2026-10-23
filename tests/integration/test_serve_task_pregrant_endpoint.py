@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -84,8 +85,8 @@ class TestAuth:
 class TestHappyPath:
     def test_records_a_pregrant_and_returns_a_token(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
         status, body = _post(
             f"{url}/tasks/{task['id']}/pregrants",
@@ -102,8 +103,8 @@ class TestHappyPath:
 
     def test_custom_tool_is_honoured(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
         status, _body = _post(
             f"{url}/tasks/{task['id']}/pregrants",
@@ -119,7 +120,7 @@ class TestHappyPath:
 class TestErrorMapping:
     def test_unknown_task_is_404(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         status, body = _post(
             f"{url}/tasks/no-such-task/pregrants",
             {"pod": "demo", "command": "git push origin main"},

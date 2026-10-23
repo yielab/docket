@@ -15,7 +15,6 @@ import pytest
 from docket.core import identity as I
 from docket.core import memory as _mem
 from docket.core import pod as _pod
-from docket.core.models import AgentMeta
 from docket.edges import store as _store
 from docket.kernel.home import Home, current_home, use_home
 
@@ -24,31 +23,6 @@ _LOCAL_MAX_OUTPUT = 8_192
 _HOSTED_WINDOW = 200_000
 
 SUBJECT = "docket.core.identity"
-
-
-class TestDisplayName:
-    def test_a_persona_key_in_meta_does_not_rename_the_agent(self) -> None:
-        m = AgentMeta.model_validate(
-            {
-                "kind": "project",
-                "role": "lead",
-                "name": "docket lead",
-                "persona": {"name": "Orion", "emoji": "🔭"},
-            }
-        )
-        assert m.display_name() == "docket lead"
-
-    def test_falls_back_to_name_then_role(self) -> None:
-        assert (
-            AgentMeta.model_validate(
-                {"kind": "project", "role": "lead", "name": "docket lead"}
-            ).display_name()
-            == "docket lead"
-        )
-        assert (
-            AgentMeta.model_validate({"kind": "project", "role": "lead", "name": ""}).display_name()
-            == "lead"
-        )
 
 
 class TestSoulHasNoPersonaBlock:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,7 +11,7 @@ from rich.markup import escape
 from docket import ui
 from docket.cli import _contract, _progress
 from docket.cli._setup import readiness
-from docket.cli._target import TargetError, pod_option
+from docket.cli._target import pod_option
 from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import dispatch as _dispatch
@@ -22,12 +21,9 @@ from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod_core
 from docket.core import pod_apply as _pod_apply
+from docket.core import pod_report as _report
 from docket.core.audit import audit_log
 from docket.kernel import clock as _clock
-
-
-def _stdin_is_tty() -> bool:
-    return sys.stdin.isatty()
 
 
 def _repo_dir(project: str) -> Path | None:
@@ -41,7 +37,7 @@ def _ask_changed_commands(changes: _pod_apply.RepoChanges) -> bool:
     from docket.cli._pod_config import run_item_label
 
     when = f" on {changes.allowed_on}" if changes.allowed_on else ""
-    if not _stdin_is_tty():
+    if not _contract.is_tty():
         ui.warn(
             "The repository changed a command that needs your OK. Running with the version "
             f"you allowed{when}. To review it, run docket run on a terminal."
@@ -275,7 +271,7 @@ def _pod_dispatch(
     tokens_before, cost_before = _pod_tokens(project)
 
     def _fn() -> list[Any]:
-        default: Literal["wait", "park"] = "wait" if sys.stdin.isatty() else "park"
+        default: Literal["wait", "park"] = _report.caller_default()
         return _dispatch.dispatch_pod(
             project,
             resume=resume,
@@ -341,11 +337,7 @@ def cmd_run(
     Example: docket run --dry-run
     """
 
-    try:
-        project = _contract.resolve_pod_here(pod)
-    except TargetError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
+    project = _contract.require_pod(pod)
     variables = _parse_vars(var)
     spec = _load_spec(pipeline) if pipeline is not None else None
     if dry_run:

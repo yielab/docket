@@ -106,6 +106,8 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 **Progress 2026-10-23.** Stage 1 and the code half of stage 2 are merged: Wave 120 batches A and B (W120-1..12), P46-1, P46-2, P46-3, the P46-5 step 2 errors rule and its run (`36867d97`, the other session), and the P46-5 step 3 rules (`cf96f6cf`). Spec versions are bumped per batch (`86a5b4b5`, `e57c32bd`). Q1-Q6 were applied at their defaults. W120-13 merged the same day. Next: stage 3.
 
+**Scope cut (maintainer, 2026-10-23): the move is script-driven, without staged ceremony.** P46-5 used the codemod rules, parity tests and partial guards once and deleted them (97 commits, no module moved). The rest runs as: the map is dry-run clean (`refactor/target-map.toml`, `move.py --dry-run`: 0 problems, no import cycle beyond today's one in `cli/`), the integrator runs `move.py` once, fixes the gate, commits; workers only for judgment. P46-10..14 move to Phase 47; P46-4's contracts come after the move; P46-15 closes.
+
 **Standing rule for the rest of Phase 46 (maintainer, 2026-10-23): the refactor deletes what is dead and keeps the tree strictly DRY.** ADR 0030 deferred "dead code by fan-in" to Phase 47; it now happens here. Every card deletes, in the modules it moves or rewrites, each definition nothing references, each test that only exercises such a definition, each second copy of a helper, and each leftover kept for the past (deprecation advisories, aliases, the `enqueue_task`/`enqueue_task_once` pair); it reports the before/after of `scripts/maint/measure_dead_code.py`, whose shrink-only baseline is lane D's (`.agents/handoffs/p46-dead-code-packet.md`). The deletions in `src/` and `tests/` that lane D lists run as one lane after P46-5 stage 3c merges.
 
 **Decisions for the maintainer.** Each card applies the default below unless the maintainer answers otherwise before its batch starts.
@@ -180,7 +182,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-4 — `tests/architecture/`, the ratchets and the markers
 
-**Status:** TODO · stage 4, after P46-2, P46-3 and P46-5 · **Size:** M · **Model:** Sonnet · **Kind:** T
+**Status:** TODO after the move (P46-6..9): contracts are written once the tree can satisfy them; no ratchet beyond import-linter's ignore list · **Size:** M · **Model:** Sonnet · **Kind:** T
 
 - **Folded defect 69** (truth pass): `pytest-without-sandbox.sh` runs in no CI job (CI gets a
   `-m "not sandbox"` job on a runner with `DOCKET_SANDBOX_PROBE=none`); the `slow` marker is
@@ -203,7 +205,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-5 — `kernel/` and `Home`
 
-**Status:** IN-PROGRESS · step 1 DONE 2026-10-22, steps 2-3 in stages 1-3 · **Size:** L · **Model:** per step · **Kind:** T + R
+**Status:** DONE 2026-10-23 (stage 3c `0a13fd57`); the `DocketError` catcher at the CLI entry and the HTTP handler stays with the other session · **Size:** L · **Model:** per step · **Kind:** T + R
 
 - **Step 1: DONE (2026-10-22).**
   - `kernel/home.py::Home` was written by hand, not generated. `tests/integration/test_home_parity.py` pins that it equals `config.py`, name for name and default for default.
@@ -236,7 +238,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 - **Stage 3a: DONE (2026-10-23).** Packet `.agents/handoffs/p46-5-stage-3a-packet.md` (`ff4a2b98`..`fd73dea0`). `Home.secrets_file`/`secrets_meta_file`; `secrets_backend_requested`, `no_trace`, `no_export` are live reads in `edges/adapters/system.py`; `mkdir_private` is in `edges/store.py`; the import-time reads became `default_factory`/call-time reads; the environ table applied (environ 95 to 86). `src/` refusals 39 to 10, all template lookups.
 - **Stage 3b: DONE (merge `65365e06`).** Packet `.agents/handoffs/p46-5-stage-3b-packet.md`. One pass: `config-reads` 795 sites, `config-patches` 148, `repointers` 173. `tests/conftest.py` has one autouse `use_home` fixture; `repoint_docket_home`, `point_home_at`, `patch_home` and `_DOCKET_HOME_PATHS` are deleted; about 64 seed helpers became context managers; test threads use `new_thread`; serve fixtures build the server inside the seeded home. Counts: `config-reads` 10, `config-patches` 1 (all template lookups), `repointers` 0. Rule defects the pass showed (moot, 3c deletes the rules): the deleted helper's import stays, a dead `mp` stays in `MonkeyPatch.context`, `x._cfg.NAME` alias chains are missed, `Home(root)` inside a `replace` drops the outer override.
 - **Stage 3c: DONE (merge `0a13fd57`).** `src/docket/config.py` is deleted; the shipped-template lookups are `kernel/templates.py` (in the runtime wheel); every other name was already on `Home`. `Home.from_environ` parses each kind through one helper (`_int`, `_float`, `_optional_int`, `_optional_path`; an empty optional variable now means unset). Deleted: `test_home_parity.py`, the partial-repointer guard, its baseline and measurer, `test_docket_home_repointer.py`, and the rules `config-reads`, `config-patches`, `repointers` (`adopt_kernel.py` 1,691 to 1,082 lines, one pass); `test_config_single_owner.py` is `test_home_single_owner.py`; `test_fleet_registry.py` checked a name that no longer existed and now checks `.fleet_file`. `tests/integration/test_two_homes_in_one_process.py` is the disjointness test (fails with one block replaced by a bare call). Dead code the stage left: 83 unused `monkeypatch` parameters and 5 uncalled test helpers removed; no `Home` field is unread. Counts: `environ` 86 to 28 (live reads the decisions table keeps), `text` 3 (the formats settled below); dead code 41/22/5 to 17/17/5.
-- **Lane D: DONE (merge `40c6f9d0`).** `scripts/maint/measure_dead_code.py` and `tests/guards/test_dead_code.py`, strict-equality baseline; four spent maint scripts deleted. **Lane E** (packet `.agents/handoffs/p46-dead-code-delete-packet.md`) deletes what it lists.
+- **Lane D: DONE (merge `40c6f9d0`).** `scripts/maint/measure_dead_code.py` and `tests/guards/test_dead_code.py`, strict-equality baseline; four spent maint scripts deleted. **Lane E: DONE (merge `a4d8052e`).** dead 17 to 1 (`PLUGIN_API_VERSION`, public API), test-only 17 to 3 (kernel test seams), duplicate groups 5 to 1 (`use_clock`/`use_home`); `enqueue_task` gone (325 test sites), one ISO parser in `kernel/clock.py`, `core/document_fields.py` owns the catalog field checks, `_contract.require_pod`/`is_tty`, the kind-less canonical document advisory deleted (config-format 1.13.0: it is a current format). 50,780 to 50,348 lines. Timing follow-up: `TestRetryDoesNotTripStaleClaimSweep` and `TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper` (a fixed `time.sleep(1)`) fail under full-lane load and pass alone; wait on a deadline instead.
 - **Text, settled.**
   - `approval._audit_field` caps at 513 characters while the audit spec says 512: it becomes `ellipsize(x, 512)`.
   - `…[+N chars]` (`cli/_setup_export.py`) and `[diff truncated …]` (`system.py`) keep their own format, one user each.
@@ -601,7 +603,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-6 — `bootstrap.py`, the composition root
 
-**Status:** TODO after P46-5 · **Size:** M · **Model:** Sonnet · **Kind:** T + R
+**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** M · **Model:** Sonnet · **Kind:** T + R
 
 - **Goal:** plain functions `build_store`, `build_sandbox`, `build_driver`, `build_channels`,
   `build_app` (CLI), `build_server` (HTTP), each taking a `Home`; the CLI entry and `serve` call
@@ -615,7 +617,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-7 — split `core/dispatch.py`
 
-**Status:** TODO after P46-6 · **Size:** L · **Model:** codemod · **Kind:** T + R
+**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** L · **Model:** codemod · **Kind:** T + R
 
 - **The draft map does not apply yet** (`move.py --dry-run` on 2026-10-23: 203 file moves and 2208 test-id changes, then rc 2). Two mapping problems:
   - `_store` clashes in `docket.hops.workspace.prepare`. Rename one of the two before the move.
@@ -641,7 +643,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-8 — every remaining module to its context
 
-**Status:** TODO after P46-7 · **Size:** L · **Model:** codemod · **Kind:** T
+**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** L · **Model:** codemod · **Kind:** T
 
 - **Goal:** one commit per context, leaf-first: `platform`, `models`, `observability`,
   `operator`, `sandbox`, `governance`, `teams`, `agent`, `tasks`, `pipeline`, `hops`,
@@ -657,7 +659,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-9 — split `serve.py`
 
-**Status:** TODO after P46-8 · **Size:** M · **Model:** codemod · **Kind:** T + R
+**Status:** TODO · one `move.py` run over the whole target map, by the integrator, after the map dry-runs clean · **Size:** M · **Model:** codemod · **Kind:** T + R
 
 - **Goal:** a codemod lifts each path branch of `do_GET`/`do_POST` into
   `interfaces/http/routes/<resource>.py` (tasks, pods, approvals, inbox, traces, health, metrics,
@@ -674,7 +676,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-10 — the runtime is a package, not a build hook
 
-**Status:** TODO after P46-8 · **Size:** M · **Model:** Sonnet · **Kind:** T
+**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** M · **Model:** Sonnet · **Kind:** T
 
 - **Goal:** with the contract "`agent` imports `kernel` only" green, delete
   `packages/docket-runtime/hatch_build.py` and its 40-file closure; the distribution includes
@@ -689,7 +691,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-11 — persisted shapes the structure wants (D-57)
 
-**Status:** TODO after P46-9 · **Size:** M · **Model:** Sonnet · **Kind:** T + R
+**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** M · **Model:** Sonnet · **Kind:** T + R
 
 - **Goal:** the task record is written nested (`spec`, `lifecycle`, `execution`, `pending`) with
   the same camelCase field names inside (the API serializer flattens, so responses are
@@ -717,7 +719,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-12 — one owner of the task's state
 
-**Status:** TODO after P46-7 · **Size:** M · **Model:** Sonnet (one attempt) · **Kind:** M + T
+**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** M · **Model:** Sonnet (one attempt) · **Kind:** M + T
 
 - **Input:** the P46-2 table of 16 sites (from, to, fields, caller).
 - **Goal:** `tasks/domain/state.py`: `Status`, `FailureKind` enums, the allowed-transition table,
@@ -738,7 +740,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-13 — ports for what the ignore list still holds
 
-**Status:** TODO after P46-8 · **Size:** L · **Model:** Sonnet where a signature is unclean · **Kind:** T + M
+**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** L · **Model:** Sonnet where a signature is unclean · **Kind:** T + M
 
 - **Goal:** for each remaining domain→adapter import, `analyze.py --emit-port` generates a
   `Protocol` from the signatures the domain uses; `bootstrap.py` binds the real adapter; the
@@ -752,7 +754,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-14 — the tests only the new structure allows
 
-**Status:** TODO after P46-13 · **Size:** L · **Model:** Sonnet · **Kind:** T + M
+**Status:** MOVED to Phase 47 (maintainer, 2026-10-23): a redesign, not structure · **Size:** L · **Model:** Sonnet · **Kind:** T + M
 
 - **Goal:** `tests/fixtures/`: `home.py`, `repo.py` (temp git repo with lockfile and commits),
   `builders.py` (`make_task`, `make_pod`, `make_hop`), `fakes/chat.py` (`ScriptedChat`: turns
