@@ -695,27 +695,29 @@ class TestAuditVerifyCommand:
 # ── new call-site coverage ───────────────────────────────────────────────────
 
 
+_KEY_VALUE = "sk-ant-testvalue00000000000000"
+
+
 class TestKeysAudit:
     @pytest.fixture()
     def keys_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         d = tmp_path / ".docket"
         d.mkdir()
         repoint_docket_home(monkeypatch, d)
-        monkeypatch.setattr(
-            keys_cli._getpass, "getpass", lambda *a, **k: "sk-ant-testvalue00000000000000"
-        )
         return d
 
     def test_keys_add_writes_one_entry_no_secret_value(self, keys_home: Path) -> None:
-        rc = keys_cli.credential_add("ANTHROPIC_API_KEY")
-        assert rc == 0
+        assert keys_cli._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
         entries = _entries("keys.add")
         assert len(entries) == 1
         assert entries[0]["detail"] == "ANTHROPIC_API_KEY"
         assert "sk-ant-testvalue" not in json.dumps(entries)
 
-    def test_keys_rotate_writes_one_entry_no_secret_value(self, keys_home: Path) -> None:
-        keys_cli.credential_add("ANTHROPIC_API_KEY")
+    def test_keys_rotate_writes_one_entry_no_secret_value(
+        self, keys_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        keys_cli._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
+        monkeypatch.setattr(keys_cli._getpass, "getpass", lambda *a, **k: _KEY_VALUE)
         rc = keys_cli.credential_rotate("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.rotate")
@@ -724,7 +726,7 @@ class TestKeysAudit:
         assert "sk-ant-testvalue" not in json.dumps(entries)
 
     def test_keys_remove_writes_one_entry(self, keys_home: Path) -> None:
-        keys_cli.credential_add("ANTHROPIC_API_KEY")
+        keys_cli._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
         rc = keys_cli.credential_remove("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.remove")

@@ -17,6 +17,7 @@ import docket.config as _cfg
 from docket.edges import store
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
+from docket.kernel.errors import Unavailable
 
 SECRETS_FILE = _cfg.DOCKET_HOME / "secrets.json"
 SECRETS_META_FILE = _cfg.DOCKET_HOME / "secrets.meta.json"
@@ -58,6 +59,20 @@ def secret_value(name: str) -> str | None:
         value = raw.get(name)
     clean = str(value or "").strip()
     return clean or None
+
+
+def store_backend() -> str:
+    """The backend a credential write goes to: ``"keyring"`` or ``"file"``. Raises ``Unavailable``
+    when the keyring was requested and ``secret-tool`` is not on ``PATH``, so a write never
+    falls back to plaintext in silence."""
+    if _cfg.secrets_backend_requested() != "keyring":
+        return "file"
+    if not _system.secret_tool_available():
+        raise Unavailable(
+            "DOCKET_SECRETS_BACKEND=keyring but secret-tool is not on PATH",
+            "Install libsecret-tools, or unset DOCKET_SECRETS_BACKEND to store in secrets.json",
+        )
+    return "keyring"
 
 
 def secret_values() -> list[str]:

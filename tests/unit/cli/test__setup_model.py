@@ -34,6 +34,10 @@ def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return home
 
 
+def _add(name: str, value: str) -> bool:
+    return _setup_model._write_credential(name, value, "add")
+
+
 def _seed_workspace(home: Path, agent_id: str = "demo") -> Path:
     ws = home / "workspaces" / "projects" / agent_id
     ws.mkdir(parents=True)
@@ -45,18 +49,17 @@ def _seed_workspace(home: Path, agent_id: str = "demo") -> Path:
 
 
 class TestNoEnvSync:
-    def test_credential_add_creates_no_env_in_any_workspace(
+    def test_credential_write_creates_no_env_in_any_workspace(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = _home(tmp_path, monkeypatch)
         ws = _seed_workspace(home)
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-testvalue00000000000000"
+
+        stored = _setup_model._write_credential(
+            "ANTHROPIC_API_KEY", "fake-ant-testvalue00000000000000", "add"
         )
 
-        rc = _setup_model.credential_add("ANTHROPIC_API_KEY")
-
-        assert rc == 0
+        assert stored is True
         assert not (ws / ".env").exists()
         assert list(ws.iterdir()) == [ws / ".docket-meta.json"]
 
@@ -65,10 +68,7 @@ class TestNoEnvSync:
     ) -> None:
         home = _home(tmp_path, monkeypatch)
         ws = _seed_workspace(home)
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-firstvalue000000"
-        )
-        _setup_model.credential_add("ANTHROPIC_API_KEY")
+        _add("ANTHROPIC_API_KEY", "fake-ant-firstvalue000000")
 
         monkeypatch.setattr(
             _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-secondvalue00000"
@@ -83,10 +83,7 @@ class TestNoEnvSync:
     ) -> None:
         home = _home(tmp_path, monkeypatch)
         ws = _seed_workspace(home)
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-testvalue00000000000000"
-        )
-        _setup_model.credential_add("ANTHROPIC_API_KEY")
+        _add("ANTHROPIC_API_KEY", "fake-ant-testvalue00000000000000")
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
         rc = _setup_model.credential_remove("ANTHROPIC_API_KEY")
@@ -111,13 +108,9 @@ class TestKeyringBackendStores:
             "secret_tool_store",
             lambda service, key, value: stored.setdefault(key, value) or True,
         )
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-realvalue0000000"
-        )
+        ok = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
-        rc = _setup_model.credential_add("ANTHROPIC_API_KEY")
-
-        assert rc == 0
+        assert ok is True
         assert stored == {"ANTHROPIC_API_KEY": "fake-ant-realvalue0000000"}
         on_disk = json.loads(_secrets.SECRETS_FILE.read_text())
         assert on_disk["ANTHROPIC_API_KEY"] == ""
@@ -129,13 +122,9 @@ class TestKeyringBackendStores:
         monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
         monkeypatch.setattr(_system_mod, "secret_tool_available", lambda: True)
         monkeypatch.setattr(_system_mod, "secret_tool_store", lambda *a, **k: False)
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-realvalue0000000"
-        )
+        ok = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
-        rc = _setup_model.credential_add("ANTHROPIC_API_KEY")
-
-        assert rc == 1
+        assert ok is False
         assert not _secrets.SECRETS_FILE.exists() or "ANTHROPIC_API_KEY" not in json.loads(
             _secrets.SECRETS_FILE.read_text() or "{}"
         )
@@ -145,10 +134,7 @@ class TestKeyringBackendStores:
     ) -> None:
         _home(tmp_path, monkeypatch)
         # First add under the file backend so the key exists to rotate.
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-original00000000"
-        )
-        _setup_model.credential_add("ANTHROPIC_API_KEY")
+        _add("ANTHROPIC_API_KEY", "fake-ant-original00000000")
 
         monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
         monkeypatch.setattr(_system_mod, "secret_tool_available", lambda: True)
@@ -176,10 +162,7 @@ class TestKeyringBackendStores:
         monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
         monkeypatch.setattr(_system_mod, "secret_tool_available", lambda: True)
         monkeypatch.setattr(_system_mod, "secret_tool_store", lambda *a, **k: True)
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-realvalue0000000"
-        )
-        _setup_model.credential_add("ANTHROPIC_API_KEY")
+        _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
         cleared: list[str] = []
         monkeypatch.setattr(
@@ -199,13 +182,9 @@ class TestFileBackendUnaffected:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _home(tmp_path, monkeypatch)
-        monkeypatch.setattr(
-            _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-realvalue0000000"
-        )
+        stored = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
-        rc = _setup_model.credential_add("ANTHROPIC_API_KEY")
-
-        assert rc == 0
+        assert stored is True
         on_disk = json.loads(_secrets.SECRETS_FILE.read_text())
         assert on_disk["ANTHROPIC_API_KEY"] == "fake-ant-realvalue0000000"
 
@@ -509,3 +488,287 @@ class TestProviderLimits:
         models = json.loads(result.stdout)["models"]
         assert models and all(m["limitsSource"] == "unknown" for m in models)
         assert all(m["contextWindow"] is None and m["maxTokens"] is None for m in models)
+
+
+def _reachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    from docket.edges.adapters import llm as _llm
+
+    monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=200))
+
+
+def _global_providers(home: Path) -> dict[str, dict[str, object]]:
+    path = home / "docket-providers.json"
+    if not path.exists():
+        return {}
+    providers: dict[str, dict[str, object]] = json.loads(path.read_text())["providers"]
+    return providers
+
+
+class TestProviderAddRefusesMissingRankAnchors:
+    def test_an_anthropic_document_without_presets_is_refused_and_stores_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        doc = tmp_path / "anthropic.yaml"
+        doc.write_text(
+            "kind: provider\nname: anthropic\nbaseUrl: https://api.anthropic.com/v1\n"
+            "auth: {type: bearer, credentials: [ANTHROPIC_API_KEY]}\npresets: []\n"
+        )
+
+        result = _runner.invoke(
+            app, ["setup", "provider", "add", str(doc), "--credential", "sk-ant-" + "x" * 20]
+        )
+
+        assert result.exit_code == 1
+        assert "economy" in result.stderr
+        assert _global_providers(home) == {}
+        assert _secrets.load_secrets() == {}
+
+
+class TestProviderAddStoresNothingOnTransportFailure:
+    def test_an_unreachable_endpoint_leaves_no_credential_behind(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _home(tmp_path, monkeypatch)
+        monkeypatch.delenv("DOWN_API_KEY", raising=False)
+
+        result = _runner.invoke(
+            app,
+            ["setup", "provider", "add", "down", "http://127.0.0.1:9/v1", "--credential", "sk-x1"],
+        )
+
+        assert result.exit_code == 1
+        assert "Nothing was registered" in result.stderr
+        assert _secrets.load_secrets() == {}
+        assert not _secrets.SECRETS_META_FILE.exists()
+        assert _global_providers(home) == {}
+
+    def test_a_reachable_endpoint_stores_the_credential_after_the_probe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.edges.adapters import llm as _llm
+
+        _home(tmp_path, monkeypatch)
+        monkeypatch.delenv("UP_API_KEY", raising=False)
+        seen: list[str] = []
+
+        def probe(endpoint: object, *a: object, **k: object) -> _llm.ProbeResult:
+            seen.append(getattr(endpoint, "api_key", ""))
+            assert _secrets.load_secrets() == {}
+            return _llm.ProbeResult(status=200)
+
+        monkeypatch.setattr(_llm, "probe_models", probe)
+
+        result = _runner.invoke(
+            app,
+            ["setup", "provider", "add", "up", "http://127.0.0.1:9/v1", "--credential", "sk-x1"],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert seen == ["sk-x1"]
+        assert _secrets.load_secrets() == {"UP_API_KEY": "sk-x1"}
+
+    def test_a_rejected_credential_is_reported_as_rejected_not_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.edges.adapters import llm as _llm
+
+        _home(tmp_path, monkeypatch)
+        monkeypatch.delenv("UP_API_KEY", raising=False)
+        monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=401))
+
+        result = _runner.invoke(
+            app,
+            ["setup", "provider", "add", "up", "http://127.0.0.1:9/v1", "--credential", "sk-x1"],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "was rejected (HTTP 401)" in " ".join(result.output.split())
+
+
+class TestKeyringRequestedWithoutSecretTool:
+    @pytest.fixture(autouse=True)
+    def _no_secret_tool(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        empty = tmp_path / "empty-bin"
+        empty.mkdir()
+        monkeypatch.setenv("PATH", str(empty))
+        monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
+
+    def test_a_credential_write_refuses_and_names_the_way_out(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+
+        stored = _setup_model._write_credential("ANTHROPIC_API_KEY", "sk-ant-secret1", "add")
+
+        assert stored is False
+        assert not _secrets.SECRETS_FILE.exists()
+        err = capsys.readouterr().err
+        assert "secret-tool" in err
+        assert "DOCKET_SECRETS_BACKEND" in err
+
+    def test_provider_add_refuses_before_probing_or_registering(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+        monkeypatch.delenv("UP_API_KEY", raising=False)
+
+        result = _runner.invoke(
+            app,
+            ["setup", "provider", "add", "up", "http://127.0.0.1:9/v1", "--credential", "sk-x1"],
+        )
+
+        assert result.exit_code == 1
+        assert "secret-tool" in result.stderr
+        assert not _secrets.SECRETS_FILE.exists()
+        assert _global_providers(home) == {}
+
+    def test_a_keyless_provider_does_not_need_the_keyring(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+
+        result = _runner.invoke(
+            app, ["setup", "provider", "add", "free", "http://127.0.0.1:9/v1", "--no-preset"]
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "free" in _global_providers(home)
+
+
+class TestProviderAddLimitsKeepInheritedRows:
+    @staticmethod
+    def _builtin_rows(name: str) -> list[_prov.ModelRow]:
+        spec = _prov.load_catalog().get(name)
+        assert spec is not None
+        return list(spec.models)
+
+    def test_ctx_without_a_model_on_a_multi_row_provider_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        result = _runner.invoke(
+            app,
+            ["setup", "provider", "add", "anthropic", "--credential", "sk-ant-x", "--ctx", "1000"],
+        )
+
+        assert result.exit_code == 1
+        assert "--model" in result.stderr
+        assert _global_providers(home) == {}
+        assert _secrets.load_secrets() == {}
+
+    def test_ctx_on_a_provider_with_no_rows_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+
+        result = _runner.invoke(app, ["setup", "provider", "add", "local", "--max-tokens", "512"])
+
+        assert result.exit_code == 1
+        assert "--model" in result.stderr
+        assert _global_providers(home) == {}
+
+    def test_ctx_with_a_known_model_changes_only_that_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        before = self._builtin_rows("anthropic")
+
+        result = _runner.invoke(
+            app,
+            [
+                *("setup", "provider", "add", "anthropic", "--credential", "sk-ant-x"),
+                *("--model", "claude-haiku-4-5", "--ctx", "1000", "--max-tokens", "500"),
+                "--no-preset",
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        after = _prov.load_catalog().get("anthropic")
+        assert after is not None
+        assert [row.id for row in after.models] == [row.id for row in before]
+        by_id = {row.id: row for row in after.models}
+        assert (by_id["claude-haiku-4-5"].context_window, by_id["claude-haiku-4-5"].max_tokens) == (
+            1000,
+            500,
+        )
+        for original in before:
+            assert by_id[original.id].price == original.price
+        assert after.headers == {"anthropic-version": "2023-06-01"}
+
+    def test_a_url_over_a_built_in_keeps_every_row_and_its_price(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        before = self._builtin_rows("anthropic")
+
+        result = _runner.invoke(
+            app,
+            [
+                *("setup", "provider", "add", "anthropic", "http://127.0.0.1:9/v1"),
+                *("--credential", "sk-ant-x", "--no-preset"),
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        after = _prov.load_catalog().get("anthropic")
+        assert after is not None
+        assert after.base_url == "http://127.0.0.1:9/v1"
+        assert after.models == before
+
+    def test_an_unlisted_model_over_a_built_in_adds_a_row_beside_the_inherited_ones(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        before = self._builtin_rows("anthropic")
+
+        result = _runner.invoke(
+            app,
+            [
+                *("setup", "provider", "add", "anthropic", "--credential", "sk-ant-x"),
+                *("--model", "claude-new", "--ctx", "2000", "--no-preset"),
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        after = _prov.load_catalog().get("anthropic")
+        assert after is not None
+        assert after.models[: len(before)] == before
+        assert [(r.id, r.context_window) for r in after.models[len(before) :]] == [
+            ("claude-new", 2000)
+        ]
+
+    def test_ctx_alone_applies_to_the_only_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        _reachable(monkeypatch)
+        _prov.save_provider(
+            _prov.ProviderSpec(
+                name="solo",
+                baseUrl="http://127.0.0.1:9/v1",
+                auth=_prov.AuthSpec(type="none"),
+                models=[_prov.ModelRow(id="only")],
+            )
+        )
+
+        result = _runner.invoke(app, ["setup", "provider", "add", "solo", "--ctx", "777"])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        after = _prov.load_catalog().get("solo")
+        assert after is not None
+        assert [(r.id, r.context_window) for r in after.models] == [("only", 777)]

@@ -40,6 +40,8 @@ Credentials belong to a provider; there is no separate key command.
    first name its catalog document declares under `auth.credentials`) from the flag, else from the
    process environment variable of that name, else from a hidden prompt on a terminal. Off a
    terminal with none of the three it **MUST** exit 1 naming `--credential` and write nothing.
+   The value is stored only after the `/models` probe got an HTTP answer; a transport failure
+   exits 1 and stores nothing.
    A value from the flag or the environment replaces a name already stored (audited as
    `keys.rotate`); a new name is audited as `keys.add`. When the name is already stored and neither
    the flag nor the environment gives a value, `add` keeps the stored value and does not prompt.
@@ -71,9 +73,10 @@ Credentials belong to a provider; there is no separate key command.
 1. The default backend (`DOCKET_SECRETS_BACKEND` unset, or set to `file`) stores every value in
    `secrets.json`.
 2. `DOCKET_SECRETS_BACKEND=keyring` **MUST** store the value itself in the OS keyring
-   (`secret-tool store`) when `secret-tool` is on `PATH`; `secrets.json` then holds only a name
-   index (an empty placeholder), never the secret. Storing **MUST** fail (exit 1) rather
-   than silently fall back to plaintext storage when `secret-tool store` fails. Removing **MUST**
+   (`secret-tool store`); `secrets.json` then holds only a name index (an empty placeholder),
+   never the secret. Storing **MUST** fail (exit 1, naming `secret-tool` and
+   `DOCKET_SECRETS_BACKEND`) rather than silently fall back to plaintext storage when
+   `secret-tool` is not on `PATH` or `secret-tool store` fails. Removing **MUST**
    also clear the keyring entry (best-effort — a missing entry is not an error).
 3. Resolving a keyring-backed credential **MUST** use the same lookup the runtime uses
    (`secret-tool lookup`), never the raw index value.
@@ -129,7 +132,7 @@ Enter value for ANTHROPIC_API_KEY (hidden):
 ## Implementation
 
 - `src/docket/config.py`: `DOCKET_HOME`, `secrets_backend_requested` (`DOCKET_SECRETS_BACKEND`), `KEYRING_SERVICE`
-- `src/docket/core/secrets.py`: `secret_value`, `secret_values`, `touch_meta`, `SECRETS_FILE` (`secrets.json`)
+- `src/docket/core/secrets.py`: `secret_value`, `secret_values`, `store_backend`, `touch_meta`, `SECRETS_FILE` (`secrets.json`)
 - `src/docket/cli/_setup_model.py`: `provider add`, `provider rotate`, `provider remove` and the credential writes they share
 - `src/docket/core/provider.py`: `resolve_credential`, `model_readiness`, `ProviderSpec` (`credentialPrefix`, `auth.credentials`) and its name validator
 - `src/docket/edges/adapters/system.py`: `secret_tool_available`, `secret_tool_store`, `secret_tool_lookup`, `secret_tool_clear`

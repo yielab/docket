@@ -302,9 +302,8 @@ class TestRunTurn:
         monkeypatch.delenv(provider_key, raising=False)
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
         monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
-        monkeypatch.setattr(_setup_model._getpass, "getpass", lambda prompt: secret)
 
-        assert _setup_model.credential_add(provider_key) == 0
+        assert _setup_model._write_credential(provider_key, secret, "add")
         _write_meta("gateway-agent", model=model)
 
         captured: dict[str, object] = {}

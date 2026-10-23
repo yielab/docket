@@ -349,6 +349,41 @@ def _with_inherited_identity(spec: ProviderSpec) -> ProviderSpec:
     return spec.model_copy(update={f: getattr(builtin, f) for f in missing})
 
 
+_RANK_SOURCE = "anthropic"
+_REQUIRED_RANKS = ("economy", "standard")
+
+
+def _anchors_of(spec: ProviderSpec | None) -> dict[str, str]:
+    """The rank anchors (``economy``/``standard``/``premium`` -> ``provider/model``) carried by the
+    rank-source provider's own preset, for the role defaults every other model table derives from.
+    Raises ``DocumentError`` naming the first required anchor the document does not carry."""
+    preset = None
+    if spec is not None:
+        preset = next((p for p in spec.presets if p.name == _RANK_SOURCE), None)
+    for rank in _REQUIRED_RANKS:
+        if preset is None or not preset.ranks.get(rank):
+            raise DocumentError(
+                _cfg.PROVIDERS_FILE,
+                f"providers.{_RANK_SOURCE}.presets",
+                f"rank anchor '{rank}' is missing: the {_RANK_SOURCE} provider needs a preset "
+                f"named '{_RANK_SOURCE}' that ranks {' and '.join(_REQUIRED_RANKS)}",
+                valid=_REQUIRED_RANKS,
+            )
+    assert preset is not None
+    return {rank: f"{_RANK_SOURCE}/{model_id}" for rank, model_id in preset.ranks.items()}
+
+
+def rank_anchors_of(catalog: Catalog) -> dict[str, str]:
+    """``_anchors_of`` for the rank-source provider as *catalog* holds it."""
+    return _anchors_of(catalog.get(_RANK_SOURCE))
+
+
+def check_rank_anchors(spec: ProviderSpec) -> None:
+    """Refuse a document that would leave the rank-source provider without its anchors."""
+    if spec.name == _RANK_SOURCE:
+        _anchors_of(_with_inherited_identity(spec))
+
+
 def save_provider(spec: ProviderSpec) -> None:
     """Write *spec* into the global catalog (``config.PROVIDERS_FILE``), through
     ``edges/store.py`` -- the sole writer of docket-owned JSON."""
@@ -594,12 +629,16 @@ class Registration:
     changed: bool
 
 
-def probe_spec(spec: ProviderSpec) -> ProbeResult:
-    """Probe *spec*'s ``/models`` with its resolved credential; nothing is saved."""
+def probe_spec(spec: ProviderSpec, *, credential: str | None = None) -> ProbeResult:
+    """Probe *spec*'s ``/models`` with its resolved credential, or with *credential* when the
+    caller holds a value it has not stored yet (``DOCKET_LLM_API_KEY`` still wins); nothing is
+    saved."""
     from docket.core.llm import Endpoint
     from docket.edges.adapters.llm import probe_models
 
-    credential_value, _source = resolve_credential(spec)
+    credential_value, source = resolve_credential(spec)
+    if credential and source != "override":
+        credential_value = credential
     endpoint = Endpoint(
         base_url=spec.base_url,
         model_id="x",
@@ -616,6 +655,7 @@ def register_provider(spec: ProviderSpec, *, probe: ProbeResult | None = None) -
     """Verify *spec* with the resolved credential and classify the result; persist only when
     reachable (model-profiles.spec.md "Provider readiness" 3). The default probe builds an
     ``Endpoint`` straight from *spec*, never a saved entry, since nothing is written yet."""
+    check_rank_anchors(spec)
     if probe is None:
         probe = probe_spec(spec)
 

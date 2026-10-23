@@ -7,6 +7,7 @@ import getpass as _getpass
 import os
 import re as _re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -21,6 +22,7 @@ from docket.core import provider as _prov
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
 from docket.edges.adapters import system as _system
+from docket.kernel.errors import DocumentError, Unavailable
 
 provider_app = typer.Typer(
     name="provider",
@@ -32,8 +34,6 @@ model_app = typer.Typer(
     no_args_is_help=False,
     invoke_without_command=True,
 )
-
-_KEY_NAME = _re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 def _say(text: str = "") -> None:
@@ -61,8 +61,13 @@ def _validate_key_format(name: str, value: str) -> tuple[bool, str]:
 
 def _write_credential(name: str, value: str, event: str) -> bool:
     """Store ``value`` (keyring or 0600 file), touch the meta and audit ``keys.<event>``."""
+    try:
+        backend = _secrets.store_backend()
+    except Unavailable as exc:
+        ui.error(exc.message, exc.hint)
+        return False
     secrets = _secrets.load_secrets()
-    if _keyring_active():
+    if backend == "keyring":
         if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
             ui.error(
                 f"Could not store {name} in the OS keyring",
@@ -85,31 +90,6 @@ def _read_hidden(name: str, label: str = "Enter value for") -> str | None:
     except (KeyboardInterrupt, EOFError):
         ui.warn("Aborted.")
         return None
-
-
-def prompt_and_store(name: str) -> bool:
-    """Prompt for ``name`` on a hidden line and store it; ``False`` on an empty or failed entry."""
-    value = _read_hidden(name)
-    if value is None:
-        return False
-    if not value:
-        ui.error("Value cannot be empty")
-        return False
-    ok, reason = _validate_key_format(name, value)
-    if not ok:
-        ui.warn(f"Key format: {reason}")
-    return _write_credential(name, value, "add")
-
-
-def credential_add(name: str) -> int:
-    """Prompt for a new credential; refuses a name that already exists."""
-    if not _KEY_NAME.match(name):
-        ui.error(f"Invalid credential name {name}", "Use UPPERCASE_WITH_UNDERSCORES")
-        return 1
-    if name in _secrets.load_secrets():
-        ui.error(f"Credential {name} already exists", "Use docket setup provider rotate")
-        return 1
-    return 0 if prompt_and_store(name) else 1
 
 
 def credential_rotate(name: str, value: str | None = None) -> int:
@@ -150,6 +130,36 @@ def _credential_name_for(name: str) -> str:
     return _re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_") + "_API_KEY"
 
 
+def _rows_with_limits(
+    name: str, rows: list[_prov.ModelRow], model: str | None, ctx: int | None, max_t: int | None
+) -> list[dict[str, object]] | None:
+    """The provider's inherited rows as documents, with ``--ctx``/``--max-tokens`` applied to the
+    row ``--model`` names (appended when new) or, with no ``--model``, to the only row. ``None``
+    when a limit flag has no single row to land on."""
+    documents = [row.model_dump(by_alias=True, exclude_none=True) for row in rows]
+    limits: dict[str, object] = {}
+    if ctx is not None:
+        limits["contextWindow"] = ctx
+    if max_t is not None:
+        limits["maxTokens"] = max_t
+    target = model
+    if target is None:
+        if not limits:
+            return documents
+        if len(rows) != 1:
+            ui.error(
+                f"--ctx and --max-tokens need --model: {name} lists {len(rows)} models",
+                f"Pass the model they describe: docket setup provider add {name} --model <id>",
+            )
+            return None
+        target = rows[0].id
+    for document in documents:
+        if document["id"] == target:
+            document.update(limits)
+            return documents
+    return [*documents, {"id": target, **limits}]
+
+
 def _build_spec(
     name: str,
     url: str | None,
@@ -159,9 +169,10 @@ def _build_spec(
     ctx: int | None,
     max_t: int | None,
 ) -> _prov.ProviderSpec | None:
-    """The document ``add`` registers: the catalog entry, or a custom one built from ``url``."""
+    """The document ``add`` registers: the catalog entry (its rows kept, limits applied), or a
+    custom one built from ``url``."""
     existing = _prov.load_catalog().get(name)
-    if existing is not None and url is None and model is None:
+    if existing is not None and url is None and model is None and ctx is None and max_t is None:
         return existing
     base = url or (existing.base_url if existing else None)
     if base is None:
@@ -170,50 +181,74 @@ def _build_spec(
             f"Pass its URL: docket setup provider add {name} <url>",
         )
         return None
-    if existing is not None:
-        auth = existing.auth
-    elif credential_given:
-        auth = _prov.AuthSpec(type="bearer", credentials=[_credential_name_for(name)])
-    else:
-        auth = _prov.AuthSpec(type="none")
-    row_id = model or (existing.models[0].id if existing and existing.models else "local-model")
-    rows = [_prov.ModelRow(id=row_id, contextWindow=ctx, maxTokens=max_t)]
     try:
+        if existing is not None:
+            rows = _rows_with_limits(name, existing.models, model, ctx, max_t)
+            if rows is None:
+                return None
+            return _prov.ProviderSpec.model_validate(
+                {**existing.model_dump(by_alias=True), "baseUrl": base, "models": rows}
+            )
+        if credential_given:
+            auth = _prov.AuthSpec(type="bearer", credentials=[_credential_name_for(name)])
+        else:
+            auth = _prov.AuthSpec(type="none")
+        row = _prov.ModelRow(id=model or "local-model", contextWindow=ctx, maxTokens=max_t)
         return _prov.ProviderSpec(
             name=name,
             dialect="openai-chat",
             base_url=base,
             auth=auth,
             local=auth.type == "none",
-            models=rows,
-            presets=existing.presets if existing else [],
+            models=[row],
+            presets=[],
         )
     except ValidationError as exc:
         ui.error(f"Invalid provider {name}", str(exc).splitlines()[0])
         return None
 
 
-def _supply_credential(spec: _prov.ProviderSpec, flag_value: str | None) -> bool:
-    """Store the provider's credential from the flag, its env var, or a hidden prompt (TTY)."""
+@dataclass(frozen=True)
+class _PendingCredential:
+    """A credential value gathered but not yet stored; ``name`` is empty when none is needed."""
+
+    name: str = ""
+    value: str = ""
+    event: str = "add"
+
+    def store(self) -> bool:
+        return not self.value or _write_credential(self.name, self.value, self.event)
+
+
+def _collect_credential(
+    spec: _prov.ProviderSpec, flag_value: str | None
+) -> _PendingCredential | None:
+    """Gather the provider's credential from the flag, its env var, or a hidden prompt (TTY),
+    storing nothing; ``None`` after printing why it cannot be had or stored."""
     if spec.auth.type == "none" or not spec.auth.credentials:
-        return True
+        return _PendingCredential()
     cred = spec.auth.credentials[0]
     stored = _secrets.secrets_keys()
     value = flag_value or os.environ.get(cred, "")
     if not value and cred in stored:
-        return True
+        return _PendingCredential()
+    try:
+        _secrets.store_backend()
+    except Unavailable as exc:
+        ui.error(exc.message, exc.hint)
+        return None
     if not value:
         if not _contract._is_tty():
             ui.error(f"{cred} is required", f"Pass --credential or export {cred}")
-            return False
+            return None
         entered = _read_hidden(cred)
         if not entered:
-            return False
+            return None
         value = entered
     ok, reason = _validate_key_format(cred, value)
     if not ok:
         ui.warn(f"Key format: {reason}")
-    return _write_credential(cred, value, "rotate" if cred in stored else "add")
+    return _PendingCredential(cred, value, "rotate" if cred in stored else "add")
 
 
 def _preset_for(spec: _prov.ProviderSpec) -> str | None:
@@ -294,9 +329,22 @@ def add_provider(
 def _register(
     spec: _prov.ProviderSpec, credential: str | None, preset: bool, *, defaulted: bool = False
 ) -> int:
-    if not _supply_credential(spec, credential):
+    try:
+        _prov.check_rank_anchors(spec)
+    except DocumentError as exc:
+        ui.error(str(exc))
         return 1
-    probe = _prov.probe_spec(spec)
+    pending = _collect_credential(spec, credential)
+    if pending is None:
+        return 1
+    probe = _prov.probe_spec(spec, credential=pending.value)
+    if probe.status is None:
+        detail = f": {probe.transport_error}" if probe.transport_error else ""
+        ui.error(
+            f"Could not reach {spec.base_url}/models{detail}",
+            "Nothing was registered; fix the URL or start the server and retry",
+        )
+        return 1
     note = ""
     if defaulted and probe.status == 200:
         if probe.model_ids:
@@ -307,15 +355,10 @@ def _register(
             note = f" (model {chosen_id})"
         else:
             note = " (no model advertised; recorded local-model)"
+    if not pending.store():
+        return 1
     reg = _prov.register_provider(spec, probe=probe)
     v = reg.verification
-    if not v.reachable:
-        detail = f": {v.warning}" if v.warning else ""
-        ui.error(
-            f"Could not reach {spec.base_url}/models{detail}",
-            "Nothing was registered; fix the URL or start the server and retry",
-        )
-        return 1
     ui.success(
         f"Provider {spec.name}: {spec.base_url}{note}" + ("" if reg.changed else " (unchanged)")
     )
