@@ -149,7 +149,7 @@ rules = [
     ['seatbelt|_sbpl|^_SEATBELT', 'docket.sandbox.seatbelt'],
     ['docker|^_IMAGE_PROBE_TIMEOUT$', 'docket.sandbox.docker'],
     ['landlock|^(_mount_dirs|_mount_reopened|_linked_ref_overlays|_guarded_paths|_materialize_guard|_task_ref_dirs|_GIT_WRITABLE_PARTS|_TASK_BRANCH_PREFIX|_GIT_DIR_IN_ROOT|_existing_resolved|_submodule_git_dirs|_submodule_worktree_git_file|_SUBMODULE_DEPTH|git_dirs|worktree_git_dirs)$', 'docket.sandbox.landlock'],
-    ['[Ss]andbox|^_SANDBOX|[Jj]ail|^(_TMP_ENV_VARS|tmp_environment|cache_environment|_CACHE_ENV_VARS|task_environment|credential_names|_REGISTERED_CREDENTIAL_NAMES|_VERIFY_MAX_OUTPUT|run_verify_cmd)$', 'docket.sandbox.launch'],
+    ['[Ss]andbox|^_SANDBOX|[Jj]ail|^(_TMP_ENV_VARS|tmp_environment|cache_environment|_CACHE_ENV_VARS|task_environment|credential_names|_VERIFY_MAX_OUTPUT|run_verify_cmd)$', 'docket.sandbox.launch'],
     ['^_?git|^_GIT|^_SHORTSTAT|^_FULL_SHA|^_repo_rel_path_ok|^_read_new_file|^DIFF_MAX|^_DIFF_TIMEOUT|^_PIN|^_pin|^_QUERY_TIMEOUT|^trust_worktree|^_worktree_config|^_WORKTREE_CONFIG|^_trusted_git_env', 'docket.platform.git'],
     ['.*', 'docket.platform.process'],
 ]

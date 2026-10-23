@@ -796,9 +796,6 @@ _IMAGE_PROBE_TIMEOUT = 30
 _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces
 
 
-_REGISTERED_CREDENTIAL_NAMES: set[str] = set()
-
-
 def credential_names() -> set[str]:
     """Every environment name docket treats as a credential: ``DOCKET_LLM_API_KEY``,
     ``TELEGRAM_BOT_TOKEN``, each name the provider catalog declares and each in the secret store.
@@ -806,7 +803,7 @@ def credential_names() -> set[str]:
     from docket.core import provider as _provider
     from docket.core import secrets as _secrets
 
-    names = {"DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN", *_REGISTERED_CREDENTIAL_NAMES}
+    names = {"DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN"}
     names.update(_secrets.secrets_keys())
     for spec in _provider.load_catalog().entries.values():
         names.update(spec.auth.credentials)
