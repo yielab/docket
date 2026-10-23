@@ -54,8 +54,8 @@ audit, and dispatcher chokepoint. The adapter is not a sandbox around its host f
 native/provider tools, plugins/MCP, or an additional toolset beside Docket creates execution paths
 outside this proof and may bypass Docket policy entirely. See [Compatibility](COMPATIBILITY.md) for
 the exact configurations and exclusions. The [adoption evidence report](docs/ADOPTION-EVIDENCE.md)
-links the retained denial, malformed-handoff, and recovery records and states their measurement
-limits.
+links the retained denial, malformed-handoff, and recovery fixture records, which a driver wrote
+rather than a product run, and states their measurement limits.
 
 **The approval-gate model.** Agent-level safety constraints are *instruction-based* (written
 into each agent's `SOUL.md` prompt) — guidance, not enforcement, on their own. On top of that,

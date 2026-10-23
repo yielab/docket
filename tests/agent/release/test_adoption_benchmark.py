@@ -668,3 +668,18 @@ def test_jsonl_only_aggregate_rejects_duplicates_without_overwrite(tmp_path: Pat
 
     assert result.returncode != 0
     assert target.read_bytes() == b"PRIOR AGGREGATE\n"
+
+
+def test_failure_to_place_the_aggregate_leaves_the_prior_jsonl_untouched(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path)
+    jsonl = tmp_path / "attempts.jsonl"
+    jsonl.write_bytes(b"PRIOR JSONL\n")
+    blocked = tmp_path / "aggregate.json"
+    blocked.mkdir()
+
+    result = _invoke_run(fixture, jsonl, blocked)
+
+    assert result.returncode == 2
+    assert result.stderr.startswith("benchmark error:")
+    assert jsonl.read_bytes() == b"PRIOR JSONL\n"
+    assert sorted(path.name for path in tmp_path.iterdir() if path.name.startswith(".")) == []
