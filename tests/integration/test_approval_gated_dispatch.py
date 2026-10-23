@@ -35,7 +35,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +55,7 @@ from docket.core import trace as _trace
 from docket.core.llm import ToolCall
 from docket.core.policy import install_policies
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -523,7 +523,7 @@ def live_server() -> Any:
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()

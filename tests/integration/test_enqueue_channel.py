@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import threading
 import urllib.request
-from http.server import ThreadingHTTPServer
 from typing import Any
 
 import pytest
@@ -17,6 +16,7 @@ from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import telegram as _tg
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.dispatch"
@@ -34,7 +34,7 @@ def live_server():  # type: ignore[no-untyped-def]
     class _Handler(_DocketHandler):
         serve_token = _TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{srv.server_address[1]}"
     srv.shutdown()

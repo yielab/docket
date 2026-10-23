@@ -34,6 +34,7 @@ from docket.core.llm import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import channels as _channel_adapters
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -122,7 +123,7 @@ class TestHttpGrantConsumesThePregrant:
         class _Handler(_DocketHandler):
             serve_token = "seam-test-token"
 
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        server = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         port = server.server_address[1]
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -206,7 +207,7 @@ def _capture_server() -> tuple[ThreadingHTTPServer, str, type[_RecordingHandler]
         pass
 
     _Handler.requests = []
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()

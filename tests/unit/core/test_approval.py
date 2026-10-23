@@ -18,7 +18,6 @@ import os as _os
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -28,6 +27,7 @@ from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core.approval import _approval_path
 from docket.edges import store as _store
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.approval"
@@ -53,7 +53,7 @@ def live_server(approvals_dir: Path):
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -137,7 +137,7 @@ class TestListApprovals:
         class _Handler(_DocketHandler):
             serve_token = ""
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         port = srv.server_address[1]
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()

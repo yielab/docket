@@ -264,14 +264,14 @@ class TestApproveTaskHttpAndMcp:
         import json
         import threading
         import urllib.request
-        from http.server import ThreadingHTTPServer
 
+        from docket.kernel.threads import ContextHTTPServer
         from docket.serve import _DocketHandler
 
         class _Handler(_DocketHandler):
             serve_token = "tok-approve-task"
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
             task = _dispatch.enqueue_task(PROJECT, "ship it", channel="cli")

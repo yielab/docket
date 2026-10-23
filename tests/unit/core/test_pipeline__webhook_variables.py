@@ -16,7 +16,6 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +24,7 @@ import pytest
 import docket.config as _cfg
 from docket.core import pipeline as _pipeline
 from docket.core import runs as _runs
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.pipeline"
@@ -104,7 +104,7 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
