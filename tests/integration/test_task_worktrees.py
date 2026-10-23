@@ -10,12 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-import pytest
 from tests.support import home as _support_home
 from tests.support.git import git as _git
 from tests.support.pods import bind_pipeline_3 as _bind_pipeline
@@ -266,12 +265,12 @@ def test_removing_the_member_leaves_no_task_worktree(tmp_path: Path) -> None:
 
 
 def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, real_git_except: Callable[..., None]
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        monkeypatch.setattr(_platform_git, "git_worktree_add", lambda *_a: (False, "disk full"))
+        real_git_except(git_worktree_add=lambda *_a: (False, "disk full"))
         seen: list[Any] = []
 
         def runner(
@@ -349,14 +348,12 @@ def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(tmp_path: Path) 
 
 
 def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, real_git_except: Callable[..., None]
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        monkeypatch.setattr(
-            _platform_git, "git_worktree_add", lambda *_a, **_k: (False, "disk full")
-        )
+        real_git_except(git_worktree_add=lambda *_a, **_k: (False, "disk full"))
         _enqueue_with_base_ref("HEAD")
 
         (res,) = _sweep.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
@@ -495,12 +492,12 @@ def test_a_hop_that_changed_nothing_adds_no_commit(tmp_path: Path) -> None:
 
 
 def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, real_git_except: Callable[..., None]
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        monkeypatch.setattr(_platform_git, "git_worktree_add", lambda *_a, **_k: (False, "forced"))
+        real_git_except(git_worktree_add=lambda *_a, **_k: (False, "forced"))
         head = _git(repo, "rev-parse", "HEAD")
         _bind_pipeline(_COORDINATES_PIPELINE_YAML)
         _queue.enqueue_task_once("demo", "work", channel="cli")
@@ -534,13 +531,13 @@ def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(tmp_path: Path
 
 
 def test_a_failed_pin_records_no_commit_and_an_empty_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, real_git_except: Callable[..., None]
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _bind_pipeline(_COORDINATES_PIPELINE_YAML)
-        monkeypatch.setattr(_platform_git, "git_commit_all", lambda *_a, **_k: None)
+        real_git_except(git_commit_all=lambda *_a, **_k: None)
         queued = _queue.enqueue_task_once("demo", "work", channel="cli")[0]
 
         _sweep.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)

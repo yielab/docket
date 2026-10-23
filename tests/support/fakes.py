@@ -316,18 +316,18 @@ class FakeProcess:
         return self.env.get("DOCKET_NO_EXPORT", "0") == "1"
 
 
-class RealProcessExceptDumpable:
-    """The real process adapter, except that ``make_non_dumpable`` does nothing: an in-process
-    turn must not make the pytest process non-dumpable for every later test."""
+class RealExcept:
+    """A real adapter with a few calls replaced: ``RealExcept(platform.git, git_worktree_add=f)``
+    runs real git except for ``git_worktree_add``. For a test that needs the rest of the adapter
+    to be real, where a fake would answer for all of it."""
 
-    def __init__(self, real: object) -> None:
+    def __init__(self, real: object, **overrides: Callable[..., Any]) -> None:
         self._real = real
+        for name, fn in overrides.items():
+            setattr(self, name, fn)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._real, name)
-
-    def make_non_dumpable(self) -> None:
-        return None
 
 
 class FakeJail:

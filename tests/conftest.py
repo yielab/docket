@@ -10,21 +10,24 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from docket import bootstrap
 from docket.kernel.home import Home, use_home
 from docket.kernel.ports import git_port, jail_port, process_port
+from docket.platform import git as _git_adapter
 from docket.platform import process as _process_adapter
 from docket.sandbox.launch import Launcher
 from tests.support.fakes import (
     FakeGit,
     FakeJail,
     FakeProcess,
-    RealProcessExceptDumpable,
+    RealExcept,
     launcher_with,
 )
+from tests.support.git import GitHost
 
 # The real git, process and jail adapters are the default of every test; a test that wants a
 # fake asks for the ``fake_git``, ``fake_process`` or ``fake_jail`` fixture below.
@@ -71,8 +74,26 @@ def _plain_typer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 def _keep_pytest_dumpable() -> Iterator[None]:
     """An in-process turn must not make the pytest process non-dumpable for every later test;
     the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
-    with process_port.use(RealProcessExceptDumpable(_process_adapter)):
+    with process_port.use(RealExcept(_process_adapter, make_non_dumpable=lambda: None)):
         yield
+
+
+@pytest.fixture
+def real_git_except() -> Iterator[Callable[..., None]]:
+    """``real_git_except(git_worktree_add=f)`` binds the real git adapter with those calls
+    replaced, for the rest of the test."""
+    with ExitStack() as stack:
+
+        def bind(**overrides: Callable[..., Any]) -> None:
+            stack.enter_context(git_port.use(RealExcept(_git_adapter, **overrides)))
+
+        yield bind
+
+
+@pytest.fixture
+def git_host(monkeypatch: pytest.MonkeyPatch) -> GitHost:
+    """The operating system under ``platform.git``: git on PATH or not, and what running it answers."""
+    return GitHost(monkeypatch)
 
 
 @pytest.fixture

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.fakes import FakeJail
 from tests.support.home import point_config_at as _point_config_at
 from tests.support.pods import build_pod
 from tests.support.pods import seed_4 as _seed
@@ -25,8 +26,8 @@ from docket.interfaces.cli.commands import setup_check_config as _setup_check_co
 from docket.interfaces.cli.commands import setup_check_providers as _setup_check_providers
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services
 from docket.kernel.home import current_home, use_home
+from docket.kernel.ports import SandboxAvailability
 from docket.operator import channel as _channel
-from docket.sandbox import docker as _sandbox_docker
 
 SUBJECT = "docket.interfaces.cli.commands.setup_check"
 
@@ -485,39 +486,47 @@ class TestChecks:
             assert "setup sandbox backend docker" in out and "setup sandbox off" in out
 
     def test_docker_backend_without_git_in_the_image_warns_with_the_fix(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        fake_jail: FakeJail,
     ) -> None:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-            monkeypatch.setattr(_sandbox_docker, "docker_image_has_git", lambda: False)
+            fake_jail.availability = SandboxAvailability(backend="docker", docker=True)
+            fake_jail.docker_has_git = False
             _setup_check_services._check_security_gates()
             out = capsys.readouterr().out
             assert "has no git" in out and "DOCKET_SANDBOX_IMAGE=<an image with git>" in out
             assert _setup_check._check_json_security()["dockerImageHasGit"] is False
 
     def test_docker_backend_with_git_in_the_image_is_quiet(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        fake_jail: FakeJail,
     ) -> None:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-            monkeypatch.setattr(_sandbox_docker, "docker_image_has_git", lambda: True)
+            fake_jail.availability = SandboxAvailability(backend="docker", docker=True)
+            fake_jail.docker_has_git = True
             _setup_check_services._check_security_gates()
             assert "has no git" not in capsys.readouterr().out
             assert _setup_check._check_json_security()["dockerImageHasGit"] is True
 
     def test_the_image_is_not_probed_when_docker_is_not_the_backend(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+            fake_jail.availability = SandboxAvailability(backend="landlock", docker=False)
 
-            def boom() -> bool:
+            def boom(*_a: object) -> bool:
                 raise AssertionError("probed")
 
-            monkeypatch.setattr(_sandbox_docker, "docker_image_has_git", boom)
+            fake_jail.docker_image_has_git = boom
             _setup_check_services._check_security_gates()
             assert _setup_check._check_json_security()["dockerImageHasGit"] is None
 

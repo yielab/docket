@@ -76,3 +76,9 @@ class GitHost:
             "which",
             lambda binary: self.available if binary == "git" else real_which(binary),
         )
+
+
+def hide_git(monkeypatch: pytest.MonkeyPatch, empty_dir: Path) -> None:
+    """Make ``git`` unresolvable on PATH, as on a host that never installed it."""
+    empty_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("PATH", str(empty_dir))

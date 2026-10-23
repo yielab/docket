@@ -12,18 +12,12 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import pytest
 from tests.support.git import GitHost
 
 from docket.platform import git as _git
 from docket.sandbox import landlock as _landlock
 
 SUBJECT = "docket.platform.git"
-
-
-@pytest.fixture
-def git_host(monkeypatch: pytest.MonkeyPatch) -> GitHost:
-    return GitHost(monkeypatch)
 
 
 class _FakeCompleted:
