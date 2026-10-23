@@ -45,7 +45,7 @@
 "docket.core.evidence" = "docket.tasks.application.evidence"
 "docket.core.exporter" = "docket.observability.exporter"
 "docket.core.fleet" = "docket.teams.fleet"
-"docket.core.handoff" = "docket.agent.handoff"
+"docket.core.handoff" = "docket.kernel.handoff"
 "docket.core.identity" = "docket.agent.identity"
 "docket.core.inbox" = "docket.operator.inbox"
 "docket.core.interruptions" = "docket.tasks.application.interruptions"

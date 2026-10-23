@@ -8,7 +8,6 @@ from typing import Any
 
 from pydantic import ValidationError as _ValidationError
 
-from docket.agent import handoff as _handoff
 from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import memory as _mem
 from docket.governance import approval as _ap
@@ -18,6 +17,7 @@ from docket.hops.application.record import _hop_from_record
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
+from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
 from docket.kernel.home import current_home
 from docket.kernel.ports import jail as _jail

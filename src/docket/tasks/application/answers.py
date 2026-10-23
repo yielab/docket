@@ -16,13 +16,13 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
-from docket.agent.handoff import HandoffArtifact
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.application import record as _record
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, Refused
+from docket.kernel.handoff import HandoffArtifact
 from docket.observability import trace as _trace
 from docket.operator.contract import (
     AnswerResult,

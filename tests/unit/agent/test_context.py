@@ -12,7 +12,7 @@ import dataclasses
 
 import docket.kernel.templates as _templates
 from docket.agent import context as _ctx
-from docket.agent.handoff import HandoffArtifact
+from docket.kernel.handoff import HandoffArtifact
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import config_docs as _config_docs
@@ -266,7 +266,7 @@ class TestCompileArtifact:
         assert compiled.summary_truncated is False
 
     def test_empty_fields_are_skipped_not_reported_as_dropped(self) -> None:
-        """A field that was already empty (the honest state of `diff_ref`/`files_changed` today -- dispatch has no producer for them yet, see `agent/handoff.py`) is never claimed as "dropped": there was nothing there to shed."""
+        """A field that was already empty (the honest state of `diff_ref`/`files_changed` today -- dispatch has no producer for them yet, see `kernel/handoff.py`) is never claimed as "dropped": there was nothing there to shed."""
         art = HandoffArtifact(summary="x" * 10_000)  # only summary is set
         compiled = _ctx.compile_artifact(art, budget_tokens=1)
         # Nothing was droppable -- straight to summary truncation.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from docket.agent import handoff as _handoff
+from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.platform import read_modify_write

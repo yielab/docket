@@ -2272,7 +2272,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/tasks/application/answers.py`: `answer_task`, `sweep_expired_questions`, `AnswerError`,
   `AnswerRejected`
 - `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
-- `src/docket/agent/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
+- `src/docket/kernel/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
   `from_output`), `parse_brief`, `render_brief`, `cap_diff`
 - `src/docket/agent/context.py`: `compile_artifact`, `budget_for_role`, `hop_share`,
   `estimate_tokens`, `SUMMARY_TRUNCATION_MARKER`

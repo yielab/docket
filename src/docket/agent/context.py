@@ -40,7 +40,7 @@ archetype registry, falling back to ``DEFAULT_TOKEN_BUDGET`` for a role the
 registry doesn't know (e.g. a hand-built test archetype that predates this
 field, or a pipeline step targeting an unregistered role name).
 
-This module is a pure leaf, the same shape as ``agent/handoff.py``: no
+This module is a pure leaf, the same shape as ``kernel/handoff.py``: no
 filesystem I/O of its own beyond ``teams/roles.py``'s existing registry
 read, no subprocess, no import of ``hops/application/compose.py``. Its
 ``_hop_message`` is the one production caller — it composes the final hop
@@ -61,7 +61,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from docket.agent.handoff import HandoffArtifact, render_brief
+from docket.kernel.handoff import HandoffArtifact, render_brief
 from docket.kernel.home import current_home
 from docket.teams import roles as _arch
 
@@ -241,7 +241,7 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        (``diff_ref``, then ``files_changed``, then
        ``verdict``), re-measuring after each drop and stopping the moment it
        fits. A field that is already empty (``files_changed``/``diff_ref`` are only
-       populated for a successful Implementer hop, see `agent/handoff.py`/
+       populated for a successful Implementer hop, see `kernel/handoff.py`/
        `hops/application/record.py`) is skipped rather than reported as "dropped": there
        was nothing there to shed, so claiming otherwise in the trace would be
        dishonest. ``dropped_fields`` therefore only ever names a field that

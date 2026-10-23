@@ -883,7 +883,7 @@ default.
 
 Before the platform work, a hop's prompt was built by concatenating every prior hop's raw text
 output, capped only by a process-wide byte budget. Today every hop produces a typed
-`HandoffArtifact` (`agent/handoff.py`: `summary`, `files_changed`, `diff_ref`, `diff`, `verdict`,
+`HandoffArtifact` (`kernel/handoff.py`: `summary`, `files_changed`, `diff_ref`, `diff`, `verdict`,
 `notes`) instead of a raw string, persisted alongside its hop record so `--resume` recovers it
 exactly. Every hop that changed the tree fills `files_changed` and `diff` (tracked changes plus
 the content of new files, capped at `HANDOFF_DIFF_MAX_CHARS` with a marker), so the next hop reads

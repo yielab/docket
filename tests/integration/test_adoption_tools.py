@@ -15,7 +15,7 @@ from types import ModuleType
 
 import pytest
 
-SUBJECT = "docket.agent.handoff"
+SUBJECT = "docket.kernel.handoff"
 
 ROOT = Path(__file__).resolve().parents[2]
 

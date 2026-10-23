@@ -1,4 +1,4 @@
-"""Structured handoff artifacts (`agent/handoff.py`).
+"""Structured handoff artifacts (`kernel/handoff.py`).
 
 Pure-function tests: `HandoffArtifact.render()`/`dropped()`/`from_output()`'s existing
 contract, plus this card's addition -- `parse_brief` (the last fenced ```json block that
@@ -10,10 +10,10 @@ and `HandoffArtifact.brief` never being shed by a token-budgeted consumer (it is
 from __future__ import annotations
 
 from docket.agent import context as _ctx
-from docket.agent.handoff import HandoffArtifact, cap_diff, parse_brief, render_brief
+from docket.kernel.handoff import HandoffArtifact, cap_diff, parse_brief, render_brief
 from docket.operator.contract import TaskBrief
 
-SUBJECT = "docket.agent.handoff"
+SUBJECT = "docket.kernel.handoff"
 
 # ── parse_brief ───────────────────────────────────────────────────────────────
 

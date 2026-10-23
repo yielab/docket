@@ -48,7 +48,7 @@ other field at its default).
 
 This module is deliberately pure — no filesystem I/O, no subprocess, no import
 of ``hops/application/record.py`` — the same "leaf" shape as ``pipeline/domain/spec.py``. It
-does import ``operator/contract.py`` (``TaskBrief``), itself an equally
+does import ``kernel/brief.py`` (``TaskBrief``), itself an equally
 pure leaf module, for the one shared shape every intake consumer must agree
 on rather than a second, independently-drifting copy of the same fields.
 """
@@ -61,8 +61,8 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import InvalidInput
-from docket.operator.contract import TaskBrief
 
 #: The Lead's typed intake output is the LAST ```json fenced block in its reply -- a
 #: reply may reason in prose first and only commit to the brief at the end.

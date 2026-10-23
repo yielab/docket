@@ -130,5 +130,5 @@ all use their production paths.
 - `src/docket/tasks/domain/task.py`: task statuses, `failureKind`, hop results.
 - `src/docket/tasks/application/actions.py`: the approval gate's resume path.
 - `src/docket/governance/approval.py`: approval transitions.
-- `src/docket/agent/handoff.py`: `HandoffArtifact`.
+- `src/docket/kernel/handoff.py`: `HandoffArtifact`.
 - `src/docket/observability/telemetry.py`: approval trace event names and their fields.
