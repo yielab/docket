@@ -1,9 +1,9 @@
 # Cost Tracking Specification
 
-**Version**: 1.10.2
+**Version**: 1.11.0
 **Status**: Implemented. Token usage is measured; docket records no dollar spend, so every dollar
 figure it shows is a labelled estimate. Caps and auto-pause act only on pod dispatch.
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

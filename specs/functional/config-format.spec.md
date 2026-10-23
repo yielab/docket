@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 1.11.1
+**Version**: 1.12.0
 **Status**: Implemented
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

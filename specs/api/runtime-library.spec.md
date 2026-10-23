@@ -1,8 +1,8 @@
 # Runtime Library (`docket-runtime`) Contract Specification
 
-**Version**: 2.2.2
+**Version**: 2.3.0
 **Status**: Implemented. The facade, the governed-execution envelope and two configuration-scoped adapters (OpenHands SDK, PydanticAI) ship in `docket-runtime` 0.3.0. The package is built and installed from artifacts but not published to an index.
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

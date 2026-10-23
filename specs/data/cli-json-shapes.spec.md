@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 2.0.0
+**Version**: 3.0.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

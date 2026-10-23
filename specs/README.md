@@ -94,29 +94,29 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.0 | Complete |
-| Agent Loop | 2.0.0 | Implemented and live |
+| Agent Loop | 3.0.0 | Implemented and live |
 | API Keys | 2.0.1 | Complete |
 | Audit | 3.0.1 | Implemented |
-| Config Format | 1.11.1 | Implemented |
-| Cost Tracking | 1.10.2 | Implemented, recorded dollars unavailable |
-| Model Profiles | 5.0.0 | Complete |
+| Config Format | 1.12.0 | Implemented |
+| Cost Tracking | 1.11.0 | Implemented, recorded dollars unavailable |
+| Model Profiles | 5.0.1 | Complete |
 | Observability Export | 2.1.0 | Implemented and live |
 | Pipeline Format | 3.1.0 | Implemented |
-| Pod Blueprints | 2.0.1 | Implemented |
-| Pod Dispatch | 7.0.0 | Implemented |
-| Role Archetypes | 2.1.0 | Implemented |
-| Security Gates | 1.1.0 | Implemented (gate always on; isolation opt-in) |
+| Pod Blueprints | 2.0.2 | Implemented |
+| Pod Dispatch | 8.0.0 | Implemented |
+| Role Archetypes | 3.0.0 | Implemented |
+| Security Gates | 1.1.1 | Implemented (gate always on; isolation opt-in) |
 | Session History | 1.9.1 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
-| Telegram Integration | 3.0.0 | Implemented |
+| Telegram Integration | 4.0.0 | Implemented |
 | Trace Store | 3.0.0 | Implemented and live |
-| Workspace Structure | 2.0.1 | Complete |
-| CLI Interface | 4.0.0 | Complete |
+| Workspace Structure | 2.1.0 | Complete |
+| CLI Interface | 4.1.0 | Complete |
 | MCP Client | 2.0.0 | Implemented and wired to the live turn path |
-| Runtime Library | 2.2.2 | Implemented (artifact-tested; **not published to any index**) |
+| Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 1.9.4 | Implemented |
-| CLI JSON Shapes | 2.0.0 | Complete |
-| docket-meta schema | 4.1.0 | Complete |
+| CLI JSON Shapes | 3.0.0 | Complete |
+| docket-meta schema | 5.0.0 | Complete |
 | Docket Store | 2.0.0 | Implemented |
 | Operator API | 6.2.0 | Implemented (Phase 43, ADR 0027) |
 | Serve Read API | 4.1.0 | Stable |
@@ -124,7 +124,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Input Validation | 2.1.0 | Implemented |
 | Test Framework | 3.0.0 | Active |
 | Starter Journey | 2.0.0 | Implemented |
-| Operator Loop | 2.0.0 | Implemented |
+| Operator Loop | 2.1.0 | Implemented |
 | User Stories | 2.0.0 | Active |
 
 ## Tools
