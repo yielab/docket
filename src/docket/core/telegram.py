@@ -29,7 +29,7 @@ anything happening:
    the way ``core/mcp_tools.py`` screens a remote MCP server's tool
    descriptions before they reach a model -- the same untrusted-external-text
    threat class, the same evaluator, no new hook invented. ``block``/
-   ``require_approval`` refuse before ``core.dispatch.enqueue_task`` is ever
+   ``require_approval`` refuse before ``core.dispatch.enqueue_task_once`` is ever
    called (fail closed); ``warn``/``redact`` proceed with an audit trail.
 
 **Fail closed, always.** An unknown sender, an unparseable command, a
@@ -114,7 +114,7 @@ __all__ = [
 _APPROVE_RE = re.compile(r"^/approve(?:@\w+)?(?:\s+(\S+)(?:\s+(task))?)?\s*$")
 _DENY_RE = re.compile(r"^/deny(?:@\w+)?(?:\s+(\S+))?\s*$")
 _STATUS_RE = re.compile(r"^/status(?:@\w+)?\s*$")
-_DELEGATE_RE = re.compile(r"^/delegate(?:@\w+)?\s*(.*)$", re.DOTALL)
+_DELEGATE_RE = re.compile(r"^/delegate(?:@\w+)?(?:\s+(.*))?$", re.DOTALL)
 _ANSWER_RE = re.compile(r"^/answer(?:@\w+)?\s+(\S+)\s+(.+)$", re.DOTALL)
 # Matches `/answer` on its own or with only a task id -- a recognized verb with a missing
 # argument, per the same "usage reply, not unparseable" rule as approve/deny above. Checked
@@ -203,6 +203,22 @@ def _approval_scope(agent_id: str) -> str:
     return _lead_project(agent_id) or agent_id
 
 
+def _decision_pod_refusal(agent_id: str, token: str, action: str) -> TelegramActionResult | None:
+    """A refusal when *token* is an approval of a pod other than the chat's bound pod, else
+    ``None``. An unreadable token is left to the transition, which reports it as not found."""
+    try:
+        owner = str(_approval.approval_get(token).get("project", ""))
+    except _approval.ApprovalError:
+        return None
+    bound = _pod.pod_of(agent_id) or agent_id
+    if owner == bound:
+        return None
+    audit_log("telegram.cross_pod_refused", f"agent={agent_id!r} token={token} action={action}")
+    return TelegramActionResult(
+        False, f"Approval {token} does not belong to this chat's pod.", True, action
+    )
+
+
 def _handle_decision(
     agent_id: str, token: str, *, grant: bool, task_wide: bool = False
 ) -> TelegramActionResult:
@@ -212,6 +228,10 @@ def _handle_decision(
     action = "approve" if grant else "deny"
     if not token:
         return TelegramActionResult(False, f"Usage: /{action} <token>", True, action)
+
+    refusal = _decision_pod_refusal(agent_id, token, action)
+    if refusal is not None:
+        return refusal
 
     channel = "telegram"
     try:
@@ -267,7 +287,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
 def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
     """Queue *text* as a task for *agent_id*'s pod. Runs the ``pre_input``
     content-screening gate (see module docstring) before
-    ``core.dispatch.enqueue_task`` is ever called."""
+    ``core.dispatch.enqueue_task_once`` is ever called."""
     if not text:
         return TelegramActionResult(False, "Usage: /delegate <task description>", True, "delegate")
 
@@ -304,7 +324,7 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
         )
 
     try:
-        task = _dispatch.enqueue_task(project, text, "normal", channel="telegram")
+        task, _created = _dispatch.enqueue_task_once(project, text, "normal", channel="telegram")
     except _dispatch.DispatchError as exc:
         return TelegramActionResult(False, str(exc), True, "delegate")
 
@@ -405,7 +425,7 @@ def handle_message(
         return _handle_status(agent_id)
     m = _DELEGATE_RE.match(text)
     if m:
-        return _handle_delegate(agent_id, m.group(1).strip())
+        return _handle_delegate(agent_id, (m.group(1) or "").strip())
     m = _ANSWER_RE.match(text)
     if m:
         return _handle_answer(agent_id, m.group(1), m.group(2).strip())
@@ -439,7 +459,7 @@ class PollSummary:
 
 
 def _load_token() -> str:
-    return _secrets.load_secrets().get(_cfg.TELEGRAM_BOT_TOKEN_KEY, "").strip()
+    return _secrets.secret_value(_cfg.TELEGRAM_BOT_TOKEN_KEY) or ""
 
 
 def wire_discovery_configured() -> bool:

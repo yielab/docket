@@ -109,7 +109,7 @@ def tool_delegate(project: str, description: str, priority: str = "normal") -> d
     if priority not in ("high", "normal", "low"):
         raise McpToolError(f"Invalid priority '{priority}'. Use: high | normal | low")
     try:
-        return _dispatch.enqueue_task(project, description, priority, channel="mcp")
+        return _dispatch.enqueue_task_once(project, description, priority, channel="mcp")[0]
     except _dispatch.DispatchError as exc:
         raise McpToolError(str(exc)) from exc
 

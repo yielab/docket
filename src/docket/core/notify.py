@@ -79,12 +79,14 @@ class NotifyEvent:
 class FlushReport:
     """What one `flush` call did. `events` is the count of distinct transitions found;
     `delivered`/`failed` count individual channel deliveries (one event to three matching
-    channels is three); `skipped` counts a match with no wired dialect."""
+    channels is three); `skipped` counts a match with no wired dialect. `error` names the
+    failure of the inbox, snapshot or health stores, which ended the flush early."""
 
     events: int = 0
     delivered: int = 0
     failed: int = 0
     skipped: int = 0
+    error: str = ""
 
 
 class DeliveryOutcome(Protocol):
@@ -396,7 +398,21 @@ def flush(
 ) -> FlushReport:
     """Diff the current inbox against the persisted snapshot, save the new snapshot BEFORE
     delivering (so a crash mid-delivery never re-emits), then deliver each event to every
-    enabled channel with `notify` whose `on` matches. Never raises."""
+    enabled channel with `notify` whose `on` matches. Never raises: a failing inbox or store
+    comes back as `FlushReport.error`, a failing channel as one `failed` delivery."""
+    try:
+        return _flush(specs, sink_for, now=now, sleep=sleep)
+    except Exception as exc:
+        return FlushReport(error=f"{type(exc).__name__}: {exc}")
+
+
+def _flush(
+    specs: Sequence[Any],
+    sink_for: SinkFactory,
+    *,
+    now: str,
+    sleep: Callable[[float], None],
+) -> FlushReport:
     from docket.core import inbox as _inbox
 
     prev = read_state()
@@ -421,20 +437,23 @@ def flush(
     for notify_event in events:
         matching = [spec for spec in channels if _matches_on(spec, notify_event.kind)]
         for spec in matching:
-            deliver = sink_for(spec)
-            if deliver is None:
-                skipped += 1
-                continue
-            cloud_event = make_event(
-                notify_event.kind,
-                notify_event.pod,
-                notify_event.subject,
-                render_data(notify_event.item, getattr(spec, "content", "minimal")),
-                time=notify_event.time,
-                version=notify_event.version,
-            )
-            secret = resolve_secret(spec)
-            ok, error = _deliver_with_retry(deliver, spec, cloud_event, secret, sleep)
+            try:
+                deliver = sink_for(spec)
+                if deliver is None:
+                    skipped += 1
+                    continue
+                cloud_event = make_event(
+                    notify_event.kind,
+                    notify_event.pod,
+                    notify_event.subject,
+                    render_data(notify_event.item, getattr(spec, "content", "minimal")),
+                    time=notify_event.time,
+                    version=notify_event.version,
+                )
+                secret = resolve_secret(spec)
+                ok, error = _deliver_with_retry(deliver, spec, cloud_event, secret, sleep)
+            except Exception as exc:
+                ok, error = False, f"{type(exc).__name__}: {exc}"
             entry = dict(health.get(spec.name) or {})
             if ok:
                 delivered += 1

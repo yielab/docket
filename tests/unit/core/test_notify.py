@@ -388,6 +388,47 @@ class TestFlush:
         report2 = _notify.flush([_spec()], lambda _spec: deliver, now="2026-09-28T00:01:00Z")
         assert report2.events == 0
 
+    def test_an_inbox_that_raises_comes_back_as_an_error_not_an_exception(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import inbox as _inbox_mod
+
+        def _boom(**_kw: Any) -> InboxView:
+            raise OSError("pods dir unreadable")
+
+        monkeypatch.setattr(_inbox_mod, "build_inbox", _boom)
+        report = _notify.flush([_spec()], lambda _spec: None, now="2026-09-28T00:00:00Z")
+        assert "pods dir unreadable" in report.error
+        assert report.events == 0
+
+    def test_a_snapshot_store_that_raises_comes_back_as_an_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._patch_inbox(monkeypatch, InboxView(needs_you=[_approval()]))
+
+        def _boom(_snapshot: dict[str, Any]) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(_notify, "_save_state", _boom)
+        report = _notify.flush([_spec()], lambda _spec: None, now="2026-09-28T00:00:00Z")
+        assert "disk full" in report.error
+
+    def test_a_sink_factory_that_raises_fails_that_channel_and_the_others_still_deliver(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._patch_inbox(monkeypatch, InboxView(needs_you=[_approval()]))
+        deliver = _RecordingDeliver(ok=True)
+
+        def _sink(spec: Any) -> Any:
+            if spec.name == "broken":
+                raise RuntimeError("no such dialect module")
+            return deliver
+
+        report = _notify.flush(
+            [_spec(name="broken"), _spec(name="good")], _sink, now="2026-09-28T00:00:00Z"
+        )
+        assert (report.failed, report.delivered, report.error) == (1, 1, "")
+
     def test_a_dialect_with_no_sink_is_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_inbox(monkeypatch, InboxView(needs_you=[_approval()]))
         report = _notify.flush([_spec()], lambda _spec: None, now="2026-09-28T00:00:00Z")
