@@ -17,12 +17,12 @@ import concurrent.futures
 import contextlib
 import json
 import os
-import secrets
 import signal
 import sys
 import threading
 from pathlib import Path
 
+from docket import bootstrap as _bootstrap
 from docket.agent import conversations
 from docket.governance import approval
 from docket.interfaces.http import sweeps as _sweeps
@@ -44,15 +44,14 @@ from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
-from docket.operator import channel as _channel
 from docket.operator.notify import _flush_notify_channels
 from docket.tasks.application import answers
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import sweep as _sweep
 
-DEFAULT_PORT = 7331
-DEFAULT_INTERVAL = 30
+DEFAULT_PORT = _bootstrap.DEFAULT_PORT
+DEFAULT_INTERVAL = _bootstrap.DEFAULT_INTERVAL
 
 
 def render_health(dispatch_on: bool = False) -> str:
@@ -274,13 +273,20 @@ def run_serve(
     to an idle, periodically-retried wait rather than failing to start if no bot token is
     configured. ``token_file`` writes the bearer token to that path (0600) instead of stdout, for
     a context less private than a terminal (e.g. a systemd journal)."""
-    actual_port = DEFAULT_PORT if port is None else port
-
-    _token = os.environ.get("DOCKET_SERVE_TOKEN") or secrets.token_urlsafe(32)
+    plan = _bootstrap.build_server(
+        current_home(),
+        port=port,
+        bind=bind,
+        interval=interval,
+        dispatch=dispatch,
+        telegram=telegram,
+        token_file=token_file,
+    )
+    actual_port = plan.port
 
     class _BoundHandler(_DocketHandler):
-        serve_token = _token
-        dispatch_on = dispatch
+        serve_token = plan.token
+        dispatch_on = plan.dispatch
 
     global _sweep_stop
     stop = _sweep_stop = threading.Event()
@@ -312,15 +318,15 @@ def run_serve(
     bind_note = "loopback-only" if loopback else "WARNING: not loopback — reachable off this host"
     print(f"Bind: {bind}  ({bind_note})")
     if dispatch:
-        unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
+        unreached = plan.channels.unreached_warning()
         if unreached:
             print(f"WARNING: {unreached}")
     if token_file:
         token_path = Path(token_file)
-        _write_token_file(token_path, _token)
+        _write_token_file(token_path, plan.token)
         print(f"Approval API token written to {token_path} (0600)  (override: DOCKET_SERVE_TOKEN)")
     else:
-        print(f"Approval API token: {_token}  (override: DOCKET_SERVE_TOKEN)")
+        print(f"Approval API token: {plan.token}  (override: DOCKET_SERVE_TOKEN)")
     print("")
     try:
         server.serve_forever()
