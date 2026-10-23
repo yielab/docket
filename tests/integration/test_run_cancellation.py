@@ -122,6 +122,26 @@ class TestRunsPidTracking:
 
 
 class TestCancelRun:
+    def test_the_servers_second_signal_records_the_server_as_the_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket import serve as _serve
+
+        record = _runs.create_run("sweep", "myapp")
+        monkeypatch.setattr(_serve, "_sweep_run_ids", {"myapp": record["id"]})
+        monkeypatch.setattr(_serve, "_sweep_inflight", {})
+        monkeypatch.setattr(_serve, "_sweep_pool", None)
+        _serve._abandon_sweeps(wait_s=0.1)
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None and persisted["state"] == "cancelled"
+        assert persisted["cancellation"]["source"] == "serve"
+
+    def test_an_operator_cancel_still_records_the_cli(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        assert _runs.cancel_run(record["id"]).ok is True
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None and persisted["cancellation"]["source"] == "cli"
+
     def test_unknown_run_is_an_error_result(self) -> None:
         outcome = _runs.cancel_run("run-does-not-exist")
         assert outcome.ok is False

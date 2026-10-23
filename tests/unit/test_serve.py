@@ -163,6 +163,51 @@ class TestRenderMetrics:
     def test_no_trailing_newline(self, fake_home: Path) -> None:
         assert not serve.render_metrics().endswith("\n")
 
+    def test_exposition_follows_the_text_format_with_two_agents(
+        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        agents = [
+            {"id": "alpha", "model": "m1", "costUsd": 0, "turns": 3},
+            {"id": "beta", "model": "m2", "costUsd": 0, "turns": 5},
+        ]
+        monkeypatch.setattr(
+            serve, "_cost_json", lambda: {"agents": agents, "totalUsd": 0, "totalTurns": 8}
+        )
+        text = serve.render_metrics()
+        _assert_text_format_0_0_4(text)
+        assert 'docket_agent_turns_total{agent="alpha"} 3' in text
+        assert 'docket_agent_turns_total{agent="beta"} 5' in text
+
+
+def _assert_text_format_0_0_4(text: str) -> None:
+    """The Prometheus 0.0.4 rules this server relies on: a family appears once, HELP then TYPE
+    before its first sample, and every sample of a family sits together under that header."""
+    family: str | None = None
+    declared: dict[str, str] = {}
+    helped: set[str] = set()
+    closed: set[str] = set()
+    for line in text.splitlines():
+        if line.startswith("# HELP "):
+            name = line.split()[2]
+            assert name not in helped, f"{name}: HELP twice"
+            assert name not in closed, f"{name}: family split in two"
+            helped.add(name)
+            if family is not None:
+                closed.add(family)
+            family = name
+        elif line.startswith("# TYPE "):
+            name, kind = line.split()[2:4]
+            assert name == family and name in helped, f"{name}: TYPE without its HELP first"
+            assert name not in declared, f"{name}: TYPE twice"
+            declared[name] = kind
+        else:
+            sample = line.split("{")[0].split(" ")[0]
+            assert family is not None and family in declared, f"{sample}: sample before HELP/TYPE"
+            suffixes = ("_sum", "_count") if declared[family] == "summary" else ()
+            assert sample == family or sample in {family + s for s in suffixes}, (
+                f"{sample}: sample outside its family {family}"
+            )
+
 
 # ── render_health ─────────────────────────────────────────────────────────────
 
@@ -215,3 +260,20 @@ class TestHttpServer:
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+
+class TestTelegramHint:
+    def test_unconfigured_bot_names_the_command_that_connects_it(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import telegram as _telegram
+
+        stop = threading.Event()
+
+        def _unconfigured() -> Any:
+            stop.set()
+            return _telegram.PollSummary(ok=False, configured=False)
+
+        monkeypatch.setattr(_telegram, "poll_once", _unconfigured)
+        serve._telegram_poll_loop(stop)
+        assert "docket setup notify enable telegram" in capsys.readouterr().out

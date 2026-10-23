@@ -334,6 +334,11 @@ def render_metrics() -> str:
     for a in d.get("agents", []):
         lab = 'agent="' + _esc(a.get("id", "")) + '",model="' + _esc(a.get("model", "")) + '"'
         lines.append("docket_agent_cost_usd{" + lab + "} " + str(a.get("costUsd", 0)))
+    lines += [
+        "# HELP docket_agent_turns_total Total turns per agent",
+        "# TYPE docket_agent_turns_total gauge",
+    ]
+    for a in d.get("agents", []):
         lines.append(
             'docket_agent_turns_total{agent="'
             + _esc(a.get("id", ""))
@@ -611,7 +616,7 @@ def _abandon_sweeps(wait_s: float = SWEEP_ABANDON_WAIT_S) -> bool:
         pool[1].shutdown(wait=False, cancel_futures=True)
     for run_id in run_ids:
         with contextlib.suppress(Exception):
-            _runs.cancel_run(run_id)
+            _runs.cancel_run(run_id, source="serve")
     return _drain_sweeps(timeout=wait_s)
 
 
@@ -770,7 +775,7 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
             if not printed_unconfigured:
                 print(
                     "[serve] telegram: no TELEGRAM_BOT_TOKEN configured "
-                    "(docket setup provider add TELEGRAM_BOT_TOKEN) -- channel idle"
+                    "(docket setup notify enable telegram) -- channel idle"
                 )
                 printed_unconfigured = True
             if stop.wait(_TELEGRAM_UNCONFIGURED_BACKOFF_S):
@@ -1019,6 +1024,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
     def _send_pod_read(self, path: str) -> None:
         """``GET /pods`` and ``GET /pods/<p>`` (operator-api.spec.md "Pod answers")."""
         from docket.core import dispatch as _dispatch
+        from docket.core import pod as _pod_core
         from docket.core import pod_report as _pod_report
 
         project = path[len("/pods/") :] if path.startswith("/pods/") else ""
@@ -1031,7 +1037,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if project not in _dispatch.dispatchable_pods():
             self._send_json_error(f"Unknown pod: {project}", 404)
             return
-        self._send(json.dumps(_pod_report.pod_detail(project)).encode("utf-8"), "application/json")
+        try:
+            detail = _pod_report.pod_detail(project)
+        except (_dispatch.DispatchError, _pod_core.PodSettingsError) as exc:
+            self._send_json_error(str(exc), 500)
+            return
+        self._send(json.dumps(detail).encode("utf-8"), "application/json")
 
     def do_GET(self) -> None:
         full_path = self.path
@@ -1683,6 +1694,15 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         if self._reject_bad_project_id(project):
             return
+        from dataclasses import asdict
+
+        from docket.core import dispatch as _dispatch
+        from docket.core import pod as _pod_core
+        from docket.core import pod_apply as _pod_apply
+
+        if project not in _dispatch.dispatchable_pods():
+            self._send_json_error(f"Unknown pod: {project}", 404)
+            return
         raw = self._read_body()
         if raw is None:
             return
@@ -1693,15 +1713,6 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         if not isinstance(body, dict):
             self._send_json_error("Request body must be a JSON object", 400)
-            return
-        from dataclasses import asdict
-
-        from docket.core import dispatch as _dispatch
-        from docket.core import pod as _pod_core
-        from docket.core import pod_apply as _pod_apply
-
-        if project not in _dispatch.dispatchable_pods():
-            self._send_json_error(f"Unknown pod: {project}", 404)
             return
         codebase = fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
         if not codebase:

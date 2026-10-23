@@ -258,12 +258,14 @@ verdict object (a row of `GET /pods` carries the profile name as a string):
 (`security-gates.spec.md` Exec sandbox requirement 14); `[]` when there are none.
 `profile.violations` is empty unless the effective profile is `lights-out`, `pipelineSource` says
 where the effective pipeline comes from, and `repoConfigDir` is `""` for a pod with no codebase.
-A pod that is not dispatchable is `404`.
+A pod that is not dispatchable is `404`. A pod whose stored settings no longer validate is `500`
+with the error envelope naming the setting.
 
 `POST /pods` with `ensure` on an existing pod (`200`): `{"ok": true, "created": false,
 "project": "web-dev"}`; a new pod answers `201` with `"created": true` (`serve-read-api.spec.md`).
 
-`POST /pods/<p>/apply` (`200`): `{"ok": true, "project", "items", "dryRun": true|false}`, `items`
+`POST /pods/<p>/apply` looks the pod up (`404`) before it reads the body (`400` for a body that
+is not a JSON object). On success (`200`): `{"ok": true, "project", "items", "dryRun": true|false}`, `items`
 being the `docket pod update --json` list (`cli-json-shapes.spec.md`); a dry run writes nothing.
 A directory that runs things without `accept` is `409` as below. A wrong `accept` is `409` with
 `"error": "the directory changed what runs on this machine since that code"` and no `reviewCode`,
@@ -357,11 +359,11 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 | `201` | a new task or a new pod |
 | `400` | malformed JSON or a non-object body, missing `description`, a bad project id, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
-| `404` | no pod, no task, no such route; a task whose branch is gone (`diff`) |
+| `404` | no pod (checked before an `apply` body is read), no task, no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command |
 | `413` | a request body over 1 MiB |
 | `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an invalid `brief` |
-| `500` | `POST /pods` could not provision (the attempt is rolled back) |
+| `500` | `POST /pods` could not provision (the attempt is rolled back); `GET /pods/<p>` for a pod whose stored settings are invalid |
 
 `GET /tasks/<pod>` for a pod with no queue answers `200` with an empty list. Error bodies are
 `{"ok": false, "error": "<sentence>"}`, with the extra keys the examples show.
