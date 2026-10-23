@@ -1,7 +1,7 @@
 """The pipeline executor and generalized gate resolution.
 
-``pipeline/domain/spec.py`` defines the pipeline *format*; ``teams/roles.py`` defines a
-role's ``gateContract`` as descriptive data. This module makes both load-bearing: it
+``pipeline/domain/spec.py`` defines the pipeline *format*; a role's ``gateContract`` is
+descriptive data the caller passes in as a :class:`RoleRegistry`. This module makes both load-bearing: it
 resolves a :class:`~docket.pipeline.domain.spec.PipelineSpec` against a pod's live roster
 into a concrete, deterministic :class:`ExecutionPlan`, and gate execution reads a
 step's *resolved* gate -- its own, or (only when omitted) its archetype's
@@ -28,13 +28,37 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
-from docket.teams import role_schema as _role_schema
-from docket.teams import roles as _archetypes
+
+# ── Role data the plan reads (supplied by the caller, never imported) ────────
+
+
+class RoleGateContract(Protocol):
+    """A role's descriptive gate: ``kind`` and, for ``verdict``, its ``regexes``."""
+
+    @property
+    def kind(self) -> str: ...
+
+    @property
+    def regexes(self) -> tuple[str, ...]: ...
+
+
+class RoleDefinition(Protocol):
+    """What a plan reads of a role: its gate contract."""
+
+    @property
+    def gate_contract(self) -> RoleGateContract: ...
+
+
+class RoleRegistry(Protocol):
+    """The roles a pod can name, by name -- ``teams.roles.ArchetypeRegistry`` satisfies it."""
+
+    def get(self, name: str) -> RoleDefinition | None: ...
+
 
 # ── Planning (pure, deterministic) ───────────────────────────────────────────
 
@@ -103,7 +127,7 @@ class ExecutionPlan:
         return tuple(n for n in self.nodes if not (isinstance(n, PlannedUnit) and n.skipped))
 
 
-def _gate_from_contract(gc: _role_schema.GateContract) -> _gates.Gate | None:
+def _gate_from_contract(gc: RoleGateContract) -> _gates.Gate | None:
     """Translate an archetype's descriptive ``gateContract`` into a real Gate. For
     ``verdict``, the first regex is the passing value and every other one just fails
     the step (no rework -- a step wanting a bounded rework loop must declare its own
@@ -128,7 +152,7 @@ def _gate_from_contract(gc: _role_schema.GateContract) -> _gates.Gate | None:
     return None  # pragma: no cover - GateContract's own __post_init__ forbids this
 
 
-def resolve_gate(step: _step.Step, registry: _archetypes.ArchetypeRegistry) -> _gates.Gate | None:
+def resolve_gate(step: _step.Step, registry: RoleRegistry) -> _gates.Gate | None:
     """The gate a step actually runs under. A step's own declared ``gate`` always
     wins; only when it omits one does this fall back to the resolved archetype's
     ``gateContract``, looked up by ``step.archetype`` if set else ``step.role``
@@ -146,9 +170,7 @@ def resolve_gate(step: _step.Step, registry: _archetypes.ArchetypeRegistry) -> _
     return _gate_from_contract(arch.gate_contract)
 
 
-def _resolve_unit(
-    step: _step.Step, roster: dict[str, str], registry: _archetypes.ArchetypeRegistry
-) -> PlannedUnit:
+def _resolve_unit(step: _step.Step, roster: dict[str, str], registry: RoleRegistry) -> PlannedUnit:
     if step.run is not None:
         # A command step needs no member -- it never runs an agent turn.
         member_id: str | None = None
@@ -187,20 +209,19 @@ def resolve_plan(
     spec: _pipeline.PipelineSpec,
     roster: dict[str, str],
     *,
-    registry: _archetypes.ArchetypeRegistry | None = None,
+    registry: RoleRegistry,
 ) -> ExecutionPlan:
     """Resolve *spec* against a pod's ``{role: member_id}`` roster. Pure and
     deterministic (see module docstring). *roster* should already be
     role-order-stable -- this function imposes no order beyond the spec's own
     ``steps`` order, fixed at parse time."""
-    reg = registry if registry is not None else _archetypes.load_registry()
     nodes: list[PlannedNode] = []
     for step in spec.steps:
         if step.parallel:
-            children = tuple(_resolve_unit(c, roster, reg) for c in step.parallel)
+            children = tuple(_resolve_unit(c, roster, registry) for c in step.parallel)
             nodes.append(PlannedGroup(step_id=step.id, children=children))
         else:
-            nodes.append(_resolve_unit(step, roster, reg))
+            nodes.append(_resolve_unit(step, roster, registry))
     return ExecutionPlan(pipeline_name=spec.name, nodes=tuple(nodes))
 
 

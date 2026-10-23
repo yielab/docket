@@ -26,6 +26,7 @@ from docket.pipeline.domain.spec import load_pipeline
 from docket.tasks.application import actions as _actions_c
 from docket.tasks.application import lifecycle as _lifecycle_c
 from docket.tasks.application import queue as _queue_c
+from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.pipeline.domain.spec"
@@ -45,7 +46,7 @@ class TestLoading:
     def test_the_planned_unit_carries_env_and_a_reserved_name_fails_validation(self) -> None:
         loaded = load_pipeline("name: p\nsteps:\n  - id: a\n    run: echo a\n    env: {FOO: bar}\n")
         assert loaded.spec is not None
-        plan = _orch.resolve_plan(loaded.spec, {})
+        plan = _orch.resolve_plan(loaded.spec, {}, registry=_archetypes.load_registry())
         unit = plan.nodes[0]
         assert isinstance(unit, _orch.PlannedUnit)
         assert unit.env == {"FOO": "bar"}

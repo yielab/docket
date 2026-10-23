@@ -44,6 +44,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 
 pod_home = _support_pods.pod_home_2
@@ -562,7 +563,9 @@ class TestTaskGate:
                 _step.Step(id="c", role="lead"),
             ],
         )
-        plan = _orch.resolve_plan(spec, _queue.pod_full_roster("myapp"))
+        plan = _orch.resolve_plan(
+            spec, _queue.pod_full_roster("myapp"), registry=_archetypes.load_registry()
+        )
 
         assert _steps._task_gate_step_id(plan.runnable_nodes()) == "b"
 
@@ -574,6 +577,8 @@ class TestTaskGate:
             name="p",
             steps=[_step.Step(id="a", role="lead"), _step.Step(id="r", run="true")],
         )
-        plan = _orch.resolve_plan(spec, _queue.pod_full_roster("myapp"))
+        plan = _orch.resolve_plan(
+            spec, _queue.pod_full_roster("myapp"), registry=_archetypes.load_registry()
+        )
 
         assert _steps._task_gate_step_id(plan.runnable_nodes()) == "a"

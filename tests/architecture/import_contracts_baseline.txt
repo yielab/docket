@@ -1,8 +1,6 @@
 # imports that break an ADR 0030 dependency row today; shrink-only
 # format: contract | importer -> imported; regenerate with
 #   python tests/architecture/test_import_contracts.py --write
-domain imports kernel and its own domain | docket.pipeline.domain.plan -> docket.teams.role_schema
-domain imports kernel and its own domain | docket.pipeline.domain.plan -> docket.teams.roles
 domain imports kernel and its own domain | docket.tasks.domain.options -> docket.governance.policy
 domain imports kernel and its own domain | docket.tasks.domain.options -> docket.hops.workspace.prepare
 domain imports kernel and its own domain | docket.tasks.domain.options -> docket.teams.roles

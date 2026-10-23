@@ -600,7 +600,7 @@ class TestShortForm:
 class TestCommandSteps:
     def test_run_step_loads_and_renders_gate_as_exit_code(self) -> None:
         spec = PipelineSpec(name="p", steps=[Step(id="check", run="false")])
-        plan = _orch.resolve_plan(spec, {})
+        plan = _orch.resolve_plan(spec, {}, registry=_archetypes.load_registry())
         assert "run 'false' [gate: exit code]" in _orch.render_plan(plan)
 
 
@@ -682,7 +682,7 @@ steps:
         assert ask.input.from_ == "triage"
         assert ask.input.message == "Confirm the approach?"
 
-        plan = _orch.resolve_plan(result.spec, {})
+        plan = _orch.resolve_plan(result.spec, {}, registry=_archetypes.load_registry())
         assert "asks the operator (from triage)" in _orch.render_plan(plan)
 
     def test_input_step_cannot_also_set_role(self) -> None:
