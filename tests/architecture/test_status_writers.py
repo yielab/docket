@@ -1,8 +1,8 @@
-"""Architecture: a task record's ``status`` is assigned in exactly one place (P47-4).
+"""Architecture: a task record's ``status`` is assigned in exactly one place.
 
 ``tasks/domain/state.py`` decides every move and ``tasks/application/transitions.py::apply_to_task``
 performs it. A second ``task["status"] = ...`` is a second way to move a task that the transition
-table does not know about, which is how sixteen writers and no table happened. The scan reads
+table does not know about. The scan reads
 subscript assignments on the receiver names the task code uses for a record (``task``, ``t``,
 ``claimed``), the same shape ``scripts/maint/refactor/analyze.py`` counts as ``status_writers``.
 """

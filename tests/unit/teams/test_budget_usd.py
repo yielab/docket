@@ -1,8 +1,4 @@
-"""``budgetUsd`` has one stored type: a float that is never negative (defect 67).
-
-Provisioning used to write it as the string ``"5.0"`` while ``pod set`` wrote the float ``5.0``, so
-the same pod's meta held either depending on how the budget arrived.
-"""
+"""``budgetUsd`` has one stored type, however the budget arrives: a float that is never negative."""
 
 from __future__ import annotations
 
