@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from docket.kernel import ids as _ids
 
 A2A_STATES: tuple[str, ...] = (
     "SUBMITTED",
@@ -142,7 +143,7 @@ class QuestionSchema(BaseModel):
 
 def new_question_id() -> str:
     """Mint a question id in the ``q-<12 hex chars>`` shape used by every question."""
-    return f"q-{uuid.uuid4().hex[:12]}"
+    return _ids.new_short_id("q")
 
 
 class Question(BaseModel):

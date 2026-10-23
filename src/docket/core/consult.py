@@ -14,7 +14,6 @@ Tool-visible failures are ordinary error results, never exceptions, so the model
 from __future__ import annotations
 
 import contextlib
-import datetime as _dt
 import json
 import re
 from dataclasses import dataclass
@@ -31,6 +30,7 @@ from docket.core.operator_contract import (
     new_question_id,
 )
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
 
 if TYPE_CHECKING:
     from docket.core.tools import ToolContext
@@ -137,7 +137,7 @@ def build_question(args: dict[str, Any], ctx: ToolContext) -> QuestionV11:
             "step": ctx.role or "consult",
             "message": args.get("message"),
             "requestedSchema": _REQUESTED_SCHEMA,
-            "createdAt": _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "createdAt": _clock.stamp(),
             "kind": kind,
             "options": options,
             "recommendation": args.get("recommendation"),

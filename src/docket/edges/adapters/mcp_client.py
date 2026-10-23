@@ -33,7 +33,6 @@ a turn.
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +40,8 @@ import docket.config as _cfg
 from docket.core.mcp_tools import McpListResult, McpRemoteTool, McpServerConfig, StdioLaunch
 from docket.edges.adapters import system as _system
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel import ids as _ids
+from docket.kernel import text as _text
 
 MISSING_SDK_HINT = (
     "The 'mcp' package is not installed -- an MCP tool server needs the optional MCP extra.\n"
@@ -62,11 +63,7 @@ def _sdk_available() -> bool:
 def _truncate(text: str) -> str:
     # Resolve per call, matching toolbox.py: operators tune this to the active
     # endpoint's window, and tests may change it after this module is imported.
-    limit = _cfg.TOOL_MAX_OUTPUT_CHARS
-    if len(text) <= limit:
-        return text
-    dropped = len(text) - limit
-    return f"{text[:limit]}\n\n[truncated: {dropped} more characters]"
+    return _text.cut_output(text, _cfg.TOOL_MAX_OUTPUT_CHARS)
 
 
 def _stdio_params(config: McpServerConfig, launch: StdioLaunch | None = None) -> Any:
@@ -104,7 +101,7 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
         env = ["env", *(f"{k}={v}" for k, v in _system.tmp_environment(tmp).items())]
         argv = build((*roots, tmp), [*env, *server], launch.network, launch.read_only)
     elif backend == "docker":
-        name = f"docket-mcp-{uuid.uuid4().hex[:12]}"
+        name = _ids.new_short_id("docket-mcp")
         argv = _system.docker_command_argv(
             name, roots, server, dict(config.env), launch.network, launch.read_only
         )

@@ -20,13 +20,13 @@ from typing import Any, Protocol
 
 import docket.config as _cfg
 from docket.core import fleet as _fleet
-from docket.core import memory as _mem
 from docket.core import pod as _pod
 from docket.core import policy as _policy
 from docket.core import trace as _trace
 from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
+from docket.kernel import clock as _clock
 
 KINDS: tuple[str, ...] = ("generated", "command", "pitfall", "convention")
 MEMORY_HEADING = "## Memory"
@@ -503,7 +503,7 @@ def _record_task_memory(
     if not wanted:
         return []
     facts = _task_facts(project, hops, root)
-    today = _mem.today().isoformat()
+    today = _clock.today().isoformat()
     changes: list[MemoryEntry] = []
     for hop, line in wanted:
         if line.refusal:

@@ -37,6 +37,7 @@ from docket.core import operator_contract as _oc
 from docket.core import provisioning as _prov
 from docket.core import task_options as _task_options
 from docket.core import trace as _trace
+from docket.kernel import clock as _clock
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
@@ -53,11 +54,6 @@ SERVE_API_VERSION = "6"
 # as coming from any of those. "tack" is the one named HTTP client (Tack's
 # board); "http" is the untagged default.
 _HTTP_APPROVAL_CHANNELS: frozenset[str] = frozenset({"http", "tack"})
-
-
-def _utc_timestamp() -> str:
-    """Return current UTC time as 'YYYY-MM-DDTHH:MM:SSZ' (matches `date -u`)."""
-    return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
@@ -115,7 +111,7 @@ def build_status() -> dict[str, Any]:
 
     return {
         "apiVersion": SERVE_API_VERSION,
-        "timestamp": _utc_timestamp(),
+        "timestamp": _clock.stamp(),
         "channels": channels,
         "agents": agents,
         "totalCostUsd": round(total_cost, 6),
@@ -358,7 +354,7 @@ def render_metrics() -> str:
 
     from docket.core import inbox as _inbox
 
-    inbox_view = _inbox.build_inbox(now=_utc_timestamp())
+    inbox_view = _inbox.build_inbox(now=_clock.stamp())
     lines += [
         "# HELP docket_inbox_items Items in the derived operator inbox, by section",
         "# TYPE docket_inbox_items gauge",
@@ -526,7 +522,7 @@ def _flush_notify_channels() -> None:
     from docket.edges.adapters import channels as _channels
 
     _notify.flush(
-        list(_channel.load_catalog().entries.values()), _channels.sink_for, now=_utc_timestamp()
+        list(_channel.load_catalog().entries.values()), _channels.sink_for, now=_clock.stamp()
     )
 
 
@@ -690,7 +686,6 @@ def _run_sweeps(dispatch: bool = False) -> None:
     ``"sweep"``) and checks due schedules. Each pod is swept on a pool worker (at most
     ``DISPATCH_SWEEP_WORKERS`` at once) and a pod whose previous sweep is still running is
     skipped, so this returns without waiting for the turns; ``_drain_sweeps`` waits."""
-    import time
 
     from docket.core import answers, approval, conversations, trace
     from docket.core import runs as _runs
@@ -723,7 +718,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
         for project in pods_to_dispatch:
             _submit_pod_sweep(project)
         try:
-            _check_schedules(time.time())
+            _check_schedules(_clock.epoch())
         except Exception as exc:
             print(f"[serve] sweep: schedule check failed: {exc}")
 
@@ -828,12 +823,6 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
 # for that second and every same-second sibling is already on disk.
 
 
-def _now() -> _dt.datetime:
-    """Monkeypatchable seam for the hold-back check in `_traces_page` --
-    tests pin this to make second-boundary behavior deterministic."""
-    return _dt.datetime.now(_dt.UTC)
-
-
 # Seconds a trace event must have aged before `_traces_page` will hand it
 # out -- see the hold-back rationale above.
 _TRACE_HOLD_BACK_S = 1
@@ -870,7 +859,7 @@ def _decode_trace_cursor(raw: str) -> tuple[str, int]:
 
 def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     """One cursor'd page of *project*'s raw trace JSONL, delivered exactly once (sorted by ts
-    across session files, held back within `_TRACE_HOLD_BACK_S` of `_now()`, verbatim otherwise
+    across session files, held back within `_TRACE_HOLD_BACK_S` of now, verbatim otherwise
     unfiltered). Returns (lines, next_cursor); cursor contract:
     specs/data/serve-read-api.spec.md (GET /traces/<project>).
 
@@ -890,9 +879,11 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     lines = sorted(_trace.export_lines(project, cursor_ts), key=_trace_line_ts)
 
     # Hold back anything from a second that might not be closed yet (see the
-    # rationale above `_now`) -- an unkeyable ("") line always passes through,
+    # rationale above `_TRACE_HOLD_BACK_S`) -- an unkeyable ("") line always passes through,
     # same as everywhere else in this function.
-    threshold = (_now() - _dt.timedelta(seconds=_TRACE_HOLD_BACK_S)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    threshold = (_clock.now() - _dt.timedelta(seconds=_TRACE_HOLD_BACK_S)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     lines = [ln for ln in lines if (ts := _trace_line_ts(ln)) == "" or ts < threshold]
 
     if already:
@@ -1068,7 +1059,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             query = _urlparse.parse_qs(_urlparse.urlsplit(full_path).query)
             since_values = query.get("since")
             since = since_values[0] if since_values else None
-            view = _inbox.build_inbox(now=_utc_timestamp(), since=since)
+            view = _inbox.build_inbox(now=_clock.stamp(), since=since)
             body = json.dumps(view.model_dump(by_alias=True, mode="json")).encode("utf-8")
             self._send(body, "application/json")
         elif path == "/runs":

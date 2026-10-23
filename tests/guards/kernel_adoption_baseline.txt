@@ -1,0 +1,8 @@
+clock 0
+ids 0
+text 3
+error-classes 36
+error-raises 150
+environ 95
+config-reads 415
+repointers 190

@@ -69,7 +69,6 @@ creation time).
 
 from __future__ import annotations
 
-import datetime as _dt
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -88,6 +87,7 @@ from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters.telegram import GetUpdatesResult
+from docket.kernel import clock as _clock
 
 __all__ = [
     "InboundMessage",
@@ -240,7 +240,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
     project -- see :func:`_approval_scope`. Needs-you items first. Read-only; never mutates
     anything."""
     scope = _approval_scope(agent_id)
-    now = _dt.datetime.now(_dt.UTC).isoformat()
+    now = _clock.iso()
     view = _inbox.build_inbox(now=now)
     needs_you = [item for item in view.needs_you if item.pod == scope]
     failed = [t for t in view.failed if t.pod == scope]

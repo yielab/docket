@@ -27,6 +27,7 @@ from docket.core import notify as _notify
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel import clock as _clock
 
 SUBJECT = "docket.core.consult"
 
@@ -156,7 +157,7 @@ class TestPark:
         assert question["recommendation"]["optionId"] == "sqlite"
         assert task["consultations"] == 1
 
-        view = _inbox.build_inbox(now=_dispatch._now())
+        view = _inbox.build_inbox(now=_clock.iso())
         assert [v.id for v in view.needs_you if getattr(v, "pod", "") == run.project] == [
             task["id"]
         ]
@@ -165,7 +166,7 @@ class TestPark:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
-        view = _inbox.build_inbox(now=_dispatch._now())
+        view = _inbox.build_inbox(now=_clock.iso())
         (item,) = [v for v in view.needs_you if getattr(v, "pod", "") == run.project]
         data = _notify.render_data(item, "conversation")
         assert data["question"]

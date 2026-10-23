@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt
 import getpass as _getpass
 import os
 import secrets as _token_secrets
@@ -26,6 +25,7 @@ from docket.core import telegram as _telegram
 from docket.core.audit import audit_log
 from docket.edges.adapters import channels as _channels
 from docket.edges.adapters import system as _system
+from docket.kernel import clock as _clock
 
 notify_app = typer.Typer(
     name="notify",
@@ -49,10 +49,6 @@ class Written:
     actors: list[str] = field(default_factory=list)
     bindings: list[str] = field(default_factory=list)
     test: str = ""
-
-
-def _now() -> str:
-    return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _spec_or_exit(name: str) -> _chan.ChannelSpec:
@@ -89,7 +85,7 @@ def send_test(name: str) -> int:
     if deliver is None:
         ui.error(f"Channel '{name}' has dialect '{spec.dialect}', which has no delivery yet")
         return 1
-    event = _notify.build_test_event(spec, now=_now())
+    event = _notify.build_test_event(spec, now=_clock.stamp())
     result = deliver(spec, event, secret=_notify.resolve_secret(spec), timeout=5.0)
     if result.ok:
         ui.success(f"Test delivered to '{name}' ({spec.dialect}).")
@@ -126,7 +122,7 @@ def lead_ids() -> list[str]:
 
 def _bind(agent_id: str, peer_id: str, channel: str) -> None:
     _fleet.upsert_binding(agent_id, peer_id, channel)
-    _conv.record_durable(agent_id=agent_id, peer_id=peer_id, channel=channel, now=_now())
+    _conv.record_durable(agent_id=agent_id, peer_id=peer_id, channel=channel, now=_clock.stamp())
 
 
 def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Written:
@@ -157,7 +153,7 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
         else:
             result = deliver(
                 spec,
-                _notify.build_test_event(spec, now=_now()),
+                _notify.build_test_event(spec, now=_clock.stamp()),
                 secret=_notify.resolve_secret(spec),
                 timeout=5.0,
             )
@@ -529,7 +525,7 @@ def cmd_flush(
     """Deliver new operator events to every enabled channel now.
 
     Example: docket setup notify flush --dry-run"""
-    now = _now()
+    now = _clock.stamp()
     if dry_run:
         events, _snapshot = _notify.diff_events(
             _notify.read_state(), _inbox.build_inbox(now=now), now

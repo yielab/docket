@@ -12,11 +12,12 @@ module keeps no daily log and distills nothing. One clock: all day math is **UTC
 from __future__ import annotations
 
 import contextlib
-import datetime as _dt
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from docket.kernel import text as _text
 
 # --- turn-loop durability contract (keep in sync with agent_loop.py's prompt) -
 
@@ -55,11 +56,6 @@ _MANUAL_PATH_HEADER = (
 
 
 # --- date + path canon (UTC everywhere) ---------------------------------------
-
-
-def today() -> _dt.date:
-    """Today's date in UTC — the one clock for all memory/day math."""
-    return _dt.datetime.now(_dt.UTC).date()
 
 
 def memory_dir(ws: Path) -> Path:
@@ -343,9 +339,8 @@ class DispatchHeartbeatTask:
 
 
 def _dispatch_task_line(t: DispatchHeartbeatTask) -> str:
-    desc = " ".join(t.description.split())  # collapse newlines/whitespace to one line
-    if len(desc) > _DISPATCH_DESC_MAX:
-        desc = desc[: _DISPATCH_DESC_MAX - 1] + "…"
+    desc = _text.one_line(t.description)  # collapse newlines/whitespace to one line
+    desc = _text.ellipsize(desc, _DISPATCH_DESC_MAX)
     hop_word = "hop" if t.hops == 1 else "hops"
     claimed = t.claimed_at or "unknown time"
     return f"- [ ] {t.task_id} — {desc}  _(claimed {claimed}, {t.hops} {hop_word} run)_"

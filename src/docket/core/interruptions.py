@@ -23,6 +23,8 @@ from docket.core import pod as _pod
 from docket.core import policy as _policy
 from docket.core import security as _security
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 
 # The kinds that can actually pause a task on a human answer -- everything else
 # ("mode", "high_risk_class", "channel") is context shown alongside, not counted
@@ -182,7 +184,7 @@ def forecast(
 def _normalized_command(command: str) -> str:
     """Collapse whitespace before digesting a command -- the ADR 0016 SS10 limit ("exact
     after whitespace normalisation"): a model that rephrases the command is asked again."""
-    return " ".join(command.split())
+    return _text.one_line(command)
 
 
 def record_pregrant(
@@ -203,9 +205,7 @@ def record_pregrant(
 
     normalized = _normalized_command(command)
     args_digest = _oc.canonical_args_digest(tool, {"command": normalized})
-    expires_at = (
-        _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=_approval_expiry_hours(project))
-    ).isoformat()
+    expires_at = (_clock.now() + _dt.timedelta(hours=_approval_expiry_hours(project))).isoformat()
 
     token = _approval.create_pregrant(
         project,

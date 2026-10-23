@@ -22,7 +22,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
@@ -30,6 +29,8 @@ from typing import Literal
 
 import docket.config as _cfg
 from docket.core import security as _sec
+from docket.kernel import clock as _clock
+from docket.kernel import ids as _ids
 
 # Kept short so a hung subprocess never blocks a CLI command.
 _QUERY_TIMEOUT = 5
@@ -918,7 +919,7 @@ def jail_launch(
         all_roots = (*all_roots, cache_dir.resolve())
         merged = {**cache_environment(cache_dir), **merged}
     if backend == "docker":
-        name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
+        name = _ids.new_short_id("docket-sbx")
         argv = docker_run_argv(name, all_roots, command, merged, network, read_only)
         return JailLaunch(argv, None, name)
     if backend in ("landlock", "seatbelt"):
@@ -1098,8 +1099,8 @@ def kill_process_group(pgid: int, grace_s: float = 2.0) -> bool:
         return False
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(pgid, _signal.SIGTERM)
-    deadline = time.monotonic() + grace_s
-    while time.monotonic() < deadline and _process_group_alive(pgid):
+    deadline = _clock.monotonic() + grace_s
+    while _clock.monotonic() < deadline and _process_group_alive(pgid):
         time.sleep(0.05)
     if _process_group_alive(pgid):
         with contextlib.suppress(ProcessLookupError, PermissionError):

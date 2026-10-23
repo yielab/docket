@@ -11,7 +11,6 @@ import contextlib
 import hashlib
 import os
 import shutil
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +20,7 @@ from filelock import FileLock
 
 import docket.config as _cfg
 from docket.edges.adapters import system as _sys
+from docket.kernel import clock as _clock
 
 LOCKFILES: tuple[tuple[str, str], ...] = (
     ("package-lock.json", "npm ci"),
@@ -197,10 +197,10 @@ def prepare_worktree(
     """Prepare *root*: link the cache entry for *spec* when it exists, else run the command
     through *run* (under the codebase's lock) and keep ``node_modules`` as the entry. Without a
     lockfile nothing is cached."""
-    start = time.monotonic()
+    start = _clock.monotonic()
     if not spec.lock_hash or not codebase:
         code, output = run(spec.command)
-        return PrepareOutcome(code == 0, False, code, time.monotonic() - start, output)
+        return PrepareOutcome(code == 0, False, code, _clock.monotonic() - start, output)
     entry = entry_dir(codebase, spec)
     directory = entry.parent
     directory.mkdir(parents=True, exist_ok=True)
@@ -210,14 +210,14 @@ def prepare_worktree(
                 os.utime(entry)
             names = _link(entry, root)
             _exclude(common_dir, names)
-            return PrepareOutcome(True, True, None, time.monotonic() - start, "")
+            return PrepareOutcome(True, True, None, _clock.monotonic() - start, "")
         code, output = run(spec.command)
         if code == 0:
             _store(entry, root)
             if entry.is_dir():
                 _exclude(common_dir, _link(entry, root))
                 _evict(directory, _cfg.PREPARE_CACHE_KEEP)
-        return PrepareOutcome(code == 0, False, code, time.monotonic() - start, output)
+        return PrepareOutcome(code == 0, False, code, _clock.monotonic() - start, output)
 
 
 def _exclude(common_dir: str, names: list[str]) -> None:

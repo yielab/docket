@@ -34,6 +34,7 @@ from docket.core.operator_contract import (
     validate_answer_v11,
 )
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
 
 __all__ = ["AnswerError", "AnswerRejected", "answer_task", "sweep_expired_questions"]
 
@@ -271,7 +272,7 @@ def answer_task(
     """Answer *task_id*'s parked ``input`` step: validate, screen, append to ``answers[]``, and
     resume -- a terminal route settles the task right here; any other target reopens it
     ``pending`` behind a synthetic ``role="operator"`` hop the resume builder follows."""
-    ts = now or _dispatch._now()
+    ts = now or _clock.iso()
     try:
         # *action* is caller-supplied raw text (CLI/HTTP); AnswerResult's own Literal field
         # is what actually rejects anything else, at runtime, via the ValidationError below.
@@ -378,7 +379,7 @@ def sweep_expired_questions(now: str | None = None) -> int:
     """Expire every ``waiting_input`` task past its question's ``expiresAt``: fails closed but
     never fails -- moves it to ``blocked``/``"input_expired"``, never ``failed``.
     ``retry_task``/``unblock_pod`` reopen it; returns the number of tasks expired."""
-    now_dt = _dispatch._parse_iso(now or _dispatch._now())
+    now_dt = _dispatch._parse_iso(now or _clock.iso())
     if now_dt is None:
         return 0
     count = 0

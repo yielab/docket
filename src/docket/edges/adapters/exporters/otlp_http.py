@@ -22,6 +22,7 @@ from docket import __version__
 from docket.config import DISPATCH_RETRY_MAX_WAIT_S
 from docket.core.telemetry import AttrValue, Span, SpanEvent
 from docket.edges.adapters.redirects import open_same_origin
+from docket.kernel import clock as _clock
 
 _RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
 _STATUS_CODES: dict[str, int] = {"ok": 1, "error": 2}
@@ -183,7 +184,7 @@ class OtlpHttpSink:
         resource: Mapping[str, str] | None = None,
         aliases: Mapping[str, str] | None = None,
         timeout_s: float = 5.0,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = _clock.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         opener: Callable[..., Any] = open_same_origin,
     ) -> None:

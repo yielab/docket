@@ -150,7 +150,6 @@ import hashlib
 import json
 import math
 import threading
-import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
@@ -181,6 +180,8 @@ from docket.core.session import (
 )
 from docket.core.tools import ToolContext, ToolDenialKind, ToolRegistry, ToolResult, dispatch_tool
 from docket.core.trace import trace_event
+from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 
 __all__ = [
     "AgentLoopResult",
@@ -450,7 +451,7 @@ def _trace_tool_result(
     if reason:
         payload["reason"] = reason
     if output is not None and "toolResults" in _telemetry.capture_classes():
-        payload["text"] = _clip(output)
+        payload["text"] = _text.cut_chars(output, _CONTENT_MAX_CHARS_ON_DISK)
     trace_event(
         project,
         session_key,
@@ -471,14 +472,6 @@ _INSTRUCTIONS_HASH_LOCK = threading.Lock()
 _LAST_INSTRUCTIONS_HASH: dict[str, str] = {}
 
 
-def _clip(text: str) -> str:
-    """Cut *text* to the on-disk content bound, leaving a marker naming what was cut."""
-    if len(text) <= _CONTENT_MAX_CHARS_ON_DISK:
-        return text
-    cut = len(text) - _CONTENT_MAX_CHARS_ON_DISK
-    return f"{text[:_CONTENT_MAX_CHARS_ON_DISK]}…[truncated {cut} chars]"
-
-
 def _messages_to_otel(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
     """*messages* in the OTel GenAI ``{"role", "parts"}`` shape (ADR 0015 §1): a ``tool``
     turn becomes one ``tool_call_response`` part, an assistant's requested tool calls become
@@ -491,19 +484,24 @@ def _messages_to_otel(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
                 {
                     "type": "tool_call_response",
                     "id": message.tool_call_id,
-                    "response": _clip(message.content),
+                    "response": _text.cut_chars(message.content, _CONTENT_MAX_CHARS_ON_DISK),
                 }
             )
         else:
             if message.content:
-                parts.append({"type": "text", "content": _clip(message.content)})
+                parts.append(
+                    {
+                        "type": "text",
+                        "content": _text.cut_chars(message.content, _CONTENT_MAX_CHARS_ON_DISK),
+                    }
+                )
             for call in message.tool_calls:
                 parts.append(
                     {
                         "type": "tool_call",
                         "id": call.id,
                         "name": call.name,
-                        "arguments": _clip(call.arguments),
+                        "arguments": _text.cut_chars(call.arguments, _CONTENT_MAX_CHARS_ON_DISK),
                     }
                 )
         out.append({"role": message.role, "parts": parts})
@@ -534,7 +532,7 @@ def _capture_llm_call_content(
     digest = hashlib.sha256(system_text.encode()).hexdigest()
     with _INSTRUCTIONS_HASH_LOCK:
         if _LAST_INSTRUCTIONS_HASH.get(trace_key) != digest:
-            payload["systemInstructions"] = _clip(system_text)
+            payload["systemInstructions"] = _text.cut_chars(system_text, _CONTENT_MAX_CHARS_ON_DISK)
             _LAST_INSTRUCTIONS_HASH[trace_key] = digest
     payload["systemInstructionsSha256"] = digest
 
@@ -1906,7 +1904,7 @@ def run_agent_turn(
     message: str,
     *,
     config: LoopConfig | None = None,
-    clock: Callable[[], float] = time.monotonic,
+    clock: Callable[[], float] = _clock.monotonic,
     trace_project: str | None = None,
     trace_session_key: str | None = None,
     trace_task_id: str = "",

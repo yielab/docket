@@ -19,7 +19,6 @@ import json
 import os
 import re
 import time as _time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +27,8 @@ from typing import Any, Literal
 import docket.config as _cfg
 from docket.core.audit import audit_log
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
+from docket.kernel import ids as _ids
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
 # (see the module docstring). ``timeout`` is the fail-closed expiry path
@@ -149,11 +150,6 @@ def _approval_path(token: str) -> Path:
     return _cfg.APPROVALS_DIR / f"{token}.json"
 
 
-def _utc_now() -> str:
-    """Return current UTC time as YYYY-MM-DDTHH:MM:SSZ."""
-    return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _read(token: str) -> dict[str, Any]:
     path = _approval_path(token)
     if not path.is_file():
@@ -221,8 +217,8 @@ def approval_create(
     _cfg.APPROVALS_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(_cfg.APPROVALS_DIR, 0o700)
 
-    token = f"apr-{uuid.uuid4()}"
-    created = _utc_now()
+    token = _ids.new_id("apr")
+    created = _clock.stamp()
     redacted_action = _redact(action)
 
     data: dict[str, Any] = {
@@ -302,8 +298,8 @@ def create_pregrant(
     _cfg.APPROVALS_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(_cfg.APPROVALS_DIR, 0o700)
 
-    token = f"apr-{uuid.uuid4()}"
-    created = _utc_now()
+    token = _ids.new_id("apr")
+    created = _clock.stamp()
     context: dict[str, Any] = {"kind": "pregrant", "tool": tool, "argsDigest": args_digest}
     if task_id:
         context["taskId"] = task_id
@@ -349,9 +345,9 @@ def consume_pregrant(token: str) -> bool:
         expires_at = data.get("expiresAt")
         if expires_at:
             deadline = _parse_iso(str(expires_at))
-            if deadline is not None and _dt.datetime.now(_dt.UTC).timestamp() > deadline:
+            if deadline is not None and _clock.epoch() > deadline:
                 return None
-        data["consumedAt"] = _utc_now()
+        data["consumedAt"] = _clock.stamp()
         consumed = True
         return data
 
@@ -490,7 +486,7 @@ def prune_resolved(
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
     window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
-    cutoff = (now if now is not None else _dt.datetime.now(_dt.UTC).timestamp()) - window
+    cutoff = (now if now is not None else _clock.epoch()) - window
     removed = 0
     for path in sorted(_cfg.APPROVALS_DIR.glob("*.json")):
         with _store.with_lock(path):
@@ -552,7 +548,7 @@ def _parse_iso(text: str) -> float | None:
 
 
 def _iso_after(stamp: str, seconds: float) -> str:
-    base = _parse_iso(stamp) or _dt.datetime.now(_dt.UTC).timestamp()
+    base = _parse_iso(stamp) or _clock.epoch()
     moment = _dt.datetime.fromtimestamp(base + seconds, _dt.UTC)
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -592,7 +588,7 @@ def approval_sweep_expired() -> int:
     unconsumed pre-grants past theirs -- both resolved to **denied** (fail-closed)."""
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
-    now = _dt.datetime.now(_dt.UTC).timestamp()
+    now = _clock.epoch()
     swept = 0
     for path in _cfg.APPROVALS_DIR.glob("*.json"):
         try:
@@ -671,7 +667,7 @@ def wait_for_approval(
     effective_timeout = _cfg.TOOL_APPROVAL_TIMEOUT if timeout is None else timeout
     effective_poll = _cfg.TOOL_APPROVAL_POLL_INTERVAL_S if poll_interval is None else poll_interval
     do_sleep = sleep if sleep is not None else _time.sleep
-    do_clock = clock if clock is not None else _time.monotonic
+    do_clock = clock if clock is not None else _clock.monotonic
     deadline = do_clock() + effective_timeout
 
     while True:

@@ -18,6 +18,7 @@ import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
+from docket.kernel import clock as _clock
 
 SUBJECT = "docket.core"
 
@@ -287,7 +288,7 @@ class TestTraceSweep:
     def test_sweep_leaves_fresh_trace(self, oc_dir: Path) -> None:
         pdir = oc_dir / "traces" / "myshop"
         pdir.mkdir(parents=True)
-        recent = trace_core._now_iso()
+        recent = _clock.stamp()
         (pdir / "fresh.jsonl").write_text(
             json.dumps({"ts": recent, "event_type": "tool_call"}) + "\n"
         )

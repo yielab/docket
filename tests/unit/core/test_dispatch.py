@@ -37,6 +37,7 @@ from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.core.llm import ChatResponse, TokenUsage, assistant
 from docket.edges.adapters import docket_runtime as _drt
+from docket.kernel import clock as _clock
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.dispatch"
@@ -1187,7 +1188,7 @@ class TestStaleClaimReclaim:
         from tests.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
-        _put_task("myapp", self._running(_GONE_PID, _dispatch._now()))
+        _put_task("myapp", self._running(_GONE_PID, _clock.iso()))
 
         results = _dispatch.dispatch_pod("myapp", runner=FakeDriver(), resume=True)
 
@@ -1201,7 +1202,7 @@ class TestStaleClaimReclaim:
         from tests.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
-        _put_task("myapp", self._running(os.getpid(), _dispatch._now()))
+        _put_task("myapp", self._running(os.getpid(), _clock.iso()))
 
         results = _dispatch.dispatch_pod("myapp", runner=FakeDriver(), resume=True)
 

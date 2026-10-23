@@ -16,6 +16,7 @@ from typing import Any
 import docket.config as _cfg
 from docket.edges import store
 from docket.edges.adapters import system as _system
+from docket.kernel import clock as _clock
 
 SECRETS_FILE = _cfg.DOCKET_HOME / "secrets.json"
 SECRETS_META_FILE = _cfg.DOCKET_HOME / "secrets.meta.json"
@@ -90,10 +91,9 @@ def touch_meta(name: str, event: str) -> None:
     ``event``: "added" | "rotated" | "removed". Mirrors the timestamps
     ``docket setup --fix``'s key-hygiene report reads.
     """
-    import datetime as _dt
 
     meta = load_secrets_meta()
-    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = _clock.stamp()
     if event == "removed":
         meta.pop(name, None)
     else:

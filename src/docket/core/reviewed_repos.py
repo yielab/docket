@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ from docket.core.audit import audit_log
 from docket.core.pod_apply import RunItem
 from docket.edges import store
 from docket.edges.adapters import system as _sys
+from docket.kernel import clock as _clock
 
 CODE_LENGTH = 16
 _NAMES_NO_FILE = frozenset({"allow-commands", "network", "role-loosens"})
@@ -110,7 +110,7 @@ def remember(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> str:
     entry: dict[str, Any] = {
         "digest": digest,
         "code": code,
-        "date": datetime.now(UTC).strftime("%Y-%m-%d"),
+        "date": _clock.today_iso(),
         "items": [{"kind": i.kind, "name": i.name, "runs": i.runs} for i in items],
     }
 

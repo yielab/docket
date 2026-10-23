@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt
 import os
 from collections import Counter
 from pathlib import Path
@@ -33,6 +32,7 @@ from docket.core.utils import (
     si_format,
 )
 from docket.edges import store
+from docket.kernel import clock as _clock
 
 
 def pod_ids() -> list[str]:
@@ -218,7 +218,7 @@ def _inventory() -> dict[str, Any]:
             }
         )
     return {
-        "timestamp": _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": _clock.stamp(),
         "channels": _fleet.channel_names(fleet_state),
         "agents": agents,
         "totalCostUsd": round(total, 6),

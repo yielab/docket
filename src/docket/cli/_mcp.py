@@ -9,7 +9,6 @@ The lower half of this module configures the external MCP servers docket connect
 from __future__ import annotations
 
 import contextlib
-import datetime as _dt
 import sys
 import threading
 from typing import Any
@@ -23,6 +22,7 @@ from docket.core import runs as _runs
 from docket.core import utils as _utils
 from docket.core.audit import audit_log
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
 # the 2.x line's `mcp.server.MCPServer`, the decorator/`add_tool`-based server
@@ -232,7 +232,7 @@ def tool_inbox(since: str | None = None) -> dict[str, Any]:
     _audit("inbox", f"since={since or ''}")
     from docket.core import inbox as _inbox
 
-    view = _inbox.build_inbox(now=_dt.datetime.now(_dt.UTC).isoformat(), since=since)
+    view = _inbox.build_inbox(now=_clock.iso(), since=since)
     return view.model_dump(by_alias=True, mode="json")
 
 

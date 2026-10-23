@@ -13,7 +13,6 @@ import base64
 import hashlib
 import hmac
 import json
-import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -22,6 +21,7 @@ from typing import Any
 from docket.core.channel import ChannelSpec
 from docket.core.operator_contract import CloudEvent
 from docket.edges.adapters.redirects import open_same_origin
+from docket.kernel import clock as _clock
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ def deliver(
         return DeliveryResult(ok=False, error="channel has no config.url")
 
     body = json.dumps(event.model_dump(by_alias=True, mode="json"), sort_keys=True).encode()
-    ts = str(int(time.time()))
+    ts = str(int(_clock.epoch()))
     headers = {
         "Content-Type": "application/cloudevents+json",
         "webhook-id": event.id,

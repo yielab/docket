@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import docket.config as _cfg
+from docket.kernel import clock as _clock
 
 # A sink receives the exact record trace_event is about to append (after
 # redaction, before the write) -- see subscribe() below.
@@ -137,10 +138,6 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?<![A-Za-z0-9])\d{8,10}:[A-Za-z0-9_\-]{35}(?![A-Za-z0-9_\-])"),
     re.compile(r"[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]{1,255}\.[a-zA-Z]{2,24}", re.IGNORECASE),
 )
-
-
-def _now_iso() -> str:
-    return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 _ENV_CREDENTIAL_NAMES = ("DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN")
@@ -275,7 +272,7 @@ def trace_event(
         payload_obj = {"text": redact(payload)}
 
     record: dict[str, Any] = {
-        "ts": _now_iso(),
+        "ts": _clock.stamp(),
         "project": project,
         "session_id": session_id,
         "agent_role": agent_role,
@@ -337,7 +334,7 @@ def trace_ingest(project: str) -> None:
     except Exception:
         index = {}
 
-    now = _dt.datetime.now(_dt.UTC).timestamp()
+    now = _clock.epoch()
     changed = False
 
     for summary in sessions:
@@ -353,7 +350,7 @@ def trace_ingest(project: str) -> None:
         if offset == 0:
             records.append(
                 {
-                    "ts": sl.session_start_ts or _now_iso(),
+                    "ts": sl.session_start_ts or _clock.stamp(),
                     "project": project,
                     "session_id": session_id,
                     "agent_role": "unknown",
@@ -420,7 +417,7 @@ def _has_session_end(tracefile: Path) -> bool:
 
 def _end_record(project: str, session_id: str) -> dict[str, Any]:
     return {
-        "ts": _now_iso(),
+        "ts": _clock.stamp(),
         "project": project,
         "session_id": session_id,
         "agent_role": "unknown",
@@ -443,7 +440,7 @@ def sweep_all() -> None:
     traces_root = _cfg.TRACES_DIR
     if not traces_root.is_dir():
         return
-    now = _dt.datetime.now(_dt.UTC).timestamp()
+    now = _clock.epoch()
 
     for tf in traces_root.glob("*/*.jsonl"):
         has_end = False
@@ -551,7 +548,7 @@ def expire_old_traces(
     if not traces_root.is_dir():
         return report
 
-    now = _dt.datetime.now(_dt.UTC).timestamp()
+    now = _clock.epoch()
     pattern = f"{project}/*.jsonl" if project else "*/*.jsonl"
     removed_by_dir: dict[Path, set[str]] = {}
 

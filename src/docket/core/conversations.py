@@ -28,6 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 import docket.config as _cfg
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 
 
 def _epoch_from_iso(ts: str) -> float | None:
@@ -187,9 +189,8 @@ def touch_for_hop(
     matches = by_agent(reg, agent_id)
     if not matches:
         return reg
-    preview = " ".join(last_message.split())
-    if len(preview) > 300:
-        preview = preview[:299] + "…"
+    preview = _text.one_line(last_message)
+    preview = _text.ellipsize(preview, 300)
     for conv in matches:
         _, reg = record(
             reg,
@@ -351,7 +352,7 @@ def prune_closed_durable(
     ``config.TRACE_RETENTION_S``). Returns the count removed (or, under *dry_run*,
     that would be)."""
     window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
-    cutoff_epoch = (now if now is not None else _dt.datetime.now(_dt.UTC).timestamp()) - window
+    cutoff_epoch = (now if now is not None else _clock.epoch()) - window
     if dry_run:
         removed, _ = prune_closed(load(path), cutoff_epoch=cutoff_epoch)
         return removed

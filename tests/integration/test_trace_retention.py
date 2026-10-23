@@ -16,6 +16,7 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.cli import app
 from docket.core import trace as trace_core
+from docket.kernel import clock as _clock
 
 SUBJECT = "docket.config"
 
@@ -60,7 +61,7 @@ class TestExpireOldTraces:
 
     def test_recent_terminated_trace_survives(self, oc_dir: Path) -> None:
         pdir = oc_dir / "traces" / "myshop"
-        recent = trace_core._now_iso()
+        recent = _clock.stamp()
         tf = _write_trace(
             pdir,
             "recent",
@@ -101,7 +102,7 @@ class TestExpireOldTraces:
                 {"ts": "2000-01-01T00:05:00Z", "event_type": "session_end"},
             ],
         )
-        recent = trace_core._now_iso()
+        recent = _clock.stamp()
         _write_trace(
             pdir,
             "recent",
@@ -179,7 +180,7 @@ class TestExpireOldTraces:
 
     def test_retention_override_wins_over_config_default(self, oc_dir: Path) -> None:
         pdir = oc_dir / "traces" / "myshop"
-        recent = trace_core._now_iso()
+        recent = _clock.stamp()
         tf = _write_trace(
             pdir,
             "recent",
@@ -190,7 +191,7 @@ class TestExpireOldTraces:
         )
         # A negative override should expire even a just-terminated trace --
         # negative avoids any flakiness from same-second truncation in
-        # _now_iso() vs. the sub-second "now" this function computes.
+        # clock.stamp() vs. the sub-second "now" this function computes.
         report = trace_core.expire_old_traces(retention_s=-1)
         assert not tf.exists()
         assert report.expired_count == 1
@@ -233,7 +234,7 @@ class TestTaskPruneTraces:
 
     def test_prune_days_override(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         pdir = oc_dir / "traces" / "myshop"
-        recent = trace_core._now_iso()
+        recent = _clock.stamp()
         _write_trace(
             pdir,
             "recent",

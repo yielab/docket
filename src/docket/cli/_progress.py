@@ -16,7 +16,6 @@ import datetime as _dt
 import queue as _queue
 import sys
 import threading
-import time as _time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, TextIO
@@ -27,6 +26,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.task_ref import short_id
+from docket.kernel import clock as _clock
 
 _POLL_TIMEOUT_S = 0.2
 _RENDERABLE_EVENT_TYPES = frozenset(
@@ -73,7 +73,7 @@ def _seconds_remaining(record: dict[str, Any], *, now: float | None = None) -> i
     elapsed = 0.0
     parsed = _epoch(str(record.get("ts", "")))
     if parsed is not None:
-        elapsed = max(0.0, (now if now is not None else _time.time()) - parsed)
+        elapsed = max(0.0, (now if now is not None else _clock.epoch()) - parsed)
     return max(0, int(_cfg.TOOL_APPROVAL_TIMEOUT - elapsed))
 
 

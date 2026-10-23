@@ -21,7 +21,6 @@ import json as _json
 import os as _os
 import re as _re
 import time as _time
-import uuid as _uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -63,6 +62,8 @@ from docket.core import utils as _utils
 from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters import system as _sys
+from docket.kernel import clock as _clock
+from docket.kernel import ids as _ids
 
 # Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
 PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
@@ -243,12 +244,8 @@ class TaskResult:
         return round(sum(h.cost_usd for h in self.hops), 6)
 
 
-def _now() -> str:
-    return _dt.datetime.now(_dt.UTC).isoformat()
-
-
 def _parse_iso(ts: str) -> _dt.datetime | None:
-    """Parse an ISO timestamp produced by ``_now()``; None on anything else."""
+    """Parse an ISO timestamp produced by ``kernel.clock.iso()``; None on anything else."""
     if not ts:
         return None
     try:
@@ -305,8 +302,8 @@ def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
     # A fresh list per task for the same reason `hops` gets one above.
     if not isinstance(task.get("pregrants"), list):
         task["pregrants"] = []
-    task.setdefault("created", _now())
-    task.setdefault("id", f"task-{_uuid.uuid4()}")
+    task.setdefault("created", _clock.iso())
+    task.setdefault("id", _ids.new_id("task"))
     return task
 
 
@@ -427,7 +424,7 @@ def enqueue_task_once(
             raise DispatchError(f"invalid brief: {exc}") from exc
         description = f"{description}\n\n## Pre-brief\n{_handoff.render_brief(parsed_brief)}"
 
-    task_id = f"task-{_uuid.uuid4()}"
+    task_id = _ids.new_id("task")
     source = "operator"
     session_id = f"agent:{project}:{task_id}"
     effective_trusted = (source == "operator") if trusted is None else trusted
@@ -446,7 +443,7 @@ def enqueue_task_once(
         "description": _trace.redact(description) if hit.action == "redact" else description,
         "priority": priority if priority in ("high", "normal", "low") else "normal",
         "status": "pending",
-        "created": _now(),
+        "created": _clock.iso(),
         "startedAt": None,
         "completedAt": None,
         "source": source,
@@ -1938,7 +1935,7 @@ def _compose_hop(
             # Computed fresh per hop (not once per task) so a long-running
             # earlier hop never shortens a later one's window.
             expiry_hours = _pod_settings(ctx.project).approval_expiry_hours
-            deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=expiry_hours)
+            deadline = _clock.now() + _dt.timedelta(hours=expiry_hours)
             env[_rd.DOCKET_APPROVAL_EXPIRES_AT] = deadline.isoformat()
     if ctx.approval_timeout is not None:
         env = dict(env or {})
@@ -2146,7 +2143,7 @@ def _hop_trace_link(ctx: _UnitContext, first_ts: str) -> dict[str, str] | None:
         "project": ctx.project,
         "session": ctx.session_id,
         "firstTs": first_ts,
-        "lastTs": _trace._now_iso(),
+        "lastTs": _clock.stamp(),
     }
 
 
@@ -2304,7 +2301,7 @@ def _persist_hop_and_trace(
     # The hop's closing events are written, so its trace window can now be closed; this precedes
     # `on_hop` so the persisted record's `lastTs` covers them (evidence-v1).
     if hop.trace is not None:
-        hop.trace["lastTs"] = _trace._now_iso()
+        hop.trace["lastTs"] = _clock.stamp()
     duration_ms: int | None = None
     if hop.trace and hop.trace.get("firstTs") and hop.trace.get("lastTs"):
         first = _dt.datetime.fromisoformat(hop.trace["firstTs"].replace("Z", "+00:00"))
@@ -2440,9 +2437,9 @@ def _run_gate_command(
     """Run a gate command in the pod's envelope and fingerprint the worktree around it. The
     output is redacted here, once, so no caller can persist the raw string."""
     before = _sys.git_worktree_fingerprint(cwd)
-    start = _time.monotonic()
+    start = _clock.monotonic()
     code, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
-    duration_s = _time.monotonic() - start
+    duration_s = _clock.monotonic() - start
     after = _sys.git_worktree_fingerprint(cwd)
     produced = sorted(p for p, fp in after.items() if before.get(p) != fp)
     return _GateRun(code, _trace.redact(raw_output), duration_s, produced)
@@ -2897,7 +2894,7 @@ def _execute_unit(
         return approval_outcome
 
     message, env = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
-    hop_first_ts = _trace._now_iso()
+    hop_first_ts = _clock.stamp()
     run_res, attempt = _run_hop_turn(ctx, node, role, member_id, history_session_key, message, env)
 
     hop_output, hop_ok, hop_error = _apply_output_guardrails(ctx, role, run_res)
@@ -3250,9 +3247,7 @@ def _run_input_step(
         message = f"{message}\n\nThe gate on step {spec.from_!r} reported:\n{report}"
     expires_at: str | None = None
     if spec.expires_hours is not None:
-        expires_at = (
-            _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=spec.expires_hours)
-        ).isoformat()
+        expires_at = (_clock.now() + _dt.timedelta(hours=spec.expires_hours)).isoformat()
     question = _oc.Question(
         id=_oc.new_question_id(),
         task_id=ctx.task_id,
@@ -3260,7 +3255,7 @@ def _run_input_step(
         step=node.step_id,
         message=message,
         requested_schema=requested_schema,
-        created_at=_now(),
+        created_at=_clock.iso(),
         expires_at=expires_at,
     )
     _trace_locked(
@@ -3732,12 +3727,12 @@ def _apply_result(
     elif res.status == "waiting_input":
         task["question"] = res.question
         if res.question and not res.question.get("expiresAt") and input_expiry_hours:
-            deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=input_expiry_hours)
+            deadline = _clock.now() + _dt.timedelta(hours=input_expiry_hours)
             res.question["expiresAt"] = deadline.isoformat()
         if res.question and res.question.get("kind") in ("clarification", "decision"):
             task["consultations"] = int(task.get("consultations") or 0) + 1
     else:
-        task["completedAt"] = _now()
+        task["completedAt"] = _clock.iso()
         task.pop("taskGrants", None)
         if res.failure_kind:
             task["failureKind"] = res.failure_kind
@@ -3816,7 +3811,7 @@ def _refuse_claimed_task(
                 t["status"] = "failed"
                 t["failureKind"] = failure_kind
                 t["reason"] = reason
-                t["completedAt"] = _now()
+                t["completedAt"] = _clock.iso()
                 t["claimId"] = None
                 t.pop("claimPid", None)
                 return {"tasks": tasks}
@@ -3960,9 +3955,9 @@ def _claim_next_task(
         )
         t = tasks[candidates[0]]
         t["status"] = "running"
-        t["startedAt"] = _now()
-        t["claimId"] = str(_uuid.uuid4())
-        t["claimedAt"] = _now()
+        t["startedAt"] = _clock.iso()
+        t["claimId"] = _ids.new_uuid()
+        t["claimedAt"] = _clock.iso()
         t["claimPid"] = _os.getpid()
         t.pop("failureKind", None)
         claimed = dict(t)
@@ -4003,7 +3998,7 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
                 hops.append(_hop_record(hop))
                 t["hops"] = hops
                 t["costUsd"] = round(sum(float(h.get("costUsd", 0.0) or 0.0) for h in hops), 6)
-                t["claimedAt"] = _now()
+                t["claimedAt"] = _clock.iso()
                 return {"tasks": tasks}
         return None  # task no longer in the queue — nothing to persist
 
@@ -4015,7 +4010,7 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
     )
 
     _conv.touch_for_hop_durable(
-        agent_id=hop.member_id, task_ref=task_id, last_message=hop.output, now=_now()
+        agent_id=hop.member_id, task_ref=task_id, last_message=hop.output, now=_clock.iso()
     )
 
 
@@ -4030,7 +4025,7 @@ def _touch_claim(project: str, task_id: str) -> None:
         tasks = tasks_raw if isinstance(tasks_raw, list) else []
         for t in tasks:
             if t.get("id") == task_id and t.get("status") == "running":
-                t["claimedAt"] = _now()
+                t["claimedAt"] = _clock.iso()
                 return {"tasks": tasks}
         return None
 
@@ -4080,7 +4075,7 @@ def _sweep_stale_claims(project: str) -> None:
     ``CLAIM_STALE_TIMEOUT``), tagging ``failureKind: "stale_claim"`` and leaving its
     persisted ``hops`` untouched for a later ``--resume`` (pod-dispatch.spec.md, "Per-hop
     incremental persistence and crash recovery"). Runs at the top of every ``dispatch_pod`` call."""
-    now = _dt.datetime.now(_dt.UTC)
+    now = _clock.now()
     swept: list[dict[str, Any]] = []
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -4136,7 +4131,7 @@ def _claim_stale_reason(task: dict[str, Any], now: _dt.datetime, lease_s: int) -
 def reclaim_stale_running(project: str) -> None:
     """``--resume``: settle every stale ``running`` claim to ``failed``/``stale_claim`` so the
     claim step that follows picks it up from its last persisted hop; audited ``task.reclaimed``."""
-    now = _dt.datetime.now(_dt.UTC)
+    now = _clock.now()
     lease_s = _resolve_timeout(None, pod_turn_timeout(project)) + _resolve_timeout(
         None, pod_verify_timeout(project)
     )
@@ -4221,7 +4216,7 @@ def cancel_parked_task(
                 t.pop(key, None)
             t["status"] = "cancelled"
             t["reason"] = "cancelled by operator"
-            t["completedAt"] = _now()
+            t["completedAt"] = _clock.iso()
             t["claimId"] = None
             return {"tasks": tasks}
         return None
@@ -4462,7 +4457,7 @@ def resolve_waiting_approval_detail(
             if decision == "granted" and check_changed:
                 t["status"] = "done"
                 t["reason"] = "check_changed approved"
-                t["completedAt"] = _now()
+                t["completedAt"] = _clock.iso()
                 t["claimId"] = None
                 t.pop("taskGrants", None)
             elif decision == "granted":
@@ -4488,7 +4483,7 @@ def resolve_waiting_approval_detail(
                 t["status"] = "failed"
                 t["reason"] = f"approval denied: {reason}" if reason else "approval denied"
                 t["failureKind"] = "check_changed" if check_changed else "approval_denied"
-                t["completedAt"] = _now()
+                t["completedAt"] = _clock.iso()
                 t["claimId"] = None
                 t.pop("taskGrants", None)
             updated = True
@@ -4550,7 +4545,7 @@ def _append_task_grant(
             "argsDigest": digest,
             "role": role,
             "token": token,
-            "grantedAt": _now(),
+            "grantedAt": _clock.iso(),
             "actor": actor,
             "channel": channel,
         }
@@ -4569,9 +4564,7 @@ def _mint_task_grant_pregrants(ctx: _UnitContext, role: str) -> list[dict[str, s
     raw = ctx.task.get("taskGrants")
     if not isinstance(raw, list) or not raw:
         return []
-    deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(
-        hours=_pod_settings(ctx.project).approval_expiry_hours
-    )
+    deadline = _clock.now() + _dt.timedelta(hours=_pod_settings(ctx.project).approval_expiry_hours)
     minted: list[dict[str, str]] = []
     for grant in raw[:TASK_GRANT_CAP]:
         if not isinstance(grant, dict) or grant.get("role") != role:

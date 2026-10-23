@@ -24,12 +24,11 @@ from __future__ import annotations
 import email.utils
 import json
 import os
-import time
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
 from docket.core import context as _context
@@ -45,6 +44,7 @@ from docket.core.llm import (
 )
 from docket.core.runtime_driver import FailureKind
 from docket.edges.adapters.redirects import open_same_origin
+from docket.kernel import clock as _clock
 
 if TYPE_CHECKING:
     from docket.core.provider import ProviderSpec
@@ -321,7 +321,7 @@ def _retry_after_seconds(headers: Any) -> float | None:
         return None
     if when.tzinfo is None:
         when = when.replace(tzinfo=UTC)
-    return max(0.0, (when - datetime.now(UTC)).total_seconds())
+    return max(0.0, (when - _clock.now()).total_seconds())
 
 
 class OpenAIChatClient:
@@ -384,10 +384,10 @@ class OpenAIChatClient:
         timeout: int = 120,
     ) -> ChatResponse:
         """Send one exchange. Never raises for an endpoint or transport failure."""
-        start = time.perf_counter()
+        start = _clock.monotonic()
 
         def _elapsed_ms() -> int:
-            return int((time.perf_counter() - start) * 1000)
+            return int((_clock.monotonic() - start) * 1000)
 
         if not self.endpoint.base_url:
             return ChatResponse(

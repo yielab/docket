@@ -14,7 +14,6 @@ rule: appends are line-independent, so this writes JSONL directly, not through `
 
 from __future__ import annotations
 
-import datetime as _dt
 import getpass
 import hashlib
 import json
@@ -28,6 +27,7 @@ from typing import Any, Literal
 from filelock import FileLock, Timeout
 
 import docket.config as _cfg
+from docket.kernel import clock as _clock
 
 # Sentinel prev_hash for the first entry of a chain (fresh log, or the first
 # entry appended after a corrupt line / rotation boundary). Deliberately the
@@ -91,14 +91,6 @@ def _with_audit_lock(logf: Path) -> Iterator[None]:
     lock = FileLock(str(_audit_lock_path(logf)), timeout=_AUDIT_LOCK_TIMEOUT)
     with lock:
         yield
-
-
-def _utc_now() -> str:
-    """Return current UTC time as ISO ``YYYY-MM-DDTHH:MM:SS.mmmZ``. Millisecond resolution
-    because second resolution collided under scripted/rapid-fire use (stdlib-only).
-    """
-    now = _dt.datetime.now(_dt.UTC)
-    return now.strftime("%Y-%m-%dT%H:%M:%S") + f".{now.microsecond // 1000:03d}Z"
 
 
 def _username() -> str:
@@ -259,7 +251,7 @@ def audit_log(action: str, detail: str = "") -> AuditWriteResult:
             seq, prev_hash = _recovery_head(logf, continuation)
             entry: dict[str, Any] = {
                 "seq": seq,
-                "ts": _utc_now(),
+                "ts": _clock.stamp_ms(),
                 "user": _username(),
                 "pid": os.getpid(),
                 "action": action,

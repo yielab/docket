@@ -31,13 +31,13 @@ block.
 
 from __future__ import annotations
 
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 import docket.config as _cfg
 from docket.edges.adapters.toolbox import ToolOutcome, text_outcome
+from docket.kernel import clock as _clock
 
 _USER_AGENT = "docket-fetch/1"
 # A caller's per-call timeout is clamped to this multiple of FETCH_TIMEOUT_S.
@@ -101,7 +101,7 @@ def _read_until_deadline(resp: object, cap: int, deadline: float) -> bytes | Non
         if not chunk:
             break
         buf += chunk
-        if time.monotonic() >= deadline:
+        if _clock.monotonic() >= deadline:
             return None
     return bytes(buf)
 
@@ -137,7 +137,7 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
         )
 
     effective_timeout = _effective_timeout(timeout)
-    deadline = time.monotonic() + effective_timeout
+    deadline = _clock.monotonic() + effective_timeout
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     opener = urllib.request.build_opener(_DomainLockedRedirectHandler(allowed))
     try:

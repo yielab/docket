@@ -17,7 +17,6 @@ import difflib
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote as _url_unquote
@@ -34,6 +33,7 @@ from docket.core import resources as _res
 from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
+from docket.kernel import clock as _clock
 
 # Bump when the pod-member templates change (doctor flags older members).
 # v3: built-in/starter AGENTS.md templates no longer instruct a private
@@ -335,7 +335,7 @@ def _write_member_workspace(
         "stack": stack,
         "model": member.model,
         "description": description,
-        "created": datetime.now(UTC).isoformat(),
+        "created": _clock.iso(),
         "sessionKey": member.session_key,
         "projectKey": project_key,
         "templateVersion": str(POD_TEMPLATE_VERSION),
@@ -671,7 +671,7 @@ def prune_task_worktrees(
         entries.append(_prune_one(project, task, force=force, dry_run=dry_run))
     pruned = {e.task_id for e in entries if e.action == "removed"}
     if pruned:
-        stamp = datetime.now(UTC).isoformat()
+        stamp = _clock.iso()
 
         def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
             for t in doc.get("tasks") or []:

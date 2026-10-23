@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt
 import sys
 from pathlib import Path
 from typing import Any, Literal
@@ -24,6 +23,7 @@ from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod_core
 from docket.core import pod_apply as _pod_apply
 from docket.core.audit import audit_log
+from docket.kernel import clock as _clock
 
 
 def _stdin_is_tty() -> bool:
@@ -166,7 +166,7 @@ def _flush_notify_after_dispatch() -> None:
     from docket.core import notify as _notify
     from docket.edges.adapters import channels as _channels
 
-    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = _clock.stamp()
     report = _notify.flush(
         list(_channel.load_catalog().entries.values()), _channels.sink_for, now=now
     )

@@ -27,6 +27,8 @@ from typing import Any, Literal
 import docket.config as _cfg
 from docket.edges.adapters import system as _system
 from docket.edges.adapters.system import SandboxAvailability, SandboxBackend
+from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 
 SandboxMode = Literal["off", "auto"]
 
@@ -72,10 +74,7 @@ def _truncate(text: str, limit: int | None = None) -> str:
     # Resolved per call, not bound as a default argument, so the ceiling stays
     # a live setting rather than whatever it happened to be at import time.
     limit = MAX_OUTPUT_CHARS if limit is None else limit
-    if len(text) <= limit:
-        return text
-    dropped = len(text) - limit
-    return f"{text[:limit]}\n\n[truncated: {dropped} more characters]"
+    return _text.cut_output(text, limit)
 
 
 def resolve_within(roots: tuple[Path, ...], candidate: str) -> Path:
@@ -509,7 +508,7 @@ def _wait_cancellable(
     reader = threading.Thread(target=_drain, daemon=True)
     reader.start()
 
-    deadline = time.monotonic() + timeout
+    deadline = _clock.monotonic() + timeout
     while True:
         # Checked before `reader.is_alive()`: an external kill (e.g. `docket task cancel`
         # signalling this same process group directly) can make the reader see EOF and
@@ -523,7 +522,7 @@ def _wait_cancellable(
             reader.join()
             proc.wait()
             return False, False, drained[0] if drained else ""
-        remaining = deadline - time.monotonic()
+        remaining = deadline - _clock.monotonic()
         if remaining <= 0:
             return True, False, ""
         time.sleep(max(0.0, min(_CANCEL_POLL_INTERVAL_S, remaining)))

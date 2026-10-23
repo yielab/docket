@@ -13,6 +13,7 @@ import typer
 import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
+from docket.kernel import clock as _clock
 
 _GRACE_S = 15
 _ABANDON_S = 5
@@ -47,8 +48,8 @@ def is_running() -> bool:
 
 
 def _wait_gone(pid: int, seconds: float) -> bool:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
+    deadline = _clock.monotonic() + seconds
+    while _clock.monotonic() < deadline:
         if not _alive(pid):
             return True
         time.sleep(0.1)

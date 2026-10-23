@@ -42,7 +42,6 @@ record, so a separate CLI process and the executor share one authority.
 from __future__ import annotations
 
 import datetime as _dt
-import uuid as _uuid
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -53,6 +52,9 @@ import docket.config as _cfg
 from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
+from docket.kernel import clock as _clock
+from docket.kernel import ids as _ids
+from docket.kernel import text as _text
 
 RunSource = Literal["cli", "webhook", "schedule", "sweep", "mcp"]
 RunState = Literal[
@@ -150,7 +152,7 @@ class RunCancellationSignal:
                     return None
                 observed = CancellationLifecycle(
                     requested_at=lifecycle.requested_at,
-                    observed_at=_now(),
+                    observed_at=_clock.iso(),
                     stopped_at=lifecycle.stopped_at,
                     reason=lifecycle.reason,
                     source=lifecycle.source,
@@ -178,10 +180,6 @@ class CancelOutcome:
 
 class RunError(Exception):
     """Raised for an invalid run source/state or other misuse of this API."""
-
-
-def _now() -> str:
-    return _dt.datetime.now(_dt.UTC).isoformat()
 
 
 def _epoch_from_iso(ts: str) -> float | None:
@@ -286,13 +284,13 @@ def create_run(
         raise RunError("create_run: project is required")
 
     record: dict[str, Any] = {
-        "id": f"run-{_uuid.uuid4()}",
+        "id": _ids.new_id("run"),
         "source": source,
         "project": project,
         "state": "queued",
         "taskIds": [],
         "error": "",
-        "created": _now(),
+        "created": _clock.iso(),
         "startedAt": None,
         "finishedAt": None,
         # pids of any hop subprocess currently in flight for this run —
@@ -324,7 +322,7 @@ def mark_running(run_id: str) -> bool:
                 if str(r.get("state", "")) != "queued":
                     return None
                 r["state"] = "running"
-                r["startedAt"] = _now()
+                r["startedAt"] = _clock.iso()
                 applied = True
                 return {"runs": runs}
         return None
@@ -364,7 +362,7 @@ def _finish_run_transition(
             source = str(r.get("source", ""))
             lifecycle, valid_lifecycle = _cancellation_lifecycle(r)
             if valid_lifecycle and lifecycle.requested:
-                stopped_at = _now()
+                stopped_at = _clock.iso()
                 observed_at = lifecycle.observed_at or stopped_at
                 observed_now = lifecycle.observed_at is None
                 _set_cancellation_lifecycle(
@@ -385,7 +383,7 @@ def _finish_run_transition(
                 stopped_now = True
                 return {"runs": runs}
             r["state"] = state
-            r["finishedAt"] = _now()
+            r["finishedAt"] = _clock.iso()
             r["error"] = error
             if task_ids is not None:
                 r["taskIds"] = list(task_ids)
@@ -447,7 +445,7 @@ def prune_terminal(
     # is kept, never guessed at. Sharing TRACE_RETENTION_S with core/trace.py's own
     # expiry keeps every docket-owned store bounded by one operator-facing knob.
     window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
-    cutoff = (now if now is not None else _dt.datetime.now(_dt.UTC).timestamp()) - window
+    cutoff = (now if now is not None else _clock.epoch()) - window
     removed = 0
 
     def _eligible(rec: dict[str, Any]) -> bool:
@@ -564,7 +562,7 @@ def cancel_run(run_id: str) -> CancelOutcome:
             pids_raw = rec.get("pids")
             if isinstance(pids_raw, list):
                 pids = [pid for pid in pids_raw if isinstance(pid, int) and pid > 0]
-            requested_at = _now()
+            requested_at = _clock.iso()
             stopped_at = requested_at if prior_state == "queued" else None
             _set_cancellation_lifecycle(
                 rec,
@@ -658,10 +656,8 @@ def _emit_cancellation_trace(project: str, run_id: str, source: str, event_type:
 
 def _bounded_failure_field(value: object, *, limit: int, fallback: str) -> str:
     """Normalize one operator-facing field without serializing its source object."""
-    normalized = " ".join(str(value).split()) or fallback
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 1] + "…"
+    normalized = _text.one_line(str(value)) or fallback
+    return _text.ellipsize(normalized, limit)
 
 
 def _returned_failure_summary(failures: list[Any]) -> str:

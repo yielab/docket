@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +22,7 @@ from typing import Any
 import docket.config as _cfg
 import docket.plugins as _api
 from docket.core.audit import audit_log
+from docket.kernel import clock as _clock
 
 DEFAULT_BUDGET_MS = 250
 
@@ -116,13 +116,13 @@ def evaluate(
     """Run *pred* and return ``(verdict, reason)``; never raises. A raise, a non-bool return, or
     exceeding *budget_ms* (measured wall clock around the call) all deny with a *reason*; a
     normal ``bool`` return carries ``reason=""``. Always audits one ``policy.plugin`` entry."""
-    start = time.perf_counter()
+    start = _clock.monotonic()
     try:
         result = pred.fn(call, ctx, **with_)
     except Exception as exc:
         verdict, reason = False, f"raised {type(exc).__name__}: {exc}"
     else:
-        elapsed_ms = (time.perf_counter() - start) * 1000
+        elapsed_ms = (_clock.monotonic() - start) * 1000
         if elapsed_ms > budget_ms:
             verdict, reason = False, f"exceeded {budget_ms} ms"
         elif not isinstance(result, bool):

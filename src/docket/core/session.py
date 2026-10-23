@@ -14,7 +14,6 @@ unchanged and ``ok=False`` is reported. ``plan_compaction`` budgets against the 
 from __future__ import annotations
 
 import contextlib
-import datetime as _dt
 import json
 import os
 from collections.abc import Callable, Sequence
@@ -31,6 +30,8 @@ from docket.core import context as _context
 from docket.core.llm import ChatMessage, Role, TokenUsage, ToolCall
 from docket.core.runtime_driver import FailureKind, TurnResult
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 
 __all__ = [
     "HISTORY_FULL_RESULTS_CHARS",
@@ -158,10 +159,6 @@ def _decode(sm: StoredMessage) -> ChatMessage:
     )
 
 
-def _utc_now() -> str:
-    return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 # ── storage paths ─────────────────────────────────────────────────────────────
 
 
@@ -214,7 +211,7 @@ def append_messages(
     """Atomically append *messages* (and optional measured *usage*) to *session_key*'s durable
     history, creating the session if absent. One locked ``read_modify_write``, so two concurrent
     appends to the *same* key can never interleave and drop messages."""
-    stamp = now or _utc_now()
+    stamp = now or _clock.stamp()
     path = _session_path(session_key, sessions_dir)
     _ensure_session_dir(path)
 
@@ -264,7 +261,7 @@ def _call_target(args: dict[str, Any] | None) -> str:
         value = (args or {}).get(key)
         if isinstance(value, str) and value.strip():
             line = value.strip().splitlines()[0]
-            return line if len(line) <= _TARGET_CHARS else line[: _TARGET_CHARS - 3] + "..."
+            return _text.ellipsize(line, _TARGET_CHARS, "...")
     return ""
 
 
@@ -916,7 +913,7 @@ def compact_session(
         summary_input_budget_tokens if summary_input_budget_tokens is not None else role_budget
     )
     turn_timeout = timeout if timeout is not None else _cfg.DISTILL_TIMEOUT_S
-    stamp = now or _utc_now()
+    stamp = now or _clock.stamp()
     display_label = label or session_key
     path = _session_path(session_key, sessions_dir)
     _ensure_session_dir(path)

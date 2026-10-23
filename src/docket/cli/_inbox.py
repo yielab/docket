@@ -6,7 +6,6 @@ A plain call advances a durable cursor so a repeat call shows only newly finishe
 
 from __future__ import annotations
 
-import datetime as _dt
 from typing import Any
 
 import typer
@@ -19,6 +18,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import inbox as _inbox
 from docket.core.operator_contract import ApprovalView, InboxView, TaskView
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
 
 APPROVED_READY = "approved_ready"
 NEEDS_MEMORY = "needs_memory_approval"
@@ -31,10 +31,6 @@ _TASK_STATES = {
     "done": ("done", "docket task show {id}"),
     "running": ("running", "docket task show {id}"),
 }
-
-
-def _utc_now() -> str:
-    return _dt.datetime.now(_dt.UTC).isoformat()
 
 
 def _read_cursor() -> str | None:
@@ -184,7 +180,9 @@ def cmd_inbox(
 
     Example: docket inbox --peek
     """
-    view = _inbox.build_inbox(now=_utc_now(), since=since if since is not None else _read_cursor())
+    view = _inbox.build_inbox(
+        now=_clock.iso(), since=since if since is not None else _read_cursor()
+    )
     if not peek and since is None and view.next:
         _write_cursor(view.next)
     ready = _approved_ready_tasks()

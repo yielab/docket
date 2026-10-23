@@ -12,15 +12,16 @@ import hashlib
 import json
 import queue
 import threading
-import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 import docket.config as _cfg
 from docket.core import exporter as _exporter
 from docket.core import trace
+from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 
 AttrValue = str | int | bool
 Attributes = dict[str, AttrValue]
@@ -91,16 +92,6 @@ def _granted(policy: ExportPolicy, cls: str) -> bool:
     """The one function that decides whether a content attribute of class *cls* may be
     set -- nothing else in this module checks ``policy.classes`` directly."""
     return cls in policy.classes
-
-
-def _truncate(text: str, max_chars: int) -> str:
-    """Cut *text* to *max_chars*, appending a marker naming how many characters were cut.
-    Never silently drops content, and the result is always a valid string to embed in a
-    JSON attribute (ADR 0015 §2 rule 5)."""
-    if max_chars <= 0 or len(text) <= max_chars:
-        return text
-    cut = len(text) - max_chars
-    return f"{text[:max_chars]}…[truncated {cut} chars]"
 
 
 # Every attribute a handler can emit that is NOT bare structure, mapped to its content
@@ -221,7 +212,7 @@ def _bound_part(part: dict[str, Any], max_chars: int) -> dict[str, Any]:
     for key in _PART_TEXT_FIELDS:
         value = out.get(key)
         if isinstance(value, str):
-            out[key] = _truncate(value, max_chars)
+            out[key] = _text.cut_chars(value, max_chars)
     return out
 
 
@@ -343,7 +334,7 @@ def _parse_ts(ts: str) -> datetime:
     try:
         return datetime.fromisoformat(text)
     except ValueError:
-        return datetime.now(UTC)
+        return _clock.now()
 
 
 def _format_ts(moment: datetime) -> str:
@@ -432,7 +423,7 @@ def _handle_llm_call(
     if _granted(policy, "instructions"):
         instructions = payload.get("systemInstructions")
         if isinstance(instructions, str) and instructions:
-            attributes["gen_ai.system_instructions"] = _truncate(
+            attributes["gen_ai.system_instructions"] = _text.cut_chars(
                 instructions, policy.content_max_chars
             )
         elif isinstance(instructions, list):
@@ -493,11 +484,13 @@ def _fold_session_content(root: _OpenSpan, payload: dict[str, Any], policy: Expo
     if _granted(policy, "prompts") and "docket.session.input" not in root.attributes:
         asked = _text_parts(payload.get("inputMessages"), "user")
         if asked:
-            root.attributes["docket.session.input"] = _truncate(asked[0], policy.content_max_chars)
+            root.attributes["docket.session.input"] = _text.cut_chars(
+                asked[0], policy.content_max_chars
+            )
     if _granted(policy, "completions"):
         answered = _text_parts(payload.get("outputMessages"), "assistant")
         if answered:
-            root.attributes["docket.session.output"] = _truncate(
+            root.attributes["docket.session.output"] = _text.cut_chars(
                 answered[-1], policy.content_max_chars
             )
 
@@ -514,7 +507,9 @@ def _handle_tool_call(
     attributes: Attributes = {"gen_ai.tool.name": tool, "gen_ai.tool.call.id": call_id}
     arguments = payload.get("arguments")
     if _granted(policy, "toolArguments") and isinstance(arguments, str) and arguments:
-        attributes["gen_ai.tool.call.arguments"] = _truncate(arguments, policy.content_max_chars)
+        attributes["gen_ai.tool.call.arguments"] = _text.cut_chars(
+            arguments, policy.content_max_chars
+        )
     state.stacks[session_id].append(
         _OpenSpan(
             span_id=_span_id(session_id, "tool_call", key),
@@ -577,7 +572,9 @@ def _handle_tool_result(
     if not isinstance(result_text, str):
         result_text = payload.get("output")
     if _granted(policy, "toolResults") and isinstance(result_text, str) and result_text:
-        attributes["gen_ai.tool.call.result"] = _truncate(result_text, policy.content_max_chars)
+        attributes["gen_ai.tool.call.result"] = _text.cut_chars(
+            result_text, policy.content_max_chars
+        )
     return [
         Span(
             trace_id=_trace_id(session_id),
@@ -654,7 +651,7 @@ def _handle_generic_event(
         payload_key, attr_name, cls = content
         value = payload.get(payload_key)
         if _granted(policy, cls) and isinstance(value, str) and value:
-            attributes[attr_name] = _truncate(value, policy.content_max_chars)
+            attributes[attr_name] = _text.cut_chars(value, policy.content_max_chars)
     target.events.append(
         SpanEvent(
             name=event_type,
@@ -744,10 +741,6 @@ def flush_open(state: ProjectionState) -> list[Span]:
 # Everything below is deliberately impure -- a queue, a thread, a module-level registry -- unlike
 # the projection/policy above it. `Pipeline` never imports `edges/`: it receives an already-built
 # `SpanSink` object and never constructs one itself (`edges/adapters/exporters` does that).
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # Matched structurally against edges/adapters/exporters/otlp_http.py::SinkResult's field names,
@@ -934,7 +927,7 @@ class Pipeline:
             with self._stats_lock:
                 self._stats.failed += len(batch)
                 self._stats.last_error = str(exc)
-                self._stats.last_error_at = _now_iso()
+                self._stats.last_error_at = _clock.stamp()
             return
         accepted = max(0, min(int(result.accepted), len(batch)))
         with self._stats_lock:
@@ -943,9 +936,9 @@ class Pipeline:
                 self._stats.failed += len(batch) - accepted
             if result.error:
                 self._stats.last_error = result.error
-                self._stats.last_error_at = _now_iso()
+                self._stats.last_error_at = _clock.stamp()
             elif accepted:
-                self._stats.last_ok = _now_iso()
+                self._stats.last_ok = _clock.stamp()
 
 
 SinkFactory = Callable[[Any, list[str]], SpanSink]
@@ -1005,7 +998,7 @@ def start(specs: Sequence[Any], sink_for: SinkFactory) -> int:
                 content_max_chars=spec.content_max_chars,
             )
             _REGISTRY[spec.name] = Pipeline(
-                sink, policy, queue_max=_cfg.EXPORT_QUEUE_MAX, clock=time.monotonic
+                sink, policy, queue_max=_cfg.EXPORT_QUEUE_MAX, clock=_clock.monotonic
             )
             started += 1
         if started:

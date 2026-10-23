@@ -10,6 +10,7 @@ from typing import Any
 
 import docket.config as _cfg
 from docket.core import trace as _trace
+from docket.kernel import clock as _clock
 
 __all__ = ["read", "record", "utc_cursor", "utc_z"]
 
@@ -27,9 +28,8 @@ def record(
     _now: str | None = None,
 ) -> None:
     """Append one correction record. Text is redacted and tail-bounded to 4000 chars."""
-    from docket.core import dispatch as _dispatch
 
-    ts = _now or _dispatch._now()
+    ts = _now or _clock.iso()
 
     # Redact sensitive text
     redacted_text = _trace.redact(text)

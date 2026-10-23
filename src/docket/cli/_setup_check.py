@@ -30,6 +30,7 @@ from docket.core import secrets as _secrets
 from docket.core.utils import aggregate_cost, gating_cost, project_ids
 from docket.edges import store
 from docket.edges.adapters import system as _sys
+from docket.kernel import clock as _clock
 
 TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
 RUNAWAY_TURNS_THRESHOLD = _cfg.RUNAWAY_TURNS_THRESHOLD
@@ -705,7 +706,7 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
     if not keys:
         return []
     meta = _secrets.load_secrets_meta()
-    now = _dt.datetime.now(_dt.UTC)
+    now = _clock.now()
 
     def parse(ts: str) -> _dt.datetime | None:
         try:

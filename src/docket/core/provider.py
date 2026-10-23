@@ -22,7 +22,6 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -31,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 import docket.config as _cfg
 from docket.core.llm import ModelLimits
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
 
 if TYPE_CHECKING:
     from docket.edges.adapters.llm import ProbeResult
@@ -495,10 +495,6 @@ def resolve_limits(spec: ProviderSpec, model_id: str) -> ResolvedLimits:
     return ResolvedLimits(window, output, window_source, output_source, when)
 
 
-def _today() -> str:
-    return datetime.now(UTC).date().isoformat()
-
-
 def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
     """Replace *spec*'s observed models with what *probe* advertised, dated today. A probe that
     is not a 200 records nothing and leaves an earlier observation alone. The only writer of
@@ -512,7 +508,7 @@ def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
         }
         for model_id in sorted(set(probe.model_ids) | set(probe.limits))
     }
-    entry = {"observedAt": _today(), "models": models}
+    entry = {"observedAt": _clock.today_iso(), "models": models}
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:
         providers = current.get("providers")
@@ -530,7 +526,7 @@ def refresh_observed_models_due() -> list[str]:
     catalog = load_catalog()
     refreshed: list[str] = []
     for name in sorted(catalog.entries):
-        if catalog.source_of(name) != "global" or observed_at(name) == _today():
+        if catalog.source_of(name) != "global" or observed_at(name) == _clock.today_iso():
             continue
         spec = catalog.entries[name]
         try:

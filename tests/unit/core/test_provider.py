@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -21,10 +22,24 @@ import docket.config as _cfg
 from docket.core import provider as _provider
 from docket.core.llm import ModelLimits
 from docket.edges.adapters.llm import ProbeResult
+from docket.kernel.clock import use_clock
 
 SUBJECT = "docket.core.provider"
 
 _LITERAL_PROVIDER_NAMES = ("anthropic", "openai")
+
+
+class _Day:
+    """A clock stopped at midnight UTC of the given day in January 1970."""
+
+    def __init__(self, day: int) -> None:
+        self._moment = datetime(1970, 1, day, tzinfo=UTC)
+
+    def now(self) -> datetime:
+        return self._moment
+
+    def monotonic(self) -> float:
+        return self._moment.timestamp()
 
 
 class TestNoProviderNameLiteralOutsideTheCatalog:
@@ -261,12 +276,12 @@ class TestRefreshObservedModelsDue:
         self, probes: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _provider.save_provider(_spec("gw"))
-        monkeypatch.setattr(_provider, "_today", lambda: "1970-01-01")
-        _provider.refresh_observed_models_due()
+        with use_clock(_Day(1)):
+            _provider.refresh_observed_models_due()
         assert _provider.observed_at("gw") == "1970-01-01"
-        monkeypatch.setattr(_provider, "_today", lambda: "1970-01-02")
         monkeypatch.setattr(_provider, "probe_spec", lambda spec: _probe(("m", 9, None)))
-        assert _provider.refresh_observed_models_due() == ["gw"]
+        with use_clock(_Day(2)):
+            assert _provider.refresh_observed_models_due() == ["gw"]
         assert _provider.observed_limits("gw", "m") == ModelLimits(9, None)
 
     def test_a_failing_probe_is_skipped_without_stopping_the_rest(
