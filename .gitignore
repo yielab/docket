@@ -72,3 +72,7 @@ dist/
 
 # mkdocs build output (CI rebuilds with --strict; never committed, like dist/)
 site/
+
+# Phase 46: analyze.py output, regenerated on demand (the mapping refactor/target-map.toml is tracked)
+/refactor/analysis.json
+/refactor/analysis.md
