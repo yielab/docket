@@ -16,13 +16,13 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
-from docket.agent.handoff import HandoffArtifact
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.application import record as _record
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, Refused
+from docket.kernel.handoff import HandoffArtifact
 from docket.observability import trace as _trace
 from docket.operator.contract import (
     AnswerResult,
@@ -39,6 +39,8 @@ from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import transitions as _transitions
+from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -148,7 +150,8 @@ def _append_answer(
     ts: str,
     option_id: str | None = None,
 ) -> None:
-    """Append one entry to the task's durable ``answers[]`` and clear its ``question``."""
+    """Append one entry to the task's durable ``answers[]`` and clear its ``question``. The entry
+    keeps the question's ``kind`` and ``createdAt``, which nothing else retains once it is cleared."""
     answers_raw = t.get("answers")
     answers = list(answers_raw) if isinstance(answers_raw, list) else []
     answers.append(
@@ -161,6 +164,9 @@ def _append_answer(
             "channel": channel,
             "actor": actor,
             "answeredAt": ts,
+            # The question is cleared below; the metrics read its kind and age from here.
+            "kind": getattr(question, "kind", "clarification"),
+            "createdAt": question.created_at,
             **({"optionId": option_id} if option_id else {}),
         }
     )
@@ -197,8 +203,7 @@ def _answer_consult(
         "questionId": question.id,
         "text": _consult.answer_text(question, answer, body),
     }
-    t["status"] = "pending"
-    t.pop("blockedReason", None)
+    _transitions.apply_to_task(t, _state.Status.pending)
     return question
 
 
@@ -259,17 +264,16 @@ def _apply_route_outcome(
     t["hops"] = new_hops
 
     if terminal in ("failed", "done"):
-        t["status"] = terminal
         target_word = "fail" if terminal == "failed" else "stop"
-        t["reason"] = (
-            f"step {node.step_id!r} outcome {outcome_label.upper()} routed to {target_word}"
+        _transitions.apply_to_task(
+            t,
+            _state.Status(terminal),
+            now=ts,
+            reason=f"step {node.step_id!r} outcome {outcome_label.upper()} routed to {target_word}",
+            keep_grants=True,
         )
-        t["completedAt"] = ts
-        t["claimId"] = None
-        t.pop("failureKind", None)
     else:
-        t["status"] = "pending"
-        t.pop("blockedReason", None)
+        _transitions.apply_to_task(t, _state.Status.pending)
 
 
 def _parked_task_pipeline(project: str, task_id: str) -> Any:
@@ -436,10 +440,12 @@ def sweep_expired_questions(now: str | None = None) -> int:
                 exp_dt = _clock.parse_iso(str(expires_at))
                 if exp_dt is None or exp_dt > now_dt:
                     continue
-                t["status"] = "blocked"
-                t["blockedReason"] = "input_expired"
-                t["reason"] = f"question {question.get('id', '')!r} expired unanswered"
-                t.pop("question", None)
+                _transitions.apply_to_task(
+                    t,
+                    _state.Status.blocked,
+                    reason=f"question {question.get('id', '')!r} expired unanswered",
+                    blocked_reason="input_expired",
+                )
                 _expired.append((str(t.get("id", "")), str(question.get("id", ""))))
                 changed = True
             return {"tasks": tasks} if changed else None

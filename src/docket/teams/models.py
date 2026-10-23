@@ -52,7 +52,7 @@ class AgentMeta(BaseModel):
     created: str = ""
     session_key: str = Field("", alias="sessionKey")
     project_key: str = Field("", alias="projectKey")
-    budget_usd: float | None = Field(None, alias="budgetUsd")
+    budget_usd: float | None = Field(None, alias="budgetUsd", ge=0)
     paused: bool = False
     paused_reason: str = Field("", alias="pausedReason")
 

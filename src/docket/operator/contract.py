@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from docket.kernel import ids as _ids
+from docket.kernel.brief import TaskBrief as TaskBrief
 from docket.kernel.errors import InvalidInput
 
 A2AState = Literal[
@@ -62,41 +63,6 @@ def a2a_state(
     if status == "cancelled":
         return "CANCELED"
     raise InvalidInput(f"unknown task status: {status!r}")
-
-
-def _validate_resource(value: str) -> str:
-    if value == "verify" or value.startswith("secret:") or value.startswith("path:"):
-        return value
-    raise InvalidInput(f"resource must be 'verify' or start with 'secret:'/'path:': {value!r}")
-
-
-class TaskBrief(BaseModel):
-    """The Lead's typed intake output: objective, acceptance, what the Implementer needs,
-    and the resources a deterministic check must confirm before another turn runs."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    objective: str
-    acceptance: list[str] = Field(default_factory=list)
-    context: list[str] = Field(default_factory=list)
-    constraints: list[str] = Field(default_factory=list)
-    assumptions: list[str] = Field(default_factory=list)
-    questions: list[str] = Field(default_factory=list)
-    resources: list[str] = Field(default_factory=list)
-    expected_risky_actions: list[str] = Field(default_factory=list, alias="expectedRiskyActions")
-    answers: list[dict[str, Any]] = Field(default_factory=list)
-
-    @field_validator("objective")
-    @classmethod
-    def _objective_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise InvalidInput("objective must not be empty")
-        return v
-
-    @field_validator("resources")
-    @classmethod
-    def _resources_prefixed(cls, v: list[str]) -> list[str]:
-        return [_validate_resource(r) for r in v]
 
 
 def validate_requested_schema(d: dict[str, Any]) -> dict[str, Any]:

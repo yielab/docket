@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from docket.agent import handoff as _handoff
 from docket.kernel import clock as _clock
+from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
 from docket.kernel.errors import InvalidInput
 

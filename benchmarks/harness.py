@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 from urllib.parse import quote
 
-from docket.agent.handoff import HandoffArtifact
+from docket.kernel.handoff import HandoffArtifact
 
 SCHEMA_VERSION = "1.0.0"
 MAX_INPUT_BYTES = 16 * 1024 * 1024

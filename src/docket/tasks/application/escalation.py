@@ -9,7 +9,6 @@ when trace files expire or task records are deleted.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
@@ -58,13 +57,10 @@ def count_escalation_metrics() -> EscalationMetrics:
             if not isinstance(task_answers, list):
                 continue
 
-            # Get the question from the task to find its createdAt
+            # An answered question is gone from the task; its answer keeps the kind and
+            # createdAt. A record without them falls back to a question still on the task.
             question_rec = task.get("question")
-            question_created: datetime | None = None
-            if isinstance(question_rec, dict):
-                created_str = question_rec.get("createdAt", "")
-                if created_str:
-                    question_created = _clock.parse_iso(created_str)
+            question_rec = question_rec if isinstance(question_rec, dict) else {}
 
             for answer_rec in task_answers:
                 if not isinstance(answer_rec, dict):
@@ -74,15 +70,12 @@ def count_escalation_metrics() -> EscalationMetrics:
                     continue
 
                 action = answer_rec.get("action", "pending")
-                # Get kind from the question record if available
-                kind = "clarification"  # default
-                if isinstance(question_rec, dict):
-                    kind = question_rec.get("kind", "clarification")
-
+                kind = answer_rec.get("kind") or question_rec.get("kind", "clarification")
                 key = (kind, action)
                 questions[key] = questions.get(key, 0) + 1
 
-                # Calculate latency if we have both timestamps
+                created_str = answer_rec.get("createdAt") or question_rec.get("createdAt", "")
+                question_created = _clock.parse_iso(created_str) if created_str else None
                 if question_created:
                     answered_at = _clock.parse_iso(answered_at_str)
                     if answered_at is not None:

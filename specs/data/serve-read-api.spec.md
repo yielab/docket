@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 4.1.2
+**Version**: 4.1.3
 **Status**: Stable
 **Last Updated**: 2026-10-23
 
@@ -136,7 +136,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_turn_duration_seconds` | summary (`_sum`/`_count`, no quantiles) | Session wall-clock (`session_start` → `session_end`), fleet-wide, one sample per trace file that has both. `_sum`/`_count` gives the mean; no percentiles are invented. |
 | `docket_tasks_started_total` | counter | Dispatch task claims, counted from dispatch-sourced `session_start` trace events; a resumed task's second `session_start` (`"resumed": true`) is not counted. Trace-derived. |
 | `docket_questions_total{kind,outcome}` | counter | Operator questions by kind and outcome. An answered question counts under its task's `question.kind` (default `clarification`) and the answer's action (`accept`\|`decline`\|`cancel`); approvals count under `kind="approval"` with outcome `granted`\|`denied` (from the audit log's `approval.grant`/`approval.deny` entries) or `pending` (the pending approvals). |
-| `docket_decision_latency_seconds` | summary (`_sum`/`_count`, no quantiles) | Seconds from a task's `question.createdAt` to an answer's `answeredAt`, answered questions only, negative intervals skipped. |
+| `docket_decision_latency_seconds` | summary (`_sum`/`_count`, no quantiles) | Seconds from a question's `createdAt` to its answer's `answeredAt`, answered questions only, negative intervals skipped. An answer record carries the question's `kind` and `createdAt` (the task's `question` is cleared on answer); a record without them falls back to a question still on the task. |
 
 Additional metrics may be added in minor versions. Every metric is computed fresh, on every
 scrape, from durable state already on disk (trace JSONL under `traces/`, `audit.log`, the task

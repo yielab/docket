@@ -1,7 +1,7 @@
 """The real `files_changed`/`diff_ref` producer for an Implementer hop's artifact.
 
 `HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed fields
-(`agent/handoff.py`'s module docstring documents the seam). Covers: TestHopDiffProbeUnit
+(`kernel/handoff.py`'s module docstring documents the seam). Covers: TestHopDiffProbeUnit
 (`_hop_diff_probe` in isolation, with `edges/adapters/system.py`'s git calls
 monkeypatched out); TestDispatchPopulatesRealDiff (end to end through a real `dispatch_pod`
 claim against a real git repo: the hop's artifact carries the actual changed file and the

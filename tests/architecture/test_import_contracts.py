@@ -250,7 +250,7 @@ def test_every_layer_of_the_table_has_a_contract() -> None:
 _BITES: list[tuple[str, str, str, bool]] = [
     ("kernel", "docket.kernel.home", "docket.kernel.errors", True),
     ("kernel", "docket.kernel.home", "docket.platform.store", False),
-    ("domain", "docket.tasks.domain.task", "docket.tasks.domain.refs", True),
+    ("domain", "docket.tasks.domain.task", "docket.tasks.domain.state", True),
     ("domain", "docket.tasks.domain.task", "docket.tasks.application.queue", False),
     ("domain", "docket.tasks.domain.task", "docket.governance", False),
     ("application", "docket.tasks.application.queue", "docket.governance", True),

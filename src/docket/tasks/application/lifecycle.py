@@ -18,7 +18,9 @@ from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
 from docket.platform import read_modify_write
 from docket.tasks.application import runs as _runs
+from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.queue import _task_record
+from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import DispatchError, TaskNotFoundError, TaskResult, _normalize_task
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
@@ -40,39 +42,38 @@ def _apply_result(
     are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
     ``resolve_waiting_approval``/``tasks.application.answers.answer_task``. Stays pure -- HEARTBEAT.md sync
     lives in ``_finalize_task``."""
-    task["status"] = res.status
-    task["reason"] = res.reason
+    if res.status == _state.Status.waiting_input and (
+        res.question and not res.question.get("expiresAt") and input_expiry_hours
+    ):
+        deadline = _clock.now() + _dt.timedelta(hours=input_expiry_hours)
+        res.question["expiresAt"] = deadline.isoformat()
+    # A fresh ordinary terminal result (no failure kind) supersedes any stale-claim or
+    # settled-refusal marker left by an earlier attempt at this same task; a consult answer is
+    # delivered to the hop this result came from (``ran``).
+    _transitions.apply_to_task(
+        task,
+        _state.Status(res.status),
+        now=_clock.iso(),
+        reason=res.reason,
+        failure_kind=res.failure_kind,
+        blocked_reason=res.blocked_reason or res.reason,
+        approval_token=res.approval_token,
+        pending_index=res.pending_approval_index,
+        question=res.question,
+        ran=True,
+    )
     task["hops"] = [_hop_record(h) for h in res.hops]
     task["costUsd"] = res.cost_usd
-    task["claimId"] = None
-    task.pop("claimPid", None)
-    task.pop("consultAnswer", None)  # delivered to the hop this result came from
     if res.check_changed:
         task["checkChanged"] = list(res.check_changed)
     else:
         task.pop("checkChanged", None)
-    if res.status == "blocked":
-        task["blockedReason"] = res.blocked_reason or res.reason
-    elif res.status == "waiting_approval":
-        task["approvalToken"] = res.approval_token
-        task["pendingApprovalIndex"] = res.pending_approval_index
-    elif res.status == "waiting_input":
-        task["question"] = res.question
-        if res.question and not res.question.get("expiresAt") and input_expiry_hours:
-            deadline = _clock.now() + _dt.timedelta(hours=input_expiry_hours)
-            res.question["expiresAt"] = deadline.isoformat()
-        if res.question and res.question.get("kind") in ("clarification", "decision"):
-            task["consultations"] = int(task.get("consultations") or 0) + 1
-    else:
-        task["completedAt"] = _clock.iso()
-        task.pop("taskGrants", None)
-        if res.failure_kind:
-            task["failureKind"] = res.failure_kind
-        else:
-            # A fresh ordinary terminal result supersedes any stale-claim
-            # (or settled-refusal) marker left by an earlier attempt at
-            # this same task.
-            task.pop("failureKind", None)
+    if (
+        res.status == _state.Status.waiting_input
+        and res.question
+        and res.question.get("kind") in ("clarification", "decision")
+    ):
+        task["consultations"] = int(task.get("consultations") or 0) + 1
 
 
 def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
@@ -132,10 +133,12 @@ def _sweep_stale_claims(project: str) -> None:
                 continue
             if (now - claimed_at).total_seconds() <= current_home().claim_stale_timeout:
                 continue
-            t["status"] = "failed"
-            t["reason"] = "stale claim — dispatcher likely crashed mid-task"
-            t["failureKind"] = "stale_claim"
-            t["claimId"] = None
+            _transitions.apply_to_task(
+                t,
+                _state.Status.failed,
+                reason="stale claim — dispatcher likely crashed mid-task",
+                failure_kind=_state.FailureKind.stale_claim,
+            )
             swept.append(dict(t))
             changed = True
         return {"tasks": tasks} if changed else None
@@ -189,10 +192,12 @@ def reclaim_stale_running(project: str) -> None:
             why = _claim_stale_reason(t, now, lease_s)
             if not why:
                 continue
-            t["status"] = "failed"
-            t["reason"] = "stale claim — " + why
-            t["failureKind"] = "stale_claim"
-            t["claimId"] = None
+            _transitions.apply_to_task(
+                t,
+                _state.Status.failed,
+                reason="stale claim — " + why,
+                failure_kind=_state.FailureKind.stale_claim,
+            )
             reclaimed.append((str(t.get("id", "task")), why))
             changed = True
         return {"tasks": tasks} if changed else None
@@ -216,9 +221,7 @@ def retry_task(project: str, task_id: str) -> bool:
                 _normalize_task(t)
                 if t.get("status") not in ("blocked", "failed"):
                     return None
-                t["status"] = "pending"
-                for key in ("blockedReason", "failureKind", "reason", "completedAt"):
-                    t.pop(key, None)
+                _transitions.apply_to_task(t, _state.Status.pending, retry=True)
                 found = True
                 return {"tasks": tasks}
         return None
@@ -250,12 +253,9 @@ def cancel_parked_task(
                 return None
             prior = str(t["status"])
             token = str(t.get("approvalToken") or "")
-            for key in ("question", "approvalToken", "pendingApprovalIndex", "taskGrants"):
-                t.pop(key, None)
-            t["status"] = "cancelled"
-            t["reason"] = "cancelled by operator"
-            t["completedAt"] = _clock.iso()
-            t["claimId"] = None
+            _transitions.apply_to_task(
+                t, _state.Status.cancelled, now=_clock.iso(), reason="cancelled by operator"
+            )
             return {"tasks": tasks}
         return None
 
@@ -403,8 +403,7 @@ def unblock_pod(project: str) -> int:
         for t in tasks:
             _normalize_task(t)
             if t.get("status") == "blocked":
-                t["status"] = "pending"
-                t.pop("blockedReason", None)
+                _transitions.apply_to_task(t, _state.Status.pending)
                 count += 1
                 changed = True
         return {"tasks": tasks} if changed else None

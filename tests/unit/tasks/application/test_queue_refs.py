@@ -13,12 +13,13 @@ import pytest
 from docket.hops.application import runner as _runner
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import queue as _task_ref
 from docket.tasks.application import runs as _runs
-from docket.tasks.domain import refs as _task_ref
+from docket.tasks.domain import refs as _task_ref_types
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.tasks.domain.refs"
+SUBJECT = "docket.tasks.application.queue"
 
 
 @pytest.fixture()
@@ -80,7 +81,7 @@ class TestResolveTask:
         assert ref.session_key == _runner.step_session_key("a-lead", "a", ref.task_id, "lead")
 
     def test_ambiguous_prefix_lists_every_candidate_with_its_pod(self, two_pods: None) -> None:
-        with pytest.raises(_task_ref.TaskRefError) as exc:
+        with pytest.raises(_task_ref_types.TaskRefError) as exc:
             _task_ref.resolve_task(None, "task-04ff")
         text = str(exc.value)
         assert "task-04ff2ff5-7be8-aaaa (pod a)" in text
@@ -91,15 +92,15 @@ class TestResolveTask:
         assert _task_ref.resolve_task("b", "task-04ff").project == "b"
 
     def test_unknown_reference_names_what_was_searched(self, two_pods: None) -> None:
-        with pytest.raises(_task_ref.TaskRefError) as exc:
+        with pytest.raises(_task_ref_types.TaskRefError) as exc:
             _task_ref.resolve_task(None, "task-zzzz")
         assert "task-zzzz" in str(exc.value)
         assert "a, b" in str(exc.value)
-        with pytest.raises(_task_ref.TaskRefError, match="pod a"):
+        with pytest.raises(_task_ref_types.TaskRefError, match="pod a"):
             _task_ref.resolve_task("a", "task-zzzz")
 
     def test_empty_reference_is_refused(self, two_pods: None) -> None:
-        with pytest.raises(_task_ref.TaskRefError):
+        with pytest.raises(_task_ref_types.TaskRefError):
             _task_ref.resolve_task(None, "  ")
 
 
@@ -128,7 +129,7 @@ class TestRunIds:
             task_id = _queue.read_tasks("b")[0]["id"]
             run = _runs.create_run("cli", "b")
             _runs.finish_run(run["id"], state="succeeded", task_ids=[task_id])
-            with pytest.raises(_task_ref.TaskRefError, match="pod b"):
+            with pytest.raises(_task_ref_types.TaskRefError, match="pod b"):
                 _task_ref.resolve_task("a", run["id"])
-            with pytest.raises(_task_ref.TaskRefError):
+            with pytest.raises(_task_ref_types.TaskRefError):
                 _task_ref.resolve_task(None, "run-nope")

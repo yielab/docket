@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from docket.agent import context as _ctx
-from docket.agent import handoff as _handoff
 from docket.agent import ports as _rd
 from docket.hops.application.record import (
     _gate_did_not_pass,
@@ -19,6 +18,7 @@ from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_
 from docket.hops.workspace import repo_map as _repo_map
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
+from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.operator import contract as _oc
 from docket.pipeline.domain import gates as _gates

@@ -19,7 +19,8 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 _RUNTIME_FILES = (
     "__init__.py",
     "agent/__init__.py",
-    "agent/handoff.py",
+    "kernel/handoff.py",
+    "kernel/brief.py",
     "agent/llm.py",
     "agent/ports.py",
     "agent/skills.py",

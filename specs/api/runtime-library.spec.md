@@ -274,7 +274,7 @@ compact example.
 - `src/docket/agent/llm.py`: `TokenUsage` (`total_tokens`, `counted_tokens`), `ToolCall`, `ToolSpec`
 - `src/docket/governance/approval.py`: the approval store the stub answers
 - `src/docket/observability/trace.py`: `trace_event`
-- `src/docket/agent/handoff.py`: `HandoffArtifact`
+- `src/docket/kernel/handoff.py`: `HandoffArtifact`
 - `src/docket/agent/tools/builtins/toolbox.py`: `ToolOutcome`
 - `tests/agent/release/test_runtime_package_boundary.py`: artifact boundary oracle
 - `tests/agent/release/test_runtime_adapter_parity.py`, `tests/agent/release/test_runtime_openhands_adapter.py`: adapter parity

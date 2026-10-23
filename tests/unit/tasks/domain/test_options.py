@@ -6,13 +6,24 @@ from typing import Any
 
 import pytest
 
+from docket.governance import policy as _policy
+from docket.hops.workspace import prepare as _prepare
 from docket.tasks.domain import options as _to
+from docket.teams.settings import builtin_tool_names
 
 SUBJECT = "docket.tasks.domain.options"
 
 
+# The rules the enqueue path hands in: the real tool names, policy check and prepare check.
+_RULES = _to.OptionRules(
+    known_tools=builtin_tool_names(),
+    check_policy=_policy.task_policy_document,
+    check_prepare=_prepare.check_command,
+)
+
+
 def _ok(**kw: Any) -> _to.TaskOptions:
-    return _to.validate_task_options(**kw)
+    return _to.validate_task_options(rules=_RULES, **kw)
 
 
 def test_unset_fields_are_omitted_from_the_record() -> None:

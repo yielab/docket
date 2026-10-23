@@ -8,9 +8,15 @@ from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
+from docket.teams import roles as _roles
 from docket.teams import utils as _utils
 
 DEFAULT_TIMEOUT = 300
+
+
+def builtin_tool_names() -> frozenset[str]:
+    """The built-in tool names a task restriction may deny."""
+    return frozenset(_roles.BUILTIN_TOOL_KINDS)
 
 
 def pod_task_list_path(project: str) -> Path:

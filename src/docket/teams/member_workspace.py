@@ -207,7 +207,7 @@ def _write_member_workspace(
         meta["workspaceKind"] = "workdir"
         meta["workDir"] = work_dir
     if budget_usd is not None and member.role == "lead":
-        meta["budgetUsd"] = str(budget_usd)
+        meta["budgetUsd"] = float(budget_usd)
     meta_file = ws / current_home().meta_file
     write_json(meta_file, meta)
 

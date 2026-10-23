@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from docket.agent import conversations as _conv
-from docket.agent import handoff as _handoff
 from docket.agent import memory as _mem
 from docket.agent import ports as _rd
 from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
+from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace

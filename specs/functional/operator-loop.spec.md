@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-23
@@ -405,8 +405,9 @@ failure as a failed `DeliveryResult` without raising.
    with options) and screen every string value in *content* through the Lead's `pre_input`
    policy hook as untrusted input, where a `block` raises `AnswerRejected` naming the policy and
    writes nothing. On success it MUST append the answer to the task's `answers[]` (question id,
-   step, message, action, content, channel, actor, `answeredAt`, and `optionId` when given),
-   clear the task's `question`, and audit `task.answer` (never the content).
+   step, message, action, content, channel, actor, `answeredAt`, the question's `kind` and
+   `createdAt` (the answered question is cleared, so the answer is the only record of them), and
+   `optionId` when given), clear the task's `question`, and audit `task.answer` (never the content).
 2. Answering an `input` step MUST resolve that step's own `on:` route with the outcome label
    `answered` (accept) or `declined`: a terminal `fail`/`stop` target (or a backward route past
    its cap, or an unknown target) settles the task `failed`/`done` immediately; any other

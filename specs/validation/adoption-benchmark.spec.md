@@ -373,7 +373,7 @@ the baseline regenerator downloads anything (rule 8).
 ## Implementation
 
 - `benchmarks/harness.py`: the `run` and `aggregate` commands, validation, joins, canonical output.
-  Imports `HandoffArtifact` from `src/docket/agent/handoff.py`.
+  Imports `HandoffArtifact` from `src/docket/kernel/handoff.py`.
 - `benchmarks/schema.json`: the JSON Schema (`version` 1.0.0).
 - `benchmarks/scenarios/run.py`, `benchmarks/scenarios/cases/*.json`: the scenario driver and cases.
 - `benchmarks/results/regenerate.py`, `benchmarks/results/canonicalize_wheel.py`,

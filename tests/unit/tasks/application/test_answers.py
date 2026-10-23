@@ -17,6 +17,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.platform import store as _store
 from docket.tasks.application import answers as _answers
+from docket.tasks.application import escalation as _escalation
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
@@ -166,6 +167,38 @@ class TestAnswerTaskAudit:
         assert "actor=alice" in audit_entry["detail"]
         assert "action=accept" in audit_entry["detail"]
         assert "ship it" not in audit_entry["detail"]
+
+
+class TestAnsweredQuestionsAreCounted:
+    """Defect 10: ``answer_task`` clears the task's ``question``, so the answer record is the only
+    place left to read the question's kind and age. ``docket_decision_latency_seconds_count`` and
+    ``docket_questions_total`` read it from there."""
+
+    def test_an_answer_keeps_the_kind_and_age_of_the_question_it_cleared(self) -> None:
+        parked = _seed_parked_task()
+        created = parked["question"]["createdAt"]
+
+        _answers.answer_task(
+            "demo", parked["id"], "accept", {"answer": "ship it"}, channel="cli", actor="op"
+        )
+
+        task = _queue.read_tasks("demo")[0]
+        assert "question" not in task
+        assert (task["answers"][0]["kind"], task["answers"][0]["createdAt"]) == (
+            "clarification",
+            created,
+        )
+
+    def test_an_answered_question_is_counted_with_its_latency(self) -> None:
+        parked = _seed_parked_task()
+        _answers.answer_task(
+            "demo", parked["id"], "accept", {"answer": "ship it"}, channel="cli", actor="op"
+        )
+
+        metrics = _escalation.count_escalation_metrics()
+
+        assert metrics.decision_latency_seconds_count == 1
+        assert metrics.questions_total[("clarification", "accept")] == 1
 
 
 class TestSweepExpiredQuestions:

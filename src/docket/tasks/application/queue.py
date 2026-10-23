@@ -8,7 +8,6 @@ from typing import Any
 
 from pydantic import ValidationError as _ValidationError
 
-from docket.agent import handoff as _handoff
 from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import memory as _mem
 from docket.governance import approval as _ap
@@ -18,13 +17,19 @@ from docket.hops.application.record import _hop_from_record
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
+from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
 from docket.kernel.home import current_home
+from docket.kernel.ids import step_session_key
 from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.platform import read_json, read_modify_write
+from docket.tasks.application import transitions as _transitions
+from docket.tasks.application.runs import get_run, list_runs
 from docket.tasks.domain import options as _task_options
+from docket.tasks.domain import state as _state
+from docket.tasks.domain.refs import LEAD_STEP_ID, TaskRef, TaskRefError
 from docket.tasks.domain.task import (
     DispatchError,
     HopResult,
@@ -35,7 +40,7 @@ from docket.tasks.domain.task import (
 from docket.teams import fleet as _fleet
 from docket.teams import models as _models
 from docket.teams import pod as _pod
-from docket.teams.settings import _pod_settings, pod_task_list_path
+from docket.teams.settings import _pod_settings, builtin_tool_names, pod_task_list_path
 
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
@@ -47,7 +52,7 @@ _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 # hop/gate outcome, so neither is a "real gate/hop failure" in the sense
 # "blocked and terminal-failure re-entry" uses that phrase for. Shared by
 # ``interfaces/cli/commands/run.py``'s "anything to do?" gate so the two never drift apart.
-RESUMABLE_FAILURE_KINDS: frozenset[str] = frozenset({"stale_claim", "dispatch_refused"})
+RESUMABLE_FAILURE_KINDS: frozenset[str] = _state.RESUMABLE_FAILURE_KINDS
 
 
 def read_tasks(project: str) -> list[dict[str, Any]]:
@@ -107,8 +112,13 @@ def _enqueue_pre_input_gate(
 def validate_task_options(**raw: Any) -> _task_options.TaskOptions:
     """Validate the addressable-task fields; a wrong shape raises DispatchError, a widening
     restriction its subclass TaskRestrictionError."""
+    rules = _task_options.OptionRules(
+        known_tools=builtin_tool_names(),
+        check_policy=_policy.task_policy_document,
+        check_prepare=_prepare.check_command,
+    )
     try:
-        return _task_options.validate_task_options(**raw)
+        return _task_options.validate_task_options(rules=rules, **raw)
     except _task_options.TaskRestrictionError as exc:
         raise TaskRestrictionError(str(exc)) from exc
     except _task_options.TaskOptionsError as exc:
@@ -192,9 +202,9 @@ def enqueue_task_once(
         token = _ap.approval_create(
             project, "lead", action_text, context={"taskId": task_id, "pipelineIndex": 0}
         )
-        task["status"] = "waiting_approval"
-        task["approvalToken"] = token
-        task["pendingApprovalIndex"] = 0
+        _transitions.apply_to_task(
+            task, _state.Status.waiting_approval, approval_token=token, pending_index=0
+        )
         _trace.trace_event(
             project,
             session_id,
@@ -253,28 +263,37 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     return bool(resume and status == "failed" and t.get("failureKind") in RESUMABLE_FAILURE_KINDS)
 
 
-def _refuse_claimed_task(
-    project: str, task: dict[str, Any], failure_kind: str, reason: str
-) -> TaskResult:
-    """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
-    runs: clear the claim, keep the recorded hops, and trace ``dispatch_refused``."""
-    task_id = str(task.get("id", "task"))
+def apply_transition(project: str, task_id: str, to: _state.Status, **facts: Any) -> dict[str, Any]:
+    """Move one task of *project*'s queue to *to* under the queue lock (``decide``'s *facts*
+    are the keywords) and return the queue document. A task that is not queued is left alone."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
         tasks = tasks_raw if isinstance(tasks_raw, list) else []
         for t in tasks:
             if isinstance(t, dict) and t.get("id") == task_id:
-                t["status"] = "failed"
-                t["failureKind"] = failure_kind
-                t["reason"] = reason
-                t["completedAt"] = _clock.iso()
-                t["claimId"] = None
-                t.pop("claimPid", None)
+                _transitions.apply_to_task(t, to, **facts)
                 return {"tasks": tasks}
         return None
 
-    doc = read_modify_write(pod_task_list_path(project), _fn)
+    return read_modify_write(pod_task_list_path(project), _fn)
+
+
+def _refuse_claimed_task(
+    project: str, task: dict[str, Any], failure_kind: str, reason: str
+) -> TaskResult:
+    """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
+    runs: clear the claim, keep the recorded hops, and trace ``dispatch_refused``."""
+    task_id = str(task.get("id", "task"))
+    doc = apply_transition(
+        project,
+        task_id,
+        _state.Status.failed,
+        now=_clock.iso(),
+        reason=reason,
+        failure_kind=failure_kind,
+        keep_grants=True,
+    )
     _trace.trace_event(
         project,
         f"agent:{project}:{task_id}",
@@ -418,12 +437,13 @@ def _claim_next_task(
             key=lambda i: _PRIORITY_RANK.get(str(tasks[i].get("priority", "normal")), 1)
         )
         t = tasks[candidates[0]]
-        t["status"] = "running"
-        t["startedAt"] = _clock.iso()
-        t["claimId"] = _ids.new_uuid()
-        t["claimedAt"] = _clock.iso()
-        t["claimPid"] = _os.getpid()
-        t.pop("failureKind", None)
+        _transitions.apply_to_task(
+            t,
+            _state.Status.running,
+            now=_clock.iso(),
+            claim_id=_ids.new_uuid(),
+            pid=_os.getpid(),
+        )
         claimed = dict(t)
         # A granted approval's gate-override is single-use — captured
         # into the claimed copy above, then cleared from the *stored* record
@@ -502,3 +522,72 @@ def pod_roster() -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def _build(project: str, task: dict[str, object]) -> TaskRef:
+    task_id = str(task["id"])
+    record = task.get("worktree")
+    worktree = str(record.get("dir") or "") if isinstance(record, dict) else ""
+    run_ids = tuple(
+        str(r["id"])
+        for r in list_runs(project)
+        if task_id in (r.get("taskIds") or []) and r.get("id")
+    )
+    lead = f"{project}-{LEAD_STEP_ID}"
+    return TaskRef(
+        task_id=task_id,
+        project=project,
+        session_key=step_session_key(lead, project, task_id, LEAD_STEP_ID),
+        run_ids=run_ids,
+        worktree=worktree,
+    )
+
+
+def _resolve_run(ref: str) -> TaskRef | None:
+    run = get_run(ref)
+    if run is None:
+        return None
+    project = str(run.get("project", ""))
+    task_ids = [str(t) for t in run.get("taskIds") or []]
+    tasks = {str(t.get("id")): t for t in read_tasks(project)}
+    found = [tasks[t] for t in task_ids if t in tasks]
+    if not found:
+        raise TaskRefError(f"run {ref} (pod {project}) has no task on the queue")
+    if len(found) > 1:
+        listing = ", ".join(f"{t['id']} (pod {project})" for t in found)
+        raise TaskRefError(f"run {ref} dispatched more than one task: {listing}")
+    return _build(project, found[0])
+
+
+def resolve_task(project: str | None, ref: str) -> TaskRef:
+    """Resolve *ref* within one pod, or every pod when *project* is ``None``.
+
+    Raises ``TaskRefError`` listing candidates (ambiguous) or what was searched (unknown)."""
+    ref = ref.strip()
+    if not ref:
+        raise TaskRefError("no task reference given")
+    if ref.startswith("run-"):
+        via_run = _resolve_run(ref)
+        if via_run is not None:
+            if project is not None and via_run.project != project:
+                raise TaskRefError(f"run {ref} belongs to pod {via_run.project}, not {project}")
+            return via_run
+
+    pods = [project] if project is not None else sorted(dispatchable_pods())
+    matches: list[tuple[str, dict[str, object]]] = []
+    for pod in pods:
+        for task in read_tasks(pod):
+            if str(task.get("id", "")).startswith(ref):
+                matches.append((pod, task))
+
+    exact = [m for m in matches if m[1]["id"] == ref]
+    if exact:
+        matches = exact
+    if len(matches) == 1:
+        return _build(*matches[0])
+    if matches:
+        listing = ", ".join(f"{t['id']} (pod {p})" for p, t in matches)
+        raise TaskRefError(f"{ref!r} is ambiguous: {listing}")
+    searched = f"pod {project}" if project is not None else f"{len(pods)} pod(s)"
+    names = f" ({', '.join(pods)})" if project is None and pods else ""
+    raise TaskRefError(f"no task or run matches {ref!r}; searched {searched}{names}")

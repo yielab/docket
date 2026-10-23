@@ -45,7 +45,7 @@ from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain import task as _task
-from docket.tasks.domain.refs import TaskRef, TaskRefError, resolve_task, short_id
+from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
 from docket.teams import report as _report
 from docket.teams import task_worktrees as _task_worktrees
 
@@ -68,7 +68,7 @@ def _resolve(pod: str | None, ref: str) -> TaskRef:
     """Resolve *ref* in the named pod, or in every pod when none is named."""
     scope = pod or os.environ.get("DOCKET_POD", "").strip() or None
     try:
-        return resolve_task(scope, ref)
+        return _queue.resolve_task(scope, ref)
     except TaskRefError as exc:
         ui.error(str(exc), "Run docket task list to see the ids")
         raise typer.Exit(1) from exc
