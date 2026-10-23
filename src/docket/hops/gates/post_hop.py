@@ -17,6 +17,7 @@ from docket.hops.application.record import (
     _UnitOutcome,
     _verdict_event_names,
 )
+from docket.hops.domain import gate_decisions as _decide
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
@@ -45,53 +46,31 @@ def _apply_output_guardrails(
     hop_error = run_res.error
     if hop_output:
         hit = _policy.policy_eval_detail(role, "pre_output", hop_output, project=ctx.project)
-        # Also classify the hop's real output against the built-in
-        # high-risk action classes (governance/security.py's HIGH_RISK_PATTERNS),
-        # independently of the JSON policy engine above. This is a second,
-        # independent check over what the hop *reports* it did, not what a
-        # tool call literally asked to run — it still catches a
-        # money-movement or secret-access command described in the hop's
-        # own summary even when the underlying call never reached
-        # `dispatch_tool`'s live `pre_tool_call` gate (e.g. a runner that
-        # doesn't route through it at all, such as a test double). A match
-        # never downgrades an already-stronger policy_eval_detail verdict —
-        # redact/block/require_approval all outrank a bare "allow" — it only
-        # raises a plain "allow" to "warn". It cannot go further than
-        # "warn": there is no live approver to "ask" post-hoc (the hop
-        # already ran, the same reasoning behind pre_output's
-        # require_approval-behaves-like-warn rule), and HIGH_RISK_PATTERNS
-        # is a built-in Python list, not an installed, operator-authored
-        # JSON policy — so this only ever adds visibility, it never
-        # redacts or blocks on the operator's behalf the way a real
-        # installed policy can.
+        # Also classify the hop's real output against the built-in high-risk action classes
+        # (governance/security.py's HIGH_RISK_PATTERNS), independently of the JSON policy
+        # engine: a second check over what the hop *reports* it did, catching a money-movement
+        # or secret-access command described in its own summary even when the call never
+        # reached `dispatch_tool`'s live gate. decide_output_guardrail only ever raises a plain
+        # "allow" to "warn".
         risk_cls = _sec.match_high_risk(hop_output)
-        if risk_cls is not None and hit.action == "allow":
-            hit = _policy.PolicyHit(
-                action="warn",
-                policy_id=f"high-risk:{risk_cls.name}",
-                message=risk_cls.description,
-            )
-        if hit.action != "allow":
-            _trace_locked(
-                ctx.project,
-                ctx.session_id,
-                role,
-                "guardrail_check",
-                _json.dumps({"hook": "pre_output", "policy": hit.policy_id, "action": hit.action}),
-            )
-        if hit.action == "redact":
+        decision = _decide.decide_output_guardrail(
+            action=hit.action,
+            policy_id=hit.policy_id,
+            high_risk=risk_cls.name if risk_cls is not None else None,
+            hop_ok=hop_ok,
+        )
+        payload = _json.dumps(
+            {"hook": "pre_output", "policy": decision.policy_id, "action": decision.action}
+        )
+        if decision.trace_check:
+            _trace_locked(ctx.project, ctx.session_id, role, "guardrail_check", payload)
+        if decision.redact:
             hop_output = _trace.redact(hop_output)
-        elif hit.action == "block":
-            _trace_locked(
-                ctx.project,
-                ctx.session_id,
-                role,
-                "guardrail_block",
-                _json.dumps({"hook": "pre_output", "policy": hit.policy_id, "action": hit.action}),
-            )
-            if hop_ok:
+        elif decision.block:
+            _trace_locked(ctx.project, ctx.session_id, role, "guardrail_block", payload)
+            if decision.fail_hop:
                 hop_ok = False
-                hop_error = f"blocked by guardrail policy '{hit.policy_id}'"
+                hop_error = decision.error
     return hop_output, hop_ok, hop_error
 
 
@@ -142,14 +121,10 @@ def _run_gate_command(
 
 def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
     """The hop's ``verify`` evidence, persisted regardless of pass/fail/route -- see
-    HopResult.verify. ``outputTail`` is the redacted string's own tail (never the raw one), so
-    a secret is never one truncation away from surviving into the persisted record."""
-    return {
-        "cmd": cmd,
-        "exitCode": exit_code,
-        "durationS": round(run.duration_s, 3),
-        "outputTail": run.redacted[-current_home().verify_evidence_tail_chars :],
-    }
+    HopResult.verify."""
+    return _decide.verify_evidence(
+        cmd, exit_code, run.duration_s, run.redacted, current_home().verify_evidence_tail_chars
+    )
 
 
 def _evaluate_mechanical_gate(
@@ -164,27 +139,21 @@ def _evaluate_mechanical_gate(
     exit, in the dir from ``teams.pod.resolve_member_cwd`` (shared with interfaces/cli/commands/pod.py so the two
     never disagree); a ``"pass"``/``"fail"`` named in the step's own ``on`` map routes instead."""
     verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
-    if not verify_cmd:
-        # Check if verification is required
-        require_verify = _pod_settings(ctx.project).require_verify
-        if require_verify:
-            _trace_locked(
-                ctx.project,
-                ctx.session_id,
-                role,
-                "verification_failed",
-                _json.dumps({"reason": "verification_missing", "member": member_id}),
-            )
-            return _UnitOutcome(
-                kind="failed",
-                hops=[hop],
-                reason="verifyCmd required but not set",
-            )
-        # Honesty rule: never silently skip — a missing verifyCmd is
-        # visible via a trace event (parity with the "passed" case
-        # below) and the hop's own `verification_skipped` flag, which
-        # `interfaces/cli`'s dispatch renderer prints. Application code never prints
-        # directly.
+    require_verify = False if verify_cmd else _pod_settings(ctx.project).require_verify
+    pre = _decide.decide_verify_precheck(verify_cmd, require_verify)
+    if pre == "fail_missing":
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "verification_failed",
+            _json.dumps({"reason": "verification_missing", "member": member_id}),
+        )
+        return _UnitOutcome(kind="failed", hops=[hop], reason="verifyCmd required but not set")
+    if pre == "skip":
+        # Honesty rule: never silently skip -- a missing verifyCmd is visible via a trace event
+        # and the hop's own `verification_skipped` flag, which `interfaces/cli`'s dispatch
+        # renderer prints. Application code never prints directly.
         _trace_locked(
             ctx.project,
             ctx.session_id,
@@ -196,46 +165,32 @@ def _evaluate_mechanical_gate(
         return _UnitOutcome(kind="advance", hops=[hop])
 
     cwd = _gate_cwd(ctx, member_id)
-    # The verify command gets its own timeout, decoupled from the agent-turn
-    # timeout above — a 20-minute test suite and a hung LLM turn are no longer
-    # forced to share one budget.
+    # The verify command gets its own timeout, decoupled from the agent-turn timeout -- a
+    # 20-minute test suite and a hung LLM turn are not forced to share one budget.
     mech_timeout = gate.timeout or ctx.resolved_verify_timeout
     run = _run_gate_command(ctx, verify_cmd, cwd, mech_timeout)
-    passed, redacted = run.passed, run.redacted
-    hop.verify = _gate_evidence(verify_cmd, 0 if passed else 1, run)
-    label = "pass" if passed else "fail"
-    if _match_on_route(node.on, label) is not None:
-        return _UnitOutcome(kind="routed", hops=[hop], label=label)
-    if not passed:
+    hop.verify = _gate_evidence(verify_cmd, 0 if run.passed else 1, run)
+    label = "pass" if run.passed else "fail"
+    decision = _decide.decide_verify(
+        passed=run.passed, routed=_match_on_route(node.on, label) is not None, cmd=verify_cmd
+    )
+    if decision.kind == "failed":
         _trace_locked(
             ctx.project,
             ctx.session_id,
             role,
             "verification_failed",
-            _json.dumps({"cmd": verify_cmd, "output": redacted}),
+            _json.dumps({"cmd": verify_cmd, "output": run.redacted}),
         )
-        return _UnitOutcome(
-            kind="failed",
-            hops=[hop],
-            reason=f"verifyCmd failed: {verify_cmd!r}",
+    elif decision.kind == "advance":
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "tool_result",
+            _json.dumps({"verification": "passed", "cmd": verify_cmd}),
         )
-    _trace_locked(
-        ctx.project,
-        ctx.session_id,
-        role,
-        "tool_result",
-        _json.dumps({"verification": "passed", "cmd": verify_cmd}),
-    )
-    return _UnitOutcome(kind="advance", hops=[hop], label=label)
-
-
-_GATE_REASONS_MAX_BYTES = 64 * 1024
-_GATE_REASON_TEXT_FIELDS = ("summary", "id", "path", "severity", "detail")
-_GATE_FAILURE_KINDS = {
-    "fail": "gate_failed",
-    "needs_human": "gate_needs_human",
-    "error": "gate_error",
-}
+    return _outcome_of(decision, hop)
 
 
 def _gate_file_stem(task_id: str, step_id: str) -> str:
@@ -255,8 +210,19 @@ def _gate_reasons_path(project: str, task_id: str, step_id: str) -> Path:
 def _external_failure_kind(outcome: _UnitOutcome) -> str:
     """The failure kind of an external gate hop routed straight to ``fail``, else ``""``."""
     verify = outcome.hops[0].verify if outcome.hops else None
-    label = verify.get("label") if verify else None
-    return _GATE_FAILURE_KINDS.get(str(label), "") if label else ""
+    return _decide.external_failure_kind(verify.get("label") if verify else None)
+
+
+def _outcome_of(decision: _decide.GateDecision, hop: HopResult) -> _UnitOutcome:
+    """The executor's outcome for a gate *decision* on *hop*."""
+    return _UnitOutcome(
+        kind=decision.kind,
+        hops=[hop],
+        reason=decision.reason,
+        label=decision.label,
+        failure_kind=decision.failure_kind,
+        rework_target_index=decision.rework_target_index,
+    )
 
 
 def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
@@ -278,38 +244,18 @@ def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
 def _parse_gate_reasons(
     ctx: _UnitContext, role: str, path: Path
 ) -> tuple[list[dict[str, Any]], bool]:
-    """The verifier's reasons file as ``(screened reasons, invalid)``: UTF-8 JSON of at most 64 KiB,
-    ``{"reasons": [{"summary": str, ...}]}``. Anything else, or a policy block, is invalid;
-    no field is read for control flow."""
+    """The verifier's reasons file as ``(screened reasons, invalid)``: UTF-8 JSON of at most 64 KiB
+    whose shape ``clean_gate_reasons`` checks. Anything unreadable, oversize or blocked by policy
+    is invalid."""
     try:
         if not path.is_file():
             return [], False
-        if path.stat().st_size > _GATE_REASONS_MAX_BYTES:
+        if path.stat().st_size > _decide.GATE_REASONS_MAX_BYTES:
             return [], True
         doc = _json.loads(path.read_bytes().decode("utf-8"))
     except (OSError, ValueError):
         return [], True
-    raw = doc.get("reasons") if isinstance(doc, dict) else None
-    if not isinstance(raw, list):
-        return [], True
-    reasons: list[dict[str, Any]] = []
-    for entry in raw:
-        if not isinstance(entry, dict) or not isinstance(entry.get("summary"), str):
-            return [], True
-        clean: dict[str, Any] = {}
-        for key in _GATE_REASON_TEXT_FIELDS:
-            value = entry.get(key)
-            if isinstance(value, str) and value.strip():
-                screened = _screen_gate_text(ctx, role, value)
-                if screened is None:
-                    return [], True
-                clean[key] = screened
-        if isinstance(entry.get("line"), int) and not isinstance(entry.get("line"), bool):
-            clean["line"] = entry["line"]
-        if "summary" not in clean:
-            return [], True
-        reasons.append(clean)
-    return reasons, False
+    return _decide.clean_gate_reasons(doc, lambda text: _screen_gate_text(ctx, role, text))
 
 
 def _source_field(source: str) -> dict[str, str]:
@@ -355,9 +301,10 @@ def _evaluate_external_gate(
         evidence["reasons"] = reasons
     evidence["reasonsInvalid"] = invalid
     hop.verify = evidence
-    if _match_on_route(node.on, label) is not None:
-        return _UnitOutcome(kind="routed", hops=[hop], label=label)
-    if label == "pass":
+    decision = _decide.decide_external(
+        label=label, routed=_match_on_route(node.on, label) is not None, cmd=cmd
+    )
+    if decision.kind == "advance":
         _trace_locked(
             ctx.project,
             ctx.session_id,
@@ -365,20 +312,17 @@ def _evaluate_external_gate(
             "tool_result",
             _json.dumps({"verification": "passed", "cmd": cmd, **_source_field(source)}),
         )
-        return _UnitOutcome(kind="advance", hops=[hop], label=label)
-    _trace_locked(
-        ctx.project,
-        ctx.session_id,
-        role,
-        "verification_failed",
-        _json.dumps({"cmd": cmd, "output": run.redacted, "label": label, **_source_field(source)}),
-    )
-    return _UnitOutcome(
-        kind="failed",
-        hops=[hop],
-        reason=f"external gate {label}: {cmd!r}",
-        failure_kind=_GATE_FAILURE_KINDS[label],
-    )
+    elif decision.kind == "failed":
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "verification_failed",
+            _json.dumps(
+                {"cmd": cmd, "output": run.redacted, "label": label, **_source_field(source)}
+            ),
+        )
+    return _outcome_of(decision, hop)
 
 
 def _evaluate_verdict_gate(
@@ -393,92 +337,48 @@ def _evaluate_verdict_gate(
     step's own ``on`` map routes instead, beating the rework/fail handling below."""
     assert hop.artifact is not None
     verdict = hop.artifact.verdict
-    hop_output = hop.output
-    pass_set = _orch.normalize_values(gate.pass_values, gate.case_sensitive)
-    if verdict is not None and verdict in pass_set:
-        return _UnitOutcome(kind="advance", hops=[hop], label=verdict)
-
-    if verdict is not None and _match_on_route(node.on, verdict) is not None:
-        return _UnitOutcome(kind="routed", hops=[hop], label=verdict)
-
     rework = gate.rework
-    if rework is not None and verdict is not None:
-        when_set = _orch.normalize_values(rework.when, gate.case_sensitive)
-        if verdict in when_set:
-            cycles_so_far = ctx.rework_counts.get(node.step_id, 0)
-            target_index = ctx.id_to_index.get(rework.to)
-            if cycles_so_far < rework.max_cycles and target_index is not None:
-                ctx.rework_counts[node.step_id] = cycles_so_far + 1
-                rework_event, _unused1, _unused2 = _verdict_event_names(role)
-                redacted = _trace.redact(hop_output)
-                _trace_locked(
-                    ctx.project,
-                    ctx.session_id,
-                    role,
-                    rework_event,
-                    _json.dumps({"cycle": ctx.rework_counts[node.step_id], "output": redacted}),
-                )
-
-                # Record REQUEST-CHANGES to the corrections ledger
-                if verdict and verdict.lower() == "request-changes":
-                    _corrections.record(
-                        ctx.project,
-                        "request_changes",
-                        task_id=ctx.task_id,
-                        role=role,
-                        text=hop_output,
-                        source="reviewer",
-                    )
-
-                return _UnitOutcome(kind="rework", hops=[hop], rework_target_index=target_index)
-            # Rework budget exhausted (or, defensively, no valid target) —
-            # this verdict is now terminal.
-            _unused3, rejected_event, _unused4 = _verdict_event_names(role)
-            redacted = _trace.redact(hop_output)
-            _trace_locked(
-                ctx.project,
-                ctx.session_id,
-                role,
-                rejected_event,
-                _json.dumps({"cycles": cycles_so_far, "output": redacted}),
-            )
-            return _UnitOutcome(
-                kind="failed",
-                hops=[hop],
-                reason=(
-                    f"{role} rejected after {cycles_so_far} rework cycle(s): {verdict.upper()}"
-                ),
-            )
-
-    # Anything else is either truly unparseable (no match at all) or a
-    # real, parsed marker that's simply neither a pass nor a
-    # rework-trigger — distinct outcomes (though, for the tester role
-    # specifically, they share one event name — see
-    # `_verdict_event_names`).
-    _unused5, rejected_event2, unparseable_event = _verdict_event_names(role)
-    redacted = _trace.redact(hop_output)
-    if verdict is None:
+    cycles_so_far = ctx.rework_counts.get(node.step_id, 0)
+    decision = _decide.decide_verdict(
+        verdict=verdict,
+        role=role,
+        pass_values=_orch.normalize_values(gate.pass_values, gate.case_sensitive),
+        routed=verdict is not None and _match_on_route(node.on, verdict) is not None,
+        rework=_decide.ReworkFacts(
+            when=_orch.normalize_values(rework.when, gate.case_sensitive),
+            max_cycles=rework.max_cycles,
+            target_index=ctx.id_to_index.get(rework.to),
+        )
+        if rework is not None
+        else None,
+        cycles_so_far=cycles_so_far,
+    )
+    if decision.event:
+        rework_event, rejected_event, unparseable_event = _verdict_event_names(role)
+        event = {
+            "rework": rework_event,
+            "rejected": rejected_event,
+            "unparseable": unparseable_event,
+        }[decision.event]
         _trace_locked(
             ctx.project,
             ctx.session_id,
             role,
-            unparseable_event,
-            _json.dumps({"verdict": "unparseable", "output": redacted}),
+            event,
+            _json.dumps({**decision.detail, "output": _trace.redact(hop.output)}),
         )
-        return _UnitOutcome(
-            kind="failed",
-            hops=[hop],
-            reason=f"{role} output unparseable (expected one unambiguous recognized "
-            "verdict marker at the start of a line)",
-        )
-    _trace_locked(
-        ctx.project,
-        ctx.session_id,
-        role,
-        rejected_event2,
-        _json.dumps({"verdict": verdict, "output": redacted}),
-    )
-    return _UnitOutcome(kind="failed", hops=[hop], reason=f"{role} reported {verdict.upper()}")
+    if decision.kind == "rework":
+        ctx.rework_counts[node.step_id] = cycles_so_far + 1
+        if decision.record_correction:
+            _corrections.record(
+                ctx.project,
+                "request_changes",
+                task_id=ctx.task_id,
+                role=role,
+                text=hop.output,
+                source="reviewer",
+            )
+    return _outcome_of(decision, hop)
 
 
 def _evaluate_post_hop_gate(
@@ -508,15 +408,10 @@ def _evaluate_post_hop_gate(
         return _evaluate_verdict_gate(ctx, gate, node, role, hop)
 
     if isinstance(gate, _gates.ApprovalGate):
-        if not check_approval:
-            return _UnitOutcome(
-                kind="failed",
-                hops=[hop],
-                reason=f"{role}: an 'approval' gate is not supported inside a parallel group",
-            )
-        # Pre-hop already handled this (above) — post-hop, nothing further
-        # to check; a granted/override'd approval simply advances.
-        return _UnitOutcome(kind="advance", hops=[hop])
+        # Pre-hop already handled this -- post-hop there is nothing further to check.
+        return _outcome_of(
+            _decide.decide_approval_in_group(check_approval=check_approval, role=role), hop
+        )
 
     return _UnitOutcome(kind="advance", hops=[hop])  # pragma: no cover - closed Gate union
 
@@ -537,9 +432,13 @@ def _evaluate_hop_gates(
         ctx, node, role, member_id, hop, prior, check_approval=check_approval
     )
     gate = ctx.task_gate
-    if gate is None or node.step_id != ctx.task_gate_step_id:
-        return outcome
-    if outcome.kind != "advance" and not (outcome.kind == "routed" and outcome.label == "pass"):
+    if gate is None or not _decide.should_run_task_gate(
+        has_task_gate=True,
+        step_id=node.step_id,
+        task_gate_step_id=ctx.task_gate_step_id,
+        outcome_kind=outcome.kind,
+        outcome_label=outcome.label,
+    ):
         return outcome
     own = hop.verify
     task_outcome = _evaluate_external_gate(

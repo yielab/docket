@@ -102,7 +102,9 @@ class TestDeterminism:
 class TestResolvePlan:
     def test_role_step_skipped_when_pod_lacks_the_role(self) -> None:
         spec = _sample_spec()
-        plan = _orch.resolve_plan(spec, {"lead": "demo-lead"})  # no reviewer
+        plan = _orch.resolve_plan(
+            spec, {"lead": "demo-lead"}, registry=_archetypes.load_registry()
+        )  # no reviewer
         review_node = next(n for n in plan.nodes if n.step_id == "review")
         assert isinstance(review_node, _orch.PlannedUnit)
         assert review_node.skipped is True
@@ -113,7 +115,7 @@ class TestResolvePlan:
         spec = _pipeline.PipelineSpec(
             name="s", steps=[_step.Step(id="x", agent="some-agent-not-in-roster")]
         )
-        plan = _orch.resolve_plan(spec, {})
+        plan = _orch.resolve_plan(spec, {}, registry=_archetypes.load_registry())
         node = plan.nodes[0]
         assert isinstance(node, _orch.PlannedUnit)
         assert node.skipped is False
@@ -121,14 +123,22 @@ class TestResolvePlan:
 
     def test_parallel_group_resolves_each_child(self) -> None:
         spec = _sample_spec()
-        plan = _orch.resolve_plan(spec, {"lead": "demo-lead", "reviewer": "demo-reviewer"})
+        plan = _orch.resolve_plan(
+            spec,
+            {"lead": "demo-lead", "reviewer": "demo-reviewer"},
+            registry=_archetypes.load_registry(),
+        )
         group = next(n for n in plan.nodes if n.step_id == "fanout")
         assert isinstance(group, _orch.PlannedGroup)
         assert [c.member_id for c in group.children] == ["demo-implementer", "demo-implementer-2"]
 
     def test_runnable_nodes_preserves_group_and_unit_order(self) -> None:
         spec = _sample_spec()
-        plan = _orch.resolve_plan(spec, {"lead": "demo-lead", "reviewer": "demo-reviewer"})
+        plan = _orch.resolve_plan(
+            spec,
+            {"lead": "demo-lead", "reviewer": "demo-reviewer"},
+            registry=_archetypes.load_registry(),
+        )
         assert [n.step_id for n in plan.runnable_nodes()] == ["plan", "fanout", "review"]
 
 
@@ -271,7 +281,11 @@ class TestRunGroup:
 class TestRenderPlan:
     def test_render_plan_shows_every_node_and_gate(self) -> None:
         spec = _sample_spec()
-        plan = _orch.resolve_plan(spec, {"lead": "demo-lead", "reviewer": "demo-reviewer"})
+        plan = _orch.resolve_plan(
+            spec,
+            {"lead": "demo-lead", "reviewer": "demo-reviewer"},
+            registry=_archetypes.load_registry(),
+        )
         text = _orch.render_plan(plan)
         assert "Pipeline: sample" in text
         assert "[plan]" in text
@@ -283,7 +297,9 @@ class TestRenderPlan:
 
     def test_render_plan_flags_a_skipped_step(self) -> None:
         spec = _sample_spec()
-        plan = _orch.resolve_plan(spec, {"lead": "demo-lead"})  # no reviewer
+        plan = _orch.resolve_plan(
+            spec, {"lead": "demo-lead"}, registry=_archetypes.load_registry()
+        )  # no reviewer
         text = _orch.render_plan(plan)
         assert "skipped" in text
 
@@ -295,7 +311,7 @@ class TestRenderPlan:
                 _step.Step(id="ask", input=_step.InputSpec(from_="triage")),
             ],
         )
-        plan = _orch.resolve_plan(spec, {"lead": "demo-lead"})
+        plan = _orch.resolve_plan(spec, {"lead": "demo-lead"}, registry=_archetypes.load_registry())
         text = _orch.render_plan(plan)
         assert "[ask]" in text
         assert "asks the operator (from triage)" in text
