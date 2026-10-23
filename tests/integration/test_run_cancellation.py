@@ -282,7 +282,7 @@ class TestCancelRun:
     ) -> None:
         record = _runs.create_run("cli", "myapp")
         _runs.mark_running(record["id"])
-        real_read_modify_write = _store.read_modify_write
+        real_read_modify_write = _runs.read_modify_write
         cancel_reached_transition = threading.Event()
         release_cancel = threading.Event()
         staged = False
@@ -295,7 +295,7 @@ class TestCancelRun:
                 assert release_cancel.wait(timeout=5)
             return real_read_modify_write(path, fn)
 
-        monkeypatch.setattr(_store, "read_modify_write", _stage_cancel_transition)
+        monkeypatch.setattr(_runs, "read_modify_write", _stage_cancel_transition)
         outcomes: list[_run_cancellation.CancelOutcome] = []
         worker = new_thread(
             target=lambda: outcomes.append(_runs.cancel_run(record["id"])),

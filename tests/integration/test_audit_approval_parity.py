@@ -30,6 +30,7 @@ from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.observability import trace as _trace
+from docket.platform import store as _store
 
 SUBJECT = "docket.governance"
 
@@ -296,7 +297,7 @@ class TestAtomicApprovalDecisions:
         record = _ap.approval_get(token)
         record["created"] = "2000-01-01T00:00:00Z"
         record["expiresAt"] = record["created"]
-        _ap._store.write_json(_ap._approval_path(token), record)
+        _store.write_json(_ap._approval_path(token), record)
         sweep_counts: list[int] = []
         real_set_state = _ap._set_state
 

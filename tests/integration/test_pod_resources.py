@@ -108,7 +108,7 @@ class TestPortAllocation:
                         old_write_gate.wait(timeout=2)
                 real_write(path, data)
 
-            monkeypatch.setattr(_pp._store, "write_json", staged_write)
+            monkeypatch.setattr(_store, "write_json", staged_write)
             results: dict[str, tuple[int, int, str]] = {}
             failures: list[BaseException] = []
 

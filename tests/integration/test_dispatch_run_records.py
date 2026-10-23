@@ -36,7 +36,6 @@ from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
-from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain import task as _task
@@ -214,7 +213,7 @@ class TestReturnedResultFold:
         home.mkdir()
         with use_home(Home(home)):
             record = _runs.create_run("cli", "demo")
-            real_read_modify_write = _store.read_modify_write
+            real_read_modify_write = _runs.read_modify_write
             writes = 0
 
             def _inject_cancel_before_second_write(path: Path, fn: Any) -> dict[str, Any]:
@@ -232,7 +231,7 @@ class TestReturnedResultFold:
                     real_read_modify_write(path, _cancel)
                 return real_read_modify_write(path, fn)
 
-            monkeypatch.setattr(_store, "read_modify_write", _inject_cancel_before_second_write)
+            monkeypatch.setattr(_runs, "read_modify_write", _inject_cancel_before_second_write)
             trace_calls: list[tuple[object, ...]] = []
             monkeypatch.setattr(
                 "docket.observability.trace.trace_event",
