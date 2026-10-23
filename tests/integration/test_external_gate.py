@@ -15,9 +15,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.home import record_isolation_off
+from tests.support.llm import implementer_messages as _implementer_messages
+from tests.support.pods import build_pod
 
 from docket.governance import secrets as _secrets
 from docket.hops.gates import post_hop as _post_hop
@@ -44,11 +45,6 @@ steps:
 {on}"""
 
 _ON_RETRY = "    on:\n      fail: {goto: build, max: 2}\n"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager
@@ -92,10 +88,6 @@ def _run(tmp_path: Path, body: str, **kw: str) -> Iterator[tuple[Any, FakeDriver
 
 def _build_hops(res: Any) -> list[Any]:
     return [h for h in res.hops if h.step_id == "build"]
-
-
-def _implementer_messages(driver: FakeDriver) -> list[str]:
-    return [c[2] for c in driver.calls if c[0].endswith("-implementer")]
 
 
 def _reasons_script(payload: str, code: int) -> str:

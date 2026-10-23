@@ -3,18 +3,12 @@ plan label. See specs/functional/pipeline-format.spec.md ("Gates" item 5, "Outco
 
 from __future__ import annotations
 
+from tests.support.pods import load as _load
+
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain.spec import PipelineSpec, load_pipeline
 
 SUBJECT = "docket.pipeline.domain.gates"
-
-
-def _load(text: str) -> PipelineSpec:
-    loaded = load_pipeline(text)
-    assert loaded.ok, loaded.errors
-    assert loaded.spec is not None
-    return loaded.spec
 
 
 _SHORT = """\

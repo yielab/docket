@@ -13,21 +13,13 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.home import point_config_at as _point_config_at
+from tests.support.pods import build_pod
 
 from docket.interfaces.cli.commands import setup_check_config as _setup_check_config
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.interfaces.cli.commands.setup_check_config"
-
-
-@contextmanager
-def _point_config_at(
-    home: Path,
-) -> Iterator[None]:
-    """Repoint the already-imported config module at a temp DOCKET_HOME."""
-    with use_home(Home(home)):
-        yield
 
 
 class TestPodConfigOverlays:

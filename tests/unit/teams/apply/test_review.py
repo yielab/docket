@@ -3,17 +3,13 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.git import repo_dir as _repo_dir
+from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
 
 import docket.kernel.templates as _templates
-from docket.kernel.home import Home, use_home
-from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
@@ -21,20 +17,6 @@ from docket.teams.apply import review as _review
 from docket.teams.apply import write as _write
 
 SUBJECT = "docket.teams.apply.review"
-
-
-@contextmanager
-def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
-    """A minimal two-role pod (lead + implementer) in an isolated ``DOCKET_HOME`` --
-    ``plan_apply``'s existing-pod lookup (``_dispatch.pod_pipeline``) needs one to resolve
-    against, even for a manifest that never reaches roles/policies/settings."""
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield
 
 
 class TestPrepare:
@@ -103,14 +85,6 @@ class TestPrepare:
         recipe = tmp_path / "recipe"
         recipe.mkdir()
         assert _review.classify_directory(recipe).runs == ()
-
-
-def _repo_dir(tmp_path: Path, files: dict[str, str]) -> Path:
-    root = tmp_path / "dotdocket"
-    for rel, text in files.items():
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(text)
-    return root
 
 
 class TestClassifyDirectory:

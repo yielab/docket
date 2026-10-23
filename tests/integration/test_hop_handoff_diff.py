@@ -10,10 +10,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-import pytest
-from tests.conftest import record_isolation_off, register_local_provider
-from tests.integration.llm_stub import _final_response, _tool_call_response
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off, register_local_provider
+from tests.support.llm import _final_response, _tool_call_response
+from tests.support.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
@@ -30,11 +29,6 @@ _PIPELINE = (
     "  - id: researcher\n    role: researcher\n"
     "  - id: critic\n    role: critic\n"
 )
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 def _git(repo: Path, *args: str) -> None:

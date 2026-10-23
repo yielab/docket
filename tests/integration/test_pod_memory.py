@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.git import git_3 as _git
+from tests.support.pods import build_pod
 
 from docket.agent import identity as _identity
 from docket.interfaces.cli.commands import pod as _pod
@@ -23,21 +24,6 @@ from docket.teams import memory as _pm
 SUBJECT = "docket.teams.memory"
 
 _MEMBER = "demo-implementer"
-
-
-def _git(root: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(root), "-c", "user.email=t@example.test", "-c", "user.name=t", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return done.stdout.strip()
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @pytest.fixture

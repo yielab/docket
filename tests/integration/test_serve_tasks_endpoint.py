@@ -19,11 +19,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.http import get_2 as _get
+from tests.support.pods import seed_pod as _seed_pod
 
-from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.platform import store as _store
 from docket.tasks.application import queue as _application_queue
@@ -32,32 +32,6 @@ from docket.teams import settings as _settings
 SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token-tasks-p22-2"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-def _get(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
-    req = urllib.request.Request(url)
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 @contextmanager

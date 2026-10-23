@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from tests.support.pods import _object as _object
+from tests.support.pods import canonical as _canonical
+from tests.support.pods import under as _under
 
 LANE = "release"
 REASON = "Prevents the adversarial and crash-recovery benchmark matrix from losing isolation between scenario runs or shipping a result that is not reproducible."
@@ -70,38 +73,14 @@ EVIDENCE_KEYS = {
 }
 
 
-def _canonical(value: object) -> bytes:
-    return (
-        json.dumps(
-            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
-        ).encode("utf-8")
-        + b"\n"
-    )
-
-
 def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
-
-
-def _object(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    assert isinstance(value, dict), f"{path} must contain one JSON object"
-    return value
 
 
 def _jsonl(path: Path) -> list[dict[str, Any]]:
     values = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
     assert values and all(isinstance(value, dict) for value in values)
     return values
-
-
-def _under(root: Path, raw: object) -> Path:
-    assert isinstance(raw, str) and raw
-    relative = Path(raw)
-    assert not relative.is_absolute() and ".." not in relative.parts
-    resolved = (root / relative).resolve()
-    assert resolved.is_relative_to(root.resolve())
-    return resolved
 
 
 def _locator_file(home: Path, locator: object) -> Path:

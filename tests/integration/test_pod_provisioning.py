@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 import typer
-from tests.pods import build_pod
+from tests.support.pods import build_pod
+from tests.support.pods import meta_2 as _meta
 from typer.testing import CliRunner
 
 from docket.governance import audit as _audit
@@ -24,11 +25,6 @@ from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod_provisioning as _pp
 
 SUBJECT = "docket"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager
@@ -50,11 +46,6 @@ def _ids(home: Path) -> list[str]:
 def _pod_cli(*args: str, project: str = "demo") -> tuple[int, str]:
     result = CliRunner().invoke(_pod.pod_app, [*args, "--pod", project])
     return result.exit_code, result.output
-
-
-def _meta(home: Path, member_id: str) -> dict:
-    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
-    return json.loads(p.read_text())
 
 
 class TestBuildPod:

@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider
-from tests.integration.llm_stub import _final_response, _ScriptedLLMServer, _tool_call_response
-from tests.pods import build_pod
+from tests.support import home as _support_home
+from tests.support.git import git_4 as _git
+from tests.support.home import record_isolation_off, register_local_provider
+from tests.support.llm import _final_response, _ScriptedLLMServer, _tool_call_response
+from tests.support.pods import build_pod
 
 from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import pod as _pod
@@ -25,6 +27,8 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
+_hermetic = _support_home.hermetic_2
+
 SUBJECT = "docket.tasks.application.queue"
 
 _IMPLEMENTER_ONLY = """\
@@ -33,12 +37,6 @@ steps:
   - id: implementer
     role: implementer
 """
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
 @pytest.fixture()
@@ -53,10 +51,6 @@ def stub() -> Iterator[Any]:
     yield _start
     for server in servers:
         server.stop()
-
-
-def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
 
 
 @contextmanager

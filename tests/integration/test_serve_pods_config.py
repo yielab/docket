@@ -22,11 +22,6 @@ SUBJECT = "docket.governance"
 _TOKEN = "test-serve-token-pods-config"
 
 
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
 @pytest.fixture()
 def server(tmp_path: Path):  # type: ignore[no-untyped-def]
     home = tmp_path / ".docket"

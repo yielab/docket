@@ -14,16 +14,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-import pytest
-from tests.conftest import record_isolation_off
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.home import record_isolation_off
+from tests.support.llm import implementer_messages as _implementer_messages
+from tests.support.pods import build_pod
+from tests.support.pods import spec as _spec
 
 from docket.hops.application import compose as _compose
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.pipeline.application import executor as _executor
-from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
@@ -45,11 +45,6 @@ steps:
 """
 
 
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
 @contextmanager
 def _seed(tmp_path: Path, verify_cmd: str) -> Iterator[None]:
     home = tmp_path / ".docket"
@@ -61,17 +56,6 @@ def _seed(tmp_path: Path, verify_cmd: str) -> Iterator[None]:
         _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         _fleet.meta_set("demo-implementer", "verifyCmd", verify_cmd)
         yield
-
-
-def _spec(text: str) -> _pipeline.PipelineSpec:
-    loaded = _pipeline.load_pipeline(text)
-    assert loaded.ok, loaded.errors
-    assert loaded.spec is not None
-    return loaded.spec
-
-
-def _implementer_messages(driver: FakeDriver) -> list[str]:
-    return [c[2] for c in driver.calls if c[0].endswith("-implementer")]
 
 
 @contextmanager

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tests.support.pods import unit as _unit
 
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
@@ -13,20 +14,6 @@ from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import plan as _orch
 
 SUBJECT = "docket.hops.application.record"
-
-
-def _unit(step_id: str, **extra: Any) -> _orch.PlannedUnit:
-    fields: dict[str, Any] = {
-        "step_id": step_id,
-        "role": "implementer",
-        "agent": None,
-        "archetype": None,
-        "member_id": "demo-implementer",
-        "gate": None,
-        "retries": None,
-        "timeout": None,
-    }
-    return _orch.PlannedUnit(**{**fields, **extra})
 
 
 def test_a_group_keeps_the_failure_kind_of_the_child_that_failed(

@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
@@ -39,11 +39,6 @@ from docket.teams.models import AgentMeta
 SUBJECT = "docket.teams"
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager

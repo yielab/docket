@@ -17,6 +17,7 @@ from tests.fixtures.runtime_adapters.scenarios import (
     SUBPROCESS_TIMEOUT_S,
     GovernanceScenario,
 )
+from tests.support.cli import run as _run
 
 LANE = "release"
 REASON = "Prevents the OpenHands SDK adapter from losing governance-scenario parity, or from depending on network or credentials once installed from a built artifact."
@@ -31,10 +32,6 @@ FIXTURE = ROOT / "tests" / "fixtures" / "runtime_adapters" / "openhands"
 class OpenHandsArtifacts:
     wheel_python: Path
     sdist_python: Path
-
-
-def _run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=True)
 
 
 @pytest.fixture(scope="module")

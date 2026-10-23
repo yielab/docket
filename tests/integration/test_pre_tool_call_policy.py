@@ -17,13 +17,14 @@ import dataclasses
 import json
 import time as _real_time
 import types
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
+from tests.support.cli import call as _call
+from tests.support.trace import audit_actions as _audit_actions
 
-from docket.agent.llm import ToolCall
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import (
@@ -37,21 +38,11 @@ from docket.agent.tools.registry import (
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.governance.policy import install_policies
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
+
+_hermetic = _support_home.hermetic_5
 
 SUBJECT = "docket.agent.tools.registry"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path) -> Iterator[None]:
-    """Isolate every docket-owned store, and default the in-turn approval timeout to 0 so an
-    unresolved `ask` fails closed immediately (no real sleep) unless a test overrides it to
-    exercise the waiting/granting path."""
-    with (
-        use_home(Home(tmp_path)),
-        use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
-    ):
-        yield
 
 
 def _write_policy(
@@ -93,14 +84,6 @@ def ctx(workspace: Path) -> ToolContext:
         roots=(workspace,),
         timeout=10,
     )
-
-
-def _call(name: str, arguments: str = "{}", call_id: str = "c1") -> ToolCall:
-    return ToolCall(id=call_id, name=name, arguments=arguments)
-
-
-def _audit_actions() -> list[str]:
-    return [e["action"] for e in _audit.read_audit()]
 
 
 def _recording_tool(name: str, kind: str, ran: dict[str, bool]) -> Tool:

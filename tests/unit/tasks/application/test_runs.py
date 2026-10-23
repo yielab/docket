@@ -11,27 +11,20 @@ calls never clobbering each other (locked read-modify-write).
 
 from __future__ import annotations
 
-import dataclasses
 import datetime as _dt
 import json
 import threading
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support import home as _support_home
 
-from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
 from docket.tasks.application import runs as _runs
 
+runs_file = _support_home.runs_file
+
 SUBJECT = "docket.tasks.application.runs"
-
-
-@pytest.fixture()
-def runs_file(tmp_path: Path) -> Iterator[Path]:
-    f = tmp_path / "docket-runs.json"
-    with use_home(dataclasses.replace(current_home(), runs_file_override=f)):
-        yield f
 
 
 class _FakeTaskResult:

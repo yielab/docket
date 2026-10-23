@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.support.cli import run as _run
 
 SUBJECT = "docket"
 
@@ -20,10 +21,6 @@ RUNTIME = ROOT / "packages" / "docket-runtime"
 class RuntimeArtifacts:
     wheel_python: Path
     sdist_python: Path
-
-
-def _run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=True)
 
 
 def _python(

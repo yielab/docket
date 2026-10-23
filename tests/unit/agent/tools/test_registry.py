@@ -12,13 +12,15 @@ import ast
 import dataclasses
 import json
 import time
-from collections.abc import Iterator
 from pathlib import Path
 from typing import ClassVar
 
 import pytest
+from tests.support import home as _support_home
+from tests.support import llm as _support_llm
+from tests.support import pods as _support_pods
+from tests.support.cli import call as _call
 
-from docket.agent.llm import ToolCall
 from docket.agent.tools import builtin_tools
 from docket.agent.tools import registry as core_tools
 from docket.agent.tools.builtin_tools import builtin_registry
@@ -36,45 +38,17 @@ from docket.agent.tools.registry import (
 from docket.governance import approval as core_approval
 from docket.governance import approval_pregrant
 from docket.governance.security import classify_command
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.operator.contract import canonical_args_digest
+
+_isolate_gates = _support_home.isolate_gates
+workspace = _support_pods.workspace_2
+ctx = _support_llm.ctx_2
+pod_input_policy = _support_pods.pod_input_policy
 
 SUBJECT = "docket.agent.tools.registry"
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-
-
-@pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Isolate `governance/policy.py` and `governance/approval.py`'s real stores from a
-    developer's ``~/.docket``, and set the approval timeout to 0 so a gated
-    call nothing grants resolves immediately (fail-closed to denied)."""
-    with use_home(
-        dataclasses.replace(
-            current_home(),
-            policies_dir_override=tmp_path / "_policies",
-            approvals_dir_override=tmp_path / "_approvals",
-            tool_approval_timeout=0,
-        )
-    ):
-        yield
-
-
-@pytest.fixture
-def workspace(tmp_path: Path) -> Path:
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "main.py").write_text("print('hello')\n")
-    (tmp_path / "notes.md").write_text("alpha\nbeta\ngamma\n")
-    return tmp_path
-
-
-@pytest.fixture
-def ctx(workspace: Path) -> ToolContext:
-    return ToolContext(agent_id="demo-implementer", roots=(workspace,), timeout=10)
-
-
-def _call(name: str, arguments: str = "{}", call_id: str = "c1") -> ToolCall:
-    return ToolCall(id=call_id, name=name, arguments=arguments)
 
 
 class TestCommandClassifierIsArgumentAware:
@@ -922,19 +896,6 @@ when:
 then: block
 message: canary
 """
-
-
-@pytest.fixture()
-def pod_input_policy(tmp_path: Path) -> Iterator[Path]:
-    """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
-
-    home = tmp_path / "home"
-    with use_home(Home(home)):
-        policies = current_home().pod_config_dir("mypod") / "policies"
-        policies.mkdir(parents=True)
-        (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
-        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
-        yield home
 
 
 class TestUntrustedResultScreensSeeThePodPolicy:

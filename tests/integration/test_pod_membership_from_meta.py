@@ -11,18 +11,14 @@ requirement 5).
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
-import pytest
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.pods import build_pod
+from tests.support.pods import seed as _seed
 
 from docket.agent import ports as _rd
 from docket.interfaces.cli.commands import pod_members as _pod_members
-from docket.kernel.home import Home, use_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
@@ -32,22 +28,6 @@ from docket.teams import pod
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.teams.pod"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed(
-    tmp_path: Path,
-) -> Iterator[None]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield
 
 
 def _register_security_reviewer() -> None:

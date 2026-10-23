@@ -19,11 +19,12 @@ import dataclasses
 import sys
 import time
 import types
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
+from tests.support.trace import audit_actions as _audit_actions
 
 from docket.agent.llm import ToolCall
 from docket.agent.tools import mcp_tools as _mt
@@ -31,25 +32,13 @@ from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolContext, ToolRegistry, dispatch_tool
 from docket.governance import approval as _approval
-from docket.governance import audit as _audit
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
+
+_hermetic = _support_home.hermetic_5
 
 SUBJECT = "docket.agent.tools.mcp_client"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path) -> Iterator[None]:
-    with (
-        use_home(Home(tmp_path)),
-        use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
-    ):
-        yield
-
-
-def _audit_actions() -> list[str]:
-    return [e["action"] for e in _audit.read_audit()]
 
 
 def _write_pre_tool_call_policy(

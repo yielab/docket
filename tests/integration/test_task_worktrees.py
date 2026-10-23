@@ -16,7 +16,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support import home as _support_home
+from tests.support.git import git as _git
+from tests.support.pods import bind_pipeline_3 as _bind_pipeline
+from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.interfaces.cli.commands import pod as _pod
@@ -29,6 +32,8 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
 from docket.teams import task_worktrees as _task_worktrees
+
+_hermetic = _support_home.hermetic_2
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -79,13 +84,6 @@ steps:
 """
 
 
-def _git(repo: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-    )
-    return done.stdout.strip()
-
-
 def _init_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", str(path)], check=True, capture_output=True)
@@ -96,12 +94,6 @@ def _init_repo(path: Path) -> None:
     _git(path, "commit", "-m", "init")
 
 
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-
-
 @contextmanager
 def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
@@ -110,14 +102,6 @@ def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
     with use_home(Home(home)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         yield
-
-
-def _bind_pipeline(text: str) -> None:
-    path = _pod.pod.bound_pipeline_path("demo")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
 
 
 class _Runner:

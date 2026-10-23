@@ -10,28 +10,18 @@ import io
 import json
 import queue
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.home import home as _home
 
 from docket.governance import approval as _ap
 from docket.interfaces.cli.render import progress as _progress
 from docket.kernel import clock as _clock
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.interfaces.cli.render.progress"
-
-
-@contextmanager
-def _home(
-    tmp_path: Path,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    with use_home(Home(home)):
-        yield home
 
 
 _TASK_ID = "task-04ff1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"

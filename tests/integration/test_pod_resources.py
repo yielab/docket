@@ -9,17 +9,16 @@ Two layers:
 
 from __future__ import annotations
 
-import json
 import threading
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
+from tests.support.pods import meta_2 as _meta
+from tests.support.pods import seed_2 as _seed
 
 from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.kernel.threads import new_thread
 from docket.platform import store as _store
 from docket.teams import pod_provisioning as _pp
@@ -28,27 +27,6 @@ from docket.teams import resources as _res
 SUBJECT = "docket.teams"
 
 # ── hermetic helpers ─────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed(
-    tmp_path: Path,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield home
-
-
-def _meta(home: Path, member_id: str) -> dict:  # type: ignore[type-arg]
-    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
-    return json.loads(p.read_text())
 
 
 # ── pure logic ───────────────────────────────────────────────────────────────

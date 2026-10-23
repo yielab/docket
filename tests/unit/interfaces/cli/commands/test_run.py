@@ -14,8 +14,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off
+from tests.support.llm import final_response as _final_response
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import driver as _dr
@@ -70,12 +71,6 @@ class _FakeTTY(io.StringIO):
 
     def isatty(self) -> bool:
         return True
-
-
-def _final_response(text: str) -> ChatResponse:
-    return ChatResponse(
-        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
-    )
 
 
 class _ScriptedBackend:
@@ -401,7 +396,7 @@ class TestRun:
     def test_dispatches_through_the_default_pipeline_with_the_fake_driver(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)

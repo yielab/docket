@@ -8,17 +8,15 @@ report; the return value is the process exit code.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.pods import seed_4 as _seed
 
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services
-from docket.kernel.home import Home, current_home, use_home
-from docket.operator import channel as _channel
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.interfaces.cli.commands.setup_check_services"
 
@@ -43,61 +41,6 @@ _FLEET_CONFIG: dict[str, Any] = {
     "defaults": {"model": "anthropic/claude-sonnet-4-6"},
     "security": {"gatesEnabled": False, "isolationEnabled": False},
 }
-
-
-@contextmanager
-def _point_config_at(
-    home: Path,
-) -> Iterator[None]:
-    """Repoint the already-imported config module at a temp DOCKET_HOME."""
-    with use_home(Home(home)):
-        yield
-
-
-@contextmanager
-def _seed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    full_workspace: bool = True,
-    budget: str | None = None,
-    register: bool = True,
-    meta_model: str = "anthropic/claude-sonnet-4-6",
-    secrets: dict[str, str] | None = None,
-    notify: bool = True,
-) -> Iterator[Path]:
-    """Create a temp DOCKET_HOME with one myshop agent and repoint config; a healthy home
-    has a channel that delivers beyond the console, so `desktop` is enabled unless asked not to."""
-    home = tmp_path / ".docket"
-    ws = home / "workspaces" / "projects" / "myshop"
-    (ws / "memory").mkdir(parents=True)
-
-    meta = {**_FULL_META, "model": meta_model}
-    if budget is not None:
-        meta["budgetUsd"] = budget
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-
-    files = ("SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md") if full_workspace else ("SOUL.md",)
-    for f in files:
-        (ws / f).write_text(f"# {f}\n")
-
-    fleet = json.loads(json.dumps(_FLEET_CONFIG))
-    if not register:
-        fleet["agents"] = []
-    fleet_file = home / "fleet.json"
-    fleet_file.write_text(json.dumps(fleet))
-    fleet_file.chmod(0o600)
-
-    if secrets is not None:
-        sfile = home / "secrets.json"
-        sfile.write_text(json.dumps(secrets))
-        sfile.chmod(0o600)
-
-    with _point_config_at(home):
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
-        if notify:
-            _channel.enable_channel("desktop")
-        yield home
 
 
 class TestNotifications:

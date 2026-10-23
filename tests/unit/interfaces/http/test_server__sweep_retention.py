@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support.trace import write_trace as _write_trace
 
 from docket.governance import approval as _ap
 from docket.interfaces.http import server as _server
@@ -41,13 +42,6 @@ def swept_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
     ):
         monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
         yield d
-
-
-def _write_trace(pdir: Path, name: str, lines: list[dict[str, object]]) -> Path:
-    pdir.mkdir(parents=True, exist_ok=True)
-    tf = pdir / f"{name}.jsonl"
-    tf.write_text("\n".join(json.dumps(r) for r in lines) + "\n", encoding="utf-8")
-    return tf
 
 
 class TestSweepRunsRetention:

@@ -11,6 +11,7 @@ import dataclasses
 from pathlib import Path
 
 import pytest
+from tests.support import llm as _support_llm
 
 from docket.agent import loop as _loop
 from docket.agent.llm import ChatResponse
@@ -18,6 +19,8 @@ from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool as _Tool
 from docket.agent.tools.registry import ToolContext, ToolRegistry, ToolResult
 from docket.kernel.home import current_home, use_home
+
+ctx = _support_llm.ctx
 
 SUBJECT = "docket.agent.loop"
 
@@ -52,13 +55,6 @@ def registry() -> ToolRegistry:
         )
     )
     return reg
-
-
-@pytest.fixture
-def ctx(tmp_path: Path) -> ToolContext:
-    return ToolContext(
-        agent_id="demo-agent", role="implementer", project="demo", roots=(tmp_path,), timeout=10
-    )
 
 
 class _FakeBoundsBackend:

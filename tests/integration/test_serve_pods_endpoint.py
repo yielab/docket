@@ -15,18 +15,19 @@ from __future__ import annotations
 
 import json
 import threading
-import urllib.error
-import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import http as _support_http
+from tests.support import pods as _support_pods
+from tests.support.http import get as _get
+from tests.support.http import post_2 as _post
+from tests.support.http import post_raw as _post_raw
 
 from docket.interfaces.cli.commands import pod as _pod
-from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.threads import ContextHTTPServer, new_thread
+from docket.kernel.home import current_home
+from docket.kernel.threads import new_thread
 from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.teams import fleet as _fleet
@@ -34,67 +35,13 @@ from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod_provisioning as _pp
 from docket.teams import report as _pod_report
 
+live_server = _support_http.live_server
+
+pod_home = _support_pods.pod_home
+
 SUBJECT = "docket.teams"
 
-_TEST_TOKEN = "test-serve-token-pods-p22-5"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@pytest.fixture()
-def pod_home(tmp_path: Path) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    (home / "approvals").mkdir()
-    with use_home(Home(home)):
-        yield home
-
-
-@pytest.fixture()
-def live_server(pod_home: Path):  # type: ignore[no-untyped-def]
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
-
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
-
-
-def _post_raw(url: str, data: bytes, token: str | None = None) -> tuple[int, dict[str, Any]]:
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
-
-
-def _post(
-    url: str, body: dict[str, Any] | None = None, token: str | None = None
-) -> tuple[int, dict[str, Any]]:
-    return _post_raw(url, json.dumps(body if body is not None else {}).encode(), token)
-
-
-def _get(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:
-    req = urllib.request.Request(url, method="GET")
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
+_TEST_TOKEN = "test-serve-token"
 
 
 def _ids() -> list[str]:

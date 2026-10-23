@@ -3,36 +3,18 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
 
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
-from docket.teams import pod
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import recipes as _recipes
 
 SUBJECT = "docket.teams.apply.recipes"
-
-
-@contextmanager
-def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
-    """A minimal two-role pod (lead + implementer) in an isolated ``DOCKET_HOME`` --
-    ``plan_apply``'s existing-pod lookup (``_dispatch.pod_pipeline``) needs one to resolve
-    against, even for a manifest that never reaches roles/policies/settings."""
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield
 
 
 def _unit(step_id: str, *, role: str | None, agent: str | None, skipped: bool) -> _orch.PlannedUnit:

@@ -12,18 +12,15 @@ import threading
 import time
 
 import pytest
+from tests.support import llm as _support_llm
 
 from docket.interfaces.telegram import bot as _telegram
 from docket.interfaces.telegram import poll
 from docket.kernel.threads import new_thread
 
+_fast_backoffs = _support_llm.fast_backoffs
+
 SUBJECT = "docket.interfaces.telegram.poll"
-
-
-@pytest.fixture(autouse=True)
-def _fast_backoffs(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(poll, "_TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
-    monkeypatch.setattr(poll, "_TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)
 
 
 def _run_loop_until(stop: threading.Event, n_calls: int, timeout: float = 5.0) -> None:

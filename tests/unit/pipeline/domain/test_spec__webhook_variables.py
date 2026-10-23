@@ -13,22 +13,14 @@ required variable is rejected 400 before the run record exists.
 from __future__ import annotations
 
 import pytest
+from tests.support.pods import spec_2 as _spec
 
 from docket.pipeline.domain import spec as _pipeline
-from docket.pipeline.domain import step as _step
 
 SUBJECT = "docket.pipeline.domain.spec"
 
 
 # ── pipeline.domain.spec.resolve_variables (pure, no server) ────────────────────────
-
-
-def _spec(**variables: _pipeline.Variable) -> _pipeline.PipelineSpec:
-    return _pipeline.PipelineSpec(
-        name="t",
-        variables=variables,
-        steps=[_step.Step(id="lead", role="lead")],
-    )
 
 
 class TestResolveVariables:

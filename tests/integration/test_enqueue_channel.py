@@ -8,7 +8,7 @@ import urllib.request
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.governance import audit as _audit
@@ -22,11 +22,6 @@ from docket.teams import fleet as _fleet
 SUBJECT = "docket.tasks.application.queue"
 
 _TOKEN = "test-serve-token-channel"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @pytest.fixture()

@@ -12,31 +12,30 @@ lacks (see `interfaces/cli/commands/pod.py::_pod_delegate`'s identical contentio
 from __future__ import annotations
 
 import dataclasses
-import hashlib
-import json
 import threading
-import urllib.error
-import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import pytest
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support import http as _support_http
+from tests.support import pods as _support_pods
+from tests.support.http import post_2 as _post
+from tests.support.pods import build_pod
+from tests.support.pods import seed_parked_task as _seed_parked_task
 
 from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
-from docket.teams import fleet as _fleet
+
+live_server = _support_http.live_server
+
+pod_home = _support_pods.pod_home
 
 SUBJECT = "docket.governance"
 
-_TEST_TOKEN = "test-serve-token-task-answer-p34-13"
+_TEST_TOKEN = "test-serve-token"
 
 _ASK_PIPELINE_YAML = """\
 name: ask
@@ -49,71 +48,6 @@ steps:
   - id: implementer
     role: implementer
 """
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@pytest.fixture()
-def pod_home(tmp_path: Path) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    (home / "approvals").mkdir()
-    with use_home(Home(home)):
-        yield home
-
-
-@pytest.fixture()
-def live_server(pod_home: Path):  # type: ignore[no-untyped-def]
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
-
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
-
-
-def _post_raw(url: str, data: bytes, token: str | None = None) -> tuple[int, dict[str, Any]]:
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
-
-
-def _post(
-    url: str, body: dict[str, Any] | None = None, token: str | None = None
-) -> tuple[int, dict[str, Any]]:
-    return _post_raw(url, json.dumps(body if body is not None else {}).encode(), token)
-
-
-def _bind_pipeline(project: str, text: str) -> None:
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
-def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
-    """A real pod with a real ``waiting_input`` task, reached by actually dispatching
-    through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
-    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _queue.enqueue_task_once(project, "needs a decision", channel="cli")
-    _sweep.dispatch_pod(project, runner=FakeDriver())
-    return _queue.read_tasks(project)[0]
 
 
 class TestAuth:

@@ -16,13 +16,14 @@ from pathlib import Path
 
 import pytest
 import typer
-from tests.pods import build_pod
+from tests.support.pods import build_pod
+from tests.support.pods import seed as _seed
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.interfaces.http import sweeps as _sweeps
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
@@ -30,22 +31,6 @@ from docket.teams import pod, pod_settings
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.pod"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed(
-    tmp_path: Path,
-) -> Iterator[None]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield
 
 
 @contextmanager

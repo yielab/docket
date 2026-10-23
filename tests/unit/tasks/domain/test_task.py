@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off
+from tests.support.pods import build_pod
 
 from docket.agent import driver as _drt
 from docket.agent.llm import ChatResponse, TokenUsage, assistant

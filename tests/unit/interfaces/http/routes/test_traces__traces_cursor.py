@@ -16,12 +16,11 @@ import dataclasses
 import datetime as _dt
 import json
 import threading
-import urllib.error
-import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support.http import get_2 as _get
 
 from docket.interfaces.http.routes import traces
 from docket.interfaces.http.server import _DocketHandler
@@ -33,17 +32,6 @@ from docket.observability import trace as _trace
 SUBJECT = "docket.interfaces.http.routes.traces"
 
 _TEST_TOKEN = "test-serve-token-traces-p22-3"
-
-
-def _get(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
-    req = urllib.request.Request(url)
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 class _ClockedHandler(_DocketHandler):

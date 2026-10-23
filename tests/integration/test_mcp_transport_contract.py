@@ -10,18 +10,15 @@ from __future__ import annotations
 
 import json
 import tomllib
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import seed_pod_3 as _seed_pod
+from tests.support.trace import audit_actions_2 as _audit_actions
 
 from docket.governance import approval as _approval
-from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import mcp as _mcp
-from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 
@@ -76,25 +73,6 @@ class TestSingleCodePathOnRealSdk:
 # (mirrors test_mcp_server.py's fixtures — duplicated rather than
 # cross-imported, matching this suite's existing convention of one
 # self-contained module per test file)
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-def _audit_actions(action: str) -> list[dict[str, Any]]:
-    return [e for e in _audit.read_audit() if e["action"] == action]
 
 
 async def _call(server: Any, name: str, arguments: dict[str, Any]) -> Any:

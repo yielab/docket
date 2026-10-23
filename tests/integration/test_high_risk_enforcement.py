@@ -13,21 +13,22 @@ existing stronger verdict, only raises a bare "allow" to "warn" for visibility).
 
 from __future__ import annotations
 
-import json
 import subprocess
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
+from tests.support.pods import seed_lean_pod as _seed_lean_pod
+from tests.support.pods import write_policy as _write_policy
+from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
-from docket.kernel.home import Home, current_home, use_home
-from docket.observability import trace as _trace
 from docket.sandbox import launch as _launch
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
-from docket.teams import fleet as _fleet
+
+_hermetic = _support_home.hermetic
 
 SUBJECT = "docket.tasks"
 
@@ -79,78 +80,6 @@ class TestRunVerifyCmdHighRisk:
 
 
 # ── dispatch integration: pre_output high-risk classification ────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
-
-
-def _seed_lean_pod(project: str = "myapp") -> None:
-    _write_meta(f"{project}-lead")
-    _write_meta(f"{project}-implementer")
-
-
-def _write_policy(
-    policy_id: str,
-    hook: str,
-    pattern: str,
-    action: str,
-    *,
-    applies_to: list[str] | None = None,
-    message: str = "",
-) -> None:
-    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
-    doc = {
-        "id": policy_id,
-        "description": f"test policy {policy_id}",
-        "applies_to": applies_to or ["*"],
-        "hook": hook,
-        "match": {"type": "regex", "pattern": pattern},
-        "action": action,
-        "message": message,
-    }
-    (current_home().policies_dir / f"{policy_id}.json").write_text(
-        json.dumps(doc), encoding="utf-8"
-    )
-
-
-def _trace_events(project: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    traces_dir = current_home().traces_dir / project
-    if not traces_dir.is_dir():
-        return events
-    for f in traces_dir.glob("*.jsonl"):
-        events.extend(_trace.read_trace(f))
-    return events
 
 
 class _RecordingRunner:

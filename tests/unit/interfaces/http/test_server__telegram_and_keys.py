@@ -11,10 +11,13 @@ from __future__ import annotations
 import threading
 
 import pytest
+from tests.support import llm as _support_llm
 
 from docket.interfaces.http import server
 from docket.interfaces.telegram import poll
 from docket.kernel import threads as _threads
+
+_fast_backoffs = _support_llm.fast_backoffs
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -30,12 +33,6 @@ class _FakeServer:
 
     def server_close(self) -> None:
         pass
-
-
-@pytest.fixture(autouse=True)
-def _fast_backoffs(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(poll, "_TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
-    monkeypatch.setattr(poll, "_TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)
 
 
 # ── run_serve(telegram=...) actually starts (or doesn't start) the loop ─────

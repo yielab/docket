@@ -15,7 +15,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.git import git as _git
+from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.governance import approval as _ap
@@ -39,13 +40,6 @@ _GATED_PIPELINE = (
 )
 
 
-def _git(repo: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-    )
-    return done.stdout.strip()
-
-
 def _init_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", str(path)], check=True, capture_output=True)
@@ -59,11 +53,6 @@ def _init_repo(path: Path) -> None:
     (path / "src" / "app.js").write_text("console.log(1)\n")
     _git(path, "add", ".")
     _git(path, "commit", "-m", "init")
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager

@@ -10,7 +10,7 @@ from typing import Any
 
 import jsonschema
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app

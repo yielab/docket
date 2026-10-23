@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 
 from docket.agent import identity as _identity
 from docket.agent.tools import builtin_tools as _builtin_tools
@@ -19,11 +19,6 @@ from docket.teams import roles as _arch
 SUBJECT = "docket.agent.identity"
 
 _MEMBER = "demo-implementer"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 def _checkout(path: Path) -> Path:

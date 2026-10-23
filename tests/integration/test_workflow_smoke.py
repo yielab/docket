@@ -16,7 +16,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 
 from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import Home, use_home
@@ -87,7 +87,7 @@ def test_memory_smoke_delegation_routes_private_context_only_through_typed_hando
 def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.conftest import record_isolation_off
+    from tests.support.home import record_isolation_off
     from typer.testing import CliRunner
 
     from docket.interfaces.cli.app import app

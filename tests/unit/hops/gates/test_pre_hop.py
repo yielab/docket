@@ -13,23 +13,25 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import pods as _support_pods
+from tests.support.pods import planned_unit as _planned_unit
+from tests.support.pods import unit_context as _unit_context
 
 from docket.agent import ports as _rd
 from docket.agent.llm import TokenUsage
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.hops.gates import pre_hop as _pre_hop
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
-from docket.pipeline.domain import plan as _orch
 from docket.tasks.domain import task as _task
+
+pod_home = _support_pods.pod_home_2
 
 SUBJECT = "docket.hops.gates.pre_hop"
 
@@ -37,61 +39,7 @@ SUBJECT = "docket.hops.gates.pre_hop"
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture()
-def pod_home(tmp_path: Path) -> Iterator[Path]:
-    """A hermetic DOCKET_HOME with the directories enqueue_task_once touches."""
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield home
-
-
 # ── _execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
-
-
-def _unit_context(
-    *,
-    project: str = "myapp",
-    task_id: str = "task-1",
-    cap: float = 0.0,
-    override_index: int | None = None,
-    run: Any = None,
-    on_hop: Any = None,
-) -> _record._UnitContext:
-    return _record._UnitContext(
-        project=project,
-        task={"id": task_id},
-        task_id=task_id,
-        session_id=f"agent:{project}:{task_id}",
-        cap=cap,
-        resolved_turn_timeout=60,
-        resolved_verify_timeout=60,
-        id_to_index={},
-        rework_counts={},
-        override_index=override_index,
-        track_pid=False,
-        run=run or (lambda *a, **k: _rd.TurnResult(True, "", 0.0, {})),
-        do_sleep=lambda seconds: None,
-        on_hop=on_hop,
-        on_retry=None,
-    )
-
-
-def _planned_unit(
-    member_id: str, *, gate: _gates.Gate | None = None, step_id: str = "implementer"
-) -> _orch.PlannedUnit:
-    return _orch.PlannedUnit(
-        step_id=step_id,
-        role="implementer",
-        agent=None,
-        archetype=None,
-        member_id=member_id,
-        gate=gate,
-        retries=None,
-        timeout=None,
-    )
 
 
 class TestExecuteUnitDirectly:

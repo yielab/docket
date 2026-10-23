@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 
 from docket.kernel.home import Home, use_home
 

@@ -61,7 +61,7 @@ def _keep_pytest_dumpable(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_docket_home(tmp_path: Path) -> Iterator[None]:
+def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Run every test in a home of its own under ``tmp_path``.
 
     **Measured, not assumed:** with only ``FLEET_FILE`` isolated, a full ``uv run pytest``
@@ -76,52 +76,9 @@ def _isolate_docket_home(tmp_path: Path) -> Iterator[None]:
     replaces this default for the block. The fleet file stays beside the home, at the leaf it
     has always had here.
     """
+    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     home = Home(
         tmp_path / "_autouse_docket_home", fleet_file_override=tmp_path / "_autouse_fleet.json"
     )
     with use_home(home):
         yield
-
-
-def register_local_provider(
-    home: Path,
-    name: str,
-    models: list[dict[str, object]],
-    base_url: str = "http://127.0.0.1:9999/v1",
-) -> None:
-    """Write a keyless loopback provider document into *home*'s global catalog."""
-    from docket.models import catalog as _provider
-
-    with use_home(Home(home)):
-        _provider.save_provider(
-            _provider.ProviderSpec.model_validate(
-                {
-                    "name": name,
-                    "baseUrl": base_url,
-                    "auth": {"type": "none"},
-                    "local": True,
-                    "models": models,
-                }
-            )
-        )
-
-
-def record_isolation_off(home: Path) -> None:
-    """Record an explicit isolation off in *home*'s fleet.json, merging into any existing file."""
-    _record_isolation_mode(home, "off")
-
-
-def record_isolation_on(home: Path) -> None:
-    """Record `docket setup sandbox on` in *home*'s fleet.json, merging into any existing file."""
-    _record_isolation_mode(home, "non-main")
-
-
-def _record_isolation_mode(home: Path, mode: str) -> None:
-    import json
-
-    home.mkdir(parents=True, exist_ok=True)
-    path = home / "fleet.json"
-    data = json.loads(path.read_text()) if path.exists() else {}
-    data.setdefault("security", {})["isolationMode"] = mode
-    path.write_text(json.dumps(data))
-    path.chmod(0o600)

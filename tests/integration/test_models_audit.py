@@ -13,7 +13,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tests.conftest import register_local_provider
+from tests.support.home import register_local_provider
+from tests.support.pods import setup_agent as _setup_agent
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app
@@ -34,16 +35,6 @@ META: dict[str, Any] = {
     "sessionKey": "agent:myshop:default",
     "projectKey": "default",
 }
-
-
-def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
-    oc_dir = tmp_path / ".docket"
-    oc_dir.mkdir()
-    ws = oc_dir / "workspaces" / "projects" / agent_id
-    (ws / "memory").mkdir(parents=True)
-    (ws / ".docket-meta.json").write_text(json.dumps(META))
-    (ws / "SOUL.md").write_text("# SOUL\n")
-    return oc_dir
 
 
 def _register_openai(oc_dir: Path) -> None:

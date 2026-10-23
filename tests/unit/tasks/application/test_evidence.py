@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off
+from tests.support.pods import build_pod
 
 from docket.agent import driver as _dr
 from docket.agent.driver import DocketDriver
@@ -27,11 +27,6 @@ from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.evidence"
 ROOT = Path(__file__).resolve().parents[4]
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager

@@ -8,18 +8,8 @@ token accounting, and fail-closed summarisation on a failing driver.
 
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Iterator
-from pathlib import Path
+from tests.support import home as _support_home
 
-import pytest
-
-from docket.kernel.home import current_home, use_home
+_isolate_sessions_dir = _support_home.isolate_sessions_dir
 
 SUBJECT = "docket.agent.session_compaction"
-
-
-@pytest.fixture(autouse=True)
-def _isolate_sessions_dir(tmp_path: Path) -> Iterator[None]:
-    with use_home(dataclasses.replace(current_home(), sessions_dir_override=tmp_path / "sessions")):
-        yield

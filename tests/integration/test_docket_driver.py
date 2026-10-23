@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
+from tests.support.home import record_isolation_off
+from tests.support.pods import write_meta_2 as _write_meta
 
 from docket.agent import driver as _docket_runtime
 from docket.agent import memory as _memory
@@ -70,16 +71,6 @@ def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator
 
 def _no_recorded_isolation_choice() -> None:
     current_home().fleet_file.unlink(missing_ok=True)
-
-
-def _write_meta(agent_id: str, **overrides: object) -> Path:
-    """Write a real `.docket-meta.json` for *agent_id* and return its workspace dir."""
-    ws = current_home().workspace_dir(agent_id)
-    ws.mkdir(parents=True, exist_ok=True)
-    data: dict[str, object] = {"kind": "project", "role": "implementer", "model": "test/model"}
-    data.update(overrides)
-    _store.write_json(current_home().meta_path(agent_id), data)
-    return ws
 
 
 class _ScriptedBackend:

@@ -19,8 +19,9 @@ from pathlib import Path
 from threading import Barrier
 
 import pytest
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.pods import build_pod
+from tests.support.pods import lead_ws as _lead_ws
 
 from docket.agent import conversations as _conv
 from docket.agent import memory as _mem
@@ -28,7 +29,7 @@ from docket.agent import ports as _rd
 from docket.hops.application import record as _record
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 from docket.pipeline.application import executor as _executor_c
 from docket.pipeline.application import steps as _steps_c
@@ -40,11 +41,6 @@ from docket.teams import settings as _settings
 SUBJECT = "docket.agent"
 
 # ── hermetic environment (mirrors test_dispatch.py's _seed_pod) ─────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager
@@ -59,10 +55,6 @@ def _seed_pod(
     with use_home(Home(home)):
         build_pod(project, roles, codebase=f"/src/{project}")
         yield home
-
-
-def _lead_ws(project: str = "demo") -> Path:
-    return current_home().workspace_dir(f"{project}-lead")
 
 
 # ── HEARTBEAT ledger lifecycle ────────────────────────────────────────────────

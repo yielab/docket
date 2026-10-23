@@ -17,8 +17,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent.tools import mcp_tools as _mcp_tools
@@ -38,11 +38,6 @@ from docket.teams import settings as _settings
 SUBJECT = "docket.interfaces.cli.commands.pod_show"
 
 _runner = CliRunner()
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager

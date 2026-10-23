@@ -8,16 +8,11 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from tests.support.git import git as _git
+
 from docket.teams import task_worktrees as _task_worktrees
 
 SUBJECT = "docket.teams.pod_provisioning"
-
-
-def _git(repo: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-    )
-    return done.stdout.strip()
 
 
 def _repo_with_prev_branch(path: Path) -> tuple[str, str]:

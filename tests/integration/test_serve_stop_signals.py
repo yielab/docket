@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider
-from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off, register_local_provider
+from tests.support.llm import _final_response, _ScriptedLLMServer
+from tests.support.pods import build_pod
 
 from docket.hops.application import record as _record
 from docket.interfaces.cli.commands import pod as _pod

@@ -11,42 +11,21 @@ prose in the same file.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import lead_ws as _lead_ws
+from tests.support.pods import seed_pod as _seed_pod
 
 from docket.agent import memory as _mem
-from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_budget as _setup_check_budget
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 
 SUBJECT = "docket.interfaces.cli.app"
 
 # ── hermetic pod fixture (mirrors test_dispatch.py's _seed_pod) ─────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-def _lead_ws(project: str = "demo") -> Path:
-    return current_home().workspace_dir(f"{project}-lead")
 
 
 def _claim_a_task(project: str = "demo") -> str:

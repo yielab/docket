@@ -20,12 +20,15 @@ from pathlib import Path
 import pytest
 import yaml
 from tests.integration.test_task_worktrees import _bind_pipeline, _git, _init_repo, _seed_pod
+from tests.support import home as _support_home
 
 import docket.kernel.templates as _templates
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.governance import security as _sec
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
+
+_hermetic = _support_home.hermetic_2
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -76,12 +79,6 @@ class _FilesRunner:
                 _git(root, "add", ".")
                 _git(root, "commit", "-m", "implementer work")
         return TurnResult(True, "done", 0.0, {})
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
 @contextmanager

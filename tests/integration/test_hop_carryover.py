@@ -14,48 +14,26 @@ event emitted per hop by ``dispatch_task``, end to end through a real pod).
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support import home as _support_home
+from tests.support.llm import hop as _hop
+from tests.support.pods import seed_pod as _seed_pod
 
 from docket.agent import context as _context
 from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
-from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
-from docket.tasks.domain import task as _task
+
+_hermetic = _support_home.hermetic_2
 
 SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_dispatch.py / test_verify_gate.py) ─────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-def _hop(role: str, output: str, member_id: str = "") -> _task.HopResult:
-    return _task.HopResult(
-        role=role, member_id=member_id or f"demo-{role}", ok=True, output=output, cost_usd=0.0
-    )
 
 
 # ── _hop_message: the composed prompt itself ──────────────────────────────────────

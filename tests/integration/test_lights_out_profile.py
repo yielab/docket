@@ -11,9 +11,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, record_isolation_on
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.home import record_isolation_off, record_isolation_on
+from tests.support.pods import build_pod
+from tests.support.pods import spec as _spec
 from typer.testing import CliRunner
 
 from docket.agent.tools import mcp_tools as _mcp
@@ -21,7 +22,6 @@ from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.pipeline.domain import spec as _pipeline
 from docket.sandbox import launch as _launch
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
@@ -52,13 +52,6 @@ steps:
 
 _USABLE = _launch.SandboxAvailability(backend="landlock", docker=False, landlock=True)
 _NONE = _launch.SandboxAvailability(backend="none", docker=False)
-
-
-def _spec(text: str) -> _pipeline.PipelineSpec:
-    loaded = _pipeline.load_pipeline(text)
-    assert loaded.ok, loaded.errors
-    assert loaded.spec is not None
-    return loaded.spec
 
 
 @pytest.fixture

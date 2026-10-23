@@ -13,19 +13,19 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support import home as _support_home
+from tests.support.pods import build_pod
+from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.hops.application import runner as _application_runner
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
-from docket.observability import trace as _trace
+from docket.kernel.home import current_home, use_home
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.application import steps as _steps_c
 from docket.sandbox import launch as _launch
@@ -36,23 +36,11 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
+_hermetic = _support_home.hermetic_6
+
 SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_verify_gate.py / test_hop_carryover.py) ──
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    fleet_file = home / "fleet.json"
-    fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
@@ -74,16 +62,6 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
     _fleet.add_agent(member_id)
-
-
-def _trace_events(project: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    traces_dir = current_home().traces_dir / project
-    if not traces_dir.is_dir():
-        return events
-    for f in traces_dir.glob("*.jsonl"):
-        events.extend(_trace.read_trace(f))
-    return events
 
 
 def _seed_pod(tmp_path: Path, project: str = "demo") -> Path:

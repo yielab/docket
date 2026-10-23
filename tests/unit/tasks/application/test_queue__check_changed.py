@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
+from tests.support.pods import unit as _unit
 
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.pipeline.application import executor as _executor_c
@@ -14,20 +13,6 @@ from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
-
-
-def _unit(step_id: str, **extra: Any) -> _orch.PlannedUnit:
-    fields: dict[str, Any] = {
-        "step_id": step_id,
-        "role": "implementer",
-        "agent": None,
-        "archetype": None,
-        "member_id": "demo-implementer",
-        "gate": None,
-        "retries": None,
-        "timeout": None,
-    }
-    return _orch.PlannedUnit(**{**fields, **extra})
 
 
 def test_every_command_a_task_runs_as_a_check_is_collected(

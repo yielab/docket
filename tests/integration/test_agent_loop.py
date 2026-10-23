@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.integration import llm_stub as _stub
+from tests.support import llm as _stub
 
 from docket.agent import context as _agent_context
 from docket.agent import loop as _loop

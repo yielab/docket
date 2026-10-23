@@ -18,7 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.git import git as _git
+from tests.support.pods import bind_pipeline_3 as _bind_pipeline
+from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.interfaces.cli.commands import pod as _pod
@@ -44,13 +46,6 @@ chmod +x node_modules/.bin/vitest
 """
 
 _LOCK = json.dumps({"lockfileVersion": 3, "packages": {"": {"devDependencies": {"vitest": "1"}}}})
-
-
-def _git(repo: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-    )
-    return done.stdout.strip()
 
 
 def _init_repo(path: Path, lock: str = _LOCK) -> None:
@@ -90,14 +85,6 @@ def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
             "name: two\nsteps:\n  - id: lead\n    role: lead\n  - id: implementer\n    role: implementer\n"
         )
         yield
-
-
-def _bind_pipeline(text: str) -> None:
-    path = _pod.pod.bound_pipeline_path("demo")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
 
 
 class _Runner:

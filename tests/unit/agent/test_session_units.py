@@ -8,51 +8,23 @@ token accounting, and fail-closed summarisation on a failing driver.
 
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Iterator
-from pathlib import Path
-
-import pytest
+from tests.support import home as _support_home
+from tests.support.llm import summarizing_driver as _summarizing_driver
+from tests.support.llm import tool_call_turn as _tool_call_turn
 
 from docket.agent import session as _sess
 from docket.agent import session_compaction as _session_compaction
 from docket.agent import session_units as _session_units
 from docket.agent.llm import ChatMessage, ToolCall, assistant, system, tool_result, user
-from docket.agent.ports import TurnResult
-from docket.kernel.home import current_home, use_home
+
+_isolate_sessions_dir = _support_home.isolate_sessions_dir
 
 SUBJECT = "docket.agent.session_units"
 
 # ── driver test doubles (matches SessionSummaryRunner's 5-arg shape) ──────────
 
 
-def _summarizing_driver(text: str = "summary of the old turns") -> _sess.SessionSummaryRunner:
-    def _driver(
-        agent_id: str,
-        session_key: str,
-        message: str,
-        timeout: int,
-        env: dict[str, str] | None = None,
-    ) -> TurnResult:
-        return TurnResult(True, text, 0.0, {})
-
-    return _driver
-
-
-@pytest.fixture(autouse=True)
-def _isolate_sessions_dir(tmp_path: Path) -> Iterator[None]:
-    with use_home(dataclasses.replace(current_home(), sessions_dir_override=tmp_path / "sessions")):
-        yield
-
-
 # ── helpers ──────────────────────────────────────────────────────────────────
-
-
-def _tool_call_turn(
-    call_id: str = "c1", name: str = "read_file", arguments: str = "{}"
-) -> list[ChatMessage]:
-    call = ToolCall(id=call_id, name=name, arguments=arguments)
-    return [assistant("", tool_calls=[call]), tool_result(call, f"result for {call_id}")]
 
 
 # ── atomic grouping ───────────────────────────────────────────────────────────

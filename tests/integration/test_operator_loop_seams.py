@@ -13,57 +13,34 @@ import dataclasses
 import json
 import threading
 import urllib.request
-from collections.abc import Iterator
-from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off
+from tests.support.llm import final_response as _final_response
+from tests.support.pods import bind_intake_pipeline as _bind_intake_pipeline
+from tests.support.pods import seed_pod_2 as _seed_pod
 
-import docket.kernel.templates as _templates
 from docket.agent import driver as _dr
 from docket.agent import ports as _rd
 from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
-from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
 from docket.operator import notify as _notify
-from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.agent"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed_pod(
-    tmp_path: Path,
-    project: str = "demo",
-    roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        record_isolation_off(home)
-        build_pod(project, roles, codebase=f"/src/{project}")
-        yield home
 
 
 # ── seam a: POST /approvals/<token> (HTTP) -> pregrant -> a real re-dispatch consumes it ──
@@ -78,12 +55,6 @@ class _ScriptedBackend:
 
     def complete(self, messages: Any, **_kwargs: Any) -> ChatResponse:
         return self._responses.pop(0)
-
-
-def _final_response(text: str) -> ChatResponse:
-    return ChatResponse(
-        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
-    )
 
 
 class TestHttpGrantConsumesThePregrant:
@@ -307,23 +278,6 @@ class TestChannelContentLevelEnforcedAtDelivery:
 
 
 # ── seam c: the Lead's brief question -> answer_task -> the Lead's own next hop message ──
-
-
-def _bind_pipeline(project: str, text: str) -> None:
-    import hashlib
-
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
-def _bind_intake_pipeline(project: str) -> None:
-    text = (_templates.RECIPES_DIR / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
-    result = _pipeline.load_pipeline(text)
-    assert result.spec is not None, result.errors
-    _bind_pipeline(project, text)
 
 
 _LEAD_NEEDS_INPUT_REPLY = """I need two decisions before I can start.

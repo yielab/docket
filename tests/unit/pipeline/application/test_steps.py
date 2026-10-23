@@ -15,19 +15,24 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
-import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import pods as _support_pods
+from tests.support.pods import bind_one_step_pipeline as _bind_one_step_pipeline
+from tests.support.pods import planned_unit as _planned_unit
+from tests.support.pods import put_task as _put_task
+from tests.support.pods import seed_lean_pod as _seed_lean_pod
+from tests.support.pods import unit_context as _unit_context
+from tests.support.pods import write_meta as _write_meta
 
 from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.hops.gates import pre_hop as _pre_hop
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import gates as _gates
@@ -41,93 +46,15 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import settings as _settings
 
+pod_home = _support_pods.pod_home_2
+
 SUBJECT = "docket.pipeline.application.steps"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture()
-def pod_home(tmp_path: Path) -> Iterator[Path]:
-    """A hermetic DOCKET_HOME with the directories enqueue_task_once touches."""
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield home
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
-
-
-def _seed_lean_pod(project: str = "myapp") -> None:
-    _write_meta(f"{project}-lead")
-    _write_meta(f"{project}-implementer")
-
-
 # ── _execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
-
-
-def _unit_context(
-    *,
-    project: str = "myapp",
-    task_id: str = "task-1",
-    cap: float = 0.0,
-    override_index: int | None = None,
-    run: Any = None,
-    on_hop: Any = None,
-) -> _record._UnitContext:
-    return _record._UnitContext(
-        project=project,
-        task={"id": task_id},
-        task_id=task_id,
-        session_id=f"agent:{project}:{task_id}",
-        cap=cap,
-        resolved_turn_timeout=60,
-        resolved_verify_timeout=60,
-        id_to_index={},
-        rework_counts={},
-        override_index=override_index,
-        track_pid=False,
-        run=run or (lambda *a, **k: _rd.TurnResult(True, "", 0.0, {})),
-        do_sleep=lambda seconds: None,
-        on_hop=on_hop,
-        on_retry=None,
-    )
-
-
-def _planned_unit(
-    member_id: str, *, gate: _gates.Gate | None = None, step_id: str = "implementer"
-) -> _orch.PlannedUnit:
-    return _orch.PlannedUnit(
-        step_id=step_id,
-        role="implementer",
-        agent=None,
-        archetype=None,
-        member_id=member_id,
-        gate=gate,
-        retries=None,
-        timeout=None,
-    )
 
 
 _UNPRICED = "ai-gateway/acme/model-x"
@@ -456,24 +383,9 @@ class TestBoundPipeline:
         assert _steps.effective_pipeline_source("myapp") == "built-in default"
 
 
-def _put_task(project: str, task: dict[str, Any]) -> None:
-    from docket.platform import store as _store
-
-    _store.write_json(_settings.pod_task_list_path(project), {"tasks": [task]})
-
-
 _TWO_STEP_YAML = (
     "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
 )
-
-
-def _bind_one_step_pipeline(project: str) -> None:
-    text = "name: solo\nsteps:\n  - id: kickoff\n    role: lead\n"
-    path = _pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    _fleet.meta_set(_pod.member_id(project, "lead"), "pipeline", digest)
 
 
 def _write_pod_pipeline(project: str, name: str, text: str) -> None:
@@ -490,7 +402,7 @@ class TestTaskPipeline:
     """A task's own ``pipeline`` and ``gate`` are resolved at claim, per task."""
 
     def test_task_pipeline_name_selects_a_pod_local_pipeline(self, pod_home: Path) -> None:
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
         _bind_one_step_pipeline("myapp")
@@ -503,7 +415,7 @@ class TestTaskPipeline:
         assert _queue.read_tasks("myapp")[0]["pipelineSource"] == "pod:two"
 
     def test_a_task_without_a_pipeline_runs_the_pods_default(self, pod_home: Path) -> None:
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
         _bind_one_step_pipeline("myapp")
@@ -544,7 +456,7 @@ class TestTaskPipeline:
             _steps._task_pipeline("myapp", {"pipeline": name}, default)
 
     def test_an_unknown_pipeline_fails_the_task_before_any_hop(self, pod_home: Path) -> None:
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
         _queue_task("myapp", pipeline="nope")
@@ -566,7 +478,7 @@ class TestTaskPipeline:
         assert "nope" in refused[0]["payload"]["reason"]
 
     def test_a_refused_task_does_not_stop_the_next_one(self, pod_home: Path) -> None:
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         from docket.platform import store as _store
 

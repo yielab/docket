@@ -18,7 +18,7 @@ from pathlib import Path
 from threading import Thread
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.governance import secrets as _secrets

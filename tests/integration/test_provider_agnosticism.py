@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import register_local_provider
+from tests.support.home import register_local_provider
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app

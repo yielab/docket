@@ -36,11 +36,13 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
+from tests.support.pods import write_meta as _write_meta
+from tests.support.trace import trace_events as _trace_events
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
@@ -53,9 +55,8 @@ from docket.governance.policy import install_policies
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app
 from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor_c
 from docket.pipeline.application import steps as _steps_c
 from docket.pipeline.domain import gates as _gates
@@ -68,42 +69,11 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import settings as _settings
 
+_hermetic = _support_home.hermetic
+
 SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_reviewer_gate.py) ──────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
 
 
 def _bind_gated_implementer(project: str) -> None:
@@ -140,16 +110,6 @@ def _seed_full_pod(project: str = "myapp", *, gated: bool = False) -> None:
     _write_meta(f"{project}-tester")
     if gated:
         _bind_gated_implementer(project)
-
-
-def _trace_events(project: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    traces_dir = current_home().traces_dir / project
-    if not traces_dir.is_dir():
-        return events
-    for f in traces_dir.glob("*.jsonl"):
-        events.extend(_trace.read_trace(f))
-    return events
 
 
 class _RecordingRunner:

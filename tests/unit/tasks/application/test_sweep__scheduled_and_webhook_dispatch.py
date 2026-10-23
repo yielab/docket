@@ -23,17 +23,18 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support import http as _support_http
 
 from docket.interfaces.http import sweeps as _sweeps
-from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
-from docket.kernel.threads import ContextHTTPServer
 from docket.pipeline.application import schedule as _sched
 from docket.tasks.application import runs as _runs
 
+live_server = _support_http.live_server_3
+
 SUBJECT = "docket.tasks.application.sweep"
 
-_TEST_TOKEN = "test-serve-token-cd6-xyz987"
+_TEST_TOKEN = "test-serve-token"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -50,30 +51,6 @@ def schedule_file(tmp_path: Path) -> Iterator[Path]:
         )
     ):
         yield f
-
-
-@pytest.fixture()
-def live_server(tmp_path: Path):
-    """Real server on a random port. Yields (base_url, token)."""
-    # Minimal APPROVALS_DIR to satisfy any sweep that might run.
-    d = tmp_path / "approvals"
-    d.mkdir()
-    with (
-        use_home(dataclasses.replace(current_home(), approvals_dir_override=d)),
-        use_home(
-            dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
-        ),
-    ):
-
-        class _Handler(_DocketHandler):
-            serve_token = _TEST_TOKEN
-
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = srv.server_address[1]
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-        srv.shutdown()
 
 
 def _post(

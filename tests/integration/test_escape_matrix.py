@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.git import git_2 as _git
 
 from docket.agent import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop
@@ -112,20 +113,6 @@ def arena(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
             yield base.resolve()
     finally:
         shutil.rmtree(base, ignore_errors=True)
-
-
-def _git(cwd: Path, *args: str) -> str:
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "t",
-        "GIT_AUTHOR_EMAIL": "t@t",
-        "GIT_COMMITTER_NAME": "t",
-        "GIT_COMMITTER_EMAIL": "t@t",
-    }
-    out = subprocess.run(
-        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
-    )
-    return out.stdout.strip()
 
 
 _WRAPPER = (

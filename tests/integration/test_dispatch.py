@@ -18,17 +18,18 @@ import threading
 import time
 import time as _time
 from collections import Counter
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.home import record_isolation_off
+from tests.support.llm import final_response as _final_response
+from tests.support.pods import bind_intake_pipeline as _bind_intake_pipeline
+from tests.support.pods import bind_pipeline as _bind_pipeline
+from tests.support.pods import build_pod
+from tests.support.pods import seed_pod_2 as _seed_pod
 
-import docket.kernel.templates as _templates
 from docket.agent import driver as _dr
 from docket.agent import ports as _rd
 from docket.agent import session as _session
@@ -63,32 +64,12 @@ SUBJECT = "docket.tasks.application.queue"
 # ── hermetic environment (mirrors test_pod_provisioning) ─────────────────────────
 
 
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
 def _endpoint_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     """`docket run` refuses without a model endpoint; these tests drive a FakeDriver."""
     from docket.interfaces.cli.commands.setup import Piece, Readiness
 
     ready = Readiness(endpoint=Piece("model endpoint", True, "", ""))
     monkeypatch.setattr("docket.interfaces.cli.commands.run.readiness", lambda: ready)
-
-
-@contextmanager
-def _seed_pod(
-    tmp_path: Path,
-    project: str = "demo",
-    roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        record_isolation_off(home)
-        build_pod(project, roles, codebase=f"/src/{project}")
-        yield home
 
 
 # ── public delegation boundary ──────────────────────────────────────────────────
@@ -606,12 +587,6 @@ class _ScriptedBackend:
     ) -> ChatResponse:
         self.calls.append(list(messages))
         return self._responses.pop(0)
-
-
-def _final_response(text: str) -> ChatResponse:
-    return ChatResponse(
-        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
-    )
 
 
 class TestEndToEnd:
@@ -1653,19 +1628,6 @@ def _ask_spec(on: dict[str, Any] | None = None) -> _pipeline.PipelineSpec:
     )
 
 
-def _bind_pipeline(project: str, text: str) -> None:
-    """Bind *text* as *project*'s own pipeline, so ``answer_task``'s own
-    ``effective_pipeline(project, None)`` resolves the same steps a test's own
-    ``dispatch_pod`` call ran through."""
-    import hashlib
-
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
 class TestOperatorInputStepsPark:
     def test_reaching_an_input_step_parks_with_no_hop_and_a_default_schema(
         self, tmp_path: Path
@@ -1773,15 +1735,6 @@ class TestAnswerTaskResumesDispatch:
 
 
 # ── the Lead's intake: TaskBrief, the intake recipe, resource checks (ADR 0016 §4) ──
-
-
-def _bind_intake_pipeline(project: str) -> None:
-    """Bind the real shipped ``intake`` recipe's pipeline so ``dispatch_pod`` and
-    ``answer_task`` resolve the same steps (see ``_bind_pipeline`` above)."""
-    text = (_templates.RECIPES_DIR / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
-    result = _pipeline.load_pipeline(text)
-    assert result.spec is not None, result.errors
-    _bind_pipeline(project, text)
 
 
 _LEAD_NEEDS_INPUT_SENTINEL = "SENTINEL_FIRST_LEAD_HOP"

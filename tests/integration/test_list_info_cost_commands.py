@@ -11,10 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from tests.support.cli import run_2 as _run
 from typer.testing import CliRunner
-
-from docket.interfaces.cli.app import app as _app
-from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.interfaces.cli.app"
 
@@ -59,13 +57,6 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     return oc_dir
-
-
-def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
-    """Invoke the CLI in-process against *oc_dir* as an isolated DOCKET_HOME."""
-    with use_home(Home(oc_dir)):
-        result = _runner.invoke(_app, args)
-    return result.exit_code, result.stdout, result.stderr
 
 
 # ---------------------------------------------------------------------------

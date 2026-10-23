@@ -2,23 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from tests.conftest import record_isolation_off
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.pods import seed_pod_4 as _seed_pod
 
 from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.platform import store as _store
-from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
-from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
 
@@ -35,38 +26,6 @@ steps:
   - id: implementer
     role: implementer
 """
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        record_isolation_off(home)
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-def _bind_ask_pipeline(project: str) -> None:
-    digest = hashlib.sha256(_ASK_PIPELINE_YAML.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
-@contextmanager
-def _seed_parked_task(
-    tmp_path: Path,
-) -> Iterator[dict[str, Any]]:
-    """A real pod with a real ``waiting_input`` task, reached by actually dispatching
-    through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
-    with _seed_pod(tmp_path):
-        _bind_ask_pipeline("demo")
-        _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
-        _sweep.dispatch_pod("demo", runner=FakeDriver())
-        yield _queue.read_tasks("demo")[0]
 
 
 def _give_options(project: str, task_id: str) -> None:

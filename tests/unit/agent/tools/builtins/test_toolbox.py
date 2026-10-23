@@ -17,19 +17,15 @@ import os
 from pathlib import Path
 
 import pytest
+from tests.support import pods as _support_pods
 
 from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import current_home, use_home
 from docket.sandbox import landlock as _landlock
 
+workspace = _support_pods.workspace
+
 SUBJECT = "docket.agent.tools.builtins.toolbox"
-
-
-@pytest.fixture
-def workspace(tmp_path: Path) -> Path:
-    root = tmp_path / "workspace"
-    root.mkdir()
-    return root
 
 
 class _Recorder:

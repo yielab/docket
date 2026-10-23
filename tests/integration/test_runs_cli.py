@@ -2,23 +2,15 @@
 
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
+from tests.support import home as _support_home
 
-from docket.kernel.home import current_home, use_home
 from docket.tasks.application import runs as _runs
 
+runs_file = _support_home.runs_file
+
 SUBJECT = "docket.interfaces.cli.app"
-
-
-@pytest.fixture()
-def runs_file(tmp_path: Path) -> Iterator[Path]:
-    f = tmp_path / "docket-runs.json"
-    with use_home(dataclasses.replace(current_home(), runs_file_override=f)):
-        yield f
 
 
 class TestRunsPruneCli:
