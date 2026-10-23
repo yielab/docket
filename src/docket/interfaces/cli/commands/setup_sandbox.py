@@ -15,8 +15,8 @@ from docket.governance import security as _sec
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
-from docket.kernel.jail import SandboxAvailability
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import SandboxAvailability
+from docket.kernel.ports import jail as _jail
 from docket.teams import fleet as _fleet
 
 sandbox_app = typer.Typer(

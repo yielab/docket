@@ -6,8 +6,8 @@ from docket.agent.ports import DOCKET_TASK_NETWORK
 from docket.governance.audit import audit_log
 from docket.hops.workspace import prepare as _prepare
 from docket.kernel.home import current_home
-from docket.kernel.jail import JailPolicy
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import JailPolicy
+from docket.kernel.ports import jail as _jail
 from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

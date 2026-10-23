@@ -17,10 +17,10 @@ from docket.interfaces.cli.commands import setup_model_provider as _setup_model_
 from docket.interfaces.cli.commands import setup_notify as _setup_notify
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.interfaces.cli.render import ui
-from docket.kernel.git import git as _git
 from docket.kernel.home import current_home
-from docket.kernel.jail import jail as _jail
-from docket.kernel.process import process as _process
+from docket.kernel.ports import git as _git
+from docket.kernel.ports import jail as _jail
+from docket.kernel.ports import process as _process
 from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models import selection as _mp

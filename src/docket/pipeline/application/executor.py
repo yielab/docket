@@ -28,7 +28,7 @@ from docket.hops.gates.pre_hop import (
     _pause_lead_for_budget,
     _refuse_unmet_profile,
 )
-from docket.kernel.git import git as _git
+from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
 from docket.pipeline.application.steps import (
     _run_command_step,

@@ -16,7 +16,7 @@ from docket.interfaces.cli.render import ui
 from docket.interfaces.http import server as _server
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 
 _GRACE_S = 15
 _ABANDON_S = 5

@@ -5,8 +5,8 @@ import subprocess
 from pathlib import Path
 
 from docket.kernel.home import current_home
-from docket.kernel.process import PROBE_TIMEOUT_S
-from docket.kernel.process import process as _process
+from docket.kernel.ports import PROBE_TIMEOUT_S
+from docket.kernel.ports import process as _process
 from docket.sandbox.landlock import _existing_resolved, _mount_dirs, _mount_reopened
 
 

@@ -49,9 +49,9 @@ from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.workspace import repo_view as _repo_view
-from docket.kernel.git import git as _git
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import git as _git
+from docket.kernel.ports import process as _process
 from docket.models.adapters import openai_http as _llm
 from docket.observability import telemetry as _telemetry
 from docket.observability import trace as _trace

@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from docket.kernel.errors import Unavailable
-from docket.kernel.git import git as _git
-from docket.kernel.process import PROBE_TIMEOUT_S
+from docket.kernel.ports import PROBE_TIMEOUT_S
+from docket.kernel.ports import git as _git
 from docket.sandbox import landlock
 
 SYS_LANDLOCK_CREATE_RULESET = 444

@@ -35,7 +35,7 @@ from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.kernel.home import current_home, use_home
-from docket.kernel.jail import jail as _jail_port
+from docket.kernel.ports import jail as _jail_port
 from docket.sandbox import docker as sandbox_docker
 from docket.sandbox import landlock as sandbox_landlock
 from docket.sandbox.launch import Launcher

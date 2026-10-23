@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 from stat import S_ISREG
 
-from docket.kernel.process import PROBE_TIMEOUT_S
+from docket.kernel.ports import PROBE_TIMEOUT_S
 from docket.platform import process as _process
 
 _TRUSTED_TREES: dict[str, tuple[str, str]] = {}

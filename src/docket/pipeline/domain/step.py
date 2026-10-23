@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from docket.kernel.errors import InvalidInput
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.pipeline.domain.gates import EXTERNAL_OUTCOMES, ExternalGate, Gate
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")

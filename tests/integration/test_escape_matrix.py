@@ -33,8 +33,8 @@ from docket.hops.gates import post_hop as _post_hop
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace import worktree as _worktree
 from docket.kernel.home import current_home, use_home
-from docket.kernel.jail import JailPolicy
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import JailPolicy
+from docket.kernel.ports import jail as _jail
 from docket.platform import git as _platform_git
 from docket.sandbox import docker as _docker
 from docket.sandbox import landlock as _landlock

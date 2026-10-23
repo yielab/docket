@@ -53,7 +53,7 @@ from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
 from docket.platform import read_json, read_modify_write
 from docket.tasks.application.run_cancellation import (

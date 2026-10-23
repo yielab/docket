@@ -14,7 +14,7 @@ import pytest
 from docket.agent.tools.builtins import toolbox as _toolbox
 from docket.governance import secrets as _secrets
 from docket.kernel.home import Home, use_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.models import catalog as _provider
 
 SUBJECT = "docket.sandbox.launch"

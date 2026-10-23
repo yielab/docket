@@ -21,7 +21,7 @@ from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch

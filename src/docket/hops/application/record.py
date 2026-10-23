@@ -13,7 +13,7 @@ from docket.agent import ports as _rd
 from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch

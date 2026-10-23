@@ -22,8 +22,8 @@ from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict
-from docket.kernel.git import git as _git
 from docket.kernel.home import current_home
+from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
 from docket.platform import read_json, read_modify_write
 from docket.teams import fleet as _fleet

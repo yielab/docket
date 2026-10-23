@@ -27,7 +27,7 @@ from typing import Any, Literal
 from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 from docket.platform import mkdir_private
 
 # A sink receives the exact record trace_event is about to append (after

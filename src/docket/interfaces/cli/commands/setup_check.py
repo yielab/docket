@@ -56,7 +56,7 @@ from docket.interfaces.cli.commands.setup_check_services import (
 )
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.models import selection as _mp
 from docket.operator import channel as _channel
 from docket.pipeline.application import schedule as _sched

@@ -24,7 +24,7 @@ from tests.support.pods import write_policy as _write_policy
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 

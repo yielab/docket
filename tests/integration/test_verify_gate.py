@@ -23,7 +23,7 @@ from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.hops.application import record as _record
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.pipeline.application import executor as _executor
 from docket.sandbox.launch import _VERIFY_MAX_OUTPUT
 from docket.teams import fleet as _fleet

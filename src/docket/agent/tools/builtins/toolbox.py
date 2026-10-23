@@ -28,8 +28,8 @@ from docket.kernel import text as _text
 from docket.kernel import threads as _threads
 from docket.kernel.errors import Refused
 from docket.kernel.home import current_home
-from docket.kernel.jail import SandboxAvailability, SandboxBackend
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import SandboxAvailability, SandboxBackend
+from docket.kernel.ports import jail as _jail
 
 SandboxMode = Literal["off", "auto"]
 

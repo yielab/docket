@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from docket.governance import network_posture as _np
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.observability import exporter as _exporter
 from docket.operator import channel as _channel
 from docket.teams import fleet as _fleet

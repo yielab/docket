@@ -22,7 +22,7 @@ from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.kernel.jail import SandboxAvailability
+from docket.kernel.ports import SandboxAvailability
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task

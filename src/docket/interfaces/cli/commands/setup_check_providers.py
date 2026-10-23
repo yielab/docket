@@ -6,7 +6,7 @@ from docket.governance import secrets as _secrets
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 from docket.models import catalog as _prov
 from docket.models.catalog import ProviderSpec
 from docket.platform import read_json

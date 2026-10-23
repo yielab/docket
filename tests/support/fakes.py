@@ -1,20 +1,14 @@
 """Shared test doubles for the docket Python suite.
 
-``FakeDriver`` is the one test double for
-``docket.agent.ports.RuntimeDriver`` — it exists so tests exercising
-``core/dispatch.py``'s pipeline (or anything else that takes a
-``RuntimeDriver``/``Runner``) don't each hand-roll their own ad-hoc stub
-matching ``agent_run``'s signature. Construct one, tune its canned behaviour
-via the constructor fields, and either pass the instance directly (it is
-callable, matching dispatch.py's ``Runner`` type) or pass its bound
-``run_turn`` method explicitly — both work identically.
+``FakeDriver`` is the one double for ``docket.agent.ports.RuntimeDriver``: construct one, tune its
+canned behaviour through the constructor fields, and pass it (it is callable, matching dispatch's
+``Runner`` type) or its bound ``run_turn``. ROADMAP section 4.5: one typed port, one shipped
+driver, one fake.
 
-This is deliberately the *only* fake in the suite for this port (ROADMAP §4.5:
-one typed port, one shipped driver, one fake — no test-double framework).
-
-The same file holds the one fake of each kernel port bound at the edges: ``FakeGit``
-(``kernel.git``), ``FakeProcess`` (``kernel.process``) and ``FakeJail`` (``kernel.jail``). The
-``fake_git``, ``fake_process`` and ``fake_jail`` fixtures in ``tests/conftest.py`` bind them.
+The kernel ports bound at the edges each have one fake here too: ``FakeGit``, ``FakeProcess``
+and ``FakeJail``. The ``fake_git``, ``fake_process`` and ``fake_jail`` fixtures in
+``tests/conftest.py`` bind them; ``launcher_with`` is the real jail adapter on a host whose
+probes answer as the test says.
 """
 
 from __future__ import annotations
@@ -36,7 +30,7 @@ from docket.agent.ports import (
 )
 from docket.governance import security as _security
 from docket.kernel.errors import InvalidInput
-from docket.kernel.jail import JailLaunch, JailPolicy, SandboxAvailability, SandboxBackend
+from docket.kernel.ports import JailLaunch, JailPolicy, SandboxAvailability, SandboxBackend
 from docket.sandbox.launch import Launcher, cache_environment, tmp_environment
 from docket.teams import fleet as _fleet
 
@@ -111,7 +105,7 @@ class FakeDriver:
         )
 
 
-# -- the git, process and jail ports (P47-2) -------------------------------------------------
+# -- the git, process and jail ports --------------------------------------------------------
 #
 # Each fake is in memory and answers what its adapter answers where git, the host or a jail
 # is absent: neutral values, never an exception. A test sets the few answers it cares about

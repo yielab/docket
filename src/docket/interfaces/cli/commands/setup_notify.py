@@ -20,7 +20,7 @@ from docket.interfaces.telegram import bot as _telegram
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Unavailable
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 from docket.operator import adapters as _channels
 from docket.operator import channel as _chan
 from docket.operator import inbox as _inbox

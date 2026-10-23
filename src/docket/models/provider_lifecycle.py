@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from docket.agent.llm import ModelLimits
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 from docket.models.catalog import (
     ProviderError,
     ProviderSpec,

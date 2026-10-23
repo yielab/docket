@@ -10,9 +10,9 @@ from typing import Protocol
 
 from docket.kernel import ids as _ids
 from docket.kernel.errors import InvalidInput
-from docket.kernel.git import git as _git
 from docket.kernel.home import current_home
-from docket.kernel.jail import JailLaunch, JailPolicy, SandboxAvailability, SandboxBackend
+from docket.kernel.ports import JailLaunch, JailPolicy, SandboxAvailability, SandboxBackend
+from docket.kernel.ports import git as _git
 from docket.sandbox import docker as _docker
 from docket.sandbox import landlock as _landlock
 from docket.sandbox import seatbelt as _seatbelt
@@ -71,7 +71,7 @@ def jailed_env(env: dict[str, str] | None) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class Launcher:
-    """The ``kernel.jail.Jail`` adapter. The first three fields are what other contexts own and
+    """The ``kernel.ports.Jail`` adapter. The first three fields are what other contexts own and
     ``bootstrap`` supplies; the probes default to the backends' own and are what a unit test
     replaces."""
 

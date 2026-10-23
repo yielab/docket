@@ -19,11 +19,9 @@ from typing import Any
 from docket.agent import driver as _driver
 from docket.governance import secrets as _secrets
 from docket.governance import security as _security
-from docket.kernel.git import bind_git
 from docket.kernel.home import Home
-from docket.kernel.jail import SandboxAvailability, bind_jail
-from docket.kernel.jail import jail as _jail
-from docket.kernel.process import bind_process
+from docket.kernel.ports import SandboxAvailability, bind_git, bind_jail, bind_process
+from docket.kernel.ports import jail as _jail
 from docket.models import catalog as _catalog
 from docket.operator import channel as _channel
 from docket.platform import git as _git_adapter

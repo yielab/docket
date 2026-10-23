@@ -42,7 +42,7 @@ from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import Refused, Unavailable
 from docket.kernel.home import current_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 
 MISSING_SDK_HINT = (
     "The 'mcp' package is not installed -- an MCP tool server needs the optional MCP extra.\n"

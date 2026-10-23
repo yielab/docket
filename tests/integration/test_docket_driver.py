@@ -42,7 +42,7 @@ from docket.governance.audit import read_audit
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.jail import SandboxAvailability
+from docket.kernel.ports import SandboxAvailability
 from docket.models.adapters import openai_http as _llm_adapter
 from docket.platform import store as _store
 from docket.sandbox.launch import Launcher

@@ -6,9 +6,9 @@ from typing import Any
 
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
-from docket.kernel.git import git as _git
 from docket.kernel.home import current_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import git as _git
+from docket.kernel.ports import jail as _jail
 from docket.platform import read_json, read_modify_write
 from docket.teams import pod
 

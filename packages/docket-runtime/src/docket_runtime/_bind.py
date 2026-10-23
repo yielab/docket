@@ -9,9 +9,7 @@ from __future__ import annotations
 
 from docket_runtime._internal.docket.governance import secrets as _secrets
 from docket_runtime._internal.docket.governance import security as _security
-from docket_runtime._internal.docket.kernel.git import bind_git
-from docket_runtime._internal.docket.kernel.jail import bind_jail
-from docket_runtime._internal.docket.kernel.process import bind_process
+from docket_runtime._internal.docket.kernel.ports import bind_git, bind_jail, bind_process
 from docket_runtime._internal.docket.models import catalog as _catalog
 from docket_runtime._internal.docket.platform import git as _git
 from docket_runtime._internal.docket.platform import process as _process

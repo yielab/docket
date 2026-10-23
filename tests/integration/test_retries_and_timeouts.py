@@ -27,7 +27,7 @@ from docket.hops.application import runner as _application_runner
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home, use_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import lifecycle as _lifecycle

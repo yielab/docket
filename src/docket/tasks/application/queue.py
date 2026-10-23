@@ -20,7 +20,7 @@ from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.home import current_home
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.platform import read_json, read_modify_write

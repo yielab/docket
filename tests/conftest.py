@@ -14,10 +14,8 @@ from pathlib import Path
 import pytest
 
 from docket import bootstrap
-from docket.kernel.git import use_git
 from docket.kernel.home import Home, use_home
-from docket.kernel.jail import use_jail
-from docket.kernel.process import use_process
+from docket.kernel.ports import git_port, jail_port, process_port
 from docket.platform import process as _process_adapter
 from docket.sandbox.launch import Launcher
 from tests.support.fakes import (
@@ -73,28 +71,28 @@ def _plain_typer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 def _keep_pytest_dumpable() -> Iterator[None]:
     """An in-process turn must not make the pytest process non-dumpable for every later test;
     the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
-    with use_process(RealProcessExceptDumpable(_process_adapter)):
+    with process_port.use(RealProcessExceptDumpable(_process_adapter)):
         yield
 
 
 @pytest.fixture
 def fake_git() -> Iterator[FakeGit]:
     fake = FakeGit()
-    with use_git(fake):
+    with git_port.use(fake):
         yield fake
 
 
 @pytest.fixture
 def fake_process() -> Iterator[FakeProcess]:
     fake = FakeProcess()
-    with use_process(fake):
+    with process_port.use(fake):
         yield fake
 
 
 @pytest.fixture
 def fake_jail() -> Iterator[FakeJail]:
     fake = FakeJail()
-    with use_jail(fake):
+    with jail_port.use(fake):
         yield fake
 
 
@@ -106,7 +104,7 @@ def bind_launcher() -> Iterator[Callable[..., Launcher]]:
 
         def bind(**probes: bool) -> Launcher:
             launcher = launcher_with(**probes)
-            stack.enter_context(use_jail(launcher))
+            stack.enter_context(jail_port.use(launcher))
             return launcher
 
         yield bind

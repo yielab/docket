@@ -3,7 +3,7 @@ and the environment switches read live.
 
 Every subprocess call catches FileNotFoundError / TimeoutExpired / OSError and degrades gracefully
 so a missing binary never crashes a command. This module is the real adapter of
-``kernel.process.Process`` (bound by ``bootstrap``; a test binds a fake).
+``kernel.ports.Process`` (bound by ``bootstrap``; a test binds a fake).
 The git wrappers live in ``platform/git.py`` and the sandbox mechanism in ``sandbox/``; ``specs/functional/security-gates.spec.md`` covers the scoping rationale.
 """
 
@@ -16,7 +16,7 @@ import sys
 import time
 
 from docket.kernel import clock as _clock
-from docket.kernel.process import PROBE_TIMEOUT_S
+from docket.kernel.ports import PROBE_TIMEOUT_S
 
 
 def which(binary: str) -> bool:

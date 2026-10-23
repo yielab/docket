@@ -11,7 +11,7 @@ import pytest
 from tests.support.fakes import FakeGit, launcher_with
 
 from docket.kernel.home import Home, use_home
-from docket.kernel.jail import JailPolicy
+from docket.kernel.ports import JailPolicy
 from docket.sandbox import landlock as _landlock
 from docket.sandbox import seatbelt as _seatbelt
 from docket.sandbox.launch import Launcher

@@ -14,7 +14,7 @@ from collections.abc import Collection, Iterable
 
 from docket.hops.workspace import prepare as _prepare
 from docket.kernel.errors import InvalidInput
-from docket.kernel.git import git as _git
+from docket.kernel.ports import git as _git
 
 DEFAULT_PATTERNS: tuple[str, ...] = (
     *(name for name, _command in _prepare.LOCKFILES),

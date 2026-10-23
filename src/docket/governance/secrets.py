@@ -16,7 +16,7 @@ from typing import Any
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
-from docket.kernel.process import process as _process
+from docket.kernel.ports import process as _process
 from docket.platform import read_json, write_json
 
 

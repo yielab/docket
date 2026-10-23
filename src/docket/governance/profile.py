@@ -13,7 +13,7 @@ from typing import Any
 from docket.agent.tools import mcp_tools as _mcp
 from docket.governance import secrets as _secrets
 from docket.hops.application import record as _record
-from docket.kernel.jail import jail as _jail
+from docket.kernel.ports import jail as _jail
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
