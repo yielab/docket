@@ -2086,7 +2086,7 @@ and Reviewer once each.)
 ```text
 $ docket run
 -> Running 2 pending task(s) through: lead → implementer
-  Pod budget cap: $5.00 (spent $0.00)
+  Pod budget cap: $5.00 (estimate so far ~$0.00, no cost recorded)
 !   [task-c410e91a-...] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 ok 0 done · 0 failed · 1 blocked · 2.3k tokens (~$0.04 est.)
 -> Next: docket inbox

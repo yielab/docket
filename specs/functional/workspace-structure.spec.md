@@ -43,7 +43,8 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
      always present; for a **pod member**, only an Implementer with allocated runtime resources
      or a `verifyCmd` gets one (allocated ports/scratch dir and the verify command, when set) —
      a Lead, Reviewer, Tester, or any other pod role has nothing role-specific to document and
-     **MUST NOT** be flagged missing one by `docket setup`
+     **MUST NOT** be flagged missing one by `docket setup`, and neither is an Implementer with
+     neither resources nor a `verifyCmd`
    - `HEARTBEAT.md` — the durable task ledger (in-flight tasks written before starting;
      resumed after a context reset). For a pod **Lead**, this file additionally carries a
      delimited, docket-owned dispatch region inside `## Active Tasks`
@@ -252,7 +253,7 @@ docket init [<project>] [<location>] [--blueprint <name>]  # Provision a pod (se
 docket pod add <role> [--pod <name>]    # Add a member workspace to an existing pod
 docket pod reset <member>               # Clear the ledger, regenerate SOUL/AGENTS/TOOLS from metadata
 docket pod update [--dry-run]           # Re-render stale pod-member SOUL/AGENTS/TOOLS
-docket setup --fix                      # Report missing files, heal a missing/stale WORKFLOW_AUTO.md, re-sync the ledger
+docket setup --fix                      # Report missing files, re-seed a missing/stale WORKFLOW_AUTO.md, re-sync the ledger
 ```
 
 ## Examples

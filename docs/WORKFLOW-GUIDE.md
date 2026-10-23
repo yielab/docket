@@ -155,7 +155,7 @@ Lead  →  Implementer  →  Reviewer  →  Tester
 
 ```
 → Running 2 pending task(s) through: lead → implementer → reviewer → tester
-  Pod budget cap: $5.00 (spent $0.00)
+  Pod budget cap: $5.00 (estimate so far ~$0.00, no cost recorded)
 verification skipped — verifyCmd not set for myapp-implementer
 ✓   [task-9c745f95-984d-497b-abdd-1bed9ec9b0b0] done — 4 hop(s)
 verification skipped — verifyCmd not set for myapp-implementer

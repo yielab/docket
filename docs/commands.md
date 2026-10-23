@@ -428,7 +428,8 @@ Set up this workstation: model endpoint, notifications, sandbox, shell.
 
 Bare, this is the first run: the report, then only what is missing. On a terminal it asks for what is missing, required first, and prints every
 command it runs. Off a terminal it prints the report and exits 1 when the
-model endpoint is missing. --fix repairs detected drift.
+model endpoint is missing. --fix makes the repairs listed on that option, then
+reports health; with --json the dispatch ledger is only reported.
 
 Example: docket setup
 

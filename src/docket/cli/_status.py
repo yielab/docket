@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +17,11 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import network_posture as _np
 from docket.core import pod as _pod
+from docket.core import pod_report as _pod_report
 from docket.core import profile as _profile
 from docket.core import runs as _runs
 from docket.core import trace as _trace
+from docket.core.models import AgentMeta
 from docket.core.pod_report import unpriced_text
 from docket.core.utils import (
     DayRecord,
@@ -135,35 +136,34 @@ def _project_summary(project: str) -> dict[str, Any]:
             {"id": member_id, "role": role, "status": "ready" if healthy else "missing"}
         )
 
-    tasks = _dispatch.read_tasks(project)
-    counts = Counter(str(task.get("status", "pending")) for task in tasks)
+    queue = _pod_report.task_counts(project)
     if degraded or not members:
         state = "degraded"
-    elif counts["waiting_approval"] or counts["waiting_input"]:
+    elif queue["waitingApproval"] or queue["waitingInput"]:
         state = "waiting"
-    elif counts["running"]:
+    elif queue["running"]:
         state = "active"
-    elif counts["failed"]:
+    elif queue["failed"]:
         state = "attention"
     else:
         state = "ready"
+    lead = _pod.member_id(project, "lead")
 
     outcomes = _trace.terminal_outcomes(project, window=_cfg.METRICS_WINDOW)
     return {
         "id": project,
         "path": roots[0] if roots else "",
         "status": state,
+        "paused": AgentMeta.coerce_paused(_fleet.meta_get(lead, "paused", "")),
+        "pausedReason": str(_fleet.meta_get(lead, "pausedReason", "") or ""),
         "memberCount": len(member_rows),
         "isolation": _isolation_phrase(),
         "members": member_rows,
         "tasks": {
-            "pending": counts["pending"],
-            "running": counts["running"],
-            "waitingApproval": counts["waiting_approval"],
-            "waitingInput": counts["waiting_input"],
-            "failed": counts["failed"],
-            "completed": counts["completed"] + counts["done"],
-            "approvedReady": sum(1 for task in tasks if _approved_ready(task)),
+            **queue,
+            "approvedReady": sum(
+                1 for task in _dispatch.read_tasks(project) if _approved_ready(task)
+            ),
         },
         "usage": _usage([m["id"] for m in member_rows]),
         "outcomes": {
@@ -298,6 +298,11 @@ def _render_current(summary: dict[str, Any]) -> None:
     rows = [
         ("Path", summary["path"] or "—"),
         ("Status", summary["status"]),
+        *(
+            [("Paused", f"{summary['pausedReason'] or 'yes'}: docket run --resume clears it")]
+            if summary["paused"]
+            else []
+        ),
         ("Members", f"{summary['memberCount']} ({roles})"),
         (
             "Tasks",

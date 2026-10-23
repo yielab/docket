@@ -311,6 +311,23 @@ class TestRun:
         assert "1 done" in result.output and "0 failed" in result.output
         assert "Next: docket status" in result.output
 
+    def test_the_cap_header_shows_the_labelled_estimate_never_spend(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _endpoint(monkeypatch, ok=True)
+        _fleet.meta_set("demo-lead", "budgetUsd", "5")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
+        monkeypatch.setattr(_dispatch, "pod_gating_cost", lambda project: (0.12, True))
+        monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
+
+        result = runner.invoke(_app, ["run", "--pod", "demo"])
+
+        assert result.exit_code == 0, result.output
+        line = next(ln for ln in result.output.splitlines() if "Pod budget cap" in ln)
+        assert "$5.00" in line and "~$0.12" in line and "estimate" in line
+        assert "spent" not in line
+
     def test_pipeline_file_is_forwarded_to_the_executor(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

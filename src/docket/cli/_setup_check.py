@@ -52,14 +52,23 @@ def _expected_credential(provider: str) -> str:
     return spec.auth.credentials[0]
 
 
-def _required_workspace_files(aid: str) -> tuple[str, ...]:
-    """Workspace files ``aid`` must have — role-aware for pod members.
+def _provisioned_tools_md(aid: str) -> bool:
+    """True when provisioning writes a TOOLS.md for the pod member *aid*: an Implementer with
+    allocated runtime resources or a verify command (the same test ``pod_provisioning`` uses)."""
+    if _fleet.meta_get(aid, "role", "") != "implementer":
+        return False
+    resources = _fleet.meta_get(aid, "portRangeStart", "") and _fleet.meta_get(
+        aid, "scratchDir", ""
+    )
+    return bool(resources or _fleet.meta_get(aid, "verifyCmd", ""))
 
-    Only an Implementer gets TOOLS.md (specs/functional/workspace-structure.spec.md
-    requirement 1); other pod roles must never be flagged for lacking it."""
+
+def _required_workspace_files(aid: str) -> tuple[str, ...]:
+    """Workspace files ``aid`` must have; a pod member needs TOOLS.md only when provisioning
+    writes one (workspace-structure.spec.md requirement 1)."""
     from docket.core import pod as _pod
 
-    if _pod.pod_of(aid) is not None and _fleet.meta_get(aid, "role", "") != "implementer":
+    if _pod.pod_of(aid) is not None and not _provisioned_tools_md(aid):
         return tuple(f for f in _WORKSPACE_FILES if f != "TOOLS.md")
     return _WORKSPACE_FILES
 
@@ -104,8 +113,17 @@ def _check_dependencies() -> int:
     return issues
 
 
+def _pod_of(aid: str) -> str:
+    """The pod *aid* is a member of, or ``""`` for a standalone agent."""
+    from docket.core import pod as _pod
+
+    return _pod.pod_of(aid) or ""
+
+
 def _check_project_agents(ids: list[str]) -> int:
-    """Per-project workspace files, fleet registration, and channel binding."""
+    """Per-project workspace files, fleet registration, and channel binding. A pod member's
+    missing managed file is re-rendered by ``docket pod update``; ``setup --fix`` does not
+    write it."""
     if not ids:
         ui.console.print()
         ui.warn("No project agents found — run: docket init")
@@ -130,7 +148,9 @@ def _check_project_agents(ids: list[str]) -> int:
 
         if proj_issues:
             ui.console.print(f"[red]✗[/red]   {aid}: {' '.join(proj_issues)}")
-            ui.console.print("    Fix with: docket setup --fix")
+            pod_name = _pod_of(aid)
+            if pod_name and all(i.startswith("missing ") for i in proj_issues):
+                ui.console.print(f"    Fix with: docket pod update --pod {pod_name}")
             issues += 1
         elif not tg:
             ui.warn(f"  {aid}: OK, no channel binding  →  docket setup notify bind {aid}")

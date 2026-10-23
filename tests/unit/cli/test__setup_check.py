@@ -299,28 +299,70 @@ class TestChecks:
         assert issues == 0
         assert "missing TOOLS.md" not in out
 
-    def test_pod_implementer_missing_tools_md_still_flagged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Unlike the Lead, an Implementer is still expected to have a TOOLS.md."""
-        home = _seed(tmp_path, monkeypatch, full_workspace=False)
+    @staticmethod
+    def _implementer_without_tools(home: Path, **extra_meta: object) -> None:
+        """Rename the seeded agent to a pod Implementer holding no TOOLS.md, with *extra_meta*."""
         ws = home / "workspaces" / "projects" / "myshop"
         for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
             (ws / f).write_text(f"# {f}\n")
         meta_p = ws / ".docket-meta.json"
         data = json.loads(meta_p.read_text())
-        data["role"] = "implementer"
+        data.update(role="implementer", **extra_meta)
         meta_p.write_text(json.dumps(data))
-        pod_ws = home / "workspaces" / "projects" / "demo-implementer"
-        ws.rename(pod_ws)
+        ws.rename(home / "workspaces" / "projects" / "demo-implementer")
         fleet = json.loads((home / "fleet.json").read_text())
         fleet["agents"][0]["id"] = "demo-implementer"
         (home / "fleet.json").write_text(json.dumps(fleet))
 
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"verifyCmd": "pytest -q"},
+            {"portRangeStart": 4100, "portRangeCount": 10, "scratchDir": "/tmp/scratch"},
+        ],
+    )
+    def test_pod_implementer_that_provisioning_gives_a_tools_md_is_flagged_without_it(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        extra: dict[str, object],
+    ) -> None:
+        """An Implementer with a verify command or allocated resources is written a TOOLS.md."""
+        home = _seed(tmp_path, monkeypatch, full_workspace=False)
+        self._implementer_without_tools(home, **extra)
+
         issues = _setup_check._check_project_agents(["demo-implementer"])
-        out = capsys.readouterr().out
+
         assert issues == 1
-        assert "missing TOOLS.md" in out
+        assert "missing TOOLS.md" in capsys.readouterr().out
+
+    def test_pod_implementer_with_nothing_to_document_is_not_flagged_for_tools_md(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Provisioning writes no TOOLS.md for an Implementer without resources or a verify command."""
+        home = _seed(tmp_path, monkeypatch, full_workspace=False)
+        self._implementer_without_tools(home)
+
+        issues = _setup_check._check_project_agents(["demo-implementer"])
+
+        assert issues == 0
+        assert "missing TOOLS.md" not in capsys.readouterr().out
+
+    def test_a_pod_member_missing_a_file_is_pointed_at_pod_update_not_setup_fix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`setup --fix` rewrites no workspace file; `pod update` re-renders a missing one."""
+        home = _seed(tmp_path, monkeypatch, full_workspace=False)
+        self._implementer_without_tools(home)
+        (home / "workspaces" / "projects" / "demo-implementer" / "SOUL.md").unlink()
+
+        assert _setup_check._check_project_agents(["demo-implementer"]) == 1
+
+        out = capsys.readouterr().out
+        assert "missing SOUL.md" in out
+        assert "docket pod update --pod demo" in out
+        assert "docket setup --fix" not in out
 
     def test_budget_no_cap(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

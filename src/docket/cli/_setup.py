@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -336,14 +337,18 @@ def setup_callback(
     ctx: typer.Context,
     json_out: bool = typer.Option(False, "--json", help="Emit the report as JSON"),
     fix: bool = typer.Option(
-        False, "--fix", help="Repair permissions, ledgers and workspace files"
+        False,
+        "--fix",
+        help="Tighten fleet and secrets file modes, install baseline policies, re-sync the "
+        "dispatch ledger",
     ),
 ) -> None:
     """Set up this workstation: model endpoint, notifications, sandbox, shell.
 
     Bare, this is the first run: the report, then only what is missing. On a terminal it asks for what is missing, required first, and prints every
     command it runs. Off a terminal it prints the report and exits 1 when the
-    model endpoint is missing. --fix repairs detected drift.
+    model endpoint is missing. --fix makes the repairs listed on that option, then
+    reports health; with --json the dispatch ledger is only reported.
 
     Example: docket setup"""
     if ctx.invoked_subcommand is not None:
@@ -351,7 +356,9 @@ def setup_callback(
     if fix:
         from docket.cli._setup_check import run_check
 
-        step_security()
-        step_policies()
+        # Under --json the repair lines go to stderr, so stdout is only the report.
+        with contextlib.redirect_stdout(sys.stderr) if json_out else contextlib.nullcontext():
+            step_security()
+            step_policies()
         raise typer.Exit(run_check(json_out=json_out, do_fix=True))
     raise typer.Exit(run_flow(json_out))

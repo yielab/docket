@@ -22,6 +22,10 @@ class _LogGroup(TyperGroup):
         if args and args[0].isdigit():
             ctx.meta[_COUNT_KEY] = int(args[0])
             args = args[1:]
+        elif args and not args[0].startswith("-") and args[0] not in self.commands:
+            ctx.fail(
+                f"'{args[0]}' is not an entry count or a command. Usage: docket log [N] | verify"
+            )
         return super().parse_args(ctx, args)
 
 
@@ -43,7 +47,7 @@ def show_log(limit: int | None = None, json_out: bool = False) -> int:
         return 0
     if raw is None:
         ui.info("No log yet.")
-        ui.dim("  Changes (keys, gates, pods, scope) are recorded to")
+        ui.dim("  Changes (keys, gates, pods, approvals) are recorded to")
         ui.dim(f"  {logf} once you make one.")
         return 0
 
@@ -100,7 +104,7 @@ def log(
     ctx: typer.Context,
     json_out: bool = typer.Option(False, "--json", help="Print the raw JSONL file verbatim"),
 ) -> None:
-    """Show the record of what was authorized and done: keys, gates, pods, scope, approvals.
+    """Show the record of what was authorized and done: keys, gates, pods, approvals.
 
     `docket log [N]` shows the last N entries (default 20). Each line chains to the
     previous one by SHA-256, so a hand-edited line is detectable with `docket log verify`.

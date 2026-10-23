@@ -45,6 +45,9 @@ pod-dispatch.spec.md).
    reports into the `CostTotals` and `DayRecord` shapes; they open no session file themselves. A
    guard test (`test_product_code_has_no_retired_daemon_reference`) fails the build if
    external-runtime coupling returns to `src/`.
+5. Wherever `docket run` shows a pod's cap, it **MUST** show it beside the labelled estimate the
+   gate uses (`estimate so far ~$X.XX, no cost recorded`) and **MUST NOT** print a `spent` figure,
+   because recorded spend is always `0`.
 
 ### Budget caps
 
@@ -206,7 +209,7 @@ $ docket run --resume
 - `src/docket/core/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `budget_warning`, `paused_refused`)
 - `src/docket/core/runtime_driver.py`: `TurnResult.cost_usd`, `UsageReport`, `DriverCapabilities.reports_cost_usd`
 - `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver.usage`, `DocketDriver.capabilities`
-- `src/docket/cli/_status.py`: `docket status`, the per-pod usage summary, the fleet inventory
+- `src/docket/cli/_status.py`: `docket status`, the per-pod usage summary, the fleet inventory, `cost_snapshot` (the MCP `cost` tool reads it)
 - `src/docket/cli/_pod.py`: `docket pod set|unset budgetUsd`
-- `src/docket/cli/_run.py`: `docket run --resume`
+- `src/docket/cli/_run.py`: `docket run --resume`, the cap header
 - `src/docket/cli/_setup_check.py`: the `docket setup` budget and runaway checks
