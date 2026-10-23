@@ -14,8 +14,8 @@ from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain import spec as _pipeline
 from docket.platform import process as _process
 from docket.platform import store as _store
 from docket.tasks.application import consult as _consult
@@ -220,7 +220,7 @@ def _replay_pipeline_position(
                 pi = target_index
                 continue
         gate = node.gate if isinstance(node, _orch.PlannedUnit) else None
-        if isinstance(gate, _pipeline.VerdictGate) and gate.rework is not None:
+        if isinstance(gate, _gates.VerdictGate) and gate.rework is not None:
             verdict = hop.artifact.verdict if hop.artifact is not None else None
             if verdict is None:
                 # A record whose artifact carries no verdict falls back to
@@ -340,7 +340,7 @@ class _UnitContext:
     approval_timeout: int | None = None
     # The task's own gate and the step it follows (``_task_gate_step_id``); see
     # ``_evaluate_hop_gates``. Defaulted like the fields above.
-    task_gate: _pipeline.ExternalGate | None = None
+    task_gate: _gates.ExternalGate | None = None
     task_gate_step_id: str | None = None
 
 
@@ -388,7 +388,7 @@ def _build_hop_result(
     downstream; the diff probe is likewise gated. Uses ``hop_output``, never
     ``run_res.output`` -- the raw text would silently undo a ``redact`` verdict's rewrite."""
     verdict: str | None = None
-    if hop_ok and isinstance(node.gate, _pipeline.VerdictGate):
+    if hop_ok and isinstance(node.gate, _gates.VerdictGate):
         verdict = _orch.parse_verdict(node.gate, hop_output)
     files_changed: list[str] = []
     diff_ref: str | None = None

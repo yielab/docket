@@ -57,6 +57,7 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor_c
 from docket.pipeline.application import steps as _steps_c
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
@@ -108,7 +109,7 @@ def _bind_gated_implementer(project: str) -> None:
     """Bind a pod pipeline that is the default one with an ``approval`` gate on the Implementer."""
     spec = _pipeline.default_pipeline()
     steps = [
-        step.model_copy(update={"gate": _pipeline.ApprovalGate()})
+        step.model_copy(update={"gate": _gates.ApprovalGate()})
         if step.role == "implementer"
         else step
         for step in spec.steps
@@ -235,8 +236,8 @@ class TestGateSources:
         real for any step whose gate is `approval` (declared directly, or via an
         archetype's gateContract), regardless of role name."""
         assert _pre_hop._pipeline_step_requires_approval(None) is False
-        assert _pre_hop._pipeline_step_requires_approval(_pipeline.MechanicalGate()) is False
-        assert _pre_hop._pipeline_step_requires_approval(_pipeline.ApprovalGate()) is True
+        assert _pre_hop._pipeline_step_requires_approval(_gates.MechanicalGate()) is False
+        assert _pre_hop._pipeline_step_requires_approval(_gates.ApprovalGate()) is True
 
 
 # ── the gate fires pre-hop ────────────────────────────────────────────────────────

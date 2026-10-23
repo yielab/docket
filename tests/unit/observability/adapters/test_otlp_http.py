@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from docket.kernel.home import current_home, use_home
-from docket.observability import telemetry
+from docket.observability import projection
+from docket.observability import spans as observability_spans
 from docket.observability.adapters import otlp_http
 
 SUBJECT = "docket.observability.adapters.otlp_http"
@@ -23,13 +24,13 @@ _TRACE_FIXTURE = (
 _GOLDEN = Path(__file__).resolve().parents[3] / "fixtures" / "otlp-v1" / "dispatch-3-hops.json"
 
 
-def _projected_spans() -> list[telemetry.Span]:
+def _projected_spans() -> list[observability_spans.Span]:
     records = [json.loads(line) for line in _TRACE_FIXTURE.read_text().splitlines() if line.strip()]
-    state = telemetry.ProjectionState()
-    spans: list[telemetry.Span] = []
+    state = observability_spans.ProjectionState()
+    spans: list[observability_spans.Span] = []
     for record in records:
-        spans.extend(telemetry.project(record, state))
-    spans.extend(telemetry.flush_open(state))
+        spans.extend(projection.project(record, state))
+    spans.extend(projection.flush_open(state))
     return spans
 
 

@@ -29,6 +29,7 @@ from docket.agent.tools import registry as _tools
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
 from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import pod_settings as _commands_pod_settings
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
@@ -485,7 +486,7 @@ def test_export_then_apply_round_trip_matches_pod_show(
     with _seed_fixture_pod(tmp_path / "source", source_project):
         recipe_dir = RECIPES_DIR / "secure-build"
         _write.apply(_pod_apply.plan_apply(source_project, recipe_dir))
-        _pod.set_setting(source_project, "approvalMode", "refuse")
+        _commands_pod_settings.set_setting(source_project, "approvalMode", "refuse")
 
         export_dir = tmp_path / "exported"
         assert _pod_cli("export", str(export_dir), "--pod", source_project).exit_code == 0
@@ -560,7 +561,7 @@ def test_export_writes_only_this_pods_own_scope_never_global(tmp_path: Path) -> 
         (pod_policies_dir / "require-approval-secret-writes.yaml").write_text(
             policy_text, encoding="utf-8"
         )
-        _pod.set_setting(project, "approvalMode", "refuse")
+        _commands_pod_settings.set_setting(project, "approvalMode", "refuse")
 
         export_dir = tmp_path / "export-out"
         _write.export_pod(project, export_dir)
@@ -626,7 +627,7 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
         # writer (not the generic "unknown pod setting" message every other unknown key gets).
         capsys.readouterr()
         with pytest.raises(typer.Exit) as exc:
-            _pod.set_setting(project, "configSource", "/tmp/whatever")
+            _commands_pod_settings.set_setting(project, "configSource", "/tmp/whatever")
         assert exc.value.exit_code == 1
         assert "written by update" in capsys.readouterr().err
 

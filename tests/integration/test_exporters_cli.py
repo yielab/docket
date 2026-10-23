@@ -410,7 +410,8 @@ class TestPreview:
     ) -> None:
         from docket.governance import privacy as _privacy
         from docket.observability import exporter as _exp
-        from docket.observability import telemetry as _telemetry
+        from docket.observability import projection as _projection
+        from docket.observability import spans as _spans
         from docket.observability import trace as _trace
         from docket.observability.adapters import otlp_http as _otlp_http
 
@@ -436,13 +437,13 @@ class TestPreview:
             spec = _exp.load_catalog().get("langfuse")
             assert spec is not None
             _label, classes = _privacy.resolve("actions", None)
-            policy = _telemetry.ExportPolicy(
-                events=_telemetry.DEFAULT_EVENTS,
+            policy = _spans.ExportPolicy(
+                events=_projection.DEFAULT_EVENTS,
                 classes=classes,
                 label="actions",
                 content_max_chars=spec.content_max_chars,
             )
-            state = _telemetry.ProjectionState()
+            state = _spans.ProjectionState()
             spans = []
             tracefile = _trace.find_trace(session_id)
             assert tracefile is not None
@@ -450,8 +451,8 @@ class TestPreview:
                 admitted = policy.admit(record)
                 if admitted is None:
                     continue
-                spans.extend(_telemetry.project(admitted, state, policy))
-            spans.extend(_telemetry.flush_open(state))
+                spans.extend(_projection.project(admitted, state, policy))
+            spans.extend(_projection.flush_open(state))
             expected = _otlp_http.encode(spans, resource=spec.resource, aliases=spec.aliases)
 
             assert json.loads(result.stdout) == expected

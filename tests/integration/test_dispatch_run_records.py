@@ -30,8 +30,8 @@ from tests.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import run as _run
-from docket.interfaces.http import server as _http_server
 from docket.interfaces.http import server as _server
+from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
@@ -581,7 +581,7 @@ class TestScheduleDispatchPath:
 
             monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
-            _http_server._check_schedules(time.time())
+            _sweeps._check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -609,7 +609,7 @@ class TestScheduleDispatchPath:
 
             monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
 
-            _http_server._check_schedules(time.time())
+            _sweeps._check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -643,7 +643,7 @@ class TestSweepDispatchPath:
             monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             _server._run_sweeps(dispatch=True)
-            assert _server._drain_sweeps(timeout=10)
+            assert _sweeps._drain_sweeps(timeout=10)
 
             records = _runs.list_runs("sweepdemo")
             assert len(records) == 1
@@ -670,7 +670,7 @@ class TestSweepDispatchPath:
                 monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _selective_boom)
 
                 _server._run_sweeps(dispatch=True)
-                assert _server._drain_sweeps(timeout=10)  # must not raise
+                assert _sweeps._drain_sweeps(timeout=10)  # must not raise
 
                 a_records = _runs.list_runs("pod-a")
                 b_records = _runs.list_runs("pod-b")
@@ -715,10 +715,10 @@ class TestSweepWorkers:
             try:
                 _server._run_sweeps(dispatch=True)
                 assert b_done.wait(10), "pod-b never ran while pod-a was blocked"
-                assert _server._drain_sweeps(timeout=0.05) is False
+                assert _sweeps._drain_sweeps(timeout=0.05) is False
             finally:
                 release.set()
-            assert _server._drain_sweeps(timeout=10)
+            assert _sweeps._drain_sweeps(timeout=10)
             assert _runs.list_runs("pod-a")[0]["state"] == "succeeded"
             assert _runs.list_runs("pod-b")[0]["state"] == "succeeded"
 
@@ -744,7 +744,7 @@ class TestSweepWorkers:
                 _server._run_sweeps(dispatch=True)
             finally:
                 release.set()
-            assert _server._drain_sweeps(timeout=10)
+            assert _sweeps._drain_sweeps(timeout=10)
             assert calls.count("pod-a") == 1
             assert len(_runs.list_runs("pod-a")) == 1
 
@@ -768,11 +768,11 @@ class TestSweepWorkers:
             try:
                 _server._run_sweeps(dispatch=True)
                 assert a_started.wait(10)
-                assert _server._drain_sweeps(timeout=0.2) is False
+                assert _sweeps._drain_sweeps(timeout=0.2) is False
                 assert started == ["pod-a"]
             finally:
                 release.set()
-            assert _server._drain_sweeps(timeout=10)
+            assert _sweeps._drain_sweeps(timeout=10)
             assert started == ["pod-a", "pod-b"]
 
     def test_stop_waits_for_in_flight_sweeps(
@@ -791,7 +791,7 @@ class TestSweepWorkers:
                 return []
 
             monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
-            monkeypatch.setattr(_http_server, "_check_schedules", lambda _now: None)
+            monkeypatch.setattr(_sweeps, "_check_schedules", lambda _now: None)
             stop = threading.Event()
             loop = new_thread(target=_server._sweep_loop, args=(0.01, stop, True), daemon=True)
             loop.start()

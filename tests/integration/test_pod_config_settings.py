@@ -20,7 +20,8 @@ from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.commands import pod as _pod
-from docket.interfaces.http import server as _http_server
+from docket.interfaces.cli.commands import pod_settings as _pod_settings
+from docket.interfaces.http import sweeps as _sweeps
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
@@ -93,7 +94,7 @@ class TestConfigSet:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
-            _pod.set_setting("proj", "maxReworkCycles", "2")
+            _pod_settings.set_setting("proj", "maxReworkCycles", "2")
             assert _settings.pod_max_rework_cycles("proj") == 2
             capsys.readouterr()
 
@@ -102,7 +103,7 @@ class TestConfigSet:
     ) -> None:
         with _build(tmp_path):
             assert _settings.pod_approval_mode("proj") == "wait"
-            _pod.set_setting("proj", "approvalMode", "refuse")
+            _pod_settings.set_setting("proj", "approvalMode", "refuse")
             assert _settings.pod_approval_mode("proj") == "refuse"
             capsys.readouterr()
 
@@ -113,7 +114,7 @@ class TestConfigSet:
             before = _lead_meta("proj")
 
             with pytest.raises(typer.Exit) as exc:
-                _pod.set_setting("proj", "turnTimeoutS", "abc")
+                _pod_settings.set_setting("proj", "turnTimeoutS", "abc")
             assert exc.value.exit_code == 1
             assert "turnTimeoutS" in capsys.readouterr().err
             assert _lead_meta("proj") == before
@@ -123,7 +124,7 @@ class TestConfigSet:
     ) -> None:
         with _build(tmp_path):
             with pytest.raises(typer.Exit) as exc:
-                _pod.set_setting("proj", "definitelyNotARealSetting", "x")
+                _pod_settings.set_setting("proj", "definitelyNotARealSetting", "x")
             assert exc.value.exit_code == 1
 
     def test_set_invalid_approval_mode_exits_1_and_leaves_meta_unchanged(
@@ -133,7 +134,7 @@ class TestConfigSet:
             before = _lead_meta("proj")
 
             with pytest.raises(typer.Exit) as exc:
-                _pod.set_setting("proj", "approvalMode", "x")
+                _pod_settings.set_setting("proj", "approvalMode", "x")
             assert exc.value.exit_code == 1
             assert "approvalMode" in capsys.readouterr().err
             assert _lead_meta("proj") == before
@@ -144,9 +145,9 @@ class TestConfigUnset:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
-            _pod.set_setting("proj", "maxReworkCycles", "3")
+            _pod_settings.set_setting("proj", "maxReworkCycles", "3")
             capsys.readouterr()
-            _pod.unset_setting("proj", "maxReworkCycles")
+            _pod_settings.unset_setting("proj", "maxReworkCycles")
             capsys.readouterr()
             assert _settings.pod_max_rework_cycles("proj") == 1
 
@@ -172,7 +173,7 @@ class TestConfigSetPipeline:
             pipeline_file = tmp_path / "custom.yaml"
             pipeline_file.write_text(_CUSTOM_PIPELINE)
 
-            _pod.set_setting("proj", "pipeline", str(pipeline_file))
+            _pod_settings.set_setting("proj", "pipeline", str(pipeline_file))
             capsys.readouterr()
 
             digest = _lead_meta("proj")["pipeline"]
@@ -191,7 +192,7 @@ class TestConfigSetPipeline:
             before = _lead_meta("proj")
 
             with pytest.raises(typer.Exit) as exc:
-                _pod.set_setting("proj", "pipeline", str(pipeline_file))
+                _pod_settings.set_setting("proj", "pipeline", str(pipeline_file))
             assert exc.value.exit_code == 1
             assert "reviewer" in capsys.readouterr().err
             assert _lead_meta("proj") == before
@@ -205,7 +206,7 @@ class TestConfigSetPipeline:
             pipeline_file.write_text("not: a valid\npipeline: [shape\n")
 
             with pytest.raises(typer.Exit) as exc:
-                _pod.set_setting("proj", "pipeline", str(pipeline_file))
+                _pod_settings.set_setting("proj", "pipeline", str(pipeline_file))
             assert exc.value.exit_code == 1
             capsys.readouterr()
 
@@ -215,10 +216,10 @@ class TestConfigSetPipeline:
         with _build(tmp_path):
             pipeline_file = tmp_path / "custom.yaml"
             pipeline_file.write_text(_CUSTOM_PIPELINE)
-            _pod.set_setting("proj", "pipeline", str(pipeline_file))
+            _pod_settings.set_setting("proj", "pipeline", str(pipeline_file))
             capsys.readouterr()
 
-            _pod.unset_setting("proj", "pipeline")
+            _pod_settings.unset_setting("proj", "pipeline")
             capsys.readouterr()
 
             assert not pod.bound_pipeline_path("proj").exists()
@@ -240,7 +241,7 @@ class TestConfigSetSchedule:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
-            _pod.set_setting("proj", "schedule", "@every 30m")
+            _pod_settings.set_setting("proj", "schedule", "@every 30m")
             capsys.readouterr()
 
             from docket.pipeline.application import schedule as _sched
@@ -256,7 +257,7 @@ class TestConfigSetSchedule:
             before = _lead_meta("proj")
 
             with pytest.raises(typer.Exit) as exc:
-                _pod.set_setting("proj", "schedule", "@every 3x")
+                _pod_settings.set_setting("proj", "schedule", "@every 3x")
             assert exc.value.exit_code == 1
             assert "schedule" in capsys.readouterr().err
             assert _lead_meta("proj") == before
@@ -269,10 +270,10 @@ class TestConfigSetSchedule:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
-            _pod.set_setting("proj", "schedule", "@every 30m")
+            _pod_settings.set_setting("proj", "schedule", "@every 30m")
             capsys.readouterr()
 
-            _pod.unset_setting("proj", "schedule")
+            _pod_settings.unset_setting("proj", "schedule")
             capsys.readouterr()
 
             from docket.pipeline.application import schedule as _sched
@@ -289,7 +290,7 @@ class TestConfigSetSchedule:
         import time as _time
 
         with _build(tmp_path):
-            _pod.set_setting("proj", "schedule", "@every 1s")
+            _pod_settings.set_setting("proj", "schedule", "@every 1s")
             capsys.readouterr()
 
             dispatched: list[str] = []
@@ -297,7 +298,7 @@ class TestConfigSetSchedule:
                 "docket.tasks.application.sweep.dispatch_pod",
                 lambda proj, **kw: dispatched.append(proj) or [],
             )
-            _http_server._check_schedules(_time.time())
+            _sweeps._check_schedules(_time.time())
             deadline = _time.time() + 2
             while not dispatched and _time.time() < deadline:
                 _time.sleep(0.05)
@@ -309,20 +310,20 @@ class TestBudgetSet:
 
     def test_budget_is_stored_on_the_lead(self, tmp_path: Path) -> None:
         with _build(tmp_path):
-            _pod.set_setting("proj", "budgetUsd", "5")
+            _pod_settings.set_setting("proj", "budgetUsd", "5")
             assert _lead_meta("proj")["budgetUsd"] == 5.0
 
     def test_zero_removes_the_cap(self, tmp_path: Path) -> None:
         with _build(tmp_path):
-            _pod.set_setting("proj", "budgetUsd", "5")
-            _pod.set_setting("proj", "budgetUsd", "0")
+            _pod_settings.set_setting("proj", "budgetUsd", "5")
+            _pod_settings.set_setting("proj", "budgetUsd", "0")
             assert _settings.pod_budget("proj") == 0.0
 
     @pytest.mark.parametrize("bad", ["abc", "-1"])
     def test_a_bad_budget_exits_1_and_changes_nothing(self, tmp_path: Path, bad: str) -> None:
         with _build(tmp_path):
             with pytest.raises(typer.Exit) as exc:
-                _pod.set_setting("proj", "budgetUsd", bad)
+                _pod_settings.set_setting("proj", "budgetUsd", bad)
             assert exc.value.exit_code == 1
             assert "budgetUsd" not in _lead_meta("proj")
 
@@ -333,7 +334,7 @@ class TestBudgetSet:
             meta.update({"paused": True, "pausedReason": "budget"})
             current_home().meta_path(lead).write_text(json.dumps(meta))
 
-            _pod.set_setting("proj", "budgetUsd", "10")
+            _pod_settings.set_setting("proj", "budgetUsd", "10")
 
             assert _lead_meta("proj")["paused"] is False
             assert _lead_meta("proj")["pausedReason"] == ""
@@ -348,9 +349,9 @@ class TestBudgetSet:
             _queue.enqueue_task_once("proj", "held", channel="cli")
 
             if how == "set-zero":
-                _pod.set_setting("proj", "budgetUsd", "0")
+                _pod_settings.set_setting("proj", "budgetUsd", "0")
             else:
-                _pod.unset_setting("proj", "budgetUsd")
+                _pod_settings.unset_setting("proj", "budgetUsd")
 
             assert _lead_meta("proj")["paused"] is False
             assert _lead_meta("proj")["pausedReason"] == ""
@@ -373,7 +374,7 @@ class TestBudgetSet:
             _store.write_json(path, doc)
             capsys.readouterr()
 
-            _pod.set_setting("proj", "budgetUsd", "5")
+            _pod_settings.set_setting("proj", "budgetUsd", "5")
 
             out = capsys.readouterr().out
             assert "Unblocked 2 blocked task(s)" in out

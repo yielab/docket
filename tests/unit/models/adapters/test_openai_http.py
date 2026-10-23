@@ -13,9 +13,8 @@ from typing import Any
 
 import pytest
 
-from docket.agent.llm import Endpoint, ModelLimits, user
+from docket.agent.llm import Endpoint, ModelLimits
 from docket.models.adapters import openai_http as llm
-from docket.models.catalog import ModelRow, ProviderSpec
 
 SUBJECT = "docket.models.adapters.openai_http"
 
@@ -93,56 +92,3 @@ class TestRecordedModelsBodies:
     def test_an_unrecognised_body_yields_no_limits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         assert _probe(monkeypatch, "[]").limits == {}
         assert _probe(monkeypatch, "not json").limits == {}
-
-
-class TestEndpointLimitsPrecedence:
-    @staticmethod
-    def _spec(*rows: ModelRow) -> ProviderSpec:
-        return ProviderSpec.model_validate(
-            {
-                "name": "gw",
-                "baseUrl": "http://127.0.0.1:1/v1",
-                "auth": {"type": "none"},
-                "models": [r.model_dump(by_alias=True, exclude_none=True) for r in rows],
-            }
-        )
-
-    def test_declared_beats_observed_beats_unknown_per_limit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from docket.models import catalog as provider
-
-        monkeypatch.setattr(
-            provider,
-            "observed_limits",
-            lambda name, model_id: ModelLimits(32768, 9000) if model_id == "m" else None,
-        )
-        spec = self._spec(ModelRow(id="m", contextWindow=1000), ModelRow(id="n"))
-        both = llm.endpoint_from_spec(spec, "gw", "m", "")
-        assert (both.context_window_tokens, both.max_output_tokens) == (1000, 9000)
-        unlisted = llm.endpoint_from_spec(spec, "gw", "n", "")
-        assert (unlisted.context_window_tokens, unlisted.max_output_tokens) == (None, None)
-
-
-class TestRequestBytes:
-    def test_a_non_ascii_part_is_measured_as_utf8(self) -> None:
-        text = "ñáé" * 100
-        endpoint = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="m")
-        payload = llm.build_payload(endpoint, [user(text)])
-        measured = llm.request_part_bytes(payload)["user"]
-        assert measured == len(json.dumps(payload["messages"][0], ensure_ascii=False).encode())
-        assert measured < len(json.dumps(payload["messages"][0]).encode())
-
-
-class TestUsageDecoding:
-    def test_cache_write_tokens_from_either_body_shape(self) -> None:
-        openai_shape = {
-            "choices": [{"message": {"content": "x"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 10, "prompt_tokens_details": {"cache_write_tokens": 4}},
-        }
-        anthropic_shape = {
-            "choices": [{"message": {"content": "x"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 10, "cache_creation_input_tokens": 6},
-        }
-        assert llm.decode_response(openai_shape).usage.cache_write_tokens == 4
-        assert llm.decode_response(anthropic_shape).usage.cache_write_tokens == 6

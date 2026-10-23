@@ -58,14 +58,14 @@ class Readiness:
 
 
 def _endpoint_piece() -> Piece:
-    from docket.models import catalog as _provider
+    from docket.models import provider_lifecycle as _provider_lifecycle
     from docket.models import selection as _mp
 
     resolved: list[str] = []
     for role in ("lead", "implementer"):
         try:
             model = _mp.resolve_role_model(role)
-            state = _provider.model_readiness(model)
+            state = _provider_lifecycle.model_readiness(model)
         except Exception as exc:
             return Piece("model endpoint", False, f"{role}: {exc}", _PROVIDER_COMMAND)
         if not state.ready:
@@ -246,7 +246,7 @@ def _ran(command: str) -> None:
 
 
 def _ask_endpoint() -> int:
-    from docket.interfaces.cli.commands import setup_model as _setup_model
+    from docket.interfaces.cli.commands import setup_model_provider as _setup_model_provider
     from docket.models import catalog as _prov
 
     catalog = _prov.load_catalog()
@@ -263,7 +263,7 @@ def _ask_endpoint() -> int:
     needs_key = bool(spec and spec.auth.type != "none" and spec.auth.credentials)
     cred_flag = " --credential" if needs_key else ""
     _ran(f"docket setup provider add {chosen}{' ' + url if url else ''}{cred_flag}")
-    return _setup_model.add_provider(chosen, url)
+    return _setup_model_provider.add_provider(chosen, url)
 
 
 def _ask_telegram() -> None:

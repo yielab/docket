@@ -22,7 +22,8 @@ from docket.kernel.errors import NotFound
 from docket.operator import channel as _channel
 from docket.operator import contract as _oc
 from docket.pipeline.application import steps as _steps
-from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import gates as _gates
+from docket.pipeline.domain import step as _step
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.teams import pod_settings as _pod_settings
@@ -73,9 +74,9 @@ def _policy_asks_on(doc: dict[str, Any]) -> str:
     return ", ".join(parts) if parts else "a structured predicate"
 
 
-def _iter_leaf_steps(steps: list[_pipeline.Step]) -> list[_pipeline.Step]:
+def _iter_leaf_steps(steps: list[_step.Step]) -> list[_step.Step]:
     """Every unit step, one level into a `parallel` group -- pipelines nest no deeper."""
-    leaves: list[_pipeline.Step] = []
+    leaves: list[_step.Step] = []
     for step in steps:
         if step.parallel:
             leaves.extend(step.parallel)
@@ -125,7 +126,7 @@ def forecast(
 
     pipeline = _steps.effective_pipeline(project, None)
     for step in _iter_leaf_steps(pipeline.steps):
-        if isinstance(step.gate, _pipeline.ApprovalGate):
+        if isinstance(step.gate, _gates.ApprovalGate):
             items.append(
                 Interruption(
                     kind="pipeline_gate",

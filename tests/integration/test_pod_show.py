@@ -420,6 +420,7 @@ class TestPodShowProvider:
     ) -> None:
         from docket.agent.llm import ModelLimits
         from docket.models import catalog as _prov
+        from docket.models import provider_lifecycle as _provider_lifecycle
         from docket.models.adapters.openai_http import ProbeResult
 
         with _seed(tmp_path):
@@ -430,7 +431,7 @@ class TestPodShowProvider:
                 models=[_prov.ModelRow(id="qwen"), _prov.ModelRow(id="other")],
             )
             _prov.save_provider(spec)
-            _prov.record_observed_models(
+            _provider_lifecycle.record_observed_models(
                 spec,
                 ProbeResult(
                     status=200, model_ids=["qwen"], limits={"qwen": ModelLimits(32768, None)}

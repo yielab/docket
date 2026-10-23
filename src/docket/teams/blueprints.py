@@ -68,7 +68,9 @@ import re
 from dataclasses import dataclass, field
 
 from docket.kernel.errors import InvalidInput
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.teams import pod as _pod
 
 WORKSPACE_KINDS: frozenset[str] = frozenset({"codebase", "workdir"})
@@ -136,7 +138,7 @@ def _research_pipeline() -> _pipeline.PipelineSpec:
             "APPROVE/REJECT verdict (bounded rework back to the Writer)."
         ),
         steps=[
-            _pipeline.Step(
+            _step.Step(
                 id="lead",
                 role="lead",
                 instructions=(
@@ -144,16 +146,16 @@ def _research_pipeline() -> _pipeline.PipelineSpec:
                     "the Researcher (you never gather or write the deliverable yourself):"
                 ),
             ),
-            _pipeline.Step(id="researcher", role="researcher"),
-            _pipeline.Step(id="analyst", role="analyst"),
-            _pipeline.Step(id="writer", role="writer"),
-            _pipeline.Step(
+            _step.Step(id="researcher", role="researcher"),
+            _step.Step(id="analyst", role="analyst"),
+            _step.Step(id="writer", role="writer"),
+            _step.Step(
                 id="critic",
                 role="critic",
-                gate=_pipeline.VerdictGate(
+                gate=_gates.VerdictGate(
                     pattern=r"^\s*(APPROVE|REJECT)\b",
                     pass_values=["approve"],
-                    rework=_pipeline.ReworkEdge(to="writer", when=["reject"], max_cycles=1),
+                    rework=_gates.ReworkEdge(to="writer", when=["reject"], max_cycles=1),
                 ),
             ),
         ],
@@ -165,7 +167,7 @@ def _content_pipeline() -> _pipeline.PipelineSpec:
         name="content-default",
         description="Lead -> Writer -> Critic, gated on an APPROVE/REJECT verdict.",
         steps=[
-            _pipeline.Step(
+            _step.Step(
                 id="lead",
                 role="lead",
                 instructions=(
@@ -173,14 +175,14 @@ def _content_pipeline() -> _pipeline.PipelineSpec:
                     "the Writer (you never draft the deliverable yourself):"
                 ),
             ),
-            _pipeline.Step(id="writer", role="writer"),
-            _pipeline.Step(
+            _step.Step(id="writer", role="writer"),
+            _step.Step(
                 id="critic",
                 role="critic",
-                gate=_pipeline.VerdictGate(
+                gate=_gates.VerdictGate(
                     pattern=r"^\s*(APPROVE|REJECT)\b",
                     pass_values=["approve"],
-                    rework=_pipeline.ReworkEdge(to="writer", when=["reject"], max_cycles=1),
+                    rework=_gates.ReworkEdge(to="writer", when=["reject"], max_cycles=1),
                 ),
             ),
         ],
@@ -195,7 +197,7 @@ def _ops_pipeline() -> _pipeline.PipelineSpec:
             "Monitor (requires human approval before findings are considered actioned)."
         ),
         steps=[
-            _pipeline.Step(
+            _step.Step(
                 id="lead",
                 role="lead",
                 instructions=(
@@ -203,13 +205,11 @@ def _ops_pipeline() -> _pipeline.PipelineSpec:
                     "the Operator (you never execute operational actions yourself):"
                 ),
             ),
-            _pipeline.Step(
-                id="operator", role="operator", gate=_pipeline.MechanicalGate(command=None)
-            ),
-            _pipeline.Step(
+            _step.Step(id="operator", role="operator", gate=_gates.MechanicalGate(command=None)),
+            _step.Step(
                 id="monitor",
                 role="monitor",
-                gate=_pipeline.ApprovalGate(message="Operator action awaiting sign-off."),
+                gate=_gates.ApprovalGate(message="Operator action awaiting sign-off."),
             ),
         ],
     )

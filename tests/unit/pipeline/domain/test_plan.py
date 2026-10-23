@@ -15,8 +15,10 @@ import time
 import pytest
 
 from docket.kernel.threads import new_thread
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.teams import roles as _archetypes
 
 SUBJECT = "docket.pipeline.domain.plan"
@@ -26,18 +28,18 @@ def _sample_spec() -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="sample",
         steps=[
-            _pipeline.Step(id="plan", role="lead"),
-            _pipeline.Step(
+            _step.Step(id="plan", role="lead"),
+            _step.Step(
                 id="fanout",
                 parallel=[
-                    _pipeline.Step(id="impl-a", agent="demo-implementer"),
-                    _pipeline.Step(id="impl-b", agent="demo-implementer-2"),
+                    _step.Step(id="impl-a", agent="demo-implementer"),
+                    _step.Step(id="impl-b", agent="demo-implementer-2"),
                 ],
             ),
-            _pipeline.Step(
+            _step.Step(
                 id="review",
                 role="reviewer",
-                gate=_pipeline.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"]),
+                gate=_gates.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"]),
             ),
         ],
     )
@@ -109,7 +111,7 @@ class TestResolvePlan:
 
     def test_agent_targeted_step_never_skipped(self) -> None:
         spec = _pipeline.PipelineSpec(
-            name="s", steps=[_pipeline.Step(id="x", agent="some-agent-not-in-roster")]
+            name="s", steps=[_step.Step(id="x", agent="some-agent-not-in-roster")]
         )
         plan = _orch.resolve_plan(spec, {})
         node = plan.nodes[0]
@@ -136,35 +138,33 @@ class TestResolvePlan:
 class TestResolveGate:
     def test_steps_own_gate_wins_over_archetype(self) -> None:
         registry = _archetypes.load_registry()
-        step = _pipeline.Step(
-            id="s", role="implementer", gate=_pipeline.ApprovalGate(message="ship?")
-        )
+        step = _step.Step(id="s", role="implementer", gate=_gates.ApprovalGate(message="ship?"))
         gate = _orch.resolve_gate(step, registry)
-        assert isinstance(gate, _pipeline.ApprovalGate)
+        assert isinstance(gate, _gates.ApprovalGate)
 
     def test_falls_back_to_archetype_gate_contract_when_step_has_none(self) -> None:
         registry = _archetypes.load_registry()
-        step = _pipeline.Step(id="s", role="implementer")  # no gate declared
+        step = _step.Step(id="s", role="implementer")  # no gate declared
         gate = _orch.resolve_gate(step, registry)
-        assert isinstance(gate, _pipeline.MechanicalGate)
+        assert isinstance(gate, _gates.MechanicalGate)
         assert gate.command is None
 
     def test_lead_role_with_no_gate_resolves_to_none(self) -> None:
         registry = _archetypes.load_registry()
-        step = _pipeline.Step(id="s", role="lead")
+        step = _step.Step(id="s", role="lead")
         assert _orch.resolve_gate(step, registry) is None
 
     def test_unknown_archetype_name_and_no_gate_resolves_to_none(self) -> None:
         registry = _archetypes.load_registry()
-        step = _pipeline.Step(id="s", agent="some-agent")  # no role/archetype at all
+        step = _step.Step(id="s", agent="some-agent")  # no role/archetype at all
         assert _orch.resolve_gate(step, registry) is None
 
     def test_starter_archetype_gate_contract_resolves(self) -> None:
         """A step targeting a non-legacy (starter-library) role with no gate of its own still resolves a real gate from that archetype's gateContract — the whole point of generalizing gate resolution."""
         registry = _archetypes.load_registry()
-        step = _pipeline.Step(id="s", role="critic")
+        step = _step.Step(id="s", role="critic")
         gate = _orch.resolve_gate(step, registry)
-        assert isinstance(gate, _pipeline.VerdictGate)
+        assert isinstance(gate, _gates.VerdictGate)
         assert gate.pass_values == ["APPROVE"]  # first regex = pass, per convention
         assert _orch.parse_verdict(gate, "approve\nfine") == "approve"
         assert _orch.parse_verdict(gate, "reject\nno") == "reject"
@@ -172,9 +172,9 @@ class TestResolveGate:
     def test_archetype_gate_contract_never_carries_rework(self) -> None:
         """An archetype's gateContract is descriptive marker data only — no rework edge. A pipeline step wanting bounded rework must declare its own VerdictGate with an explicit `rework` edge."""
         registry = _archetypes.load_registry()
-        step = _pipeline.Step(id="s", role="reviewer")  # no gate of its own
+        step = _step.Step(id="s", role="reviewer")  # no gate of its own
         gate = _orch.resolve_gate(step, registry)
-        assert isinstance(gate, _pipeline.VerdictGate)
+        assert isinstance(gate, _gates.VerdictGate)
         assert gate.rework is None
 
 
@@ -183,22 +183,22 @@ class TestResolveGate:
 
 class TestParseVerdict:
     def test_case_insensitive_by_default(self) -> None:
-        gate = _pipeline.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
+        gate = _gates.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
         assert _orch.parse_verdict(gate, "approve\nfine") == "approve"
 
     def test_case_sensitive_gate_respects_case(self) -> None:
-        gate = _pipeline.VerdictGate(
+        gate = _gates.VerdictGate(
             pattern=r"^(APPROVE|REJECT)\b", pass_values=["APPROVE"], case_sensitive=True
         )
         assert _orch.parse_verdict(gate, "approve\nfine") is None  # wrong case -> unparseable
         assert _orch.parse_verdict(gate, "APPROVE\nfine") == "APPROVE"
 
     def test_prose_first_line_allows_a_later_marker_line(self) -> None:
-        gate = _pipeline.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
+        gate = _gates.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
         assert _orch.parse_verdict(gate, "not a verdict\nAPPROVE") == "approve"
 
     def test_leading_blank_lines_are_skipped(self) -> None:
-        gate = _pipeline.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
+        gate = _gates.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
         assert _orch.parse_verdict(gate, "\n\nAPPROVE\nfine") == "approve"
 
 
@@ -291,8 +291,8 @@ class TestRenderPlan:
         spec = _pipeline.PipelineSpec(
             name="with_input",
             steps=[
-                _pipeline.Step(id="triage", role="lead"),
-                _pipeline.Step(id="ask", input=_pipeline.InputSpec(from_="triage")),
+                _step.Step(id="triage", role="lead"),
+                _step.Step(id="ask", input=_step.InputSpec(from_="triage")),
             ],
         )
         plan = _orch.resolve_plan(spec, {"lead": "demo-lead"})

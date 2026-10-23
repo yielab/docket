@@ -6,11 +6,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-import yaml
 
-from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.pipeline.domain.spec import PipelineSpec, load_pipeline, normalize_pipeline
+from docket.pipeline.domain import step as _step
+from docket.pipeline.domain.spec import PipelineSpec, load_pipeline
 
 SUBJECT = "docket.pipeline.domain.spec"
 
@@ -26,73 +25,6 @@ def _errors(text: str) -> str:
     loaded = load_pipeline(text)
     assert not loaded.ok
     return "\n".join(loaded.errors)
-
-
-_SHORT = """\
-name: gated
-steps:
-  - id: plan
-    role: lead
-  - build: implementer
-    gate: {external: "verify.sh --strict"}
-    on:
-      pass: stop
-      fail: {goto: build, max: 2}
-      needs_human: ask
-  - id: ask
-    input: {from: build}
-    on:
-      answered: {goto: build, max: 1}
-      declined: fail
-"""
-
-
-def test_default_exit_map() -> None:
-    gate = _pipeline.ExternalGate(command="v.sh")
-    assert gate.type == "external"
-    assert gate.exit_map == {"pass": [0], "fail": [1], "needs_human": [2]}
-    assert gate.timeout is None
-
-
-def test_short_form_builds_the_canonical_gate() -> None:
-    spec = _load(_SHORT)
-    gate = spec.steps[1].gate
-    assert isinstance(gate, _pipeline.ExternalGate)
-    assert gate.command == "verify.sh --strict"
-
-
-def test_short_form_in_a_canonical_step() -> None:
-    spec = _load(
-        "name: g\nsteps:\n  - id: build\n    role: implementer\n    gate: {external: 'v.sh'}\n"
-    )
-    assert isinstance(spec.steps[0].gate, _pipeline.ExternalGate)
-
-
-def test_normalization_is_idempotent() -> None:
-    doc = yaml.safe_load(_SHORT)
-    once = normalize_pipeline(doc)
-    assert normalize_pipeline(once) == once
-    assert once["steps"][1]["gate"] == {"type": "external", "command": "verify.sh --strict"}
-
-
-def test_canonical_form_with_exit_map_and_timeout() -> None:
-    spec = _load(
-        """\
-name: g
-steps:
-  - id: build
-    role: implementer
-    gate:
-      type: external
-      command: v.sh
-      timeout: 30
-      exitMap: {pass: [0, 3], fail: [1], needs_human: [2, 4]}
-"""
-    )
-    gate = spec.steps[0].gate
-    assert isinstance(gate, _pipeline.ExternalGate)
-    assert gate.timeout == 30
-    assert gate.exit_map["pass"] == [0, 3]
 
 
 @pytest.mark.parametrize(
@@ -144,8 +76,8 @@ def test_on_keys_are_case_insensitive_for_an_external_gate() -> None:
 def test_default_edge_is_reachable_until_pass_and_fail_are_both_routed() -> None:
     gated: dict[str, Any] = {"id": "build", "role": "implementer"}
 
-    def step(on: dict[str, Any] | None) -> _pipeline.Step:
-        return _pipeline.Step.model_validate(
+    def step(on: dict[str, Any] | None) -> _step.Step:
+        return _step.Step.model_validate(
             {**gated, "gate": {"type": "external", "command": "v"}, "on": on}
         )
 
@@ -166,11 +98,6 @@ steps:
     role: reviewer
 """
     assert "not reachable" in _errors(text)
-
-
-def test_plan_label_names_the_command() -> None:
-    gate = _pipeline.ExternalGate(command="v.sh --x")
-    assert _orch._gate_label(gate) == "external(v.sh --x)"
 
 
 def test_a_short_form_input_step_keeps_an_unquoted_on_map() -> None:

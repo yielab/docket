@@ -17,7 +17,7 @@ from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
-from docket.interfaces.cli.commands import pod as _cli_pod
+from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
@@ -150,8 +150,8 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
 def test_dual_review_plan_has_one_planned_group(tmp_path: Path) -> None:
     project = "dualcheck"
     with _seed_fixture_pod(tmp_path, project):
-        _cli_pod.add_members(project, "reviewer")
-        _cli_pod.add_members(project, "critic")
+        _pod_members.add_members(project, "reviewer")
+        _pod_members.add_members(project, "critic")
 
         text = (_recipe_dir("dual-review") / "pipeline.yaml").read_text(encoding="utf-8")
         result = _pipeline.load_pipeline(text)
@@ -229,8 +229,8 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(tmp_path: Path)
 
         # Add this recipe's extra roster members through the ordinary `docket pod add <role>`
         # path; the recipe's own `pipeline.yaml` is exercised unmodified.
-        _cli_pod.add_members(project, "critic")
-        _cli_pod.add_members(project, "tester")
+        _pod_members.add_members(project, "critic")
+        _pod_members.add_members(project, "tester")
 
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors

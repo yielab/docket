@@ -17,14 +17,14 @@ from docket.governance import policy as _policy
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod as _pod
-from docket.interfaces.cli.commands import pod_config as _pod_config
+from docket.interfaces.cli.commands import pod_config_library as _pod_config_library
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import pod as _pod_core
 from docket.teams import roles as _arch
 from docket.teams.apply import recipes as _recipes
 from docket.teams.apply import review as _review
 
-SUBJECT = "docket.interfaces.cli.commands.pod_config"
+SUBJECT = "docket.interfaces.cli.commands.pod_config_library"
 
 _runner = CliRunner()
 
@@ -324,8 +324,11 @@ class TestRemovedNames:
 
 class TestRecipeRows:
     def test_brings_joins_only_the_parts_present(self) -> None:
-        assert _pod_config._brings(_summary()) == "nothing"
-        assert _pod_config._brings(_summary(roles=2, mcp_servers=("a",))) == "roles+mcp-servers"
+        assert _pod_config_library._brings(_summary()) == "nothing"
+        assert (
+            _pod_config_library._brings(_summary(roles=2, mcp_servers=("a",)))
+            == "roles+mcp-servers"
+        )
 
 
 class TestPodExportIntoTeams:

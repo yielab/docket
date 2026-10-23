@@ -21,21 +21,15 @@ from pydantic import ValidationError
 
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
+from docket.pipeline.domain.gates import MechanicalGate, ReworkEdge, VerdictGate
+from docket.pipeline.domain.short_form import normalize_pipeline
 from docket.pipeline.domain.spec import (
-    ApprovalGate,
-    MechanicalGate,
     PipelineSpec,
-    ReworkEdge,
-    Step,
     Variable,
-    VerdictGate,
     default_pipeline,
-    interpolate_instructions,
     load_pipeline,
-    normalize_pipeline,
-    step_instructions_by_id,
-    unresolved_step_variables,
 )
+from docket.pipeline.domain.step import Step
 from docket.teams import roles as _archetypes
 
 SUBJECT = "docket.pipeline.domain.spec"
@@ -178,90 +172,6 @@ class TestUnknownKeyRejected:
                     "name": "p",
                     "steps": [{"id": "s1", "role": "lead"}],
                     "notAField": True,
-                }
-            )
-
-
-# ── TestGateTypes ────────────────────────────────────────────────────────────
-
-
-class TestGateTypes:
-    def test_mechanical_gate_minimal(self) -> None:
-        gate = MechanicalGate()
-        assert gate.command is None
-        assert gate.type == "mechanical"
-
-    def test_mechanical_gate_with_command(self) -> None:
-        gate = MechanicalGate(command="pytest -q", timeout=120)
-        assert gate.command == "pytest -q"
-
-    def test_mechanical_gate_timeout_must_be_positive(self) -> None:
-        with pytest.raises(ValidationError):
-            MechanicalGate(timeout=0)
-
-    def test_verdict_gate_minimal(self) -> None:
-        gate = VerdictGate(pattern=r"^(PASS|FAIL)\b", passValues=["pass"])
-        assert gate.rework is None
-        assert gate.case_sensitive is False
-
-    def test_verdict_gate_empty_pattern_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            VerdictGate(pattern="   ", passValues=["pass"])
-
-    def test_verdict_gate_bad_regex_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            VerdictGate(pattern="(unclosed", passValues=["pass"])
-
-    def test_verdict_gate_empty_pass_values_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            VerdictGate(pattern="^(PASS|FAIL)", passValues=[])
-
-    def test_verdict_gate_pass_and_rework_overlap_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            VerdictGate(
-                pattern="^(APPROVE|REQUEST-CHANGES)",
-                passValues=["approve"],
-                rework=ReworkEdge(to="build", when=["approve"]),
-            )
-
-    def test_verdict_gate_overlap_check_case_insensitive_by_default(self) -> None:
-        with pytest.raises(ValidationError):
-            VerdictGate(
-                pattern="^(APPROVE|REQUEST-CHANGES)",
-                passValues=["Approve"],
-                rework=ReworkEdge(to="build", when=["APPROVE"]),
-            )
-
-    def test_approval_gate_minimal(self) -> None:
-        gate = ApprovalGate()
-        assert gate.type == "approval"
-        assert gate.message == ""
-
-    def test_approval_gate_with_message(self) -> None:
-        gate = ApprovalGate(message="ship it?")
-        assert gate.message == "ship it?"
-
-    def test_gate_discriminated_by_type_field(self) -> None:
-        spec = PipelineSpec.model_validate(
-            {
-                "name": "p",
-                "steps": [
-                    {
-                        "id": "s1",
-                        "role": "implementer",
-                        "gate": {"type": "approval", "message": "go?"},
-                    }
-                ],
-            }
-        )
-        assert isinstance(spec.steps[0].gate, ApprovalGate)
-
-    def test_gate_unknown_type_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            PipelineSpec.model_validate(
-                {
-                    "name": "p",
-                    "steps": [{"id": "s1", "role": "implementer", "gate": {"type": "psychic"}}],
                 }
             )
 
@@ -494,175 +404,6 @@ class TestVariables:
         )
         result = load_pipeline(text)
         assert result.ok, result.errors
-
-
-# ── TestStepTargeting ────────────────────────────────────────────────────────
-
-
-class TestStepTargeting:
-    def test_role_only(self) -> None:
-        step = Step(id="s1", role="implementer")
-        assert step.agent is None
-
-    def test_agent_only(self) -> None:
-        step = Step(id="s1", agent="myapp-implementer-2")
-        assert step.role is None
-
-    def test_neither_role_nor_agent_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1")
-
-    def test_both_role_and_agent_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1", role="implementer", agent="myapp-implementer")
-
-    def test_empty_id_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="   ", role="lead")
-
-    def test_uppercase_role_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1", role="Implementer")
-
-    def test_role_with_hyphen_and_digits_ok(self) -> None:
-        step = Step(id="s1", role="content-writer-2")
-        assert step.role == "content-writer-2"
-
-    def test_archetype_shape_validated(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1", role="implementer", archetype="Not A Slug")
-
-    def test_archetype_valid_slug_accepted(self) -> None:
-        step = Step(id="s1", role="implementer", archetype="backend-implementer")
-        assert step.archetype == "backend-implementer"
-
-    def test_archetype_existence_never_checked(self) -> None:
-        # The pipeline format deliberately does not know about the archetype
-        # registry — any shape-valid name is accepted, existing or not.
-        step = Step(id="s1", role="implementer", archetype="some-archetype-that-does-not-exist")
-        assert step.archetype == "some-archetype-that-does-not-exist"
-
-    def test_duplicate_top_level_step_id_rejected(self) -> None:
-        text = "name: p\nsteps:\n  - id: dup\n    role: lead\n  - id: dup\n    role: implementer\n"
-        result = load_pipeline(text)
-        assert not result.ok
-        assert any("duplicate" in e for e in result.errors)
-
-    def test_empty_steps_list_rejected(self) -> None:
-        result = load_pipeline("name: p\nsteps: []\n")
-        assert not result.ok
-
-    def test_retries_must_be_non_negative(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1", role="implementer", retries=-1)
-
-    def test_timeout_must_be_positive(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1", role="implementer", timeout=0)
-
-
-# ── TestStepModel ─────────────────────────────────────────────────────────────
-
-
-class TestStepModel:
-    """A unit step's own ``model`` override (pipeline-format.spec.md Steps Req. 10):
-    shape-only validation here, and short-form passthrough like ``timeout``/``retries``."""
-
-    def test_step_model_defaults_to_none(self) -> None:
-        assert Step(id="s1", role="implementer").model is None
-
-    def test_step_model_accepts_rank_word(self) -> None:
-        assert Step(id="s1", role="implementer", model="strong").model == "strong"
-
-    def test_step_model_accepts_provider_literal(self) -> None:
-        step = Step(id="s1", role="implementer", model="anthropic/claude-sonnet-4-6")
-        assert step.model == "anthropic/claude-sonnet-4-6"
-
-    def test_step_model_rejects_malformed_literal(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1", role="implementer", model="not-a-rank-or-model-id")
-
-    def test_parallel_group_cannot_declare_model(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="fanout", model="strong", parallel=[Step(id="a", role="implementer")])
-
-    def test_run_step_cannot_declare_model(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="check", run="false", model="strong")
-
-    def test_short_form_carries_model_through(self) -> None:
-        doc = {
-            "name": "p",
-            "steps": [{"id": "plan", "role": "lead"}, {"build": "implementer", "model": "strong"}],
-        }
-        normalized = normalize_pipeline(doc)
-        build = normalized["steps"][1]
-        assert build == {"id": "build", "role": "implementer", "model": "strong"}
-        spec = PipelineSpec.model_validate(normalized)
-        assert spec.steps[1].model == "strong"
-
-
-# ── TestStepInstructions ─────────────────────────────────────────────────────
-
-
-class TestStepInstructions:
-    def test_step_instructions_defaults_to_none(self) -> None:
-        step = Step(id="s1", role="implementer")
-        assert step.instructions is None
-
-    def test_step_instructions_accepted(self) -> None:
-        step = Step(id="s1", role="security-reviewer", instructions="Focus on ${area}")
-        assert step.instructions == "Focus on ${area}"
-
-    def test_parallel_group_cannot_declare_instructions(self) -> None:
-        with pytest.raises(ValidationError):
-            Step(
-                id="fanout",
-                instructions="not allowed on a group",
-                parallel=[Step(id="a", role="implementer")],
-            )
-
-    def test_step_instructions_by_id_collects_top_level_and_parallel_children(self) -> None:
-        spec = PipelineSpec(
-            name="p",
-            steps=[
-                Step(id="lead", role="lead"),
-                Step(id="review", role="security-reviewer", instructions="Focus on ${area}"),
-                Step(
-                    id="fanout",
-                    parallel=[
-                        Step(id="a", role="implementer", instructions="A note"),
-                        Step(id="b", role="implementer"),
-                    ],
-                ),
-            ],
-        )
-        assert step_instructions_by_id(spec) == {"review": "Focus on ${area}", "a": "A note"}
-
-    def test_unresolved_step_variables_names_missing_reference(self) -> None:
-        spec = PipelineSpec(
-            name="p",
-            steps=[Step(id="review", role="security-reviewer", instructions="Focus on ${area}")],
-        )
-        assert unresolved_step_variables(spec, {}) == ["area"]
-
-    def test_unresolved_step_variables_empty_when_resolved(self) -> None:
-        spec = PipelineSpec(
-            name="p",
-            steps=[Step(id="review", role="security-reviewer", instructions="Focus on ${area}")],
-        )
-        assert unresolved_step_variables(spec, {"area": "auth"}) == []
-
-    def test_interpolate_instructions_substitutes_var(self) -> None:
-        assert interpolate_instructions("Focus on ${area}", {"area": "auth"}) == "Focus on auth"
-
-    def test_interpolate_instructions_leaves_unresolved_reference_literal(self) -> None:
-        assert interpolate_instructions("Focus on ${area}", {}) == "Focus on ${area}"
-
-    def test_interpolate_instructions_ignores_bare_dollar_sign(self) -> None:
-        # Only the exact ${name} spelling is a placeholder -- a literal dollar
-        # amount in prose is never mistaken for one.
-        assert interpolate_instructions("Costs $5 total", {}) == "Costs $5 total"
 
 
 # ── TestZeroMigration ────────────────────────────────────────────────────────

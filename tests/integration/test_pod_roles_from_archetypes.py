@@ -22,6 +22,7 @@ from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, current_home, use_home
 from docket.models import selection as _mp
 from docket.teams import fleet as _fleet
@@ -151,7 +152,7 @@ class TestPodAddStarterRole:
     def test_add_researcher_provisions_full_workspace(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-            _pod.add_members("demo", "researcher")
+            _pod_members.add_members("demo", "researcher")
 
             assert "demo-researcher" in _ids(oc_dir)
             ws = oc_dir / "workspaces" / "projects" / "demo-researcher"
@@ -173,7 +174,7 @@ class TestPodAddStarterRole:
     ) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-            _pod.add_members("demo", "researcher")
+            _pod_members.add_members("demo", "researcher")
             capsys.readouterr()
 
             result = CliRunner().invoke(_pod.pod_app, ["show", "--pod", "demo", "--json"])
@@ -184,7 +185,7 @@ class TestPodAddStarterRole:
     def test_members_of_lists_researcher_after_legacy_roles(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             build_pod("demo", _pod.pod.FULL_POD_ROLES)
-            _pod.add_members("demo", "researcher")
+            _pod_members.add_members("demo", "researcher")
             all_ids = _ids(oc_dir)
             members = pod.members_of(all_ids, "demo")
             roles_in_order = [role for _mid, role, _idx in members]

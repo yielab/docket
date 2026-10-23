@@ -30,7 +30,9 @@ from contextvars import copy_context
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 
@@ -50,7 +52,7 @@ class PlannedUnit:
     agent: str | None
     archetype: str | None
     member_id: str | None
-    gate: _pipeline.Gate | None
+    gate: _gates.Gate | None
     retries: int | None
     timeout: int | None
     # A copy of the step's own `model` override (see `_pipeline.Step.model`), or `None` --
@@ -67,7 +69,7 @@ class PlannedUnit:
     # A command step's own extra environment (a copy of ``Step.env``), or ``None``.
     env: dict[str, str] | None = None
     # An operator-input step spec, or `None` for a regular role/agent/run step.
-    input: _pipeline.InputSpec | None = None
+    input: _step.InputSpec | None = None
     # The step's own outcome-routing map (a copy of ``Step.on``), or ``None``.
     # See specs/functional/pipeline-format.spec.md ("Outcome routing").
     on: dict[str, Any] | None = None
@@ -101,7 +103,7 @@ class ExecutionPlan:
         return tuple(n for n in self.nodes if not (isinstance(n, PlannedUnit) and n.skipped))
 
 
-def _gate_from_contract(gc: _role_schema.GateContract) -> _pipeline.Gate | None:
+def _gate_from_contract(gc: _role_schema.GateContract) -> _gates.Gate | None:
     """Translate an archetype's descriptive ``gateContract`` into a real Gate. For
     ``verdict``, the first regex is the passing value and every other one just fails
     the step (no rework -- a step wanting a bounded rework loop must declare its own
@@ -110,14 +112,14 @@ def _gate_from_contract(gc: _role_schema.GateContract) -> _pipeline.Gate | None:
     if gc.kind == "none":
         return None
     if gc.kind == "mechanical":
-        return _pipeline.MechanicalGate(command=None)
+        return _gates.MechanicalGate(command=None)
     if gc.kind == "approval":
-        return _pipeline.ApprovalGate()
+        return _gates.ApprovalGate()
     if gc.kind == "verdict":
         if not gc.regexes:
             return None
         pattern = r"^\s*(" + "|".join(gc.regexes) + r")\b"
-        return _pipeline.VerdictGate(
+        return _gates.VerdictGate(
             pattern=pattern,
             pass_values=[gc.regexes[0]],
             case_sensitive=False,
@@ -126,9 +128,7 @@ def _gate_from_contract(gc: _role_schema.GateContract) -> _pipeline.Gate | None:
     return None  # pragma: no cover - GateContract's own __post_init__ forbids this
 
 
-def resolve_gate(
-    step: _pipeline.Step, registry: _archetypes.ArchetypeRegistry
-) -> _pipeline.Gate | None:
+def resolve_gate(step: _step.Step, registry: _archetypes.ArchetypeRegistry) -> _gates.Gate | None:
     """The gate a step actually runs under. A step's own declared ``gate`` always
     wins; only when it omits one does this fall back to the resolved archetype's
     ``gateContract``, looked up by ``step.archetype`` if set else ``step.role``
@@ -147,7 +147,7 @@ def resolve_gate(
 
 
 def _resolve_unit(
-    step: _pipeline.Step, roster: dict[str, str], registry: _archetypes.ArchetypeRegistry
+    step: _step.Step, roster: dict[str, str], registry: _archetypes.ArchetypeRegistry
 ) -> PlannedUnit:
     if step.run is not None:
         # A command step needs no member -- it never runs an agent turn.
@@ -258,17 +258,17 @@ def _render_on_suffix(on: dict[str, Any] | None) -> str:
     return " on " + ", ".join(parts)
 
 
-def _gate_label(gate: _pipeline.Gate | None) -> str:
+def _gate_label(gate: _gates.Gate | None) -> str:
     if gate is None:
         return "none"
-    if isinstance(gate, _pipeline.MechanicalGate):
+    if isinstance(gate, _gates.MechanicalGate):
         return f"mechanical({gate.command or 'verifyCmd'})"
-    if isinstance(gate, _pipeline.VerdictGate):
+    if isinstance(gate, _gates.VerdictGate):
         rework = f", rework->{gate.rework.to}" if gate.rework else ""
         return f"verdict({'|'.join(gate.pass_values)}{rework})"
-    if isinstance(gate, _pipeline.ApprovalGate):
+    if isinstance(gate, _gates.ApprovalGate):
         return "approval"
-    if isinstance(gate, _pipeline.ExternalGate):
+    if isinstance(gate, _gates.ExternalGate):
         return f"external({gate.command})"
     return "unknown"  # pragma: no cover - Gate is a closed discriminated union
 
@@ -282,7 +282,7 @@ def normalize_values(values: list[str], case_sensitive: bool) -> frozenset[str]:
     return frozenset(values) if case_sensitive else frozenset(v.lower() for v in values)
 
 
-def parse_verdict(gate: _pipeline.VerdictGate, output: str) -> str | None:
+def parse_verdict(gate: _gates.VerdictGate, output: str) -> str | None:
     """Return one unambiguous line-anchored marker from complete *output*. The
     configured pattern is applied at the start of every non-blank line; repeated
     matches of one normalized value collapse to a single verdict, while zero matches

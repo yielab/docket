@@ -24,6 +24,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, use_home
 from docket.models import catalog as _prov
+from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.adapters.openai_http import ProbeResult
 
 SUBJECT = "docket.models"
@@ -99,7 +100,7 @@ class TestVerifyEndpointClassification:
             base_url="http://127.0.0.1:1/v1",
             auth=_prov.AuthSpec(type="none"),
         )
-        verification = _prov.verify_endpoint(
+        verification = _provider_lifecycle.verify_endpoint(
             spec, ProbeResult(status=None, transport_error="refused")
         )
         assert verification.reachable is False
@@ -112,7 +113,7 @@ class TestVerifyEndpointClassification:
             base_url="https://example.test/v1",
             auth=_prov.AuthSpec(type="bearer", credentials=["HOSTED_API_KEY"]),
         )
-        verification = _prov.verify_endpoint(spec, ProbeResult(status=401))
+        verification = _provider_lifecycle.verify_endpoint(spec, ProbeResult(status=401))
         assert verification.reachable is True
         assert verification.credential_present is False
         assert "HOSTED_API_KEY" in verification.warning

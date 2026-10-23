@@ -21,8 +21,8 @@ from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain import spec as _pipeline
 from docket.sandbox import launch as _launch
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
@@ -152,7 +152,7 @@ def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
 
 def _evaluate_mechanical_gate(
     ctx: _UnitContext,
-    gate: _pipeline.MechanicalGate,
+    gate: _gates.MechanicalGate,
     node: _orch.PlannedUnit,
     role: str,
     member_id: str,
@@ -317,7 +317,7 @@ def _source_field(source: str) -> dict[str, str]:
 
 def _evaluate_external_gate(
     ctx: _UnitContext,
-    gate: _pipeline.ExternalGate,
+    gate: _gates.ExternalGate,
     node: _orch.PlannedUnit,
     role: str,
     member_id: str,
@@ -382,7 +382,7 @@ def _evaluate_external_gate(
 
 def _evaluate_verdict_gate(
     ctx: _UnitContext,
-    gate: _pipeline.VerdictGate,
+    gate: _gates.VerdictGate,
     node: _orch.PlannedUnit,
     role: str,
     hop: HopResult,
@@ -499,16 +499,16 @@ def _evaluate_post_hop_gate(
     if gate is None:
         return _UnitOutcome(kind="advance", hops=[hop])
 
-    if isinstance(gate, _pipeline.MechanicalGate):
+    if isinstance(gate, _gates.MechanicalGate):
         return _evaluate_mechanical_gate(ctx, gate, node, role, member_id, hop)
 
-    if isinstance(gate, _pipeline.ExternalGate):
+    if isinstance(gate, _gates.ExternalGate):
         return _evaluate_external_gate(ctx, gate, node, role, member_id, hop, prior)
 
-    if isinstance(gate, _pipeline.VerdictGate):
+    if isinstance(gate, _gates.VerdictGate):
         return _evaluate_verdict_gate(ctx, gate, node, role, hop)
 
-    if isinstance(gate, _pipeline.ApprovalGate):
+    if isinstance(gate, _gates.ApprovalGate):
         if not check_approval:
             return _UnitOutcome(
                 kind="failed",

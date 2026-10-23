@@ -20,6 +20,7 @@ import pytest
 
 from docket.governance import approval as _ap
 from docket.interfaces.http import server as _server
+from docket.interfaces.http import sweeps as _sweeps
 from docket.kernel import threads as _threads
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
@@ -174,13 +175,15 @@ class TestSweepWiring:
 class TestSweepRefreshesObservedModels:
     @staticmethod
     def _stub(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-        from docket.models import catalog as _provider
+        from docket.models import provider_lifecycle as _provider_lifecycle
         from docket.tasks.application import queue as _queue
 
         calls: list[int] = []
-        monkeypatch.setattr(_provider, "refresh_observed_models_due", lambda: calls.append(1) or [])
+        monkeypatch.setattr(
+            _provider_lifecycle, "refresh_observed_models_due", lambda: calls.append(1) or []
+        )
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: [])
-        monkeypatch.setattr(_server, "_check_schedules", lambda now: None)
+        monkeypatch.setattr(_sweeps, "_check_schedules", lambda now: None)
         return calls
 
     def test_only_a_dispatching_sweep_refreshes_the_providers_limits(
@@ -195,15 +198,15 @@ class TestSweepRefreshesObservedModels:
     def test_a_failing_refresh_does_not_stop_the_sweep(
         self, swept_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.models import catalog as _provider
+        from docket.models import provider_lifecycle as _provider_lifecycle
         from docket.tasks.application import queue as _queue
 
         def boom() -> list[str]:
             raise RuntimeError("provider down")
 
         seen: list[int] = []
-        monkeypatch.setattr(_provider, "refresh_observed_models_due", boom)
+        monkeypatch.setattr(_provider_lifecycle, "refresh_observed_models_due", boom)
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: seen.append(1) or [])
-        monkeypatch.setattr(_server, "_check_schedules", lambda now: None)
+        monkeypatch.setattr(_sweeps, "_check_schedules", lambda now: None)
         _server._run_sweeps(dispatch=True)
         assert seen == [1]

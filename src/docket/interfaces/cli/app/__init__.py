@@ -15,6 +15,7 @@ from docket.interfaces.cli.commands import inbox as _inbox
 from docket.interfaces.cli.commands import log as _log
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_config as _pod_config
+from docket.interfaces.cli.commands import pod_config_library as _pod_config_library
 from docket.interfaces.cli.commands import run as _run
 from docket.interfaces.cli.commands import service as _service
 from docket.interfaces.cli.commands import setup as _setup
@@ -86,6 +87,6 @@ _pod.pod_app.command("export")(_pod_config.cmd_export)
 _pod.pod_app.command("validate")(_pod_config.cmd_validate)
 _pod.pod_app.command("plan")(_pod_config.cmd_plan)
 _pod.pod_app.command("check")(_pod_config.cmd_check)
-_pod.pod_app.command("recipes")(_pod_config.cmd_recipes)
-_pod.pod_app.command("roles")(_pod_config.cmd_roles)
-_pod.pod_app.command("policies")(_pod_config.cmd_policies)
+_pod.pod_app.command("recipes")(_pod_config_library.cmd_recipes)
+_pod.pod_app.command("roles")(_pod_config_library.cmd_roles)
+_pod.pod_app.command("policies")(_pod_config_library.cmd_policies)

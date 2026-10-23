@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from docket.interfaces.http import server as _http_server
+from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
@@ -237,7 +237,7 @@ class TestCheckSchedules:
             return []
 
         monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _record_and_return)
-        _http_server._check_schedules(time.time())
+        _sweeps._check_schedules(time.time())
         # Allow daemon thread to run
         deadline = time.time() + 2
         while not dispatched and time.time() < deadline:
@@ -260,7 +260,7 @@ class TestCheckSchedules:
         monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _record_and_return)
         # last run was just now — not due
         _sched.record_last_run(current_home().schedule_file, "projB", time.time())
-        _http_server._check_schedules(time.time())
+        _sweeps._check_schedules(time.time())
         time.sleep(0.1)
         assert dispatched == []
 
@@ -284,7 +284,7 @@ class TestCheckSchedules:
             return []
 
         monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _record_and_return)
-        _http_server._check_schedules(time.time())
+        _sweeps._check_schedules(time.time())
         time.sleep(0.1)
         out = capsys.readouterr().out
         assert dispatched == []
@@ -307,7 +307,7 @@ class TestCheckSchedules:
             lambda proj, **kw: [],
         )
         before = time.time()
-        _http_server._check_schedules(before)
+        _sweeps._check_schedules(before)
         last_run = _sched.load_last_run(current_home().schedule_file)
         assert last_run.get("projC", 0.0) >= before
 
@@ -346,7 +346,7 @@ class TestCheckSchedules:
 
         # "Restart": nothing in memory survives — load_last_run must read the
         # persisted value straight back off disk.
-        _http_server._check_schedules(now + 1)
+        _sweeps._check_schedules(now + 1)
         time.sleep(0.1)
         assert dispatched == [], "schedule re-fired immediately after a simulated restart"
 

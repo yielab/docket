@@ -24,7 +24,9 @@ from docket.governance import approval as _ap
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.platform import git as _git
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
@@ -110,10 +112,8 @@ class TestMechanicalGateGeneralized:
         spec = _pipeline.PipelineSpec(
             name="ops",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
-                    id="apply", role="operator", gate=_pipeline.MechanicalGate(command=None)
-                ),
+                _step.Step(id="plan", role="lead"),
+                _step.Step(id="apply", role="operator", gate=_gates.MechanicalGate(command=None)),
             ],
         )
         task: dict[str, Any] = {"id": "m1", "description": "work", "status": "pending"}
@@ -127,10 +127,8 @@ class TestMechanicalGateGeneralized:
         spec = _pipeline.PipelineSpec(
             name="ops",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
-                    id="apply", role="operator", gate=_pipeline.MechanicalGate(command=None)
-                ),
+                _step.Step(id="plan", role="lead"),
+                _step.Step(id="apply", role="operator", gate=_gates.MechanicalGate(command=None)),
             ],
         )
         task: dict[str, Any] = {"id": "m2", "description": "work", "status": "pending"}
@@ -148,10 +146,8 @@ class TestMechanicalGateGeneralized:
         spec = _pipeline.PipelineSpec(
             name="ops",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
-                    id="apply", role="operator", gate=_pipeline.MechanicalGate(command="true")
-                ),
+                _step.Step(id="plan", role="lead"),
+                _step.Step(id="apply", role="operator", gate=_gates.MechanicalGate(command="true")),
             ],
         )
         task: dict[str, Any] = {"id": "m3", "description": "work", "status": "pending"}
@@ -168,10 +164,10 @@ class TestVerdictGateGeneralized:
         return _pipeline.PipelineSpec(
             name="content",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
+                _step.Step(id="plan", role="lead"),
                 # No gate declared -> falls back to the "critic" starter
                 # archetype's own gateContract (verdict: APPROVE/REJECT).
-                _pipeline.Step(id="review", role="critic"),
+                _step.Step(id="review", role="critic"),
             ],
         )
 
@@ -218,11 +214,11 @@ class TestPipelineApprovalStepGatesGenuinely:
         return _pipeline.PipelineSpec(
             name="deploy",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
+                _step.Step(id="plan", role="lead"),
+                _step.Step(
                     id="ship",
                     role="implementer",
-                    gate=_pipeline.ApprovalGate(message="Ready to deploy?"),
+                    gate=_gates.ApprovalGate(message="Ready to deploy?"),
                 ),
             ],
         )
@@ -290,18 +286,18 @@ class TestParallelGroupThroughDispatch:
         spec = _pipeline.PipelineSpec(
             name="fanout",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
+                _step.Step(id="plan", role="lead"),
+                _step.Step(
                     id="build",
                     parallel=[
-                        _pipeline.Step(id="impl-a", agent="myapp-implementer"),
-                        _pipeline.Step(id="impl-b", agent="myapp-implementer-2"),
+                        _step.Step(id="impl-a", agent="myapp-implementer"),
+                        _step.Step(id="impl-b", agent="myapp-implementer-2"),
                     ],
                 ),
-                _pipeline.Step(
+                _step.Step(
                     id="check",
                     role="tester",
-                    gate=_pipeline.VerdictGate(pattern=r"^(PASS|FAIL)\b", pass_values=["pass"]),
+                    gate=_gates.VerdictGate(pattern=r"^(PASS|FAIL)\b", pass_values=["pass"]),
                 ),
             ],
         )
@@ -334,15 +330,15 @@ class TestParallelGroupThroughDispatch:
         spec = _pipeline.PipelineSpec(
             name="fanout",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
+                _step.Step(id="plan", role="lead"),
+                _step.Step(
                     id="build",
                     parallel=[
-                        _pipeline.Step(id="impl-a", agent="myapp-implementer"),
-                        _pipeline.Step(
+                        _step.Step(id="impl-a", agent="myapp-implementer"),
+                        _step.Step(
                             id="impl-b",
                             agent="myapp-implementer-2",
-                            gate=_pipeline.MechanicalGate(command="false"),
+                            gate=_gates.MechanicalGate(command="false"),
                         ),
                     ],
                 ),
@@ -363,14 +359,14 @@ class TestParallelGroupThroughDispatch:
         spec = _pipeline.PipelineSpec(
             name="fanout",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
+                _step.Step(id="plan", role="lead"),
+                _step.Step(
                     id="build",
                     parallel=[
-                        _pipeline.Step(
+                        _step.Step(
                             id="impl-a",
                             agent="myapp-implementer",
-                            gate=_pipeline.ApprovalGate(),
+                            gate=_gates.ApprovalGate(),
                         ),
                     ],
                 ),
@@ -391,8 +387,8 @@ class TestCommandSteps:
         spec = _pipeline.PipelineSpec(
             name="checks",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(id="check", run="false"),
+                _step.Step(id="plan", role="lead"),
+                _step.Step(id="check", run="false"),
             ],
         )
         task: dict[str, Any] = {"id": "c1", "description": "work", "status": "pending"}
@@ -416,9 +412,9 @@ class TestConditionalSteps:
         spec = _pipeline.PipelineSpec(
             name="cond",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(id="maybe", role="operator", when=_pipeline.When(changed="src/**")),
-                _pipeline.Step(id="finish", role="analyst"),
+                _step.Step(id="plan", role="lead"),
+                _step.Step(id="maybe", role="operator", when=_step.When(changed="src/**")),
+                _step.Step(id="finish", role="analyst"),
             ],
         )
         task: dict[str, Any] = {"id": "c2", "description": "work", "status": "pending"}
@@ -445,19 +441,19 @@ class TestOutcomeRoutingThroughDispatch:
         spec = _pipeline.PipelineSpec(
             name="escalation",
             steps=[
-                _pipeline.Step(id="plan", role="lead"),
-                _pipeline.Step(
+                _step.Step(id="plan", role="lead"),
+                _step.Step(
                     id="review",
                     role="critic",
-                    gate=_pipeline.VerdictGate(
+                    gate=_gates.VerdictGate(
                         pattern=r"^\s*(APPROVE|FAIL)\b", pass_values=["approve"]
                     ),
                     on={"FAIL": "escalate"},
                 ),
-                _pipeline.Step(
+                _step.Step(
                     id="escalate",
                     role="implementer",
-                    gate=_pipeline.ApprovalGate(message="Ship anyway?"),
+                    gate=_gates.ApprovalGate(message="Ship anyway?"),
                 ),
             ],
         )

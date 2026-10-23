@@ -20,7 +20,8 @@ from tests.pods import build_pod
 
 from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import Home, use_home
-from docket.pipeline.domain.spec import MechanicalGate, load_pipeline
+from docket.pipeline.domain.gates import MechanicalGate
+from docket.pipeline.domain.spec import load_pipeline
 
 SUBJECT = "docket.pipeline.domain.spec"
 

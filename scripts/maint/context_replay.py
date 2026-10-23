@@ -29,8 +29,8 @@ from docket.agent.llm import ChatMessage, ToolCall
 from docket.agent.session import condense_history
 from docket.agent.tools.builtins.toolbox import read_file, text_outcome
 from docket.kernel.home import current_home
+from docket.pipeline.domain import gates
 from docket.pipeline.domain import plan as orchestrator
-from docket.pipeline.domain import spec as pipeline
 
 Messages = list[dict[str, Any]]
 Policy = Callable[[Messages], Messages]
@@ -112,7 +112,7 @@ POLICIES: dict[str, Policy] = {
 }
 
 VERDICT_PATTERN = r"^\s*(APPROVE|REJECT|REQUEST-CHANGES|PASS|FAIL)\b"
-_GATE = pipeline.VerdictGate(pattern=VERDICT_PATTERN, pass_values=["approve"])
+_GATE = gates.VerdictGate(pattern=VERDICT_PATTERN, pass_values=["approve"])
 _WORD = re.compile(r"[^\W_]+")
 _VERDICT_LINE = re.compile(VERDICT_PATTERN + r"(.*)$", re.IGNORECASE | re.DOTALL)
 DEFAULT_RESERVE = 4096

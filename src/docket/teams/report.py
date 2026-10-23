@@ -20,6 +20,7 @@ from docket.governance import policy as _policy
 from docket.governance import profile as _profile
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
+from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.adapters import openai_http as _llm
 from docket.observability import exporter as _exporter
 from docket.pipeline.application import steps as _steps
@@ -253,7 +254,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
 
     model = str(raw.get("model") or "") or current_home().default_model
     model_source = _model_source(role, project)
-    readiness = _provider.model_readiness(model)
+    readiness = _provider_lifecycle.model_readiness(model)
     provider_report = _provider_report(model)
 
     roots = _roots_for(agent_id, meta)

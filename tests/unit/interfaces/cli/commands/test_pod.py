@@ -15,6 +15,7 @@ from tests.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
@@ -70,7 +71,6 @@ def _seed_parked_task(
 
 def _give_options(project: str, task_id: str) -> None:
     """Turn the parked task's question into a v1.1 one with options, as a Lead consult writes."""
-    from docket.platform import store as _store
 
     path = _settings.pod_task_list_path(project)
     doc = _store.read_json(path)
@@ -97,7 +97,6 @@ def _invoke(*args: str, project: str = "demo") -> tuple[int, str]:
 
 
 def _meta(member_id: str) -> dict[str, Any]:
-    from docket.platform import store as _store
 
     return dict(_store.read_json(current_home().meta_path(member_id)))
 

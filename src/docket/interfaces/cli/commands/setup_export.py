@@ -20,7 +20,8 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.observability import exporter as _exp
-from docket.observability import telemetry as _telemetry
+from docket.observability import projection as _projection
+from docket.observability import spans as _spans
 from docket.observability import trace as _trace
 from docket.observability.adapters import otlp_http as _otlp_http
 
@@ -446,7 +447,7 @@ def _events_for(spec: _exp.ExporterSpec) -> frozenset[str] | None:
     if spec.events == "all":
         return None
     if spec.events == "default":
-        return _telemetry.DEFAULT_EVENTS
+        return _projection.DEFAULT_EVENTS
     return frozenset(spec.events)
 
 
@@ -456,7 +457,7 @@ def _attribute_class(key: str) -> str:
     a content class for every attribute `ATTRIBUTE_CLASSES` names, else `"structure"`."""
     if key == _PER_PART_ATTR:
         return "per part"
-    return _telemetry.ATTRIBUTE_CLASSES.get(key, "structure")
+    return _spans.ATTRIBUTE_CLASSES.get(key, "structure")
 
 
 def _display(value: object) -> str:
@@ -466,17 +467,15 @@ def _display(value: object) -> str:
     return text
 
 
-def _project(
-    records: list[dict[str, Any]], policy: _telemetry.ExportPolicy
-) -> list[_telemetry.Span]:
-    state = _telemetry.ProjectionState()
-    spans: list[_telemetry.Span] = []
+def _project(records: list[dict[str, Any]], policy: _spans.ExportPolicy) -> list[_spans.Span]:
+    state = _spans.ProjectionState()
+    spans: list[_spans.Span] = []
     for record in records:
         admitted = policy.admit(record)
         if admitted is None:
             continue
-        spans.extend(_telemetry.project(admitted, state, policy))
-    spans.extend(_telemetry.flush_open(state))
+        spans.extend(_projection.project(admitted, state, policy))
+    spans.extend(_projection.flush_open(state))
     return spans
 
 
@@ -498,7 +497,7 @@ def _render(
     tracefile: Path,
     label: str,
     classes: frozenset[str],
-    spans: list[_telemetry.Span],
+    spans: list[_spans.Span],
     total_bytes: int,
     note: str | None,
 ) -> None:
@@ -573,7 +572,7 @@ def cmd_preview(
             ui.error("No local sessions found")
             raise typer.Exit(1)
     records = _trace.read_trace(tracefile)
-    policy = _telemetry.ExportPolicy(
+    policy = _spans.ExportPolicy(
         events=_events_for(spec),
         classes=classes,
         label=label,

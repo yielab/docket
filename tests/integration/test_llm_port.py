@@ -36,6 +36,7 @@ from docket.agent.llm import (
 from docket.hops.application.runner import _RETRYABLE_FAILURE_KINDS
 from docket.kernel.home import Home, use_home
 from docket.models.adapters import openai_http as adapter
+from docket.models.adapters import openai_wire as _openai_wire
 
 SUBJECT = "docket.models"
 
@@ -128,13 +129,13 @@ class TestMessageHelpers:
 
 class TestWireEncoding:
     def test_minimal_payload_shape(self) -> None:
-        payload = adapter.build_payload(ENDPOINT, [llm.user("hi")])
+        payload = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")])
         assert payload["model"] == "test-model"
         assert payload["stream"] is False
         assert payload["messages"] == [{"role": "user", "content": "hi"}]
 
     def test_no_tools_key_when_no_tools_advertised(self) -> None:
-        payload = adapter.build_payload(ENDPOINT, [llm.user("hi")])
+        payload = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")])
         assert "tools" not in payload and "tool_choice" not in payload
 
     def test_tools_are_wrapped_as_functions(self) -> None:
@@ -143,7 +144,7 @@ class TestWireEncoding:
             description="run a command",
             parameters={"type": "object", "properties": {"command": {"type": "string"}}},
         )
-        payload = adapter.build_payload(ENDPOINT, [llm.user("hi")], tools=[spec])
+        payload = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")], tools=[spec])
         assert payload["tool_choice"] == "auto"
         assert payload["tools"][0]["type"] == "function"
         assert payload["tools"][0]["function"]["name"] == "bash"
@@ -152,7 +153,7 @@ class TestWireEncoding:
         }
 
     def test_empty_schema_becomes_a_valid_object_schema(self) -> None:
-        payload = adapter.build_payload(
+        payload = _openai_wire.build_payload(
             ENDPOINT, [llm.user("hi")], tools=[ToolSpec(name="now", description="")]
         )
         assert payload["tools"][0]["function"]["parameters"] == {
@@ -164,7 +165,7 @@ class TestWireEncoding:
         """A tool-calling assistant turn fed back as history must send
         `content: null`, not `""` — several endpoints reject the latter."""
         msg = llm.assistant(tool_calls=[ToolCall(id="c1", name="bash", arguments='{"a":1}')])
-        encoded = adapter.build_payload(ENDPOINT, [msg])["messages"][0]
+        encoded = _openai_wire.build_payload(ENDPOINT, [msg])["messages"][0]
         assert encoded["content"] is None
         assert encoded["tool_calls"] == [
             {"id": "c1", "type": "function", "function": {"name": "bash", "arguments": '{"a":1}'}}
@@ -172,13 +173,15 @@ class TestWireEncoding:
 
     def test_tool_message_carries_its_call_id_and_keeps_empty_content(self) -> None:
         msg = llm.tool_result(ToolCall(id="c9", name="read"), "")
-        encoded = adapter.build_payload(ENDPOINT, [msg])["messages"][0]
+        encoded = _openai_wire.build_payload(ENDPOINT, [msg])["messages"][0]
         assert encoded == {"role": "tool", "content": "", "tool_call_id": "c9", "name": "read"}
 
     def test_optional_sampling_knobs_are_omitted_unless_set(self) -> None:
-        bare = adapter.build_payload(ENDPOINT, [llm.user("hi")])
+        bare = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")])
         assert "max_tokens" not in bare and "temperature" not in bare
-        full = adapter.build_payload(ENDPOINT, [llm.user("hi")], max_tokens=64, temperature=0.2)
+        full = _openai_wire.build_payload(
+            ENDPOINT, [llm.user("hi")], max_tokens=64, temperature=0.2
+        )
         assert full["max_tokens"] == 64 and full["temperature"] == 0.2
 
     def test_non_anthropic_payload_is_byte_identical_to_the_unmarked_encoding(self) -> None:
@@ -193,7 +196,7 @@ class TestWireEncoding:
         ]
         for model_id in ("gpt-5", "openai/gpt-5", "qwen3", "x/not-claude-3", "clau"):
             endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id=model_id)
-            body = json.dumps(adapter.build_payload(endpoint, messages, [spec], 64, 0.2))
+            body = json.dumps(_openai_wire.build_payload(endpoint, messages, [spec], 64, 0.2))
             assert body == json.dumps(
                 {
                     "model": model_id,
@@ -235,7 +238,7 @@ class TestWireEncoding:
         marker = {"type": "ephemeral"}
         call = ToolCall(id="c1", name="bash", arguments="{}")
         endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id=model_id)
-        messages = adapter.build_payload(
+        messages = _openai_wire.build_payload(
             endpoint,
             [
                 llm.system("sys"),
@@ -253,10 +256,10 @@ class TestWireEncoding:
 
     def test_anthropic_marker_skips_empty_content_and_never_doubles_up(self) -> None:
         endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="claude-haiku-4")
-        alone = adapter.build_payload(endpoint, [llm.system("sys")])["messages"]
+        alone = _openai_wire.build_payload(endpoint, [llm.system("sys")])["messages"]
         assert json.dumps(alone).count("cache_control") == 1
         call = ToolCall(id="c1", name="bash", arguments="{}")
-        empty = adapter.build_payload(endpoint, [llm.system("sys"), llm.tool_result(call, "")])
+        empty = _openai_wire.build_payload(endpoint, [llm.system("sys"), llm.tool_result(call, "")])
         assert empty["messages"][1]["content"] == ""
         assert json.dumps(empty).count("cache_control") == 1
 
@@ -264,8 +267,8 @@ class TestWireEncoding:
         plain = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="gpt-5")
         marked = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="claude-sonnet-5-5")
         messages = [llm.system("sys"), llm.user("hi")]
-        before = adapter.request_part_bytes(adapter.build_payload(plain, messages))
-        after = adapter.request_part_bytes(adapter.build_payload(marked, messages))
+        before = _openai_wire.request_part_bytes(_openai_wire.build_payload(plain, messages))
+        after = _openai_wire.request_part_bytes(_openai_wire.build_payload(marked, messages))
         assert after["system"] > before["system"]
         assert after["user"] > before["user"]
 
@@ -285,7 +288,7 @@ class TestWireEncoding:
 
 class TestWireDecoding:
     def test_plain_reply(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {
                 "choices": [
                     {"message": {"role": "assistant", "content": "hello"}, "finish_reason": "stop"}
@@ -298,7 +301,7 @@ class TestWireDecoding:
         assert res.usage.input_tokens == 12 and res.usage.output_tokens == 3
 
     def test_tool_calls_are_decoded(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {
                 "choices": [
                     {
@@ -325,7 +328,7 @@ class TestWireDecoding:
     def test_dict_arguments_are_re_encoded_to_the_documented_string(self) -> None:
         """llama.cpp can emit already-decoded arguments; ToolCall.arguments is
         contractually the raw JSON *text*, so the adapter re-encodes."""
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {
                 "choices": [
                     {
@@ -345,7 +348,7 @@ class TestWireDecoding:
         assert res.tool_calls[0].parsed_arguments() == {"expr": "1+1"}
 
     def test_missing_call_id_is_synthesised_not_dropped(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {"choices": [{"message": {"tool_calls": [{"function": {"name": "calc"}}]}}]}
         )
         assert len(res.tool_calls) == 1 and res.tool_calls[0].id == "call_0"
@@ -353,13 +356,13 @@ class TestWireDecoding:
     def test_malformed_call_survives_decoding_so_the_gate_can_refuse_it(self) -> None:
         """Dropping an unnamed call here would hide it from pre_tool_call and
         from the audit log. It must reach the dispatcher to be refused."""
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {"choices": [{"message": {"tool_calls": [{"id": "x", "function": {}}]}}]}
         )
         assert len(res.tool_calls) == 1 and res.tool_calls[0].name == ""
 
     def test_cached_prompt_tokens_when_reported(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {
                 "choices": [{"message": {"content": "ok"}}],
                 "usage": {
@@ -379,7 +382,7 @@ class TestWireDecoding:
         ],
     )
     def test_cache_writes_when_reported(self, usage: dict[str, Any]) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {
                 "choices": [{"message": {"content": "ok"}}],
                 "usage": {"prompt_tokens": 100, "completion_tokens": 2, **usage},
@@ -389,27 +392,27 @@ class TestWireDecoding:
         assert res.usage.counted_tokens == 100 - 80 + 2
 
     def test_cache_writes_default_to_zero(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {"choices": [{"message": {"content": "ok"}}], "usage": {"prompt_tokens": 9}}
         )
         assert res.usage.cache_write_tokens == 0
 
     def test_length_finish_reason_marks_truncation(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {"choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]}
         )
         assert res.truncated is True
 
     def test_no_choices_is_invalid_output(self) -> None:
-        res = adapter.decode_response({"id": "x"})
+        res = _openai_wire.decode_response({"id": "x"})
         assert not res.ok and res.failure_kind == "invalid_output"
 
     def test_error_object_in_a_200_body_is_invalid_output(self) -> None:
-        res = adapter.decode_response({"error": {"message": "model not found"}})
+        res = _openai_wire.decode_response({"error": {"message": "model not found"}})
         assert not res.ok and "model not found" in res.error
 
     def test_gateway_choice_error_in_a_200_body_is_retryable_by_status(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {
                 "choices": [
                     {
@@ -426,7 +429,7 @@ class TestWireDecoding:
         assert "upstream rate limited" in res.error
 
     def test_gateway_error_finish_without_detail_is_not_empty_success(self) -> None:
-        res = adapter.decode_response(
+        res = _openai_wire.decode_response(
             {
                 "choices": [
                     {
@@ -632,13 +635,13 @@ class TestRetryVocabularyStaysAlignedWithDispatch:
     failure kinds it emits have to mean the same thing there."""
 
     def test_transport_failures_are_retryable_and_answers_are_not(self) -> None:
-        assert adapter._classify_http_status(429) in _RETRYABLE_FAILURE_KINDS
-        assert adapter._classify_http_status(400) not in _RETRYABLE_FAILURE_KINDS
+        assert _openai_wire._classify_http_status(429) in _RETRYABLE_FAILURE_KINDS
+        assert _openai_wire._classify_http_status(400) not in _RETRYABLE_FAILURE_KINDS
 
     def test_every_status_maps_to_a_known_failure_kind(self) -> None:
         known = {"timeout", "daemon_error", "nonzero_exit", "invalid_output"}
         for status in (400, 401, 404, 408, 422, 429, 500, 502, 503, 504):
-            assert adapter._classify_http_status(status) in known
+            assert _openai_wire._classify_http_status(status) in known
 
 
 def _register_provider(
@@ -674,12 +677,19 @@ class TestEndpointResolution:
         monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
 
         from docket.interfaces.cli.commands import setup_model as _setup_model
+        from docket.interfaces.cli.commands import (
+            setup_model_credentials as _setup_model_credentials,
+        )
 
         with use_home(Home(tmp_path)):
             monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
 
-            assert _setup_model._write_credential("OPENROUTER_API_KEY", "sk-or-stored", "add")
-            assert _setup_model._write_credential("AI_GATEWAY_API_KEY", "vercel-stored", "add")
+            assert _setup_model_credentials._write_credential(
+                "OPENROUTER_API_KEY", "sk-or-stored", "add"
+            )
+            assert _setup_model_credentials._write_credential(
+                "AI_GATEWAY_API_KEY", "vercel-stored", "add"
+            )
 
             openrouter = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
             gateway = adapter.resolve_endpoint("ai-gateway/anthropic/claude-sonnet-4.6")

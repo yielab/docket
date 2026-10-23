@@ -12,7 +12,6 @@ import pytest
 import yaml
 from tests.unit.pipeline.application.test_steps import _unit_context
 
-from docket.governance import secrets as _secrets
 from docket.hops.application import compose as _compose_c
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
@@ -22,51 +21,14 @@ from docket.pipeline.application import executor as _executor_c
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.pipeline.domain.spec import Step, load_pipeline, normalize_pipeline
+from docket.pipeline.domain.short_form import normalize_pipeline
+from docket.pipeline.domain.spec import load_pipeline
 from docket.tasks.application import actions as _actions_c
 from docket.tasks.application import lifecycle as _lifecycle_c
 from docket.tasks.application import queue as _queue_c
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.pipeline.domain.spec"
-
-
-def _errors(**kw: Any) -> str:
-    with pytest.raises(ValueError) as info:
-        Step(id="check", run="echo hi", **kw)
-    return str(info.value)
-
-
-class TestShape:
-    def test_a_run_step_carries_env(self) -> None:
-        step = Step(id="check", run="echo hi", env={"FOO": "bar"})
-        assert step.env == {"FOO": "bar"}
-
-    def test_env_on_a_role_step_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="env"):
-            Step(id="build", role="implementer", env={"FOO": "bar"})
-
-    @pytest.mark.parametrize(
-        "name",
-        ["PATH", "LD_PRELOAD", "PYTHONPATH", "BASH_ENV", "ENV", "DOCKET_BASE_COMMIT", "DOCKET_X"],
-    )
-    def test_reserved_names_are_refused(self, name: str) -> None:
-        assert name in _errors(env={name: "x"})
-
-    @pytest.mark.parametrize("name", ["foo", "1A", "A-B", ""])
-    def test_malformed_names_are_refused(self, name: str) -> None:
-        assert "env" in _errors(env={name: "x"})
-
-    def test_non_string_values_are_refused(self) -> None:
-        with pytest.raises(ValueError):
-            Step(id="check", run="echo hi", env={"FOO": 1})  # type: ignore[dict-item]
-
-    def test_a_credential_name_is_refused(self) -> None:
-        assert "credential" in _errors(env={"TELEGRAM_BOT_TOKEN": "x"})
-
-    def test_a_secret_store_name_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_secrets, "secrets_keys", lambda: ["MY_STORED_KEY"])
-        assert "credential" in _errors(env={"MY_STORED_KEY": "x"})
 
 
 class TestLoading:

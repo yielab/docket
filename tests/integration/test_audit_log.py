@@ -28,7 +28,9 @@ from typer.testing import CliRunner
 from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import log as audit_cli
 from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.interfaces.cli.commands import setup_model as keys_cli
+from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.interfaces.cli.commands.agents import InitRequest, run_init
 from docket.kernel.home import Home, current_home, use_home
 
@@ -673,7 +675,7 @@ class TestKeysAudit:
             yield d
 
     def test_keys_add_writes_one_entry_no_secret_value(self, keys_home: Path) -> None:
-        assert keys_cli._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
+        assert _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
         entries = _entries("keys.add")
         assert len(entries) == 1
         assert entries[0]["detail"] == "ANTHROPIC_API_KEY"
@@ -682,9 +684,9 @@ class TestKeysAudit:
     def test_keys_rotate_writes_one_entry_no_secret_value(
         self, keys_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        keys_cli._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
+        _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
         monkeypatch.setattr(keys_cli._getpass, "getpass", lambda *a, **k: _KEY_VALUE)
-        rc = keys_cli.credential_rotate("ANTHROPIC_API_KEY")
+        rc = _setup_model_credentials.credential_rotate("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.rotate")
         assert len(entries) == 1
@@ -692,8 +694,8 @@ class TestKeysAudit:
         assert "sk-ant-testvalue" not in json.dumps(entries)
 
     def test_keys_remove_writes_one_entry(self, keys_home: Path) -> None:
-        keys_cli._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
-        rc = keys_cli.credential_remove("ANTHROPIC_API_KEY")
+        _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
+        rc = _setup_model_credentials.credential_remove("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.remove")
         assert len(entries) == 1
@@ -703,14 +705,14 @@ class TestKeysAudit:
 class TestPodSettingsAudit:
     def test_budget_set_writes_one_config_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _pod.set_setting("demo", "budgetUsd", "5")
+            _pod_settings.set_setting("demo", "budgetUsd", "5")
             entries = _entries("pod.config")
             assert len(entries) == 1
             assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
 
     def test_unset_writes_one_config_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _pod.unset_setting("demo", "budgetUsd")
+            _pod_settings.unset_setting("demo", "budgetUsd")
             entries = _entries("pod.config")
             assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetUsd"]
 

@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
@@ -84,7 +85,7 @@ class TestRemovingTheLastImplementerKeepsThePodsOwnData:
         scratch = current_home().pod_scratch_dir("demo")
         assert scratch.is_dir()
 
-        _pod.remove_member("demo", "demo-implementer", yes=True)
+        _pod_members.remove_member("demo", "demo-implementer", yes=True)
 
         assert memory.is_file()
         assert (config / "roles.json").is_file()
@@ -93,9 +94,9 @@ class TestRemovingTheLastImplementerKeepsThePodsOwnData:
 
     def test_defect_82_the_port_range_is_released_and_a_new_implementer_gets_one(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.remove_member("demo", "demo-implementer", yes=True)
+        _pod_members.remove_member("demo", "demo-implementer", yes=True)
 
-        assert _pod.add_members("demo", "implementer") == ["demo-implementer"]
+        assert _pod_members.add_members("demo", "implementer") == ["demo-implementer"]
         assert current_home().pod_scratch_dir("demo").is_dir()
 
 

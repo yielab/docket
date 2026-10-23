@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import contextlib
-import getpass as _getpass
 import json
 import os
 import sys
-import time
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -19,10 +16,26 @@ from rich.markup import escape
 from docket.governance import approval as _ap
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import pod_option
+from docket.interfaces.cli.commands.task_approval import (
+    _actor,
+    _answer_content,
+    _approval_actor,
+    _option_ids,
+    _resume_hint,
+)
+from docket.interfaces.cli.commands.task_render import (
+    _event_line,
+    _follow,
+    _list_item,
+    _render_show,
+    _say,
+    _show_json,
+    _trace_file,
+    _worktree,
+)
 from docket.interfaces.cli.render import ui
 from docket.observability import trace as _trace
 from docket.operator import contract as _oc
-from docket.platform import git as _git
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import corrections as _corrections
@@ -33,8 +46,6 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.refs import TaskRef, TaskRefError, resolve_task, short_id
-from docket.teams import fleet as _fleet
-from docket.teams import pod as _pod
 from docket.teams import report as _report
 from docket.teams import task_worktrees as _task_worktrees
 
@@ -45,17 +56,12 @@ task_app = typer.Typer(
 )
 
 MAX_DESCRIPTION = 500
-TAIL_POLL_S = 0.5
 
 
 class Priority(StrEnum):
     high = "high"
     normal = "normal"
     low = "low"
-
-
-def _say(text: str) -> None:
-    ui.console.print(text, markup=False)
 
 
 def _resolve(pod: str | None, ref: str) -> TaskRef:
@@ -73,36 +79,6 @@ def _task_record(found: TaskRef) -> dict[str, Any]:
         if task.get("id") == found.task_id:
             return task
     return {}
-
-
-def _worktree(project: str, task: dict[str, Any]) -> dict[str, str] | None:
-    """The task's worktree record when it has a directory that was not pruned."""
-    record = task.get("worktree")
-    if not isinstance(record, dict) or not record.get("dir") or record.get("prunedAt"):
-        return None
-    path = str(record["dir"])
-    base = str(record.get("baseCommit") or "")
-    branch = str(record.get("branch") or "")
-    codebase = str(_pod_codebase(project) or "")
-    root = f"git -C {codebase} " if codebase else "git "
-    git_dir, common_dir = str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
-    _git.trust_worktree(path, git_dir, common_dir)
-    where = (
-        f"GIT_DIR={git_dir} GIT_COMMON_DIR={common_dir} GIT_WORK_TREE={path} git"
-        if git_dir and common_dir
-        else f"git -C {path}"
-    )
-    return {
-        "path": path,
-        "branch": branch,
-        "baseCommit": base,
-        "diff": f"{where} diff {base}",
-        "merge": f"{root}merge {branch}",
-    }
-
-
-def _pod_codebase(project: str) -> str:
-    return str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
 
 
 def _ask_noun(kind: str, count: int) -> str:
@@ -199,24 +175,6 @@ def cmd_add(
     _contract.next_step("docket run")
 
 
-def _cost_cell(task: dict[str, Any]) -> str:
-    cost = task.get("costUsd")
-    return f"${float(cost):.4f}" if cost else "-"
-
-
-def _list_item(project: str, task: dict[str, Any]) -> dict[str, Any]:
-    wt = _worktree(project, task)
-    cost = task.get("costUsd")
-    return {
-        "id": str(task.get("id", "")),
-        "priority": str(task.get("priority", "normal")),
-        "status": str(task.get("status", "")),
-        "costUsd": float(cost) if cost else None,
-        "description": str(task.get("description", "")),
-        "worktree": wt["path"] if wt else None,
-    }
-
-
 @task_app.command("list")
 def cmd_list(
     json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
@@ -246,115 +204,6 @@ def cmd_list(
         for i in items
     ]
     ui.table(rows, ["ID", "PRI", "STATUS", "COST", "WORKTREE", "DESCRIPTION"])
-
-
-def _hop_rows(ev: _evidence.TaskEvidence) -> list[list[str]]:
-    return [
-        [
-            hop.step_id,
-            hop.role,
-            "yes" if hop.ok else "no",
-            hop.verdict or "-",
-            str(hop.verify.exit_code) if hop.verify else "-",
-            hop.commit[:8] if hop.commit else "-",
-            str(hop.usage.input) if hop.usage else "-",
-            str(hop.usage.output) if hop.usage else "-",
-        ]
-        for hop in ev.hops
-    ]
-
-
-def _run_lines(run_ids: tuple[str, ...]) -> list[str]:
-    lines = []
-    for run_id in run_ids:
-        rec = _runs.get_run(run_id) or {}
-        line = (
-            f"{run_id}  {rec.get('state', '?')}  source={rec.get('source', '?')}  "
-            f"created={str(rec.get('created', ''))[:19]}"
-        )
-        cancel = rec.get("cancellation")
-        if isinstance(cancel, dict) and cancel.get("requestedAt"):
-            stopped = cancel.get("stoppedAt") or "not yet"
-            line += f"  cancel requested={cancel['requestedAt']} stopped={stopped}"
-        if rec.get("error"):
-            line += f"  error={rec['error']}"
-        lines.append(line)
-    return lines
-
-
-def _render_forecast(project: str) -> None:
-    items = _interruptions.forecast(project, caller_default=_report.caller_default())
-    askers = [i for i in items if i.kind in _interruptions.ASK_KINDS]
-    if not askers:
-        _say(f"  {_interruptions.NOTHING_WILL_ASK}")
-    for i in askers:
-        _say(f"  - {i.description}")
-    mode = next((i for i in items if i.kind == "mode"), None)
-    if mode is not None:
-        ui.dim(escape(f"  {mode.description}"))
-    for label, kind in (("Always enforced:", "high_risk_class"), ("Will notify:", "channel")):
-        chosen = [i for i in items if i.kind == kind]
-        if chosen:
-            ui.dim(f"  {label}")
-            for i in chosen:
-                ui.dim(escape(f"    - {i.description}"))
-
-
-def _render_show(
-    found: TaskRef,
-    task: dict[str, Any],
-    ev: _evidence.TaskEvidence,
-    wt: dict[str, str] | None,
-    notes: list[dict[str, Any]],
-) -> None:
-    ui.header("task", short_id(found.task_id))
-    _say(f"  pod:      {found.project}")
-    _say(f"  id:       {found.task_id}")
-    _say(f"  status:   {task.get('status', '?')}")
-    _say(f"  priority: {task.get('priority', 'normal')}")
-    _say(f"  cost:     {_cost_cell(task)}")
-    _say(f"  task:     {task.get('description', '')}")
-    if ev.hops:
-        ui.section("Hops")
-        cols = ["HOP", "ROLE", "OK", "VERDICT", "VERIFY", "COMMIT", "TOKENS IN", "TOKENS OUT"]
-        ui.table([[escape(c) for c in row] for row in _hop_rows(ev)], cols)
-    if found.run_ids:
-        ui.section("Runs")
-        for line in _run_lines(found.run_ids):
-            _say(f"  {line}")
-    if wt is not None:
-        ui.section("Worktree")
-        _say(f"  path:   {wt['path']}")
-        _say(f"  branch: {wt['branch']}")
-        _say(f"  base:   {wt['baseCommit']}")
-        _say(f"  diff:   {wt['diff']}")
-        _say(f"  merge:  {wt['merge']}")
-    if notes:
-        ui.section("Corrections")
-        for rec in notes:
-            _say(f"  {str(rec.get('ts', ''))[:19]}  {rec.get('kind', '')}  {rec.get('text', '')}")
-    ui.section("May ask you")
-    _render_forecast(found.project)
-
-
-def _show_json(
-    found: TaskRef,
-    task: dict[str, Any],
-    ev: _evidence.TaskEvidence,
-    wt: dict[str, str] | None,
-    notes: list[dict[str, Any]],
-) -> dict[str, Any]:
-    forecast = _interruptions.forecast(found.project, caller_default=_report.caller_default())
-    return {
-        "pod": found.project,
-        "task": {**_list_item(found.project, task), "worktree": wt},
-        "evidence": json.loads(ev.model_dump_json(by_alias=True)),
-        "runs": [_runs.get_run(r) for r in found.run_ids],
-        "corrections": notes,
-        "interruptions": [
-            {"kind": i.kind, "description": i.description, "detail": i.detail} for i in forecast
-        ],
-    }
 
 
 @task_app.command("show")
@@ -407,53 +256,6 @@ def cmd_diff(
         _contract.emit_json(doc)
     else:
         sys.stdout.write(str(doc["patch"]))
-
-
-def _event_line(r: dict[str, Any]) -> str:
-    ts = str(r.get("ts", "?"))[:19]
-    etype = str(r.get("event_type", "?"))
-    role = str(r.get("agent_role", "") or "")
-    payload = r.get("payload", {})
-    parts: list[str] = []
-    if etype == "llm_call" and isinstance(payload, dict):
-        parts.append(str(payload.get("model") or ""))
-        in_tok, out_tok = payload.get("inputTokens"), payload.get("outputTokens")
-        if in_tok is not None or out_tok is not None:
-            parts.append(f"in={in_tok or 0}/out={out_tok or 0}")
-        if payload.get("ok") is False:
-            parts.append(f"failed: {payload.get('failureKind') or 'unknown'}")
-    elif isinstance(payload, dict):
-        for k in ("tool", "hop", "status", "action", "text", "task_id", "pct"):
-            if payload.get(k) is not None:
-                parts.append(f"{k}={payload[k]}")
-    extras = []
-    if r.get("cost_usd") is not None:
-        with contextlib.suppress(TypeError, ValueError):
-            extras.append(f"${float(r['cost_usd']):.4f}")
-    if r.get("duration_ms") is not None:
-        extras.append(f"{r['duration_ms']}ms")
-    who = f"  ({role})" if role and role != "unknown" else ""
-    summary = "  " + "  ".join(p for p in parts if p) if any(parts) else ""
-    tail = f"  [{'  '.join(extras)}]" if extras else ""
-    return f"  {ts}  {etype:<25}{who}{summary}{tail}"
-
-
-def _trace_file(found: TaskRef) -> Path:
-    return _trace.project_trace_dir(found.project) / f"agent:{found.project}:{found.task_id}.jsonl"
-
-
-def _follow(path: Path) -> None:
-    """Print events as they are written; return once the session has ended."""
-    seen = 0
-    with contextlib.suppress(KeyboardInterrupt):
-        while True:
-            records = _trace.read_trace(path)
-            for r in records[seen:]:
-                _say(_event_line(r))
-            seen = len(records)
-            if any(r.get("event_type") == "session_end" for r in records):
-                return
-            time.sleep(TAIL_POLL_S)
 
 
 @task_app.command("trace")
@@ -529,34 +331,6 @@ def cmd_prune(
     if traces:
         _prune_records(project, days, dry_run)
     _contract.next_step("docket task list")
-
-
-_TYPE_COERCERS: dict[str, Any] = {
-    "integer": int,
-    "number": float,
-    "boolean": lambda v: v.strip().lower() in ("1", "true", "yes", "y"),
-}
-
-
-def _actor() -> str:
-    try:
-        return _getpass.getuser()
-    except Exception:
-        return "?"
-
-
-def _resume_hint(project: str) -> None:
-    """After a state change: say who picks the task up, or name the command that does."""
-    from docket.interfaces.cli.commands import service as _service
-
-    if _service.is_running():
-        ui.dim("docket is running and will pick it up")
-        return
-    _contract.next_step(f"docket run --pod {project}")
-
-
-def _approval_actor(reason: str) -> str:
-    return _actor() if reason else ""
 
 
 def _pending_token(pod: str | None, ref: str) -> tuple[str, str | None, str]:
@@ -680,89 +454,6 @@ def _question_of(found: TaskRef) -> dict[str, Any]:
         ui.error(f"Task {short_id(found.task_id)} has no pending question", "Run docket inbox")
         raise typer.Exit(1)
     return question
-
-
-def _option_ids(question: dict[str, Any]) -> list[str]:
-    raw = question.get("options")
-    return (
-        [str(o.get("id", "")) for o in raw if isinstance(o, dict)] if isinstance(raw, list) else []
-    )
-
-
-def _parse_fields(fields: list[str]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for item in fields:
-        key, sep, value = item.partition("=")
-        if not sep or not key:
-            ui.error(f"--field {item!r} is not name=value", "Pass --field name=value")
-            raise typer.Exit(2)
-        out[key] = value
-    return out
-
-
-def _render_options(question: dict[str, Any]) -> None:
-    raw = question.get("options")
-    options = [o for o in raw if isinstance(o, dict)] if isinstance(raw, list) else []
-    recommendation = question.get("recommendation")
-    recommended = recommendation.get("optionId") if isinstance(recommendation, dict) else None
-    for option in options:
-        mark = " (recommended)" if option.get("id") == recommended else ""
-        ui.console.print(escape(f"  {option.get('id', '')} - {option.get('label', '')}{mark}"))
-        if option.get("description"):
-            ui.dim(escape(f"    {option['description']}"))
-
-
-def _prompt_content(question: dict[str, Any]) -> dict[str, Any]:
-    """One prompt for the option (blank takes the recommended one), then one per schema
-    property; a blank optional property is dropped, a blank required one is left to the
-    answer's own validation."""
-    content: dict[str, Any] = {}
-    recommendation = question.get("recommendation")
-    recommended = recommendation.get("optionId") if isinstance(recommendation, dict) else ""
-    if _option_ids(question):
-        default = f" [{recommended}]" if recommended else ""
-        content["optionId"] = input(f"  Option{default}: ").strip() or (recommended or "")
-    schema = question.get("requestedSchema", {})
-    required: list[str] = schema.get("required", [])
-    for name, prop in schema.get("properties", {}).items():
-        label = f"{name}{' (required)' if name in required else ''}"
-        raw_value = input(f"  {label}: ").strip()
-        if not raw_value and name not in required:
-            continue
-        coerce = _TYPE_COERCERS.get(prop.get("type"))
-        try:
-            content[name] = coerce(raw_value) if coerce is not None else raw_value
-        except ValueError:
-            content[name] = raw_value
-    return content
-
-
-def _answer_content(
-    question: dict[str, Any], text: list[str] | None, option: str | None, fields: list[str]
-) -> dict[str, Any]:
-    """The content an answer carries, built from flags; prompts on a TTY when none was given."""
-    content = _parse_fields(fields)
-    words = " ".join(text or []).strip()
-    if words:
-        properties = question.get("requestedSchema", {}).get("properties", {})
-        if len(properties) != 1:
-            ui.error("A bare text answer needs a one-property question", "Pass --field name=value")
-            raise typer.Exit(1)
-        content.setdefault(next(iter(properties)), words)
-    if option:
-        content["optionId"] = option
-    if content:
-        return content
-    ids = _option_ids(question)
-    if not _contract.is_tty():
-        if ids:
-            ui.error("This question has options", f"Pass --option <id>: {', '.join(ids)}")
-        else:
-            ui.error("Nothing to answer with", "Pass text, --field name=value or --option <id>")
-        raise typer.Exit(1)
-    ui.console.print(escape(f"  Question: {question.get('message', '')}"))
-    _render_options(question)
-    return _prompt_content(question)
 
 
 @task_app.command("answer")

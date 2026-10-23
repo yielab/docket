@@ -15,6 +15,8 @@ from typer.testing import CliRunner
 from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import pod_members as _pod_members
+from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
@@ -120,19 +122,19 @@ class TestPodCommand:
     def test_add_second_implementer_is_indexed(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "implementer")
+            _pod_members.add_members("demo", "implementer")
             assert "demo-implementer-2" in _ids(home)
 
     def test_add_reviewer(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "reviewer")
+            _pod_members.add_members("demo", "reviewer")
             assert "demo-reviewer" in _ids(home)
 
     def test_add_count_two_makes_two_implementers(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "implementer", count=2)
+            _pod_members.add_members("demo", "implementer", count=2)
             ids = _ids(home)
             assert "demo-implementer-2" in ids
             assert "demo-implementer-3" in ids
@@ -141,13 +143,13 @@ class TestPodCommand:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             with pytest.raises(typer.Exit):
-                _pod.add_members("demo", "lead")
+                _pod_members.add_members("demo", "lead")
 
     def test_remove_member(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "reviewer")
-            _pod.remove_member("demo", "demo-reviewer", yes=True)
+            _pod_members.add_members("demo", "reviewer")
+            _pod_members.remove_member("demo", "demo-reviewer", yes=True)
             assert "demo-reviewer" not in _ids(home)
             assert not (home / "workspaces" / "projects" / "demo-reviewer").exists()
 
@@ -155,7 +157,7 @@ class TestPodCommand:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             with pytest.raises(typer.Exit):
-                _pod.remove_member("demo", "other-lead", yes=True)
+                _pod_members.remove_member("demo", "other-lead", yes=True)
 
     def test_member_ids_lists_lead_first(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
@@ -258,14 +260,14 @@ class TestPodAddVerify:
     def test_add_implementer_with_verify_sets_meta(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "implementer", verify_cmd="npm test")
+            _pod_members.add_members("demo", "implementer", verify_cmd="npm test")
             m = _meta(home, "demo-implementer-2")
             assert m["verifyCmd"] == "npm test"
 
     def test_add_implementer_with_verify_writes_tools_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "implementer", verify_cmd="npm test")
+            _pod_members.add_members("demo", "implementer", verify_cmd="npm test")
             tools = (
                 home / "workspaces" / "projects" / "demo-implementer-2" / "TOOLS.md"
             ).read_text()
@@ -281,7 +283,7 @@ class TestPodAddVerify:
     def test_verify_ignored_for_non_implementer_role(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "reviewer", verify_cmd="npm test")
+            _pod_members.add_members("demo", "reviewer", verify_cmd="npm test")
             m = _meta(home, "demo-reviewer")
             assert "verifyCmd" not in m
 
@@ -292,14 +294,14 @@ class TestPodSetVerify:
     def test_set_verify_updates_meta(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
+            _pod_settings.set_setting("demo", "verify", "npm test", member="demo-implementer")
             m = _meta(home, "demo-implementer")
             assert m["verifyCmd"] == "npm test"
 
     def test_set_verify_updates_tools_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.set_setting("demo", "verify", "make check", member="demo-implementer")
+            _pod_settings.set_setting("demo", "verify", "make check", member="demo-implementer")
             tools = (home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md").read_text()
             assert "make check" in tools
 
@@ -307,13 +309,13 @@ class TestPodSetVerify:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.FULL_POD_ROLES)
             with pytest.raises(typer.Exit):
-                _pod.set_setting("demo", "verify", "npm test", member="demo-reviewer")
+                _pod_settings.set_setting("demo", "verify", "npm test", member="demo-reviewer")
 
     def test_set_verify_rejects_foreign_id(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             with pytest.raises(typer.Exit):
-                _pod.set_setting("demo", "verify", "npm test", member="other-implementer")
+                _pod_settings.set_setting("demo", "verify", "npm test", member="other-implementer")
 
     def test_set_verify_missing_cmd_errors(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
@@ -335,7 +337,7 @@ class TestPodAddRemoveAudit:
     def test_pod_add_writes_one_audit_entry(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "reviewer")
+            _pod_members.add_members("demo", "reviewer")
 
             entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
             assert len(entries) == 1
@@ -346,7 +348,7 @@ class TestPodAddRemoveAudit:
     ) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "implementer", count=2)
+            _pod_members.add_members("demo", "implementer", count=2)
 
             entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
             assert len(entries) == 1
@@ -356,7 +358,7 @@ class TestPodAddRemoveAudit:
     def test_pod_remove_writes_one_audit_entry(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.FULL_POD_ROLES)
-            _pod.remove_member("demo", "demo-reviewer", yes=True)
+            _pod_members.remove_member("demo", "demo-reviewer", yes=True)
 
             entries = [e for e in _audit.read_audit() if e["action"] == "pod.remove"]
             assert len(entries) == 1
@@ -365,8 +367,8 @@ class TestPodAddRemoveAudit:
     def test_pod_add_remove_never_log_secret_values(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.add_members("demo", "reviewer")
-            _pod.remove_member("demo", "demo-reviewer", yes=True)
+            _pod_members.add_members("demo", "reviewer")
+            _pod_members.remove_member("demo", "demo-reviewer", yes=True)
 
             for e in _audit.read_audit():
                 assert "sk-" not in str(e.get("detail", ""))
@@ -569,7 +571,7 @@ class TestSetVerifyPreservesOperatorInstructions:
             tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
             tools_path.write_text(tools_path.read_text() + "\nHAND-WRITTEN-NOTE\n")
 
-            _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
+            _pod_settings.set_setting("demo", "verify", "npm test", member="demo-implementer")
 
             assert "HAND-WRITTEN-NOTE" not in tools_path.read_text()
 
@@ -579,7 +581,7 @@ class TestSetVerifyPreservesOperatorInstructions:
             ws = home / "workspaces" / "projects" / "demo-implementer"
             (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
 
-            _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
+            _pod_settings.set_setting("demo", "verify", "npm test", member="demo-implementer")
 
             assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"
 

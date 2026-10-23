@@ -16,8 +16,8 @@ from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel.home import current_home
 from docket.models import selection as _models_policy
 from docket.operator import contract as _oc
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application.queue import pod_full_roster, read_tasks
 from docket.tasks.domain.task import DispatchError, TaskResult
 from docket.teams import fleet as _fleet
@@ -57,10 +57,10 @@ def _pause_lead_for_budget(project: str) -> None:
     _fleet.meta_set(lead_id, "pausedReason", "budget")
 
 
-def _pipeline_step_requires_approval(gate: _pipeline.Gate | None) -> bool:
+def _pipeline_step_requires_approval(gate: _gates.Gate | None) -> bool:
     """The pipeline-defined ``approval`` step source: *gate* is the current position's
     resolved gate; an ``ApprovalGate`` requires a human decision."""
-    return isinstance(gate, _pipeline.ApprovalGate)
+    return isinstance(gate, _gates.ApprovalGate)
 
 
 def _approval_action_text(role: str, task: dict[str, Any]) -> str:
@@ -330,7 +330,7 @@ def _checked_commands(
     for node in runtime_steps:
         for unit in node.children if isinstance(node, _orch.PlannedGroup) else (node,):
             commands.append(unit.run or "")
-            if isinstance(unit.gate, (_pipeline.MechanicalGate, _pipeline.ExternalGate)):
+            if isinstance(unit.gate, (_gates.MechanicalGate, _gates.ExternalGate)):
                 commands.append(unit.gate.command or "")
     raw_gate = task.get("gate")
     if isinstance(raw_gate, dict):

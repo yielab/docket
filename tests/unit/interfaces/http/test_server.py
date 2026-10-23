@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 from docket.interfaces.http import server as http_server
+from docket.interfaces.http import sweeps
 from docket.interfaces.http.routes import health
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
@@ -85,7 +86,7 @@ class TestRenderHealth:
         """The dispatch block reports the flag, in-flight pods, the stop state and the pool size."""
         stop = threading.Event()
         monkeypatch.setattr(http_server, "_sweep_stop", stop)
-        monkeypatch.setattr(http_server, "_sweep_inflight", {"demo": None})
+        monkeypatch.setattr(sweeps, "_sweep_inflight", {"demo": None})
         assert json.loads(http_server.render_health(True))["dispatch"] == {
             "on": True,
             "inflight": ["demo"],

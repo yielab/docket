@@ -29,6 +29,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
@@ -101,7 +102,7 @@ def _gated_pod() -> None:
     build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
     spec = _pipeline.default_pipeline()
     steps = [
-        step.model_copy(update={"gate": _pipeline.ApprovalGate()})
+        step.model_copy(update={"gate": _gates.ApprovalGate()})
         if step.role == "implementer"
         else step
         for step in spec.steps

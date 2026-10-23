@@ -22,9 +22,11 @@ from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
 from docket.agent import ports as _rd
-from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, use_home
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
@@ -70,12 +72,12 @@ def _review_pipeline(instructions: str | None = None) -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="security-review",
         steps=[
-            _pipeline.Step(id="lead", role="lead"),
-            _pipeline.Step(
+            _step.Step(id="lead", role="lead"),
+            _step.Step(
                 id="review",
                 role="security-reviewer",
                 instructions=instructions,
-                gate=_pipeline.VerdictGate(
+                gate=_gates.VerdictGate(
                     pattern=r"^\s*(APPROVE|REQUEST-CHANGES)\b",
                     pass_values=["approve"],
                 ),
@@ -91,7 +93,7 @@ def _prep_pod(
     with _seed(tmp_path):
         _register_security_reviewer()
         build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
-        _pod.add_members("proj", "security-reviewer")
+        _pod_members.add_members("proj", "security-reviewer")
         _queue.enqueue_task_once("proj", "ship the security review", channel="cli")
         yield
 

@@ -183,7 +183,7 @@ def test_other_roles_are_told_the_codebase(repo: Path, role: str) -> None:
 
 def test_doctor_contract_heal_keeps_the_member_inside_its_roots(repo: Path) -> None:
     """Healing a stale contract must keep the member inside its roots."""
-    from docket.interfaces.cli.commands.setup_check import _check_runtime_contract
+    from docket.interfaces.cli.commands.setup_check_config import _check_runtime_contract
 
     member = _make_member("implementer")
     _provision(member, repo)

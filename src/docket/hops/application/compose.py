@@ -20,8 +20,8 @@ from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.operator import contract as _oc
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application.actions import _mint_task_grant_pregrants
 from docket.tasks.domain.task import HopResult
 from docket.teams import role_schema as _role_schema
@@ -387,7 +387,7 @@ def _compose_hop(
         if pipeline_worktree:
             # The task block already names the checkout as the working directory.
             checkout_note = ""
-            if role != "implementer" and isinstance(node.gate, _pipeline.VerdictGate):
+            if role != "implementer" and isinstance(node.gate, _gates.VerdictGate):
                 checkout_note = (
                     "\nYour final reply must still contain one distinct recognized verdict marker "
                     "at the start of a complete line; reasons may come before or after it.\n"

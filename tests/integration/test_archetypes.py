@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from docket.kernel.home import current_home
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import builtin_roles, role_schema
@@ -142,11 +143,11 @@ class TestBuiltinAndStarterArchetypes:
         found = builtin_roles.BUILTIN_ARCHETYPES["reviewer"]
         assert found.gate_contract.kind == "verdict"
         resolved = _orch._gate_from_contract(found.gate_contract)
-        assert isinstance(resolved, _pipeline.VerdictGate)
+        assert isinstance(resolved, _gates.VerdictGate)
 
         spec = _pipeline.default_pipeline()
         reviewer_step = next(s for s in spec.steps if s.id == "reviewer")
-        assert isinstance(reviewer_step.gate, _pipeline.VerdictGate)
+        assert isinstance(reviewer_step.gate, _gates.VerdictGate)
         assert resolved.pattern == reviewer_step.gate.pattern
         # Both gates are case_sensitive=False (the shared marker convention),
         # so pass_values only need to agree case-insensitively — the two
@@ -162,11 +163,11 @@ class TestBuiltinAndStarterArchetypes:
         found = builtin_roles.BUILTIN_ARCHETYPES["tester"]
         assert found.gate_contract.kind == "verdict"
         resolved = _orch._gate_from_contract(found.gate_contract)
-        assert isinstance(resolved, _pipeline.VerdictGate)
+        assert isinstance(resolved, _gates.VerdictGate)
 
         spec = _pipeline.default_pipeline()
         tester_step = next(s for s in spec.steps if s.id == "tester")
-        assert isinstance(tester_step.gate, _pipeline.VerdictGate)
+        assert isinstance(tester_step.gate, _gates.VerdictGate)
         assert resolved.pattern == tester_step.gate.pattern
         assert [v.lower() for v in resolved.pass_values] == [
             v.lower() for v in tester_step.gate.pass_values

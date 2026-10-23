@@ -21,6 +21,7 @@ from tests.pods import build_pod
 from docket.agent import memory as _mem
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup_check as _setup_check
+from docket.interfaces.cli.commands import setup_check_budget as _setup_check_budget
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
 
@@ -66,7 +67,7 @@ class TestNoPods:
         home.mkdir()
         (home / "fleet.json").write_text(json.dumps({"agents": []}))
         with use_home(Home(home)):
-            assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
+            assert _setup_check_budget._check_dispatch_ledger(do_fix=False) == 0
             assert "Dispatch task ledger" not in capsys.readouterr().out
 
 
@@ -76,7 +77,7 @@ class TestInSync:
     ) -> None:
         with _seed_pod(tmp_path):
             _claim_a_task()
-            assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
+            assert _setup_check_budget._check_dispatch_ledger(do_fix=False) == 0
             out = capsys.readouterr().out
             assert "demo: in sync (1 running)" in out
 
@@ -84,7 +85,7 @@ class TestInSync:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed_pod(tmp_path):
-            assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
+            assert _setup_check_budget._check_dispatch_ledger(do_fix=False) == 0
             assert "demo: in sync (0 running)" in capsys.readouterr().out
 
 
@@ -101,7 +102,7 @@ class TestMissingFromLedger:
         with _seed_pod(tmp_path):
             task_id = _claim_a_task()
             self._corrupt()
-            issues = _setup_check._check_dispatch_ledger(do_fix=False)
+            issues = _setup_check_budget._check_dispatch_ledger(do_fix=False)
             out = capsys.readouterr().out
             assert issues == 1
             assert f"missing from ledger: {task_id}" in out
@@ -113,7 +114,7 @@ class TestMissingFromLedger:
         with _seed_pod(tmp_path):
             task_id = _claim_a_task()
             self._corrupt()
-            issues = _setup_check._check_dispatch_ledger(do_fix=True)
+            issues = _setup_check_budget._check_dispatch_ledger(do_fix=True)
             assert issues == 0
             assert "ledger re-synced" in capsys.readouterr().out
             assert _mem.read_dispatch_task_ids(_lead_ws()) == [task_id]
@@ -131,7 +132,7 @@ class TestStaleInLedger:
             )
             _mem.write_dispatch_tasks(_lead_ws(), [stale])
 
-            issues = _setup_check._check_dispatch_ledger(do_fix=False)
+            issues = _setup_check_budget._check_dispatch_ledger(do_fix=False)
             out = capsys.readouterr().out
             assert issues == 1
             assert "stale in ledger: task-ghost" in out
@@ -145,7 +146,7 @@ class TestStaleInLedger:
             )
             _mem.write_dispatch_tasks(_lead_ws(), [stale])
 
-            issues = _setup_check._check_dispatch_ledger(do_fix=True)
+            issues = _setup_check_budget._check_dispatch_ledger(do_fix=True)
             assert issues == 0
             assert _mem.read_dispatch_task_ids(_lead_ws()) == []
 
@@ -161,7 +162,7 @@ class TestStaleInLedger:
             )
             _mem.write_dispatch_tasks(ws, [stale])
 
-            _setup_check._check_dispatch_ledger(do_fix=True)
+            _setup_check_budget._check_dispatch_ledger(do_fix=True)
 
             final = hb.read_text(encoding="utf-8")
             assert "Don't touch prod on Fridays." in final

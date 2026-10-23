@@ -7,18 +7,17 @@ import threading
 
 import pytest
 
-from docket.interfaces.http import server as _server
-from docket.tasks.application import runs as _runs
+from docket.interfaces.http import sweeps as _sweeps
 
 SUBJECT = "docket.interfaces.http.server"
 
 
 def _controller(
     pending: int = 2,
-) -> tuple[_server._StopController, list[str], threading.Event, threading.Event]:
+) -> tuple[_sweeps._StopController, list[str], threading.Event, threading.Event]:
     calls: list[str] = []
     shut, abandoned = threading.Event(), threading.Event()
-    ctl = _server._StopController(
+    ctl = _sweeps._StopController(
         threading.Event(),
         lambda: (calls.append("shutdown"), shut.set()),
         lambda: (calls.append("abandon"), abandoned.set()),
@@ -57,16 +56,3 @@ class TestStopController:
             ctl.handle(signal.SIGINT)
         assert abandoned.wait(5)
         assert calls.count("abandon") == 1
-
-
-class TestAbandonSweeps:
-    def test_requests_cancellation_of_each_recorded_run(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cancelled: list[str] = []
-        monkeypatch.setattr(_runs, "cancel_run", lambda rid, **_: cancelled.append(rid))
-        monkeypatch.setattr(_server, "_sweep_run_ids", {"pod-a": "run-a", "pod-b": "run-b"})
-        monkeypatch.setattr(_server, "_sweep_inflight", {})
-        monkeypatch.setattr(_server, "_sweep_pool", None)
-        assert _server._abandon_sweeps(wait_s=0.1) is True
-        assert sorted(cancelled) == ["run-a", "run-b"]

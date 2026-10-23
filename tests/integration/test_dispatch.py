@@ -47,6 +47,7 @@ from docket.operator import contract as _oc
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.application import steps as _steps_c
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import lifecycle as _lifecycle
@@ -1031,11 +1032,11 @@ class TestEndToEnd:
             spec = _pipeline.PipelineSpec(
                 name="parallel-repeat",
                 steps=[
-                    _pipeline.Step(
+                    _step.Step(
                         id="fanout",
                         parallel=[
-                            _pipeline.Step(id="implement-a", role="implementer"),
-                            _pipeline.Step(id="implement-b", role="implementer"),
+                            _step.Step(id="implement-a", role="implementer"),
+                            _step.Step(id="implement-b", role="implementer"),
                         ],
                     )
                 ],
@@ -1184,6 +1185,7 @@ class TestSweepDoesNotStallOnAParkedPod:
     ) -> None:
         from docket.governance.policy import install_policies
         from docket.interfaces.http import server as _server
+        from docket.interfaces.http import sweeps as _sweeps
 
         # Deliberately slow -- if the sweep's "park" default did not fire, alpha's
         # `wait`-mode ask would block on nobody for up to this long, and beta's
@@ -1231,7 +1233,7 @@ class TestSweepDoesNotStallOnAParkedPod:
 
             started = time.monotonic()
             _server._run_sweeps(True)
-            assert _server._drain_sweeps(timeout=30)
+            assert _sweeps._drain_sweeps(timeout=30)
             elapsed = time.monotonic() - started
 
             assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
@@ -1322,8 +1324,8 @@ def _alien_step_spec() -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="alien-step",
         steps=[
-            _pipeline.Step(id="lead", role="lead"),
-            _pipeline.Step(id="alien", agent="ghost-lead"),
+            _step.Step(id="lead", role="lead"),
+            _step.Step(id="alien", agent="ghost-lead"),
         ],
     )
 
@@ -1367,8 +1369,8 @@ class TestDeterministicRefusalSettlesTheClaim:
             fixed_spec = _pipeline.PipelineSpec(
                 name="fixed",
                 steps=[
-                    _pipeline.Step(id="lead", role="lead"),
-                    _pipeline.Step(id="implementer", role="implementer"),
+                    _step.Step(id="lead", role="lead"),
+                    _step.Step(id="implementer", role="implementer"),
                 ],
             )
             resumer = FakeDriver()
@@ -1694,9 +1696,9 @@ def _ask_spec(on: dict[str, Any] | None = None) -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="ask",
         steps=[
-            _pipeline.Step(id="lead", role="lead"),
-            _pipeline.Step(id="ask", input=_pipeline.InputSpec(from_="lead"), on=on),
-            _pipeline.Step(id="implementer", role="implementer"),
+            _step.Step(id="lead", role="lead"),
+            _step.Step(id="ask", input=_step.InputSpec(from_="lead"), on=on),
+            _step.Step(id="implementer", role="implementer"),
         ],
     )
 

@@ -36,7 +36,7 @@ from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
 from docket.governance.audit import read_audit
-from docket.interfaces.cli.commands import setup_model as _setup_model
+from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
 from docket.models.adapters import openai_http as _llm_adapter
@@ -307,7 +307,7 @@ class TestRunTurn:
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.delenv(provider_key, raising=False)
         with use_home(Home(tmp_path)):
-            assert _setup_model._write_credential(provider_key, secret, "add")
+            assert _setup_model_credentials._write_credential(provider_key, secret, "add")
             _write_meta("gateway-agent", model=model)
 
             captured: dict[str, object] = {}

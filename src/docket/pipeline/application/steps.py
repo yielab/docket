@@ -23,6 +23,7 @@ from docket.kernel.home import current_home
 from docket.models import selection as _models_policy
 from docket.observability import trace as _trace
 from docket.operator import contract as _oc
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.domain.task import DispatchError, HopResult, TaskRunRefusal
@@ -138,7 +139,7 @@ def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pi
     for step in builtin.steps:
         gate = step.gate
         if (
-            isinstance(gate, _pipeline.VerdictGate)
+            isinstance(gate, _gates.VerdictGate)
             and gate.rework is not None
             and gate.rework.max_cycles != configured
         ):
@@ -193,7 +194,7 @@ def _task_pipeline(
     return loaded.spec, source
 
 
-def _task_gate(task: dict[str, Any]) -> _pipeline.ExternalGate | None:
+def _task_gate(task: dict[str, Any]) -> _gates.ExternalGate | None:
     """The ``ExternalGate`` a task's ``gate`` object describes, or ``None`` for no gate. ``map``
     moves the named exit codes onto their label over the default 0/1/2 mapping."""
     raw = task.get("gate")
@@ -212,7 +213,7 @@ def _task_gate(task: dict[str, Any]) -> _pipeline.ExternalGate | None:
                 if code in codes:
                     codes.remove(code)
             exit_map[label].append(code)
-        return _pipeline.ExternalGate(
+        return _gates.ExternalGate(
             command=raw["command"], timeout=raw.get("timeoutS"), exit_map=exit_map
         )
     except (TypeError, ValueError, _ValidationError) as exc:
@@ -292,7 +293,7 @@ def _run_command_step(
         # "wait" (the default): gate exactly like a pipeline `approval` step, keyed on
         # this exact pipeline position -- a granted single-use override lets a resumed
         # run fall through here without asking again.
-        approval_node = replace(node, gate=_pipeline.ApprovalGate(message=verdict.reason))
+        approval_node = replace(node, gate=_gates.ApprovalGate(message=verdict.reason))
         approval_outcome = _gate_pre_hop_approval(
             ctx, role, approval_node, check_approval=True, index_for_context=index_for_context
         )

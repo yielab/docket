@@ -24,6 +24,7 @@ from docket.agent import ports as _rd
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.pipeline.application.executor"
@@ -78,8 +79,8 @@ class TestDeterministicRefusalFailsOnlyThatTask:
         spec = _pipeline.PipelineSpec(
             name="alien-step",
             steps=[
-                _pipeline.Step(id="lead", role="lead"),
-                _pipeline.Step(id="alien", agent="ghost-lead"),
+                _step.Step(id="lead", role="lead"),
+                _step.Step(id="alien", agent="ghost-lead"),
             ],
         )
         calls: list[str] = []

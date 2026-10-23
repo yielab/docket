@@ -30,6 +30,7 @@ from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
 from docket.platform import process as _process
 from docket.platform import store as _store
+from docket.tasks.application import run_cancellation as _run_cancellation
 from docket.tasks.application import runs as _runs
 
 SUBJECT = "docket.tasks.application.runs"
@@ -132,10 +133,11 @@ class TestCancelRun:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from docket.interfaces.http import server as _server
+        from docket.interfaces.http import sweeps as _sweeps
 
         record = _runs.create_run("sweep", "myapp")
-        monkeypatch.setattr(_server, "_sweep_run_ids", {"myapp": record["id"]})
-        monkeypatch.setattr(_server, "_sweep_inflight", {})
+        monkeypatch.setattr(_sweeps, "_sweep_run_ids", {"myapp": record["id"]})
+        monkeypatch.setattr(_sweeps, "_sweep_inflight", {})
         monkeypatch.setattr(_server, "_sweep_pool", None)
         _server._abandon_sweeps(wait_s=0.1)
         persisted = _runs.get_run(record["id"])
@@ -294,7 +296,7 @@ class TestCancelRun:
             return real_read_modify_write(path, fn)
 
         monkeypatch.setattr(_store, "read_modify_write", _stage_cancel_transition)
-        outcomes: list[_runs.CancelOutcome] = []
+        outcomes: list[_run_cancellation.CancelOutcome] = []
         worker = new_thread(
             target=lambda: outcomes.append(_runs.cancel_run(record["id"])),
             name="cancel-worker",

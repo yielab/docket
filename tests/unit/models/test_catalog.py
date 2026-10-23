@@ -23,7 +23,10 @@ from docket.agent.llm import ModelLimits
 from docket.kernel.clock import use_clock
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
+from docket.models import provider_lifecycle as _provider_lifecycle
+from docket.models.adapters import openai_http as llm
 from docket.models.adapters.openai_http import ProbeResult
+from docket.models.catalog import ModelRow, ProviderSpec
 
 SUBJECT = "docket.models.catalog"
 
@@ -182,7 +185,9 @@ class TestShippedTemplatesDeclareNoLimit:
 
 class TestObservedLimitsStore:
     def test_record_writes_the_documented_shape_through_the_store(self) -> None:
-        _provider.record_observed_models(_spec(), _probe(("m", 32768, None), ("n", None, 4096)))
+        _provider_lifecycle.record_observed_models(
+            _spec(), _probe(("m", 32768, None), ("n", None, 4096))
+        )
         on_disk = json.loads(current_home().provider_models_file.read_text(encoding="utf-8"))
         entry = on_disk["providers"]["gw"]
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["observedAt"])
@@ -192,24 +197,26 @@ class TestObservedLimitsStore:
         }
 
     def test_reads_back_what_was_written_and_a_stranger_is_none(self) -> None:
-        _provider.record_observed_models(_spec(), _probe(("m", 32768, 2048)))
+        _provider_lifecycle.record_observed_models(_spec(), _probe(("m", 32768, 2048)))
         assert _provider.observed_limits("gw", "m") == ModelLimits(32768, 2048)
         assert _provider.observed_limits("gw", "never-seen") is None
         assert _provider.observed_limits("other", "m") is None
         assert _provider.observed_at("other") == ""
 
     def test_a_probe_that_is_not_a_200_records_nothing_and_keeps_the_old_observation(self) -> None:
-        _provider.record_observed_models(_spec(), _probe(("m", 100, None)))
-        _provider.record_observed_models(_spec(), ProbeResult(status=None, transport_error="down"))
-        _provider.record_observed_models(_spec(), _probe(status=401))
+        _provider_lifecycle.record_observed_models(_spec(), _probe(("m", 100, None)))
+        _provider_lifecycle.record_observed_models(
+            _spec(), ProbeResult(status=None, transport_error="down")
+        )
+        _provider_lifecycle.record_observed_models(_spec(), _probe(status=401))
         assert _provider.observed_limits("gw", "m") == ModelLimits(100, None)
 
     def test_a_new_observation_replaces_the_providers_models_and_keeps_other_providers(
         self,
     ) -> None:
-        _provider.record_observed_models(_spec("a"), _probe(("m", 1, 1)))
-        _provider.record_observed_models(_spec("b"), _probe(("m", 2, 2)))
-        _provider.record_observed_models(_spec("a"), _probe(("n", 3, 3)))
+        _provider_lifecycle.record_observed_models(_spec("a"), _probe(("m", 1, 1)))
+        _provider_lifecycle.record_observed_models(_spec("b"), _probe(("m", 2, 2)))
+        _provider_lifecycle.record_observed_models(_spec("a"), _probe(("n", 3, 3)))
         assert _provider.observed_limits("a", "m") is None
         assert _provider.observed_limits("a", "n") == ModelLimits(3, 3)
         assert _provider.observed_limits("b", "m") == ModelLimits(2, 2)
@@ -218,7 +225,7 @@ class TestObservedLimitsStore:
 class TestResolveLimits:
     def test_declared_beats_observed_beats_unknown_per_limit(self) -> None:
         spec = _spec("gw", _provider.ModelRow(id="m", contextWindow=1000))
-        _provider.record_observed_models(spec, _probe(("m", 32768, 9000)))
+        _provider_lifecycle.record_observed_models(spec, _probe(("m", 32768, 9000)))
         got = _provider.resolve_limits(spec, "m")
         assert (got.context_window, got.context_window_source) == (1000, "declared")
         assert (got.max_output, got.max_output_source) == (9000, "observed")
@@ -235,7 +242,7 @@ class TestResolveLimits:
 
     def test_an_observed_null_limit_stays_unknown(self) -> None:
         spec = _spec("gw", _provider.ModelRow(id="m"))
-        _provider.record_observed_models(spec, _probe(("m", 4096, None)))
+        _provider_lifecycle.record_observed_models(spec, _probe(("m", 4096, None)))
         got = _provider.resolve_limits(spec, "m")
         assert (got.context_window_source, got.max_output_source) == ("observed", "unknown")
 
@@ -243,10 +250,12 @@ class TestResolveLimits:
 class TestRegistrationRecordsWhatTheProbeSaw:
     def test_register_provider_records_the_probe_but_a_refused_one_does_not(self) -> None:
         spec = _spec("gw", _provider.ModelRow(id="m"))
-        _provider.register_provider(spec, probe=_probe(("m", 32768, None)))
+        _provider_lifecycle.register_provider(spec, probe=_probe(("m", 32768, None)))
         assert _provider.observed_limits("gw", "m") == ModelLimits(32768, None)
         down = _spec("down")
-        _provider.register_provider(down, probe=ProbeResult(status=None, transport_error="x"))
+        _provider_lifecycle.register_provider(
+            down, probe=ProbeResult(status=None, transport_error="x")
+        )
         assert _provider.observed_at("down") == ""
 
 
@@ -259,18 +268,18 @@ class TestRefreshObservedModelsDue:
             seen.append(spec.name)
             return _probe(("m", 7000, None))
 
-        monkeypatch.setattr(_provider, "probe_spec", fake)
+        monkeypatch.setattr(_provider_lifecycle, "probe_spec", fake)
         return seen
 
     def test_a_fresh_home_with_only_built_ins_probes_nothing(self, probes: list[str]) -> None:
-        assert _provider.refresh_observed_models_due() == []
+        assert _provider_lifecycle.refresh_observed_models_due() == []
         assert probes == []
 
     def test_a_registered_provider_is_probed_once_a_day(self, probes: list[str]) -> None:
         _provider.save_provider(_spec("gw"))
-        assert _provider.refresh_observed_models_due() == ["gw"]
+        assert _provider_lifecycle.refresh_observed_models_due() == ["gw"]
         assert _provider.observed_limits("gw", "m") == ModelLimits(7000, None)
-        assert _provider.refresh_observed_models_due() == []
+        assert _provider_lifecycle.refresh_observed_models_due() == []
         assert probes == ["gw"]
 
     def test_a_stale_observation_is_refreshed(
@@ -278,11 +287,11 @@ class TestRefreshObservedModelsDue:
     ) -> None:
         _provider.save_provider(_spec("gw"))
         with use_clock(_Day(1)):
-            _provider.refresh_observed_models_due()
+            _provider_lifecycle.refresh_observed_models_due()
         assert _provider.observed_at("gw") == "1970-01-01"
-        monkeypatch.setattr(_provider, "probe_spec", lambda spec: _probe(("m", 9, None)))
+        monkeypatch.setattr(_provider_lifecycle, "probe_spec", lambda spec: _probe(("m", 9, None)))
         with use_clock(_Day(2)):
-            assert _provider.refresh_observed_models_due() == ["gw"]
+            assert _provider_lifecycle.refresh_observed_models_due() == ["gw"]
         assert _provider.observed_limits("gw", "m") == ModelLimits(9, None)
 
     def test_a_failing_probe_is_skipped_without_stopping_the_rest(
@@ -296,8 +305,8 @@ class TestRefreshObservedModelsDue:
                 raise RuntimeError("boom")
             return _probe(("m", 5, None))
 
-        monkeypatch.setattr(_provider, "probe_spec", fake)
-        assert _provider.refresh_observed_models_due() == ["bb"]
+        monkeypatch.setattr(_provider_lifecycle, "probe_spec", fake)
+        assert _provider_lifecycle.refresh_observed_models_due() == ["bb"]
 
 
 class TestRegisterRefusesAnUnusableRankSource:
@@ -311,7 +320,36 @@ class TestRegisterRefusesAnUnusableRankSource:
         )
 
         with pytest.raises(DocumentError) as excinfo:
-            _provider.register_provider(broken, probe=ProbeResult(status=200))
+            _provider_lifecycle.register_provider(broken, probe=ProbeResult(status=200))
 
         assert "economy" in str(excinfo.value)
         assert not current_home().providers_file.exists()
+
+
+class TestEndpointLimitsPrecedence:
+    @staticmethod
+    def _spec(*rows: ModelRow) -> ProviderSpec:
+        return ProviderSpec.model_validate(
+            {
+                "name": "gw",
+                "baseUrl": "http://127.0.0.1:1/v1",
+                "auth": {"type": "none"},
+                "models": [r.model_dump(by_alias=True, exclude_none=True) for r in rows],
+            }
+        )
+
+    def test_declared_beats_observed_beats_unknown_per_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.models import catalog as provider
+
+        monkeypatch.setattr(
+            provider,
+            "observed_limits",
+            lambda name, model_id: ModelLimits(32768, 9000) if model_id == "m" else None,
+        )
+        spec = self._spec(ModelRow(id="m", contextWindow=1000), ModelRow(id="n"))
+        both = llm.endpoint_from_spec(spec, "gw", "m", "")
+        assert (both.context_window_tokens, both.max_output_tokens) == (1000, 9000)
+        unlisted = llm.endpoint_from_spec(spec, "gw", "n", "")
+        assert (unlisted.context_window_tokens, unlisted.max_output_tokens) == (None, None)

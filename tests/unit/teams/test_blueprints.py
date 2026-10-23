@@ -13,6 +13,7 @@ from typing import ClassVar
 import pytest
 
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.teams import blueprints as bp
 from docket.teams import pod as _pod
 from docket.teams import roles as _arch
@@ -80,7 +81,7 @@ class TestValidation:
             "workspace_kind": "workdir",
             "roles": ("lead", "writer"),
             "default_pipeline": _pipeline.PipelineSpec(
-                name="producer-default", steps=[_pipeline.Step(id="lead", role="lead")]
+                name="producer-default", steps=[_step.Step(id="lead", role="lead")]
             ),
         }
 
@@ -146,8 +147,8 @@ class TestPipelineGateFidelity:
         registry = _arch.load_registry()
         blueprint = bp.get_blueprint(name)
 
-        def _walk(steps: list[_pipeline.Step]) -> list[_pipeline.Step]:
-            out: list[_pipeline.Step] = []
+        def _walk(steps: list[_step.Step]) -> list[_step.Step]:
+            out: list[_step.Step] = []
             for s in steps:
                 if s.parallel:
                     out.extend(_walk(s.parallel))
@@ -213,7 +214,7 @@ class TestLeadStepInstructions:
     them has an Implementer for the built-in `lead` archetype's generic instruction to
     point at; software/agentic-product declare no override and keep that generic text."""
 
-    def _lead_step(self, blueprint_name: str) -> _pipeline.Step:
+    def _lead_step(self, blueprint_name: str) -> _step.Step:
         pipeline = bp.get_blueprint(blueprint_name).default_pipeline
         (lead_step,) = [s for s in pipeline.steps if s.id == "lead"]
         return lead_step

@@ -21,7 +21,7 @@ from typing import Any
 from docket import __version__
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability.telemetry import AttrValue, Span, SpanEvent
+from docket.observability.spans import AttrValue, Span, SpanEvent
 from docket.platform.redirects import open_same_origin
 
 _RETRYABLE_STATUS = frozenset({429, 502, 503, 504})

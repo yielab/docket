@@ -30,8 +30,10 @@ from docket.hops.gates import pre_hop as _pre_hop
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import steps as _steps
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
@@ -114,7 +116,7 @@ def _unit_context(
 
 
 def _planned_unit(
-    member_id: str, *, gate: _pipeline.Gate | None = None, step_id: str = "implementer"
+    member_id: str, *, gate: _gates.Gate | None = None, step_id: str = "implementer"
 ) -> _orch.PlannedUnit:
     return _orch.PlannedUnit(
         step_id=step_id,
@@ -274,7 +276,7 @@ class TestEffectivePipelineBlueprint:
         spec = _steps.effective_pipeline("myapp", None)
 
         critic_step = next(step for step in spec.steps if step.id == "critic")
-        assert isinstance(critic_step.gate, _pipeline.VerdictGate)
+        assert isinstance(critic_step.gate, _gates.VerdictGate)
         assert critic_step.gate.rework is not None
         assert critic_step.gate.rework.max_cycles == 3
 
@@ -434,7 +436,7 @@ class TestBoundPipeline:
         spec = _steps.effective_pipeline("myapp", None)
 
         check_step = next(s for s in spec.steps if s.id == "check")
-        assert isinstance(check_step.gate, _pipeline.VerdictGate)
+        assert isinstance(check_step.gate, _gates.VerdictGate)
         assert check_step.gate.rework is not None
         assert check_step.gate.rework.max_cycles == 2  # untouched -- never patched to 9
 
@@ -649,10 +651,10 @@ class TestTaskGate:
         spec = _pipeline.PipelineSpec(
             name="p",
             steps=[
-                _pipeline.Step(id="a", role="implementer"),
-                _pipeline.Step(id="lead", role="lead"),
-                _pipeline.Step(id="b", role="implementer"),
-                _pipeline.Step(id="c", role="lead"),
+                _step.Step(id="a", role="implementer"),
+                _step.Step(id="lead", role="lead"),
+                _step.Step(id="b", role="implementer"),
+                _step.Step(id="c", role="lead"),
             ],
         )
         plan = _orch.resolve_plan(spec, _queue.pod_full_roster("myapp"))
@@ -665,7 +667,7 @@ class TestTaskGate:
         _seed_lean_pod("myapp")
         spec = _pipeline.PipelineSpec(
             name="p",
-            steps=[_pipeline.Step(id="a", role="lead"), _pipeline.Step(id="r", run="true")],
+            steps=[_step.Step(id="a", role="lead"), _step.Step(id="r", run="true")],
         )
         plan = _orch.resolve_plan(spec, _queue.pod_full_roster("myapp"))
 

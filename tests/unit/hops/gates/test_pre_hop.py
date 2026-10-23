@@ -27,8 +27,8 @@ from docket.hops.application import runner as _runner
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.domain import task as _task
 
 SUBJECT = "docket.hops.gates.pre_hop"
@@ -80,7 +80,7 @@ def _unit_context(
 
 
 def _planned_unit(
-    member_id: str, *, gate: _pipeline.Gate | None = None, step_id: str = "implementer"
+    member_id: str, *, gate: _gates.Gate | None = None, step_id: str = "implementer"
 ) -> _orch.PlannedUnit:
     return _orch.PlannedUnit(
         step_id=step_id,
@@ -168,7 +168,7 @@ class TestExecuteUnitDirectly:
             return _rd.TurnResult(True, "did the thing", 0.0, {})
 
         ctx = _unit_context(run=_fake_run, on_hop=persisted.append)
-        node = _planned_unit("myapp-implementer", gate=_pipeline.MechanicalGate(command=None))
+        node = _planned_unit("myapp-implementer", gate=_gates.MechanicalGate(command=None))
 
         outcome = _runner._execute_unit(
             ctx,

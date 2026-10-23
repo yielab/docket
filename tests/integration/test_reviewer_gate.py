@@ -25,6 +25,7 @@ from docket.hops.application import record as _record
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
@@ -102,10 +103,10 @@ class TestParseReviewerVerdict:
     that parser against the reviewer step's gate from the default pipeline, the source of truth."""
 
     @staticmethod
-    def _reviewer_gate() -> _pipeline.VerdictGate:
+    def _reviewer_gate() -> _gates.VerdictGate:
         spec = _pipeline.default_pipeline()
         reviewer_step = next(s for s in spec.steps if s.id == "reviewer")
-        assert isinstance(reviewer_step.gate, _pipeline.VerdictGate)
+        assert isinstance(reviewer_step.gate, _gates.VerdictGate)
         return reviewer_step.gate
 
     def test_approve_is_parsed(self) -> None:

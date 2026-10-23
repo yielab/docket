@@ -89,6 +89,7 @@ class TestCancelTask:
     ) -> None:
         """An in-flight run with no task ids is the running task's: it is cancelled, one audit."""
         from docket.governance import audit as _audit
+        from docket.tasks.application import run_cancellation as _run_cancellation
         from docket.tasks.application import runs as _runs
 
         task_id = self._seed("running")
@@ -104,10 +105,10 @@ class TestCancelTask:
         asked: list[str] = []
         sources: list[str] = []
 
-        def _cancel(run_id: str, *, source: str = "cli") -> _runs.CancelOutcome:
+        def _cancel(run_id: str, *, source: str = "cli") -> _run_cancellation.CancelOutcome:
             asked.append(run_id)
             sources.append(source)
-            return _runs.CancelOutcome(ok=True, message=f"asked {run_id}")
+            return _run_cancellation.CancelOutcome(ok=True, message=f"asked {run_id}")
 
         monkeypatch.setattr(_runs, "cancel_run", _cancel)
 
@@ -126,6 +127,7 @@ class TestCancelTask:
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A run that will not cancel leaves the task unchanged and reports why."""
+        from docket.tasks.application import run_cancellation as _run_cancellation
         from docket.tasks.application import runs as _runs
 
         task_id = self._seed("pending")
@@ -137,7 +139,9 @@ class TestCancelTask:
         monkeypatch.setattr(
             _runs,
             "cancel_run",
-            lambda run_id, *, source="cli": _runs.CancelOutcome(ok=False, message="nope"),
+            lambda run_id, *, source="cli": _run_cancellation.CancelOutcome(
+                ok=False, message="nope"
+            ),
         )
 
         outcome = _lifecycle.cancel_task("myapp", task_id, channel="cli")

@@ -176,7 +176,7 @@ class TestPipelinePlanCli:
         assert "Source: blueprint 'research'" in result.output
 
     def test_bound_pipeline_plan_names_the_bound_source(self, tmp_path: Path) -> None:
-        from docket.interfaces.cli.commands.pod import _pod_config_set_pipeline
+        from docket.interfaces.cli.commands.pod_settings import _pod_config_set_pipeline
 
         _write_meta("demo-lead")
         _write_meta("demo-implementer")

@@ -20,6 +20,7 @@ from docket.agent import ports as _rd
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.sandbox import landlock as _landlock
 from docket.teams import fleet as _fleet
 
@@ -97,7 +98,7 @@ def _verify_task(tmp_path: Path, cmd: str) -> dict[str, Any]:
 def _run_step_spec(cmd: str) -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="checks",
-        steps=[_pipeline.Step(id="plan", role="lead"), _pipeline.Step(id="check", run=cmd)],
+        steps=[_step.Step(id="plan", role="lead"), _step.Step(id="check", run=cmd)],
     )
 
 
