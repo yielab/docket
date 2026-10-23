@@ -60,7 +60,6 @@ SETTLE_TARGETS: frozenset[Status] = frozenset(
         Status.cancelled,
     }
 )
-TERMINAL: frozenset[Status] = frozenset({Status.done, Status.failed, Status.cancelled})
 
 # The remaining edges: a claim starts a task, and an operator or a resolved question reopens one.
 _REOPEN_EDGES: frozenset[tuple[Status, Status]] = frozenset(

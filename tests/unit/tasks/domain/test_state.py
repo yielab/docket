@@ -59,7 +59,7 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
         assert (fields["approvalToken"], fields["pendingApprovalIndex"]) == ("tok", 2)
     if to is S.blocked:
         assert fields["blockedReason"] == "resources"
-    if to in _state.TERMINAL:
+    if to in {_state.Status.done, _state.Status.failed, _state.Status.cancelled}:
         assert fields["completedAt"] == _FACTS["now"]
         assert fields["failureKind"] == "gate_failed"
         assert "taskGrants" in transition.drop
