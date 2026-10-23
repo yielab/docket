@@ -72,7 +72,7 @@
 **Order, by file contention:**
 
 ```
-P47-1 ∥ P47-6  ─►  P47-2 ∥ P47-3  ─►  P47-4 ∥ P47-5  ─►  P47-7  ─►  close (integrator)
+P47-6 done · P47-1 partial  ─►  P47-2 ∥ P47-3  ─►  P47-4 ∥ P47-5  ─►  P47-8 (rest of the facades)  ─►  P47-7  ─►  close
 ```
 
 - P47-1 rewrites imports across `src/`, so no other `src/` card runs beside it; P47-6 touches only
@@ -89,7 +89,7 @@ P47-1 ∥ P47-6  ─►  P47-2 ∥ P47-3  ─►  P47-4 ∥ P47-5  ─►  P47-7
 
 ### P47-1 — every context has a public surface
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** T (a script, then judgment on cycles)
+**Status:** PARTIAL 2026-10-23. `platform` is done (baseline 748 -> 707, dead-export check in `test_import_contracts.py`, seen failing on a plant). The other 9 contexts are **blocked**: 537 of ~690 cross-context imports are module-style (`from docket.teams import fleet`), and a facade binds names at import time, so the mutual dependencies become real cycles (any one context alone: 42-71 largest cycle, 75-155 modules fail to import; all ten: 99). The `observability` facade was reverted (`47c39a58`): it pulls exporter/projection/spans into the runtime wheel, whose file list is fixed by `hatch_build.py` until P47-3. **Reordered:** the remaining facades run after P47-2..5 as card P47-8; `scripts/maint/facade_oneshot.py` stays until then and is deleted in P47-8's last commit. Patches break when a call site changes from `store.x` to a bound name: patch where the module binds it. · **Size:** M · **Model:** Sonnet · **Kind:** T (a script, then judgment on cycles)
 
 - **Trigger (measured):** 615 of the 748 exceptions are imports of another context's internal
   module, which a facade closes under the contract as written. Every context `__init__.py` is empty, so ADR 0030's "a context talks
@@ -114,7 +114,7 @@ P47-1 ∥ P47-6  ─►  P47-2 ∥ P47-3  ─►  P47-4 ∥ P47-5  ─►  P47-7
 
 ### P47-2 — ports at the edges the tests fake (narrows the old P46-13)
 
-**Status:** TODO after P47-1 · **Size:** M · **Model:** Sonnet · **Kind:** T + M
+**Status:** TODO (no longer waits for P47-1) · **Size:** M · **Model:** Sonnet · **Kind:** T + M
 
 - **Trigger (measured):** the most patched test targets are the private aliases of three
   boundaries: 113 `monkeypatch.setattr` calls on `_git` (57), `_launch` (22), `_git.subprocess`
@@ -152,7 +152,7 @@ P47-1 ∥ P47-6  ─►  P47-2 ∥ P47-3  ─►  P47-4 ∥ P47-5  ─►  P47-7
 
 ### P47-3 — `agent` depends on `kernel` alone, and the runtime ships without a build hook (old P46-10)
 
-**Status:** TODO after P47-1 · **Size:** M · **Model:** Sonnet · **Kind:** T
+**Status:** TODO (no longer waits for P47-1) · **Size:** M · **Model:** Sonnet · **Kind:** T
 
 - **Trigger (measured):** 62 exceptions under "agent imports kernel only" (into `teams` 14,
   `governance` 12, `platform` 9, `tasks` 7, `sandbox` 7, `observability` 6, `hops` 4, `operator` 2,
@@ -225,7 +225,7 @@ P47-1 ∥ P47-6  ─►  P47-2 ∥ P47-3  ─►  P47-4 ∥ P47-5  ─►  P47-7
 
 ### P47-6 — the tests: keep what earns its place, one owner per helper (the test audit's A and I, and its deletions)
 
-**Status:** TODO, parallel with P47-1 · **Size:** M · **Model:** Sonnet; the deletions and the CI job are
+**Status:** DONE 2026-10-23 (merge `cc86fe35`; ids 5573 -> 5530, helper groups 99 -> 0, guard `test_suite_shape.py`, `no-sandbox` CI job, `slow` deleted). Kept on purpose: `AgentMeta.coerce_paused` and the `queue.py` field fill (live path: `meta_get` returns `str(value)`). Follow-ups: numeric-suffix variants in `support/pods.py` and `support/http.py`, tests importing helpers from other tests, `support/pods.py` 668 lines. · **Size:** M · **Model:** Sonnet; the deletions and the CI job are
 Haiku-sized if split · **Kind:** M
 
 - **Trigger (measured, test-suite audit 2026-10-23):** 166 duplicated helpers in 103 groups and 83
@@ -281,6 +281,14 @@ giant file · **Kind:** M + T
   shape guards pass at their baselines; collected test ids equal the pre-card set modulo path; the
   parallel suite's wall time is recorded before and after.
 - **Gate:** `uv run pytest tests/guards -q && uv run pytest --co -q`, then the moved files only.
+
+### P47-8 — the facades of the other nine contexts (what P47-1 could not close)
+
+**Status:** TODO after P47-2..5 · **Size:** M · **Model:** Sonnet · **Kind:** T
+
+- **Trigger (measured 2026-10-23, P47-1):** the import baseline holds 707 lines, of which about 574 are facade edges. Applying a facade before the contexts stop depending on each other pairwise multiplies the cycles; P47-2..5 remove the port, agent and domain edges that cause the biggest ones.
+- **Goal:** the same as P47-1's, per context, leaves first, using `scripts/maint/facade_oneshot.py` (delete it in the last commit). Re-measure each context alone first: apply a facade only if `cycle_largest` does not grow and every module imports. `observability` goes last-but-one, after P47-3 removed the runtime's file list. A context that still cannot is listed with its blocking edge instead of forced. Underscore names imported across contexts (about 45, mostly from `hops`) become public names or move; `blueprints.load_registry` and `roles.load_registry` need distinct names.
+- **Acceptance / gate:** as P47-1; the baseline falls to the edges P47-2..5 left or to a named list of unresolved cycles.
 
 ### Phase 47 close (integrator, not a docket task)
 
