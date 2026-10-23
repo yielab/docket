@@ -120,7 +120,6 @@ application imports kernel, its own context and other contexts' __init__ | docke
 application imports kernel, its own context and other contexts' __init__ | docket.operator.inbox -> docket.teams.memory
 application imports kernel, its own context and other contexts' __init__ | docket.operator.inbox -> docket.teams.pod
 application imports kernel, its own context and other contexts' __init__ | docket.operator.notify -> docket.governance.secrets
-application imports kernel, its own context and other contexts' __init__ | docket.operator.notify -> docket.operator.adapters
 application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.agent.driver
 application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.hops.application.record
 application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.hops.application.runner
@@ -433,7 +432,6 @@ interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.c
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.governance.audit
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.governance.review
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.hops.gates.pre_hop
-interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.operator.adapters
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.operator.channel
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.operator.notify
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.pipeline.application.steps
@@ -493,7 +491,6 @@ interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.c
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_services -> docket.teams.fleet
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.governance.audit
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.governance.privacy
-interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.adapters.otlp_http
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.exporter
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.projection
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.spans
@@ -516,7 +513,6 @@ interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.c
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.agent.conversations
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.governance.audit
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.governance.secrets
-interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.adapters
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.channel
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.inbox
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.notify

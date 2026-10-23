@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 import typer
 from rich.markup import escape
 
+from docket import bootstrap as _bootstrap
 from docket.governance import privacy as _privacy
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
@@ -23,7 +24,6 @@ from docket.observability import exporter as _exp
 from docket.observability import projection as _projection
 from docket.observability import spans as _spans
 from docket.observability import trace as _trace
-from docket.observability.adapters import otlp_http as _otlp_http
 
 export_app = typer.Typer(
     name="export",
@@ -67,7 +67,9 @@ def _auth_header_for(spec: _exp.ExporterSpec, values: list[str]) -> tuple[str, s
 def _probe_for(spec: _exp.ExporterSpec) -> _exp.ProbeResult:
     values, _source = _exp.resolve_credentials(spec)
     if spec.dialect == "otlp-http":
-        raw = _otlp_http.probe(spec.endpoint, _auth_header_for(spec, values), spec.headers)
+        raw = _bootstrap.otlp_http.probe(
+            spec.endpoint, _auth_header_for(spec, values), spec.headers
+        )
         return _exp.ProbeResult(status=raw.status, error=raw.error)
     return _exp.ProbeResult(status=None, error=f"no probe for dialect '{spec.dialect}'")
 
@@ -579,7 +581,7 @@ def cmd_preview(
         content_max_chars=spec.content_max_chars,
     )
     spans = _project(records, policy)
-    document = _otlp_http.encode(spans, resource=spec.resource, aliases=spec.aliases)
+    document = _bootstrap.otlp_http.encode(spans, resource=spec.resource, aliases=spec.aliases)
     if json_out:
         typer.echo(_json.dumps(document))
         return

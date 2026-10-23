@@ -8,6 +8,7 @@ from typing import Any, Literal
 import typer
 from rich.markup import escape
 
+from docket import bootstrap as _bootstrap
 from docket.governance import review as _reviewed
 from docket.governance.audit import audit_log
 from docket.hops.gates import pre_hop as _pre_hop
@@ -18,7 +19,6 @@ from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import progress as _progress
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
-from docket.operator import adapters as _channels
 from docket.operator import channel as _channel
 from docket.operator import notify as _notify
 from docket.pipeline.application import steps as _steps
@@ -175,7 +175,7 @@ def _flush_notify_after_dispatch() -> None:
 
     now = _clock.stamp()
     report = _notify.flush(
-        list(_channel.load_catalog().entries.values()), _channels.sink_for, now=now
+        list(_channel.load_catalog().entries.values()), _bootstrap.sink_for, now=now
     )
     if report.error:
         ui.warn(escape(f"  notify: {report.error}"))

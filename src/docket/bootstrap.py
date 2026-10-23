@@ -23,6 +23,8 @@ from docket.kernel.home import Home
 from docket.kernel.ports import SandboxAvailability, bind_git, bind_jail, bind_process
 from docket.kernel.ports import jail as _jail
 from docket.models import catalog as _catalog
+from docket.observability.adapters import otlp_http as _otlp_http
+from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
 from docket.platform import git as _git_adapter
 from docket.platform import process as _process_adapter
@@ -32,6 +34,14 @@ from docket.teams import fleet as _fleet
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
+
+# The concrete adapters the CLI and the server reach for but may not import themselves.
+otlp_http = _otlp_http
+
+
+def sink_for(spec: _channel.ChannelSpec) -> _channel_adapters.Deliver | None:
+    """The delivery function of *spec*'s dialect, or None when no dialect is wired for it."""
+    return _channel_adapters.sink_for(spec)
 
 
 def _credential_sources() -> set[str]:

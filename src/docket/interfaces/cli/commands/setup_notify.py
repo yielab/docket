@@ -11,6 +11,7 @@ from typing import Any
 
 import typer
 
+from docket import bootstrap as _bootstrap
 from docket.agent import conversations as _conv
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
@@ -21,7 +22,6 @@ from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Unavailable
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
-from docket.operator import adapters as _channels
 from docket.operator import channel as _chan
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
@@ -85,7 +85,7 @@ def _apply_sets(spec: _chan.ChannelSpec, sets: list[str]) -> dict[str, Any]:
 def send_test(name: str) -> int:
     """Send one synthetic event through one channel and report; the only send besides flush."""
     spec = _spec_or_exit(name)
-    deliver = _channels.sink_for(spec)
+    deliver = _bootstrap.sink_for(spec)
     if deliver is None:
         ui.error(f"Channel '{name}' has dialect '{spec.dialect}', which has no delivery yet")
         return 1
@@ -162,7 +162,7 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
         _bind(aid, chats[0], "telegram")
     outcome = ""
     if test:
-        deliver = _channels.sink_for(spec)
+        deliver = _bootstrap.sink_for(spec)
         if deliver is None:
             outcome = "failed: no delivery for this dialect"
         else:
@@ -556,7 +556,7 @@ def cmd_flush(
             ui.dim("  Nothing delivered; the dedupe snapshot was not touched.")
         return
     specs = list(_chan.load_catalog().entries.values())
-    report = _notify.flush(specs, _channels.sink_for, now=now)
+    report = _notify.flush(specs, _bootstrap.sink_for, now=now)
     if report.error:
         ui.error(f"Notify flush failed: {report.error}")
         raise typer.Exit(1)
