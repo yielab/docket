@@ -41,7 +41,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
 | [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state |
-| [Adoption evidence](ADOPTION-EVIDENCE.md) | Reproducible governance and recovery results, with their limits |
+| [Adoption evidence](ADOPTION-EVIDENCE.md) | Scripted governance and recovery fixtures, and what they do not prove |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 | [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. |
 | [Decision records (ADRs)](adr/) | One reasoned architectural decision per file |
@@ -149,8 +149,8 @@ of [Configuration §2](CONFIGURATION.md#2-how-the-files-reach-a-running-agent).
 
 ## Known limits
 
-Read these before trusting docket with anything consequential. The reproducible results behind
-the rest are in [Adoption evidence](ADOPTION-EVIDENCE.md).
+Read these before trusting docket with anything consequential. The fixture results and what they
+do not prove are in [Adoption evidence](ADOPTION-EVIDENCE.md).
 
 **Scope**
 

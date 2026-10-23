@@ -1,8 +1,10 @@
 # Docket adoption benchmark
 
-This development harness turns a fixed scenario and Docket's public durable records into one
-canonical JSONL attempt stream plus a deterministic aggregate. It measures contract behavior and
-provenance. A deterministic fake result is not evidence of model quality, market rank, or savings.
+This development harness turns a fixed scenario and a Docket home's durable records into one
+canonical JSONL attempt stream plus a deterministic aggregate. It checks that those records join,
+count and normalize as the schema says. It does not run Docket: in the published baseline the
+records are written by a scenario driver, not left behind by a product run. A deterministic fake
+result is not evidence of model quality, market rank, or savings.
 
 Schema version `1.0.0` is defined in `schema.json`. The runner uses only Docket's existing runtime
 dependencies and the Python standard library.
@@ -30,12 +32,24 @@ cmp "$out/aggregate.json" "$out/rebuilt.json"
 ```
 
 The two aggregate files are byte-identical. Both commands reject malformed, duplicate, partial,
-path-escaping, or mismatched input before replacing an existing output.
+path-escaping, or mismatched input before replacing an existing output. `run` stages the JSONL and
+the aggregate as temporary files beside their targets, then renames both; if the second rename
+fails it restores the first.
+
+## Where the published records come from
+
+`benchmarks/scenarios/run.py` writes the run, task, session, audit and trace records itself,
+including a fabricated `guardrail_block` trace event for the two denial cases, and the changed
+target bytes in the cases that mutate. It calls the Docket CLI only for `run --pod demo --dry-run`,
+`task approve`, `task deny` and `task show`. It imports no `docket` module, and no agent turn, tool
+dispatch or policy decision runs. It sets each approval's creation time to the time of its
+resolution, so approval latency is deterministic by construction rather than measured. The
+`public_actions` labels in `evidence.json` are case data, not a record of calls.
 
 ## Published Wave 29 baseline
 
 The [public adoption report](../docs/ADOPTION-EVIDENCE.md) links the canonical baseline and explains
-its limits. Regenerate it from an exact commit with:
+its limits. Regenerate it from an exact commit, from a working tree with no uncommitted changes, with:
 
 ```sh
 python benchmarks/results/regenerate.py \
@@ -44,8 +58,10 @@ python benchmarks/results/regenerate.py \
   --repetitions 3
 ```
 
-The command builds and installs that commit's wheel outside the checkout, runs the starter and all
-seven adversarial/recovery cases without provider credentials, and removes its temporary state.
+The command builds and installs that commit's wheel outside the checkout, runs the starter journey
+and the seven scripted scenario cases without provider credentials, and removes its temporary
+state. It refuses a dirty tree, and it writes the baseline to a staging directory that is renamed
+into place only when complete.
 
 ## Scenario contract
 

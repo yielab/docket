@@ -466,15 +466,25 @@ def test_ambient_build_interpreters_produce_the_committed_baseline_except_timing
 def test_public_report_links_raw_evidence_and_states_only_measured_truth() -> None:
     manifest = _manifest()
     report = REPORT.read_text(encoding="utf-8")
-    lowered = report.lower()
-    for phrase in (
+    lowered = " ".join(report.lower().split())
+    phrases = [
         "deterministic contract evidence",
         "does not measure model quality",
         "cost unavailable",
         "9 attempts",
         "5 completions",
         "4 failures",
-    ):
+        "not a record of the product running a task",
+        "fabricated by the driver",
+        "does not import a `docket` module",
+        "latency is set, not measured",
+        "docket run --pod demo --dry-run",
+        "docket task approve",
+        "docket task deny",
+        "docket task show",
+        "",
+    ]
+    for phrase in phrases:
         assert phrase in lowered
     for scenario in FAILED_SCENARIOS:
         assert scenario in report

@@ -171,9 +171,10 @@ duration (rule 8); no identity, count, outcome, provenance, or locator may be no
 Invalid, partial, duplicate, path-escaping, privacy-violating, or provenance-mismatched scenario,
 artifact, JSONL, or aggregate input MUST exit non-zero before replacing either requested output.
 If a prior JSONL or aggregate exists, both MUST remain byte-for-byte unchanged. The two outputs MUST
-be different files. Temporary files are created beside their target and atomically replaced only
-after the complete output validates; the JSONL and aggregate are replaced one after the other, not
-as a single transaction.
+be different files. Temporary files for both outputs are created beside their targets and fully
+written before either target is renamed; the two renames then run back to back, and a failed
+second rename restores the first output's prior bytes (or removes it if there were none), so a
+failure to place the aggregate leaves the prior JSONL in place and exits 2.
 
 The `aggregate` command MUST validate all JSONL records, reject duplicate attempt ids/ordinals and
 mixed scenario/source/runtime provenance, recompute each `attempt_id`, and reproduce the same
@@ -252,7 +253,10 @@ python benchmarks/results/regenerate.py \
   --repetitions 3
 ```
 
-`OUTPUT` MUST NOT already exist and `--repetitions` MUST be 3. The command MUST resolve `COMMIT` to
+`OUTPUT` MUST NOT already exist and `--repetitions` MUST be 3. The command MUST refuse, before
+building anything, when the working tree has uncommitted changes, because the build constraints and
+the wheel canonicalizer are read from the working tree and not from the archived commit. It MUST
+resolve `COMMIT` to
 a full commit SHA, archive that exact tree into temporary state, build its root wheel and sdist,
 calculate the wheel SHA-256, install the wheel (after the starter's pinned requirements) outside
 the checkout on Python 3.11, and run the starter journey plus all seven scenario cases through that
@@ -298,7 +302,11 @@ safety, recovery, handoff, stop reason, provenance, path, or cost field may be n
 described as byte-stable when it was measured from a clock.
 
 `docs/ADOPTION-EVIDENCE.md` MUST link the manifest, raw records, schema, and exact source commit. It
-MUST publish the complete attempt/failure table and distinguish deterministic contract evidence
+MUST state that the driver wrote the run, task, session, audit and trace records, that the
+`guardrail_block` events are fabricated by the driver, that the CLI is called only for `run --pod
+demo --dry-run`, `task approve`, `task deny` and `task show`, and that the approval latency is set
+by the driver; no sentence in it or in `benchmarks/README.md` may present the records as a product
+run. It MUST publish the complete attempt/failure table and distinguish deterministic contract evidence
 from live model-quality or price evidence. README, compatibility, security, and the documentation
 index MUST link that report without claiming a leaderboard, competitor rank, savings, production
 success rate, or unavailable dollar value. Published bytes MUST exclude secrets, approval tokens,
@@ -375,5 +383,7 @@ the baseline regenerator downloads anything (rule 8).
 - `tests/agent/release/test_adoption_benchmark.py`: the base suite.
 - `tests/agent/release/test_adoption_adversarial_recovery.py`: the journey suite.
 - `tests/agent/release/test_adoption_evidence.py`: the publication suite.
+- `tests/integration/test_adoption_tools.py`: output placement and the clean-tree refusal, in
+  the default suite.
 - `.github/workflows/ci.yml`, `pyproject.toml`: full-history checkouts and the `jsonschema`
   development dependency.
