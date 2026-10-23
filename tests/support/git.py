@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
+
+import pytest
+
+from docket.platform import process as _process_adapter
 
 
 def git(repo: Path, *args: str) -> str:
@@ -53,3 +59,20 @@ def repo_dir(tmp_path: Path, files: dict[str, str]) -> Path:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text)
     return root
+
+
+class GitHost:
+    """The operating system under ``platform.git``: whether ``git`` is on PATH, and what running
+    it answers. ``available`` and ``run`` are what a test sets; ``run`` defaults to the real
+    ``subprocess.run`` so a test that only sets availability still runs real commands."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_run, real_which = subprocess.run, _process_adapter.which
+        self.available = True
+        self.run: Callable[..., Any] = real_run
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: self.run(*a, **k))
+        monkeypatch.setattr(
+            _process_adapter,
+            "which",
+            lambda binary: self.available if binary == "git" else real_which(binary),
+        )
