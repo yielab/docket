@@ -18,7 +18,6 @@ import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -28,6 +27,7 @@ import docket.config as _cfg
 import docket.serve as serve
 from docket.core import trace as _trace
 from docket.kernel.clock import use_clock
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.serve"
@@ -46,15 +46,15 @@ def _get(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignor
         return exc.code, json.loads(exc.read())
 
 
-class _Server(ThreadingHTTPServer):
-    """A new thread starts with an empty context, so each request thread is handed the test's
-    clock; the test's own ``use_clock`` block cannot reach it."""
+class _ClockedHandler(_DocketHandler):
+    """The test's clock is installed after the server is built, so the request runs under it
+    from inside the handler, where the server's own context has already been entered."""
 
     clock: _FakeClock | None = None
 
-    def process_request_thread(self, request, client_address):  # type: ignore[no-untyped-def]
+    def handle(self) -> None:
         with use_clock(self.clock) if self.clock is not None else contextlib.nullcontext():
-            super().process_request_thread(request, client_address)
+            super().handle()
 
 
 @pytest.fixture()
@@ -66,10 +66,10 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
     approvals_dir.mkdir()
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals_dir, raising=True)
 
-    class _Handler(_DocketHandler):
+    class _Handler(_ClockedHandler):
         serve_token = _TEST_TOKEN
 
-    srv = _Server(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -111,7 +111,7 @@ class _FakeClock:
 @pytest.fixture()
 def fake_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeClock]:
     clock = _FakeClock()
-    monkeypatch.setattr(_Server, "clock", clock)
+    monkeypatch.setattr(_ClockedHandler, "clock", clock)
     with use_clock(clock):
         yield clock
 

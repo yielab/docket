@@ -1,6 +1,6 @@
 """Re-attaching to parked and failed tasks across a server restart (operator-api.spec.md).
 
-A restart is one `ThreadingHTTPServer` shut down and a second started over the same
+A restart is one `ContextHTTPServer` shut down and a second started over the same
 `DOCKET_HOME`; the oracles are HTTP bodies and `TASK_LIST.json`. Nothing touches the real home.
 """
 
@@ -13,7 +13,6 @@ import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +29,7 @@ from docket.core import pipeline as _pipeline
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -62,7 +62,7 @@ def _server() -> Iterator[str]:
     class _Handler(_DocketHandler):
         serve_token = _TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
     try:

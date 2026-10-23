@@ -16,7 +16,6 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +28,7 @@ from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -68,7 +68,7 @@ def live_server(pod_home: Path):  # type: ignore[no-untyped-def]
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -141,7 +141,7 @@ class TestHappyPath:
         class _Handler(_DocketHandler):
             serve_token = _TEST_TOKEN
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         port = srv.server_address[1]
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
@@ -173,7 +173,7 @@ class TestHappyPath:
         class _Handler(_DocketHandler):
             serve_token = _TEST_TOKEN
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         port = srv.server_address[1]
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()

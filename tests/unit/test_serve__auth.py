@@ -18,13 +18,13 @@ import stat
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 import docket.config as _cfg
 import docket.serve as serve
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.serve"
@@ -45,12 +45,12 @@ def approvals_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture()
 def live_server(approvals_dir: Path):  # type: ignore[no-untyped-def]
-    """Real ThreadingHTTPServer on a random port. Yields (base_url, token)."""
+    """Real ContextHTTPServer on a random port. Yields (base_url, token)."""
 
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -116,7 +116,7 @@ class TestCompareDigestAuth:
         class _Handler(_DocketHandler):
             serve_token = ""
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         port = srv.server_address[1]
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
