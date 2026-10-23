@@ -9,7 +9,7 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-22.** Every phase 0–45 is complete. **Phase 46** (organize by context
+**Last updated: 2026-10-23.** Every phase 0–45 is complete. **Phase 46** (organize by context
 and refactor by tool, D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md))
 is active on branch `plan/phase-46-structure` since 2026-10-22: every spec states today's code
 with no history and names paths only in its `## Implementation` section (`3c533a9c`); P46-5's
@@ -17,7 +17,10 @@ first step shipped `kernel/` (`Home`, clock, ids, errors, text) with a shrink-on
 and moved every clock, id and text read onto it (`8325268f`, `cd04b643`). The truth pass found 87
 code defects; Wave 120 (13 cards) fixes them before P46-6's freeze, and the rest of P46-5 runs its
 codemods once over the merged tree. The plan, the model per card and the six open decisions are
-on `TODO.md`. Phase 45 (a prepared task worktree, model
+on `TODO.md`. **2026-10-23:** the module moves, the 17 splits, the HTTP route table, the turn-loop
+collaborators, the import hoist, `bootstrap.py` and `tests/architecture/` landed on the branch
+(`4c08af7c`..`c75e5421`); the close waits on one real run against the baseline. Ports, the
+state owner and the test restructuring are Phase 47 (`internal-docs/plans/phase-46-47-fast-path-2026-10-23.md`). Phase 45 (a prepared task worktree, model
 limits from the provider, protected paths, approvals per team; D-65,
 [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md))
 closed 2026-10-20: five cards over Waves 117-119 and two small real runs that found and fixed three

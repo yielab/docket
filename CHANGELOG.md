@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The tree is organised by context (ADR 0030, D-66).** `src/docket/` is `kernel`, the context
+  packages and `interfaces/`; no module is over 700 lines. The oversized modules were split by
+  `scripts/maint/refactor/move.py`; the turn loop's state became budget, compaction and tool-step
+  collaborators (`agent/loop_*.py`); the HTTP handler became a route table over per-resource
+  modules with one bearer check (`interfaces/http/routes/`). `bootstrap.py` builds the store,
+  sandbox, driver, channels, app and server from a `Home`. Function-local `docket.*` imports fell
+  from 209 to 20 (the real cycles). `tests/architecture/` holds the ADR's import contracts with a
+  shrink-only list of today's 748 violations, a 700-line ceiling and a local-imports ratchet.
+  No behaviour changed: every golden is byte-identical.
+
 ### Added
 
 - `scripts/maint/live-dispatch-baseline.sh` records one real dispatch through the HTTP API (task,
