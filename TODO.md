@@ -205,7 +205,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-5 — `kernel/` and `Home`
 
-**Status:** DONE 2026-10-23 (stage 3c `0a13fd57`); the `DocketError` catcher at the CLI entry and the HTTP handler stays with the other session · **Size:** L · **Model:** per step · **Kind:** T + R
+**Status:** IN-PROGRESS · steps 1 and 3 DONE 2026-10-23 (stage 3c `0a13fd57`); step 2's `DocketError` catcher is not written (no other session holds it): next after the move · **Size:** L · **Model:** per step · **Kind:** T + R
 
 - **Step 1: DONE (2026-10-22).**
   - `kernel/home.py::Home` was written by hand, not generated. `tests/integration/test_home_parity.py` pins that it equals `config.py`, name for name and default for default.
@@ -216,6 +216,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
   - The runtime build hook lists the kernel files.
   - A `ContextVar` does not reach a thread docket spawns: a threaded test re-enters `use_clock` in the thread.
 - **Step 2, errors: rule and run DONE (`36867d97`); the `DocketError` catcher at the CLI entry and the HTTP handler is still open.**
+  - **The catcher, after the move (2026-10-23):** one `except DocketError` at the CLI entry (message + hint to stderr, exit 1) and one in the HTTP handler (kind to status: `InvalidInput` 400, `NotFound` 404, `Conflict` 409, `Refused` 403, `Unavailable` 503; JSON `error`/`hint`). The per-command and per-route `try/except` blocks that only render a docket error are deleted, and so are the `ValueError`/`LookupError` bases of `InvalidInput`/`NotFound` once no `except` of a builtin depends on them.
   - Opus writes the table that sends each of the 36 builtin-derived classes to a kind.
   - A Sonnet worker adds the rule `errors` to `adopt_kernel.py` (re-parent per the table; `raise ValueError(x)` → `raise InvalidInput(x)`; refuse a raise with more than one argument) and its toy tests.
   - The same worker adds one catcher of `DocketError` at the CLI entry and one in the HTTP handler. It first checks the `except ValueError` sites in `serve.py` (~219, ~991, ~1162).
