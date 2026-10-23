@@ -28,7 +28,7 @@ from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
 
 SUBJECT = "docket.core.dispatch"
 
-_RECIPES = _templates.recipes_dir()
+_RECIPES = _templates.RECIPES_DIR
 
 
 def _pipeline_text(recipe: str) -> str:

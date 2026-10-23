@@ -461,7 +461,7 @@ class TestClassifyDirectory:
         assert _pod_apply.classify_directory(root).refused == ("bash",)
 
     def test_shipped_recipes_are_exempt_and_other_directories_are_not(self, tmp_path: Path) -> None:
-        shipped = next(p for p in _templates.recipes_dir().iterdir() if p.is_dir())
+        shipped = next(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
         assert _pod_apply.is_shipped_recipe(shipped)
         assert not _pod_apply.is_shipped_recipe(tmp_path)
 
@@ -494,7 +494,7 @@ class TestReviewDecision:
     def test_nothing_to_run_and_shipped_recipes_go(self, tmp_path: Path) -> None:
         plain = _repo_dir(tmp_path, {"policies/p.json": "{}"})
         assert _pod_apply.review_decision(tmp_path, "a", plain, None).status == "go"
-        shipped = next(p for p in _templates.recipes_dir().iterdir() if p.is_dir())
+        shipped = next(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
         assert _pod_apply.review_decision(tmp_path, "a", shipped, "bogus").status == "go"
 
     def test_run_items_need_the_code_then_accept_it(self, tmp_path: Path) -> None:

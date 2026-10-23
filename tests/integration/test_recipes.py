@@ -2,7 +2,7 @@
 
 Each recipe is data only: role YAML(s), a pipeline YAML, a small `pod.yaml`, and an optional
 policy pack, applied in one command (`docket pod update`, `core.pod_apply`). The tests below
-read exactly what the wheel ships (`kernel.templates.recipes_dir()`), so a recipe that fails to
+read exactly what the wheel ships (`kernel.templates.RECIPES_DIR`), so a recipe that fails to
 validate, resolve against a real roster, or actually dispatch fails here first, never only in an
 operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
 pod-blueprints.spec.md ("Pod manifests: apply").
@@ -40,7 +40,7 @@ from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_apply"
 
-RECIPES_DIR = _templates.recipes_dir()
+RECIPES_DIR = _templates.RECIPES_DIR
 
 
 def _pod_cli(*args: str) -> Any:
@@ -713,7 +713,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
             encoding="utf-8",
         )
 
-        _pod_apply.apply(_pod_apply.plan_apply(project, _templates.recipes_dir() / "secure-build"))
+        _pod_apply.apply(_pod_apply.plan_apply(project, _templates.RECIPES_DIR / "secure-build"))
 
         from docket.core import fleet as _fleet
 

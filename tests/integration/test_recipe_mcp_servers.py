@@ -176,7 +176,7 @@ def test_validate_rejects_a_malformed_server_document(tmp_path: Path) -> None:
 
 
 def test_code_intel_validates_and_plans() -> None:
-    directory = _templates.recipes_dir() / "code-intel"
+    directory = _templates.RECIPES_DIR / "code-intel"
 
     assert _config_docs.validate_directory(directory) == []
     plan = _pod_apply.plan_apply("shop", directory)
@@ -215,6 +215,6 @@ def test_the_plan_summary_carries_no_unjailed_note(
 
 
 def test_code_intel_servers_declare_no_isolate_key() -> None:
-    directory = _templates.recipes_dir() / "code-intel"
+    directory = _templates.RECIPES_DIR / "code-intel"
     for path in (directory / "mcp-servers").glob("*.yaml"):
         assert "isolate" not in path.read_text(encoding="utf-8")

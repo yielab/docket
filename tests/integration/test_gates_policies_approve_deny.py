@@ -66,7 +66,7 @@ def _seed_policies(oc_dir: Path) -> None:
     """Copy the shipped baseline policy templates into the temp POLICIES_DIR -- JSON or YAML,
     since the baseline templates ship as short-form YAML."""
     for pattern in ("*.json", "*.yaml", "*.yml"):
-        for f in _templates.policy_templates_dir().glob(pattern):
+        for f in _templates.POLICY_TEMPLATES_DIR.glob(pattern):
             shutil.copy(f, oc_dir / "policies" / f.name)
 
 

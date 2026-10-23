@@ -137,7 +137,7 @@ def _load_gen_config_schemas_script() -> types.ModuleType:
 
 def _recipe_files(pattern_dir: str, glob: str) -> list[Path]:
     files: list[Path] = []
-    for recipe_dir in sorted(p for p in _templates.recipes_dir().iterdir() if p.is_dir()):
+    for recipe_dir in sorted(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir()):
         sub = recipe_dir / pattern_dir
         if sub.is_dir():
             files.extend(sorted(sub.glob(glob)))

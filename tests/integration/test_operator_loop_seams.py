@@ -319,7 +319,7 @@ def _bind_pipeline(project: str, text: str) -> None:
 
 
 def _bind_intake_pipeline(project: str) -> None:
-    text = (_templates.recipes_dir() / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
+    text = (_templates.RECIPES_DIR / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
     result = _pipeline.load_pipeline(text)
     assert result.spec is not None, result.errors
     _bind_pipeline(project, text)

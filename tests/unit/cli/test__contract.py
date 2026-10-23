@@ -16,7 +16,7 @@ SUBJECT = "docket.cli._contract"
 
 @pytest.fixture
 def no_tty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+    monkeypatch.setattr(_contract, "is_tty", lambda: False)
 
 
 def test_confirm_off_tty_refuses_naming_yes(
@@ -42,7 +42,7 @@ def test_confirm_with_yes_returns_without_prompting(no_tty: None) -> None:
 
 
 def test_confirm_on_tty_reads_the_typed_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_contract, "_is_tty", lambda: True)
+    monkeypatch.setattr(_contract, "is_tty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "x")
     assert _contract.confirm("delete pod x", yes=False, typed="x") is True
     monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
@@ -79,3 +79,15 @@ def test_resolve_pod_here_reads_the_process_environment_and_cwd(
     monkeypatch.delenv("DOCKET_POD")
     with pytest.raises(TargetError):
         _contract.resolve_pod_here(None)
+
+
+def test_require_pod_refuses_with_exit_1_naming_what_was_looked_for(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DOCKET_POD", raising=False)
+    assert _contract.require_pod("explicit") == "explicit"
+    with pytest.raises(typer.Exit) as exc:
+        _contract.require_pod(None)
+    assert exc.value.exit_code == 1
+    assert "--pod" in capsys.readouterr().err

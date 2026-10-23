@@ -29,7 +29,7 @@ from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_apply"
 
-RECIPES_DIR = _templates.recipes_dir()
+RECIPES_DIR = _templates.RECIPES_DIR
 RECIPE_NAMES = ("tdd", "spec-first", "reflexion", "dual-review", "frugal")
 
 

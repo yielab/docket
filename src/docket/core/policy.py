@@ -590,7 +590,7 @@ def install_policies() -> PolicyInstallResult:
     if that distinction matters to the caller. Pure logic, no UI: this is the shared producer
     behind the workstation foundation bootstrap's policy-provisioning step, so what "installed"
     means has one definition."""
-    template_dir = _templates.policy_templates_dir()
+    template_dir = _templates.POLICY_TEMPLATES_DIR
     result = PolicyInstallResult(
         template_dir=template_dir, policies_dir=current_home().policies_dir
     )

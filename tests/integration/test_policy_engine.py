@@ -137,7 +137,7 @@ def _shipped_template_files() -> list[Path]:
     return sorted(
         p
         for pattern in ("*.json", "*.yaml", "*.yml")
-        for p in _templates.policy_templates_dir().glob(pattern)
+        for p in _templates.POLICY_TEMPLATES_DIR.glob(pattern)
     )
 
 
@@ -176,8 +176,8 @@ class TestInstallPolicies:
     ) -> None:
         monkeypatch.setattr(
             _templates,
-            "policy_templates_dir",
-            lambda: Path("/nonexistent-templates-xyz/policies"),
+            "POLICY_TEMPLATES_DIR",
+            Path("/nonexistent-templates-xyz/policies"),
             raising=True,
         )
         result = _policy.install_policies()

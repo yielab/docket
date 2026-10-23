@@ -12,18 +12,9 @@ _TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 PROVIDER_TEMPLATES_DIR = _TEMPLATES / "providers"
 EXPORTER_TEMPLATES_DIR = _TEMPLATES / "exporters"
 CHANNEL_TEMPLATES_DIR = _TEMPLATES / "channels"
-
-
-def policy_templates_dir() -> Path:
-    return _TEMPLATES / "policies"
-
-
-def recipes_dir() -> Path:
-    """Shipped role, pipeline and policy recipe bundles (`templates/recipes/<name>/`)."""
-    return _TEMPLATES / "recipes"
-
-
-def config_schemas_dir() -> Path:
-    """The published config-v1 JSON Schemas, shipped byte-for-byte from `docs/contracts/
-    config-v1/`; `core.pod_apply.export_pod` copies them into an export's `.schemas/`."""
-    return _TEMPLATES / "schemas"
+POLICY_TEMPLATES_DIR = _TEMPLATES / "policies"
+# Shipped role, pipeline and policy recipe bundles (`templates/recipes/<name>/`).
+RECIPES_DIR = _TEMPLATES / "recipes"
+# The published config-v1 JSON Schemas, shipped byte-for-byte from `docs/contracts/config-v1/`;
+# `core.pod_apply.export_pod` copies them into an export's `.schemas/`.
+CONFIG_SCHEMAS_DIR = _TEMPLATES / "schemas"

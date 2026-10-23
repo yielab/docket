@@ -37,14 +37,6 @@ def _fail(what: str, do: str = "", code: int = 1) -> NoReturn:
     raise typer.Exit(code)
 
 
-def _pod_name(pod: str | None) -> str:
-    """The pod this command acts on; exits 1 naming what was looked for when none resolves."""
-    try:
-        return _contract.resolve_pod_here(pod)
-    except TargetError as exc:
-        _fail(str(exc))
-
-
 def _scope_pod(pod: str | None) -> str:
     """The pod whose overlay applies to a library read, or ``""`` for the global set."""
     try:
@@ -166,7 +158,7 @@ def cmd_update(
     AGENTS or TOOLS are stale are re-rendered from the current archetypes.
 
     Example: docket pod update .docket --dry-run"""
-    project = _pod_name(pod)
+    project = _contract.require_pod(pod)
     if target is None:
         _sync(project, dry_run, json_out)
     elif Path(target).is_file():
@@ -310,7 +302,7 @@ def cmd_export(
     init` read back. A non-empty directory is refused unless --force.
 
     Example: docket pod export .docket --force"""
-    project = _pod_name(pod)
+    project = _contract.require_pod(pod)
     target = Path(directory) if directory else _default_dir(project, create=True)
     if target.exists() and any(target.iterdir()) and not force:
         _fail(f"'{target}' is not empty", "Pass --force to overwrite")
@@ -380,7 +372,7 @@ def cmd_plan(
     order. Nothing is started and no tokens are spent.
 
     Example: docket pod plan --pipeline review.yaml"""
-    project = _pod_name(pod)
+    project = _contract.require_pod(pod)
     spec = _plan_spec(pipeline) if pipeline else None
     try:
         _dispatch.pod_pipeline(project)

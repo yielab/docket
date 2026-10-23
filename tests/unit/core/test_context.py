@@ -110,7 +110,7 @@ class TestBudgetForRole:
         home = tmp_path / "docket-home"
         home.mkdir()
 
-        role_file = _templates.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
+        role_file = _templates.RECIPES_DIR / "secure-build" / "roles" / "security-vetter.yaml"
         doc = _config_docs.load_document(role_file)
         with use_home(Home(home)):
             _arch.add_user_archetype(doc.doc, "mypod")

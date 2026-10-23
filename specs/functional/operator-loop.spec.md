@@ -860,6 +860,7 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/kernel/home.py`: the `Home` members `inbox_cursor_file`, `channels_file`,
   `notify_state_file`, `channels_health_file`, `consult_parked_dir`, `corrections_dir`
 - `src/docket/kernel/templates.py`: `CHANNEL_TEMPLATES_DIR`
+- `src/docket/core/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
 - `src/docket/cli/_inbox.py`: `docket inbox`
 - `src/docket/cli/_setup_notify.py`: `docket setup notify`, `send_test`
 - `src/docket/cli/_task.py`: `docket task add|show|approve|deny|answer|retry`

@@ -18,7 +18,7 @@ from tests.conftest import record_isolation_off
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod, _run, _setup
+from docket.cli import _contract, _pod, _run, _setup
 from docket.cli import app as _app
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
@@ -560,7 +560,7 @@ class TestRunPicksUpTheRepository:
                 _SKILL.format(body="v2")
             )
             calls = _dispatches(monkeypatch)
-            monkeypatch.setattr(_run, "_stdin_is_tty", lambda: False)
+            monkeypatch.setattr(_contract, "is_tty", lambda: False)
             result = runner.invoke(_app, ["run", "--pod", "demo"])
             assert result.exit_code == 0 and calls == ["demo"]
             assert "! The repository changed a command that needs your OK. Running with the" in (
@@ -578,7 +578,7 @@ class TestRunPicksUpTheRepository:
         with _repo_pod(tmp_path) as code:
             (code / ".docket" / "pipeline.yaml").write_text(_PIPELINE.format(run="make evil"))
             calls = _dispatches(monkeypatch)
-            monkeypatch.setattr(_run, "_stdin_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             result = runner.invoke(_app, ["run", "--pod", "demo"], input="y\n")
             assert result.exit_code == 0 and calls == ["demo"]
             assert "The repository changed a command since you allowed it on " in result.output
@@ -594,7 +594,7 @@ class TestRunPicksUpTheRepository:
         with _repo_pod(tmp_path) as code:
             (code / ".docket" / "pipeline.yaml").write_text(_PIPELINE.format(run="make evil"))
             calls = _dispatches(monkeypatch)
-            monkeypatch.setattr(_run, "_stdin_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             result = runner.invoke(_app, ["run", "--pod", "demo"], input="n\n")
             assert result.exit_code == 0 and calls == ["demo"]
             assert "-> Running with the version you allowed on " in result.output

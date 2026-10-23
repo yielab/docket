@@ -1803,7 +1803,7 @@ class TestAnswerTaskResumesDispatch:
 def _bind_intake_pipeline(project: str) -> None:
     """Bind the real shipped ``intake`` recipe's pipeline so ``dispatch_pod`` and
     ``answer_task`` resolve the same steps (see ``_bind_pipeline`` above)."""
-    text = (_templates.recipes_dir() / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
+    text = (_templates.RECIPES_DIR / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
     result = _pipeline.load_pipeline(text)
     assert result.spec is not None, result.errors
     _bind_pipeline(project, text)

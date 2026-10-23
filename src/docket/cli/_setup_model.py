@@ -238,7 +238,7 @@ def _collect_credential(
         ui.error(exc.message, exc.hint)
         return None
     if not value:
-        if not _contract._is_tty():
+        if not _contract.is_tty():
             ui.error(f"{cred} is required", f"Pass --credential or export {cred}")
             return None
         entered = _read_hidden(cred)

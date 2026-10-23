@@ -10,7 +10,7 @@ import sys
 import time
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import typer
 from pydantic import ValidationError
@@ -18,7 +18,7 @@ from rich.markup import escape
 
 from docket import ui
 from docket.cli import _contract
-from docket.cli._target import TargetError, pod_option
+from docket.cli._target import pod_option
 from docket.core import answers as _answers
 from docket.core import approval as _ap
 from docket.core import corrections as _corrections
@@ -29,6 +29,7 @@ from docket.core import interruptions as _interruptions
 from docket.core import operator_contract as _oc
 from docket.core import pod as _pod
 from docket.core import pod_provisioning as _pp
+from docket.core import pod_report as _report
 from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.task_ref import TaskRef, TaskRefError, resolve_task, short_id
@@ -52,14 +53,6 @@ class Priority(StrEnum):
 
 def _say(text: str) -> None:
     ui.console.print(text, markup=False)
-
-
-def _pod_name(pod: str | None) -> str:
-    try:
-        return _contract.resolve_pod_here(pod)
-    except TargetError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
 
 
 def _resolve(pod: str | None, ref: str) -> TaskRef:
@@ -109,10 +102,6 @@ def _pod_codebase(project: str) -> str:
     return str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
 
 
-def _caller_default() -> Literal["wait", "park"]:
-    return "wait" if sys.stdin.isatty() else "park"
-
-
 def _ask_noun(kind: str, count: int) -> str:
     noun = kind.replace("_", " ")
     if count == 1:
@@ -122,7 +111,7 @@ def _ask_noun(kind: str, count: int) -> str:
 
 def _interruption_summary(task_id: str, project: str) -> str:
     """One line for `task add`: what could pause this pod's next run before it starts."""
-    items = _interruptions.forecast(project, caller_default=_caller_default())
+    items = _interruptions.forecast(project, caller_default=_report.caller_default())
     askers = [i for i in items if i.kind in _interruptions.ASK_KINDS]
     if not askers:
         return _interruptions.NOTHING_WILL_ASK
@@ -174,7 +163,7 @@ def cmd_add(
 
     Example: docket task add "fix the login redirect"
     """
-    project = _pod_name(pod)
+    project = _contract.require_pod(pod)
     loaded = _load_brief(brief)
     if not text.strip():
         ui.error("The task text is empty", 'Pass the task text, e.g. docket task add "fix it"')
@@ -234,7 +223,7 @@ def cmd_list(
 
     Example: docket task list --json
     """
-    project = _pod_name(pod)
+    project = _contract.require_pod(pod)
     items = [_list_item(project, t) for t in _dispatch.read_tasks(project)]
     if json_out:
         _contract.emit_json({"pod": project, "tasks": items})
@@ -291,7 +280,7 @@ def _run_lines(run_ids: tuple[str, ...]) -> list[str]:
 
 
 def _render_forecast(project: str) -> None:
-    items = _interruptions.forecast(project, caller_default=_caller_default())
+    items = _interruptions.forecast(project, caller_default=_report.caller_default())
     askers = [i for i in items if i.kind in _interruptions.ASK_KINDS]
     if not askers:
         _say(f"  {_interruptions.NOTHING_WILL_ASK}")
@@ -352,7 +341,7 @@ def _show_json(
     wt: dict[str, str] | None,
     notes: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    forecast = _interruptions.forecast(found.project, caller_default=_caller_default())
+    forecast = _interruptions.forecast(found.project, caller_default=_report.caller_default())
     return {
         "pod": found.project,
         "task": {**_list_item(found.project, task), "worktree": wt},
@@ -530,7 +519,7 @@ def cmd_prune(
     if days is not None and not traces:
         ui.error("--days needs --traces", "Add --traces")
         raise typer.Exit(2)
-    project = _pod_name(pod)
+    project = _contract.require_pod(pod)
     if force and not dry_run and not _contract.confirm("Remove dirty worktrees too", yes=yes):
         raise typer.Exit(1)
     _prune_worktrees(project, force, dry_run)
@@ -551,10 +540,6 @@ def _actor() -> str:
         return _getpass.getuser()
     except Exception:
         return "?"
-
-
-def _interactive() -> bool:
-    return sys.stdin.isatty()
 
 
 def _resume_hint(project: str) -> None:
@@ -768,7 +753,7 @@ def _answer_content(
     if content:
         return content
     ids = _option_ids(question)
-    if not _interactive():
+    if not _contract.is_tty():
         if ids:
             ui.error("This question has options", f"Pass --option <id>: {', '.join(ids)}")
         else:

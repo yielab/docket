@@ -183,7 +183,7 @@ def _resolve_token(token: str | None) -> str | None:
         return given
     if _secrets.secret_value(_token_name()) is not None:
         return None
-    if not _contract._is_tty():
+    if not _contract.is_tty():
         ui.error(f"{_token_name()} is not set", "Pass --token or export it")
         raise typer.Exit(1)
     entered = _getpass.getpass(f"Enter value for {_token_name()} (hidden): ").strip()
@@ -493,7 +493,7 @@ def cmd_bind(
         raise typer.Exit(1)
     peer = (chat or "").strip()
     if not peer:
-        if not _contract._is_tty():
+        if not _contract.is_tty():
             ui.error("A chat id is required", "Pass --chat <id>")
             raise typer.Exit(1)
         existing = _fleet.get_binding(member, channel)

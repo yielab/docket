@@ -11,7 +11,7 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _agents, _pod, app
+from docket.cli import _contract, _pod, app
 from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 from docket.kernel.home import Home, current_home, use_home
@@ -24,7 +24,7 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+    monkeypatch.setattr(_contract, "is_tty", lambda: False)
     home = tmp_path / "home"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

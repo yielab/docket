@@ -58,7 +58,7 @@ class TestAuthHeaderFor:
 def test_enable_without_credentials_off_a_tty_writes_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+    monkeypatch.setattr(_contract, "is_tty", lambda: False)
     for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
         monkeypatch.delenv(name, raising=False)
     result = CliRunner().invoke(app, ["setup", "export", "enable", "langfuse"])
@@ -67,7 +67,7 @@ def test_enable_without_credentials_off_a_tty_writes_nothing(
 
 
 def test_widening_privacy_off_a_tty_needs_yes(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+    monkeypatch.setattr(_contract, "is_tty", lambda: False)
     result = CliRunner().invoke(app, ["setup", "export", "privacy", "langfuse", "full"])
     assert result.exit_code == 1
     assert not current_home().exporters_file.exists()

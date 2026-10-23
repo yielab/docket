@@ -202,7 +202,7 @@ class TestReset:
         self, root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(_pitfall(), _entry("generated", "dist/bundle.js", "accepted"))
-        monkeypatch.setattr("docket.cli._contract._is_tty", lambda: True)
+        monkeypatch.setattr("docket.cli._contract.is_tty", lambda: True)
         monkeypatch.setattr("builtins.input", lambda _prompt: "n")
 
         result = _run("pod", "memory", "reset", "--pod", "demo")

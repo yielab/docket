@@ -21,7 +21,7 @@ from rich.markup import escape
 from docket import ui
 from docket.cli import _contract
 from docket.cli import _pod_show as _show
-from docket.cli._target import TargetError, pod_option
+from docket.cli._target import pod_option
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -109,15 +109,6 @@ def build_pod_from_blueprint(
     return _render_created(result.members)
 
 
-def _pod_name(name: str | None) -> str:
-    """The pod a leaf acts on: ``--pod``, ``DOCKET_POD``, then the cwd; exit 1 when none."""
-    try:
-        return _contract.resolve_pod_here(name)
-    except TargetError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
-
-
 def _require_members(project: str) -> list[str]:
     members = _pp.pod_member_ids(project)
     if not members:
@@ -157,7 +148,7 @@ def cmd_show(
     With a member id, that member's whole effective configuration instead.
 
     Example: docket pod show"""
-    project = _pod_name(pod_name)
+    project = _contract.require_pod(pod_name)
     _require_members(project)
     if member is not None:
         _require_member(project, member)
@@ -255,7 +246,7 @@ def cmd_add(
     """Add members of a role to the pod.
 
     Example: docket pod add reviewer"""
-    project = _pod_name(pod_name)
+    project = _contract.require_pod(pod_name)
     if add_members(project, role, count=count, verify_cmd=verify):
         _contract.next_step("docket pod show")
         return
@@ -295,7 +286,7 @@ def cmd_remove(
     """Remove a member and its workspace. The Lead is removed only with the pod.
 
     Example: docket pod remove demo-reviewer"""
-    remove_member(_pod_name(pod_name), member, yes=yes)
+    remove_member(_contract.require_pod(pod_name), member, yes=yes)
     _contract.next_step("docket pod show")
 
 
@@ -335,7 +326,7 @@ def cmd_reset(
     """Reset a member's ledger and rebuild its workspace files from its metadata.
 
     Example: docket pod reset demo-implementer"""
-    reset_member(_pod_name(pod_name), member, yes=yes)
+    reset_member(_contract.require_pod(pod_name), member, yes=yes)
     _contract.next_step("docket pod show")
 
 
@@ -369,7 +360,7 @@ def cmd_delete(
     """Destroy the pod: every member, workspace, session and trace. The audit log stays.
 
     Example: docket pod delete --confirm demo"""
-    project = _pod_name(pod_name)
+    project = _contract.require_pod(pod_name)
     members = _pp.pod_member_ids(project)
     if not members:
         if current_home().workspace_dir(project).is_dir():
@@ -406,7 +397,7 @@ _MEMORY_STATUSES = ("accepted", "pending", "refused")
 
 
 def _memory_pod(pod_name: str | None) -> str:
-    project = _pod_name(pod_name)
+    project = _contract.require_pod(pod_name)
     _require_members(project)
     return project
 
@@ -650,7 +641,7 @@ def cmd_set(
     """Set a pod setting; with --member, set an implementer's verify command.
 
     Example: docket pod set budgetUsd 5"""
-    set_setting(_pod_name(pod_name), key, value, member=member)
+    set_setting(_contract.require_pod(pod_name), key, value, member=member)
     _contract.next_step("docket pod show")
 
 
@@ -663,7 +654,7 @@ def cmd_unset(
     """Clear a pod setting back to its default; with --member, clear a verify command.
 
     Example: docket pod unset verify --member demo-implementer"""
-    unset_setting(_pod_name(pod_name), key, member=member)
+    unset_setting(_contract.require_pod(pod_name), key, member=member)
     _contract.next_step("docket pod show")
 
 

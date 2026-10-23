@@ -10,7 +10,7 @@ import typer
 from docket import ui
 from docket.cli import _contract
 from docket.cli._setup_sandbox import _off_label, print_sandbox_block, sandbox_state
-from docket.cli._target import TargetError, pod_option
+from docket.cli._target import pod_option
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import network_posture as _np
@@ -430,11 +430,7 @@ def cmd_status(
         else:
             _render_all(summaries)
         return
-    try:
-        project = _contract.resolve_pod_here(pod)
-    except TargetError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
+    project = _contract.require_pod(pod)
     if history:
         _history([project], days, json_out)
         return

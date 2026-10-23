@@ -15,7 +15,7 @@ from tests.fakes import FakeDriver
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod, app
+from docket.cli import _contract, _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import interruptions as _interruptions
@@ -816,11 +816,10 @@ class TestTaskAnswer:
     def test_on_a_tty_enter_takes_the_recommended_option_then_the_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.cli import _task as task_module
 
         with _seed_parked_task(tmp_path) as task:
             _give_options("demo", task["id"])
-            monkeypatch.setattr(task_module, "_interactive", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             replies = iter(["", "at the root"])
             monkeypatch.setattr("builtins.input", lambda _prompt="": next(replies))
 

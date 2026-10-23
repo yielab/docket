@@ -136,7 +136,7 @@ class TestScriptedTerminal:
         with _home(tmp_path) as home:
             _reachable(monkeypatch)
             _ready_optionals(monkeypatch)
-            monkeypatch.setattr(_contract, "_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
 
             result = _runner.invoke(app, ["setup"], input="local\n")
 
@@ -153,7 +153,7 @@ class TestScriptedTerminal:
         with _home(tmp_path):
             _reachable(monkeypatch)
             _ready_optionals(monkeypatch)
-            monkeypatch.setattr(_contract, "_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             assert _runner.invoke(app, ["setup"], input="local\n").exit_code == 0
 
             def _no_prompt(*_a: object, **_k: object) -> str:
@@ -174,7 +174,7 @@ class TestScriptedTerminal:
                 "probe_models",
                 lambda *a, **k: _llm.ProbeResult(status=None, transport_error="refused"),
             )
-            monkeypatch.setattr(_contract, "_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
 
             result = _runner.invoke(app, ["setup"], input="local\n")
 

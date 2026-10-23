@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import docket.kernel.templates as _templates
+from docket.core import document_fields as _documents
 from docket.core.llm import ModelLimits
 from docket.edges import store as _store
 from docket.edges.adapters import system as _system
@@ -37,11 +38,8 @@ from docket.kernel.home import current_home
 if TYPE_CHECKING:
     from docket.edges.adapters.llm import ProbeResult
 
-_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-_CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _RANK_RE = re.compile(r"^(economy|standard|premium)$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_RESERVED_HEADERS = frozenset({"authorization", "content-type", "accept"})
 
 
 class ProviderError(DocumentError):
@@ -63,8 +61,7 @@ class AuthSpec(BaseModel):
     @classmethod
     def _valid_names(cls, value: list[str]) -> list[str]:
         for name in value:
-            if not _CREDENTIAL_NAME_RE.match(name):
-                raise InvalidInput(f"'{name}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
+            _documents.check_credential_name(name, "auth.credentials")
         return value
 
     @model_validator(mode="after")
@@ -114,9 +111,7 @@ class Preset(BaseModel):
     @field_validator("name")
     @classmethod
     def _valid_name(cls, value: str) -> str:
-        if not _NAME_RE.match(value):
-            raise InvalidInput(f"'{value}' is not a valid preset name (^[a-z0-9][a-z0-9-]*$)")
-        return value
+        return _documents.check_name(value, "preset")
 
     @field_validator("ranks")
     @classmethod
@@ -150,13 +145,7 @@ class ProviderSpec(BaseModel):
     @field_validator("headers")
     @classmethod
     def _no_reserved_headers(cls, value: dict[str, str]) -> dict[str, str]:
-        for key in value:
-            if key.strip().lower() in _RESERVED_HEADERS:
-                raise InvalidInput(
-                    f"'{key}' is a reserved header name "
-                    "(authorization, content-type, accept are sent by docket itself)"
-                )
-        return value
+        return _documents.reject_reserved_headers(value)
 
     @model_validator(mode="before")
     @classmethod
@@ -170,16 +159,12 @@ class ProviderSpec(BaseModel):
     @field_validator("name")
     @classmethod
     def _valid_name(cls, value: str) -> str:
-        if not _NAME_RE.match(value):
-            raise InvalidInput(f"'{value}' is not a valid provider name (^[a-z0-9][a-z0-9-]*$)")
-        return value
+        return _documents.check_name(value, "provider")
 
     @field_validator("base_url")
     @classmethod
     def _valid_base_url(cls, value: str) -> str:
-        if not (value.startswith("http://") or value.startswith("https://")):
-            raise InvalidInput(f"'{value}' must be an http:// or https:// URL")
-        return value
+        return _documents.check_http_url(value)
 
     @field_validator("prices_as_of")
     @classmethod

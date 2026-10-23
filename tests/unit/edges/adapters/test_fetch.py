@@ -334,7 +334,7 @@ class TestFetchResultScreening:
 
         d = current_home().policies_dir
         d.mkdir(parents=True, exist_ok=True)
-        shipped = _templates.policy_templates_dir() / "prompt-injection.yaml"
+        shipped = _templates.POLICY_TEMPLATES_DIR / "prompt-injection.yaml"
         if action is None:
             shutil.copy(shipped, d / shipped.name)
             return
