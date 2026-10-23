@@ -1,7 +1,7 @@
 """CLI tests: init, status and the removed top-level names.
 
-All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
-config constant patched to a temp directory. Agent registration is seeded via
+All tests invoke the CLI in-process via CliRunner, inside a `use_home` block on a
+temp directory. Agent registration is seeded via
 fleet.json.
 """
 

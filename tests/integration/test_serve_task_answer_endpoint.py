@@ -55,7 +55,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def pod_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

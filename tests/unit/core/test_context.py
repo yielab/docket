@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import context as _ctx
@@ -34,7 +34,7 @@ class TestEstimateTokens:
         )
 
     def test_reuses_the_existing_config_ratio_not_a_second_one(self) -> None:
-        """The whole point of reusing `config.CONTEXT_BYTES_PER_TOKEN` (rather than inventing a second ratio) is that changing the one config value changes both `maintain check`'s and this module's estimate together."""
+        """The whole point of reusing `Home.context_bytes_per_token` (rather than inventing a second ratio) is that changing the one config value changes both `maintain check`'s and this module's estimate together."""
         text = "y" * 100
         before = _ctx.estimate_tokens(text)
         with use_home(dataclasses.replace(current_home(), context_bytes_per_token=10)):
@@ -110,7 +110,7 @@ class TestBudgetForRole:
         home = tmp_path / "docket-home"
         home.mkdir()
 
-        role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
+        role_file = _templates.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
         doc = _config_docs.load_document(role_file)
         with use_home(Home(home)):
             _arch.add_user_archetype(doc.doc, "mypod")

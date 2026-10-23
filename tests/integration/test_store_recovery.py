@@ -19,7 +19,7 @@ from docket.edges import store
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
 
-SUBJECT = "docket.config"
+SUBJECT = "docket.edges.store"
 
 _CORRUPT_PRIMARY = b"{broken"
 

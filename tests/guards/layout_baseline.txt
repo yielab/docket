@@ -8,7 +8,6 @@ docket.cli._help
 docket.cli._mcp
 docket.cli._pod
 docket.cli._runs
-docket.config
 docket.core.archetypes
 docket.core.audit
 docket.core.conversations

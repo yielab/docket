@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import provider as _provider
 from docket.core.llm import ModelLimits
 from docket.edges.adapters.llm import ProbeResult
@@ -50,7 +50,7 @@ class TestNoProviderNameLiteralOutsideTheCatalog:
 
     def test_no_dict_or_tuple_literal_names_a_provider_outside_provider_py(self) -> None:
         offenders: list[str] = []
-        src_root = Path(_cfg.__file__).resolve().parent
+        src_root = Path(_provider.__file__).resolve().parent.parent
         for path in sorted(src_root.rglob("*.py")):
             if path == Path(_provider.__file__).resolve():
                 continue
@@ -87,7 +87,7 @@ class TestBuiltinCatalog:
         assert spec.headers.get("anthropic-version") == "2023-06-01"
 
     def test_every_built_in_document_loads(self) -> None:
-        directory = _cfg.PROVIDER_TEMPLATES_DIR
+        directory = _templates.PROVIDER_TEMPLATES_DIR
         files = sorted(directory.glob("*.yaml"))
         assert files, f"no built-in provider documents found in {directory}"
         for path in files:
@@ -167,7 +167,7 @@ def _probe(*limits: tuple[str, int | None, int | None], status: int = 200) -> Pr
 
 class TestShippedTemplatesDeclareNoLimit:
     def test_no_built_in_row_carries_a_window_or_an_output_cap(self) -> None:
-        for path in sorted(_cfg.PROVIDER_TEMPLATES_DIR.glob("*.yaml")):
+        for path in sorted(_templates.PROVIDER_TEMPLATES_DIR.glob("*.yaml")):
             text = path.read_text(encoding="utf-8")
             assert "contextWindow" not in text
             assert "maxTokens" not in text

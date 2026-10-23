@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.cli import _pod as _cli_pod
 from docket.cli import _pod_config
 from docket.core import config_docs as _config_docs
@@ -41,7 +41,7 @@ tools: [lookup]
 
 
 @pytest.fixture(autouse=True)
-def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _home(tmp_path: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -176,7 +176,7 @@ def test_validate_rejects_a_malformed_server_document(tmp_path: Path) -> None:
 
 
 def test_code_intel_validates_and_plans() -> None:
-    directory = _cfg.recipes_dir() / "code-intel"
+    directory = _templates.recipes_dir() / "code-intel"
 
     assert _config_docs.validate_directory(directory) == []
     plan = _pod_apply.plan_apply("shop", directory)
@@ -215,6 +215,6 @@ def test_the_plan_summary_carries_no_unjailed_note(
 
 
 def test_code_intel_servers_declare_no_isolate_key() -> None:
-    directory = _cfg.recipes_dir() / "code-intel"
+    directory = _templates.recipes_dir() / "code-intel"
     for path in (directory / "mcp-servers").glob("*.yaml"):
         assert "isolate" not in path.read_text(encoding="utf-8")

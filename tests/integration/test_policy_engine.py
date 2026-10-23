@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -137,7 +137,7 @@ def _shipped_template_files() -> list[Path]:
     return sorted(
         p
         for pattern in ("*.json", "*.yaml", "*.yml")
-        for p in _cfg.policy_templates_dir().glob(pattern)
+        for p in _templates.policy_templates_dir().glob(pattern)
     )
 
 
@@ -175,7 +175,10 @@ class TestInstallPolicies:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            _cfg, "templates_dir", lambda: Path("/nonexistent-templates-xyz"), raising=True
+            _templates,
+            "policy_templates_dir",
+            lambda: Path("/nonexistent-templates-xyz/policies"),
+            raising=True,
         )
         result = _policy.install_policies()
         assert result.entries == []

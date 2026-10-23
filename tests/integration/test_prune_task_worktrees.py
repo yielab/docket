@@ -31,7 +31,7 @@ def _branches(repo: Path) -> set[str]:
 
 
 @pytest.fixture()
-def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
+def env(tmp_path: Path) -> Iterator[dict[str, Any]]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     with use_home(Home(home)):

@@ -23,7 +23,7 @@ SUBJECT = "docket.core.escalation"
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def home(tmp_path: Path) -> Iterator[Path]:
     """Temp DOCKET_HOME with all docket-owned store paths repointed."""
     d = tmp_path / ".docket"
     d.mkdir()

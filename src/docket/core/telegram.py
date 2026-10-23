@@ -535,7 +535,7 @@ def discover_wire_groups(
 
 # The gap the built-in defaults (poll=25, request=35) leave above the poll
 # wait -- applied when a configured `TELEGRAM_REQUEST_TIMEOUT_S` violates the
-# invariant `config.py` documents on the pair (request MUST exceed poll).
+# invariant `Home.telegram_request_timeout_s` documents on the pair (request MUST exceed poll).
 # Room for the getUpdates round trip itself (connect + TLS + the response
 # arriving after the server-side wait ends), not just the wait.
 _REQUEST_TIMEOUT_MARGIN_S = 10.0
@@ -543,7 +543,7 @@ _REQUEST_TIMEOUT_MARGIN_S = 10.0
 
 def _resolved_request_timeout() -> tuple[float, str]:
     """This process's own `getUpdates` socket timeout; must exceed
-    ``TELEGRAM_POLL_TIMEOUT_S`` (see config.py) or an empty long-poll misreads
+    ``TELEGRAM_POLL_TIMEOUT_S`` (see kernel/home.py) or an empty long-poll misreads
     as a local timeout.
 
     Clamped up, not refused: a bad pair has an obvious safe fix, and refusing

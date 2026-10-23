@@ -1,7 +1,7 @@
 """Prepare the worktree docket makes for a task: pick an install command, run it once per lockfile.
 
 Resolution is pure. ``prepare_worktree`` keeps what an install left in ``node_modules`` under
-``config.PREPARE_CACHE_DIR`` and links it into the worktree; the command itself is run by the
+``Home.prepare_cache_dir`` and links it into the worktree; the command itself is run by the
 caller, so dispatch decides the jail. See pod-dispatch.spec.md ("Task preparation").
 """
 

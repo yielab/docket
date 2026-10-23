@@ -65,9 +65,7 @@ class TestNormalizeRoleAgainstRegistry:
         with pytest.raises(pod.PodError, match="unknown pod role"):
             pod.normalize_role("wizard")
 
-    def test_user_defined_role_accepted_after_overlay_add(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_user_defined_role_accepted_after_overlay_add(self, tmp_path: Path) -> None:
         with pytest.raises(pod.PodError):
             pod.normalize_role("producer", "shop")
 
@@ -135,7 +133,7 @@ class TestModelClassFallback:
             _, tiers, _ = _mp.load_registry()
             # 'monitor' is a starter-library role with modelClass=cheap and no named
             # ALL_ROLES row — it must resolve through the economy anchor, not
-            # cfg.DEFAULT_MODEL unconditionally.
+            # Home.default_model unconditionally.
             assert _mp.resolve_role_model("monitor", {}) == tiers["economy"]
 
     def test_unlisted_strong_archetype_resolves_via_standard_anchor(self, tmp_path: Path) -> None:

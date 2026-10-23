@@ -9,7 +9,7 @@ This module closes that gap: every time something asks a pod to dispatch (the CL
 the serve webhook, a due schedule, the periodic sweep loop, or an MCP tool
 call — ``start --mcp``'s ``dispatch`` tool) a run record is
 created *before* the work starts and folded to a terminal state when it
-finishes — successfully or not. Records persist to ``cfg.RUNS_FILE`` (a single
+finishes — successfully or not. Records persist to ``Home.runs_file`` (a single
 docket-owned JSON document, one list of records) through
 ``edges/store.py``'s locked read-modify-write, the same pattern used for
 the pod task queue, since multiple threads (webhook handler, schedule thread,
@@ -439,7 +439,7 @@ def prune_terminal(
     project: str | None = None,
 ) -> int:
     """Remove terminal run records (succeeded/failed/cancelled) whose ``finishedAt``
-    is older than the retention window (default ``config.TRACE_RETENTION_S``); with
+    is older than the retention window (default ``Home.trace_retention_s``); with
     *project*, only that pod's. Returns the count removed (or, under *dry_run*, that would be)."""
     # queued/running records are never touched regardless of age -- this must never
     # delete evidence of live work. A record with no parseable finishedAt (malformed)

@@ -324,9 +324,7 @@ class TestPodDeniedTools:
 
             assert set(builtin_registry().names()) - set(narrowed.names()) == {"fetch"}
 
-    def test_denying_a_builtin_still_removes_an_mcp_tool_of_its_kind(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_denying_a_builtin_still_removes_an_mcp_tool_of_its_kind(self, tmp_path: Path) -> None:
         _write_lead_meta("acme", "fetch")
         base = builtin_registry()
         base.register(

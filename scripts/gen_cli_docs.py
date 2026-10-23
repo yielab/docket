@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import re
 import sys
 import textwrap
 from pathlib import Path
@@ -52,12 +53,10 @@ _TOC_SLUG_OVERRIDES: dict[str, str] = {}
 def _slug(heading: str) -> str:
     """Slugify a heading the way Python-Markdown's `toc` extension does, so the
     anchors this script writes match the ones mkdocs renders."""
-    import re as _re
-
     if heading in _TOC_SLUG_OVERRIDES:
         return _TOC_SLUG_OVERRIDES[heading]
-    stripped = _re.sub(r"[^\w\s-]", "", heading.lower())
-    return _re.sub(r"\s+", "-", stripped.strip())
+    stripped = re.sub(r"[^\w\s-]", "", heading.lower())
+    return re.sub(r"\s+", "-", stripped.strip())
 
 
 # --- rendering --------------------------------------------------------------------
@@ -232,15 +231,22 @@ def _os_environ_subscript_name(node: ast.Subscript) -> str | None:
     return sl.value if isinstance(sl, ast.Constant) and isinstance(sl.value, str) else None
 
 
-def _optional_int_env_call_name(node: ast.Call) -> str | None:
-    """`config._optional_int_env(name)` hides its literal from the scans above --
-    the read inside it uses the parameter, not a literal -- so its call sites need
-    their own check."""
-    if isinstance(node.func, ast.Name) and node.func.id == "_optional_int_env" and node.args:
-        arg = node.args[0]
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-            return arg.value
-    return None
+def _home_env_names() -> set[str]:
+    """The variable names `Home.from_environ` reads. They are string arguments to its parsing
+    helpers rather than `os.environ` calls, so the scan below would never see them."""
+    tree = ast.parse((SRC / "docket" / "kernel" / "home.py").read_text(encoding="utf-8"))
+    reader = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "from_environ"
+    )
+    return {
+        node.value
+        for node in ast.walk(reader)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and re.fullmatch(r"[A-Z][A-Z0-9_]*[A-Z0-9]", node.value)
+    }
 
 
 def _scan_python_env_names() -> set[str]:
@@ -249,7 +255,7 @@ def _scan_python_env_names() -> set[str]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                found = _os_environ_call_name(node) or _optional_int_env_call_name(node)
+                found = _os_environ_call_name(node)
                 if found:
                     names.add(found)
             elif isinstance(node, ast.Subscript):
@@ -262,19 +268,17 @@ def _scan_python_env_names() -> set[str]:
 def _scan_bin_docket_env_names() -> set[str]:
     """bin/docket is bash, not Python -- a regex pass over `${VAR:-...}`/`${VAR}`
     reads keeps the launcher's own overrides in the checked set too."""
-    import re as _re
-
     text = _BIN_DOCKET.read_text(encoding="utf-8")
-    return set(_re.findall(r"\$\{([A-Z][A-Z0-9_]*)(?::?-|\})", text))
+    return set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)(?::?-|\})", text))
 
 
 def _dispatch_retry_role_names() -> set[str]:
-    """`DISPATCH_RETRIES_{role.upper()}` in config.py is built from
-    DISPATCH_RETRIES_PER_ROLE's own key set -- read that set back instead of
-    re-typing the role names here, so a new role shows up automatically."""
-    from docket import config as _config
+    """`DISPATCH_RETRIES_{role.upper()}` in `Home.from_environ` is built from the roles
+    `Home.dispatch_retries_per_role` keys on -- read that set back instead of re-typing the role
+    names here, so a new role shows up automatically."""
+    from docket.kernel.home import Home
 
-    return {f"DISPATCH_RETRIES_{role.upper()}" for role in _config.DISPATCH_RETRIES_PER_ROLE}
+    return {f"DISPATCH_RETRIES_{role.upper()}" for role in Home(Path()).dispatch_retries_per_role}
 
 
 def _provider_credential_names() -> set[str]:
@@ -293,6 +297,7 @@ def _true_env_var_names() -> set[str]:
     reads -- what `_ENV_VAR_ROWS` below is checked against."""
     return (
         _scan_python_env_names()
+        | _home_env_names()
         | _scan_bin_docket_env_names()
         | _dispatch_retry_role_names()
         | _provider_credential_names()

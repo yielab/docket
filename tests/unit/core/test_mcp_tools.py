@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import mcp_tools as _mt
 from docket.core.archetypes import registry_for_role
 from docket.core.dispatch import DispatchError
@@ -35,7 +35,7 @@ SUBJECT = "docket.core.mcp_tools"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolate_stores(tmp_path: Path) -> Iterator[None]:
     with use_home(Home(tmp_path / "docket")):
         record_isolation_off(tmp_path / "docket")
         with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
@@ -439,7 +439,7 @@ def _install_result_policy(action: str | None) -> None:
 
     d = current_home().policies_dir
     d.mkdir(parents=True, exist_ok=True)
-    shipped = _cfg.policy_templates_dir() / "prompt-injection.yaml"
+    shipped = _templates.policy_templates_dir() / "prompt-injection.yaml"
     if action is None:
         shutil.copy(shipped, d / shipped.name)
         return
@@ -544,7 +544,7 @@ message: canary
 
 
 @pytest.fixture()
-def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def pod_input_policy(tmp_path: Path) -> Iterator[Path]:
     """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
 
     home = tmp_path / "home"

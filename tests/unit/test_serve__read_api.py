@@ -44,7 +44,7 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def api_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
     ws = home / "workspaces" / "projects" / "apitest"
@@ -198,7 +198,7 @@ _INBOX_TEST_TOKEN = "test-serve-token-inbox-p34-6"
 
 
 @pytest.fixture()
-def inbox_live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def inbox_live_server(tmp_path: Path):  # type: ignore[no-untyped-def]
     import threading
 
     from docket.kernel.threads import ContextHTTPServer
@@ -239,9 +239,7 @@ class TestInboxEndpoint:
         assert status == 401
         assert body["ok"] is False
 
-    def test_authenticated_call_matches_build_inbox(
-        self, inbox_live_server: str, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_authenticated_call_matches_build_inbox(self, inbox_live_server: str) -> None:
         from docket.cli import _pod
 
         _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
@@ -282,9 +280,7 @@ class TestInboxEndpoint:
 class TestStatusJsonPublishesNoPeerIds:
     """The unauthenticated /status.json never carries a channel peer id."""
 
-    def test_unauthenticated_body_omits_peer_id(
-        self, api_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unauthenticated_body_omits_peer_id(self, api_home: Path) -> None:
         import threading
 
         from docket.kernel.threads import ContextHTTPServer

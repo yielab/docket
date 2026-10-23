@@ -490,7 +490,7 @@ def prune_resolved(
     now: float | None = None,
 ) -> int:
     """Delete resolved approval records (granted/denied/expired) whose file mtime is
-    past the retention window (default ``config.TRACE_RETENTION_S``). Returns the
+    past the retention window (default ``Home.trace_retention_s``). Returns the
     count removed (or, under *dry_run*, that would be)."""
     # A state transition is a record's only write after creation, so mtime is a
     # faithful "resolved at" proxy without a schema change. A pending record is never
@@ -664,10 +664,10 @@ def wait_for_approval(
     the task ``waiting_approval`` for a later call to resolve — an in-turn tool call
     (``core/tools.py``'s ``dispatch_tool``) has nowhere else to go while it waits: the model
     is blocked on this exact answer. So this function polls the record every
-    *poll_interval* seconds (default ``config.TOOL_APPROVAL_POLL_INTERVAL_S``; never
+    *poll_interval* seconds (default ``Home.tool_approval_poll_interval_s``; never
     busy-spins) until it resolves or *timeout* seconds elapse (default
-    ``config.TOOL_APPROVAL_TIMEOUT``, deliberately much shorter than the async
-    ``APPROVAL_TIMEOUT`` — see config.py for why). A timeout resolves the record to
+    ``Home.tool_approval_timeout``, deliberately much shorter than the async
+    ``APPROVAL_TIMEOUT`` — see kernel/home.py for why). A timeout resolves the record to
     **denied** via the same ``_resolve_timeout_as_denied`` helper the expiry sweep uses —
     never left dangling in ``pending``.
 

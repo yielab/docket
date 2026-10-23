@@ -33,7 +33,7 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 @pytest.fixture()
-def seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
+def seeded(tmp_path: Path) -> Iterator[dict[str, Any]]:
     """A done task whose worktree holds an uncommitted change."""
     repo = tmp_path / "repo"
     repo.mkdir()

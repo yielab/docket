@@ -1,10 +1,8 @@
 """sandbox gates, pod policies and check, approve, deny commands.
 
 Drives the CLI surfaces (and the core engines behind them) in-process
-against a temp DOCKET_HOME. config.py binds paths at import time, so we repoint
-the live module attributes (the same technique as the doctor and trace/audit
-suites). The `docker` binary is stubbed off PATH so isolation reports "needs
-Docker".
+inside a `use_home` block on a temp directory. The `docker` binary is stubbed off PATH so
+isolation reports "needs Docker".
 
 There is no daemon and no exec-approvals.json file format.
 """
@@ -21,7 +19,7 @@ from typing import Any, ClassVar
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.cli import _pod, _setup_sandbox, app
 from docket.core import approval as _ap
 from docket.core import policy as _policy
@@ -68,7 +66,7 @@ def _seed_policies(oc_dir: Path) -> None:
     """Copy the shipped baseline policy templates into the temp POLICIES_DIR -- JSON or YAML,
     since the baseline templates ship as short-form YAML."""
     for pattern in ("*.json", "*.yaml", "*.yml"):
-        for f in _cfg.policy_templates_dir().glob(pattern):
+        for f in _templates.policy_templates_dir().glob(pattern):
             shutil.copy(f, oc_dir / "policies" / f.name)
 
 
@@ -429,7 +427,7 @@ class TestDeny:
 
 
 class TestSweep:
-    def test_sweep_expires_old_pending(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sweep_expires_old_pending(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
         # Backdate the record well past the timeout.
         path = oc_dir / "approvals" / f"{token}.json"

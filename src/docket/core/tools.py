@@ -81,7 +81,7 @@ class ToolContext:
     allow_commands: tuple[str, ...] = ()
     pregrants: tuple[Pregrant, ...] = ()
     approval_expires_at: str | None = None
-    # Seconds an in-turn approval or consult wait may last; None keeps config.TOOL_APPROVAL_TIMEOUT.
+    # Seconds an in-turn approval or consult wait may last; None keeps Home.tool_approval_timeout.
     approval_timeout: int | None = None
     # The pod's cache dir: a jailed bash gets it as its home and an extra read-write root.
     cache_dir: Path | None = None

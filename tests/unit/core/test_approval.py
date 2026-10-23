@@ -41,7 +41,7 @@ _TEST_TOKEN = "test-serve-token-cd4-abc123"
 
 
 @pytest.fixture()
-def approvals_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def approvals_dir(tmp_path: Path) -> Iterator[Path]:
     d = tmp_path / "approvals"
     d.mkdir()
     with use_home(dataclasses.replace(current_home(), approvals_dir_override=d)):
@@ -659,9 +659,7 @@ class TestPruneResolved:
 class TestApprovalReasonAndActor:
     """Test reason and actor parameters for grant/deny."""
 
-    def test_deny_with_reason_and_actor(
-        self, approvals_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deny_with_reason_and_actor(self, approvals_dir: Path) -> None:
         """A deny with reason and actor writes them to the audit log."""
         token = _approval.approval_create("proj", "implementer", "action")
 

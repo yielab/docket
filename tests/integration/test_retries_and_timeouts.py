@@ -451,9 +451,7 @@ class TestTimeoutResolution:
 
 
 class TestRetryDoesNotTripStaleClaimSweep:
-    def test_retrying_task_survives_a_concurrent_stale_claim_sweep(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_retrying_task_survives_a_concurrent_stale_claim_sweep(self, tmp_path: Path) -> None:
         """Proves `on_retry` refreshes `claimedAt` mid-hop: without it, stacked backoff sleeps
         and agent-turn timeouts could push time since the *original* claim past
         CLAIM_STALE_TIMEOUT even though the dispatcher is alive, letting a concurrent

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import channel as _channel
 from docket.edges import store as _store
 from docket.kernel.home import current_home
@@ -25,7 +25,7 @@ SUBJECT = "docket.core.channel"
 
 class TestBuiltinCatalog:
     def test_every_built_in_document_loads(self) -> None:
-        directory = _cfg.CHANNEL_TEMPLATES_DIR
+        directory = _templates.CHANNEL_TEMPLATES_DIR
         files = sorted(directory.glob("*.yaml"))
         assert len(files) == 7, f"expected 7 built-in channel documents, found {len(files)}"
         for path in files:

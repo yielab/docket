@@ -19,7 +19,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def home(tmp_path: Path) -> Iterator[Path]:
     with use_home(Home(tmp_path / "home")):
         yield tmp_path / "home"
 

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import fetch as _fetch
@@ -29,7 +29,7 @@ SUBJECT = "docket.edges.adapters.fetch"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _hermetic(tmp_path: Path) -> Iterator[None]:
     """Isolate every docket-owned store this module touches and default the
     fetch allowlist closed so each test opts a host in explicitly."""
     with (
@@ -334,7 +334,7 @@ class TestFetchResultScreening:
 
         d = current_home().policies_dir
         d.mkdir(parents=True, exist_ok=True)
-        shipped = _cfg.policy_templates_dir() / "prompt-injection.yaml"
+        shipped = _templates.policy_templates_dir() / "prompt-injection.yaml"
         if action is None:
             shutil.copy(shipped, d / shipped.name)
             return
@@ -436,9 +436,7 @@ class TestFetchResultScreening:
             assert secret not in res.content
             assert "[REDACTED]" in res.content
 
-    def test_a_clean_fetch_result_is_byte_identical_and_unaudited(
-        self, server: str, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_clean_fetch_result_is_byte_identical_and_unaudited(self, server: str) -> None:
         with _allow(server):
             self._install_result_policy("block")
 

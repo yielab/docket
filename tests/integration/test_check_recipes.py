@@ -21,14 +21,14 @@ import pytest
 import yaml
 from tests.integration.test_task_worktrees import _bind_pipeline, _git, _init_repo, _seed_pod
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import dispatch as _dispatch
 from docket.core import security as _sec
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
 
 SUBJECT = "docket.core.dispatch"
 
-_RECIPES = _cfg.recipes_dir()
+_RECIPES = _templates.recipes_dir()
 
 
 def _pipeline_text(recipe: str) -> str:

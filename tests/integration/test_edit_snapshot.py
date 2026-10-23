@@ -1,7 +1,7 @@
 """edit command and the `status --all --json` fleet inventory.
 
-All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
-config constant patched to a temp directory.
+All tests invoke the CLI in-process via CliRunner, inside a `use_home` block on a
+temp directory.
 """
 
 from __future__ import annotations

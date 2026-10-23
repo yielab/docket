@@ -1,7 +1,7 @@
 """setup model — writer commands.
 
-All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
-config constant patched to a temp directory so tests are hermetic and never touch
+All tests invoke the CLI in-process via CliRunner, inside a `use_home` block on a
+temp directory so tests are hermetic and never touch
 the real ~/.docket.
 """
 

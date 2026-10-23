@@ -95,7 +95,7 @@ class TestResolveVariables:
 
 
 @pytest.fixture()
-def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def live_server(tmp_path: Path):
     """Real server on a random port. Yields (base_url, token)."""
     d = tmp_path / "approvals"
     d.mkdir()
@@ -186,9 +186,7 @@ class TestWebhookVariableBinding:
         assert body["ok"] is False
         assert dispatched == []
 
-    def test_malformed_json_body_is_rejected(
-        self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_json_body_is_rejected(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, body = _post_raw(f"{url}/dispatch/myproject", b"{not json", token)
         assert status == 400

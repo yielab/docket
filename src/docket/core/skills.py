@@ -4,7 +4,7 @@ A skill is a directory: ``SKILL.md`` frontmatter names it and describes it in on
 an optional body and optional ``scripts/``/``references/``/``assets/`` are read on demand. Three
 scopes, nearest wins by name (ADR 0013 §3 rule 8): a codebase's own ``.docket/skills/``, this
 pod's own ``config/skills/`` (a recipe's ``skills/`` applied there, exported back), and the
-operator's ``~/.docket/skills/`` (``config.SKILLS_DIR``). ``core/identity.py`` composes the
+operator's ``~/.docket/skills/`` (``Home.skills_dir``). ``core/identity.py`` composes the
 discovered index into the system prompt; the ``skill`` built-in tool
 (``core/tools.py``) reads a named skill's body on demand, through the same chokepoint as every
 other tool. This module never imports ``edges/`` -- discovery and parsing are pure reads over
@@ -108,7 +108,7 @@ def parse_skill_text(path: Path, text: str, *, scope: SkillScope = "") -> SkillM
 
 def discover_skills(project: str, codebase_root: Path | str | None) -> dict[str, SkillMeta]:
     """Every skill visible to *project* at *codebase_root*, nearest scope wins by name:
-    codebase ``.docket/skills/``, this pod's ``config/skills/``, then ``config.SKILLS_DIR``.
+    codebase ``.docket/skills/``, this pod's ``config/skills/``, then ``Home.skills_dir``.
     An invalid or bodiless skill is skipped (audited once as ``skills.invalid``), never raised."""
     found: dict[str, SkillMeta] = {}
     scopes: list[tuple[Path, SkillScope]] = []

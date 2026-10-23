@@ -411,7 +411,7 @@ def _post(
 
 
 @pytest.fixture()
-def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def live_server(tmp_path: Path):  # type: ignore[no-untyped-def]
     with use_home(Home(tmp_path / ".docket")):
         (tmp_path / ".docket").mkdir(exist_ok=True)
         d = tmp_path / "approvals"
@@ -494,9 +494,7 @@ class TestRunsReadEndpoints:
             urllib.request.urlopen(req, timeout=5)
         assert excinfo.value.code == 401
 
-    def test_get_runs_by_id_returns_record(
-        self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_get_runs_by_id_returns_record(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         rec = _runs.create_run("cli", "someproj")
         req = urllib.request.Request(f"{url}/runs/{rec['id']}")

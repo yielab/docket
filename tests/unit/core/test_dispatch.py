@@ -50,7 +50,7 @@ _TEST_TOKEN = "test-serve-token-tasks-post-9f2c"
 
 
 @pytest.fixture()
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def pod_home(tmp_path: Path) -> Iterator[Path]:
     """A hermetic DOCKET_HOME with the directories enqueue_task touches."""
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)

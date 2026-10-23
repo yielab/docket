@@ -778,7 +778,7 @@ class TestPrivateJailTmp:
         assert tmp.stat().st_mode & 0o777 == 0o700
 
     def test_without_a_cache_dir_it_lives_under_docket_home_keyed_by_the_root(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with use_home(Home(tmp_path / "home")):
             a = _sys.jail_tmp_dir((tmp_path / "a",), None)
@@ -788,9 +788,7 @@ class TestPrivateJailTmp:
             assert _sys.jail_tmp_dir((tmp_path / "a",), None) == a
 
     @pytest.mark.parametrize("backend", ["landlock", "seatbelt"])
-    def test_launch_exports_and_grants_the_private_dir(
-        self, backend: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_launch_exports_and_grants_the_private_dir(self, backend: str, tmp_path: Path) -> None:
         root = tmp_path / "w"
         root.mkdir()
         launch = _sys.jail_launch((root,), "true", backend)  # type: ignore[arg-type]

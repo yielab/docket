@@ -2216,8 +2216,8 @@ def _run_operator_loop_scenario(
                 "PYTHONUNBUFFERED": "1",
                 # Fast, real approvals: TOOL_APPROVAL_TIMEOUT (in-turn bash ask) and
                 # APPROVAL_TIMEOUT (the sweep's own pending-approval expiry) are both
-                # config.py module-level `os.environ.get` reads, so a fresh subprocess
-                # picks these up at import time -- see config.py.
+                # read from the environment by `Home.from_environ`, so a fresh subprocess
+                # picks these up when it builds its home -- see kernel/home.py.
                 "TOOL_APPROVAL_TIMEOUT": "3",
                 "APPROVAL_TIMEOUT": "10",
                 "DISPATCH_RETRY_BACKOFF_S": "0",

@@ -350,7 +350,7 @@ def prune_closed_durable(
     path: Path | None = None,
 ) -> int:
     """Remove ``done`` conversations past the retention window (default
-    ``config.TRACE_RETENTION_S``). Returns the count removed (or, under *dry_run*,
+    ``Home.trace_retention_s``). Returns the count removed (or, under *dry_run*,
     that would be)."""
     window = current_home().trace_retention_s if retention_s is None else retention_s
     cutoff_epoch = (now if now is not None else _clock.epoch()) - window

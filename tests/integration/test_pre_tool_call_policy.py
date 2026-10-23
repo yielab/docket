@@ -43,7 +43,7 @@ SUBJECT = "docket.core.tools"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _hermetic(tmp_path: Path) -> Iterator[None]:
     """Isolate every docket-owned store, and default the in-turn approval timeout to 0 so an
     unresolved `ask` fails closed immediately (no real sleep) unless a test overrides it to
     exercise the waiting/granting path."""

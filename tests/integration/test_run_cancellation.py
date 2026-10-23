@@ -32,7 +32,7 @@ from docket.edges.adapters import system as _sys
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
 
-SUBJECT = "docket.config"
+SUBJECT = "docket.core.runs"
 
 # ── edges.adapters.system.kill_process_group: raw OS mechanics ───────────────
 
@@ -75,7 +75,7 @@ class TestKillProcessGroup:
 
 
 @pytest.fixture(autouse=True)
-def _hermetic_runs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+def _hermetic_runs(tmp_path: Path) -> Iterator[None]:
     with use_home(
         dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
     ):

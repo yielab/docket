@@ -480,7 +480,7 @@ def render_status() -> str:
 def _check_schedules(now_ts: float) -> None:
     """Trigger dispatch for pods whose schedule spec is due (also recognizes a standard 5-field
     cron expression, not just ``@every``/``HH:MM`` -- see ``core/schedule.py``). The last-run
-    timestamp is read from, and written back into, ``cfg.SCHEDULE_FILE`` itself rather than an
+    timestamp is read from, and written back into, ``Home.schedule_file`` itself rather than an
     in-memory dict, so a restart does not re-fire every schedule on its first sweep. Each due
     project's run record is created before its daemon-thread dispatch starts, so the sweep loop
     is never blocked and no outcome is silently discarded."""

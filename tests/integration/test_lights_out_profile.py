@@ -200,9 +200,7 @@ class TestAttendedChangesNothing:
         assert res.status == "done"
         assert driver.calls
 
-    def test_a_pod_profile_alone_opts_that_pod_in(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_pod_profile_alone_opts_that_pod_in(self, home: Path) -> None:
         record_isolation_off(home)
         _fleet.meta_set("demo-lead", "profile", "lights-out")
 
