@@ -835,7 +835,7 @@ Each JSONL line is a JSON object with these fields:
   `set_content`, `is_widening`, `export_channel`, `unreached_warning`
 - `src/docket/operator/adapters/__init__.py`: `sink_for`
 - `src/docket/operator/adapters/webhook.py`: `deliver`, `DeliveryResult`
-- `src/docket/edges/adapters/channels/{console,command,ntfy,desktop,email,telegram}.py`: each
+- `src/docket/operator/adapters/{console,command,ntfy,desktop,email,telegram}.py`: each
   dialect's `deliver`
 - `src/docket/templates/channels/01-console.yaml` … `07-telegram.yaml`: the seven built-in
   channel documents
@@ -849,9 +849,14 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/agent/tools/registry.py`: `ToolContext` (`approval_mode`, `max_consultations`,
   `consult_park`, `pregrants`), the park path (`_park_call`, `context.taskId`), the pre-grant
   matcher, the `approve_task` in-turn pre-grant
-- `src/docket/core/dispatch.py`: `pod_approval_mode`, `effective_pipeline`, `read_tasks`,
-  `resolve_waiting_approval`, `TASK_GRANT_CAP`, task-grant minting in `_compose_hop`,
-  `_run_input_step` (`input_requested`), consult park conversion, `_park_if_check_changed`
+- `src/docket/teams/settings.py`: `pod_approval_mode`
+- `src/docket/pipeline/application/steps.py`: `effective_pipeline`, `_run_input_step`
+  (`input_requested`)
+- `src/docket/tasks/application/queue.py`: `read_tasks`
+- `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`, `TASK_GRANT_CAP`
+- `src/docket/hops/application/compose.py`: task-grant minting in `_compose_hop`
+- `src/docket/hops/application/record.py`: consult park conversion
+- `src/docket/hops/gates/pre_hop.py`: `_park_if_check_changed`
 - `src/docket/governance/approval.py`: `create_pregrant`, `consume_pregrant`, `approval_set_option`,
   `approval_sweep_expired`, the `deny_reason` correction
 - `src/docket/governance/profile.py`: `project_violations`, `gather_facts`, `lights_out_violations`,
@@ -870,7 +875,11 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/interfaces/cli/commands/run.py`: the post-run flush and the TTY approval default
 - `src/docket/interfaces/cli/commands/status.py`: the `Profile` row
 - `src/docket/interfaces/cli/commands/mcp.py`: MCP `inbox`, `task_answer`, `task_pregrant`
-- `src/docket/serve.py`: `GET /inbox`, `GET /metrics`, `POST /tasks/<id>/answer`,
-  `POST /tasks/<id>/pregrants`, `POST /tasks/<project>` `brief`, the periodic sweep
+- `src/docket/interfaces/http/routes/inbox.py`: `GET /inbox`
+- `src/docket/interfaces/http/routes/metrics.py`: `GET /metrics`
+- `src/docket/interfaces/http/routes/task_control.py`: `POST /tasks/<id>/answer`,
+  `POST /tasks/<id>/pregrants`
+- `src/docket/interfaces/http/routes/task_create.py`: `POST /tasks/<project>` `brief`
+- `src/docket/interfaces/http/server.py`: the periodic sweep
   (`sweep_expired_questions`, `flush`), the startup warning
 - `scripts/gen_operator_schemas.py`, `scripts/gen_config_schemas.py`: the generated schemas

@@ -2218,28 +2218,43 @@ queue.)
 
 ## Implementation
 
-- `src/docket/core/dispatch.py`: the state machine. Public: `enqueue_task_once`,
-  `read_tasks`, `pod_task_list_path`, `validate_task_options`, `DispatchError`,
-  `TaskRestrictionError`, `TaskRunRefusal`, `TaskNotFoundError`, `HopResult`, `TaskResult`,
-  `step_session_key`, `PIPELINE_ORDER`, `DEFAULT_TIMEOUT`, `RESUMABLE_FAILURE_KINDS`,
-  `TASK_GRANT_CAP`, `TASK_PIPELINE_NAME`, `pod_pipeline`, `pod_full_roster`, `effective_pipeline`,
-  `effective_pipeline_source`, `pod_budget`, `pod_max_rework_cycles`, `pod_turn_timeout`,
-  `pod_verify_timeout`, `pod_approval_mode`, `pod_approval_mode_is_set`, `pod_recorded_cost`,
-  `pod_gating_cost`, `unpriced_budget_models`, `hop_env`, `dispatch_task`, `dispatch_pod`,
-  `reclaim_stale_running`, `retry_task`, `cancel_task`, `cancel_parked_task`, `task_diff`,
-  `unblock_pod`, `resolve_waiting_approval`, `resolve_waiting_approval_detail`,
-  `dispatchable_pods`, `pod_roster`. Private, for orientation: the claim (`_claim_next_task`,
-  `_eligible_for_claim`, `_ensure_task_worktree`, `_refuse_claimed_task`, `_prepare_claimed_task`),
-  the step loop (`_run_pipeline`, `_execute_unit`, `_run_group_node`, `_run_command_step`,
-  `_run_input_step`, `_step_skipped`, `_route_outcome`), gates (`_gate_budget`,
-  `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`,
-  `_evaluate_mechanical_gate`, `_evaluate_external_gate`, `_evaluate_verdict_gate`,
-  `_verdict_event_names`, `_check_brief_resources`, `_park_if_check_changed`), the hop
-  (`_compose_hop`, `_hop_message`, `_run_hop_turn`, `_persist_hop_and_trace`, `_hop_diff_probe`,
-  `_pin_hop_tree`, `_gate_failed_section`, `_task_command_env`, `_run_in_envelope`), persistence
-  (`_persist_hop`, `_touch_claim`, `_finalize_task`, `_apply_result`, `_hop_record`,
-  `_hop_from_record`, `_normalize_task`, `_sweep_stale_claims`), resume
-  (`_replay_pipeline_position`, `_group_complete`)
+The dispatch state machine, by module (public names first, then private ones for orientation):
+
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`,
+  `validate_task_options`, `RESUMABLE_FAILURE_KINDS`, `pod_full_roster`, `dispatchable_pods`,
+  `pod_roster`; the claim (`_claim_next_task`, `_eligible_for_claim`, `_refuse_claimed_task`,
+  `_prepare_claimed_task`), `_touch_claim`
+- `src/docket/tasks/application/sweep.py`: `dispatch_pod`
+- `src/docket/tasks/application/lifecycle.py`: `reclaim_stale_running`, `retry_task`, `cancel_task`,
+  `cancel_parked_task`, `task_diff`, `unblock_pod`; `_finalize_task`, `_apply_result`,
+  `_sweep_stale_claims`
+- `src/docket/tasks/application/actions.py`: `TASK_GRANT_CAP`, `resolve_waiting_approval`,
+  `resolve_waiting_approval_detail`
+- `src/docket/tasks/domain/task.py`: `DispatchError`, `TaskRestrictionError`, `TaskRunRefusal`,
+  `TaskNotFoundError`, `HopResult`, `TaskResult`; `_normalize_task`
+- `src/docket/teams/settings.py`: `pod_task_list_path`, `DEFAULT_TIMEOUT`, `pod_budget`,
+  `pod_max_rework_cycles`, `pod_turn_timeout`, `pod_verify_timeout`, `pod_approval_mode`,
+  `pod_approval_mode_is_set`, `pod_recorded_cost`
+- `src/docket/pipeline/application/steps.py`: `PIPELINE_ORDER`, `TASK_PIPELINE_NAME`,
+  `pod_pipeline`, `effective_pipeline`, `effective_pipeline_source`, `unpriced_budget_models`;
+  the step loop's `_run_command_step`, `_run_input_step`
+- `src/docket/pipeline/application/executor.py`: `dispatch_task`; the step loop's `_run_pipeline`,
+  `_run_group_node`, `_step_skipped`, `_route_outcome`
+- `src/docket/hops/application/runner.py`: `step_session_key`; the hop's `_run_hop_turn`,
+  and the step loop's `_execute_unit`
+- `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
+  `_gate_failed_section`
+- `src/docket/hops/application/record.py`: `hop_env`; `_persist_hop_and_trace`, `_persist_hop`,
+  `_hop_record`, `_hop_from_record`, `_verdict_event_names`, resume (`_replay_pipeline_position`,
+  `_group_complete`)
+- `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`; gates (`_gate_budget`,
+  `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`, `_check_brief_resources`,
+  `_park_if_check_changed`)
+- `src/docket/hops/gates/post_hop.py`: gates (`_evaluate_mechanical_gate`,
+  `_evaluate_external_gate`, `_evaluate_verdict_gate`); the hop's `_task_command_env`,
+  `_run_in_envelope`
+- `src/docket/hops/workspace/worktree.py`: the claim's `_ensure_task_worktree`; the hop's
+  `_hop_diff_probe`, `_pin_hop_tree`
 - `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
   `normalize_values`, `render_plan`, `run_group`, `ExecutionPlan`, `PlannedUnit`, `PlannedGroup`,
   `DEFAULT_MAX_PARALLEL_WORKERS`, `trace_write_lock`
@@ -2286,8 +2301,9 @@ queue.)
   `teardown_member`
 - `src/docket/agent/driver.py`: `DocketDriver`, `default_driver`,
   `resolve_command_jail`, `PIPELINE_WORKTREE_ENV` and the other internal coordinates
-- `src/docket/edges/adapters/system.py`: `run_command`, `process_alive`,
-  `kill_process_group`, `task_environment`, `cache_environment`, `trust_worktree`,
+- `src/docket/sandbox/launch.py`: `run_command`, `task_environment`, `cache_environment`
+- `src/docket/platform/process.py`: `process_alive`, `kill_process_group`
+- `src/docket/platform/git.py`: `trust_worktree`,
   `git_worktree_add`, `git_commit_all`, `git_snapshot_commit`, `git_changed_files`,
   `git_current_branch`, `git_merge_base`, `git_diff_stat`, `git_diff_names`, `git_ls_files`
 - `src/docket/platform/store.py`: `read_modify_write`
@@ -2296,9 +2312,12 @@ queue.)
   `dispatch_turn_timeout_s`, `dispatch_verify_timeout_s`, `dispatch_sweep_workers`,
   `handoff_diff_max_chars`, `repo_map_max_chars`, `context_bytes_per_token`,
   `verify_evidence_tail_chars`, `prepare_timeout_s`, `trace_retention_s`, `pod_cache_dir`
-- `src/docket/serve.py`: the periodic sweep (`_run_sweeps`, `_sweep_one_pod`, `_check_schedules`,
-  `_abandon_sweeps`), `SWEEP_ABANDON_WAIT_S`, `POST /dispatch/<project>`, `POST /approvals/<token>`,
-  `GET /tasks/<pod>/<id>/evidence`
+- `src/docket/interfaces/http/server.py`: the periodic sweep (`_run_sweeps`, `_sweep_one_pod`,
+  `_abandon_sweeps`)
+- `src/docket/interfaces/http/sweeps.py`: `_check_schedules`, `SWEEP_ABANDON_WAIT_S`
+- `src/docket/interfaces/http/routes/dispatch.py`: `POST /dispatch/<project>`
+- `src/docket/interfaces/http/routes/approvals.py`: `POST /approvals/<token>`
+- `src/docket/interfaces/http/routes/tasks.py`: `GET /tasks/<pod>/<id>/evidence`
 - `src/docket/interfaces/cli/commands/run.py`: `docket run`
 - `src/docket/interfaces/cli/commands/task.py`: `docket task add|retry|cancel|approve|deny|prune|show`
 - `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset` (pipeline and schedule paths, budget re-queue)

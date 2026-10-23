@@ -67,7 +67,7 @@ tests/
 ├── conftest.py             autouse home fixture, shared helpers, duration guard
 ├── fakes.py                FakeDriver: the shared RuntimeDriver double
 ├── fixtures/               recorded data and adapter-scenario fixtures shared by several lanes
-├── unit/                   mirrors src/docket/: unit/core/test_dispatch.py ↔ src/docket/core/dispatch.py
+├── unit/                   mirrors src/docket/: unit/tasks/application/test_queue.py ↔ src/docket/tasks/application/queue.py
 ├── integration/            several modules, or a real process where the process boundary is the subject
 ├── guards/                 AST and layout invariants, with shrink-only committed baselines
 ├── golden/
@@ -103,7 +103,7 @@ Requirements:
    `SUBJECT` verbatim. Every `src/` module over 150 lines has such a file unless it is listed in a
    committed baseline that may only shrink. Every `integration/**/test_*.py` also declares
    `SUBJECT`, naming the most specific importable `docket` module or package the file exercises; a
-   cross-module or process-boundary file may name a package (`docket.core`, `docket.interfaces.cli.app`, or the
+   cross-module or process-boundary file may name a package (`docket.tasks`, `docket.interfaces.cli.app`, or the
    top-level `docket` package for a whole-envelope test). Unlike the unit rule, a mismatch with
    the file's own name is not an error there: the guard requires only importability, and reports
    every offender in one assertion. **Convention** (no guard): a file over 800 lines splits as
@@ -539,7 +539,8 @@ Where the names used above live today.
   every test home go through.
 - `src/docket/agent/llm.py`: `ChatBackend`; `src/docket/agent/ports.py`: `RuntimeDriver`;
   `src/docket/agent/tools/registry.py`: `dispatch_tool`.
-- `src/docket/edges/adapters/system.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.
+- `src/docket/sandbox/launch.py`, `src/docket/sandbox/landlock.py`,
+  `src/docket/sandbox/seatbelt.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.
 - `tests/conftest.py`: the autouse home fixture,
   `register_local_provider`, `record_isolation_off`, `record_isolation_on`, the lane duration guard.
 - `tests/fakes.py`: `FakeDriver`; `tests/integration/llm_stub.py`: `llm_server`.

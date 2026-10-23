@@ -304,7 +304,7 @@ safe characters.
 ### Round trip
 
 ```python
-from docket.core import session as sess
+from docket.agent import session as sess
 from docket.agent.llm import ToolCall, assistant, tool_result, user
 
 call = ToolCall(id="call_1", name="read", arguments='{"path": "notes.md"}')

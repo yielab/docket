@@ -385,11 +385,15 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 
 ## Implementation
 
-- `src/docket/serve.py`: the handler for every route above, `render_health`,
-  `SERVE_API_VERSION`, the 1 MiB body cap, the `tokenBudget` computation on read.
-- `src/docket/core/dispatch.py`: `enqueue_task_once`, `read_tasks`, `cancel_task`, `retry_task`,
-  `task_diff`, `dispatchable_pods`, the claim-time refusals (`base_ref`, `pipeline`, `prepare`),
-  the task token budget.
+- `src/docket/interfaces/http/routes/`: the handler for every route above (`table.py` is the
+  route table, one module per resource).
+- `src/docket/interfaces/http/server.py`: `render_health`.
+- `src/docket/interfaces/http/routes/health.py`: `SERVE_API_VERSION`, the `tokenBudget`
+  computation on read.
+- `src/docket/interfaces/http/exchange.py`: the 1 MiB body cap.
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`, `dispatchable_pods`,
+  the claim-time refusals (`base_ref`, `pipeline`, `prepare`).
+- `src/docket/tasks/application/lifecycle.py`: `cancel_task`, `retry_task`, `task_diff`.
 - `src/docket/tasks/domain/options.py`: addressable-task and `restrictions` validation,
   `TASK_STATUSES`.
 - `src/docket/teams/report.py`: the `GET /pods` row (`pod_summary`) and `GET /pods/<p>`
@@ -399,7 +403,7 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 - `src/docket/teams/pod_provisioning.py`: `provision_pod`.
 - `src/docket/tasks/application/corrections.py`: `read` and the cursor helpers.
 - `src/docket/observability/trace.py`: `hop_started`, `hop_finished` in `EVENT_TYPES`.
-- `src/docket/edges/adapters/system.py`: `git_diff_range`, `git_untracked`, `DIFF_MAX_CHARS`.
+- `src/docket/platform/git.py`: `git_diff_range`, `git_untracked`, `DIFF_MAX_CHARS`.
 - `tests/integration/test_serve_reattach.py`, `test_serve_tasks_endpoint.py`,
   `test_serve_task_lifecycle.py`, `test_serve_pods_endpoint.py`, `test_serve_pods_config.py`,
   `test_serve_pods_corrections.py`, `test_task_check_changed.py`; `tests/integration/llm_stub.py`

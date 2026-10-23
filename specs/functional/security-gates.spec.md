@@ -1538,23 +1538,31 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/governance/plugin_api.py`: the `docket.governance.plugin_api` API (`PLUGIN_API_VERSION`, `predicate`,
   `ToolCall`, `PolicyContext`, `REGISTRY`)
 - `src/docket/governance/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`
-- `src/docket/core/dispatch.py`: `enqueue_task_once` (the `pre_input` gate), `dispatch_task` (the
-  `pre_output` scan, the profile check), `pod_approval_mode`, hop composition
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once` (the `pre_input` gate)
+- `src/docket/pipeline/application/executor.py`: `dispatch_task` (the `pre_output` scan)
+- `src/docket/hops/gates/pre_hop.py`: the profile check
+- `src/docket/teams/settings.py`: `pod_approval_mode`
+- `src/docket/hops/application/compose.py`: hop composition
   (`DOCKET_APPROVAL_MODE`, `DOCKET_APPROVAL_EXPIRES_AT`, the task restriction keys, the hop
-  network), the verify, `run:` and prepare launches, `resolve_waiting_approval`
+  network)
+- `src/docket/hops/gates/post_hop.py`: the verify launch
+- `src/docket/pipeline/application/steps.py`: the `run:` launch
+- `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`
 - `src/docket/agent/ports.py`: `DOCKET_APPROVAL_MODE`, `DOCKET_TASK_DENIED_TOOLS`,
   `DOCKET_TASK_NETWORK`, `DOCKET_TASK_POLICIES`
 - `src/docket/agent/driver.py`: `DocketDriver.run_turn` (isolation and network
   resolution, `isolation.refused`, `network.refused`, approval mode, `allow_commands`, project
   resolution, task policies, `make_non_dumpable`), `resolve_command_jail`
-- `src/docket/edges/adapters/system.py`: `sandbox_availability`, `SandboxAvailability`,
-  `landlock_available`, `seatbelt_available`, `docker_daemon_reachable`, `jail_launch`,
-  `JailPolicy`, `landlock_argv`, `seatbelt_argv`, `seatbelt_profile`, `docker_run_argv`,
-  `docker_kill`, `docker_image_has_git`, `git_identity_env`, `git_dirs`, `trust_worktree`,
-  `task_environment`, `credential_names`, `run_command`, `make_non_dumpable`,
-  `git_current_branch`
+- `src/docket/sandbox/launch.py`: `sandbox_availability`, `SandboxAvailability`, `jail_launch`,
+  `JailPolicy`, `task_environment`, `credential_names`, `run_command`
+- `src/docket/sandbox/seatbelt.py`: `seatbelt_available`, `seatbelt_argv`, `seatbelt_profile`
+- `src/docket/sandbox/docker.py`: `docker_daemon_reachable`, `docker_run_argv`, `docker_kill`,
+  `docker_image_has_git`
+- `src/docket/platform/git.py`: `git_identity_env`, `trust_worktree`, `git_current_branch`
+- `src/docket/platform/process.py`: `make_non_dumpable`
 - `src/docket/sandbox/landlock.py`: `abi_version`, `plan_ruleset`, `socket_filter`,
-  `DEFAULT_RO`, `DEFAULT_RO_FILES`, `DEFAULT_RW_FILES`
+  `DEFAULT_RO`, `DEFAULT_RO_FILES`, `DEFAULT_RW_FILES`, `landlock_available`, `landlock_argv`,
+  `git_dirs`
 - `src/docket/sandbox/jail.py`: the `python -m docket.sandbox.jail` entry (`--rw`, `--ro`, `--refuse`, `--net`,
   exit 125)
 - `src/docket/agent/tools/builtins/toolbox.py`: `run_bash`, `resolve_within`, `PathEscapeError`,
@@ -1577,8 +1585,11 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/teams/roles.py`: `registry_for_role`
 - `src/docket/agent/loop.py`: the `approval_parked` stop, `approval_parked_error`
 - `src/docket/interfaces/telegram/bot.py`: the `/approve` and `/deny` handlers
-- `src/docket/serve.py`: `GET /approvals`, `POST /approvals/<token>` and its channel set,
-  `POST /tasks` (`trusted`), the expiry sweep, `/metrics` (`docket_policy_hits_total`)
+- `src/docket/interfaces/http/routes/approvals.py`: `GET /approvals`, `POST /approvals/<token>`
+  and its channel set
+- `src/docket/interfaces/http/routes/task_create.py`: `POST /tasks` (`trusted`)
+- `src/docket/interfaces/http/server.py`: the expiry sweep
+- `src/docket/interfaces/http/routes/metrics.py`: `/metrics` (`docket_policy_hits_total`)
 - `src/docket/interfaces/cli/commands/setup_sandbox.py`: `docket setup sandbox` and its verbs, `docket setup profile`,
   the `gates.*` audit entries
 - `src/docket/interfaces/cli/commands/setup_check.py`: `docket setup`'s security report and `securityGates`

@@ -562,8 +562,8 @@ Where the names above live today (the only place paths appear):
 - `src/docket/agent/llm.py`: `Endpoint`
 - `src/docket/teams/fleet.py`: `set_model_both`
 - `src/docket/teams/report.py`: the `docket pod show <member> --json` report
-- `src/docket/core/dispatch.py`, `src/docket/teams/config_docs.py`: step-model resolution at a hop
-  and in `docket pod validate`
+- `src/docket/hops/application/runner.py`, `src/docket/hops/gates/pre_hop.py`,
+  `src/docket/teams/config_docs.py`: step-model resolution at a hop and in `docket pod validate`
 - `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`, `endpoint_from_spec`, `client_for`,
   `build_payload`, `request_part_bytes`, `probe_models`, `ProbeResult`, the chat client's header
   and response handling
@@ -571,7 +571,7 @@ Where the names above live today (the only place paths appear):
 - `src/docket/interfaces/cli/commands/setup.py`, `src/docket/interfaces/cli/commands/setup_check.py`: the first-run report and the
   registry and provider-catalog checks
 - `src/docket/interfaces/cli/commands/pod_show.py`: the `docket pod show` render
-- `src/docket/serve.py`: the sweep that calls `refresh_observed_models_due`
+- `src/docket/interfaces/http/server.py`: the sweep that calls `refresh_observed_models_due`
 - `src/docket/kernel/home.py`: the `Home` members `default_model`, `model_registry_file`,
   `providers_file`, `provider_models_file`
 - `src/docket/kernel/templates.py`: `PROVIDER_TEMPLATES_DIR`

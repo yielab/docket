@@ -357,12 +357,13 @@ Where the names above live today:
   requirements are `operator-loop.spec.md`'s)
 - `src/docket/interfaces/cli/commands/setup_notify.py`: `docket setup notify` (`enable_telegram`, `bind`, `unbind`,
   `show`)
-- `src/docket/interfaces/cli/commands/service.py`, `src/docket/serve.py`: `docket start --telegram` and its poll loop
+- `src/docket/interfaces/cli/commands/service.py`, `src/docket/interfaces/telegram/poll.py`: `docket start --telegram` and its poll loop
   with the idle and error back-offs
 - `src/docket/kernel/home.py`: the `Home` members `telegram_bot_token_key`, `telegram_offset_file`,
   `telegram_poll_timeout_s`, `telegram_request_timeout_s`
 - `src/docket/teams/fleet.py`: `find_binding`, `upsert_binding`, `remove_binding`
-- `src/docket/governance/approval.py`, `src/docket/core/dispatch.py`, `src/docket/tasks/application/answers.py`,
+- `src/docket/governance/approval.py`, `src/docket/tasks/application/actions.py`,
+  `src/docket/tasks/application/queue.py`, `src/docket/tasks/application/answers.py`,
   `src/docket/operator/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`
   and `enqueue_task_once`, `answer_task`, `build_inbox`
 - `src/docket/templates/channels/07-telegram.yaml`: the built-in `telegram` channel document

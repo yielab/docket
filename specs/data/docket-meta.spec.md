@@ -296,6 +296,8 @@ stand as written; these change when the cards land.
 - `src/docket/interfaces/cli/commands/agents.py`: `docket init`, `docket init --from`
 - `src/docket/interfaces/cli/commands/pod.py`: `docket pod set` / `unset` / `add`, `verifyCmd` setters
 - `src/docket/interfaces/cli/commands/run.py`: `docket run --resume` (clears the pause)
-- `src/docket/core/dispatch.py`: pod-settings readers, the budget gate, `hop_env` (port and scratch injection)
+- `src/docket/teams/settings.py`: pod-settings readers
+- `src/docket/hops/gates/pre_hop.py`: the budget gate
+- `src/docket/hops/application/record.py`: `hop_env` (port and scratch injection)
 - `src/docket/models/selection.py`: model re-resolution (`docket setup model`)
 - `src/docket/platform/store.py`: atomic JSON read and write

@@ -405,13 +405,16 @@ concern, not docket's — see Scope above).
 - `src/docket/interfaces/cli/commands/mcp.py`: the thirteen tool functions (`tool_status` ... `tool_task_pregrant`),
   `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
 - `src/docket/interfaces/cli/commands/service.py`: the `docket start` command and its `--mcp` flag handling
-- `src/docket/core/dispatch.py`: `dispatch_pod`, `enqueue_task_once`, `retry_task`, `read_tasks`,
-  `pod_roster`, `resolve_waiting_approval`, `resolve_waiting_approval_detail`
+- `src/docket/tasks/application/sweep.py`: `dispatch_pod`
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`, `pod_roster`
+- `src/docket/tasks/application/lifecycle.py`: `retry_task`
+- `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`,
+  `resolve_waiting_approval_detail`
 - `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `approval_set_option`,
   `list_pending`
 - `src/docket/tasks/application/answers.py`: `answer_task`
 - `src/docket/tasks/application/interruptions.py`: `record_pregrant`
 - `src/docket/operator/inbox.py`, `src/docket/operator/contract.py`: `build_inbox`, `InboxView`
 - `src/docket/tasks/application/runs.py`: `create_run`, `execute`, `get_run`, `list_runs`, `RunSource`
-- `src/docket/serve.py`: `build_status`, `SERVE_API_VERSION`
+- `src/docket/interfaces/http/routes/health.py`: `build_status`, `SERVE_API_VERSION`
 - `pyproject.toml`: the `mcp` extra

@@ -631,16 +631,17 @@ Where the names used above live today.
   `interpolate_instructions`
 - `src/docket/pipeline/domain/plan.py`: `resolve_gate`, `resolve_plan`, `render_plan`, `parse_verdict`
   (the verdict-line rule of Gates Requirement 3), `run_group`; it holds no step loop
-- `src/docket/core/dispatch.py`: `PIPELINE_ORDER`, `effective_pipeline`, `dispatch_pod` (the
-  unresolved-variable refusal), `_run_pipeline` (the step loop), `_run_command_step`
-  (`_command_outcome_label`), `_route_outcome`
+- `src/docket/pipeline/application/steps.py`: `PIPELINE_ORDER`, `effective_pipeline`,
+  `_run_command_step` (`_command_outcome_label`)
+- `src/docket/tasks/application/sweep.py`: `dispatch_pod` (the unresolved-variable refusal)
+- `src/docket/pipeline/application/executor.py`: `_run_pipeline` (the step loop), `_route_outcome`
 - `src/docket/teams/config_docs.py`: `validate_path`, `load_document` (`docket pod validate`, and the
   provider-existence check of a step `model`)
 - `src/docket/teams/roles.py`: the `gateContract` fallback used by the Zero migration invariant
 - `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod plan`; `src/docket/interfaces/cli/commands/pod.py`:
   `docket pod set pipeline`; `src/docket/interfaces/cli/commands/run.py`: `docket run --pipeline`/`--var`
-- `src/docket/serve.py`: the dispatch webhook's variable resolution
-- `src/docket/edges/adapters/system.py`: `credential_names` (the credential strip used by `env`)
+- `src/docket/interfaces/http/routes/dispatch.py`: the dispatch webhook's variable resolution
+- `src/docket/sandbox/launch.py`: `credential_names` (the credential strip used by `env`)
 - `tests/unit/pipeline/domain/test_spec__spec.py` (`TestZeroMigration` and the format),
   `tests/unit/pipeline/domain/test_spec__external_gate.py`, `tests/unit/pipeline/domain/test_spec__step_env.py`,
   `tests/unit/pipeline/domain/test_spec__webhook_variables.py`, `tests/integration/test_archetypes.py`

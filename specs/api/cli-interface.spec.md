@@ -1080,8 +1080,10 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
 - `src/docket/tasks/application/answers.py`: `answer_task`
 - `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `ApprovalNoop`
-- `src/docket/core/dispatch.py`: task enqueue, `task_diff`, retry, cancel of a parked task,
-  stale-claim settling, `resolve_waiting_approval`
+- `src/docket/tasks/application/queue.py`: task enqueue
+- `src/docket/tasks/application/lifecycle.py`: `task_diff`, retry, cancel of a parked task,
+  stale-claim settling
+- `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`
 - `src/docket/tasks/application/runs.py`: `cancel_run`, `prune_terminal`
 - `src/docket/teams/apply/plan.py`: `plan_apply`, `apply`, `resolve_recipe`, `list_recipes`,
   `summarize_recipe`, `RecipeSummary`, `repo_config_dir`
@@ -1094,7 +1096,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/operator/channel.py`: `unreached_warning`
 - `src/docket/governance/network_posture.py`: the `network <mode>` wording in the `isolation` string
 - `src/docket/agent/tools/registry.py`: `dispatch_tool`
-- `src/docket/edges/adapters/system.py`: `trust_worktree`
+- `src/docket/platform/git.py`: `trust_worktree`
 - `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`
 - `src/docket/observability/adapters/otlp_http.py`: `encode`
 - `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`, `trace_retention_days`,

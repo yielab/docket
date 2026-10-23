@@ -883,7 +883,7 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
   `READ_DEFAULT_CHARS`, `read_file`, `glob_files`, `grep_files`, `run_bash`, the output truncation
 - `src/docket/agent/skills.py`: `discover_skills`
 - `src/docket/hops/workspace/repo_view.py`: `RepoView`
-- `src/docket/edges/adapters/system.py`: `git_read_blob`, `git_list_tree_dirs`
+- `src/docket/platform/git.py`: `git_read_blob`, `git_list_tree_dirs`
 - `src/docket/teams/memory.py`: `render_entries`
 - `src/docket/teams/pod.py`: `PodSettings` (`projectInstructions`, `mcpServers`)
 - `src/docket/teams/report.py`: the `docket pod show` report of project instructions
@@ -891,7 +891,8 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 - `src/docket/models/adapters/openai_http.py`: `client_for`, `resolve_endpoint`, `endpoint_from_spec`
 - `src/docket/models/catalog.py`: `resolve_limits`
 - `src/docket/tasks/application/runs.py`: `RunCancellationSignal`, `current_cancellation_signal`
-- `src/docket/core/dispatch.py`: `DispatchError`, the hop retry classification
+- `src/docket/tasks/domain/task.py`: `DispatchError`
+- `src/docket/hops/application/runner.py`: the hop retry classification
 - `src/docket/agent/tools/mcp_tools.py`: `load_mcp_tools`
 - `src/docket/observability/trace.py`: `trace_event`
 - `src/docket/observability/telemetry.py`: `start`, `flush`, `health`, `capture_classes`

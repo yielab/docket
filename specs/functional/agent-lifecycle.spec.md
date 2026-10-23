@@ -286,8 +286,8 @@ Where the names above live today; the only place this spec names a path.
 - `src/docket/teams/pod.py`: `session_key`, `plan_added_member`, `normalize_role`
 - `src/docket/teams/report.py`: `pod_report`, `member_report`
 - `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`, `detect_stack`
-- `src/docket/core/dispatch.py`: `pod_approval_mode`
+- `src/docket/teams/settings.py`: `pod_approval_mode`
 - `src/docket/teams/fleet.py`: `fleet.json` registration, bindings
 - `src/docket/agent/conversations.py`: `remove_agent_durable`
-- `src/docket/edges/adapters/system.py`: `git_current_branch`, `git_branch_merged`,
+- `src/docket/platform/git.py`: `git_current_branch`, `git_branch_merged`,
   `git_branch_delete`

@@ -708,7 +708,8 @@ Where the names above live today. This is the only section that names paths.
   `is_reviewed`, `review_code`)
 - `src/docket/teams/config_docs.py`: `discover_config_paths`, `validate_directory`, the `pod`
   document model
-- `src/docket/core/dispatch.py`: `effective_pipeline`, `pod_full_roster`, `TASK_PIPELINE_NAME`
+- `src/docket/pipeline/application/steps.py`: `effective_pipeline`, `TASK_PIPELINE_NAME`
+- `src/docket/tasks/application/queue.py`: `pod_full_roster`
 - `src/docket/pipeline/domain/spec.py`: `default_pipeline`; `src/docket/pipeline/domain/plan.py`:
   `resolve_plan`
 - `src/docket/governance/policy.py`: `validate_policy`, `read_policy`, `to_short_policy`;
@@ -725,7 +726,8 @@ Where the names above live today. This is the only section that names paths.
 - `src/docket/interfaces/cli/commands/pod_config.py`: `cmd_update`, `cmd_export`, `cmd_validate`, `cmd_recipes`
 - `src/docket/interfaces/cli/commands/run.py`: the change pickup before a dispatch;
   `src/docket/interfaces/cli/commands/setup_check.py`: the workspace-file check
-- `src/docket/serve.py`: `POST /pods`, `POST /pods/<p>/apply`
+- `src/docket/interfaces/http/routes/pod_create.py`: `POST /pods`
+- `src/docket/interfaces/http/routes/pod_apply.py`: `POST /pods/<p>/apply`
 - `src/docket/templates/recipes/<name>/`: the shipped recipes
 - Tests: `tests/unit/teams/test_blueprints.py` (including `TestPipelineGateFidelity`),
   `tests/integration/test_provisioning_contract.py` (`TestSeedContractWorkdir`),

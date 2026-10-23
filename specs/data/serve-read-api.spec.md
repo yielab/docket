@@ -810,10 +810,15 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ## Implementation
 
-- `src/docket/serve.py`: `SERVE_API_VERSION`, `build_status`, `render_metrics`, `render_health`,
-  `LoopMetrics`, the request handler (every route above, the Bearer check, the body cap
-  `MAX_POST_BODY_BYTES`, the `/traces` cursor and hold-back), the sweep pool started by
+- `src/docket/interfaces/http/routes/health.py`: `SERVE_API_VERSION`, `build_status`
+- `src/docket/interfaces/http/routes/metrics.py`: `render_metrics`, `LoopMetrics`
+- `src/docket/interfaces/http/server.py`: `render_health`, the sweep pool started by
   `POST /tasks` under dispatch, `run_serve`
+- `src/docket/interfaces/http/routes/`: the request handler (every route above; `table.py` is the
+  route table)
+- `src/docket/interfaces/http/auth.py`: the Bearer check
+- `src/docket/interfaces/http/exchange.py`: the body cap `MAX_POST_BODY_BYTES`
+- `src/docket/interfaces/http/routes/traces.py`: the `/traces` cursor and hold-back
 - `src/docket/kernel/threads.py`: `ContextHTTPServer`, `new_thread`, `start_thread`, `submit`
 - `src/docket/tasks/application/escalation.py`: `count_escalation_metrics` (`docket_tasks_started_total`,
   `docket_questions_total`, `docket_decision_latency_seconds`)
@@ -821,9 +826,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/operator/contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
 - `src/docket/tasks/application/runs.py`: `create_run`, `list_runs`, `get_run`, `execute`, `cancel_run`, the
   run record and its `cancellation` lifecycle
-- `src/docket/core/dispatch.py`: `read_tasks` (task-record normalization, `_TASK_SCALAR_DEFAULTS`),
-  `enqueue_task_once`, `effective_pipeline`, `dispatch_pod`, `resolve_waiting_approval_detail`,
-  `TASK_GRANT_CAP`
+- `src/docket/tasks/application/queue.py`: `read_tasks`, `enqueue_task_once`
+- `src/docket/tasks/domain/task.py`: task-record normalization (`_TASK_SCALAR_DEFAULTS`)
+- `src/docket/pipeline/application/steps.py`: `effective_pipeline`
+- `src/docket/tasks/application/sweep.py`: `dispatch_pod`
+- `src/docket/tasks/application/actions.py`: `resolve_waiting_approval_detail`, `TASK_GRANT_CAP`
 - `src/docket/tasks/application/evidence.py`: `task_evidence`
 - `src/docket/observability/trace.py`: `export_lines`, `trace_event`, `expire_old_traces`, `sweep_all`
 - `src/docket/governance/audit.py`: `read_audit`, rotation at `AUDIT_LOG_MAX_BYTES`

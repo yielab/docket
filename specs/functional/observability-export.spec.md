@@ -969,19 +969,20 @@ ok Exporter privacy updated: langfuse
   22-23, 31)
 - `src/docket/observability/adapters/otlp_http.py`: `AuthHeader`, `encode`, `SinkResult`,
   `OtlpHttpSink`, `ProbeResult`, `probe`
-- `src/docket/edges/adapters/exporters/__init__.py`: `sink_for`
+- `src/docket/observability/adapters/sinks.py`: `sink_for`
 - `src/docket/platform/redirects.py`: `open_same_origin`
 - `src/docket/agent/driver.py`: `DocketDriver.run_turn` (requirement 55), the
   `atexit` hook `_close_telemetry` (requirement 109)
 - `src/docket/platform/store.py`: the docket-owned JSON store (`read_json`, `write_json`,
   `read_modify_write`)
-- `src/docket/core/dispatch.py`: the hop marker and hop reply (requirement 108) and the
-  `session_end` write (requirement 106)
+- `src/docket/hops/application/compose.py`, `src/docket/hops/application/record.py`: the hop
+  marker and hop reply (requirement 108)
+- `src/docket/pipeline/application/executor.py`: the `session_end` write (requirement 106)
 - `src/docket/kernel/home.py`: the `Home` members `exporters_file`, `exporters_health_file`,
   `export_queue_max`, `export_flush_timeout_s`, `dispatch_retry_max_wait_s`, `traces_dir`
 - `src/docket/kernel/templates.py`: `EXPORTER_TEMPLATES_DIR`
 - `src/docket/models/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
-- `src/docket/edges/adapters/system.py`: `no_export` (`DOCKET_NO_EXPORT`, read live)
+- `src/docket/platform/process.py`: `no_export` (`DOCKET_NO_EXPORT`, read live)
 - `src/docket/templates/exporters/`: the five built-in documents
 - `src/docket/interfaces/cli/commands/setup_export.py`: `docket setup export` (requirements 60-63, 90-102)
 - `src/docket/interfaces/cli/commands/setup_check.py`: the `docket setup` exporter lines (requirement 97)

@@ -591,8 +591,10 @@ docket pod validate ./producer.yaml
   (`_render_context`), SOUL.md/AGENTS.md rendering
 - `src/docket/pipeline/domain/plan.py`: `resolve_gate`, `parse_verdict`, `resolve_plan`
 - `src/docket/pipeline/domain/spec.py`: `default_pipeline`
-- `src/docket/core/dispatch.py`: the hop-message builder (`_hop_message`,
-  `_resolve_hop_instructions`); plan resolution for dispatch (`_resolve_pipeline_steps`)
+- `src/docket/hops/application/compose.py`: the hop-message builder (`_hop_message`,
+  `_resolve_hop_instructions`)
+- `src/docket/pipeline/application/executor.py`: plan resolution for dispatch
+  (`_resolve_pipeline_steps`)
 - `src/docket/agent/context.py`: `budget_for_role`, `DEFAULT_TOKEN_BUDGET`
 - `src/docket/agent/session.py`: `compact_session`
 - `src/docket/agent/loop.py`: the per-turn `registry_for_role` call; the compaction call

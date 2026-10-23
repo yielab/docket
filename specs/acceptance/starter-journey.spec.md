@@ -127,7 +127,8 @@ all use their production paths.
 - `src/docket/interfaces/cli/commands/inbox.py`: `inbox --peek`.
 - `src/docket/interfaces/cli/commands/run.py`: `run --pipeline`.
 - `src/docket/interfaces/cli/commands/log.py`: `log verify`.
-- `src/docket/core/dispatch.py`: task statuses, `failureKind`, hop results, the approval gate's resume path.
+- `src/docket/tasks/domain/task.py`: task statuses, `failureKind`, hop results.
+- `src/docket/tasks/application/actions.py`: the approval gate's resume path.
 - `src/docket/governance/approval.py`: approval transitions.
 - `src/docket/agent/handoff.py`: `HandoffArtifact`.
 - `src/docket/observability/telemetry.py`: approval trace event names and their fields.

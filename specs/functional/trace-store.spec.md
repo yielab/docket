@@ -397,7 +397,7 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
 - `src/docket/kernel/home.py`: the `Home` members `traces_dir`, `trace_retention_days`,
   `trace_retention_s`, `session_timeout`, `context_bytes_per_token`, `metrics_window`
-- `src/docket/edges/adapters/system.py`: `no_trace` (`DOCKET_NO_TRACE`, read live)
+- `src/docket/platform/process.py`: `no_trace` (`DOCKET_NO_TRACE`, read live)
 - `src/docket/governance/secrets.py`: `secret_values` (the stored values requirement 8 scrubs)
 - `src/docket/agent/loop.py`: the `llm_call` and `tool_result` payload builders
   (requirements 21-28)
@@ -411,7 +411,7 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 - `src/docket/agent/driver.py`: `DocketDriver` (turns `on_process` reports into
   `process_*` events, registers pgids)
 - `src/docket/tasks/application/runs.py`: `current_run_id`, `add_hop_pid`, `remove_hop_pid`
-- `src/docket/serve.py`: the periodic sweep that calls `sweep_all` then `expire_old_traces`
+- `src/docket/interfaces/http/server.py`: the periodic sweep that calls `sweep_all` then `expire_old_traces`
 - `src/docket/interfaces/cli/render/progress.py`: the `docket run` progress view's `subscribe` consumer
 - `src/docket/interfaces/cli/commands/task.py`: `docket task trace` (`--tail` polls the file), `docket task prune
   --traces`

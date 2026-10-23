@@ -196,13 +196,14 @@ Where the names above live today:
 - `src/docket/models/selection.py`: `validate_model`
 - `src/docket/teams/models.py`: `AgentMeta`, `AgentKind`, `AgentScope`, `WorkspaceKind`
 - `src/docket/teams/fleet.py`: `meta_set` (validates the record before writing)
-- `src/docket/serve.py`: the project-segment check on every route with a project segment, and `POST /pods`
+- `src/docket/interfaces/http/exchange.py`: the project-segment check on every route with a project segment
+- `src/docket/interfaces/http/routes/pod_create.py`: `POST /pods`
 - `src/docket/interfaces/cli/commands/agents.py`: `docket init`, `docket init --from`
 - `src/docket/interfaces/cli/commands/pod.py`: `build_pod_from_blueprint`, `docket pod set verify`
 - `src/docket/interfaces/cli/commands/setup_model.py`: `docket setup model set`, `docket setup provider add|rotate`, the credential prefix check and name derivation
 - `src/docket/interfaces/cli/app/__init__.py`: the command and group registry that declares the verbs
 - `src/docket/models/catalog.py`: the provider catalog (`credentialPrefix`); shipped entries under `src/docket/templates/providers/`
-- `src/docket/edges/adapters/system.py`: `run_command`, the one shell invocation
+- `src/docket/sandbox/launch.py`: `run_command`, the one shell invocation
 - `src/docket/agent/tools/builtins/toolbox.py`: `resolve_within`, the allowed-roots check for file tools
 - `src/docket/platform/store.py`: the atomic JSON writer
 - Tests: `tests/unit/teams/test_provisioning.py`, `tests/integration/test_pod_blueprint_provisioning.py`, `tests/integration/test_serve_pods_endpoint.py`, `tests/integration/test_provider_agnosticism.py`, `tests/integration/test_data_layer.py`, `tests/unit/interfaces/cli/commands/test_setup_model.py`, `tests/unit/interfaces/cli/commands/test_task.py`

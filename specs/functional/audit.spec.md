@@ -380,8 +380,10 @@ x Tamper check FAILED at line 1 of 6: chain claims continuation from seq=214, bu
 - `src/docket/agent/tools/registry.py`: `tool.*`, `fetch.result_*`, `skills.body_*` entries.
 - `src/docket/agent/tools/mcp_tools.py`: `mcp_client.*` entries. `src/docket/interfaces/cli/commands/mcp.py`: `mcp.<tool>`.
 - `src/docket/interfaces/telegram/bot.py`: `telegram.*` entries.
-- `src/docket/core/dispatch.py`: `task.*`, `profile.refused`, `gate.reasons_*` entries.
-- `src/docket/tasks/application/runs.py`: `runs.cancel`. `src/docket/serve.py`: `run.dispatch`.
+- `src/docket/tasks/application/queue.py`, `src/docket/tasks/application/lifecycle.py`: `task.*` entries.
+- `src/docket/hops/gates/pre_hop.py`: `profile.refused` entries.
+- `src/docket/hops/gates/post_hop.py`: `gate.reasons_*` entries.
+- `src/docket/tasks/application/runs.py`: `runs.cancel`. `src/docket/interfaces/http/routes/dispatch.py`: `run.dispatch`.
 - `src/docket/teams/pod_provisioning.py`, `src/docket/teams/apply/plan.py`,
   `src/docket/teams/memory.py`, `src/docket/interfaces/cli/commands/pod.py`, `src/docket/interfaces/cli/commands/pod_config.py`,
   `src/docket/interfaces/cli/commands/agents.py`: `agent.add`, `pod.*` entries.
