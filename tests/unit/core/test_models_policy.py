@@ -136,10 +136,9 @@ class TestResolveRoleModelInPodScope:
         from docket.core import config_docs as _config_docs
 
         home = _point_at(tmp_path, monkeypatch)
-        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
         self._registry_on_local(home)
         role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
-        _arch.add_user_archetype(_config_docs.load_document(role_file, kind="role").doc, "p")
+        _arch.add_user_archetype(_config_docs.load_document(role_file).doc, "p")
 
         assert _mp.resolve_role_model("security-vetter", project="p") == "local/x"
 
@@ -147,7 +146,6 @@ class TestResolveRoleModelInPodScope:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = _point_at(tmp_path, monkeypatch)
-        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
         self._registry_on_local(home)
 
         assert _mp.resolve_role_model("nobody-here") == "local/x"
@@ -162,6 +160,23 @@ class TestOneRoleVocabulary:
         names = set(_arch.BUILTIN_ARCHETYPES) | set(_arch.STARTER_ARCHETYPES)
         assert set(_mp.ALL_ROLES) == names
         assert set(_mp.ROLE_CLASS) == names
+
+    def test_each_role_resolves_to_the_rank_its_archetype_declares(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Analyst resolves on the economy rank and critic on the standard rank, and the
+        archetype's own `modelClass` says the same: one class per role."""
+        from docket.core import archetypes as _arch
+
+        _point_at(tmp_path, monkeypatch)
+        _, tiers, _ = _mp.load_registry()
+        declared = {**_arch.BUILTIN_ARCHETYPES, **_arch.STARTER_ARCHETYPES}
+        assert _mp.resolve_role_model("analyst") == tiers["economy"]
+        assert _mp.resolve_role_model("critic") == tiers["standard"]
+        for role in _mp.ALL_ROLES:
+            rank = "economy" if declared[role].model_class == "cheap" else "standard"
+            assert _mp.resolve_role_model(role) == tiers[rank], role
+            assert _mp.ROLE_CLASS[role] == declared[role].model_class, role
 
     def test_implementer_reads_its_own_row(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

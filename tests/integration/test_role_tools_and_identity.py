@@ -144,9 +144,9 @@ class TestArchetypeDeniedToolsAreData:
             "toolProfile": "observer",
             "deniedTools": ["write", "edit", "bash"],
         }
-        arch = _archetypes.add_user_archetype(doc)
+        arch = _archetypes.add_user_archetype(doc, "demo")
         assert arch.denied_tools == ("write", "edit", "bash")
-        assert _archetypes.load_registry().get("custom-observer").denied_tools == (
+        assert _archetypes.load_registry("demo").get("custom-observer").denied_tools == (
             "write",
             "edit",
             "bash",

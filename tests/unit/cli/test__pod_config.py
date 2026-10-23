@@ -23,7 +23,7 @@ _runner = CliRunner()
 _ROLE = (
     "kind: role\n"
     "name: vetter\n"
-    "scope: org\n"
+    "scope: pod\n"
     "modelClass: cheap\n"
     "soulTemplate: You vet things.\n"
     "agentsTemplate: Vetting protocol.\n"
@@ -295,6 +295,15 @@ class TestLibraries:
         assert "unjailed_mcp_servers" not in shown
         assert shown["mcp_servers"] == ["ast-grep", "language-intel"]
 
+    def test_recipe_json_carries_the_exporters_a_recipe_names(self, tmp_path: Path) -> None:
+        (tmp_path / "pod.yaml").write_text(
+            "kind: pod\nname: shipper\nexporters: [langfuse]\n", encoding="utf-8"
+        )
+        shown = json.loads(_pod_run("recipes", str(tmp_path), "--json").output)
+        assert shown["exporters"] == ["langfuse"]
+        listed = json.loads(_pod_run("recipes", "--json").output)
+        assert all(isinstance(r["exporters"], list) for r in listed)
+
     def test_an_unknown_recipe_fails(self) -> None:
         assert _pod_run("recipes", "no-such-recipe").exit_code == 1
 
@@ -358,6 +367,6 @@ def test_a_skipped_default_setting_says_why_on_its_plan_line(
     _seed_pod(tmp_path, monkeypatch)
     recipe = tmp_path / "recipe"
     recipe.mkdir()
-    (recipe / "pod.yaml").write_text("settings:\n  approvalMode: wait\n")
+    (recipe / "pod.yaml").write_text("kind: pod\nname: x\nsettings:\n  approvalMode: wait\n")
     result = _pod_run("update", str(recipe), "--pod", "demo", "--dry-run")
     assert "[skip] setting: approvalMode (already the default)" in result.output

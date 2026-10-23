@@ -703,30 +703,6 @@ class TestModelRegistryEntries:
         assert "not-a-model-id" in out
 
 
-class TestArchetypeOverlay:
-    """A malformed `docket-roles.json` overlay entry is named, not silently skipped."""
-
-    def test_no_file_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _point_config_at(tmp_path / ".docket", monkeypatch)
-        assert _setup_check._check_archetype_overlay() == 0
-
-    def test_broken_role_is_named(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        home = tmp_path / ".docket"
-        _point_config_at(home, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
-            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
-        )
-        issues = _setup_check._check_archetype_overlay()
-        out = capsys.readouterr().out
-        assert issues == 1
-        assert "broken-role" in out
-
-
 class TestProviderCatalog:
     """A malformed global provider document (docket-providers.json) is named, not
     silently skipped -- model-profiles.spec.md, "Provider catalog" requirement 7."""
@@ -820,38 +796,21 @@ class TestPodConfigOverlays:
         assert "demo" in out
         assert "zz-broken.json" in out
 
-    def test_global_overlay_problem_is_not_double_counted_per_pod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """A pre-existing global overlay problem (already reported by
-        `_check_archetype_overlay`) must not also show up here once per pod."""
-        self._build_pod(tmp_path, monkeypatch)
-        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
-            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
-        )
-        issues = _setup_check._check_pod_config_overlays()
-        assert issues == 0
 
+class TestDoctorSilentOnTwoFixtures:
+    """`run_check()` flags both fixtures below: a bad schedule and a bad models entry."""
 
-class TestDoctorSilentOnThreeFixtures:
-    """`run_check()` flags all three fixtures below: a bad schedule, a bad models
-    entry, and a bad archetype overlay."""
-
-    def test_full_run_flags_all_three(
+    def test_full_run_flags_both(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
         _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
-        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
-            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
-        )
         rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
         assert rc == 1
         assert "shop" in out and "3x" in out
         assert "not-a-model-id" in out
-        assert "broken-role" in out
 
 
 class TestPodSyncCheck:
@@ -982,14 +941,10 @@ class TestJsonCoversEveryTextCheck:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "test-key"})
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
         _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
-        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
-            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
-        )
         data = self._json(capsys)
         checks = data["checks"]
         assert data["healthy"] is False
         assert checks["modelRegistry"]["problems"][0]["key"]
-        assert checks["archetypeOverlay"]["problems"][0]["role"] == "broken-role"
         assert checks["schedules"]["problems"][0]["key"] == "shop"
 
     def test_a_clean_home_reports_every_new_check_ok(
@@ -999,7 +954,6 @@ class TestJsonCoversEveryTextCheck:
         checks = self._json(capsys)["checks"]
         for key in (
             "modelRegistry",
-            "archetypeOverlay",
             "schedules",
             "exporters",
             "guardrailPolicies",

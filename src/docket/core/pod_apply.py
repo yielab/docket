@@ -431,7 +431,7 @@ def list_recipes() -> list[RecipeInfo]:
 def _plan_roles(
     directory: Path, base_registry: _arch.ArchetypeRegistry, project: str
 ) -> tuple[list[ApplyItem], list[_RoleWrite], dict[str, _arch.RoleArchetype]]:
-    """Plan ``roles/*.yaml`` into *project*'s own pod-scoped role overlay, the same target
+    """Plan ``roles/*.yaml|yml|json`` into *project*'s own pod-scoped role overlay, the same target
     ``docket pod update --pod <project>`` writes to -- never the global overlay
     (see module docstring)."""
     items: list[ApplyItem] = []
@@ -442,7 +442,7 @@ def _plan_roles(
         return items, writes, merged
     from docket.core import config_docs as _config_docs
 
-    for role_file in sorted(roles_dir.glob("*.yaml")):
+    for role_file in sorted(_config_glob(roles_dir)):
         try:
             doc = _config_docs.load_document(role_file, kind="role").doc
         except _config_docs.ConfigDocError as exc:
@@ -1051,7 +1051,7 @@ def _loosened_denials(directory: Path) -> list[RunItem]:
     found: list[RunItem] = []
     builtin = _arch.load_registry()
     roles_dir = directory / "roles"
-    for role_file in sorted(roles_dir.glob("*.yaml")) if roles_dir.is_dir() else []:
+    for role_file in sorted(_config_glob(roles_dir)) if roles_dir.is_dir() else []:
         doc = _config_docs_doc(role_file, "role")
         name = str(doc.get("name", "")).strip()
         base = builtin.get(name)

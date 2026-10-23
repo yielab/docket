@@ -98,7 +98,6 @@ before the JSON.
     },
     "templateDrift": "array of { id, agentVersion: number | null, currentVersion, ok } (advisory; pod members are not listed)",
     "modelRegistry":     "{ ok, problems: array of { key, reason } } (malformed docket-models.json entries)",
-    "archetypeOverlay":  "{ ok, problems: array of { role, reason } } (malformed docket-roles.json entries)",
     "schedules":         "{ ok, problems: array of { key, reason } } (entries that would never fire)",
     "exporters":         "{ ok, enabled: array of { name, failed, sharesContentWith: string | null } } (advisory: a failing exporter sets ok false and never adds to `issues`)",
     "guardrailPolicies": "{ ok, problems: array of { file, reason } } (policy files that fail closed)",
@@ -113,7 +112,7 @@ before the JSON.
 `issues`; each pod whose ledger disagrees with its running tasks; each budget at or over 100% and
 each runaway agent; each entry of `keyHygiene.missingForAgents`; each `providerCatalog` problem;
 one for `notifications` when it is not ok; one for `sandboxUsable: false` with at least one
-project agent; and the problem count of each of `modelRegistry`, `archetypeOverlay`, `schedules`,
+project agent; and the problem count of each of `modelRegistry`, `schedules`,
 `guardrailPolicies`, `podConfigOverlays` and `podSync`. `templateDrift`, `exporters` and
 `runtimeContract` never add to it. `keyHygiene.missingForAgents` uses the agent's resolved model
 (the default when the metadata names none), the same reader the text report uses.
@@ -452,9 +451,9 @@ An array, oldest first, of `{id, kind, path | command, note, status, reason, pro
 ```json
 {
   "pod update": {"items": [{"kind": "role|policy|plugin|skill|mcp-server|member|pipeline|setting", "name": "string", "action": "add|replace|skip", "note": "string"}]},
-  "pod roles": "array of {name, source (built-in | starter | user | pod:<pod>), scope (the archetype's own scope: org | pod), modelClass, gate, description}; with a NAME, the archetype's wire object plus \"source\"",
+  "pod roles": "array of {name, source (built-in | starter | pod:<pod>), scope (the archetype's own scope: pod), modelClass, gate, description}; with a NAME, the archetype's wire object plus \"source\"",
   "pod policies": "array of {id, hook, action, description}; with --plugins, {\"policies\": that array, \"plugins\": array of {name, scope, file, sha256}}; with an ID, the policy's own JSON document (printed as JSON with or without --json)",
-  "pod recipes": "array of {name, scope (operator | shipped), brings, directory, description, roles, policies, members, pipeline, plugins, skills, settings, mcp_servers: array of server names}; with a NAME, one such object plus \"readme\""
+  "pod recipes": "array of {name, scope (operator | shipped), brings, directory, description, roles, policies, members, pipeline, plugins, skills, settings, mcp_servers: array of server names, exporters: array of exporter names}; with a NAME, one such object plus \"readme\""
 }
 ```
 

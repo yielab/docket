@@ -48,12 +48,12 @@ def test_an_unknown_kind_raises_naming_every_known_kind(tmp_path: Path) -> None:
     )
 
 
-def test_a_role_file_without_kind_loads_deprecated_and_matches_parse_yaml_file(
+def test_a_canonical_role_file_without_kind_loads_deprecated_and_matches_parse_yaml_file(
     tmp_path: Path,
 ) -> None:
     text = (
         "name: custom-role\n"
-        "scope: org\n"
+        "scope: pod\n"
         "modelClass: cheap\n"
         "soulTemplate: You are the custom role.\n"
         "agentsTemplate: Custom role protocol.\n"
@@ -67,6 +67,63 @@ def test_a_role_file_without_kind_loads_deprecated_and_matches_parse_yaml_file(
     assert document.name == "custom-role"
     assert document.deprecated is True
     assert document.doc == _archetypes.parse_yaml_file(str(path))
+
+
+def test_a_short_form_document_without_kind_gets_the_kind_error(tmp_path: Path) -> None:
+    roles_dir = tmp_path / "roles"
+    roles_dir.mkdir()
+    (roles_dir / "vetter.md").write_text("You vet.\n", encoding="utf-8")
+    role = roles_dir / "vetter.yaml"
+    role.write_text("name: vetter\nmodel: cheap\n", encoding="utf-8")
+    manifest = tmp_path / "pod.yaml"
+    manifest.write_text("name: shop\nmembers: [reviewer]\n", encoding="utf-8")
+
+    for path in (role, manifest):
+        with pytest.raises(config_docs.ConfigDocError) as exc_info:
+            config_docs.load_document(path)
+        assert exc_info.value.field == "kind", path
+        assert exc_info.value.valid == config_docs.KINDS, path
+
+
+def test_a_short_form_role_with_a_bad_model_reports_the_model_not_a_missing_kind(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "vetter.md").write_text("You vet.\n", encoding="utf-8")
+    path = tmp_path / "vetter.yaml"
+    path.write_text("kind: role\nname: vetter\nmodel: gpt-5\n", encoding="utf-8")
+
+    with pytest.raises(config_docs.ConfigDocError) as exc_info:
+        config_docs.load_document(path)
+
+    assert exc_info.value.field == "model"
+    assert exc_info.value.valid == ("cheap", "strong")
+
+
+def test_the_model_class_error_points_at_the_pipeline_step_not_at_setup_model(
+    tmp_path: Path,
+) -> None:
+    from docket.core import archetypes
+
+    with pytest.raises(archetypes.ArchetypeError) as exc_info:
+        archetypes.normalize_role({"name": "vetter", "model": "gpt-5"}, tmp_path)
+
+    assert "docket setup model set" not in str(exc_info.value)
+    assert "pipeline step" in str(exc_info.value)
+
+
+def test_a_role_template_naming_an_unknown_variable_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "typo.yaml"
+    path.write_text(
+        "kind: role\nname: typo\nscope: pod\nmodelClass: cheap\n"
+        "soulTemplate: You are ${typo}.\nagentsTemplate: Protocol.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(config_docs.ConfigDocError) as exc_info:
+        config_docs.load_document(path)
+
+    assert "soulTemplate" in str(exc_info.value)
+    assert "typo" in str(exc_info.value)
 
 
 def _load_gen_config_schemas_script() -> types.ModuleType:

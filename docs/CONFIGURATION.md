@@ -53,7 +53,6 @@ noted.
 ├── port-allocations.json               first pod    per-pod port range bases
 ├── audit.log                           first change hash-chained record of every mutation
 ├── policies/*.yaml                     init         6 baseline guardrail policies (JSON also loads)
-├── docket-roles.json                   you          your custom role archetypes (global scope)
 ├── docket-mcp-servers.json             setup mcp   external MCP tool servers
 ├── docket-exporters.json               setup export your kind: exporter overrides (built-ins ship in the wheel, all off)
 ├── exporters-health.json               first export delivery counters per enabled exporter
@@ -160,12 +159,12 @@ global) — the same three `docket pod show <member> --json` labels per value.
 | What needs doing? | **Task** | pod | the Lead's `TASK_LIST.json` | `docket task add` |
 | Which team shape does a new pod get? | **Blueprint** | pod (creation-time only) | Lead meta `blueprint` | `docket init --blueprint` |
 | Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | global \| pod | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pod validate`, `docket pod plan`, `docket run`, `docket pod set pipeline` |
-| How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket pod roles [--pod <p>]`, `docket pod add <role>` |
+| How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| pod | built-ins + this pod's own `config/roles.json` | `docket pod roles [--pod <p>]`, `docket pod add <role>` |
 | What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | edit `INSTRUCTIONS.md` directly; `docket pod set projectInstructions CONTRIBUTING.md` |
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket pod policies [--pod <p>]` |
 | What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod show`, `pod set`, `pod unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `pod set verify "<cmd>" --member <id>` |
 
-**A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (same shape as the global `docket-roles.json`) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the global layer for that pod alone, never shared with any other pod. `docket setup` flags a malformed entry in either file, naming the pod.
+**A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (`{"roles": {name: archetype}}`) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the built-in or global layer for that pod alone, never shared with any other pod. `docket setup` flags a malformed entry in either file, naming the pod.
 
 Two boundaries worth stating because they are easy to get backwards:
 
@@ -355,7 +354,7 @@ Codebase: ${codebaseOrConfigured} (stack: ${stack}).
 
 ```bash
 docket pod validate security-reviewer.yaml    # checks fields and dry-renders both templates
-docket pod update security-reviewer.yaml         # -> ~/.docket/docket-roles.json
+docket pod update security-reviewer.yaml         # -> the pod's config/roles.json
 docket pod add security-reviewer          # provisions myapp-security-reviewer
 ```
 
@@ -1150,7 +1149,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `setup provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id` and any declared `contextWindow`/`maxTokens`) | via `setup provider add/remove/export`. Malformed entries are named by `docket setup`. |
 | `provider-models.json` | `providers{<name>: {observedAt, models{<id>: {contextWindow, maxTokens}}}}`: the limits each registered provider's `/models` published, `null` where it published none | `setup provider add`, the daily `docket start --dispatch` sweep | endpoint resolution: a model's limit when its provider document declares none | no. Delete it to forget what was observed. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `setup model set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `setup model set`. Malformed entries are ignored silently. |
-| `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | you | tool narrowing, hop budget, gate contract; templates at provisioning | by hand; `pod update <file>` writes the pod's own overlay |
+| `<pod>/config/roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `pod update <file>` | tool narrowing, hop budget, gate contract; templates at provisioning | by hand, or `pod update <file>` |
 | `policies/*.yaml\|json` | one policy per file (§3.6) | `docket setup`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
 | `docket-mcp-servers.json` | `servers[{name,command,args,env,timeout,kind,tools,isolate}]` | `setup mcp add/remove` | every turn | via command |
 | `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `setup export enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
@@ -1223,7 +1222,7 @@ rest of the original list; what remains below is the honest boundary, not a back
   are re-rendered wholesale by `docket pod update` when a template or archetype changes
   (`--dry-run` shows the diff, `docket setup` flags stale members).
 - **A skipped file is silent on the live path, but `docket setup` names it.** An invalid schedule spec,
-  model-policy entry or overlay role — global or pod-scoped — never crashes a fleet — the loader
+  model-policy entry or pod overlay role never crashes a fleet — the loader
   skips it — and `docket setup` reports each one with pod (when applicable), file, key and reason
   (a broken *policy* file instead fails closed at evaluation, §3.6). Run `docket setup` after hand-editing
   any registry.

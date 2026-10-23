@@ -55,22 +55,19 @@ directly — see "Provider catalog" below.
    - **strong** (reasoning-dense): `implementer`, `critic`, `operator`, `researcher` → the
      standard rank anchor (default `anthropic/claude-sonnet-4-6`)
 
-   This table (not the archetype's `modelClass`) decides the class of each of the ten named
-   roles. The starter archetypes `analyst` (`modelClass: strong`) and `critic`
-   (`modelClass: cheap`) declare the opposite class; `docket pod roles` shows the archetype's
-   declaration, the policy resolves by this table.
+   This table (`ROLE_CLASS`) is built from the `modelClass` of the ten archetypes, so
+   `docket pod roles` and the policy report one class per role.
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
    only through an explicit `docket setup model set <role> <provider/model>` override.
 4. Each role **MUST** carry a short human-readable WHY string shown by `docket setup model`: the
    archetype's own `description`.
 5. Resolving a role not in this table **MUST NOT** collapse to the compiled-in `DEFAULT_MODEL`:
-   if the role is a registered archetype (a global overlay role, or a role a recipe applied into a
-   pod's overlay) whose `modelClass` this table has no named row for, it **MUST** resolve via that
+   if the role is a registered archetype (a role a recipe applied into a pod's overlay) whose `modelClass` this table has no named row for, it **MUST** resolve via that
    `modelClass` against the live rank anchors instead (`economy` for `cheap`, `standard` for
    `strong`) — see role-archetypes.spec.md. The archetype **MUST** be looked up in the registry of
-   the pod the member belongs to (the pod's `config/roles.json` layered over the global
-   `docket-roles.json` overlay), never the global registry alone, so a role a recipe applied into
-   one pod resolves exactly as a global role would
+   the pod the member belongs to (the pod's `config/roles.json` layered over the built-ins and the
+   starter library), never the built-in registry alone, so a role a recipe applied into one pod
+   resolves through its own `modelClass`
    (`resolve_role_model(role, role_models, project=<pod>)`). Only a role that is neither a named
    entry here nor a registered archetype in that registry **MUST** fall back to the registry's own
    `default` model (the one default of record; equal to `DEFAULT_MODEL` on a fresh install) —
@@ -349,7 +346,7 @@ directly — see "Provider catalog" below.
    **MUST** show the same provider name, scope and credential source under the model line.
    `docket setup` **MUST** report each global provider document in `docket-providers.json` that
    fails the validation `ProviderSpec` applies — naming the file, the provider's name and the
-   failing field — the same way a malformed `docket-roles.json` overlay entry is named, and carry
+   failing field — the same way a malformed pod `roles.json` overlay entry is named, and carry
    the same list under `--json` (`providerCatalog`).
 8. **Prompt-cache markers.** For a model whose id, after any `<vendor>/` prefix, starts with
    `claude` (the `anthropic` provider and `anthropic/...` through a gateway),

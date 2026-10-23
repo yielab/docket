@@ -27,7 +27,7 @@ from docket.core.archetypes import (
 )
 from docket.core.memory import HEARTBEAT_FILE
 from docket.core.pod import member_id as _pod_member_id
-from docket.core.tools import builtin_registry
+from docket.core.tools import Tool, ToolOutcome, builtin_registry
 from docket.edges import store as _store
 
 SUBJECT = "docket.core.archetypes"
@@ -216,61 +216,40 @@ class TestTemplatesCarryNoPathAndNoDeadSignals:
 
 class TestFindOverlayProblems:
     """`find_overlay_problems`: what `docket setup` surfaces for a malformed
-    `docket-roles.json` entry that `load_registry` silently skips."""
+    pod `roles.json` entry that `load_registry` silently skips."""
 
     def test_no_file_has_no_problems(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        assert find_overlay_problems() == []
+        assert find_overlay_problems("acme") == []
 
     def test_well_formed_overlay_has_no_problems(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = tmp_path / ".docket"
-        repoint_docket_home(monkeypatch, home)
-        home.mkdir(parents=True, exist_ok=True)
-        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
-            json.dumps(
-                {
-                    "roles": {
-                        "custom-role": {
-                            "name": "custom-role",
-                            "version": 1,
-                            "scope": "pod",
-                            "modelClass": "cheap",
-                            "soulTemplate": "x",
-                            "agentsTemplate": "y",
-                            "gateContract": {"kind": "none"},
-                            "toolProfile": "read-only",
-                        }
-                    }
-                }
-            )
-        )
-        assert find_overlay_problems() == []
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json", [])
+        assert find_overlay_problems("acme") == []
 
     def test_malformed_entry_is_named_by_role(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = tmp_path / ".docket"
-        repoint_docket_home(monkeypatch, home)
-        home.mkdir(parents=True, exist_ok=True)
-        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
-            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
-        )
-        problems = find_overlay_problems()
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        path = _cfg.pod_config_dir("acme") / "roles.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
+        problems = find_overlay_problems("acme")
         assert len(problems) == 1
         assert problems[0][0] == "broken-role"
 
     def test_malformed_json_is_reported_by_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = tmp_path / ".docket"
-        repoint_docket_home(monkeypatch, home)
-        home.mkdir(parents=True, exist_ok=True)
-        _cfg.ARCHETYPE_REGISTRY_FILE.write_text("{not json")
-        problems = find_overlay_problems()
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        path = _cfg.pod_config_dir("acme") / "roles.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{not json")
+        problems = find_overlay_problems("acme")
         assert len(problems) == 1
-        assert problems[0][0] == str(_cfg.ARCHETYPE_REGISTRY_FILE)
+        assert problems[0][0] == str(path)
 
 
 def _write_vetter_overlay(path: Path, denied_tools: list[str]) -> None:
@@ -297,29 +276,23 @@ def _write_vetter_overlay(path: Path, denied_tools: list[str]) -> None:
 
 
 class TestPodRoleOverlay:
-    """A pod's own role overlay (`pod_config_dir(project)/roles.json`) resolves above
-    the global overlay, exercised via `registry_for_role`'s `project` parameter."""
+    """A pod's own role overlay (`pod_config_dir(project)/roles.json`) narrows that pod's
+    roles, exercised via `registry_for_role`'s `project` parameter."""
 
-    def test_pod_overlay_wins_over_global_overlay_by_name(
+    def test_pod_overlay_narrows_the_role_it_defines(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = tmp_path / ".docket"
-        repoint_docket_home(monkeypatch, home)
-        home.mkdir(parents=True, exist_ok=True)
-        _write_vetter_overlay(_cfg.ARCHETYPE_REGISTRY_FILE, [])
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json", ["write"])
 
         narrowed = registry_for_role(builtin_registry(), "vetter", project="acme")
 
         assert "write" not in narrowed.names()
 
-    def test_no_project_keeps_the_global_overlay_definition(
+    def test_no_project_does_not_see_the_pod_overlay(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = tmp_path / ".docket"
-        repoint_docket_home(monkeypatch, home)
-        home.mkdir(parents=True, exist_ok=True)
-        _write_vetter_overlay(_cfg.ARCHETYPE_REGISTRY_FILE, [])
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json", ["write"])
 
         narrowed = registry_for_role(builtin_registry(), "vetter", project="")
@@ -352,6 +325,36 @@ class TestPodDeniedTools:
 
         assert "fetch" not in narrowed.names()
         assert "write" in narrowed.names()  # nothing else the role allows is touched
+
+    def test_denying_one_builtin_removes_that_builtin_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
+        _write_lead_meta("acme", "fetch")
+
+        narrowed = registry_for_role(builtin_registry(), "implementer", project="acme")
+
+        assert set(builtin_registry().names()) - set(narrowed.names()) == {"fetch"}
+
+    def test_denying_a_builtin_still_removes_an_mcp_tool_of_its_kind(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_lead_meta("acme", "fetch")
+        base = builtin_registry()
+        base.register(
+            Tool(
+                name="mcp__fake__lookup",
+                description="a namespaced read tool",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, ctx: ToolOutcome(True, content="ran"),
+                kind="read",
+            )
+        )
+
+        narrowed = registry_for_role(base, "implementer", project="acme")
+
+        assert "mcp__fake__lookup" not in narrowed.names()
+        assert "read" in narrowed.names()
 
     def test_no_project_ignores_the_pod_setting(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

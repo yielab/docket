@@ -18,7 +18,6 @@ import pytest
 from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
@@ -39,7 +38,6 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
 
 
 def _register_security_reviewer() -> None:
@@ -53,7 +51,8 @@ def _register_security_reviewer() -> None:
             "agentsTemplate": "Report APPROVE or REQUEST-CHANGES.",
             "gateContract": {"kind": "none"},
             "toolProfile": "read-only",
-        }
+        },
+        "proj",
     )
 
 

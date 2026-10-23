@@ -120,7 +120,6 @@ in your repository:
 ├── docket-providers.json             # your kind: provider documents; fourteen ship built in
 ├── secrets.json                      # stored credentials (0600), referenced by name
 ├── docket-models.json                # role -> model policy and the default model
-├── docket-roles.json                 # your global role overlay
 ├── policies/                         # global policies (most-restrictive wins with a pod's own)
 ├── plugins/                          # operator-scope predicate plugins (rare)
 ├── recipes/<name>/                   # your own recipes, addressable by name like the shipped ones

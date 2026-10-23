@@ -541,6 +541,7 @@ def _info_dict(
         "skills": summary.skills,
         "settings": summary.settings,
         "mcp_servers": list(summary.mcp_servers),
+        "exporters": list(summary.exporters),
     }
 
 

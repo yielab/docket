@@ -154,23 +154,6 @@ def _check_model_registry_entries() -> int:
     return len(problems)
 
 
-def _check_archetype_overlay() -> int:
-    """Flag every malformed ``docket-roles.json`` overlay entry that ``load_registry``
-    silently skips at read time -- naming the role and the ``ArchetypeError`` reason.
-    Read-only: never edits the overlay."""
-    from docket.core import archetypes as _arch
-
-    ui.section("Role archetype overlay (docket-roles.json):")
-    problems = _arch.find_overlay_problems()
-    if not problems:
-        ui.success("  All overlay entries are well-formed")
-        return 0
-    ui.console.print("[red]✗[/red]   Found malformed docket-roles.json entries:")
-    for role, reason in problems:
-        ui.console.print(f"    {role}: {reason}")
-    return len(problems)
-
-
 def _check_schedule_config() -> int:
     """Flag every ``docket-schedules.json`` entry ``is_schedule_due`` would silently treat
     as never-due -- naming the file, project key, and reason. Read-only:
@@ -363,7 +346,7 @@ def _provider_catalog_problems() -> list[tuple[str, str]]:
 
 def _check_provider_catalog() -> int:
     """Flag every malformed global provider document -- naming the file, provider
-    name and failing field, the way `_check_archetype_overlay` names a malformed
+    name and failing field, the way `_check_pod_config_overlays` names a malformed
     role. Read-only: never edits the catalog."""
     ui.section("Provider catalog (docket-providers.json):")
     problems = _provider_catalog_problems()
@@ -551,17 +534,15 @@ def _check_policies() -> int:
 
 def _pod_overlay_problems() -> list[tuple[str, str, str, str]]:
     """(pod, kind, name, reason) for each malformed pod role overlay or invalid pod policy file,
-    excluding problems already reported for the global files."""
+    excluding problems already reported for the global policy files."""
     from docket.core import archetypes as _arch
     from docket.core import dispatch as _dispatch
 
-    global_role_problems = set(_arch.find_overlay_problems())
     global_policy_files = set(_pol.policy_files())
     found: list[tuple[str, str, str, str]] = []
     for project in _dispatch.dispatchable_pods():
         for role, reason in _arch.find_overlay_problems(project):
-            if (role, reason) not in global_role_problems:
-                found.append((project, "role", role, reason))
+            found.append((project, "role", role, reason))
         for f in _pol.policy_files(project):
             if f not in global_policy_files and (err := _pol.validate_policy(f)):
                 found.append((project, "policy", f.name, err))
@@ -570,7 +551,7 @@ def _pod_overlay_problems() -> list[tuple[str, str, str, str]]:
 
 def _check_pod_config_overlays() -> int:
     """Every pod's own config overlay (``<pod>/config/``) -- the layer
-    ``_check_archetype_overlay``/``_check_policies`` never look at. Names the pod plus
+    ``_check_policies`` never looks at. Names the pod plus
     the role/file and reason for a malformed role overlay or invalid policy file."""
     from docket.core import dispatch as _dispatch
 
@@ -908,13 +889,11 @@ def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
 
 
 def _check_json_config_files(ids: list[str]) -> tuple[int, dict[str, Any]]:
-    """Registry, overlay, schedule, policy and pod-overlay problems: JSON shape of the text
+    """Registry, schedule, policy and pod-overlay problems: JSON shape of the text
     checks of the same names. Returns the issue count and the keys to merge under `checks`."""
-    from docket.core import archetypes as _arch
     from docket.core import schedule as _sched
 
     registry = _mp.find_registry_problems()
-    overlay = _arch.find_overlay_problems()
     schedules = _sched.find_schedule_problems(_cfg.SCHEDULE_FILE)
     _files, policies = _policy_problems()
     pod_overlays = _pod_overlay_problems()
@@ -933,10 +912,6 @@ def _check_json_config_files(ids: list[str]) -> tuple[int, dict[str, Any]]:
         "modelRegistry": {
             "ok": not registry,
             "problems": [{"key": k, "reason": r} for k, r in registry],
-        },
-        "archetypeOverlay": {
-            "ok": not overlay,
-            "problems": [{"role": k, "reason": r} for k, r in overlay],
         },
         "schedules": {
             "ok": not schedules,
@@ -962,7 +937,7 @@ def _check_json_config_files(ids: list[str]) -> tuple[int, dict[str, Any]]:
         "podSync": {"ok": not stale, "stale": stale},
         "runtimeContract": {"ok": not contract, "missing": contract},
     }
-    issues = len(registry) + len(overlay) + len(schedules) + len(policies)
+    issues = len(registry) + len(schedules) + len(policies)
     issues += len(pod_overlays) + len(stale)
     return issues, checks
 
@@ -1057,7 +1032,6 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     _check_dependencies()
     _check_project_agents(ids)
     _check_model_registry_entries()
-    _check_archetype_overlay()
     _check_schedule_config()
     _check_dispatch_ledger(do_fix)
     _check_budget(ids, _batch_gating_cost(ids))

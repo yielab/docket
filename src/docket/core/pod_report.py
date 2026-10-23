@@ -51,12 +51,12 @@ def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
     return (_cfg.workspace_dir(agent_id),)
 
 
-_SOURCE_SCOPE: dict[str, str] = {"built-in": "built-in", "starter": "built-in", "user": "global"}
+_SOURCE_SCOPE: dict[str, str] = {"built-in": "built-in", "starter": "built-in"}
 
 
 def _scope_label(source: str) -> str:
-    """Map ``ArchetypeRegistry.source_of``'s ``built-in | starter | user | pod:<p>``
-    onto this report's ``built-in | global | pod`` provenance model."""
+    """Map ``ArchetypeRegistry.source_of``'s ``built-in | starter | pod:<p>``
+    onto this report's ``built-in | pod`` role provenance."""
     if source.startswith("pod:"):
         return "pod"
     return _SOURCE_SCOPE.get(source, "")

@@ -33,14 +33,11 @@ class TestRootsFor:
 
 class TestScopeLabel:
     """`_scope_label` maps `ArchetypeRegistry.source_of`'s result onto the report's
-    built-in/global/pod provenance model."""
+    built-in/pod provenance model."""
 
     def test_built_in_and_starter_collapse_to_built_in(self) -> None:
         assert pod_report._scope_label("built-in") == "built-in"
         assert pod_report._scope_label("starter") == "built-in"
-
-    def test_user_overlay_is_global(self) -> None:
-        assert pod_report._scope_label("user") == "global"
 
     def test_pod_overlay_is_pod(self) -> None:
         assert pod_report._scope_label("pod:demo") == "pod"
