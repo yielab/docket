@@ -1,0 +1,155 @@
+# Rules analyze.py applies to this tree to draft refactor/target-map.toml.
+# [modules] maps a source module to its destination (Target layout, ADR 0030).
+# [definitions.<module>] lists (regex, destination) pairs tried in order with re.search;
+# a definition no rule matches takes the destination most of its neighbours have.
+
+[modules]
+"docket.cli" = "docket.interfaces.cli.app"
+"docket.cli._agents" = "docket.interfaces.cli.commands.agents"
+"docket.cli._contract" = "docket.interfaces.cli.commands.contract"
+"docket.cli._flags" = "docket.interfaces.cli.commands.flags"
+"docket.cli._help" = "docket.interfaces.cli.render.help"
+"docket.cli._inbox" = "docket.interfaces.cli.commands.inbox"
+"docket.cli._log" = "docket.interfaces.cli.commands.log"
+"docket.cli._mcp" = "docket.interfaces.cli.commands.mcp"
+"docket.cli._pod" = "docket.interfaces.cli.commands.pod"
+"docket.cli._pod_config" = "docket.interfaces.cli.commands.pod_config"
+"docket.cli._pod_show" = "docket.interfaces.cli.commands.pod_show"
+"docket.cli._progress" = "docket.interfaces.cli.render.progress"
+"docket.cli._run" = "docket.interfaces.cli.commands.run"
+"docket.cli._service" = "docket.interfaces.cli.commands.service"
+"docket.cli._setup" = "docket.interfaces.cli.commands.setup"
+"docket.cli._setup_check" = "docket.interfaces.cli.commands.setup_check"
+"docket.cli._setup_export" = "docket.interfaces.cli.commands.setup_export"
+"docket.cli._setup_mcp" = "docket.interfaces.cli.commands.setup_mcp"
+"docket.cli._setup_model" = "docket.interfaces.cli.commands.setup_model"
+"docket.cli._setup_notify" = "docket.interfaces.cli.commands.setup_notify"
+"docket.cli._setup_sandbox" = "docket.interfaces.cli.commands.setup_sandbox"
+"docket.cli._setup_shell" = "docket.interfaces.cli.commands.setup_shell"
+"docket.cli._status" = "docket.interfaces.cli.commands.status"
+"docket.cli._target" = "docket.interfaces.cli.commands.target"
+"docket.cli._task" = "docket.interfaces.cli.commands.task"
+"docket.core.agent_loop" = "docket.agent.loop"
+"docket.core.answers" = "docket.tasks.application.answers"
+"docket.core.approval" = "docket.governance.approval"
+"docket.core.archetypes" = "docket.teams.roles"
+"docket.core.audit" = "docket.governance.audit"
+"docket.core.blueprints" = "docket.teams.blueprints"
+"docket.core.channel" = "docket.operator.channel"
+"docket.core.config_docs" = "docket.teams.config_docs"
+"docket.core.consult" = "docket.tasks.application.consult"
+"docket.core.context" = "docket.agent.context"
+"docket.core.conversations" = "docket.agent.conversations"
+"docket.core.corrections" = "docket.tasks.application.corrections"
+"docket.core.escalation" = "docket.tasks.application.escalation"
+"docket.core.evidence" = "docket.tasks.application.evidence"
+"docket.core.exporter" = "docket.observability.exporter"
+"docket.core.fleet" = "docket.teams.fleet"
+"docket.core.handoff" = "docket.agent.handoff"
+"docket.core.identity" = "docket.agent.identity"
+"docket.core.inbox" = "docket.operator.inbox"
+"docket.core.interruptions" = "docket.tasks.application.interruptions"
+"docket.core.llm" = "docket.agent.llm"
+"docket.core.mcp_tools" = "docket.agent.tools.mcp_tools"
+"docket.core.memory" = "docket.agent.memory"
+"docket.core.models" = "docket.teams.models"
+"docket.core.models_policy" = "docket.models.selection"
+"docket.core.network_posture" = "docket.governance.network_posture"
+"docket.core.notify" = "docket.operator.notify"
+"docket.core.operator_contract" = "docket.operator.contract"
+"docket.core.orchestrator" = "docket.pipeline.domain.plan"
+"docket.core.pipeline" = "docket.pipeline.domain.spec"
+"docket.core.plugins" = "docket.governance.plugins"
+"docket.core.pod" = "docket.teams.pod"
+"docket.core.pod_apply" = "docket.teams.apply.plan"
+"docket.core.pod_memory" = "docket.teams.memory"
+"docket.core.pod_provisioning" = "docket.teams.pod_provisioning"
+"docket.core.pod_report" = "docket.teams.report"
+"docket.core.policy" = "docket.governance.policy"
+"docket.core.prepare" = "docket.hops.workspace.prepare"
+"docket.core.privacy" = "docket.governance.privacy"
+"docket.core.profile" = "docket.governance.profile"
+"docket.core.protected_paths" = "docket.hops.workspace.protected_paths"
+"docket.core.provider" = "docket.models.catalog"
+"docket.core.provisioning" = "docket.teams.provisioning"
+"docket.core.repo_map" = "docket.hops.workspace.repo_map"
+"docket.core.repo_view" = "docket.hops.workspace.repo_view"
+"docket.core.resources" = "docket.teams.resources"
+"docket.core.reviewed_repos" = "docket.governance.review"
+"docket.core.runs" = "docket.tasks.application.runs"
+"docket.core.runtime_driver" = "docket.agent.ports"
+"docket.core.schedule" = "docket.pipeline.application.schedule"
+"docket.core.secrets" = "docket.governance.secrets"
+"docket.core.security" = "docket.governance.security"
+"docket.core.session" = "docket.agent.session"
+"docket.core.skills" = "docket.agent.skills"
+"docket.core.task_options" = "docket.tasks.domain.options"
+"docket.core.task_ref" = "docket.tasks.domain.refs"
+"docket.core.telegram" = "docket.interfaces.telegram.bot"
+"docket.core.telemetry" = "docket.observability.telemetry"
+"docket.core.tools" = "docket.agent.tools.registry"
+"docket.core.trace" = "docket.observability.trace"
+"docket.core.utils" = "docket.teams.utils"
+"docket.edges.adapters.channels" = "docket.operator.adapters"
+"docket.edges.adapters.channels.command" = "docket.operator.adapters.command"
+"docket.edges.adapters.channels.console" = "docket.operator.adapters.console"
+"docket.edges.adapters.channels.desktop" = "docket.operator.adapters.desktop"
+"docket.edges.adapters.channels.email" = "docket.operator.adapters.email"
+"docket.edges.adapters.channels.ntfy" = "docket.operator.adapters.ntfy"
+"docket.edges.adapters.channels.telegram" = "docket.operator.adapters.telegram"
+"docket.edges.adapters.channels.webhook" = "docket.operator.adapters.webhook"
+"docket.edges.adapters.docket_runtime" = "docket.agent.driver"
+"docket.edges.adapters.exporters.otlp_http" = "docket.observability.adapters.otlp_http"
+"docket.edges.adapters.fetch" = "docket.platform.fetch"
+"docket.edges.adapters.landlock" = "docket.sandbox.landlock"
+"docket.edges.adapters.llm" = "docket.models.adapters.openai_http"
+"docket.edges.adapters.mcp_client" = "docket.agent.tools.mcp_client"
+"docket.edges.adapters.redirects" = "docket.platform.redirects"
+"docket.edges.adapters.telegram" = "docket.interfaces.telegram.client"
+"docket.edges.adapters.toolbox" = "docket.agent.tools.builtins.toolbox"
+"docket.edges.store" = "docket.platform.store"
+"docket.jail" = "docket.sandbox.jail"
+"docket.plugins" = "docket.governance.plugin_api"
+"docket.ui" = "docket.interfaces.cli.render.ui"
+
+[definitions."docket.core.dispatch"]
+rules = [
+    ['^_parse_iso$', 'docket.kernel.clock'],
+    ['^(DispatchError|TaskNotFoundError|TaskRestrictionError|TaskRunRefusal|TaskResult|_TASK_SCALAR_DEFAULTS|_normalize_task|_task_record)$', 'docket.tasks.domain.task'],
+    ['^(HopResult|_hop_record|_hop_from_record|_ResumePosition|_group_complete|_replay_pipeline_position|_persist_hop|_persist_hop_and_trace|_build_hop_result|_hop_usage|_hop_trace_link|_trace_locked|_verdict_event_names)$', 'docket.hops.application.record'],
+    ['^(pod_task_list_path|read_tasks|enqueue_task|enqueue_task_once|_enqueue_pre_input_gate|_queued_with_key|validate_task_options|_eligible_for_claim|_claim_next_task|_touch_claim|dispatchable_pods|pod_roster|pod_full_roster|_refuse_claimed_task)$', 'docket.tasks.application.queue'],
+    ['^(_finalize_task|retry_task|cancel_task|cancel_parked_task|_cancel_detail|TaskCancelOutcome|_live_run_ids|_LIVE_RUN_STATES|_apply_result|task_diff|unblock_pod)$', 'docket.tasks.application.lifecycle'],
+    ['^(_sweep_stale_claims|_claim_stale_reason|reclaim_stale_running|dispatch_pod)$', 'docket.tasks.application.sweep'],
+    ['^(resolve_waiting_approval|resolve_waiting_approval_detail|_append_task_grant|_mint_task_grant_pregrants|TASK_GRANT_CAP)$', 'docket.tasks.application.actions'],
+    ['^(_pod_settings|pod_budget|pod_max_rework_cycles|_retries_for_role|_lead_meta_timeout|pod_turn_timeout|pod_verify_timeout|pod_approval_mode_is_set|pod_approval_mode|_resolve_timeout|pod_recorded_cost|DEFAULT_TIMEOUT)$', 'docket.teams.settings'],
+    ['^(_HopComposition|_resolve_hop_instructions|_gate_did_not_pass|_is_gate_failure_carryover|_render_gate_reasons|_gate_failed_section|_gate_report|_compose_gate_failed|_latest_brief_hop_index|_hop_message|_ANSWERS_CHAR_BUDGET|_render_answer_value|_render_operator_answers|_compose_hop|_consult_answer_note|_cut_at_word|_brief_from_step|_brief_questions_schema)$', 'docket.hops.application.compose'],
+    ['^(pod_gating_cost|_pause_lead_for_budget|_pod_requires_approval|_policy_requires_approval|_pipeline_step_requires_approval|_hop_requires_approval|_approval_action_text|_task_token_budget|_gate_task_tokens|_apply_task_restrictions|_gate_budget|_hop_model|_unpriced|_warn_unpriced_hop|unpriced_budget_models|_gate_pre_hop_approval|_hop_network|_consult_budget_env|_check_brief_resources|_block_on_missing_resources|_refuse_unmet_profile|_checked_commands|_park_if_check_changed)$', 'docket.hops.gates.pre_hop'],
+    ['^(_GateRun|_gate_cwd|_run_gate_command|_gate_evidence|_evaluate_\w+|_GATE_\w+|_gate_file_stem|_gate_reasons_path|_external_failure_kind|_screen_gate_text|_parse_gate_reasons|_source_field|_turn_budget_failure_kind|_apply_output_guardrails|_latest_implementer_evidence|_resolve_gate_override)$', 'docket.hops.gates.post_hop'],
+    ['^(Runner|_run_hop_turn|_execute_unit|_UnitContext|_UnitOutcome|hop_env|_hop_diff_probe|_tree_diff|_pin_hop_tree|_parked_approval_token|_parked_consult_question|_PARKED_ERROR_PREFIX|_APPROVAL_TOKEN_RE|step_session_key|_task_command_env|_run_in_envelope|_when_cwd)$', 'docket.hops.application.runner'],
+    ['^(_task_worktree_dir|_ensure_task_worktree)$', 'docket.hops.workspace.worktree'],
+    ['^(_run_prepare_command|_prepare_reason|_trace_prepare|_store_prepared|_prepare_claimed_task)$', 'docket.hops.workspace.prepare'],
+    ['^(_run_pipeline|_run_group_node|_resolve_pipeline_steps|_resolve_resume_state|_step_skipped|_route_outcome|_match_on_route|dispatch_task|_resolve_task_run|_record_task_run)$', 'docket.pipeline.application.executor'],
+    ['^(_run_command_step|_command_outcome_label|_run_input_step|pod_pipeline|_BOUND_PIPELINE_SOURCE_PREFIX|_bound_pipeline|_blueprint_pipeline|effective_pipeline_source|effective_pipeline|TASK_PIPELINE_NAME|_task_pipeline_file|_task_pipeline|_task_gate|_task_gate_step_id)$', 'docket.pipeline.application.steps'],
+]
+
+[definitions."docket.serve"]
+rules = [
+    ['^(_SWEEP_LOCK|_sweep_\w+|SWEEP_\w+|_submit_pod_sweep|_drain_sweeps|_abandon_sweeps|_pending_sweeps|_run_sweeps)$', 'docket.tasks.application.sweep'],
+    ['^_check_schedules$', 'docket.pipeline.application.schedule'],
+    ['^_flush_notify_channels$', 'docket.operator.notify'],
+    ['^(LoopMetrics|_loop_metrics|_collect_\w+|_escalation_metrics_lines|_POLICY_AUDIT_RE|_CHANNEL_AUDIT_RE|_cost_json|render_metrics|_epoch_seconds)$', 'docket.interfaces.http.routes.metrics'],
+    ['^(build_status|render_health|render_status|_agent_record|_with_token_budget|_last_activity_or_never)$', 'docket.interfaces.http.routes.health'],
+    ['^(_TRACE_HOLD_BACK_S|_trace_line_ts|_decode_trace_cursor|_traces_page)$', 'docket.interfaces.http.routes.traces'],
+    ['^(_TELEGRAM_\w+|_telegram_poll_loop)$', 'docket.interfaces.telegram.poll'],
+    ['.*', 'docket.interfaces.http.server'],
+]
+
+[definitions."docket.edges.adapters.system"]
+rules = [
+    ['seatbelt|_sbpl|^_SEATBELT', 'docket.sandbox.seatbelt'],
+    ['docker|^_IMAGE_PROBE_TIMEOUT$', 'docket.sandbox.docker'],
+    ['landlock|^(_mount_dirs|_mount_reopened|_linked_ref_overlays|_guarded_paths|_materialize_guard|_task_ref_dirs|_GIT_WRITABLE_PARTS|_TASK_BRANCH_PREFIX|_GIT_DIR_IN_ROOT|_existing_resolved|_submodule_git_dirs|_submodule_worktree_git_file|_SUBMODULE_DEPTH|git_dirs|worktree_git_dirs)$', 'docket.sandbox.landlock'],
+    ['[Ss]andbox|^_SANDBOX|[Jj]ail|^(_TMP_ENV_VARS|tmp_environment|cache_environment|_CACHE_ENV_VARS|task_environment|register_credential_name|credential_names|_REGISTERED_CREDENTIAL_NAMES|_VERIFY_MAX_OUTPUT|run_verify_cmd)$', 'docket.sandbox.launch'],
+    ['^_?git|^_GIT|^_SHORTSTAT|^_FULL_SHA|^_repo_rel_path_ok|^_read_new_file|^DIFF_MAX|^_DIFF_TIMEOUT|^_PIN|^_pin|^_QUERY_TIMEOUT|^trust_worktree|^_worktree_config|^_WORKTREE_CONFIG|^_trusted_git_env', 'docket.platform.git'],
+    ['.*', 'docket.platform.process'],
+]
