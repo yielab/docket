@@ -14,8 +14,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off, register_local_provider
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app

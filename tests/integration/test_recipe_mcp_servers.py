@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.agent.driver import _load_mcp_tools

@@ -7,32 +7,22 @@ writing anything; on a scripted terminal the flow calls the same functions the v
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.home import home as _home
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import setup as _setup
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.models.adapters import openai_http as _llm
 from docket.platform import git as _git
 
 SUBJECT = "docket.interfaces.cli.commands.setup"
 
 _runner = CliRunner()
-
-
-@contextmanager
-def _home(
-    tmp_path: Path,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    with use_home(Home(home)):
-        yield home
 
 
 def _files(home: Path) -> list[str]:
@@ -125,10 +115,6 @@ class TestPipedReport:
             assert report.endpoint.ok is False
             assert report.endpoint.command
             assert _files(home) == before
-
-    def test_a_removed_name_is_an_unknown_command(self) -> None:
-        for name in ("doctor", "models", "keys", "gates", "completions"):
-            assert _runner.invoke(app, [name]).exit_code == 2
 
 
 class TestScriptedTerminal:

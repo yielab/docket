@@ -21,8 +21,10 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support import home as _support_home
+from tests.support.fakes import FakeDriver
+from tests.support.llm import hop as _hop
+from tests.support.pods import build_pod
 
 from docket.agent import context as _context
 from docket.agent import handoff as _handoff
@@ -34,6 +36,8 @@ from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _plan
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
+
+_hermetic = _support_home.hermetic_2
 
 SUBJECT = "docket.agent"
 
@@ -114,12 +118,6 @@ class TestHandoffArtifactModel:
 
 
 # ── HopResult: artifact always populated, whatever the construction path ────
-
-
-def _hop(role: str, output: str, member_id: str = "") -> _task.HopResult:
-    return _task.HopResult(
-        role=role, member_id=member_id or f"demo-{role}", ok=True, output=output, cost_usd=0.0
-    )
 
 
 class TestHopResultArtifactBackfill:
@@ -253,12 +251,6 @@ def _seed_pod(tmp_path: Path, project: str = "demo", *, full: bool = False) -> I
         roles = _pod.pod.FULL_POD_ROLES if full else _pod.pod.DEFAULT_POD_ROLES
         build_pod(project, roles, codebase=f"/src/{project}")
         yield home
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
 class TestDispatchBuildsTypedArtifacts:

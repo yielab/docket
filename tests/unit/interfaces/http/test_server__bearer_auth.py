@@ -12,61 +12,28 @@ Covers:
 
 from __future__ import annotations
 
-import dataclasses
-import json
 import secrets as _secrets
 import threading
-import urllib.error
-import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support import home as _support_home
+from tests.support import http as _support_http
+from tests.support.http import get_2 as _get
 
 from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
+
+live_server = _support_http.live_server_2
+
+approvals_dir = _support_home.approvals_dir
 
 SUBJECT = "docket.interfaces.http.server"
 
-_TEST_TOKEN = "test-serve-token-g6-xyz789"
+_TEST_TOKEN = "test-serve-token"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture()
-def approvals_dir(tmp_path: Path) -> Iterator[Path]:
-    d = tmp_path / "approvals"
-    d.mkdir()
-    with use_home(dataclasses.replace(current_home(), approvals_dir_override=d)):
-        yield d
-
-
-@pytest.fixture()
-def live_server(approvals_dir: Path):  # type: ignore[no-untyped-def]
-    """Real ContextHTTPServer on a random port. Yields (base_url, token)."""
-
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
-
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
-
-
-def _get(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
-    req = urllib.request.Request(url)
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 # ── secrets.compare_digest is actually used ────────────────────────────────────

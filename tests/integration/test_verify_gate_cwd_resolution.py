@@ -21,7 +21,9 @@ from typing import Any
 
 import pytest
 import typer
-from tests.pods import build_pod
+from tests.support.pods import build_pod
+from tests.support.pods import meta as _meta
+from tests.support.pods import write_meta_3 as _write_meta
 
 from docket.agent import ports as _rd
 from docket.governance import audit as _audit
@@ -31,7 +33,6 @@ from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import executor as _executor
-from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
 
@@ -70,27 +71,6 @@ class TestResolveMemberCwd:
 
 
 # ── TestDispatchVerifyCwd: the real verify subprocess runs where it should ──
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-06-25T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
 
 
 def _fake_runner() -> _record.Runner:
@@ -210,11 +190,6 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     with use_home(Home(home)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         yield home
-
-
-def _meta(home: Path, member_id: str) -> dict[str, Any]:
-    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
-    return json.loads(p.read_text())
 
 
 class TestSetVerifyValidation:

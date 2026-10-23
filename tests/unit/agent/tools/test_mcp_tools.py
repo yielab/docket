@@ -11,13 +11,14 @@ all. No real subprocess.
 
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
+from tests.support import home as _support_home
+from tests.support import pods as _support_pods
+from tests.support.pods import write_meta_2 as _write_meta
 
 import docket.kernel.templates as _templates
 from docket.agent.driver import DocketDriver, _load_mcp_tools
@@ -26,30 +27,15 @@ from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolRegistry
-from docket.kernel.home import Home, current_home, use_home
-from docket.platform import store as _store
+from docket.kernel.home import current_home
 from docket.tasks.domain.task import DispatchError
 from docket.teams.pod import member_id as _pod_member_id
 from docket.teams.roles import registry_for_role
 
+_isolate_stores = _support_home.isolate_stores
+pod_input_policy = _support_pods.pod_input_policy
+
 SUBJECT = "docket.agent.tools.mcp_tools"
-
-
-@pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path) -> Iterator[None]:
-    with use_home(Home(tmp_path / "docket")):
-        record_isolation_off(tmp_path / "docket")
-        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
-            yield
-
-
-def _write_meta(agent_id: str, **overrides: object) -> Path:
-    ws = current_home().workspace_dir(agent_id)
-    ws.mkdir(parents=True, exist_ok=True)
-    data: dict[str, object] = {"kind": "project", "role": "implementer", "model": "test/model"}
-    data.update(overrides)
-    _store.write_json(current_home().meta_path(agent_id), data)
-    return ws
 
 
 class _ScriptedBackend:
@@ -542,19 +528,6 @@ when:
 then: block
 message: canary
 """
-
-
-@pytest.fixture()
-def pod_input_policy(tmp_path: Path) -> Iterator[Path]:
-    """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
-
-    home = tmp_path / "home"
-    with use_home(Home(home)):
-        policies = current_home().pod_config_dir("mypod") / "policies"
-        policies.mkdir(parents=True)
-        (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
-        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
-        yield home
 
 
 def test_the_description_screen_sees_the_pod_policy(pod_input_policy: Path) -> None:

@@ -12,63 +12,29 @@ required variable is rejected 400 before the run record exists.
 
 from __future__ import annotations
 
-import dataclasses
 import json
-import threading
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import http as _support_http
+from tests.support.pods import spec_2 as _spec
 
-from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import current_home, use_home
-from docket.kernel.threads import ContextHTTPServer
 from docket.pipeline.domain import spec as _pipeline
-from docket.pipeline.domain import step as _step
 from docket.tasks.application import runs as _runs
+
+live_server = _support_http.live_server_3
 
 SUBJECT = "docket.tasks.application.runs"
 
-_TEST_TOKEN = "test-serve-token-w4-vars"
+_TEST_TOKEN = "test-serve-token"
 
 
 # ── pipeline.domain.spec.resolve_variables (pure, no server) ────────────────────────
 
 
-def _spec(**variables: _pipeline.Variable) -> _pipeline.PipelineSpec:
-    return _pipeline.PipelineSpec(
-        name="t",
-        variables=variables,
-        steps=[_step.Step(id="lead", role="lead")],
-    )
-
-
 # ── POST /dispatch/<project> body -> run record's `variables` field ─────────
-
-
-@pytest.fixture()
-def live_server(tmp_path: Path):
-    """Real server on a random port. Yields (base_url, token)."""
-    d = tmp_path / "approvals"
-    d.mkdir()
-    with (
-        use_home(dataclasses.replace(current_home(), approvals_dir_override=d)),
-        use_home(
-            dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
-        ),
-    ):
-
-        class _Handler(_DocketHandler):
-            serve_token = _TEST_TOKEN
-
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = srv.server_address[1]
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-        srv.shutdown()
 
 
 def _post_json(url: str, body: dict[str, Any], token: str) -> tuple[int, dict[str, Any]]:

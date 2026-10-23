@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd

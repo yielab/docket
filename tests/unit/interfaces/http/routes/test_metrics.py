@@ -9,15 +9,15 @@ drift is caught.
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
 
 from docket.interfaces.http.routes import metrics
-from docket.kernel.home import Home, use_home
+
+fake_home = _support_home.fake_home
 
 SUBJECT = "docket.interfaces.http.routes.metrics"
 
@@ -38,32 +38,6 @@ FLEET_CONFIG: dict[str, Any] = {
     "defaults": {"model": ""},
     "security": {"gatesEnabled": False, "isolationEnabled": False},
 }
-
-
-@pytest.fixture()
-def fake_home(tmp_path: Path) -> Iterator[Path]:
-    """Seed a temp DOCKET_HOME with one project agent + fleet.json."""
-    home = tmp_path / ".docket"
-    home.mkdir()
-    ws = home / "workspaces" / "projects" / "myshop"
-    (ws / "memory").mkdir(parents=True)
-    (ws / ".docket-meta.json").write_text(json.dumps(META))
-    session = home / "sessions" / "agent%3Amyshop%3Amyshop"
-    session.mkdir(parents=True)
-    (session / "session.json").write_text(
-        json.dumps(
-            {
-                "sessionKey": "agent:myshop:myshop",
-                "created": "2026-06-19T08:00:00Z",
-                "updated": "2026-06-20T09:30:00Z",
-                "messages": [],
-            }
-        )
-    )
-    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
-
-    with use_home(Home(home)):
-        yield home
 
 
 # ── render_metrics ────────────────────────────────────────────────────────────

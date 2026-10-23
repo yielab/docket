@@ -9,7 +9,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler

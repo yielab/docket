@@ -13,15 +13,15 @@ Acceptance criteria:
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import pytest
+from tests.support import home as _support_home
 
 from docket.interfaces.http import server
 from docket.interfaces.http.routes import health, metrics
-from docket.kernel.home import Home, use_home
+
+api_home = _support_home.api_home
 
 SUBJECT = "docket.interfaces.http.routes.health"
 
@@ -42,22 +42,6 @@ FLEET_CONFIG: dict[str, Any] = {
     "security": {"gatesEnabled": False, "isolationEnabled": False},
     "defaults": {"model": ""},
 }
-
-
-@pytest.fixture()
-def api_home(tmp_path: Path) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    home.mkdir()
-    ws = home / "workspaces" / "projects" / "apitest"
-    ws.mkdir(parents=True)
-    (ws / ".docket-meta.json").write_text(json.dumps(META))
-
-    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
-
-    # repoint_docket_home points APPROVALS_DIR at home/"approvals" without
-    # creating it, so list_pending() still returns [] gracefully.
-    with use_home(Home(home)):
-        yield home
 
 
 # ── TestApiContract: machine-readable contract pins ───────────────────────────

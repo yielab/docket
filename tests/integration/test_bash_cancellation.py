@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import threading
 import time
 import uuid
@@ -23,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import pods as _support_pods
+from tests.support.git import pgrep_count as _pgrep_count
 
 from docket.agent import loop as _loop
 from docket.agent.llm import ChatResponse, TokenUsage, ToolCall, assistant
@@ -34,6 +35,8 @@ from docket.kernel.threads import new_thread
 from docket.observability import trace as _trace
 from docket.sandbox import landlock as _landlock
 from docket.tasks.application import runs as _runs
+
+workspace = _support_pods.workspace
 
 SUBJECT = "docket.agent.tools.builtins.toolbox"
 
@@ -58,18 +61,6 @@ class _DelayedFlip:
 
     def __call__(self) -> bool:
         return self._event.is_set()
-
-
-@pytest.fixture
-def workspace(tmp_path: Path) -> Path:
-    root = tmp_path / "workspace"
-    root.mkdir()
-    return root
-
-
-def _pgrep_count(marker: str) -> int:
-    result = subprocess.run(["pgrep", "-fc", marker], capture_output=True, text=True)
-    return int((result.stdout or "0").strip() or "0")
 
 
 # ── run_bash: signal reaches the in-flight process ──────────────────────────

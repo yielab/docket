@@ -14,6 +14,7 @@ from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import pytest
+from tests.support import llm as _support_llm
 
 from docket.agent import loop as _loop
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
@@ -21,6 +22,8 @@ from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool as _Tool
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel.home import Home, current_home, use_home
+
+ctx = _support_llm.ctx
 
 SUBJECT = "docket.agent.loop"
 
@@ -80,13 +83,6 @@ def registry() -> ToolRegistry:
     reg.register(_Tool(name="read", description="Read.", parameters=schema, handler=_read))
     reg.register(_Tool(name="edit", description="Edit.", parameters=schema, handler=_edit))
     return reg
-
-
-@pytest.fixture
-def ctx(tmp_path: Path) -> ToolContext:
-    return ToolContext(
-        agent_id="demo-agent", role="implementer", project="demo", roots=(tmp_path,), timeout=10
-    )
 
 
 def _run(

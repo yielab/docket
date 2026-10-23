@@ -5,8 +5,7 @@ approval-to-task linking rule, the `since` cursor semantics, and paused-pod incl
 
 from __future__ import annotations
 
-import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 
 from docket.governance import approval as _approval
 from docket.kernel.home import current_home
@@ -20,11 +19,6 @@ from docket.teams import settings as _settings
 SUBJECT = "docket.operator.inbox"
 
 _NOW = "2026-09-28T12:00:00+00:00"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 def _seed_task(project: str, task_id: str, **fields: object) -> None:

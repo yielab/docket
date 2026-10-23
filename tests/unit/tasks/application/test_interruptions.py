@@ -5,21 +5,18 @@
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import bind_pipeline_2 as _bind_pipeline
+from tests.support.pods import seed_pod as _seed_pod
 
 from docket.agent.llm import ToolCall
 from docket.agent.tools import builtin_tools
 from docket.agent.tools import registry as core_tools
-from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.operator import contract as _oc
 from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import queue as _queue
@@ -41,24 +38,6 @@ steps:
       type: approval
       message: "Ready to deploy?"
 """
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-def _bind_pipeline(project: str, text: str) -> None:
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
 
 
 class TestForecast:

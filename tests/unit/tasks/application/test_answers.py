@@ -4,12 +4,12 @@ an unanswered question (ADR 0016 SS4/SS8).
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 import pytest
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.pods import build_pod
+from tests.support.pods import seed_parked_task as _seed_parked_task
 
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
@@ -20,7 +20,6 @@ from docket.tasks.application import answers as _answers
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
-from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.answers"
@@ -36,33 +35,6 @@ steps:
   - id: implementer
     role: implementer
 """
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-def _bind_pipeline(project: str, text: str) -> None:
-    """Bind *text* as *project*'s own pipeline -- what ``docket pod set pipeline
-    <file>`` produces -- so ``answer_task``'s own ``effective_pipeline(project, None)``
-    resolves the same steps the seeded task was actually dispatched through."""
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
-def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
-    """A real pod with a real ``waiting_input`` task, reached by actually dispatching
-    through an ``input`` step -- not hand-built, so its persisted ``question`` and pipeline
-    position are exactly what ``answer_task`` expects."""
-    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _queue.enqueue_task_once(project, "needs a decision", channel="cli")
-    _sweep.dispatch_pod(project, runner=FakeDriver())
-    return _queue.read_tasks(project)[0]
 
 
 class TestAnswerTaskValidation:

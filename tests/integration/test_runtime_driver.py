@@ -9,7 +9,7 @@ test_docket_driver.py for ``DocketDriver.run_turn`` itself.
 
 from __future__ import annotations
 
-from tests.fakes import FakeDriver
+from tests.support.fakes import FakeDriver
 
 from docket.agent import ports as _rd
 

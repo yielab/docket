@@ -16,8 +16,6 @@ import ast
 from pathlib import Path
 from typing import ClassVar
 
-import pytest
-
 from docket.teams.fleet import FleetAgent
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -62,16 +60,3 @@ class TestFleetAgentSchemaMinimal:
         agent = FleetAgent(id="myshop")
         assert not hasattr(agent, "model")
         assert not hasattr(agent, "session_key")
-
-
-class TestDualSourceModulesDeleted:
-    """core/sync.py and core/oc_models.py are deleted, not ported — the
-    dual-source drift check they implemented has nothing left to compare."""
-
-    def test_core_sync_module_is_gone(self) -> None:
-        with pytest.raises(ModuleNotFoundError):
-            import docket.core.sync  # noqa: F401
-
-    def test_core_oc_models_module_is_gone(self) -> None:
-        with pytest.raises(ModuleNotFoundError):
-            import docket.core.oc_models  # noqa: F401

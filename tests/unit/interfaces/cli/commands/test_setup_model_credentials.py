@@ -12,34 +12,23 @@ from __future__ import annotations
 
 import getpass
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.cli import add as _add
+from tests.support.cli import reachable as _reachable
+from tests.support.home import global_providers as _global_providers
+from tests.support.home import home as _home
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.platform import process as _process
 
 SUBJECT = "docket.interfaces.cli.commands.setup_model_credentials"
 
 _runner = CliRunner()
-
-
-@contextmanager
-def _home(
-    tmp_path: Path,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    with use_home(Home(home)):
-        yield home
-
-
-def _add(name: str, value: str) -> bool:
-    return _setup_model_credentials._write_credential(name, value, "add")
 
 
 def _seed_workspace(home: Path, agent_id: str = "demo") -> Path:
@@ -175,20 +164,6 @@ class TestKeyringBackendStores:
             assert rc == 0
             assert cleared == ["ANTHROPIC_API_KEY"]
             assert "ANTHROPIC_API_KEY" not in json.loads(current_home().secrets_file.read_text())
-
-
-def _reachable(monkeypatch: pytest.MonkeyPatch) -> None:
-    from docket.models.adapters import openai_http as _llm
-
-    monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=200))
-
-
-def _global_providers(home: Path) -> dict[str, dict[str, object]]:
-    path = home / "docket-providers.json"
-    if not path.exists():
-        return {}
-    providers: dict[str, dict[str, object]] = json.loads(path.read_text())["providers"]
-    return providers
 
 
 class TestKeyringRequestedWithoutSecretTool:

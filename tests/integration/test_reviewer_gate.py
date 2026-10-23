@@ -13,17 +13,17 @@ specs/functional/pod-dispatch.spec.md Requirements 3-4.
 from __future__ import annotations
 
 import dataclasses
-import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
+from tests.support.pods import write_meta as _write_meta
+from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.hops.application import record as _record
-from docket.kernel.home import Home, current_home, use_home
-from docket.observability import trace as _trace
+from docket.kernel.home import current_home, use_home
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
@@ -34,43 +34,11 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
+_hermetic = _support_home.hermetic_3
+
 SUBJECT = "docket.pipeline"
 
 # ── hermetic helpers (mirror test_verify_gate.py) ─────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
 
 
 def _seed_full_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = None) -> None:
@@ -78,16 +46,6 @@ def _seed_full_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = N
     _write_meta(f"{project}-implementer")
     _write_meta(f"{project}-reviewer")
     _write_meta(f"{project}-tester")
-
-
-def _trace_events(project: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    traces_dir = current_home().traces_dir / project
-    if not traces_dir.is_dir():
-        return events
-    for f in traces_dir.glob("*.jsonl"):
-        events.extend(_trace.read_trace(f))
-    return events
 
 
 def _role_of(agent_id: str) -> str:

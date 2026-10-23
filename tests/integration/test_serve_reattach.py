@@ -17,9 +17,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.home import record_isolation_off
+from tests.support.llm import final as _final
+from tests.support.pods import build_pod
 
 from docket.agent import driver as _dr
 from docket.agent.driver import DocketDriver
@@ -131,12 +132,6 @@ class _Backend:
         timeout: int = 120,
     ) -> ChatResponse:
         return self._responses.pop(0)
-
-
-def _final(text: str) -> ChatResponse:
-    return ChatResponse(
-        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
-    )
 
 
 def _consult() -> ChatResponse:

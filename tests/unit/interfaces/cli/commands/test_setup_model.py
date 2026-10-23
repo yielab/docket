@@ -11,17 +11,18 @@ fails; remove clears the keyring entry too.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.cli import add as _add
+from tests.support.cli import reachable as _reachable
+from tests.support.home import global_providers as _global_providers
+from tests.support.home import home as _home
 from typer.testing import CliRunner
 
 from docket.governance import secrets as _secrets
 from docket.interfaces.cli.app import app
-from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models import selection as _mp
@@ -29,19 +30,6 @@ from docket.models import selection as _mp
 SUBJECT = "docket.interfaces.cli.commands.setup_model"
 
 _runner = CliRunner()
-
-
-@contextmanager
-def _home(
-    tmp_path: Path,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    with use_home(Home(home)):
-        yield home
-
-
-def _add(name: str, value: str) -> bool:
-    return _setup_model_credentials._write_credential(name, value, "add")
 
 
 class TestFileBackendUnaffected:
@@ -350,20 +338,6 @@ class TestProviderLimits:
             models = json.loads(result.stdout)["models"]
             assert models and all(m["limitsSource"] == "unknown" for m in models)
             assert all(m["contextWindow"] is None and m["maxTokens"] is None for m in models)
-
-
-def _reachable(monkeypatch: pytest.MonkeyPatch) -> None:
-    from docket.models.adapters import openai_http as _llm
-
-    monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=200))
-
-
-def _global_providers(home: Path) -> dict[str, dict[str, object]]:
-    path = home / "docket-providers.json"
-    if not path.exists():
-        return {}
-    providers: dict[str, dict[str, object]] = json.loads(path.read_text())["providers"]
-    return providers
 
 
 class TestProviderAddRefusesMissingRankAnchors:

@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import pytest
+from tests.support import home as _support_home
+from tests.support.pods import write_meta_4 as _write_meta
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import steps as _steps
 from docket.tasks.application import queue as _queue
-from docket.teams import fleet as _fleet
+
+_hermetic = _support_home.hermetic_6
 
 SUBJECT = "docket.interfaces"
 
@@ -40,41 +39,6 @@ steps:
     role: implementer
     verifyCommand: "pytest -q"
 """
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    fleet_file = home / "fleet.json"
-    fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.rsplit("-", 1)[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
 
 
 def _run(*args: str) -> Any:

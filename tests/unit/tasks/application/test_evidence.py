@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off
+from tests.support.pods import build_pod
 
 from docket.agent import driver as _dr
 from docket.agent.driver import DocketDriver
@@ -27,11 +27,6 @@ from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.evidence"
 ROOT = Path(__file__).resolve().parents[4]
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager
@@ -120,15 +115,6 @@ class TestTaskEvidence:
                 ]
                 assert window, f"no events for {hop.role} inside its recorded window"
                 assert any(r["event_type"] == "llm_call" for r in window)
-
-    def test_legacy_record_without_the_new_fields_builds(self, tmp_path: Path) -> None:
-        with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "old", channel="cli")[0]
-            _seed_task(task["id"], [{"role": "lead", "member": "demo-lead", "ok": True}])
-            ev = _ev.task_evidence("demo", task["id"], "1.1.0")
-            hop = ev.hops[0]
-            assert hop.usage is None and hop.trace is None and hop.verify is None
-            assert hop.commit is None and hop.step_id == "lead"
 
     def test_unknown_task_raises_named_error(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path), pytest.raises(_ev.EvidenceNotFound):

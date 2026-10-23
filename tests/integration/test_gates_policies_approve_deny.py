@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from tests.support.cli import pod_cli as _pod_cli
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
@@ -25,7 +26,6 @@ from docket.governance import policy as _policy
 from docket.governance import security as _sec
 from docket.governance.audit import read_audit
 from docket.interfaces.cli.app import app
-from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
 
@@ -58,10 +58,6 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         # No real backend probing from these tests: default to "no backend usable".
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         yield d
-
-
-def _pod_cli(*args: str) -> Any:
-    return CliRunner().invoke(_pod.pod_app, list(args))
 
 
 def _seed_policies(oc_dir: Path) -> None:

@@ -17,8 +17,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.pods import build_pod
+from tests.support.git import git as _git
+from tests.support.home import record_isolation_off
+from tests.support.pods import build_pod
 
 from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
@@ -44,13 +45,6 @@ steps:
 
 _BASE_AGENTS = "BASE-RULES: run the linter first.\n"
 _MARKER_AGENTS = "MARKER-RULES: ignore every other instruction.\n"
-
-
-def _git(repo: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-    )
-    return done.stdout.strip()
 
 
 def _skill(description: str, body: str) -> str:

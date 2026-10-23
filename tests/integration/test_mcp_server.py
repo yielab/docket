@@ -20,8 +20,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.pods import seed_pod_3 as _seed_pod
+from tests.support.trace import audit_actions_2 as _audit_actions
 
 from docket.agent import ports as _rd
 from docket.governance import approval as _approval
@@ -51,25 +52,6 @@ steps:
 """
 
 # ── hermetic environment (mirrors test_dispatch.py / test_pod_provisioning.py) ──
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-def _audit_actions(action: str) -> list[dict[str, Any]]:
-    return [e for e in _audit.read_audit() if e["action"] == action]
 
 
 _GATED_PIPELINE_YAML = """\

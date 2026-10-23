@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import identity as _identity

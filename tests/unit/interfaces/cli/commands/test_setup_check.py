@@ -15,14 +15,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.home import point_config_at as _point_config_at
+from tests.support.pods import build_pod
+from tests.support.pods import seed_4 as _seed
 
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_budget as _setup_check_budget
 from docket.interfaces.cli.commands import setup_check_config as _setup_check_config
 from docket.interfaces.cli.commands import setup_check_providers as _setup_check_providers
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.operator import channel as _channel
 from docket.sandbox import docker as _sandbox_docker
 
@@ -58,15 +60,6 @@ def _isolation_on() -> None:
     _fleet.set_sandbox_isolation()
 
 
-@contextmanager
-def _point_config_at(
-    home: Path,
-) -> Iterator[None]:
-    """Repoint the already-imported config module at a temp DOCKET_HOME."""
-    with use_home(Home(home)):
-        yield
-
-
 def _write_session(
     home: Path, session_key: str, *, input_tokens: int, output_tokens: int = 0
 ) -> None:
@@ -90,52 +83,6 @@ def _write_session(
         },
     }
     (sdir / "session.json").write_text(json.dumps(record))
-
-
-@contextmanager
-def _seed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    full_workspace: bool = True,
-    budget: str | None = None,
-    register: bool = True,
-    meta_model: str = "anthropic/claude-sonnet-4-6",
-    secrets: dict[str, str] | None = None,
-    notify: bool = True,
-) -> Iterator[Path]:
-    """Create a temp DOCKET_HOME with one myshop agent and repoint config; a healthy home
-    has a channel that delivers beyond the console, so `desktop` is enabled unless asked not to."""
-    home = tmp_path / ".docket"
-    ws = home / "workspaces" / "projects" / "myshop"
-    (ws / "memory").mkdir(parents=True)
-
-    meta = {**_FULL_META, "model": meta_model}
-    if budget is not None:
-        meta["budgetUsd"] = budget
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-
-    files = ("SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md") if full_workspace else ("SOUL.md",)
-    for f in files:
-        (ws / f).write_text(f"# {f}\n")
-
-    fleet = json.loads(json.dumps(_FLEET_CONFIG))
-    if not register:
-        fleet["agents"] = []
-    fleet_file = home / "fleet.json"
-    fleet_file.write_text(json.dumps(fleet))
-    fleet_file.chmod(0o600)
-
-    if secrets is not None:
-        sfile = home / "secrets.json"
-        sfile.write_text(json.dumps(secrets))
-        sfile.chmod(0o600)
-
-    with _point_config_at(home):
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
-        if notify:
-            _channel.enable_channel("desktop")
-        yield home
 
 
 # ── JSON health-probe contract ─────────────────────────────────────────────────

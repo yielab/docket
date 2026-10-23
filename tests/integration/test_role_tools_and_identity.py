@@ -19,6 +19,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import pytest
+from tests.support.llm import final as _final
 
 from docket.agent import context as _context
 from docket.agent import identity as _identity
@@ -78,12 +79,6 @@ class _ScriptedBackend:
     ) -> ChatResponse:
         self.calls.append(list(messages))
         return self._responses.pop(0)
-
-
-def _final(text: str) -> ChatResponse:
-    return ChatResponse(
-        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
-    )
 
 
 def _tool_call_response(call: ToolCall) -> ChatResponse:

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.http import post_3 as _post
 
 from docket.interfaces.http import exchange
 from docket.interfaces.http.server import _DocketHandler
@@ -61,22 +62,6 @@ def _get(url: str, token: str | None = None) -> tuple[int, dict[str, Any], Any]:
             return resp.status, json.loads(resp.read()), resp.headers
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read()), exc.headers
-
-
-def _post(
-    url: str, body: dict[str, Any] | None = None, token: str | None = None
-) -> tuple[int, dict[str, Any]]:
-    data = json.dumps(body if body is not None else {}).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 # ── every response carries Cache-Control: no-store ──────────────────────────

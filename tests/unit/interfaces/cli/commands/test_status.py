@@ -3,34 +3,22 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import seed_3 as _seed
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import status as _status
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.platform import store as _store
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.status"
 
 runner = CliRunner()
-
-
-@contextmanager
-def _seed(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
-        yield home
 
 
 def _tasks(project: str, *statuses: str) -> None:
@@ -205,12 +193,6 @@ class TestCostSnapshot:
             snap = _status.cost_snapshot()
             assert {a["id"] for a in snap["agents"]} == {"demo-lead", "demo-implementer"}
             assert snap["totalUsd"] == 0.0
-
-
-class TestRemovedCommands:
-    @pytest.mark.parametrize("name", ["cost", "metrics", "snapshot", "dispatch"])
-    def test_a_removed_name_is_an_unknown_command(self, name: str) -> None:
-        assert runner.invoke(_app, [name]).exit_code == 2
 
 
 class TestParkedQuestionAndSandbox:

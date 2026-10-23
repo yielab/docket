@@ -25,6 +25,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support import home as _support_home
+from tests.support import pods as _support_pods
+from tests.support.git import git_2 as _git
+from tests.support.git import pgrep_count as _pgrep_count
 
 from docket.agent.llm import ToolCall
 from docket.agent.tools.builtin_tools import builtin_registry
@@ -35,6 +39,9 @@ from docket.sandbox import docker as sandbox_docker
 from docket.sandbox import landlock as sandbox_landlock
 from docket.sandbox import launch, seatbelt
 from docket.teams import fleet as _fleet
+
+_isolate_gates = _support_home.isolate_gates
+workspace = _support_pods.workspace
 
 SUBJECT = "docket.agent.tools.registry"
 
@@ -47,51 +54,6 @@ needs_docker = pytest.mark.skipif(
 needs_landlock = pytest.mark.skipif(
     not LANDLOCK_UP, reason="landlock is not available on this host"
 )
-
-
-@pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Tests here call `dispatch_tool` directly, which consults `governance/policy.py` and
-    `governance/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
-    developer's real ``~/.docket/policies`` or blocks on an approval nothing will grant."""
-    with use_home(
-        dataclasses.replace(
-            current_home(),
-            policies_dir_override=tmp_path / "_policies",
-            approvals_dir_override=tmp_path / "_approvals",
-            tool_approval_timeout=0,
-        )
-    ):
-        yield
-
-
-@pytest.fixture
-def workspace(tmp_path: Path) -> Path:
-    root = tmp_path / "workspace"
-    root.mkdir()
-    return root
-
-
-def _git(cwd: Path, *args: str) -> str:
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "t",
-        "GIT_AUTHOR_EMAIL": "t@t",
-        "GIT_COMMITTER_NAME": "t",
-        "GIT_COMMITTER_EMAIL": "t@t",
-    }
-    out = subprocess.run(
-        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
-    )
-    return out.stdout.strip()
-
-
-def _pgrep_count(marker: str) -> int:
-    """Count host processes whose command line contains *marker* -- the orphan check for the
-    landlock timeout tests. Not used for docker: its processes aren't visible to a host-level `pgrep`,
-    hence docker's own `docker ps`-based check."""
-    result = subprocess.run(["pgrep", "-fc", marker], capture_output=True, text=True)
-    return int((result.stdout or "0").strip() or "0")
 
 
 # ── detection: real, not assumed ─────────────────────────────────────────────

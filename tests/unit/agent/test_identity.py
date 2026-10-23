@@ -7,16 +7,17 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
+from tests.support import pods as _support_pods
 
 from docket.agent import identity as I
 from docket.agent import memory as _mem
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.platform import store as _store
 from docket.teams import pod_settings as _pod_settings
+
+pod_input_policy = _support_pods.pod_input_policy
 
 _LOCAL_WINDOW = 16_384
 _LOCAL_MAX_OUTPUT = 8_192
@@ -408,19 +409,6 @@ when:
 then: block
 message: canary
 """
-
-
-@pytest.fixture()
-def pod_input_policy(tmp_path: Path) -> Iterator[Path]:
-    """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
-
-    home = tmp_path / "home"
-    with use_home(Home(home)):
-        policies = current_home().pod_config_dir("mypod") / "policies"
-        policies.mkdir(parents=True)
-        (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
-        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
-        yield home
 
 
 class TestScreensSeeThePodPolicy:

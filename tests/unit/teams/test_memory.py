@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import dataclasses
 
+from tests.support.pods import section as _section
+
 from docket.kernel.home import current_home, use_home
 from docket.teams import memory as pm
 
 SUBJECT = "docket.teams.memory"
-
-
-def _section(*lines: str) -> str:
-    return "Done.\n\n## Memory\n" + "\n".join(lines) + "\n"
 
 
 class TestParse:

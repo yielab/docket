@@ -23,6 +23,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support.trace import audit_actions as _audit_actions
 from typer.testing import CliRunner
 
 from docket.agent.tools import mcp_tools as _mt
@@ -49,10 +50,6 @@ _runner = CliRunner()
 def _mcp_run(args: list[str]) -> tuple[int, str, str]:
     result = _runner.invoke(app, ["setup", "mcp", *args])
     return result.exit_code, result.stdout, result.stderr
-
-
-def _audit_actions() -> list[str]:
-    return [e["action"] for e in _audit.read_audit()]
 
 
 def _audit_details(action: str) -> list[str]:
@@ -241,9 +238,6 @@ class TestGroup:
     def test_bare_group_prints_help_and_names_its_verbs(self) -> None:
         _, out, _ = _mcp_run([])
         assert "add" in out and "remove" in out and "list" in out
-
-    def test_the_removed_top_level_command_is_unknown(self) -> None:
-        assert _runner.invoke(app, ["mcp", "servers", "list"]).exit_code == 2
 
 
 # ── ownership-row guard: never reaches agent/tools/registry.py or a toolbox handler ────

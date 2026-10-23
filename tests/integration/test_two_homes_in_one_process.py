@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 
 from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home

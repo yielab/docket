@@ -7,27 +7,17 @@ report; the return value is the process exit code.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.home import point_config_at as _point_config_at
 
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_providers as _setup_check_providers
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.platform import store as _store
 
 SUBJECT = "docket.interfaces.cli.commands.setup_check_providers"
-
-
-@contextmanager
-def _point_config_at(
-    home: Path,
-) -> Iterator[None]:
-    """Repoint the already-imported config module at a temp DOCKET_HOME."""
-    with use_home(Home(home)):
-        yield
 
 
 class TestProviderCatalog:

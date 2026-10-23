@@ -17,50 +17,24 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
+from tests.support.pods import ids as _ids
+from tests.support.pods import meta as _meta
+from tests.support.pods import seed_2 as _seed
 
 from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup_check as _setup_check
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.teams import blueprints as _bp
-from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_core
 
 SUBJECT = "docket.interfaces.cli.app"
 
 # ── hermetic helpers (mirrors test_pod_roles_from_archetypes.py / test_pod_resources.py) ──
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed(
-    tmp_path: Path,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield home
-
-
-def _ids(home: Path) -> list[str]:
-    # Agent registration lives in fleet.json.
-    del home  # kept for call-site compatibility; no longer the source
-    return [a.id for a in _fleet.list_agents()]
-
-
-def _meta(home: Path, member_id: str) -> dict[str, Any]:
-    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
-    return json.loads(p.read_text())
 
 
 def _ws(home: Path, member_id: str) -> Path:

@@ -7,7 +7,6 @@ specs/functional/security-gates.spec.md Exec sandbox item 11.
 
 from __future__ import annotations
 
-import json
 import shutil
 import uuid
 from collections.abc import Iterator
@@ -15,31 +14,24 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
+from tests.support.pods import write_meta_3 as _write_meta
 
 from docket.agent import ports as _rd
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.sandbox import landlock as _landlock
 from docket.teams import fleet as _fleet
 
+_hermetic = _support_home.hermetic_3
+
 SUBJECT = "docket.tasks.application.queue"
 
 needs_landlock = pytest.mark.skipif(
     not _landlock.landlock_available(), reason="Landlock not available on this kernel"
 )
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield
 
 
 @pytest.fixture
@@ -49,27 +41,6 @@ def outside() -> Iterator[Path]:
     path.mkdir()
     yield path
     shutil.rmtree(path, ignore_errors=True)
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-06-25T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
 
 
 def _runner(

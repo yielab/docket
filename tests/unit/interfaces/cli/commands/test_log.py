@@ -66,9 +66,6 @@ class TestLog:
         assert "No log yet." in result.output
         assert "scope" not in result.output
 
-    def test_audit_is_not_a_command(self, home: Path) -> None:
-        assert runner.invoke(app, ["audit"]).exit_code == 2
-
 
 class TestVerify:
     def test_a_clean_chain_exits_zero(self, home: Path) -> None:

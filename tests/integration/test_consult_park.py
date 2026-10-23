@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.pods import build_pod
+from tests.support.home import record_isolation_off
+from tests.support.llm import final as _final
+from tests.support.pods import build_pod
 
 from docket.agent import driver as _dr
 from docket.agent.driver import DocketDriver
@@ -75,12 +76,6 @@ class _Backend:
     ) -> ChatResponse:
         self.calls.append(list(messages))
         return self._responses.pop(0)
-
-
-def _final(text: str) -> ChatResponse:
-    return ChatResponse(
-        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
-    )
 
 
 def _consult(call_id: str = "c1") -> ChatResponse:

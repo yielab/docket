@@ -4,43 +4,30 @@ cannot store faithfully (agent-lifecycle, cli-interface, input-validation)."""
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support import home as _support_home
+from tests.support.pods import build_pod
+from tests.support.pods import members as _members
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
-from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 
+_hermetic = _support_home.hermetic_4
+
 SUBJECT = "docket.interfaces.cli.commands.agents"
 
 runner = CliRunner()
 
 
-@pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setattr(_contract, "is_tty", lambda: False)
-    home = tmp_path / "home"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield home
-
-
 def _mode(path: Path) -> int:
     return path.stat().st_mode & 0o777
-
-
-def _members() -> list[str]:
-    return sorted(p.name for p in current_home().projects_dir.iterdir())
 
 
 class TestProvisioningLeavesAWorkdirItDidNotCreate:

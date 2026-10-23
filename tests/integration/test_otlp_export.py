@@ -22,25 +22,19 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.conftest import record_isolation_off
+from tests.support import home as _support_home
 
 from docket.agent import driver as docket_runtime
 from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home, use_home
 from docket.observability import exporter as _exporter
 from docket.observability import telemetry as _telemetry
 from docket.platform import store as _store
 
+_isolate_stores = _support_home.isolate_stores
+
 SUBJECT = "docket.agent.driver"
-
-
-@pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path) -> Iterator[None]:
-    with use_home(Home(tmp_path / "docket")):
-        record_isolation_off(tmp_path / "docket")
-        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
-            yield
 
 
 @pytest.fixture(autouse=True)

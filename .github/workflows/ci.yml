@@ -74,6 +74,32 @@ jobs:
       - name: Agent-lane pytest
         run: uv run pytest tests/agent
 
+  # No sandbox backend: the default suite on a host where detection reports "none"
+  # (scripts/maint/pytest-without-sandbox.sh). Forcing DOCKET_SANDBOX_BACKEND=none is not
+  # this check; a fixture that deletes the variable falls back to detection.
+  no-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Pytest without a sandbox backend
+        run: scripts/maint/pytest-without-sandbox.sh -q
+
   # Docs: the CLI reference is generated from the Typer registry, so a command
   # added without regenerating it is drift this job catches. The site build runs
   # with --strict, which turns a dead link into a failed build; mkdocs is pulled

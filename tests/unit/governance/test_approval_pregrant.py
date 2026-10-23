@@ -8,44 +8,21 @@ containment holds at the handler as well as at the chokepoint.
 
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support import home as _support_home
 
 from docket.governance import approval as _approval
 from docket.governance import approval_pregrant as _approval_pregrant
-from docket.kernel.home import current_home, use_home
+
+_isolate_gates = _support_home.isolate_gates
+approvals_dir = _support_home.approvals_dir
 
 SUBJECT = "docket.governance.approval_pregrant"
 
 
-@pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Isolate `governance/policy.py` and `governance/approval.py`'s real stores from a
-    developer's ``~/.docket``, and set the approval timeout to 0 so a gated
-    call nothing grants resolves immediately (fail-closed to denied)."""
-    with use_home(
-        dataclasses.replace(
-            current_home(),
-            policies_dir_override=tmp_path / "_policies",
-            approvals_dir_override=tmp_path / "_approvals",
-            tool_approval_timeout=0,
-        )
-    ):
-        yield
-
-
 # ── fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture()
-def approvals_dir(tmp_path: Path) -> Iterator[Path]:
-    d = tmp_path / "approvals"
-    d.mkdir()
-    with use_home(dataclasses.replace(current_home(), approvals_dir_override=d)):
-        yield d
 
 
 class TestPreGrants:

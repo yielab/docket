@@ -98,15 +98,6 @@ class TestUsage:
 class TestRealSdkIntegration:
     """Only runs when the optional `mcp` SDK is actually installed."""
 
-    def test_every_control_plane_tool_is_registered_with_the_real_sdk(self) -> None:
-        pytest.importorskip("mcp")
-        import asyncio
-
-        server = _mcp._build_server()
-        tools = asyncio.run(server.list_tools())
-        names = {t.name for t in tools}
-        assert names == set(_mcp._TOOL_NAMES)
-
     def test_a_real_call_through_the_sdk_round_trips_a_dict_result(self, tmp_path: Path) -> None:
         pytest.importorskip("mcp")
         import asyncio

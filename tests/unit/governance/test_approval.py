@@ -12,87 +12,42 @@ Acceptance criteria:
 
 from __future__ import annotations
 
-import dataclasses
 import datetime as _dt
 import json
 import os as _os
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support import home as _support_home
+from tests.support import http as _support_http
+from tests.support.http import get_2 as _get
+from tests.support.http import post as _post
 
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.governance.approval import _approval_path
 from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import current_home, use_home
+from docket.kernel.home import current_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.platform import store as _store
 
+live_server = _support_http.live_server_2
+
+approvals_dir = _support_home.approvals_dir
+_isolate_gates = _support_home.isolate_gates
+
 SUBJECT = "docket.governance.approval"
 
-_TEST_TOKEN = "test-serve-token-cd4-abc123"
+_TEST_TOKEN = "test-serve-token"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture()
-def approvals_dir(tmp_path: Path) -> Iterator[Path]:
-    d = tmp_path / "approvals"
-    d.mkdir()
-    with use_home(dataclasses.replace(current_home(), approvals_dir_override=d)):
-        yield d
-
-
-@pytest.fixture()
-def live_server(approvals_dir: Path):
-    """Real ThreadingHTTPServer on a random port. Yields (base_url, token)."""
-
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
-
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
-
-
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
-
-
-def _get(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
-    req = urllib.request.Request(url)
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
-
-
-def _post(
-    url: str,
-    body: dict,
-    token: str | None = None,  # type: ignore[type-arg]
-) -> tuple[int, dict]:  # type: ignore[type-arg]
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 # ── GET /approvals ─────────────────────────────────────────────────────────────
@@ -717,19 +672,3 @@ class TestAuditFieldsAreBounded:
         token = _approval.approval_create("proj-cap-short", "implementer", "deploy")
         _approval.approval_deny(token, "cli", reason="not ready")
         assert "reason=not ready" in str(_audit.read_audit()[-1]["detail"])
-
-
-@pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Isolate `governance/policy.py` and `governance/approval.py`'s real stores from a
-    developer's ``~/.docket``, and set the approval timeout to 0 so a gated
-    call nothing grants resolves immediately (fail-closed to denied)."""
-    with use_home(
-        dataclasses.replace(
-            current_home(),
-            policies_dir_override=tmp_path / "_policies",
-            approvals_dir_override=tmp_path / "_approvals",
-            tool_approval_timeout=0,
-        )
-    ):
-        yield

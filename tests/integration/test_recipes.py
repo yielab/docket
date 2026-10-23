@@ -12,15 +12,15 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 import pytest
 import typer
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.cli import pod_cli as _pod_cli
+from tests.support.fakes import FakeDriver
+from tests.support.pods import build_pod
+from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
+from tests.support.trace import trace_events_2 as _trace_events
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
@@ -31,7 +31,6 @@ from docket.governance import policy as _policy
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _commands_pod_settings
 from docket.kernel.home import Home, current_home, use_home
-from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
@@ -47,10 +46,6 @@ from docket.teams.apply import write as _write
 SUBJECT = "docket.teams.apply.plan"
 
 RECIPES_DIR = _templates.RECIPES_DIR
-
-
-def _pod_cli(*args: str) -> Any:
-    return CliRunner().invoke(_pod.pod_app, list(args))
 
 
 REQUIRED_RECIPES = ("secure-build", "research-review", "ops-approval")
@@ -131,21 +126,6 @@ def test_recipe_role_validates(role_file: Path) -> None:
 )
 def test_recipe_policy_validates(policy_file: Path) -> None:
     assert _policy.validate_policy(policy_file) == ""
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield
 
 
 @pytest.mark.parametrize("recipe_dir", _recipe_dirs(), ids=lambda p: p.name)
@@ -396,16 +376,6 @@ class _SecureBuildRunner:
                 ok=True, output="APPROVE - injection risk fixed", cost_usd=0.01, raw={}
             )
         return FakeDriver()(member_id, session_id, message, timeout, env)
-
-
-def _trace_events(project: str) -> list[dict[str, object]]:
-    events: list[dict[str, object]] = []
-    traces_dir = current_home().traces_dir / project
-    if not traces_dir.is_dir():
-        return events
-    for f in traces_dir.glob("*.jsonl"):
-        events.extend(_trace.read_trace(f))
-    return events
 
 
 def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_in_trace(

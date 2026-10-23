@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -10,20 +9,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.pods import bind_ask_pipeline as _bind_ask_pipeline
+from tests.support.pods import seed_parked_task_2 as _seed_parked_task
+from tests.support.pods import seed_pod_4 as _seed_pod
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
-from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
-from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.task"
@@ -43,17 +39,6 @@ steps:
 """
 
 
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        record_isolation_off(home)
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
 _GATED_PIPELINE_YAML = """\
 name: gated
 steps:
@@ -64,27 +49,6 @@ steps:
     gate:
       type: approval
 """
-
-
-def _bind_ask_pipeline(project: str, text: str = _ASK_PIPELINE_YAML) -> None:
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
-@contextmanager
-def _seed_parked_task(
-    tmp_path: Path,
-) -> Iterator[dict[str, Any]]:
-    """A real pod with a real ``waiting_input`` task, reached by dispatching through an
-    ``input`` step."""
-    with _seed_pod(tmp_path):
-        _bind_ask_pipeline("demo")
-        _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
-        _sweep.dispatch_pod("demo", runner=FakeDriver())
-        yield _queue.read_tasks("demo")[0]
 
 
 def _give_options(project: str, task_id: str) -> None:
@@ -540,12 +504,6 @@ class TestTaskPrune:
             assert "run record" in result.output
 
 
-class TestRetiredNames:
-    @pytest.mark.parametrize("name", ["runs", "trace", "delegate"])
-    def test_a_removed_top_level_name_is_unknown(self, name: str) -> None:
-        assert _runner.invoke(app, [name]).exit_code == 2
-
-
 def _task(*args: str) -> Any:
     return _runner.invoke(app, ["task", *args])
 
@@ -684,10 +642,6 @@ class TestTaskApprove:
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             assert _task("approve", task["id"], "--once", "--task").exit_code == 2
-
-    def test_the_removed_top_level_names_are_unknown(self) -> None:
-        for name in ("approve", "deny", "chat"):
-            assert _runner.invoke(app, [name]).exit_code == 2
 
 
 class TestTaskDeny:

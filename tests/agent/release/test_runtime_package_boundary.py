@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.support.cli import run as _run
 
 LANE = "release"
 REASON = "Prevents the separately shipped docket-runtime package from pulling in a CLI dependency, or from losing its own independently rebuildable, versioned artifact."
@@ -14,10 +15,6 @@ RETIRE_WHEN = "docket-runtime is folded back into the main package, or gains its
 
 ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / "packages" / "docket-runtime"
-
-
-def _run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=True)
 
 
 def _python(

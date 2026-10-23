@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider
-from tests.fakes import FakeDriver
-from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.home import record_isolation_off, register_local_provider
+from tests.support.llm import _final_response, _ScriptedLLMServer
+from tests.support.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
@@ -31,11 +31,6 @@ SUBJECT = "docket.tasks.application.queue"
 _TWO = (
     "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
 )
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @pytest.fixture()

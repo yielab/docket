@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-import hashlib
 import json
 import threading
 from collections.abc import Iterator
@@ -22,8 +21,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.pods import build_pod
+from tests.support.pods import seed_parked_task as _seed_parked_task
 
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
@@ -39,7 +38,6 @@ from docket.operator.channel import ChannelSpec
 from docket.operator.contract import QuestionV11, make_event
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
@@ -79,27 +77,6 @@ def _msg(chat_id: str, text: str, update_id: int = 1, user_id: str = "999") -> _
 
 def _read_audit() -> list[dict[str, object]]:
     return _audit.read_audit()
-
-
-def _bind_pipeline(project: str, text: str) -> None:
-    """Bind *text* as *project*'s own pipeline, mirroring ``tests/unit/core/test_answers.py``'s
-    helper -- so a task actually dispatched through it parks at a real ``input`` step with the
-    schema ``answer_task`` expects."""
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
-def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
-    """A real pod with a real ``waiting_input`` task (single-property ``answer`` schema),
-    reached by actually dispatching through an ``input`` step."""
-    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _queue.enqueue_task_once(project, "needs a decision", channel="cli")
-    _sweep.dispatch_pod(project, runner=FakeDriver())
-    return _queue.read_tasks(project)[0]
 
 
 # ── authorization: the security-critical invariant ──────────────────────────

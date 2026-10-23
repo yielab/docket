@@ -13,61 +13,24 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import pods as _support_pods
+from tests.support.pods import seed_lean_pod as _seed_lean_pod
 
-from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
-from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
+
+pod_home = _support_pods.pod_home_2
 
 SUBJECT = "docket.tasks.application.lifecycle"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture()
-def pod_home(tmp_path: Path) -> Iterator[Path]:
-    """A hermetic DOCKET_HOME with the directories enqueue_task_once touches."""
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield home
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
-
-
-def _seed_lean_pod(project: str = "myapp") -> None:
-    _write_meta(f"{project}-lead")
-    _write_meta(f"{project}-implementer")
 
 
 class TestCancelTask:

@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support import home as _support_home
+from tests.support.pods import build_pod
 
 from docket.hops.workspace import worktree as _worktree
 from docket.interfaces.cli.commands import pod as _pod
@@ -30,6 +31,8 @@ from docket.platform import git as _git
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
+
+_hermetic = _support_home.hermetic_2
 
 SUBJECT = "docket.tasks"
 
@@ -166,12 +169,6 @@ def _seed_pod(
     with use_home(Home(home)):
         build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
         yield home
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
 class _ImplementerWritesFile:

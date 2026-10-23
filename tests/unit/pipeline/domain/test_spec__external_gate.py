@@ -6,19 +6,13 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from tests.support.pods import load as _load
 
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
-from docket.pipeline.domain.spec import PipelineSpec, load_pipeline
+from docket.pipeline.domain.spec import load_pipeline
 
 SUBJECT = "docket.pipeline.domain.spec"
-
-
-def _load(text: str) -> PipelineSpec:
-    loaded = load_pipeline(text)
-    assert loaded.ok, loaded.errors
-    assert loaded.spec is not None
-    return loaded.spec
 
 
 def _errors(text: str) -> str:

@@ -13,74 +13,38 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
-import hashlib
 import json
-import threading
-import urllib.error
-import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import http as _support_http
+from tests.support import pods as _support_pods
+from tests.support.http import post_raw as _post_raw
+from tests.support.pods import bind_one_step_pipeline as _bind_one_step_pipeline
+from tests.support.pods import put_task as _put_task
+from tests.support.pods import seed_lean_pod as _seed_lean_pod
 
 from docket.agent import ports as _rd
-from docket.interfaces.http.server import _DocketHandler
 from docket.kernel import clock as _clock
-from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.threads import ContextHTTPServer
+from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
-from docket.teams import fleet as _fleet
-from docket.teams import pod as _pod
 from docket.teams import settings as _settings
+
+live_server = _support_http.live_server
+
+pod_home = _support_pods.pod_home_2
 
 SUBJECT = "docket.tasks.application.queue"
 
-_TEST_TOKEN = "test-serve-token-tasks-post-9f2c"
+_TEST_TOKEN = "test-serve-token"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture()
-def pod_home(tmp_path: Path) -> Iterator[Path]:
-    """A hermetic DOCKET_HOME with the directories enqueue_task_once touches."""
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield home
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
-
-
-def _seed_lean_pod(project: str = "myapp") -> None:
-    _write_meta(f"{project}-lead")
-    _write_meta(f"{project}-implementer")
 
 
 def _write_policy(
@@ -103,38 +67,6 @@ def _write_policy(
     (current_home().policies_dir / f"{policy_id}.json").write_text(
         json.dumps(doc), encoding="utf-8"
     )
-
-
-@pytest.fixture()
-def live_server(pod_home: Path):
-    """Real ThreadingHTTPServer on a random port. Yields (base_url, token)."""
-
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
-
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
-
-
-def _post_raw(
-    url: str,
-    data: bytes,
-    token: str | None = None,
-) -> tuple[int, dict[str, Any]]:
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 def _post(
@@ -503,12 +435,6 @@ class TestResumableFailureKinds:
         assert "failureKind" not in task
 
 
-def _put_task(project: str, task: dict[str, Any]) -> None:
-    from docket.platform import store as _store
-
-    _store.write_json(_settings.pod_task_list_path(project), {"tasks": [task]})
-
-
 def _audit_actions() -> list[str]:
     from docket.governance import audit as _audit
 
@@ -565,7 +491,7 @@ class TestStaleClaimReclaim:
         }
 
     def test_dead_claimant_is_reclaimed_and_audited(self, pod_home: Path) -> None:
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
         _put_task("myapp", self._running(_GONE_PID, _clock.iso()))
@@ -579,7 +505,7 @@ class TestStaleClaimReclaim:
     def test_live_claimant_inside_the_lease_is_left_alone(self, pod_home: Path) -> None:
         import os
 
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
         _put_task("myapp", self._running(os.getpid(), _clock.iso()))
@@ -594,7 +520,7 @@ class TestStaleClaimReclaim:
 class TestStopBetweenTasks:
     def test_dispatch_pod_stops_between_tasks_when_asked(self, pod_home: Path) -> None:
         """A stop that flips after the first claim ends the loop with the rest still pending."""
-        from tests.fakes import FakeDriver
+        from tests.support.fakes import FakeDriver
 
         _seed_lean_pod("myapp")
         _bind_one_step_pipeline("myapp")
@@ -609,12 +535,3 @@ class TestStopBetweenTasks:
         assert len(results) == 1
         statuses = [t["status"] for t in _queue.read_tasks("myapp")]
         assert sorted(statuses) == ["done", "pending", "pending"]
-
-
-def _bind_one_step_pipeline(project: str) -> None:
-    text = "name: solo\nsteps:\n  - id: kickoff\n    role: lead\n"
-    path = _pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    _fleet.meta_set(_pod.member_id(project, "lead"), "pipeline", digest)

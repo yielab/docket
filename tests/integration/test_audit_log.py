@@ -18,12 +18,11 @@ import multiprocessing
 import os
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import seed_pod as _seed_pod
 from typer.testing import CliRunner
 
 from docket.governance import audit as _audit
@@ -41,16 +40,6 @@ SUBJECT = "docket.interfaces.cli.app"
 
 def _entries(action: str) -> list[dict[str, Any]]:
     return [e for e in _audit.read_audit() if e["action"] == action]
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
 
 
 def _concurrent_audit_writer(

@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.support.git import git_4 as _git
 
 from docket.governance import review as _reviewed
 from docket.teams.apply import review as _review
@@ -18,10 +19,6 @@ SUBJECT = "docket.governance.review"
 
 GATE = RunItem("pipeline-step", "verify", "bash scripts/check.sh")
 PLAIN = RunItem("pipeline-step", "echo", "echo hi")
-
-
-def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
 
 
 @pytest.fixture

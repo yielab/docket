@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off
-from tests.fakes import FakeDriver
-from tests.pods import build_pod
+from tests.support.fakes import FakeDriver
+from tests.support.home import record_isolation_off
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd

@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.support.pods import write_security_vetter_md as _write_security_vetter_md
 
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import Tool, ToolOutcome
@@ -193,15 +194,6 @@ _SECURITY_VETTER_SHORT: dict[str, object] = {
     "cannot": ["write", "edit", "bash"],
     "verdict": ["APPROVE", "REQUEST-CHANGES"],
 }
-
-
-def _write_security_vetter_md(directory: Path) -> None:
-    (directory / "security-vetter.md").write_text(
-        _SECURITY_VETTER_LONG["soulTemplate"]  # type: ignore[operator]
-        + "\n## AGENTS\n\n"
-        + _SECURITY_VETTER_LONG["agentsTemplate"],  # type: ignore[operator]
-        encoding="utf-8",
-    )
 
 
 class TestLoadRoleFile:

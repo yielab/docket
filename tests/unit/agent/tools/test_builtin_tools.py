@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
+from tests.support import home as _support_home
+from tests.support import llm as _support_llm
+from tests.support import pods as _support_pods
+from tests.support.cli import call as _call
 
-from docket.agent.llm import ToolCall
 from docket.agent.tools import builtin_tools
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import (
@@ -23,40 +25,11 @@ from docket.agent.tools.registry import (
 )
 from docket.kernel.home import current_home, use_home
 
+_isolate_gates = _support_home.isolate_gates
+workspace = _support_pods.workspace_2
+ctx = _support_llm.ctx_2
+
 SUBJECT = "docket.agent.tools.builtin_tools"
-
-
-@pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Isolate `governance/policy.py` and `governance/approval.py`'s real stores from a
-    developer's ``~/.docket``, and set the approval timeout to 0 so a gated
-    call nothing grants resolves immediately (fail-closed to denied)."""
-    with use_home(
-        dataclasses.replace(
-            current_home(),
-            policies_dir_override=tmp_path / "_policies",
-            approvals_dir_override=tmp_path / "_approvals",
-            tool_approval_timeout=0,
-        )
-    ):
-        yield
-
-
-@pytest.fixture
-def workspace(tmp_path: Path) -> Path:
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "main.py").write_text("print('hello')\n")
-    (tmp_path / "notes.md").write_text("alpha\nbeta\ngamma\n")
-    return tmp_path
-
-
-@pytest.fixture
-def ctx(workspace: Path) -> ToolContext:
-    return ToolContext(agent_id="demo-implementer", roots=(workspace,), timeout=10)
-
-
-def _call(name: str, arguments: str = "{}", call_id: str = "c1") -> ToolCall:
-    return ToolCall(id=call_id, name=name, arguments=arguments)
 
 
 class TestRegistry:

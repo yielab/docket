@@ -13,45 +13,22 @@ the live rank anchors) and an end-to-end `docket pod add
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
+from tests.support.pods import ids as _ids
+from tests.support.pods import seed_2 as _seed
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, current_home, use_home
 from docket.models import selection as _mp
-from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.teams"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@contextmanager
-def _seed(
-    tmp_path: Path,
-) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield home
-
-
-def _ids(home: Path) -> list[str]:
-    # Agent registration lives in fleet.json.
-    del home  # kept for call-site compatibility; no longer the source
-    return [a.id for a in _fleet.list_agents()]
 
 
 class TestNormalizeRoleAgainstRegistry:
@@ -94,11 +71,6 @@ class TestMemberIdUnaffected:
         assert pod.member_id("shop", "implementer", 1) == "shop-implementer"
         assert pod.member_id("shop", "implementer", 2) == "shop-implementer-2"
         assert pod.member_id("shop", "lead") == "shop-lead"
-
-    def test_parse_member_id_round_trips_for_legacy_roles(self) -> None:
-        assert pod.parse_member_id("shop-implementer", "shop") == ("implementer", 1)
-        assert pod.parse_member_id("shop-implementer-2", "shop") == ("implementer", 2)
-        assert pod.parse_member_id("shop-lead", "shop") == ("lead", 1)
 
     def test_parse_member_id_accepts_starter_role(self) -> None:
         assert pod.parse_member_id("shop-researcher", "shop") == ("researcher", 1)

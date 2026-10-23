@@ -14,7 +14,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off
+from tests.support.home import record_isolation_off
 
 from docket.agent.driver import DocketDriver
 from docket.agent.tools.builtins import toolbox

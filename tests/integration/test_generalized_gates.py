@@ -12,17 +12,15 @@ a `run` step executing with no agent turn, gated on its own exit code.
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support import home as _support_home
+from tests.support.pods import write_meta_4 as _write_meta
+from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.governance import approval as _ap
-from docket.kernel.home import Home, current_home, use_home
-from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
@@ -31,53 +29,10 @@ from docket.platform import git as _git
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
-from docket.teams import fleet as _fleet
+
+_hermetic = _support_home.hermetic_3
 
 SUBJECT = "docket.tasks"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield
-
-
-def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.rsplit("-", 1)[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
-
-
-def _trace_events(project: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    traces_dir = current_home().traces_dir / project
-    if not traces_dir.is_dir():
-        return events
-    for f in traces_dir.glob("*.jsonl"):
-        events.extend(_trace.read_trace(f))
-    return events
 
 
 class _RoleRunner:

@@ -16,12 +16,11 @@ import dataclasses
 import json
 import stat
 import threading
-import urllib.error
-import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support.http import post as _post
 from typer.testing import CliRunner
 
 from docket.governance import approval as _ap
@@ -63,20 +62,6 @@ def live_server(home: Path):
     t.start()
     yield f"http://127.0.0.1:{port}", _TEST_TOKEN
     srv.shutdown()
-
-
-def _post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 def _trace_events(home: Path, project: str) -> list[dict[str, object]]:

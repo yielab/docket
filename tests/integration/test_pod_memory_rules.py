@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.git import git_3 as _git
+from tests.support.pods import section as _section
 
 from docket.governance import policy as _policy
 from docket.kernel.home import current_home, use_home
@@ -39,16 +40,6 @@ class _Result:
     status: str = "done"
 
 
-def _git(root: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(root), "-c", "user.email=t@example.test", "-c", "user.name=t", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return done.stdout.strip()
-
-
 @pytest.fixture
 def repo(tmp_path: Path) -> tuple[Path, str]:
     root = tmp_path / "repo"
@@ -71,10 +62,6 @@ def _link(events: list[tuple[str, dict[str, Any]]], task: str = _TASK) -> dict[s
 
 def _empty_trace(task: str = _TASK) -> dict[str, str]:
     return _link([("session_start", {"source": "test"})], task)
-
-
-def _section(*lines: str) -> str:
-    return "Done.\n\n## Memory\n" + "\n".join(lines) + "\n"
 
 
 def _record(

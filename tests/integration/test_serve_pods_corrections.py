@@ -2,66 +2,23 @@
 
 from __future__ import annotations
 
-import json
-import threading
-import urllib.error
-import urllib.request
-from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
 from urllib.parse import quote
 
-import pytest
+from tests.support import http as _support_http
+from tests.support import pods as _support_pods
+from tests.support.http import get as _get
 
-from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import Home, use_home
-from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import corrections as _corrections
 from docket.teams import pod_provisioning as _pp
 
+live_server = _support_http.live_server
+
+pod_home = _support_pods.pod_home
+
 SUBJECT = "docket.interfaces.http.server"
 
-_TEST_TOKEN = "test-serve-token-corrections"
+_TEST_TOKEN = "test-serve-token"
 _TS = ["2026-10-01T10:00:00+00:00", "2026-10-01T10:00:05+00:00", "2026-10-01T10:00:09+00:00"]
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-
-
-@pytest.fixture()
-def pod_home(tmp_path: Path) -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    (home / "approvals").mkdir()
-    with use_home(Home(home)):
-        yield home
-
-
-@pytest.fixture()
-def live_server(pod_home: Path):  # type: ignore[no-untyped-def]
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
-
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
-
-
-def _get(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:
-    req = urllib.request.Request(url, method="GET")
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 def _record_three(project: str) -> None:

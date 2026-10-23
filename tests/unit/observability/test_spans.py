@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 import pytest
+from tests.support.trace import project_all as _project_all
 
 from docket.governance import privacy
 from docket.observability import projection, telemetry, trace
@@ -14,15 +15,6 @@ from docket.observability import spans as observability_spans
 from docket.observability.adapters import otlp_http
 
 SUBJECT = "docket.observability.spans"
-
-
-def _project_all(records: list[dict[str, Any]]) -> list[observability_spans.Span]:
-    state = observability_spans.ProjectionState()
-    spans: list[observability_spans.Span] = []
-    for record in records:
-        spans.extend(projection.project(record, state))
-    spans.extend(projection.flush_open(state))
-    return spans
 
 
 class TestExportPolicy:

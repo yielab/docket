@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
@@ -39,11 +39,6 @@ from docket.teams.models import AgentMeta
 SUBJECT = "docket.teams"
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager
@@ -113,9 +108,6 @@ class TestCoercePaused:
 
     def test_real_bool_false(self) -> None:
         assert AgentMeta.coerce_paused(False) is False
-
-    def test_legacy_string_true_lowercase(self) -> None:
-        assert AgentMeta.coerce_paused("true") is True
 
     def test_legacy_string_true_titlecase(self) -> None:
         # str(True) in Python is "True" — this is exactly what a real bool

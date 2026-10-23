@@ -6,8 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from docket.observability import projection
-from docket.observability import spans as observability_spans
+from tests.support.trace import project_all as _project_all
 
 SUBJECT = "docket.observability.telemetry"
 
@@ -16,15 +15,6 @@ _FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "traces" / "dispat
 
 def _load_fixture() -> list[dict[str, Any]]:
     return [json.loads(line) for line in _FIXTURE.read_text().splitlines() if line.strip()]
-
-
-def _project_all(records: list[dict[str, Any]]) -> list[observability_spans.Span]:
-    state = observability_spans.ProjectionState()
-    spans: list[observability_spans.Span] = []
-    for record in records:
-        spans.extend(projection.project(record, state))
-    spans.extend(projection.flush_open(state))
-    return spans
 
 
 class TestFixtureProjection:

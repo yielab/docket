@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.pods import build_pod
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.hops.application import record as _record
@@ -29,11 +29,6 @@ from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.evidence"
 _TOKEN = "test-serve-token-evidence-p36-4"
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
 @contextmanager
