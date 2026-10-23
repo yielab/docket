@@ -270,13 +270,17 @@ class FakeProcess:
         return self.desktop
 
     def secret_tool_lookup(self, service: str, key: str) -> str | None:
-        return self.secrets.get((service, key))
+        return self.secrets.get((service, key)) if self.secret_tool_available() else None
 
     def secret_tool_store(self, service: str, key: str, value: str) -> bool:
+        if not self.secret_tool_available():
+            return False
         self.secrets[(service, key)] = value
         return True
 
     def secret_tool_clear(self, service: str, key: str) -> bool:
+        if not self.secret_tool_available():
+            return False
         return self.secrets.pop((service, key), None) is not None
 
     def make_non_dumpable(self) -> None:
@@ -361,7 +365,9 @@ class FakeJail:
         return merged
 
     def jail_tmp_dir(self, roots: tuple[Path, ...], cache_dir: Path | None) -> Path:
-        return (cache_dir or roots[0]) / "tmp"
+        path = (cache_dir or roots[0]) / "tmp"
+        path.mkdir(parents=True, exist_ok=True)
+        return path.resolve()
 
     def tmp_environment(self, tmp: Path) -> dict[str, str]:
         return tmp_environment(tmp)
