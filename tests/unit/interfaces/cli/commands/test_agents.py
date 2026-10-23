@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.support.fakes import FakeProcess
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.home import Home, current_home, use_home
-from docket.platform import process as _process
 
 SUBJECT = "docket.interfaces.cli.commands.agents"
 
@@ -188,10 +188,10 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
         assert "since review code 000000" in result.output
 
     def test_a_terminal_y_creates_the_pod_and_is_remembered_per_home(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_process: FakeProcess
     ) -> None:
         monkeypatch.setattr(_contract, "is_tty", lambda: True)
-        monkeypatch.setattr(_process, "desktop_notifications_available", lambda: False)
+        fake_process.desktop_notifications_available = lambda: False
         code = _repo(tmp_path)
         yes = runner.invoke(app, ["init", "demo", str(code)], input="y\n")
         assert yes.exit_code == 0 and _pod_exists()

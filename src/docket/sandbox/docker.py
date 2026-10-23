@@ -5,13 +5,14 @@ import subprocess
 from pathlib import Path
 
 from docket.kernel.home import current_home
-from docket.platform.process import _SANDBOX_PROBE_TIMEOUT, _which
+from docket.kernel.ports import PROBE_TIMEOUT_S
+from docket.kernel.ports import process as _process
 from docket.sandbox.landlock import _existing_resolved, _mount_dirs, _mount_reopened
 
 
 def docker_available() -> bool:
     """Return True if a docker binary is on PATH (does not verify daemon reachability)."""
-    return _which("docker")
+    return _process.which("docker")
 
 
 def docker_daemon_reachable() -> bool:
@@ -24,7 +25,7 @@ def docker_daemon_reachable() -> bool:
         result = subprocess.run(
             ["docker", "info"],
             capture_output=True,
-            timeout=_SANDBOX_PROBE_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):

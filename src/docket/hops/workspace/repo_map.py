@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import Counter
 
 from docket.kernel.home import current_home
-from docket.platform import git as _git
+from docket.kernel.ports import git as _git
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 

@@ -28,6 +28,7 @@ from docket.hops.gates.pre_hop import (
     _pause_lead_for_budget,
     _refuse_unmet_profile,
 )
+from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
 from docket.pipeline.application.steps import (
     _run_command_step,
@@ -40,7 +41,6 @@ from docket.pipeline.application.steps import (
 )
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.platform import git as _git
 from docket.platform import read_modify_write
 from docket.tasks.application.queue import pod_full_roster
 from docket.tasks.domain.task import DispatchError, HopResult, TaskResult, TaskRunRefusal

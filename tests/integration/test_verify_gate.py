@@ -23,8 +23,9 @@ from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.hops.application import record as _record
+from docket.kernel.ports import jail as _jail
 from docket.pipeline.application import executor as _executor
-from docket.sandbox import launch as _launch
+from docket.sandbox.launch import _VERIFY_MAX_OUTPUT
 from docket.teams import fleet as _fleet
 
 _hermetic = _support_home.hermetic_3
@@ -39,33 +40,33 @@ SUBJECT = "docket.agent"
 
 class TestRunCommand:
     def test_passing_command_exits_zero(self, tmp_path: Path) -> None:
-        code, _ = _launch.run_command("true", str(tmp_path))
+        code, _ = _jail.run_command("true", str(tmp_path))
         assert code == 0
 
     def test_failing_command_exits_nonzero(self, tmp_path: Path) -> None:
-        code, _ = _launch.run_command("false", str(tmp_path))
+        code, _ = _jail.run_command("false", str(tmp_path))
         assert code == 1
 
     def test_output_captured_on_pass(self, tmp_path: Path) -> None:
-        code, output = _launch.run_command("echo hello", str(tmp_path))
+        code, output = _jail.run_command("echo hello", str(tmp_path))
         assert code == 0
         assert "hello" in output
 
     def test_output_captured_on_fail(self, tmp_path: Path) -> None:
         # Write something to stderr then exit non-zero.
-        code, output = _launch.run_command("echo fail-output >&2; exit 1", str(tmp_path))
+        code, output = _jail.run_command("echo fail-output >&2; exit 1", str(tmp_path))
         assert code == 1
         assert "fail-output" in output
 
     def test_output_capped_at_max(self, tmp_path: Path) -> None:
         # Generate output beyond the 4 KB cap.
         big = "x" * 10_000
-        code, output = _launch.run_command(f"echo '{big}'", str(tmp_path))
+        code, output = _jail.run_command(f"echo '{big}'", str(tmp_path))
         assert code == 0
-        assert len(output) <= _launch._VERIFY_MAX_OUTPUT
+        assert len(output) <= _VERIFY_MAX_OUTPUT
 
     def test_timeout_has_no_exit_status(self, tmp_path: Path) -> None:
-        code, output = _launch.run_command("sleep 10", str(tmp_path), timeout=1)
+        code, output = _jail.run_command("sleep 10", str(tmp_path), timeout=1)
         assert code is None
         assert "timed out" in output
 
@@ -77,7 +78,7 @@ class TestRunCommand:
         # kills only the immediate `sh` child on TimeoutExpired, leaving this orphan alive.
         pid_file = tmp_path / "grandchild.pid"
         cmd = f"(sleep 30 & echo $! > {pid_file}) & wait"
-        code, output = _launch.run_command(cmd, str(tmp_path), timeout=1)
+        code, output = _jail.run_command(cmd, str(tmp_path), timeout=1)
         assert code is None
         assert "timed out" in output
 
@@ -106,7 +107,7 @@ class TestRunCommand:
                 os.kill(pid, 9)
 
     def test_invalid_cwd_has_no_exit_status(self) -> None:
-        code, output = _launch.run_command("true", "/nonexistent/path/xyz")
+        code, output = _jail.run_command("true", "/nonexistent/path/xyz")
         assert code is None
         assert output  # some error message
 
@@ -114,7 +115,7 @@ class TestRunCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
-        code, output = _launch.run_command(
+        code, output = _jail.run_command(
             'echo "$DOCKET_TASK_ID/$DOCKET_INHERITED_PROBE"',
             str(tmp_path),
             env={"DOCKET_TASK_ID": "t-123"},
@@ -126,7 +127,7 @@ class TestRunCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
-        code, output = _launch.run_command('echo "$DOCKET_INHERITED_PROBE"', str(tmp_path))
+        code, output = _jail.run_command('echo "$DOCKET_INHERITED_PROBE"', str(tmp_path))
         assert code == 0
         assert output.strip() == "kept"
 

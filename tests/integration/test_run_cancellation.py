@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.fakes import FakeProcess
 
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
@@ -206,18 +207,14 @@ class TestCancelRun:
         assert persisted["cancellation"]["stoppedAt"] is None
 
     def test_repeated_running_request_does_not_resignal_or_reaudit(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_process: FakeProcess
     ) -> None:
         record = _runs.create_run("cli", "myapp")
         _runs.mark_running(record["id"])
         _runs.add_hop_pid(record["id"], 4242)
         killed: list[int] = []
         audited: list[tuple[str, str]] = []
-        monkeypatch.setattr(
-            _process,
-            "kill_process_group",
-            lambda pid: killed.append(pid) or True,
-        )
+        fake_process.kill_process_group = lambda pid, grace_s=2.0: killed.append(pid) or True
         monkeypatch.setattr(
             _runs,
             "audit_log",

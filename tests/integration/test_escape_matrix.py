@@ -33,10 +33,11 @@ from docket.hops.gates import post_hop as _post_hop
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace import worktree as _worktree
 from docket.kernel.home import current_home, use_home
+from docket.kernel.ports import JailPolicy
+from docket.kernel.ports import jail as _jail
 from docket.platform import git as _platform_git
 from docket.sandbox import docker as _docker
 from docket.sandbox import landlock as _landlock
-from docket.sandbox import launch as _launch
 from docket.sandbox import seatbelt as _seatbelt
 from docket.tasks.application import queue as _queue
 from docket.teams import task_worktrees as _task_worktrees
@@ -139,7 +140,7 @@ def _run(
     marker = root / f".ran-{uuid.uuid4().hex[:8]}"
     body = f"touch {marker}; {command}"
     if jailed:
-        launch = _launch.jail_launch(
+        launch = _jail.jail_launch(
             (root,),
             body,
             backend,
@@ -484,7 +485,7 @@ def test_a_verify_command_cannot_write_outside_the_worktree(
 ) -> None:
     wt = task_tree.wt
     target = arena / "verify-escape.txt"
-    jail = _launch.JailPolicy(network=True)
+    jail = JailPolicy(network=True)
     monkeypatch.setattr(
         _isolation_posture, "resolve_command_jail", lambda project, label: (jail, None)
     )
@@ -565,7 +566,7 @@ def test_a_prepared_cache_entry_is_readable_but_not_writable_to_a_jailed_gate(
 ) -> None:
     entry = _install_into(task_tree.wt, task_tree.main)
     cmd = "cat node_modules/tool > read.txt; echo planted > node_modules/planted"
-    jail = _launch.JailPolicy(network=True)
+    jail = JailPolicy(network=True)
     monkeypatch.setattr(
         _isolation_posture, "resolve_command_jail", lambda project, label: (jail, None)
     )
@@ -592,7 +593,7 @@ def test_the_prepare_launch_has_the_network_a_gate_under_network_none_lacks(
             f"python3 -c \"import socket; s = socket.create_connection(('{dial}', {port}), 2); "
             "s.sendall(b'hello')\""
         )
-    pods_jail = _launch.JailPolicy(network=False)
+    pods_jail = JailPolicy(network=False)
     monkeypatch.setattr(
         _isolation_posture, "resolve_command_jail", lambda project, label: (pods_jail, None)
     )

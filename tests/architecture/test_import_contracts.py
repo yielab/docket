@@ -89,6 +89,8 @@ def _allowed_adapters(importer: str, imported: str) -> bool:
     (ic, _), (tc, tl) = _classify(importer), _classify(imported)
     if tc in {"kernel", ic}:
         return True
+    if tc == "platform":
+        return _is_context_init(imported)
     return tc != "interfaces" and (tl == "domain" or _is_ports(imported))
 
 
@@ -258,6 +260,8 @@ _BITES: list[tuple[str, str, str, bool]] = [
     ("adapters", "docket.models.adapters.openai_http", "docket.models.catalog", True),
     ("adapters", "docket.models.adapters.openai_http", "docket.tasks.domain.task", True),
     ("adapters", "docket.models.adapters.openai_http", "docket.tasks.application.queue", False),
+    ("adapters", "docket.operator.adapters.ntfy", "docket.platform", True),
+    ("adapters", "docket.operator.adapters.ntfy", "docket.platform.redirects", False),
     ("agent", "docket.agent.loop", "docket.kernel.text", True),
     ("agent", "docket.agent.loop", "docket.governance.policy", False),
     ("interfaces", "docket.interfaces.cli.app", "docket.tasks", True),

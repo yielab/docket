@@ -15,9 +15,10 @@ import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 import pytest
+from tests.support.fakes import FakeGit
+from tests.support.git import hide_git
 
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import git as _git
@@ -114,15 +115,20 @@ class TestProvisionTaskWorktree:
         assert rec == {}
         assert "not a git repo" in reason
 
-    def test_git_unavailable_fallback(self, git_repo: Path, pod_home: Path) -> None:
-        with mock.patch.object(_git, "git_available", return_value=False):
-            rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
+    def test_git_unavailable_fallback(
+        self, git_repo: Path, pod_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hide_git(monkeypatch, tmp_path / "no-bin")
+        rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
         assert rec == {}
         assert reason
 
-    def test_worktree_add_failure_fallback(self, git_repo: Path, pod_home: Path) -> None:
-        with mock.patch.object(_git, "git_worktree_add", return_value=(False, "some git error")):
-            rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
+    def test_worktree_add_failure_fallback(
+        self, git_repo: Path, pod_home: Path, fake_git: FakeGit
+    ) -> None:
+        fake_git.add_repo(git_repo)
+        fake_git.git_worktree_add = lambda *a, **k: (False, "some git error")
+        rec, reason = provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
         assert rec == {}
         assert "worktree add failed" in reason
 
@@ -207,13 +213,14 @@ class TestTeardownMemberWorktree:
         assert len(listing.strip().splitlines()) == 1
         assert not (current_home().projects_dir / member_id).exists()
 
-    def test_teardown_without_tasks_dir_no_crash(self, pod_home: Path) -> None:
+    def test_teardown_without_tasks_dir_no_crash(self, pod_home: Path, fake_git: FakeGit) -> None:
         ws = current_home().projects_dir / "proj2-implementer"
         self._write_meta(ws, {"codebase": "", "role": "implementer"})
-        with mock.patch.object(_git, "git_worktree_remove") as remove:
-            ok, _ = teardown_member("proj2-implementer")
+        removed: list[tuple[object, ...]] = []
+        fake_git.git_worktree_remove = lambda *a: removed.append(a) or (True, "")
+        ok, _ = teardown_member("proj2-implementer")
         assert ok
-        remove.assert_not_called()
+        assert removed == []
 
     def test_teardown_deletes_merged_branches(self, tmp_path: Path, pod_home: Path) -> None:
         repo, member_id = self._setup(tmp_path, "proj4", ("t1",))
@@ -283,15 +290,19 @@ class TestSystemAdapterWorktreeFunctions:
         assert not ok
         assert err != ""
 
-    def test_git_unavailable_worktree_add_fails(self, tmp_path: Path) -> None:
-        with mock.patch.object(_git, "git_available", return_value=False):
-            ok, err = _git.git_worktree_add(str(tmp_path), str(tmp_path / "wt"), "b")
+    def test_git_unavailable_worktree_add_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hide_git(monkeypatch, tmp_path / "no-bin")
+        ok, err = _git.git_worktree_add(str(tmp_path), str(tmp_path / "wt"), "b")
         assert not ok
         assert "git not found" in err
 
-    def test_git_unavailable_worktree_remove_fails(self, tmp_path: Path) -> None:
-        with mock.patch.object(_git, "git_available", return_value=False):
-            ok, err = _git.git_worktree_remove(str(tmp_path), str(tmp_path / "wt"))
+    def test_git_unavailable_worktree_remove_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hide_git(monkeypatch, tmp_path / "no-bin")
+        ok, err = _git.git_worktree_remove(str(tmp_path), str(tmp_path / "wt"))
         assert not ok
         assert "git not found" in err
 
@@ -316,9 +327,11 @@ class TestSystemAdapterWorktreeFunctions:
         )
         assert _git.git_branch_merged(str(git_repo), "feat2", cur) is False
 
-    def test_git_branch_merged_git_unavailable_is_false(self, git_repo: Path) -> None:
-        with mock.patch.object(_git, "git_available", return_value=False):
-            assert _git.git_branch_merged(str(git_repo), "feat", "main") is False
+    def test_git_branch_merged_git_unavailable_is_false(
+        self, git_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hide_git(monkeypatch, tmp_path / "no-bin")
+        assert _git.git_branch_merged(str(git_repo), "feat", "main") is False
 
     def test_git_branch_delete_removes_merged_branch(self, git_repo: Path) -> None:
         subprocess.run(
@@ -349,8 +362,10 @@ class TestSystemAdapterWorktreeFunctions:
         assert not ok2
         assert err2 != ""
 
-    def test_git_unavailable_branch_delete_fails(self, tmp_path: Path) -> None:
-        with mock.patch.object(_git, "git_available", return_value=False):
-            ok, err = _git.git_branch_delete(str(tmp_path), "b")
+    def test_git_unavailable_branch_delete_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hide_git(monkeypatch, tmp_path / "no-bin")
+        ok, err = _git.git_branch_delete(str(tmp_path), "b")
         assert not ok
         assert "git not found" in err

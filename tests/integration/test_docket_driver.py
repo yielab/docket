@@ -17,11 +17,12 @@ import dataclasses
 import json
 import time as _time
 import types
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.fakes import FakeJail
 from tests.support.home import record_isolation_off
 from tests.support.pods import write_meta_2 as _write_meta
 
@@ -41,11 +42,10 @@ from docket.governance.audit import read_audit
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.ports import SandboxAvailability
 from docket.models.adapters import openai_http as _llm_adapter
 from docket.platform import store as _store
-from docket.sandbox import docker as _docker
-from docket.sandbox import launch as _launch
-from docket.sandbox.launch import SandboxAvailability
+from docket.sandbox.launch import Launcher
 from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 
@@ -1682,7 +1682,7 @@ class TestIsolationWiring:
         assert tool_msg.content == "sandbox=off"
 
     def test_no_recorded_choice_runs_on_the_host_without_probing_a_backend(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         # No fleet.json at all: isolation is opt-in, so the turn runs unjailed and a host
         # with no sandbox backend is never asked for one.
@@ -1692,7 +1692,7 @@ class TestIsolationWiring:
         def no_probe() -> SandboxAvailability:
             raise AssertionError("probed a sandbox backend with isolation off")
 
-        monkeypatch.setattr(_launch, "sandbox_availability", no_probe)
+        fake_jail.sandbox_availability = no_probe
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
             backend_factory=lambda model: backend, registry_factory=_probe_registry
@@ -1722,14 +1722,10 @@ class TestIsolationWiring:
         assert [e for e in read_audit() if e["action"] == "isolation.refused"]
 
     def test_isolation_on_with_backend_available_sets_sandbox_auto(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         _write_meta("solo-agent")
-        monkeypatch.setattr(
-            _launch,
-            "sandbox_availability",
-            lambda: SandboxAvailability(backend="docker", docker=True),
-        )
+        fake_jail.sandbox_availability = lambda: SandboxAvailability(backend="docker", docker=True)
         _fleet.set_sandbox_isolation(mode="non-main")
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
@@ -1743,7 +1739,7 @@ class TestIsolationWiring:
         assert tool_msg.content == "sandbox=auto"
 
     def test_isolation_on_no_backend_refuses_the_turn_rather_than_running_unsandboxed(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         # The failure mode this card exists to end: isolation is ON but
         # no sandbox backend is usable. The turn must refuse outright
@@ -1751,11 +1747,7 @@ class TestIsolationWiring:
         # backend must never even be reached (`_never_called` fails the test
         # if it is).
         _write_meta("solo-agent")
-        monkeypatch.setattr(
-            _launch,
-            "sandbox_availability",
-            lambda: SandboxAvailability(backend="none", docker=False),
-        )
+        fake_jail.sandbox_availability = lambda: SandboxAvailability(backend="none", docker=False)
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
 
@@ -1772,7 +1764,7 @@ class TestIsolationWiring:
         assert "landlock=False" in refusals[0]["detail"]
 
     def test_docket_sandbox_backend_override_still_wins(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, bind_launcher: Callable[..., Launcher]
     ) -> None:
         # Both real backends report usable, but the operator's own override
         # forces "none" -- this wire adds no parallel backend-selection
@@ -1780,8 +1772,7 @@ class TestIsolationWiring:
         # (`system.sandbox_availability`), so the override must still be the
         # last word, exactly as it already is for `toolbox.run_bash`.
         _write_meta("solo-agent")
-        monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: True)
+        bind_launcher(docker=True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
@@ -1790,17 +1781,18 @@ class TestIsolationWiring:
             driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
 
     def test_the_flag_docket_gates_isolate_on_writes_is_the_one_the_turn_reads(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        fake_jail: FakeJail,
     ) -> None:
         # End-to-end through fleet: drive the real `docket setup sandbox on`
         # CLI path (not `set_sandbox_isolation` directly, and not a
         # hand-built `ToolContext`), then confirm a real turn observes
         # exactly the flag it wrote.
         _write_meta("solo-agent")
-        monkeypatch.setattr(
-            _launch,
-            "sandbox_availability",
-            lambda: SandboxAvailability(backend="landlock", docker=False, landlock=True),
+        fake_jail.sandbox_availability = lambda: SandboxAvailability(
+            backend="landlock", docker=False, landlock=True
         )
         rc = _setup_sandbox.isolate("on")
         capsys.readouterr()
@@ -2024,15 +2016,13 @@ class TestAllowCommandsWiring:
         assert tool_msg.content == "allow_commands="
 
     def test_a_malformed_pod_setting_fails_closed_to_no_extra_bins(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         # A malformed pod settings file also fails the network closed to `none`, which only a
         # jail can enforce: turn isolation on with a (stubbed) backend.
         _fleet.set_sandbox_isolation(mode="non-main")
-        monkeypatch.setattr(
-            _launch,
-            "sandbox_availability",
-            lambda: SandboxAvailability(backend="landlock", docker=False, landlock=True),
+        fake_jail.sandbox_availability = lambda: SandboxAvailability(
+            backend="landlock", docker=False, landlock=True
         )
         _write_meta("shop-implementer")
         _write_meta("shop-lead", role="lead", turnTimeoutS="not-a-number", allowCommands="tox")

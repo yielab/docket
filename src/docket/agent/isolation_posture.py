@@ -6,7 +6,8 @@ from docket.agent.ports import DOCKET_TASK_NETWORK
 from docket.governance.audit import audit_log
 from docket.hops.workspace import prepare as _prepare
 from docket.kernel.home import current_home
-from docket.sandbox import launch as _launch
+from docket.kernel.ports import JailPolicy
+from docket.kernel.ports import jail as _jail
 from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -43,7 +44,7 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
     and no backend is usable")."""
     if not _fleet.get_isolation_enabled():
         return False, None
-    availability = _launch.sandbox_availability()
+    availability = _jail.sandbox_availability()
     if availability.backend != "none":
         return True, None
     detail = (
@@ -93,7 +94,7 @@ def _resolve_network(
     )
 
 
-def resolve_command_jail(project: str, label: str) -> tuple[_launch.JailPolicy | None, str | None]:
+def resolve_command_jail(project: str, label: str) -> tuple[JailPolicy | None, str | None]:
     """``(jail, refusal)`` for a command docket launches outside an agent turn (a verify command,
     a ``run:`` step): ``(None, None)`` with isolation off, the pod's jail with it on, and a
     refusal message when isolation is on but no backend is usable."""
@@ -103,7 +104,7 @@ def resolve_command_jail(project: str, label: str) -> tuple[_launch.JailPolicy |
     if not want_sandbox:
         return None, None
     network_allowed, _ = _resolve_network(project, label, True, project=project)
-    return _launch.JailPolicy(
+    return JailPolicy(
         network=network_allowed,
         cache_dir=_ensure_pod_cache(project),
         read_only=_pod_settings.effective_read_only(project),

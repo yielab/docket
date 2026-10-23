@@ -4,7 +4,7 @@ from typing import Any
 
 from docket.agent import handoff as _handoff
 from docket.kernel.home import current_home
-from docket.platform import git as _git
+from docket.kernel.ports import git as _git
 from docket.platform import read_modify_write
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

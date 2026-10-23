@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
-from docket.sandbox import launch as _launch
+from docket.sandbox.launch import Launcher
 
 SUBJECT = "docket.interfaces.cli.commands.setup_sandbox"
 
@@ -82,6 +82,7 @@ def test_isolate_on_without_a_backend_fails_and_writes_nothing(
 
 def _probe(
     monkeypatch: pytest.MonkeyPatch,
+    bind_launcher: Callable[..., Launcher],
     platform: str,
     *,
     landlock: bool = False,
@@ -90,18 +91,18 @@ def _probe(
 ) -> None:
     monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
     monkeypatch.setattr(_setup_sandbox.sys, "platform", platform)
-    monkeypatch.setattr(_launch, "landlock_available", lambda: landlock)
-    monkeypatch.setattr(_launch, "seatbelt_available", lambda: seatbelt)
-    monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: docker)
-    monkeypatch.setattr(_setup_sandbox._docker, "docker_daemon_reachable", lambda: docker)
+    bind_launcher(landlock=landlock, seatbelt=seatbelt, docker=docker)
 
 
 class TestTheProbeReport:
     def test_landlock_on_linux_names_the_kernel(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _fresh_home(tmp_path):
-            _probe(monkeypatch, "linux", landlock=True)
+            _probe(monkeypatch, bind_launcher, "linux", landlock=True)
             monkeypatch.setattr(_setup_sandbox.platform, "release", lambda: "6.14.0-37-generic")
 
             out = _runner.invoke(app, ["setup", "sandbox"]).stdout
@@ -111,27 +112,38 @@ class TestTheProbeReport:
             assert "Turn it on: docket setup sandbox on" in out
 
     def test_a_chosen_docker_says_it_was_chosen(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _fresh_home(tmp_path):
-            _probe(monkeypatch, "linux", landlock=True, docker=True)
+            _probe(monkeypatch, bind_launcher, "linux", landlock=True, docker=True)
             assert _runner.invoke(app, ["setup", "sandbox", "backend", "docker"]).exit_code == 0
 
             out = _runner.invoke(app, ["setup", "sandbox"]).stdout
 
             assert "Backend: docker (chosen; docket setup sandbox backend auto to go back)" in out
 
-    def test_seatbelt_on_macos(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_seatbelt_on_macos(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
+    ) -> None:
         with _fresh_home(tmp_path):
-            _probe(monkeypatch, "darwin", seatbelt=True)
+            _probe(monkeypatch, bind_launcher, "darwin", seatbelt=True)
 
             assert "Backend: seatbelt" in _runner.invoke(app, ["setup", "sandbox"]).stdout
 
     def test_linux_without_landlock_says_what_to_install(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _fresh_home(tmp_path):
-            _probe(monkeypatch, "linux")
+            _probe(monkeypatch, bind_launcher, "linux")
 
             out = _runner.invoke(app, ["setup", "sandbox"]).stdout
 
@@ -142,10 +154,13 @@ class TestTheProbeReport:
             )
 
     def test_native_windows_gets_the_wsl2_line(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _fresh_home(tmp_path):
-            _probe(monkeypatch, "win32")
+            _probe(monkeypatch, bind_launcher, "win32")
 
             out = _runner.invoke(app, ["setup", "sandbox"]).stdout
 
@@ -153,19 +168,25 @@ class TestTheProbeReport:
             assert "Sandbox   not available on native Windows; use WSL2." in out
 
     def test_on_with_a_backend_reads_on_and_the_network(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _fresh_home(tmp_path):
-            _probe(monkeypatch, "linux", landlock=True)
+            _probe(monkeypatch, bind_launcher, "linux", landlock=True)
             assert _setup_sandbox.isolate("on") == 0
 
             assert _setup_sandbox.sandbox_lines() == ["Sandbox   on (landlock, network none)"]
 
     def test_json_carries_the_platform_report(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _fresh_home(tmp_path):
-            _probe(monkeypatch, "linux")
+            _probe(monkeypatch, bind_launcher, "linux")
 
             body = json.loads(_runner.invoke(app, ["setup", "sandbox", "--json"]).stdout)
 

@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.fakes import FakeGit
 from tests.support.pods import write_meta_4 as _write_meta
 from tests.support.trace import trace_events as _trace_events
 
@@ -25,7 +26,6 @@ from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
-from docket.platform import git as _git
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
@@ -358,12 +358,12 @@ class TestCommandSteps:
 
 class TestConditionalSteps:
     def test_false_predicate_skips_the_step_and_the_next_step_runs(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         _write_meta("myapp-lead")
         _write_meta("myapp-operator")
         _write_meta("myapp-analyst")
-        monkeypatch.setattr(_git, "git_changed_files", lambda _cwd: ["docs/readme.md"])
+        fake_git.git_changed_files = lambda _cwd: ["docs/readme.md"]
         spec = _pipeline.PipelineSpec(
             name="cond",
             steps=[

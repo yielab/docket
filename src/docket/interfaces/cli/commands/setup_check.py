@@ -56,11 +56,11 @@ from docket.interfaces.cli.commands.setup_check_services import (
 )
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
+from docket.kernel.ports import jail as _jail
 from docket.models import selection as _mp
 from docket.operator import channel as _channel
 from docket.pipeline.application import schedule as _sched
 from docket.platform import read_json
-from docket.sandbox import launch as _launch
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -290,7 +290,7 @@ def _check_json_key_hygiene(
 
 def _check_json_security() -> dict[str, Any]:
     """Gate/isolation posture, JSON shape of `_check_security_gates`."""
-    backend = _launch.sandbox_availability().backend
+    backend = _jail.sandbox_availability().backend
     return {
         "toolCallGate": "always-on",
         "isolation": _fleet.get_isolation_state(),

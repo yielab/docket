@@ -32,9 +32,9 @@ from docket.interfaces.cli.commands.pod_config import (
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
+from docket.kernel.ports import process as _process
 from docket.operator import channel as _channel
 from docket.platform import mkdir_private
-from docket.platform import process as _process
 from docket.teams import blueprints as _bp
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet

@@ -26,9 +26,9 @@ from docket.governance import privacy as _privacy
 from docket.governance import secrets as _secrets
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
+from docket.kernel.ports import process as _process
 from docket.models import document_fields as _documents
 from docket.observability.trace import EVENT_TYPES
-from docket.platform import process as _process
 from docket.platform import read_json, read_modify_write
 
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]

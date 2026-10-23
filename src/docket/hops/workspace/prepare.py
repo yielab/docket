@@ -21,7 +21,7 @@ from filelock import FileLock
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.platform import git as _git
+from docket.kernel.ports import git as _git
 
 LOCKFILES: tuple[tuple[str, str], ...] = (
     ("package-lock.json", "npm ci"),

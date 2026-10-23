@@ -9,8 +9,8 @@ from typing import Any
 from rich.markup import escape
 
 from docket.interfaces.cli.render import ui
+from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
-from docket.platform import git as _git
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import runs as _runs

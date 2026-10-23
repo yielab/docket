@@ -15,8 +15,8 @@ from docket.governance import security as _sec
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
-from docket.sandbox import docker as _docker
-from docket.sandbox import launch as _launch
+from docket.kernel.ports import SandboxAvailability
+from docket.kernel.ports import jail as _jail
 from docket.teams import fleet as _fleet
 
 sandbox_app = typer.Typer(
@@ -84,7 +84,7 @@ def _kernel() -> str | None:
     return found.group(1) if found else None
 
 
-def _available(avail: _launch.SandboxAvailability) -> list[str]:
+def _available(avail: SandboxAvailability) -> list[str]:
     return [
         name for name, ok in (("landlock", avail.landlock), ("seatbelt", avail.seatbelt)) if ok
     ] + (["docker"] if avail.docker else [])
@@ -92,7 +92,7 @@ def _available(avail: _launch.SandboxAvailability) -> list[str]:
 
 def sandbox_lines() -> list[str]:
     """The ``Sandbox`` posture as printed by init, status and setup sandbox: line, then hint."""
-    backend = _launch.sandbox_availability().backend
+    backend = _jail.sandbox_availability().backend
     plat = _platform_name()
     if _fleet.get_isolation_enabled():
         if backend == "none":
@@ -114,7 +114,7 @@ def print_sandbox_block() -> None:
 
 def sandbox_state() -> dict[str, object]:
     """Isolation state, network mode and the per-platform probe, without writing anything."""
-    avail = _launch.sandbox_availability()
+    avail = _jail.sandbox_availability()
     plat = _platform_name()
     lines = sandbox_lines()
     return {
@@ -175,7 +175,7 @@ def isolate(want: str) -> int:
         audit_log("gates.isolate", "off")
         ui.success("Isolation off; tools run on the host")
         return 0
-    avail = _launch.sandbox_availability()
+    avail = _jail.sandbox_availability()
     if avail.backend == "none":
         ui.error("No sandbox backend is usable", NO_BACKEND_HINT)
         return 1
@@ -210,7 +210,7 @@ def backend(choice: str) -> int:
     audit_log("gates.backend", choice)
     if choice == "docker":
         ui.success("Sandbox backend docker; landlock and seatbelt are not used")
-        if not _docker.docker_daemon_reachable():
+        if not _jail.docker_daemon_reachable():
             ui.warn("Docker is not reachable now: turns are refused until it is")
     else:
         ui.success("Sandbox backend auto: landlock on Linux, seatbelt on macOS")

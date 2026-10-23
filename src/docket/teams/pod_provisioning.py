@@ -22,8 +22,8 @@ from urllib.parse import unquote as _url_unquote
 from docket.governance.audit import audit_log
 from docket.kernel.errors import Conflict, InvalidInput, Unavailable
 from docket.kernel.home import current_home
+from docket.kernel.ports import git as _git
 from docket.models import selection as _mp
-from docket.platform import git as _git
 from docket.platform import read_json, read_modify_write, with_lock
 from docket.teams import blueprints as _bp
 from docket.teams import fleet as _fleet

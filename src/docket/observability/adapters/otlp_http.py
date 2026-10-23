@@ -22,7 +22,7 @@ from docket import __version__
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability.spans import AttrValue, Span, SpanEvent
-from docket.platform.redirects import open_same_origin
+from docket.platform import open_same_origin
 
 _RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
 _STATUS_CODES: dict[str, int] = {"ok": 1, "error": 2}

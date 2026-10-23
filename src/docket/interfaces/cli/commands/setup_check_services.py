@@ -6,10 +6,9 @@ from urllib.parse import urlsplit
 from docket.governance import network_posture as _np
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
+from docket.kernel.ports import jail as _jail
 from docket.observability import exporter as _exporter
 from docket.operator import channel as _channel
-from docket.sandbox import docker as _docker
-from docket.sandbox import launch as _launch
 from docket.teams import fleet as _fleet
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -80,9 +79,9 @@ def _docker_image_has_git() -> bool | None:
     None when it does not apply."""
     if not _fleet.get_isolation_enabled():
         return None
-    if _launch.sandbox_availability().backend != "docker":
+    if _jail.sandbox_availability().backend != "docker":
         return None
-    return _docker.docker_image_has_git()
+    return _jail.docker_image_has_git()
 
 
 def _check_security_gates(ids: list[str] | None = None) -> int:
@@ -103,7 +102,7 @@ def _check_security_gates(ids: list[str] | None = None) -> int:
             "docket setup sandbox on (needs landlock on Linux 5.13+, seatbelt on macOS, or a chosen docker)"
         )
     else:
-        backend = _launch.sandbox_availability().backend
+        backend = _jail.sandbox_availability().backend
         if backend == "none":
             ui.warn(
                 f"  Workspace isolation: {state}, but no backend is usable -- turns will be "
@@ -118,7 +117,7 @@ def _check_security_gates(ids: list[str] | None = None) -> int:
                 )
 
     issues = 0
-    if ids and _launch.sandbox_availability().backend == "none":
+    if ids and _jail.sandbox_availability().backend == "none":
         ui.console.print(
             "✗   Sandbox: no usable sandbox backend on this machine -- "
             "docket setup sandbox shows what is missing",

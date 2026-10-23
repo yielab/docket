@@ -42,10 +42,7 @@ from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import Refused, Unavailable
 from docket.kernel.home import current_home
-from docket.sandbox import docker as _docker
-from docket.sandbox import landlock as _landlock
-from docket.sandbox import launch as _launch
-from docket.sandbox import seatbelt as _seatbelt
+from docket.kernel.ports import jail as _jail
 
 MISSING_SDK_HINT = (
     "The 'mcp' package is not installed -- an MCP tool server needs the optional MCP extra.\n"
@@ -93,20 +90,18 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
     roots = launch.roots or ((Path(launch.cwd),) if launch.cwd else ())
     if not roots:
         raise Refused("isolation is on but the turn has no root to jail the server to")
-    backend = _launch.sandbox_availability().backend
+    backend = _jail.sandbox_availability().backend
     server = [config.command, *config.args]
     if backend in ("landlock", "seatbelt"):
-        tmp = _launch.jail_tmp_dir(roots, None)
+        tmp = _jail.jail_tmp_dir(roots, None)
         build = (
-            _landlock.landlock_command_argv
-            if backend == "landlock"
-            else _seatbelt.seatbelt_command_argv
+            _jail.landlock_command_argv if backend == "landlock" else _jail.seatbelt_command_argv
         )
-        env = ["env", *(f"{k}={v}" for k, v in _launch.tmp_environment(tmp).items())]
+        env = ["env", *(f"{k}={v}" for k, v in _jail.tmp_environment(tmp).items())]
         argv = build((*roots, tmp), [*env, *server], launch.network, launch.read_only)
     elif backend == "docker":
         name = _ids.new_short_id("docket-mcp")
-        argv = _docker.docker_command_argv(
+        argv = _jail.docker_command_argv(
             name, roots, server, dict(config.env), launch.network, launch.read_only
         )
     else:

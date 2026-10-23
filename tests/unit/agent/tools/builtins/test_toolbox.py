@@ -14,14 +14,17 @@ from __future__ import annotations
 
 import dataclasses
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from tests.support import pods as _support_pods
+from tests.support.fakes import FakeGit
 
 from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import current_home, use_home
 from docket.sandbox import landlock as _landlock
+from docket.sandbox.launch import Launcher
 
 workspace = _support_pods.workspace
 
@@ -175,7 +178,12 @@ class TestOnProcessLifecycle:
 
 
 class TestJailedCacheDir:
-    def _capture(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    def _capture(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
+        fake_git: FakeGit,
+    ) -> dict[str, object]:
         seen: dict[str, object] = {}
 
         def _popen(argv: object, **kwargs: object) -> None:
@@ -184,19 +192,19 @@ class TestJailedCacheDir:
             raise OSError("stop")
 
         monkeypatch.setattr(toolbox.subprocess, "Popen", _popen)
-        monkeypatch.setattr(toolbox._launch, "git_identity_env", lambda _root: {})
         monkeypatch.setattr(_landlock, "git_dirs", lambda _root: [])
-        monkeypatch.setattr(
-            toolbox._launch,
-            "sandbox_availability",
-            lambda: toolbox._launch.SandboxAvailability("landlock", False, False, True),
-        )
+        bind_launcher(landlock=True, seatbelt=False, docker=False)
         return seen
 
     def test_a_jailed_command_gets_the_cache_variables_and_a_rw_root(
-        self, workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        workspace: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
+        fake_git: FakeGit,
     ) -> None:
-        seen = self._capture(monkeypatch)
+        seen = self._capture(monkeypatch, bind_launcher, fake_git)
         cache = tmp_path / "cache"
         cache.mkdir()
 
@@ -218,9 +226,13 @@ class TestJailedCacheDir:
         assert str(cache.resolve()) in argv
 
     def test_without_a_cache_dir_home_is_not_redirected(
-        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        workspace: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
+        fake_git: FakeGit,
     ) -> None:
-        seen = self._capture(monkeypatch)
+        seen = self._capture(monkeypatch, bind_launcher, fake_git)
 
         toolbox.run_bash((workspace,), "true", sandbox="auto")
 

@@ -7,9 +7,9 @@ from typing import Any
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.platform import git as _git
+from docket.kernel.ports import git as _git
+from docket.kernel.ports import jail as _jail
 from docket.platform import read_json, read_modify_write
-from docket.sandbox import landlock as _landlock
 from docket.teams import pod
 
 # Per-task git worktrees live under this directory of the Implementer's workspace.
@@ -46,7 +46,7 @@ def provision_task_worktree(
     record = {"dir": wt_path, "branch": branch, "baseCommit": base}
     if base_ref:
         record["baseRef"] = base_ref
-    dirs = _landlock.worktree_git_dirs(wt_path)
+    dirs = _jail.worktree_git_dirs(wt_path)
     if dirs is not None:
         record["gitDir"], record["commonDir"] = dirs
     return record, ""

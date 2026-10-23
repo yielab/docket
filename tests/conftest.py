@@ -7,12 +7,31 @@ docket-owned secrets) by running each test in a ``use_home`` block.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from docket import bootstrap
 from docket.kernel.home import Home, use_home
+from docket.kernel.ports import git_port, jail_port, process_port
+from docket.platform import git as _git_adapter
+from docket.platform import process as _process_adapter
+from docket.sandbox.launch import Launcher
+from tests.support.fakes import (
+    FakeGit,
+    FakeJail,
+    FakeProcess,
+    RealExcept,
+    launcher_with,
+)
+from tests.support.git import GitHost
+
+# The real git, process and jail adapters are the default of every test; a test that wants a
+# fake asks for the ``fake_git``, ``fake_process`` or ``fake_jail`` fixture below.
+bootstrap.bind_adapters()
 
 _LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 2.0, "integration": 10.0}
 
@@ -52,12 +71,64 @@ def _plain_typer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _keep_pytest_dumpable(monkeypatch: pytest.MonkeyPatch) -> None:
+def _keep_pytest_dumpable() -> Iterator[None]:
     """An in-process turn must not make the pytest process non-dumpable for every later test;
     the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
-    from docket.platform import process as _process
+    with process_port.use(RealExcept(_process_adapter, make_non_dumpable=lambda: None)):
+        yield
 
-    monkeypatch.setattr(_process, "make_non_dumpable", lambda: None, raising=True)
+
+@pytest.fixture
+def real_git_except() -> Iterator[Callable[..., None]]:
+    """``real_git_except(git_worktree_add=f)`` binds the real git adapter with those calls
+    replaced, for the rest of the test."""
+    with ExitStack() as stack:
+
+        def bind(**overrides: Callable[..., Any]) -> None:
+            stack.enter_context(git_port.use(RealExcept(_git_adapter, **overrides)))
+
+        yield bind
+
+
+@pytest.fixture
+def git_host(monkeypatch: pytest.MonkeyPatch) -> GitHost:
+    """The operating system under ``platform.git``: git on PATH or not, and what running it answers."""
+    return GitHost(monkeypatch)
+
+
+@pytest.fixture
+def fake_git() -> Iterator[FakeGit]:
+    fake = FakeGit()
+    with git_port.use(fake):
+        yield fake
+
+
+@pytest.fixture
+def fake_process() -> Iterator[FakeProcess]:
+    fake = FakeProcess()
+    with process_port.use(fake):
+        yield fake
+
+
+@pytest.fixture
+def fake_jail() -> Iterator[FakeJail]:
+    fake = FakeJail()
+    with jail_port.use(fake):
+        yield fake
+
+
+@pytest.fixture
+def bind_launcher() -> Iterator[Callable[..., Launcher]]:
+    """``bind_launcher(landlock=True, docker=False)`` binds the real jail adapter on a host whose
+    backend probes answer so, for the rest of the test."""
+    with ExitStack() as stack:
+
+        def bind(**probes: bool) -> Launcher:
+            launcher = launcher_with(**probes)
+            stack.enter_context(jail_port.use(launcher))
+            return launcher
+
+        yield bind
 
 
 @pytest.fixture(autouse=True)

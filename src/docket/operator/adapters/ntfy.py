@@ -12,7 +12,7 @@ from docket.operator.adapters.webhook import DeliveryResult
 from docket.operator.channel import ChannelSpec
 from docket.operator.contract import CloudEvent
 from docket.operator.notify import render_text
-from docket.platform.redirects import open_same_origin
+from docket.platform import open_same_origin
 
 
 def deliver(

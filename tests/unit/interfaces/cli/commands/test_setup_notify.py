@@ -32,7 +32,7 @@ def sink(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         sent.append((spec.name, event))
         return SimpleNamespace(ok=True, error="")
 
-    monkeypatch.setattr(_setup_notify._channels, "sink_for", lambda spec: _deliver)
+    monkeypatch.setattr(_setup_notify._bootstrap, "sink_for", lambda spec: _deliver)
     return sent
 
 

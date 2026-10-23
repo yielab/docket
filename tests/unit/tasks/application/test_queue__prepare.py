@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tests.support.fakes import FakeJail
 
 from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import loop_trace as _loop_trace
@@ -16,7 +17,6 @@ from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.hops.workspace import prepare as _prepare
 from docket.observability import trace as _trace
 from docket.pipeline.application import steps as _steps_c
-from docket.sandbox import launch as _launch
 from docket.tasks.application import actions as _actions_c
 from docket.tasks.application import lifecycle as _lifecycle_c
 from docket.tasks.application import queue as _queue
@@ -96,12 +96,13 @@ def test_a_failed_install_refuses_the_task_with_the_command_status_and_tail(
 
 def test_the_install_runs_on_the_host_when_isolation_is_off(
     monkeypatch: pytest.MonkeyPatch,
+    fake_jail: FakeJail,
 ) -> None:
     monkeypatch.setattr(
         _isolation_posture, "resolve_command_jail", lambda project, label: (None, None)
     )
     calls: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(_launch, "run_command", lambda *a, **k: calls.append((a, k)) or (0, ""))
+    fake_jail.run_command = lambda *a, **k: calls.append((a, k)) or (0, "")
     assert _queue._run_prepare_command("demo", "npm ci", "/wt") == (0, "")
     ((args, kwargs),) = calls
     assert args[:2] == ("npm ci", "/wt") and "jail" not in kwargs

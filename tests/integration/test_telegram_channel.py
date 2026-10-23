@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from tests.support.fakes import FakeProcess
 from tests.support.pods import build_pod
 from tests.support.pods import seed_parked_task as _seed_parked_task
 
@@ -669,17 +670,11 @@ def _fake_get_updates_capturing(
 
 
 class TestTheBotReadsItsTokenThroughTheSecretsBackend:
-    def test_a_keyring_stored_token_reaches_get_updates(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from docket.platform import process as _process
-
-        monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
-        monkeypatch.setattr(_process, "secret_tool_available", lambda: True)
-        monkeypatch.setattr(
-            _process,
-            "secret_tool_lookup",
-            lambda service, key: "999:from-keyring" if key == "TELEGRAM_BOT_TOKEN" else None,
+    def test_a_keyring_stored_token_reaches_get_updates(self, fake_process: FakeProcess) -> None:
+        fake_process.env["DOCKET_SECRETS_BACKEND"] = "keyring"
+        fake_process.binaries = {"secret-tool"}
+        fake_process.secret_tool_store(
+            current_home().keyring_service, "TELEGRAM_BOT_TOKEN", "999:from-keyring"
         )
         _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": ""})  # the keyring backend's index entry
 

@@ -13,9 +13,9 @@ from docket.governance import audit as _audit
 from docket.hops.application.record import _hop_record
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.ports import git as _git
+from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
-from docket.platform import git as _git
-from docket.platform import process as _process
 from docket.platform import read_modify_write
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.queue import _task_record

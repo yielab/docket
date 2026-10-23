@@ -197,7 +197,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
             print(f"[serve] sweep: schedule check failed: {exc}")
 
     with contextlib.suppress(Exception):
-        _flush_notify_channels()
+        _flush_notify_channels(_bootstrap.sink_for)
 
 
 def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:

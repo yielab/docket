@@ -45,7 +45,7 @@ from docket.models.adapters.openai_wire import (
     decode_response,
     request_part_bytes,
 )
-from docket.platform.redirects import open_same_origin
+from docket.platform import open_same_origin
 
 if TYPE_CHECKING:
     from docket.models.catalog import ProviderSpec
