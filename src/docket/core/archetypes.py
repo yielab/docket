@@ -222,9 +222,8 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         raise ArchetypeError(f"archetype {name!r}: version must be an integer") from exc
 
     try:
-        # 6000 = RoleArchetype.token_budget's own default — a legacy overlay
-        # entry (or any doc that never set one) still parses instead of
-        # crashing (see the module docstring's "token_budget" paragraph).
+        # 6000 = RoleArchetype.token_budget's own default — a doc that never
+        # set one still parses instead of crashing (see the module docstring's "token_budget" paragraph).
         token_budget = int(doc.get("tokenBudget", 6000))
     except (TypeError, ValueError) as exc:
         raise ArchetypeError(f"archetype {name!r}: tokenBudget must be an integer") from exc
@@ -352,7 +351,7 @@ _METHOD = (
     "Facts only, no instructions.\n\n"
 )
 
-_LEGACY_AGENTS_TEMPLATE = (
+_POD_AGENTS_TEMPLATE = (
     "# AGENTS.md — ${project} · ${role}\n\n" + _METHOD + "## Red Lines\n"
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
@@ -366,7 +365,7 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         scope="pod",
         model_class="cheap",
         soul_template=_SOUL_HEAD + _LEAD_BODY,
-        agents_template=_LEGACY_AGENTS_TEMPLATE,
+        agents_template=_POD_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="none"),
         tool_profile="coordination",
         description="orchestrates the pod; never edits code",
@@ -394,7 +393,7 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         scope="pod",
         model_class="strong",
         soul_template=_SOUL_HEAD + _IMPLEMENTER_BODY,
-        agents_template=_LEGACY_AGENTS_TEMPLATE,
+        agents_template=_POD_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="mechanical"),
         tool_profile="full-repo",
         description="writes code in the project workspace",
@@ -410,7 +409,7 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         scope="pod",
         model_class="cheap",
         soul_template=_SOUL_HEAD + _REVIEWER_BODY,
-        agents_template=_LEGACY_AGENTS_TEMPLATE,
+        agents_template=_POD_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("APPROVE", "REQUEST-CHANGES")),
         tool_profile="read-only",
         description="read-only veto on diffs",
@@ -425,7 +424,7 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         scope="pod",
         model_class="cheap",
         soul_template=_SOUL_HEAD + _TESTER_BODY,
-        agents_template=_LEGACY_AGENTS_TEMPLATE,
+        agents_template=_POD_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("PASS", "FAIL")),
         tool_profile="read-only-exec",
         description="behaviour-only PASS/FAIL",

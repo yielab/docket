@@ -48,7 +48,7 @@ def test_an_unknown_kind_raises_naming_every_known_kind(tmp_path: Path) -> None:
     )
 
 
-def test_a_canonical_role_file_without_kind_loads_deprecated_and_matches_parse_yaml_file(
+def test_a_canonical_role_file_without_kind_loads_and_matches_parse_yaml_file(
     tmp_path: Path,
 ) -> None:
     text = (
@@ -65,7 +65,6 @@ def test_a_canonical_role_file_without_kind_loads_deprecated_and_matches_parse_y
 
     assert document.kind == "role"
     assert document.name == "custom-role"
-    assert document.deprecated is True
     assert document.doc == _archetypes.parse_yaml_file(str(path))
 
 

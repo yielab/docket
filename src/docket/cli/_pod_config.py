@@ -339,8 +339,6 @@ def cmd_validate(
             continue
         assert result.document is not None
         doc = result.document
-        if doc.deprecated:
-            ui.warn(f"{result.path} has no 'kind:'; add 'kind: {doc.kind}'")
         ui.success(f"{result.path} ({doc.kind} {doc.name})")
     if not target.is_file():
         summary = _pod_apply.summarize_recipe(target)

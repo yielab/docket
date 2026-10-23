@@ -36,7 +36,7 @@ from docket.kernel.home import current_home
 
 
 def pod_ids() -> list[str]:
-    """Return registered pod ids once each, excluding flat legacy agents."""
+    """Return registered pod ids once each, excluding flat non-pod agents."""
     projects: set[str] = set()
     for agent in _fleet.list_agents():
         raw = store.read_json(current_home().meta_path(agent.id))

@@ -21,8 +21,8 @@ This specification covers:
   `load_document(path)` reads the file, resolves its kind, and dispatches to the existing
   parser for that kind
 - Files with no `kind:` key: a canonical-form file still loads when its location (or the caller)
-  names a kind, and is marked `deprecated=True` so `docket pod validate` can advise adding the
-  key; a short-form file without `kind:` is refused
+  names a kind, with no advisory (it is a current format, not a legacy one); a short-form file
+  without `kind:` is refused
 - `ConfigDocError`: the one error shape every kind's validation failure is reported through,
   and its `<file>:<line> <field>: <message> (valid: ...; did you mean "...")` rendering
 - `docket pod validate [dir|file]`: validates every document under a directory (or one file),
@@ -123,16 +123,14 @@ This specification does NOT cover:
    **MUST** resolve its kind first from location (a file directly under a `roles/`, `policies/`,
    `mcp-servers/` or `pipelines/` directory, or named `pipeline.yaml`/`pipeline.yml` or
    `pod.yaml`/`pod.yml`) and only then from the caller's own `kind=` argument, when location
-   does not resolve one. The resulting `Document.deprecated` **MUST** be `True`. For a canonical
-   role file, `Document.doc` **MUST** equal the mapping that parsing the file as YAML yields. A
-   canonical document that fails its kind's parser **MUST** report that parser's own error.
+   does not resolve one. For a canonical role file, `Document.doc` **MUST** equal the mapping
+   that parsing the file as YAML yields. A canonical document that fails its kind's parser
+   **MUST** report that parser's own error.
 2. Neither location nor a caller-stated kind resolving one **MUST** raise `ConfigDocError`
    (field `kind`) naming every value in `KINDS`: an unresolvable file is treated the same as an
    unknown-kind one.
-3. `docket pod validate` **MUST** print one advisory per file it loads this way, on stdout
-   before that file's success line: `<file> has no 'kind:'; add 'kind: <k>'`, naming the kind it
-   resolved (plain output marks it with `!`). The advisory is informational only: the file is
-   still reported valid and the exit status is unaffected.
+3. `docket pod validate` **MUST** report a document loaded this way exactly as it reports one that
+   declares its kind: the success line only, no advisory.
 4. A short-form document (one `_is_short_form` recognises: a role carrying `cannot`, `verdict`,
    `verify`, `approval`, `instructions` or `model`; a policy carrying `appliesTo`, `on`, `when`
    or `then`; every pod manifest) with no `kind:` key **MUST** raise `ConfigDocError` (field
@@ -235,7 +233,6 @@ Document                             # frozen dataclass
     name: str            # the document's `name`, else the file stem
     path: Path
     doc: dict[str, Any]
-    deprecated: bool     # True when the file had no `kind:` key
 
 ConfigDocError(ValueError)
     path, line, field, message, valid, suggestion
@@ -311,12 +308,11 @@ ok .docket/roles/good.yaml (role security-vetter)
   roles 2 · policies 0 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0
 ```
 
-### A role file with no `kind:` still loads
+### A canonical role file with no `kind:` loads without a note
 
 ```bash
-$ docket pod validate .docket/roles/legacy.yaml
-! .docket/roles/legacy.yaml has no 'kind:'; add 'kind: role'
-ok .docket/roles/legacy.yaml (role legacy)
+$ docket pod validate .docket/roles/custom.yaml
+ok .docket/roles/custom.yaml (role custom)
 ```
 
 ## Validation

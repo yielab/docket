@@ -210,7 +210,7 @@ def _member_soul(
 ) -> str:
     """Render a pod member's SOUL.md from its archetype's `soulTemplate`.
 
-    Byte-identical to legacy output (role-archetypes.spec.md); no role-specific branching."""
+    No role-specific branching (role-archetypes.spec.md)."""
     arch = _arch.load_registry(project).get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")

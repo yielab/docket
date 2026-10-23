@@ -77,7 +77,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "run_cancellation_observed",  # execution first observed a persisted run request
         "run_cancelled",  # dispatch fully stopped and terminalized the requested run
         # Generic verdict-gate outcomes for any role/archetype beyond the two
-        # built-in ones (which keep emitting their own legacy names above —
+        # built-in ones (which keep emitting their own names above —
         # rework_started/review_rejected/reviewer_verdict_unparseable for
         # reviewer, tester_verdict_failed for tester — see
         # core/dispatch.py's _verdict_event_names).

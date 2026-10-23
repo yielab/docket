@@ -485,7 +485,7 @@ def pod_pipeline(project: str) -> list[tuple[str, str]]:
 def pod_full_roster(project: str) -> dict[str, str]:
     """Every role this pod has, first member per role (``role -> member_id``). Unlike
     :func:`pod_pipeline` (fixed to ``PIPELINE_ORDER``), this covers every role name so a
-    custom :class:`~docket.core.pipeline.PipelineSpec` can target a non-legacy role."""
+    custom :class:`~docket.core.pipeline.PipelineSpec` can target a role outside the default four."""
     all_ids = [a.id for a in _fleet.list_agents()]
     by_role: dict[str, str] = {}
     for mid, role, _idx in _pod.members_of(all_ids, project):
@@ -1482,7 +1482,7 @@ def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
 
 def _verdict_event_names(role: str) -> tuple[str, str, str]:
     """(rework_event, rejected_event, unparseable_event) names for a verdict gate's non-pass
-    outcome. Keeps exact legacy names for ``reviewer``/``tester`` (pinned by
+    outcome. Keeps the established names for ``reviewer``/``tester`` (pinned by
     test_reviewer_gate.py/test_verify_gate.py) so gate logic stays generic without changing
     operator-visible trace names; other roles get generic ``verdict_*`` names."""
     if role == "reviewer":

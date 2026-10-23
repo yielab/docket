@@ -120,7 +120,7 @@ def _validate_doc(p: dict[str, Any], label: str) -> str:
     if p.get("action") not in VALID_ACTIONS:
         return f"{label}: unknown action '{p.get('action')}'"
 
-    # A document fires on a `match` (the legacy text regex), a `when` (structured predicates
+    # A document fires on a `match` (the text regex), a `when` (structured predicates
     # over the tool call), or both -- it must carry at least one.
     match = p.get("match")
     when = p.get("when")

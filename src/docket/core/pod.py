@@ -101,7 +101,7 @@ def pod_of(member_id: str) -> str | None:
     # role name* as the role, which mis-splits a custom role whose own name ends in another
     # registered role's name (e.g. `security-reviewer`'s member id `proj-security-reviewer`
     # would otherwise parse as role `reviewer` of project `proj-security`). A member with no
-    # meta, or whose meta carries no `pod` field (a plain legacy/non-pod agent), falls back to
+    # meta, or whose meta carries no `pod` field (a plain non-pod agent), falls back to
     # that string parsing unchanged.
     recorded = _fleet.meta_get(member_id, "pod", "")
     if recorded:
