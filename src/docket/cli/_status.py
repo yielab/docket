@@ -21,8 +21,8 @@ from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.models import AgentMeta
 from docket.core.pod_report import unpriced_text
+from docket.core.runtime_driver import UsageDay
 from docket.core.utils import (
-    DayRecord,
     aggregate_cost,
     cost_history,
     gating_cost,
@@ -357,7 +357,7 @@ def _render_all(summaries: list[dict[str, Any]]) -> None:
 
 
 def _history(pods: list[str], days: int, json_out: bool) -> None:
-    merged: dict[str, DayRecord] = {}
+    merged: dict[str, UsageDay] = {}
     registered = [a.id for a in _fleet.list_agents()]
     for pod_id in pods:
         for member_id, _role, _idx in _pod.members_of(registered, pod_id):
@@ -366,7 +366,7 @@ def _history(pods: list[str], days: int, json_out: bool) -> None:
                 merged[rec.date] = (
                     rec
                     if old is None
-                    else DayRecord(
+                    else UsageDay(
                         date=rec.date,
                         turns=old.turns + rec.turns,
                         input_tokens=old.input_tokens + rec.input_tokens,

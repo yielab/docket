@@ -29,7 +29,6 @@ from docket.core import pod as _podcore
 from docket.core import runtime_driver as _rd
 from docket.core import utils as _utils
 from docket.core.models import AgentMeta
-from docket.core.models import AgentMeta as _AgentMeta
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
@@ -145,7 +144,7 @@ class TestAutoPauseDispatch:
             assert results[0].status == "blocked"
 
             lead_id = _podcore.member_id("demo", "lead")
-            assert _AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
             assert _fleet.meta_get(lead_id, "pausedReason") == "budget"
 
     def test_paused_pod_refuses_claim_at_next_dispatch(
@@ -180,7 +179,7 @@ class TestAutoPauseDispatch:
 
 class TestEstimateFallback:
     def test_estimate_cost_usd_known_model(self) -> None:
-        totals = _utils.CostTotals(input_tokens=1_000_000, output_tokens=1_000_000)
+        totals = _rd.UsageTotals(input_tokens=1_000_000, output_tokens=1_000_000)
         est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
         price = _mp.price_for("anthropic/claude-haiku-4-5")
         assert price is not None
@@ -188,7 +187,7 @@ class TestEstimateFallback:
         assert est == pytest.approx(in_rate + out_rate)
 
     def test_estimate_cost_usd_does_not_charge_cache_reads_twice(self) -> None:
-        totals = _utils.CostTotals(input_tokens=1_000_000, cache_read=900_000)
+        totals = _rd.UsageTotals(input_tokens=1_000_000, cache_read=900_000)
         price = _mp.price_for("anthropic/claude-haiku-4-5")
         assert price is not None
         in_rate, _out, cache_read_rate, _cw = price
@@ -197,7 +196,7 @@ class TestEstimateFallback:
 
     def test_estimate_cost_usd_does_not_charge_cache_writes_twice(self) -> None:
         """Cache writes are part of input and are priced once, at the cache-write rate."""
-        totals = _utils.CostTotals(input_tokens=1_000_000, cache_read=500_000, cache_write=300_000)
+        totals = _rd.UsageTotals(input_tokens=1_000_000, cache_read=500_000, cache_write=300_000)
         price = _mp.price_for("anthropic/claude-haiku-4-5")
         assert price is not None
         in_rate, _out, cache_read_rate, cache_write_rate = price
@@ -205,7 +204,7 @@ class TestEstimateFallback:
         assert est == pytest.approx(0.2 * in_rate + 0.5 * cache_read_rate + 0.3 * cache_write_rate)
 
     def test_estimate_cost_usd_unknown_model_returns_none(self) -> None:
-        totals = _utils.CostTotals(input_tokens=1000, output_tokens=1000)
+        totals = _rd.UsageTotals(input_tokens=1000, output_tokens=1000)
         assert _utils.estimate_cost_usd("some-vendor/unknown-model", totals) is None
 
     def test_pod_gating_cost_prefers_recorded_when_nonzero(
@@ -245,7 +244,7 @@ class TestEstimateFallback:
             results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
             assert results[0].status == "blocked"
             assert "estimated" in results[0].reason
-            assert _AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
 
 
 # ── recorded spend is never contaminated by an estimate ───────────────────────────
