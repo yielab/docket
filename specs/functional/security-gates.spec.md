@@ -1,1134 +1,895 @@
 # Security Gates Specification
 
-**Version**: 0.65.0
-**Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
-`DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
-argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
-MCP, and Telegram producers, all answering identically; workspace isolation is opt-in (`docket setup sandbox
-on`), and fails closed when on without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
-`ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
-in-turn tool-call gate section below, whose one producer is a pod's own `approvalMode` setting
-(ROADMAP P26-5). There is no approval-routing posture flag: it and
-every command that wrote or displayed it are deleted -- see Enablement requirement 2. Cancellation reaches
-an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers. A pod may
-also extend the curated allowlist for its own turns only, via `PodSettings.allowCommands` and
-`ToolContext.allow_commands` — see Tool-approval gates requirement 1 and In-turn tool-call gate
-item 13. Since ROADMAP P27-2, a pod may also install its own `pre_tool_call`/`pre_input`/
-`pre_output` policy files, which join the global set in the same most-restrictive-wins evaluation
-and can only ever add a restriction, never override a global `block`/`require_approval` — see
-"Policy engine on the live path" requirement 9 and In-turn tool-call gate requirement 4. A
-`when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
-from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
-below.
-**Last Updated**: 2026-10-19
+**Version**: 1.0.1
+**Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
+classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
+MCP and Telegram. The exec jail is opt-in and fails closed when on without a usable backend.
+**Last Updated**: 2026-10-22
 
 ## Purpose
 
-This specification defines Docket’s tool-approval, policy, workspace-isolation, sandbox, and
-network-egress contracts. `core/tools.py` is the single chokepoint, `core/fleet.py` owns posture,
-and Docket’s approval store owns every grant/deny path. There is no external enforcer or bridge.
+This specification defines docket's tool-approval, policy, workspace-isolation, sandbox and
+network-egress contracts. One dispatcher, `dispatch_tool`, gates every tool call; the fleet record
+(`fleet.json` `security`) holds the isolation, network and profile posture; docket's approval store
+owns every grant and denial. There is no external enforcer and no bridge to one.
 
 ## Scope
 
 This specification covers:
 
-- Tool-approval gates for dangerous operations
-- Workspace isolation between agents
-- Audit logging of approvals and denials
-- The high-risk action-class policy (money-movement, prod-deploy, secret-access)
-- The declarative guardrail policy engine (`core/policy.py`) and where its `pre_input`/
-  `pre_output`/`pre_tool_call` hooks run on a live path (ROADMAP Phase 15 G-2; Phase 19 P19-3)
-- `core/tools.py`'s in-turn tool-call gate: the combined command-classifier + `pre_tool_call`
-  policy decision, the synchronous approval wait it routes `ask` verdicts to
-  (`core/approval.py`'s `wait_for_approval`), and the audit trail it leaves (ROADMAP Phase 19
-  P19-3) — scoped strictly to calls made through that one dispatcher, not to the daemon
-- The exec sandbox for the `bash` tool (ROADMAP Phase 19 P19-9): backend detection
-  (`edges.adapters.system.sandbox_availability`), the landlock, seatbelt and docker jails it can build, and the
-  honest reporting contract that keeps "a jail is available" and "this call ran in one" distinct
-  — a mechanism layered *underneath* the gate above, never a substitute for it
+- The tool-call gate: the argument-aware command classifier, `pre_tool_call` policies, and what an
+  `ask` verdict does (wait, park, or refuse)
+- The approval store and its channels (CLI, HTTP, MCP, Telegram), the grant/deny race, expiry,
+  single-use pre-grants and approval packs
+- The high-risk action classes (`money-movement`, `prod-deploy`, `secret-access`) and every place
+  they apply
+- The guardrail policy engine: the `pre_input`, `pre_tool_call` and `pre_output` hooks, the policy
+  document format, predicate plugins, pod policies and task restrictions
+- File-tool containment and workspace isolation
+- The exec jail (Landlock, Seatbelt, Docker) under `bash`, verify commands, `run:` steps, the
+  prepare install and stdio MCP servers, and the honest report of whether a call ran in one
+- Network egress: the `fetch` tool and the network lockdown mode
+- Credentials kept out of task processes, protected paths and the reviewed digest, and the
+  `lights-out` profile
 
-This specification does NOT cover Telegram transport (see telegram-integration.spec.md), which
-is *one* channel for approval prompts — the CLI and HTTP channels above are equally real and
-are owned here, not there.
+This specification does NOT cover Telegram transport (telegram-integration.spec.md), which is one
+approval channel among four; the dispatch state machine a gated task moves through
+(`waiting_approval`, `resolve_waiting_approval`, pod-dispatch.spec.md); or the audit entry format
+and chain (audit.spec.md).
 
 ## Requirements
 
-> **Reading note (added P19-7b, 2026-08-03).** Several requirement blocks below were written
-> against the pre-P19-7b world, where docket configured a daemon-enforced exec-approval
-> allowlist and the daemon itself decided ask/allow by binary path. That daemon is deleted.
-> Where a block below still states a daemon-enforced requirement as current, read it as the
-> **historical record of the enforcement model this spec superseded** (kept so the FD-3/G-3
-> high-risk-class reasoning that was built against it is not lost), not as a live contract.
-> "Enablement" and "High-risk action classes" items 3-4 immediately below are corrected inline;
-> the "Examples" section's "daemon-enforced"/"target state" headings further down are historical
-> for the same reason. The live contract is "In-turn tool-call gate" and its own Examples
-> subsection: `core/tools.py`'s `dispatch_tool` is the one enforcement point now, for every
-> tool call any `DocketDriver`-backed turn makes.
+### Tool-approval gates
 
-### Tool-approval gates (implemented)
-
-1. Dangerous operations not on the curated allowlist (e.g. `rm`, `dd`, `docker`, `systemctl`)
-   **MUST** require explicit approval before execution — since Phase 19 P19-3 this is the
-   command classifier + `pre_tool_call` gate at `core/tools.py`'s `dispatch_tool`, unconditionally
-   active on every tool call docket dispatches (there is no install-time "enable the gate" choice
-   any more; see the Purpose section). Note: `git`/`npm` ARE on the curated allowlist
-   (`core/security.py`'s `SAFE_BINS`, used constantly for benign work), so `git status` does not
-   prompt — but `classify_command` matches `HIGH_RISK_PATTERNS` against the whole command line
-   *before* it consults `SAFE_BINS`, so a high-risk invocation like `git push origin main` asks at
-   the classifier level anyway, and the `high-risk-deploy` `pre_tool_call` policy independently
-   asks on the same dispatcher (see "High-risk action classes" below). **Shell builtins with no
-   side effect beyond the invoking shell's own state** (`cd`, `pwd`, `true`, `false`, `test`, `[`)
-   and `echo` **MUST NOT** force approval merely because they lead a segment — since W37-C1 they
-   are on `SAFE_BINS` too, so `cd <path> && git status` reads as `cd` (allowed) then `git status`
-   (allowed), not as an unclassifiable prefix; `export`, `source`, `.`, `eval` and `exec` stay OFF
-   the allowlist because they change what a later segment resolves to. An unquoted, unescaped
-   newline (`\n`, `\r\n`) **MUST** start a new segment exactly like `;`, since `/bin/sh` starts
-   a new command there (`core/security.py::_logical_lines`); a newline inside quotes stays text
-   and a backslash-newline is a continuation. `echo` is
-   redirect-sensitive (`core/security.py`'s `_REDIRECT_SENSITIVE_BINS`): a bare `echo hi` is
-   allowed, but `echo ... >`/`>>`/`&>` still asks, naming the redirect (`output redirect to <target>
-   is outside the workspace`, or `output redirect after cd cannot be placed`) and never the binary,
-   because its argument is often model-composed text and an output redirect turns that into an
-   unattended arbitrary-path write — adding `echo` to the allowlist **MUST NOT** also unlock that.
-   The one exception is a redirect docket can place: `classify_command` takes the turn's
-   `roots` (`core/tools.py::evaluate_tool_call` passes `ToolContext.roots`), and when every
-   output-redirect target of the segment resolves inside them — a relative target against
-   `roots[0]`, the `bash` tool's cwd, symlinks followed; an earlier `cd <literal path>` is followed
-   (the target resolves against the directory the previous `cd` reached; a `cd` with an expansion,
-   `-`, no argument, or any `pushd`/`popd`, a `cd` that is itself a pipeline element or backgrounded, or a command
-   with `(` or `||`, stops placement; a pipe in a later segment does not);
-   no `$`, `~`, glob or brace the shell would rewrite first; no operator without a target — the
-   redirect is the `write` tool by another name (the file tools are confined to the same roots,
-   and every role that may not write is denied `bash`) and **MUST** be allowed, for `echo` and
-   for a pod's extra bins alike. A target written exactly `/dev/null` discards the output and
-   **MUST** count as placed with or without roots, jailed or not (`ls x 2>/dev/null`); every
-   jail already grants it (`DEFAULT_RW_FILES`). Without roots (`docket pod check`, dispatch's
-   verify command) every other prior verdict stands. Every output-redirect spelling counts: `>`, `>>`, `>|`, `&>`,
-   `&>>` and `>&` to a path; `2>&1` copies a descriptor and opens nothing. `pytest` and `python`
-   are on `SAFE_BINS` beside `python3`: the bare test runner runs the same code
-   `python3 -m pytest` does, so asking on one spelling only was a trap, not a gate.
-   **A heredoc whose delimiter is quoted or backslashed** (`<<'EOF'`, `<<"EOF"`, `<<\EOF`, and the
-   `<<-` forms) carries stdin data, not commands: `classify_command` cuts the body and its closing
-   delimiter line before the opaque-marker scan, the line split and binary classification, so a
-   backtick, `${`, apostrophe or `=>` in the body asks nothing. The line carrying `<<` is
-   classified as before, `match_high_risk` still reads the full text including the body, an
-   unquoted delimiter keeps its body classified (the shell expands it), a heredoc fed to a shell
-   (`bash`, `sh`, `zsh`, `dash`, `ksh`, `source` or `.` as in `source /dev/stdin`, or a wrapper of one, anywhere on the carrying line) keeps its
-   body classified as commands, and a quoted heredoc with no closing delimiter asks. Here-strings
-   (`<<<`) are not heredocs.
-   **The classifier sees through command wrappers and deleting flags of allowlisted bins.** A
-   segment led by `env` (after its `VAR=value` and option arguments), `xargs` (after its options),
-   `nice`, `nohup`, `timeout <duration>`, `time`, `command` or `stdbuf` is classified by
-   the command it runs, recursively to a bounded depth (eight; deeper, or options it cannot read,
-   asks), so `env rm -rf x` and `echo x | xargs rm` ask exactly as `rm` does; a wrapper that runs
-   nothing (`env`, `env FOO=1`, `xargs`, which echoes, `command -v x`) is allowed. `find` with
-   `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprint0`, `-fprintf` or `-fls`
-   asks, and so does an `awk`/`gawk` program containing `system(`, a `|` or an unparenthesised
-   `print`/`printf` redirect. These checks stand down inside a working jail like the allowlist
-   itself. They are not a containment boundary: without the sandbox an allowlisted interpreter
-   (`python3`, `node`, `make`, `sed -i` and the like) can write or delete anything the operator
-   can, and `tee`, `cp`, `mv`, `mkdir`, `touch` and `ln` stay allowed as ordinary development
-   writes; the sandbox is the boundary.
-   `docket pod check "<text>" --role <role>` **MUST** report the same verdict a live
-   exec tool call would: it evaluates through `core/tools.py::evaluate_tool_call` (the same
-   function `dispatch_tool` calls), not a second copy of the classifier+policy merge, so a
-   `cd`-prefixed or otherwise-shaped command cannot get a different answer in the dry-run than it
-   would live. **A pod MAY extend the curated allowlist for its own turns** via
-   `core.pod.PodSettings.allowCommands` (`docket pod set allowCommands
-   <bin>[,<bin>...]`, comma-separated exact basenames): `core/security.py::classify_command` takes
-   an `extra_bins` parameter, default an empty `frozenset`, so every prior verdict in this spec is
-   byte-identical when it is unset. A configured extra bin is folded into the `SAFE_BINS`
-   membership check *only* — it does not widen the opaque-marker check or the high-risk-class
-   check, both of which still run against the full command line first, so `uv run tox && git
-   push origin main` still asks even with `tox`/`uv` allowlisted. Every extra bin is treated as
-   redirect-sensitive, the same conservative rule `echo` gets, since docket cannot know whether a
-   pod-supplied binary's argument is model-composed text. Write-time validation
-   (`core.pod.PodSettings`) rejects a value containing a path separator or shell metacharacter, the
-   opaque/scope-changing names `eval`/`exec`/`source`/`.`/`export`, and any name appearing in a
-   `HighRiskClass.bins` list (e.g. `git`, `npm`) — those stay governed exclusively by the classes
-   below, never individually re-opted-in; a name already on `SAFE_BINS` is redundant and is
-   silently dropped rather than rejected. This extension is strictly per-pod: only the turn of an
-   agent belonging to that pod carries the setting (see "In-turn tool-call gate" item 13 below for
-   the live-path wiring), and a `pre_tool_call` policy `block`/`require_approval` on the same
-   binary still wins (most-restrictive-wins, item 3 of the next section).
-   A pod's `.docket/` repository directory **MUST NOT** allowlist a shell: `docket init` refuses
-   `allowCommands` naming `sh`, `bash`, `zsh`, `dash`, `sudo`, `ssh`, `nc` or `socat` (exit 2)
-   before provisioning, because a shell runs whatever follows it and the classifier never sees
-   that; `docket pod set allowCommands` by the operator is not subject to this.
-   **Inside the execution envelope the allowlist stands down (ADR 0024 §2).**
-   `classify_command(command, extra_bins, roots, jailed=False)` takes `jailed`, which
-   `core/tools.py::evaluate_tool_call` sets from `ToolContext.sandbox == "auto"` (a turn whose
-   isolation posture was resolved to a real backend; a turn without one is refused before it
-   starts, so this is the same decision `run_bash` acts on). When `jailed`, a binary off
-   `SAFE_BINS`/`extra_bins` is `allow`ed instead of asking. Unchanged in both modes: the
-   not-statically-analysable `ask` (command substitution, `eval`, `exec`, unparseable text), every
-   high-risk class (`ask`, argument-aware), the empty-command `deny`, and redirect containment
-   (an output redirect whose targets do not all resolve inside `roots` or name `/dev/null`
-   still asks, for every binary when jailed). With `jailed=False` (the default, and every host-side caller such as
-   dispatch's `run:` steps and `docket pod check`) every verdict is byte-identical to before.
-   `policy` hooks apply in both modes.
-2. Approvals in **docket's approval store MUST** be answerable via at least one headless
-   channel (CLI `docket task approve`/`docket task deny`, HTTP `POST /approvals/<token>`, or — since
-   ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is
-   answered by `docket start --telegram`'s poll loop with no interactive session required). Since
-   Phase 19 P19-7b deleted the daemon, docket's store is the **only** approval system left — the
-   "daemon's own gate prompt, unbridged" caveat that used to qualify this requirement no longer
-   applies to anything real; see the approval-seam note above. Since ROADMAP Phase 15 G-1, one
-   real producer exists for this store — `core/dispatch.py`'s require_approval gate — and every
-   headless channel **MUST** genuinely resume or kill the dispatch task a gate stopped, not
-   merely flip the approval record's own state; see `pod-dispatch.spec.md`'s
-   `resolve_waiting_approval`. Telegram's `core/telegram.py`'s `_handle_decision` calls the
-   identical `approval_grant`/`approval_deny` + `resolve_waiting_approval` sequence
-   `cli/_approve.py`/`cli/_deny.py` use — one approval implementation, four callers.
-   A pending record **MUST** make its one terminal transition (`granted` or fail-closed
-   `denied`) under the store's locked read-modify-write operation: concurrent decisions, including
-   the expiry sweep, have exactly one winner. Only that winner emits the matching trace and audit
-   event; a duplicate decision retains its existing no-op/error result and emits neither.
-   The loser's error **MUST** distinguish *why* it lost: `core/approval.py::ApprovalError` covers
-   a genuinely unknown token (HTTP `404`); the same-action repeat (already granted/already
-   denied/expired) is `ApprovalNoop` (HTTP `409`); and the opposite-action-on-resolved case
-   (deny-after-grant or grant-after-deny) is `ApprovalConflict` — a distinct `ApprovalError`
-   subclass so every existing `except ApprovalError` still catches it — carrying the winning
-   state, mapped to HTTP `409` naming that state rather than the missing-token `404`. Every
-   channel's caller (`serve.py`, `cli/_approve.py`, `cli/_deny.py`, `cli/_mcp.py`,
-   `core/telegram.py`) reports which decision won from this same exception, never a generic
-   failure indistinguishable from an unknown token.
-3. A gate prompt with no approver **MUST** fail closed. With the daemon gone, this is entirely
-   docket's own responsibility now: an in-turn `core/tools.py` gate fails closed via
-   `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate" below), and a stale **pending** record in
-   the async approval store **MUST** resolve to **denied** (not the pre-G-1 `"expired"` state)
-   after `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while `docket start` is
-   up. For a G-1-originated record (one gating a dispatch task), that resolution **MUST** also
-   fail the waiting task terminally (`failureKind: "approval_denied"`).
-4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
-   log (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
-   through (`core/approval.py`'s `APPROVAL_CHANNELS`: `cli`, `http`, `mcp`, `telegram`, `tack` — an
-   HTTP caller-supplied tag — or `timeout` for the expiry sweep's own fail-closed denial; an
-   in-turn wait that observes run cancellation denies with `cancellation`). **Since ROADMAP Phase 19 P19-8, the `telegram` tag is live**: it is docket's own bot
-   (`docket start --telegram`, `core/telegram.py`) answering through docket's own approval store —
-   never, as this spec used to (mis)describe before a daemon existed for the ambiguity to matter,
-   a bridge to any external `/approve` mechanism. There is no daemon and never was a bridge to
-   one; see the G-5 findings section below for why that path was investigated and closed.
+1. A command whose binary is not on the curated allowlist (`SAFE_BINS`; `rm`, `dd`, `docker`,
+   `systemctl` are off it) **MUST** require approval before it runs. The gate is `dispatch_tool`'s
+   command classifier plus `pre_tool_call` policies, active on every tool call docket dispatches;
+   nothing turns it off. `git` and `npm` are on the allowlist, so `git status` does not ask, but
+   `classify_command` matches `HIGH_RISK_PATTERNS` against the whole command line before it
+   consults `SAFE_BINS`, so `git push origin main` asks, and the `high-risk-deploy` `pre_tool_call`
+   policy asks on the same call independently (see "High-risk action classes").
+   - **Segments.** Every segment behind `;`, `&&`, `||` and `|` is classified. An unquoted,
+     unescaped newline (`\n`, `\r\n`) **MUST** start a new segment exactly like `;`, since
+     `/bin/sh` starts a new command there; a newline inside quotes stays text and a
+     backslash-newline is a continuation.
+   - **Builtins.** `cd`, `pwd`, `true`, `false`, `test`, `[` and `echo` are on `SAFE_BINS` and
+     **MUST NOT** force approval merely because they lead a segment, so `cd <path> && git status`
+     reads as `cd` (allowed) then `git status` (allowed). `export`, `source`, `.`, `eval` and
+     `exec` stay off the allowlist because they change what a later segment resolves to. `pytest`
+     and `python` are on it beside `python3`: the bare test runner runs the same code
+     `python3 -m pytest` does.
+   - **Redirects.** `echo` is redirect-sensitive: a bare `echo hi` is allowed, but `echo ... >`,
+     `>>` or `&>` asks, naming the redirect (`output redirect to <target> is outside the
+     workspace`, or `output redirect after cd cannot be placed`) and never the binary, because its
+     argument is often model-composed text and a redirect turns that into an unattended
+     arbitrary-path write. The exception is a redirect docket can place: `classify_command` takes
+     the turn's `roots`, and when every output-redirect target of the segment resolves inside them
+     the redirect is the `write` tool by another name (the file tools are confined to the same
+     roots, and every role that may not write is denied `bash`) and **MUST** be allowed, for
+     `echo` and for a pod's extra bins alike. Placement: a relative target resolves against
+     `roots[0]` (the `bash` cwd), symlinks followed; an earlier `cd <literal path>` is followed; a
+     `cd` with an expansion, `-` or no argument, any `pushd`/`popd`, a `cd` that is a pipeline
+     element or backgrounded, or a command containing `(` or `||` stops placement (a pipe in a
+     later segment does not); a target holding `$`, `~`, a glob or a brace, or an operator without
+     a target, cannot be placed. A target written exactly `/dev/null` discards the output and
+     **MUST** count as placed with or without roots, jailed or not (`ls x 2>/dev/null`); every jail
+     grants it (`DEFAULT_RW_FILES`). Every output-redirect spelling counts: `>`, `>>`, `>|`, `&>`,
+     `&>>` and `>&` to a path; `2>&1` copies a descriptor and opens nothing. Without roots
+     (`docket pod check`, a `run:` step's classification) any other redirect by a
+     redirect-sensitive binary asks.
+   - **Heredocs.** A heredoc whose delimiter is quoted or backslashed (`<<'EOF'`, `<<"EOF"`,
+     `<<\EOF`, and the `<<-` forms) carries stdin data, not commands: `classify_command` cuts the
+     body and its closing delimiter line before the opaque-marker scan, the line split and binary
+     classification, so a backtick, `${`, apostrophe or `=>` in the body asks nothing. The line
+     carrying `<<` is classified as usual, `match_high_risk` still reads the full text including
+     the body, an unquoted delimiter keeps its body classified (the shell expands it), a heredoc
+     fed to a shell (`bash`, `sh`, `zsh`, `dash`, `ksh`, `source` or `.` as in `source /dev/stdin`,
+     or a wrapper of one, anywhere on the carrying line) keeps its body classified as commands, and
+     a quoted heredoc with no closing delimiter asks. Here-strings (`<<<`) are not heredocs.
+   - **Wrappers and deleting flags.** A segment led by `env` (after its `VAR=value` and option
+     arguments), `xargs` (after its options), `nice`, `nohup`, `timeout <duration>`, `time`,
+     `command` or `stdbuf` is classified by the command it runs, recursively to a depth of eight
+     (deeper, or options it cannot read, asks), so `env rm -rf x` and `echo x | xargs rm` ask
+     exactly as `rm` does; a wrapper that runs nothing (`env`, `env FOO=1`, `xargs`, which echoes,
+     `command -v x`) is allowed. `find` with `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`,
+     `-fprint`, `-fprint0`, `-fprintf` or `-fls` asks, and so does an `awk` (`gawk`, `mawk`,
+     `nawk`) program containing `system(`, a `|` or a `print`/`printf` redirect. These checks stand
+     down inside a working jail, like the allowlist itself. They are not a containment boundary:
+     without the jail an allowlisted interpreter (`python3`, `node`, `make`, `sed -i` and the like)
+     can write or delete anything the operator can, and `tee`, `cp`, `mv`, `mkdir`, `touch` and
+     `ln` stay allowed as ordinary development writes. The jail is the boundary.
+   - **The dry run.** `docket pod check "<text>" --role <role>` evaluates an `exec` tool through
+     `evaluate_tool_call`, the function `dispatch_tool` calls, never a second copy of the
+     classifier and policy merge, with the pod's own policies folded in. It runs without the
+     turn's roots, the pod's `allowCommands` and the jail flag, so it reports the verdict of an
+     unjailed call with no workspace on the plain allowlist.
+   - **A pod's extra bins.** A pod **MAY** extend the allowlist for its own turns with
+     `allowCommands` (`docket pod set allowCommands <bin>[,<bin>...]`, comma-separated exact
+     basenames). `classify_command` takes them as `extra_bins` (default empty, which changes no
+     verdict). An extra bin joins the `SAFE_BINS` membership check only: the opaque-marker check
+     and the high-risk classes still read the full command line first, so `uv run tox && git push
+     origin main` asks with `tox` and `uv` allowlisted. Every extra bin is redirect-sensitive, the
+     rule `echo` gets, since docket cannot know whether a pod-supplied binary's argument is
+     model-composed text. `PodSettings` refuses on write a value containing a path separator or
+     shell metacharacter, the names `eval`, `exec`, `source`, `.` and `export`, and any name in a
+     high-risk class's `bins` (`git`, `npm`), which stay governed by the classes alone; a name
+     already on `SAFE_BINS` is redundant and dropped silently. Only the turn of an agent in that
+     pod carries the setting (In-turn tool-call gate 13), and a `pre_tool_call` `block` or
+     `require_approval` on the same binary still wins (In-turn tool-call gate 3).
+   - **A repository may not allowlist a shell.** A repository's `.docket/` whose `allowCommands`
+     names `sh`, `bash`, `zsh`, `dash`, `sudo`, `ssh`, `nc` or `socat` **MUST NOT** be applied,
+     because a shell runs whatever follows it and the classifier never sees that: `docket init`
+     refuses it (exit 2) before provisioning, `docket pod update` refuses it (exit 2), the HTTP
+     apply route refuses it, and `docket run` warns and runs with the pod as it is. The operator's
+     own `docket pod set allowCommands` is not subject to this.
+   - **Inside the jail the allowlist stands down (ADR 0024).**
+     `classify_command(command, extra_bins, roots, jailed=False)` takes `jailed`, which
+     `evaluate_tool_call` sets when `ToolContext.sandbox == "auto"` (a turn whose isolation
+     resolved to a real backend; a turn without one is refused before it starts, so this is the
+     decision `run_bash` acts on). When `jailed`, a binary off `SAFE_BINS` and `extra_bins` is
+     allowed instead of asking. Unchanged in both modes: the not-statically-analysable `ask`
+     (command substitution, `eval`, `exec`, unparseable text), every high-risk class, the
+     empty-command `deny`, and redirect containment (an output redirect whose targets do not all
+     resolve inside `roots` or name `/dev/null` still asks, for every binary when jailed). Every
+     host-side caller (dispatch's `run:` steps, `docket pod check`) leaves `jailed` false. Policies
+     apply in both modes.
+2. Approvals in docket's store **MUST** be answerable over a headless channel: the CLI
+   (`docket task approve`, `docket task deny`), HTTP (`POST /approvals/<token>` under
+   `docket start`), MCP (the `approvals_grant` and `approvals_deny` tools) and Telegram (a bound
+   chat's `/approve` or `/deny`, answered by `docket start --telegram`'s poll loop with no
+   interactive session). The `docket run` progress view's own prompt is a further CLI caller.
+   Every caller makes the same grant or deny and then calls `resolve_waiting_approval`, so a
+   decision **MUST** genuinely resume or fail the dispatch task it gated, not merely flip the
+   record (pod-dispatch.spec.md). One approval implementation, several callers.
+   A pending record **MUST** make its one terminal transition (`granted` or fail-closed `denied`)
+   under the store's locked read-modify-write: concurrent decisions, the expiry sweep included,
+   have exactly one winner. Only that winner emits the matching trace and audit event; a
+   duplicate decision emits neither.
+   The loser's error **MUST** say why it lost: an unknown or malformed token is `ApprovalError`
+   (HTTP `404`); repeating the decision that already won (already granted, already denied,
+   expired) is `ApprovalNoop` (HTTP `409`); the opposite decision on a resolved record
+   (deny-after-grant, grant-after-deny) is `ApprovalConflict`, an `ApprovalError` subclass (so
+   every `except ApprovalError` still catches it) carrying the winning state, whose message names
+   that state (HTTP `409`, not the missing-token `404`). Every channel's caller reports which
+   decision won from these exceptions, never a generic failure indistinguishable from an unknown
+   token.
+3. A gate with no approver **MUST** fail closed. An in-turn wait resolves to denied at its timeout
+   (In-turn tool-call gate 5). A **pending** record in the store **MUST** resolve to **denied**
+   once past its own `expiresAt` through `approval_sweep_expired`, which runs only while
+   `docket start` is up. When that record gates a dispatch task, the resolution **MUST** also fail
+   the waiting task terminally (`failureKind: "approval_denied"`).
+4. Every grant and denial through docket's store **MUST** be recorded in the audit log
+   (`approval.grant`, `approval.deny`), tagged with the channel it came through: `cli`, `http`,
+   `mcp`, `telegram`, `tack` (an HTTP caller's own tag), `timeout` (the expiry sweep, or an
+   in-turn wait that timed out), or `cancellation` (an in-turn wait that observed run
+   cancellation). The HTTP route accepts only `http` and `tack` from its caller, so it cannot claim
+   another surface's channel or the fail-closed `timeout`; `create_pregrant` accepts only the
+   closed `APPROVAL_CHANNELS` set (`cli`, `http`, `mcp`, `telegram`, `timeout`, `tack`).
 5. An in-turn tool approval's stored `action` **MUST** include the redacted rendered tool call in
-   addition to the classifier/policy reason. Every approval channel reads this same record, so an
-   operator **MUST** be able to distinguish, for example, project test execution from a shell call
+   addition to the classifier or policy reason. Every approval channel reads this same record, so
+   an operator **MUST** be able to tell, for example, project test execution from a shell call
    targeting private workspace state before deciding. The record **MUST NOT** store an unredacted
-   secret and its existing 1,000-character action ceiling remains in force.
+   secret, and the action is cut at 1,000 characters.
 
-### Workspace isolation (implemented, opt-in)
+### Workspace isolation (opt-in)
 
-1. An agent **MUST NOT** read or write outside its own workspace and codebase path.
-2. Path traversal out of the workspace **MUST** be rejected (see input-validation.spec.md,
-   `prevent_path_traversal`).
-3. Workspace isolation is **opt-in** (ADR 0021, reversing ADR 0020 §1): a `DOCKET_HOME` with no
-   recorded choice (`FleetSecurity.isolation_mode == "unset"`) runs tools on the host, exactly as
-   an explicit off does. `docket setup sandbox on` records on and succeeds only when
-   `sandbox_availability()` finds a backend; `setup sandbox off` records an explicit off; both are
-   audited (`gates.isolate`). `docket setup sandbox` and `docket setup` show `off (default)`, `on`
-   or `off`. The requirement a host must meet to turn it on is one backend: Landlock (Linux 5.13+),
-   Seatbelt (macOS), or a reachable docker daemon once the operator chose it. No backend is ever
-   needed while isolation is off.
-4. `sandbox_availability()` reads the fleet's `sandboxBackend` (`FleetSecurity.sandbox_backend`,
-   `auto` by default, written by `docket setup sandbox backend auto|docker`, audited
-   `gates.backend`). `auto` is landlock on Linux and seatbelt on macOS and nothing else; `docker`
-   is docker only (a reachable daemon) and the only case docker is probed; a host with neither
-   resolves to `none`. `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`none`) still
-   forces the choice. The jail mounts the git dir and common dir of every root that is inside a git
-   repository or linked worktree read-write (landlock `--rw`, docker `-v`), so a jailed
-   `git add` + `git commit` succeeds there while a write to a host path outside the roots fails.
-   The docker jail is only as capable as `DOCKET_SANDBOX_IMAGE` (default `alpine:3.20`, which docket
-   does not ship an image for): a jailed `git commit` needs an image with `git`, and python-based
-   recipes need `python3`. `docket setup` probes the image once (`command -v git`) when docker is
-   the backend in use and isolation is not off, and warns with the fix. Real-docker tests build a
-   `FROM alpine:3.20` + `apk add --no-cache git` image to prove a jailed commit in a linked worktree
-   and `network none` against a host-side listener.
-   The repository's `hooks/` and `config`, the worktree's `config.worktree`, and `info/attributes`
-   are re-bound read-only on top (docker `:ro`, a seatbelt deny rule), after the read-write mounts they
-   shadow. Landlock cannot take a right from a sub-path of a granted root, so it grants the git
-   dir's writable parts instead of the git dir: the common dir is read-only except its `objects`
-   and the task branch's own ref directory (below), plus `objects`, `refs` and `logs` of each
-   submodule git dir under `modules/`, and in a linked
-   worktree the worktree's own git dir (`<common>/worktrees/<name>`, holding the index, `HEAD`
-   and `logs`) is read-write. `hooks`, `config`, `info/attributes` and `packed-refs` are never writable
-   there. Refs: the jail grants write only to `refs/heads/<branch-parent>/` and
-   `logs/refs/heads/<branch-parent>/` of the common dir, where `<branch-parent>` is the parent
-   directory of the task branch (`docket/<pod>/<task-id>`, so `docket/<pod>/`, which holds the ref
-   and the lock file git creates beside it). The branch is read from the worktree git dir's `HEAD`
-   at launch and accepted only when it is `refs/heads/docket/<pod>/<name>` and `<name>` equals the
-   worktree git dir's own directory name; otherwise, and for any root that is not a linked task
-   worktree, no ref is writable. So a jailed `git update-ref refs/heads/main`, a tag, or any
-   branch outside `docket/<pod>/` fails; the sibling task branches of the same pod stay writable
-   (accepted residue: Landlock cannot grant one file plus its lock). `packed-refs` is read-only: a
-   git operation that must rewrite it (pack-refs, deleting a packed branch) fails inside the jail.
-   Docker and seatbelt narrow the same way for a **linked worktree** root: the common dir's `refs`,
-   `logs/refs` and `packed-refs` are overlaid read-only (an absent `packed-refs` is created empty
-   first), then the task branch's ref and reflog directories are re-opened read-write after the
-   overlays (a later `-v` bind in docker, a later `(allow file-read* file-write* ...)` rule in
+1. File tools **MUST NOT** read or write outside the turn's roots (the agent's workspace and
+   codebase, or the task worktree). `resolve_within` resolves every path argument and refuses one
+   outside every root; a call with no roots refuses every path rather than defaulting to the
+   whole filesystem. A `bash` command's text is not path-checked; only the jail contains it (Exec
+   sandbox 3).
+2. Path traversal out of the roots (`..`, an absolute path elsewhere, a symlink out) **MUST** be
+   rejected with `PathEscapeError`; "File-tool containment" covers symlinks met during a walk.
+3. Workspace isolation is **opt-in** (ADR 0021): a `DOCKET_HOME` with no recorded choice
+   (`fleet.json` `security.isolationMode` unset) runs tools on the host, exactly as an explicit
+   off does. `docket setup sandbox on` records on and succeeds only when `sandbox_availability()`
+   finds a backend (otherwise it exits 1 and records nothing); `docket setup sandbox off` records
+   an explicit off; both are audited (`gates.isolate`). `docket setup sandbox` and `docket setup`
+   show `off (default)`, `on` or `off`. The requirement a host must meet to turn it on is one
+   backend: Landlock (Linux 5.13+), Seatbelt (macOS), or a reachable docker daemon once the
+   operator chose it. No backend is ever needed while isolation is off.
+4. `sandbox_availability()` reads the fleet's `sandboxBackend` (`auto` by default, written by
+   `docket setup sandbox backend auto|docker`, audited `gates.backend`). `auto` is landlock on
+   Linux and seatbelt on macOS and nothing else; `docker` is docker only (a reachable daemon) and
+   the only case docker is probed; a host with neither resolves to `none`.
+   `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`none`) forces the choice. The jail
+   mounts the git dir and common dir of every root that is inside a git repository or linked
+   worktree read-write (landlock `--rw`, docker `-v`), so a jailed `git add` + `git commit`
+   succeeds there while a write to a host path outside the roots fails. The docker jail is only as
+   capable as `DOCKET_SANDBOX_IMAGE` (default `alpine:3.20`, for which docket ships no image): a
+   jailed `git commit` needs an image with `git`, and python-based recipes need `python3`.
+   `docket setup` probes the image once (`command -v git`) when docker is the backend in use and
+   isolation is on, and warns with the fix.
+   The repository's `hooks/` and `config`, the worktree's `config.worktree`, and
+   `info/attributes` are re-bound read-only on top (docker `:ro`, a seatbelt deny rule), after the
+   read-write mounts they shadow. Landlock cannot take a right from a sub-path of a granted root,
+   so it grants the git dir's writable parts instead of the git dir: the common dir is read-only
+   except its `objects` and the task branch's own ref directory (below), plus `objects`, `refs`
+   and `logs` of each submodule git dir under `modules/`, and in a linked worktree the worktree's
+   own git dir (`<common>/worktrees/<name>`, holding the index, `HEAD` and `logs`) is read-write.
+   `hooks`, `config`, `info/attributes` and `packed-refs` are never writable there. Refs: the jail
+   grants write only to `refs/heads/<branch-parent>/` and `logs/refs/heads/<branch-parent>/` of
+   the common dir, where `<branch-parent>` is the parent directory of the task branch
+   (`docket/<pod>/<task-id>`, so `docket/<pod>/`, which holds the ref and the lock file git creates
+   beside it). The branch is read from the worktree git dir's `HEAD` at launch and accepted only
+   when it is `refs/heads/docket/<pod>/<name>` and `<name>` equals the worktree git dir's own
+   directory name; otherwise, and for any root that is not a linked task worktree, no ref is
+   writable. So a jailed `git update-ref refs/heads/main`, a tag, or any branch outside
+   `docket/<pod>/` fails; the sibling task branches of the same pod stay writable (accepted
+   residue: Landlock cannot grant one file plus its lock). `packed-refs` is read-only: a git
+   operation that must rewrite it (pack-refs, deleting a packed branch) fails inside the jail.
+   Docker and seatbelt narrow the same way for a **linked worktree** root: the common dir's
+   `refs`, `logs/refs` and `packed-refs` are overlaid read-only (an absent `packed-refs` is created
+   empty first), then the task branch's ref and reflog directories are re-opened read-write after
+   the overlays (a later `-v` bind in docker, a later `(allow file-read* file-write* ...)` rule in
    the seatbelt profile, where the last matching rule wins). A linked worktree that is not a task
    worktree reopens nothing. A **main checkout** root (a `.git` directory, which Landlock refuses
-   and docker/seatbelt run in) is unchanged: its refs stay writable, since it is the operator's own
-   checkout and the agent commits on its branch. Two things stay writable under Landlock and are covered on the host instead: the root's `.git` file and the
-   worktree git dir's `config.worktree`, `gitdir` and `commondir` (see Exec sandbox item 13). A root that holds a `.git`
-   **directory** (a main checkout used in place) cannot be guarded by Landlock at all, since the
-   directory is inside a writable root, so the Landlock jail refuses to run there: exit 125, the
-   reason on stderr, nothing run. Use a git worktree as the root, or choose docker. A root below a
-   main checkout's top (git dir outside the root) runs, but a commit there fails closed, because
-   `index` and `HEAD` live at the top of that git dir. The same read-only rules apply, only when present, to every
-   submodule git dir under `modules/` of the git dir and common dir (any depth, found by walking
-   for a directory holding `HEAD`, never by running git): its `hooks`, `config`, `config.worktree`
-   and `info/attributes`, plus the submodule checkout's `.git` file (located through the `worktree`
-   line of that config). Under docker and seatbelt, in a linked worktree the root's `.git` file and the admin files
-   `<common>/worktrees/<name>/gitdir` and `commondir` are read-only too, so the jail cannot repoint
-   the host's next git command at a directory it controls. Objects, refs, index, logs and `HEAD`
-   stay writable. A `hooks/` directory or `info/attributes` file missing when the jail starts is
-   created empty on the host first and then bound read-only, so the jail cannot create it. A
-   submodule added inside the jail after it starts is not covered; the jail is built once per call.
+   and docker/seatbelt run in) keeps its refs writable, since it is the operator's own checkout and
+   the agent commits on its branch. Two things stay writable under Landlock and are covered on the
+   host instead: the root's `.git` file and the worktree git dir's `config.worktree`, `gitdir` and
+   `commondir` (Exec sandbox 13). A root that holds a `.git` **directory** (a main checkout used in
+   place) cannot be guarded by Landlock at all, since the directory is inside a writable root, so
+   the Landlock jail refuses to run there: exit 125, the reason on stderr, nothing run. Use a git
+   worktree as the root, or choose docker. A root below a main checkout's top (git dir outside the
+   root) runs, but a commit there fails closed, because `index` and `HEAD` live at the top of that
+   git dir. The same read-only rules apply, only when present, to every submodule git dir under
+   `modules/` of the git dir and common dir (any depth, found by walking for a directory holding
+   `HEAD`, never by running git): its `hooks`, `config`, `config.worktree` and
+   `info/attributes`, plus the submodule checkout's `.git` file (located through the `worktree`
+   line of that config). Under docker and seatbelt, in a linked worktree the root's `.git` file
+   and the admin files `<common>/worktrees/<name>/gitdir` and `commondir` are read-only too, so the
+   jail cannot repoint the host's next git command at a directory it controls. Objects, refs,
+   index, logs and `HEAD` stay writable. A `hooks/` directory or `info/attributes` file missing
+   when the jail starts is created empty on the host first and then bound read-only, so the jail
+   cannot create it. A submodule added inside the jail after it starts is not covered; the jail is
+   built once per call.
 
-### Enablement (implemented; corrected for P19-7b)
+### Enablement
 
-1. The tool-call gate itself (`core/tools.py`'s policy engine + argument-aware command
-   classifier) **MUST** be unconditionally active on every tool call docket dispatches — there
-   is nothing to "enable" here since Phase 19 P19-3, and project initialization has no option
-   that skips it.
-2. **There is no approval-routing posture (deleted 2026-10-03, closing W34-A1).** The
-   `security.approvalRoutingState`/`approvalRoutingMode` fleet.json fields, their
-   `core/fleet.py` accessors, `core/security.py`'s `apply_approval_routing`/
-   `disable_approval_routing`, `docket init`'s `--gates`/`--no-gates` options, the retired
-   `enable`/`disable` subcommands, and the posture lines in `docket setup sandbox`
-   and `docket setup` (human and `--json`) are all gone. The flag had a writer and two display
-   readers and no reader on the live path (`core/tools.py`, `core/approval.py`,
-   `core/telegram.py`, `core/agent_loop.py`, `serve.py`), so deleting it changed no delivery
-   behaviour. A `fleet.json` that still carries the keys loads (the fleet models tolerate extra
-   keys) and nothing reads them. An `ask` verdict always sits in docket's own approval store,
-   where the CLI, HTTP, MCP, and Telegram channels answer it identically; docket never pushes an
-   approval prompt to any channel on its own — see telegram-integration.spec.md's Command-grammar
-   requirements 7-8 (inbound-only, no notification on a newly-created approval). `docket setup sandbox`
-   with any verb other than `status`, `on`, `off`, `network` or `classes` (`enable`/`disable`
-   included) **MUST** be a usage error (exit 2), and an unrecognised flag (e.g. `--force`)
-   **MUST** exit 2.
-3. There **MUST** be a way to verify gate status (`docket setup`, `docket setup sandbox`) —
-   reporting the gate as always-active plus the current isolation posture.
+1. The tool-call gate (the policy engine plus the argument-aware command classifier) **MUST** be
+   active on every tool call docket dispatches. There is nothing to enable, and `docket init` has
+   no option that skips it.
+2. There is no approval-routing setting. An `ask` verdict always sits in docket's own approval
+   store, where the CLI, HTTP, MCP and Telegram channels answer it identically. `docket setup
+   sandbox` with any verb other than `status`, `on`, `off`, `backend`, `network`, `classes` or
+   `read` **MUST** be a usage error (exit 2), and an unrecognised flag (e.g. `--force`) **MUST**
+   exit 2. Bare `docket setup sandbox` is a read and exits 0.
+3. There **MUST** be a way to verify gate status: `docket setup` (`--json`:
+   `securityGates.toolCallGate` is `"always-on"`) and `docket setup sandbox` (`--json`: `gate` is
+   `"always active"`) report the gate as always active, plus the isolation posture.
 
-### High-risk action classes (implemented, FD-3)
+### High-risk action classes
 
-1. `core/security.py` **MUST** define a small, built-in, named list of high-risk action
-   classes (`HIGH_RISK_PATTERNS`): today, `money-movement`, `prod-deploy`, and `secret-access`.
-   Each class's pattern **MUST** be matched, case-insensitively, against the full command
-   string (e.g. `"git push origin production"`), not just the invoked binary name. This is
-   intentionally a small policy seed, not exhaustive coverage; it is not yet user-configurable
-   (a config-file override is a natural follow-up, not implemented today).
-2. On any path docket itself controls, a high-risk pattern match **MUST** take effect
-   regardless of whether the invoked binary's resolved path is present in the curated
-   allowlist — allowlist membership **MUST NOT** bypass a high-risk match. Both wired call
-   sites satisfy this by construction: neither consults the allowlist at all, and
-   `run_verify_cmd` refuses outright (a strictly stronger outcome than `ask`).
+1. `HIGH_RISK_PATTERNS` **MUST** be a small, built-in, named list of high-risk action classes:
+   `money-movement`, `prod-deploy` and `secret-access`. Each class's pattern **MUST** be matched,
+   case-insensitively, against the full command string (`"git push origin production"`), not
+   just the invoked binary name. It is a small seed, not exhaustive coverage, and it is not
+   configurable.
+2. On every path docket controls, a high-risk match **MUST** take effect regardless of whether the
+   invoked binary is on the curated allowlist; allowlist membership **MUST NOT** bypass a match.
+   `classify_command` checks the classes before the allowlist, and `run_command` refuses a match
+   outright (a stronger outcome than `ask`).
+3. **Money-movement** and **secret-access** **MUST** be treated as fully enforced: none of their
+   named bins (`stripe`, `paypal`, `ssh-keygen`, `vault`, ...) is on `SAFE_BINS`, so
+   `classify_command` routes any matching invocation to `ask`.
+4. **Prod-deploy** **MUST** be described as fully enforced too. Two of its bins (`git`, `npm`) are
+   on the allowlist, but every tool call of every turn passes `dispatch_tool`, which classifies a
+   `bash` call's full command line with `classify_command` (telling `git push origin main` from
+   `git status` by argument, not binary) and separately evaluates the `high-risk-deploy`
+   `pre_tool_call` template. Both are argument-aware and both apply to every call.
+5. The full high-risk class list (name, description, pattern, and which allowlisted bins a class
+   overlaps, which the classifier's argument-awareness still gates) **MUST** be visible, read-only,
+   via `docket setup sandbox classes`. This command **MUST NOT** change any configuration.
 
-   > This requirement was previously expressed by a `resolve_command_action` helper that
-   > returned `ask`/`allow` for a command string. That function was **deleted** when G-3
-   > landed: it never acquired a production caller, because the ask/allow decision for a live
-   > agent tool call belongs to the daemon's exec gate (D-15), which keys on binary path and
-   > has no hook to consult docket. A never-called decision function in a security module is
-   > the precise defect this phase existed to remove, so the requirement now constrains the
-   > real paths instead of a helper nothing invoked.
-3. **Money-movement** and **secret-access** classes **MUST** be treated as fully enforced:
-   none of their named bins (`stripe`, `paypal`, `ssh-keygen`, `vault`, etc.) are members of
-   the curated `SAFE_BINS` allowlist, so `classify_command` already routes any matching
-   invocation to `ask`/`require_approval` — no additional wiring was needed. (Pre-P19-7b this
-   item described the daemon's own exec-approval allowlist reaching the same outcome; the
-   mechanism changed at P19-7b, the enforcement claim did not.)
-4. **Prod-deploy is now fully enforced, corrected for P19-7b.** Its two bins that overlap the
-   curated allowlist (`git`, `npm`) were, before Docket owned the loop, gated only by the retired runtime's
-   exec-approval allowlist — binary-path-only, unable to distinguish `git push origin main`
-   from `git status` — so this item used to say prod-deploy **MUST NOT** be described as fully
-   enforced. **That daemon no longer exists.** Since P19-7b, `core/tools.py`'s `dispatch_tool`
-   is the *only* execution path any pod-dispatch hop runs through (`DocketDriver` ->
-   `run_agent_turn` -> `dispatch_tool`, no daemon alternative left to fall back to), and it
-   classifies a `bash` tool call's full command line via `core.security.classify_command` —
-   which distinguishes `git push origin main` from `git status` by argument, not just binary
-   path — and separately evaluates it against the `high-risk-deploy` `pre_tool_call` template.
-   Both are argument-aware and both apply to every call routed through that dispatcher, which
-   is now every call. Prod-deploy **MUST** now be described as fully enforced, on the same
-   footing as money-movement and secret-access above.
-5. The full high-risk class list — name, description, pattern, and (for prod-deploy) which
-   allowlisted bins it overlaps, and that the classifier's own argument-awareness is what still
-   gates it despite the overlap — **MUST** be visible, read-only, via `docket setup sandbox classes`.
-   This command **MUST NOT** change any configuration.
+### Docket-launched process classification
 
-### Docket-launched process classification (implemented, ROADMAP Phase 15 G-3)
+`match_high_risk` is the classifier's one entry point outside `classify_command`. This section is
+where it applies to commands docket itself launches.
 
-Before this card, the `HIGH_RISK_PATTERNS` classifier had callers only in tests. A classifier
-nothing calls is documentation, not enforcement — the same defect shape G-1 fixed for the
-approval store and G-2 fixed for the policy engine. This section is what closes that gap for
-the classifier itself, on the two paths docket actually controls.
-
-`match_high_risk` is the surviving entry point. The three helpers that wrapped it —
-`high_risk_bins`, `is_high_risk` and `resolve_command_action` — were deleted on merge rather
-than left beside the wired one, since none of them gained a caller either (see the note under
-requirement 2 above for why `resolve_command_action` in particular could never have one).
-
-1. **Scope decision — which of docket's own subprocess calls are classification targets.**
-   `edges/adapters/system.py` is the shell-out chokepoint (~11 `subprocess.run` call sites,
-   plus `cli/_trace.py`'s `tail -f <file>` and `cli/_install.py`'s `[python, --version]` probe;
-   `cli/_eval.py`'s `bash <script>` call site was removed along with the eval harness itself,
-   CL-J). Of all of these, exactly **one** — `system.py`'s `run_verify_cmd` — launches a fully
-   free-form, operator-composed command string through a real shell (`shell=True`); every other
-   call site in this list builds a fixed argv list itself (a systemd unit name, `docker ps
-   --format ...`, a `git -C <dir> rev-parse ...` plumbing call, a literal `[python, "--version"]`
-   probe, a `tail -f` on a trace file docket itself computed). None of those fixed-argv calls
-   carry an arbitrary, classifiable command string — there is nothing there for
-   `HIGH_RISK_PATTERNS` to match against that isn't already fully determined by docket's own
-   code, and a `--version` probe is not a comparable risk surface to a shell-interpreted,
-   operator-typed verify pipeline. `run_verify_cmd` **MUST** therefore be the only classification
-   point in `edges/adapters/system.py`; the rest of the module's subprocess calls are explicitly
-   out of scope for this requirement, not overlooked.
-2. `edges/adapters/system.py`'s `run_verify_cmd` **MUST** classify its `cmd` argument against
-   `core.security.match_high_risk` before starting the subprocess. A match **MUST** fail
-   closed — the shell command **MUST NOT** be started at all — and the returned failure message
-   **MUST** name the matched class and point at `docket setup sandbox classes`. Refusing outright is a
-   stronger posture than routing to an approval prompt, and it is the only honest one available
-   here: `run_verify_cmd` runs synchronously inside a dispatch hop with no interactive approver
-   reachable to answer — the same fail-closed philosophy `TOOL_APPROVAL_TIMEOUT` and
-   `approval_sweep_expired` apply elsewhere in this spec (formerly the retired runtime's own
-   `askFallback: deny`, before P19-7b deleted it) when nobody answers a live prompt.
-3. `core/dispatch.py`'s `pre_output` guardrail scan (see "Policy engine on the live path" below)
-   **MUST** also classify each hop's real output against `core.security.match_high_risk`,
-   independently of the JSON policy engine — the shipped `high-risk-*.json` templates are hooked
-   on `pre_tool_call`, which (since ROADMAP Phase 19 P19-3, live on every real hop since
-   P19-5/P19-7a) docket evaluates on every call made through its own `core/tools.py` dispatcher.
-   This `pre_output` scan is a second, independent layer on top of that — it inspects what a hop
-   *reports having run* after the fact, which is not the same signal as gating a call before it
-   runs: a hop's self-reported summary can name a command that was never actually dispatched as a
-   distinct tool call (e.g. embedded in free-text output), so this scan still has real value even
-   though `pre_tool_call` now also covers the in-turn path.
+1. **Scope: which of docket's own subprocess calls are classification targets.** Exactly one
+   docket function runs a free-form, operator-composed command string through a shell:
+   `run_command` (with `run_verify_cmd`, its pass/fail projection), used for a member's
+   `verifyCmd`, a pipeline's `run:` steps and a task's prepare install command. On the host it is
+   the one `shell=True` call docket makes; in a jail it is `/bin/sh -c` inside the jail. Every
+   other subprocess call builds a fixed argv itself (a `docker info` probe, a
+   `git -C <dir> rev-parse ...` plumbing call, a `--version` probe) and carries no classifiable
+   command string. `run_command` **MUST** therefore be the one classification point among
+   docket's own subprocess calls; the fixed-argv calls are out of scope by design, not overlooked.
+2. `run_command` **MUST** classify its command against `match_high_risk` before any subprocess
+   starts. A match **MUST** fail closed (the shell command **MUST NOT** be started at all) and the
+   returned message **MUST** name the matched class and point at `docket setup sandbox classes`.
+   Refusing outright is the only honest posture here: the command runs synchronously inside a
+   dispatch hop with no interactive approver reachable, the same fail-closed rule
+   `TOOL_APPROVAL_TIMEOUT` and `approval_sweep_expired` apply when nobody answers. A `run:` step
+   is also classified with `classify_command` (with the pod's `allowCommands`) before it runs; a
+   non-`allow` verdict gates it like an approval step (pod-dispatch.spec.md).
+3. The `pre_output` guardrail scan (Policy engine 3) **MUST** also classify each hop's real output
+   against `match_high_risk`, independently of the policy engine. It inspects what a hop *reports
+   having run*, which can name a command that never reached `dispatch_tool` as a distinct call
+   (one embedded in free text), so it is a second, independent signal beside the in-turn gate.
 4. A `HIGH_RISK_PATTERNS` match on a hop's output **MUST NOT** downgrade an already-stronger
-   `policy_eval_detail` verdict (`redact`/`block`/`require_approval` all outrank a bare
-   `allow`) — it **MUST** only raise a plain `allow` to `warn`. It **MUST NOT** go further than
-   `warn`: there is no live approver to `ask` post-hoc (the hop has already run, the same
-   reasoning behind `pre_output`'s require_approval-behaves-like-warn rule below), and
-   `HIGH_RISK_PATTERNS` is a built-in Python list, not an installed, operator-authored JSON
-   policy (FD-3 — not yet user-configurable) — so a match here **MUST NOT** be described as
-   redacting or blocking anything by itself. It is a visibility signal (a `guardrail_check`
-   trace event tagged `high-risk:<class-name>`), not an enforcement action, and **MUST NOT** be
+   `policy_eval_detail` verdict (`redact`, `block` and `require_approval` all outrank a bare
+   `allow`); it **MUST** only raise a plain `allow` to `warn`. It **MUST NOT** go further than
+   `warn`: there is no live approver to ask after the fact (the hop has already run, the reasoning
+   behind `pre_output`'s require_approval-behaves-like-warn rule), and `HIGH_RISK_PATTERNS` is a
+   built-in list, not an operator-authored policy, so a match here **MUST NOT** be described as
+   redacting or blocking anything by itself. It is a visibility signal (a `guardrail_check` trace
+   event whose policy is `high-risk:<class-name>`), not an enforcement action, and **MUST NOT** be
    claimed as one in user-facing material.
-5. **What this card added, and what superseded it later.** At the time G-3 shipped, this
-   classifier's two wired call sites (`run_verify_cmd`, `pre_output`) were real but narrow —
-   `pre_tool_call` itself was still unevaluated on any live path (D-15's daemon owned that
-   decision, by binary path only, with no hook for docket to consult). **That daemon is deleted
-   (P19-7b)**, and ROADMAP Phase 19 P19-3's `pre_tool_call` wiring is now live on every real
-   pod-dispatch hop (P19-5/P19-7a) — see "In-turn tool-call gate" below. This section's two
-   classification points remain real and additive (`run_verify_cmd`'s fail-closed refusal,
-   `pre_output`'s post-hoc scan of a hop's self-reported output), but they are no longer the
-   *only* place `HIGH_RISK_PATTERNS`-adjacent enforcement happens on a live hop — the
-   `high-risk-deploy` `pre_tool_call` template and the command classifier inside `dispatch_tool`
-   now also gate the call itself, before it runs.
+5. **Additive, not the gate.** The two classification points above (`run_command`'s refusal, the
+   `pre_output` scan) add to the in-turn gate; they are not where a hop's tool calls are gated.
+   `dispatch_tool`'s classifier and the `high-risk-deploy` `pre_tool_call` template gate every
+   call before it runs.
 
-### Policy engine on the live path (implemented, ROADMAP Phase 15 G-2)
+### Policy engine on the live path
 
-Before this card, `core/policy.py` was fully built and unit-tested (`policy_eval`, hooks,
-actions, most-restrictive-wins ranking) but had exactly one caller anywhere: the CLI's own
-dry-run printer, `docket pod check`. The retired installer never installed the six shipped
-templates. `cli/_metrics.py` already shipped a reader for guardrail-trip trace events with no
-producer anywhere. This section is what closes that gap — the same "built, tested, connected to
-nothing" shape G-1 fixed for the approval store one card earlier.
-
-1. On the first run, `docket init` **MUST** install the baseline policy templates into `$POLICIES_DIR`
-   (idempotent — an existing file is left untouched, never overwritten), via the same producer
-   `docket setup` uses (`core.policy.install_policies`). An empty `$POLICIES_DIR` makes
-   every hook evaluation a no-op (`policy_eval` returns `allow` unconditionally), so this step is
-   what makes the rest of this section possible at all, not an optional nicety.
-2. The `pre_input` hook **MUST** be evaluated exactly once per task, at
-   `core.dispatch.enqueue_task` time, against the task's raw description (role `"lead"` — the
-   pipeline's fixed entry point). It **MUST NOT** be re-evaluated before every subsequent hop —
-   doing so would re-trip the same `"*"`-scoped policy at every role in the pipeline for what is
-   really one piece of incoming text, demanding a fresh human decision per hop instead of one at
-   the door.
-   - `block` **MUST** reject the task before it is ever written to the pod's queue
-     (`DispatchError`; nothing persisted) and **MUST** close out a self-contained trace session
-     (`session_start` → `guardrail_check` → `guardrail_block` → `session_end`, status `aborted`) —
-     a rejected task is never dispatched, so nothing else will ever terminate that trace file, and
-     an unterminated file is invisible to `cli/_metrics.py`'s terminal-session reader.
+1. `docket init` **MUST** install the baseline policy templates into `$POLICIES_DIR` whenever it
+   provisions (idempotent: an existing file is left untouched, never overwritten), through the same
+   producer `docket setup` uses (`install_policies`). An empty `$POLICIES_DIR` makes every hook
+   evaluation `allow`, so this step is what makes the rest of this section possible.
+2. The `pre_input` hook **MUST** be evaluated exactly once per task, when the task is enqueued
+   (`enqueue_task`), against the task's raw description, with role `"lead"` (the pipeline's fixed
+   entry point). It **MUST NOT** be re-evaluated before every hop: doing so would re-trip the same
+   `"*"`-scoped policy at every role for one piece of incoming text. An operator's task is trusted
+   by default (the `prompt-injection` policy is skipped for it); `POST /tasks` may set `trusted`.
+   - `block` **MUST** reject the task before it is written to the pod's queue (`DispatchError`
+     `task rejected by guardrail policy '<id>' at enqueue[: <message>]`; nothing persisted) and
+     **MUST** close out a self-contained trace session (`session_start` → `guardrail_check` →
+     `guardrail_block` → `session_end`, status `aborted`): a rejected task is never dispatched, so
+     nothing else would ever terminate that trace file.
    - `require_approval` **MUST** persist the task straight into `waiting_approval` with a real
-     `core/approval.py` record (`context: {"taskId", "pipelineIndex": 0}`) — the exact same
-     resolution path G-1 already built for its pre-hop gate (grant → `pending` + a hop-0 gate
-     override; deny → terminal `failureKind: "approval_denied"`), fed from a second source.
-   - `redact` **MUST** scrub the stored task description (`core/trace.py`'s `redact()`) before it
-     is ever persisted to the queue file.
-   - `warn`/`allow` **MUST NOT** change task status or stored description; `warn` **MUST** still
-     emit a `guardrail_check` trace event.
-3. The `pre_output` hook **MUST** be evaluated on **every** hop's real output, inside
-   `core.dispatch.dispatch_task`, after the agent turn returns and before that output is embedded
-   in the carried-forward `HandoffArtifact` or the persisted `HopResult`.
-   - `redact` **MUST** scrub the hop's output in place before it is stored or handed to the next
-     hop.
-   - `block` **MUST** fail the hop the same way a failed agent turn does (the pipeline stops
-     there; later hops **MUST NOT** run).
-   - `warn`/`allow` **MUST** pass the output through unchanged.
-   - `require_approval` is **not** a `pre_output` outcome: a hop has already run by the time its
-     output exists, so there is no "before the hop" moment left to gate — an operator who wants a
-     human in the loop before a role runs uses the pod-level `requireApprovalRoles` gate or the
-     `pre_input` enqueue gate instead. A `pre_output` policy declaring `require_approval` **MUST**
-     behave exactly like `warn` (logged, not gated) rather than raise or silently do nothing.
-   - Since ROADMAP Phase 15 G-3, this same evaluation **MUST** also classify the hop's output
-     against `core.security.match_high_risk` (see "Docket-launched process classification"
-     above) — a match raises a bare `allow` to `warn` but **MUST NOT** downgrade or override an
-     already-stronger `policy_eval_detail` verdict.
+     approval record (`context: {"taskId", "pipelineIndex": 0}`), resolved like the pod's own
+     pre-hop gate (grant → `pending` plus a hop-0 gate override; deny → terminal
+     `failureKind: "approval_denied"`).
+   - `redact` **MUST** scrub the stored task description (`redact`) before it is persisted.
+   - `warn` and `allow` **MUST NOT** change task status or the stored description; `warn` **MUST**
+     still emit a `guardrail_check` trace event.
+3. The `pre_output` hook **MUST** be evaluated on **every** hop's real output, after the agent
+   turn returns and before that output is embedded in the carried-forward `HandoffArtifact` or the
+   persisted hop result.
+   - `redact` **MUST** scrub the hop's output in place before it is stored or handed on.
+   - `block` **MUST** fail the hop the way a failed agent turn does (the pipeline stops there;
+     later hops **MUST NOT** run).
+   - `warn` and `allow` **MUST** pass the output through unchanged.
+   - `require_approval` is not a `pre_output` outcome: the hop has already run, so there is no
+     "before" moment left to gate; an operator who wants a human before a role runs uses the pod's
+     `requireApprovalRoles` gate or the `pre_input` enqueue gate. A `pre_output` policy declaring
+     `require_approval` **MUST** behave exactly like `warn` (logged, not gated).
+   - The same evaluation **MUST** classify the hop's output against `match_high_risk`
+     (Docket-launched process classification 3-4).
 4. Every non-`allow` verdict on either hook **MUST** emit a `guardrail_check` trace event
-   (`payload: {hook, policy, action}`) — a pure audit trail, visible via `docket task trace`. A `block`
-   verdict **MUST** additionally emit `guardrail_block`, with `payload.action` set to the
-   *tripped policy's id* (not the literal word `"block"`) — this is the shape
-   `cli/_metrics.py`'s existing "Guardrail trips" reader keys its tally on
-   (`payload.get("action", event_type)`), so trips are bucketed by which policy fired, not
-   collapsed into one undifferentiated row. `guardrail_check` is deliberately **not** tallied by
-   that reader — tallying both would double-count the same trip a `block` already reports via
-   `guardrail_block`.
-5. `pre_tool_call` **MUST NOT** be evaluated a second time in *this* flow — `core/dispatch.py`'s
-   `enqueue_task`/`dispatch_task` orchestrate hops *between* turns and remain outside any
-   individual tool call made *during* one; that boundary is unchanged by ROADMAP Phase 19 P19-3
-   (only which engine runs inside a turn changed, from an unbridgeable daemon to docket's own
-   `DocketDriver`, P19-5/P19-7a/P19-7b). What P19-3 changed is that `pre_tool_call` is no longer
-   *universally* unevaluated — see "In-turn tool-call gate" below for the separate surface
-   (`core/tools.py`) where it now genuinely fires on every turn, and the Status line above for
-   exactly what that does and does not cover today.
-6. `docket pod validate [PATH]` **MUST** wire `core.policy.validate_policy` through the one
-   validator (`core.config_docs.validate_path`) — a schema check (required fields, valid
-   hook/action, a compilable regex pattern). A policy file, or a directory whose `policies/` holds
-   them (`$DOCKET_HOME` checks the installed set), is the argument. Exit code `1` if any checked
-   file is invalid.
-7. **Policy store integrity — a broken policy fails closed.** One function owns policy validity
-   (`core.policy.validate_policy` over a parsed document), and the evaluator applies the same
-   check on every read: a policy file that cannot be parsed, or that fails validation (missing
-   required fields, unknown hook or action, a `match.type` other than `regex`, an empty or
-   uncompilable pattern) **MUST NOT** be silently skipped. It **MUST** evaluate as a `block`
-   verdict — scoped to the file's declared `hook` and `applies_to` when that much is readable,
-   and to every hook and role when the JSON itself is unreadable — with `PolicyHit.policy_id`
-   naming the broken file and `message` naming the reason, so the existing non-`allow`
-   audit/trace paths attribute the denial to the file. The `--trusted` injection-id skip applies
-   only when the file's `id` is readable and matches; brokenness never widens it. `docket setup`
-   **MUST** report each broken policy file as an issue.
-8. `docket pod check "<text>" --role <role> [--hook <hook>]` **MUST** accept `--tool <name>` (default
-   `bash`; `--hook` defaults to `pre_tool_call` and an unknown hook is a usage error): the name is
-   resolved against the built-in tool registry (unknown → usage error, exit 2, naming the valid
-   tools), an `exec`-kind tool evaluates through
-   `core/tools.py::evaluate_tool_call` (classifier + policy hook, as requirement 6 of
-   "Tool-approval gates" wired for `bash`), and a non-`exec` kind evaluates the declarative hook
-   alone on the given text, reporting that the command classifier does not apply — because the
-   live gate classifies `exec` tools only, and running the classifier on a `write`/`edit` render
-   misreports the live verdict.
-9. **A pod has its own policies, and they only add (ROADMAP P27-2).** `core.policy.policy_files`,
-   `policy_eval`, `policy_eval_detail`, and `policy_test` **MUST** accept a `project` parameter
-   (default `""`, byte-identical to before). When set, the files under that pod's own policy
-   directory (`$PODS_DIR/<project>/config/policies/*.json`) **MUST** join the global
-   `$POLICIES_DIR` set in the same most-restrictive-wins evaluation `_RANK` already performs
-   across files — concatenation is the whole mechanism, since the winner is decided by rank, not
-   by which file was read first. A pod file **MUST NOT** be able to override a global `block` or
-   `require_approval`: it can only add a *more* restrictive verdict on top of the global set, or
-   agree with it. `project=""` (no pod, or a bare `--pod`-less CLI call) **MUST** see the global
-   set only, unchanged from before this requirement. A pod policy file that fails validation
-   **MUST** fail closed via the exact same path requirement 7 already describes, attributed to
-   that file. `docket pod policies|check` **MUST** resolve the pod as every pod command does
+   (`payload: {hook, policy, action}`), visible through `docket task trace`. A `block` verdict
+   **MUST** additionally emit `guardrail_block` with the same payload: `policy` is the tripped
+   policy's id and `action` is the verdict (`"block"`). The HTTP `/metrics` counter
+   `docket_policy_hits_total` tallies `guardrail_check` events (by policy, hook and action) and the
+   gate's `tool.*` audit entries; it does not read `guardrail_block`, so a block is counted once.
+5. `pre_tool_call` **MUST NOT** be evaluated by the dispatch flow between hops: `enqueue_task` and
+   `dispatch_task` orchestrate hops and stay outside every tool call made during a turn.
+   `pre_tool_call` fires inside the turn, in `dispatch_tool` ("In-turn tool-call gate").
+6. `docket pod validate [PATH]` **MUST** check policies through the one config validator, with
+   `validate_policy` as the policy check: required fields, a valid hook and action, a compilable
+   pattern. A policy file, or a directory whose `policies/` holds them (`$DOCKET_HOME` checks the
+   installed set), is the argument. Exit code `1` if any checked file is invalid.
+7. **A broken policy fails closed.** One validator owns policy validity, and the evaluator applies
+   the same check on every read: a policy file that cannot be parsed, or that fails validation
+   (missing required fields, unknown hook or action, a `match.type` other than `regex`, an empty
+   or uncompilable pattern), **MUST NOT** be silently skipped. It **MUST** evaluate as a `block`
+   verdict, scoped to the file's declared `hook` and `applies_to` when that much is readable and to
+   every hook and role when the document itself is unreadable, with `PolicyHit.policy_id` naming
+   the broken file and `message` naming the reason, so the existing non-`allow` audit and trace
+   paths attribute the denial to the file. The trusted-input skip of the `prompt-injection` policy
+   applies only when the file's `id` is readable and matches; brokenness never widens it.
+   `docket setup` **MUST** report each broken policy file as an issue.
+8. `docket pod check "<text>" --role <role> [--hook <hook>]` **MUST** accept `--tool <name>`
+   (default `bash`; `--hook` defaults to `pre_tool_call` and an unknown hook is a usage error,
+   exit 2). At `pre_tool_call` the name is resolved against the built-in tool registry (unknown →
+   usage error, exit 2, naming the valid tools); an `exec`-kind tool evaluates through
+   `evaluate_tool_call` (classifier plus policy hook, Tool-approval gates 1), and any other kind
+   evaluates the declarative hook alone on the given text, reporting that the command classifier
+   does not apply, because the live gate classifies `exec` tools only. Another hook evaluates the
+   policies alone.
+9. **A pod has its own policies, and they only add.** `policy_files`, `policy_eval`,
+   `policy_eval_detail` and `policy_test` **MUST** accept a `project` parameter (default `""`).
+   When set, the files in that pod's own policy directory (the pod's `config/policies/`) **MUST**
+   join the global `$POLICIES_DIR` set in the same most-restrictive-wins evaluation; concatenation
+   is the whole mechanism, since the winner is decided by rank, not read order. A pod file
+   **MUST NOT** be able to override a global `block` or `require_approval`: it can only add a more
+   restrictive verdict, or agree. `project=""` **MUST** see the global set only. A pod policy file
+   that fails validation **MUST** fail closed through requirement 7, attributed to that file.
+   `docket pod policies` and `docket pod check` **MUST** resolve the pod as every pod command does
    (`--pod <p>`, `DOCKET_POD`, the pod whose codebase contains the cwd) and fold that pod's
-   directory into the files considered; outside any pod they **MUST** see the global set only.
+   directory in; outside any pod they see the global set only. Callers that pass the pod: the
+   in-turn gate (In-turn tool-call gate 4), the screening of `fetch`, MCP and gate-reason text, and
+   instruction and memory screening. The enqueue-time `pre_input` gate (requirement 2) and the
+   `pre_output` scan (requirement 3) pass none, so they evaluate the global set only.
 
-### Policy format v1 (short form and structured predicates) (implemented, ROADMAP D-44, ADR 0010)
+### Policy format v1 (ADR 0010)
 
-Before this card, a policy file was JSON only, in the runtime's own vocabulary (`applies_to`,
-`hook`, `match.type: regex`, `action: require_approval`), and the engine saw only the tool call's
-*rendered text* — a policy could not say "the `write` tool under `.github/`" without a regex over
-that text. This section is the short form ADR 0010 defines for policies, and the structured
-predicates it adds beside the rendered text.
+A policy document is canonical JSON (`applies_to`, `hook`, `match.type: regex`, `action:
+require_approval`) or the short form below, and a policy can test structured facts of a tool call
+beside its rendered text.
 
-1. `core.policy.policy_files` **MUST** glob `*.json`, `*.yaml`, and `*.yml` in every policy
-   directory it reads (the fleet-wide `$POLICIES_DIR` and a pod's own `config/policies/`),
-   sorted by name across all three extensions together. `core.policy.install_policies` **MUST**
-   copy a shipped template whatever its extension.
-2. `core.policy.normalize_policy(short: dict) -> dict` **MUST** be a pure function mapping a
-   short-form document to the canonical shape every existing caller has always evaluated —
-   `{id, applies_to, hook, match, action, message}`, plus an optional structured `when` (item 4).
-   The mapping: a top-level `kind: policy` **MUST** be accepted and stripped; any other `kind`
-   value **MUST** be refused, naming the expected one. `name` maps to `id`; `appliesTo` to
-   `applies_to`; `on: input|toolCall|output` to `hook` (`pre_input`/`pre_tool_call`/
-   `pre_output`), defaulting to `pre_tool_call` when neither `on` nor `hook` is given; `then:
-   allow|warn|ask|block|redact` to `action`, with `ask` mapping to `require_approval` and the
-   rest mapping to themselves. A document already in canonical form (no short-form keys) **MUST**
-   come back unchanged but for a `kind` key. Loading **MUST** disable YAML's implicit `on`/`off`/
-   `yes`/`no` boolean resolution for a policy document — the short form's own `on:` key would
-   otherwise silently parse as the boolean `True` rather than the string `"on"` on a bare
-   (unquoted) value, and no policy field is ever a genuine boolean.
-3. `core.policy.read_policy(path) -> dict` **MUST** be the single reader `validate_policy`,
-   `policy_eval_detail`'s per-file loop, and the CLI's `list`/`show`/`validate` share: it parses
-   the file as YAML (JSON stays valid YAML, so an existing canonical file needs no change) and
-   returns `normalize_policy` of the result. `validate_policy`'s name and signature **MUST NOT**
-   change.
-4. A canonical policy **MAY** carry a structured `when` mapping instead of, or in addition to
-   deriving, `match`: `{tool?, path?, matches?, branch?, anyOf?: [...]}`. Keys are implicit
-   AND; `anyOf` is OR over its items, itself AND'd with any sibling keys. `tool` **MUST** equal
-   the call's tool name; `path` **MUST** be an `fnmatch` glob over whichever of the call's
-   `path`/`file_path`/`file` arguments is present (absent on the call, the predicate never
-   matches); `matches` **MUST** be the same regex-over-rendered-text test `match.pattern` has
-   always been; `branch` **MUST** be an `fnmatch` glob over the worktree's current branch. A
-   `when` whose only key is `matches` **MUST** normalize to plain `match: {type: regex, pattern:
-   ...}` instead of a structured `when` — a plain regex policy's canonical form is byte-identical
-   whether written short or long, which is what lets the six shipped templates move to short-form
-   YAML with unchanged behaviour. `core._validate_doc` **MUST** validate `when` the same way it
-   validates `match`: a policy **MUST** carry a `match` or a `when` (a document with neither is
-   invalid, since neither part gives it anything to fire on); an unknown `when` key **MUST** be
-   rejected naming the four predicates (`tool`, `path`, `matches`, `branch`); an uncompilable
-   `when.matches` **MUST** be rejected the same way an uncompilable `match.pattern` is; a broken
-   `when.anyOf` (not a non-empty list) **MUST** be rejected.
-5. `core.policy.ToolCallFacts(tool, args, branch_of)` **MUST** carry what a `when` predicate can
-   test beside the hook's rendered text: the call's tool name, its raw arguments, and a
-   zero-argument `branch_of` getter. `policy_eval_detail`, `policy_eval`, and `policy_test`
-   **MUST** accept a `call: ToolCallFacts | None = None` keyword, default `None` (byte-identical
-   to before this requirement for every existing caller). `branch_of` **MUST** be invoked at most
-   once per `policy_eval_detail` call, and only when some loaded policy actually declares a
-   `branch` predicate — a call against a codebase with no such policy **MUST NOT** shell out to
-   read the branch. A `tool`/`path`/`branch` predicate **MUST NOT** match when `call` is `None`
-   (the text-only hooks, `pre_input` and `pre_output`, and a non-`exec` dry run with no `--arg`);
-   `matches` **MUST** still evaluate normally against the rendered text regardless of `call`.
-6. `core/tools.py::evaluate_tool_call` **MUST** build one `ToolCallFacts` per call — `tool` and
-   `args` from the call already being evaluated, `branch_of` a lazy
-   `edges/adapters/system.py::git_current_branch` over `ctx.roots[0]` (`""` with no roots) — and
-   pass it as `policy_eval_detail`'s `call`. This is the only change this requirement makes to
-   that function.
-7. `docket pod check "<text>" --role <role> [--hook <hook>]` **MUST** accept repeatable `--arg key=value`
-   flags building a `ToolCallFacts` (`branch_of` always `""` in a dry run, since there is no
-   worktree to read one from) passed to the evaluation, for both the `exec`-kind path
+1. `policy_files` **MUST** glob `*.json`, `*.yaml` and `*.yml` in every policy directory it reads
+   (the global `$POLICIES_DIR`, then a pod's own `config/policies/`), each directory sorted by name
+   across all three extensions together. `install_policies` **MUST** copy a shipped template
+   whatever its extension.
+2. `normalize_policy(short: dict) -> dict` **MUST** be a pure function mapping a short-form document
+   to the canonical shape `{id, applies_to, hook, match, action, message}`, plus an optional
+   structured `when` (requirement 4). A top-level `kind: policy` **MUST** be accepted and
+   stripped; any other `kind` value **MUST** be refused, naming the expected one. `name` maps to
+   `id`; `appliesTo` to `applies_to`; `on: input|toolCall|output` to `hook` (`pre_input`,
+   `pre_tool_call`, `pre_output`), defaulting to `pre_tool_call` when neither `on` nor `hook` is
+   given; `then: allow|warn|ask|block|redact` to `action`, with `ask` mapping to
+   `require_approval` and the rest to themselves. A document already in canonical form **MUST**
+   come back unchanged but for a `kind` key. Loading **MUST** disable YAML's implicit
+   `on`/`off`/`yes`/`no` boolean resolution for a policy document, since the short form's own `on:`
+   key would otherwise parse as the boolean `True` on a bare value, and no policy field is ever a
+   boolean.
+3. `read_policy(path) -> dict` **MUST** be the single reader that `validate_policy`, the
+   evaluator's per-file loop, `docket pod policies` and `docket pod validate` share: it parses the
+   file as YAML (JSON stays valid YAML, so a canonical file needs no change) and returns
+   `normalize_policy` of the result.
+4. A canonical policy **MAY** carry a structured `when` mapping instead of, or beside, `match`:
+   `{tool?, path?, matches?, branch?, plugin?, anyOf?: [...]}`. Keys are implicit AND; `anyOf` is
+   OR over its items, itself AND'd with any sibling keys. `tool` **MUST** equal the call's tool
+   name; `path` **MUST** be an `fnmatch` glob over whichever of the call's `path`, `file_path` or
+   `file` arguments is present (absent on the call, the predicate never matches); `matches`
+   **MUST** be the same regex-over-rendered-text test `match.pattern` is; `branch` **MUST** be an
+   `fnmatch` glob over the worktree's current branch; `plugin` is "Predicate plugins". A `when`
+   whose only key is `matches` **MUST** normalize to plain `match: {type: regex, pattern: ...}`,
+   so a plain regex policy's canonical form is byte-identical whether written short or long. The
+   validator **MUST** check `when` the way it checks `match`: a policy **MUST** carry a `match` or
+   a `when` (a document with neither has nothing to fire on); an unknown `when` key **MUST** be
+   rejected naming the predicates; an uncompilable `when.matches` **MUST** be rejected as an
+   uncompilable `match.pattern` is; a `when.anyOf` that is not a non-empty list **MUST** be
+   rejected.
+5. `ToolCallFacts(tool, args, branch_of, worktree_root="")` **MUST** carry what a `when` predicate
+   can test beside the hook's rendered text: the call's tool name, its raw arguments, a
+   zero-argument `branch_of` getter, and the worktree root a plugin receives. `policy_eval_detail`,
+   `policy_eval` and `policy_test` **MUST** accept a `call: ToolCallFacts | None = None` keyword.
+   `branch_of` **MUST** be invoked at most once per `policy_eval_detail` call, and only when a
+   loaded policy's `branch` predicate is actually evaluated, so a call against a codebase with no
+   such policy **MUST NOT** shell out to read the branch. A `tool`, `path` or `branch` predicate
+   **MUST NOT** match when `call` is `None` (the text-only hooks `pre_input` and `pre_output`, and
+   a non-`exec` dry run with no `--arg`); `matches` **MUST** still evaluate against the rendered
+   text regardless of `call`.
+6. `evaluate_tool_call` **MUST** build one `ToolCallFacts` per call: `tool` and `args` from the
+   call being evaluated, `branch_of` a lazy read of the current branch of `roots[0]` (`""` with no
+   roots), `worktree_root` `roots[0]` (`""` with none), and pass it as `policy_eval_detail`'s
+   `call`.
+7. `docket pod check "<text>" --role <role>` **MUST** accept repeatable `--arg key=value` flags
+   building a `ToolCallFacts` (`branch_of` always `""` in a dry run, since there is no worktree to
+   read one from) for the `pre_tool_call` hook, on both the `exec`-kind path
    (`evaluate_tool_call`, `args = {"command": text, **call_args}`) and the declarative-only path
-   (`policy_eval_detail(..., call=...)`) — so `docket pod check "" --role implementer
-   --tool write --arg path=.github/x.yml` reports the verdict a `when.path` predicate on `write`
-   would give a live call, with an empty `<text>` accepted (a predicate-only test has no rendered
-   text to check).
-8. Every shipped template under `templates/policies/` **MUST** be short-form YAML; behaviour
-   (id, pattern, applies-to, action, message) **MUST** be unchanged from the JSON it replaces —
-   proven by the existing policy suite passing unmodified in substance (only the installed file's
-   *extension* is a visible difference, e.g. the installed file is
-   `block-destructive.yaml`).
+   (`policy_eval_detail(..., call=...)`), so `docket pod check "" --role implementer --tool write
+   --arg path=.github/x.yml` reports the verdict a `when.path` predicate on `write` would give a
+   live call, with an empty `<text>` accepted (a predicate-only test has no rendered text). A
+   malformed `--arg` is a usage error (exit 2).
+8. Every shipped policy template **MUST** be short-form YAML, installed under its own file name
+   (`block-destructive.yaml`), with the id, pattern, applies-to, action and message its policy
+   suite pins.
 
-### Predicate plugins (implemented, ADR 0010)
+### Predicate plugins (ADR 0010)
 
-A closed predicate vocabulary (`tool`, `path`, `matches`, `branch`) cannot express a rule that
-needs project-specific knowledge — "ask when a migration file is touched outside the tree of the
-app that owns it" has no path but a fragile regex. This section adds a fifth predicate,
-`plugin`, that calls operator-applied Python instead of inventing an expression language, with
-the trust boundary a policy's live-path position demands: a policy runs inside the gate on every
-tool call the agent itself makes, so a plugin loaded from the codebase the agent edits would let
-it rewrite its own gate for the next turn.
+A closed predicate vocabulary cannot express a rule that needs project knowledge ("ask when a
+migration file is touched outside the tree of the app that owns it" has no path but a fragile
+regex). The `plugin` predicate calls operator-applied Python instead of an expression language,
+under the trust boundary a policy's place demands: a policy runs inside the gate on every tool
+call the agent makes, so a plugin loaded from the codebase the agent edits would let the agent
+rewrite its own gate for the next turn.
 
 1. `docket.plugins` **MUST** be the only module a plugin file imports for the API: it carries
-   `PLUGIN_API_VERSION`, the `@predicate(name)` decorator, and the frozen `ToolCall(tool, args,
-   rendered)` / `PolicyContext(role, project, branch, worktree_root)` types a predicate receives.
-   It **MUST NOT** import anything from `core/`, since a plugin is operator code loaded by
-   convention, not part of the policy engine.
-2. `core.plugins.discover(project: str = "") -> dict[str, LoadedPredicate]` **MUST** search only
-   `PLUGINS_DIR` (global, `$DOCKET_HOME/plugins`) and, when *project* is given, that pod's own
-   `pod_config_dir(project)/plugins` -- **never** a codebase path. Each `*.py` file **MUST** be
-   imported with `importlib.util.spec_from_file_location`, draining `docket.plugins.REGISTRY`
-   after each file; a duplicate predicate name across files **MUST** raise `PluginError` naming
-   both files. A cache keyed by a file's `(mtime_ns, size)` **MUST** skip re-importing an
-   unchanged file, so a live turn does not re-import on every call.
-3. `core.plugins.evaluate(pred, call, ctx, with_, *, budget_ms=250) -> tuple[bool, str]` **MUST**
-   never raise: a predicate that raises, returns a non-`bool`, or exceeds *budget_ms* (measured
-   wall clock around the call -- Python cannot pre-empt a running predicate, so the budget denies
-   only after the fact) **MUST** return `(False, <reason>)` naming what went wrong; a normal
-   `bool` return **MUST** carry `reason=""`. Every call **MUST** write one `policy.plugin` audit
-   entry naming the predicate, its scope, its sha256, and the resulting `verdict` (`allow` or
-   `deny`).
+   `PLUGIN_API_VERSION`, the `@predicate(name)` decorator, and the frozen
+   `ToolCall(tool, args, rendered)` and `PolicyContext(role, project, branch, worktree_root)`
+   types a predicate receives. It **MUST NOT** import anything else from docket, since a plugin
+   is operator code loaded by convention, not part of the policy engine.
+2. The plugin loader's `discover(project: str = "") -> dict[str, LoadedPredicate]` **MUST** search
+   only `$PLUGINS_DIR` (global, default `$DOCKET_HOME/plugins`) and, when *project* is given, that
+   pod's own `config/plugins/`, **never** a codebase path. Each `*.py` file **MUST** be imported
+   from its file location, draining `docket.plugins.REGISTRY` after each file; a duplicate
+   predicate name across files **MUST** raise `PluginError` naming both files. A cache keyed by a
+   file's `(mtime_ns, size)` **MUST** skip re-importing an unchanged file, so a live turn does not
+   re-import on every call.
+3. The loader's `evaluate(pred, call, ctx, with_, *, budget_ms=250) -> tuple[bool, str]` **MUST**
+   never raise: a predicate that raises, returns a non-`bool`, or exceeds *budget_ms* (wall clock
+   measured around the call; Python cannot pre-empt a running predicate, so the budget denies only
+   after the fact) **MUST** return `(False, <reason>)` naming what went wrong; a normal `bool`
+   return **MUST** carry `reason=""`. Every call **MUST** write one `policy.plugin` audit entry
+   naming the predicate, its scope, its sha256 and the resulting `verdict` (`allow` or `deny`).
 4. A canonical policy's `when` **MAY** carry `plugin: <name>` with an optional `with: <mapping>`,
-   validated the same way the other four predicate keys are (`when.plugin` **MUST** be a
-   non-empty string; `when.with`, when present, **MUST** be a mapping and **MUST NOT** appear
-   without `when.plugin`; the unknown-key error names all five predicates).
-5. `core._predicate_matches` **MUST** resolve `discover(project)` for a `plugin` predicate and
-   evaluate the named entry. An unknown name, or any `PluginError` from `discover` **MUST** fail
-   the whole policy closed as `block`, naming the plugin and the two scopes searched, regardless
-   of the policy's own `then:` -- a policy that names a plugin nobody applied **MUST NOT** ever
-   silently allow. A plugin that `evaluate` denies with a non-empty reason **MUST** likewise fail
-   the policy closed as `block`, naming the reason; a plugin `evaluate` returns `(False, "")` for
-   **MUST** be treated as an ordinary non-match (the predicate did not fire, the policy does not
-   fire), never as a failure. This fail-closed behaviour **MUST** win regardless of where the
-   `plugin` key appears in the predicate tree, including inside `anyOf`, so it cannot be
-   neutralized by pairing it with an always-true sibling.
-6. `core/tools.py::evaluate_tool_call` **MUST** pass its `ToolCallFacts.worktree_root` (a new
-   field, `ctx.roots[0]` when the call has roots, else `""`) through to a plugin's
-   `PolicyContext.worktree_root` unchanged; this is the only change this requirement makes to
-   that function.
-7. `docket pod policies --plugins [--pod <p>]` **MUST** print every predicate `discover` returns for that
-   scope -- name, scope, file, sha256 -- global first, then the pod's own; `"No plugins
+   validated like the other predicate keys (`when.plugin` **MUST** be a non-empty string;
+   `when.with`, when present, **MUST** be a mapping and **MUST NOT** appear without
+   `when.plugin`; the unknown-key error names all five predicates).
+5. The policy evaluator **MUST** resolve `discover(project)` for a `plugin` predicate and evaluate
+   the named entry. An unknown name, or any `PluginError` from `discover`, **MUST** fail the whole
+   policy closed as `block`, naming the plugin and the two scopes searched, regardless of the
+   policy's own `then:`; a policy that names a plugin nobody applied **MUST NOT** ever silently
+   allow. A plugin that `evaluate` denies with a non-empty reason **MUST** likewise fail the policy
+   closed as `block`, naming the reason; a plugin `evaluate` returns `(False, "")` for **MUST** be
+   an ordinary non-match (the predicate did not fire), never a failure. This fail-closed behaviour
+   **MUST** win wherever the `plugin` key appears in the predicate tree, including inside `anyOf`,
+   so it cannot be neutralized by an always-true sibling.
+6. `evaluate_tool_call` **MUST** pass its `ToolCallFacts.worktree_root` (`roots[0]` when the call
+   has roots, else `""`) through to a plugin's `PolicyContext.worktree_root` unchanged.
+7. `docket pod policies --plugins [--pod <p>]` **MUST** print every predicate `discover` returns
+   for that scope (name, scope, file, sha256), global first, then the pod's own; `"No plugins
    applied."` when empty. A predicate present only under a codebase's own `.docket/plugins/`
-   **MUST NOT** appear: only `PLUGINS_DIR` and a pod's own overlay are ever searched.
+   **MUST NOT** appear: only `$PLUGINS_DIR` and a pod's own directory are ever searched.
 8. `docket pod update` **MUST** copy a recipe's `plugins/*.py` into that pod's own
-   `pod_config_dir(project)/plugins`, by sha256 (an installed copy with the same hash is left
-   alone, any other content is replaced) -- exactly the same by-hash copy `apply` already gives
-   policies. A later edit to the codebase's own copy **MUST** change nothing until the operator
-   applies again.
+   `config/plugins/`, by sha256 (an installed copy with the same hash is left alone, any other
+   content is replaced), the same by-hash copy it gives policies. A later edit to the codebase's
+   own copy **MUST** change nothing until the operator applies again.
 
-### In-turn tool-call gate (implemented, ROADMAP Phase 19 P19-3)
+### In-turn tool-call gate
 
-Before this card, `core/dispatch.py` said in three places that `pre_tool_call` "stays
-daemon-gated, never evaluated here." That was true of every path docket controlled at the time —
-docket orchestrated hops *between* daemon turns and had no dispatcher of its own *inside* one.
-ROADMAP Phase 19 gives it one (`core/tools.py`'s `dispatch_tool`, P19-2's gated tool registry).
-This section is what finally evaluates the four `pre_tool_call` templates docket has shipped
-since Phase 11 against real calls made through that dispatcher. **Corrected for P19-5/P19-7a/
-P19-7b (see the scope note that closes this section): that dispatcher is no longer a second path
-alongside a daemon — Phase 19 P19-5/P19-7a wired it onto every real pod-dispatch hop via
-`DocketDriver`, and P19-7b then deleted the daemon outright, so there is no other path left for a
-tool call to take.**
+`dispatch_tool` is the only path to a tool's handler. Every docket turn
+(`DocketDriver.run_turn` → `run_agent_turn`) dispatches every tool call through it, so every
+`pre_tool_call` policy and the command classifier apply to every call a pod-dispatch hop makes.
 
-1. **Rendering a call for the policy engine.** `core/tools.py`'s `render_tool_call(name, args)`
-   renders one tool call as `"<name> <key>=<json-value> <key>=<json-value> ..."`, keys in the
-   call's own argument order, each value `json.dumps`-encoded. This exact shape **MUST** be
-   treated as a contract, not an implementation detail — every shipped `pre_tool_call` pattern is
-   matched against its output, and `tests/integration/test_pre_tool_call_policy.py::TestRenderToolCallShape`
-   pins it.
-
-   > **Since 0.62.0 the `.env`/`.ssh/` alternatives match a write target, not two words.** The
-   > render of a bash call is `bash command="..."` with newlines escaped, so `.*` between a verb
-   > and a path spans a whole script. The alternatives are anchored to the target instead: a
-   > redirect (`>`/`>>`) whose path ends in `.env`, `tee`/`cp`/`mv`/`sed -i` with a path argument
-   > ending in `.env` in the same command segment, `.ssh/` after the same verbs or a redirect,
-   > and `^(write|edit) path="...(.env|.ssh/...)"`. `grep -r process.env src/` and a script that
-   > merely contains `.write(` and `process.env` do not fire.
-
-   > **History: the either-order `.env`/`.ssh` alternatives.** The original `block-destructive`
-   > alternatives `\.env\b.*write` and `\.ssh\/\s*write` never matched a `write` call, whose render
-   > puts the verb first; they were first fixed to match either order. That form spanned a whole
-   > script and was itself replaced in 0.62.0 by the target-anchored alternatives above, which
-   > `TestBlockDestructiveShippedTemplate::test_policy_gates_a_write_call_the_command_classifier_never_inspects`
-   > and `::test_ssh_directory_write_is_also_gated` pin. The shipped template no longer contains
-   > `\.env\b.*write`.
-2. `core/tools.py`'s `evaluate_tool_call` **MUST** be the single point that consults
-   `policy_eval_detail(ctx.role, "pre_tool_call", render_tool_call(tool.name, args))`, alongside
-   P19-2's command classifier — no second call site may gate a tool call. A policy `action`
-   **MUST** map onto the tool `Decision` vocabulary: `block` -> `deny`, `require_approval` ->
-   `ask`, `warn`/`redact`/`allow` -> `allow`. A `warn`/`redact` hit **MUST NOT** be silently
-   allowed through unrecorded — it **MUST** still write an audit entry (`tool.warn`/`tool.redact`)
-   even though the call proceeds.
+1. **Rendering a call for the policy engine.** `render_tool_call(name, args)` renders one tool call
+   as `"<name> <key>=<json-value> <key>=<json-value> ..."`, keys in the call's own argument order,
+   each value `json.dumps`-encoded. This shape **MUST** be treated as a contract: every shipped
+   `pre_tool_call` pattern is matched against it.
+   The shipped `block-destructive` template's `.env` and `.ssh/` alternatives match a write
+   *target*, not two words anywhere in the call (a `bash` render escapes newlines, so `.*` between
+   a verb and a path would span a whole script): a redirect (`>`, `>>`) whose path ends in `.env`;
+   `tee`, `cp`, `mv` or `sed -i` with a path argument ending in `.env` in the same command
+   segment; `.ssh/` after the same verbs or a redirect; and `^(write|edit) path="...(.env|.ssh/...)"`.
+   `grep -r process.env src/`, and a script that merely contains `.write(` and `process.env`, do
+   not fire.
+2. `evaluate_tool_call` **MUST** be the single point that consults
+   `policy_eval_detail(ctx.role, "pre_tool_call", render_tool_call(tool.name, args), ...)`,
+   beside the command classifier; no second call site may gate a tool call. A policy `action`
+   **MUST** map onto the tool `Decision` vocabulary: `block` → `deny`, `require_approval` → `ask`,
+   `warn`/`redact`/`allow` → `allow`. A `warn` or `redact` hit **MUST NOT** pass unrecorded: it
+   **MUST** still write an audit entry (`tool.warn`, `tool.redact`) even though the call proceeds.
 3. The command classifier's verdict and the policy engine's verdict **MUST** be combined
-   most-restrictive-wins (`deny` > `ask` > `allow`), the same ranking philosophy
-   `core/policy.py`'s own `_RANK` uses for competing policies. Either side alone can decide the
-   outcome; a `block-destructive` policy's `require_approval` on an otherwise-allowlisted `write`
-   call is exactly as binding as a classifier `ask` on an otherwise-unmatched `bash` command.
-   One exception: an `ask` on the `consult` built-in **MUST** resolve to `allow` (the verdict
-   keeps the raw `policy_id`/`policy_action`), because the consultation is itself the human's
-   decision; asking approval to ask would put one decision to the operator twice (found by the
-   2026-10-05 doc capture: `high-risk-deploy`'s `matches` fired on a Lead's question that quoted
-   `git push origin production`). A `deny` on `consult` still denies.
-4. `ToolContext` **MUST** carry `role`/`project` (both default `""`), feeding
-   `policy_eval_detail`'s `applies_to` matching and `approval_create`'s record. Every shipped
-   template uses `applies_to: ["*"]`, which **MUST** match an empty role — a bare `ToolContext()`
-   is not exempt from any installed policy. Since ROADMAP P27-2, `project` also selects which
-   pod's own policy directory `policy_eval_detail` folds into that call's evaluation (Policy
-   engine requirement 9) — `evaluate_tool_call`'s one call site **MUST** pass
-   `project=ctx.project`. `edges/adapters/docket_runtime.py::run_turn` **MUST** resolve `project`
-   as `trace_project or core.pod.pod_of(agent_id) or agent_id`: a dispatch hop's own
-   `trace_project` still wins, a standalone pod-member turn now resolves to its pod (so it still
-   sees that pod's own policies, not just the global set), and a non-pod agent falls back to `agent_id` exactly as before.
-5. An `ask` verdict **MUST** block the call synchronously on the real approval store rather than
-   merely reporting the requirement: `dispatch_tool` calls `core.approval.approval_create` (falling
-   back to `"operator"`/`"tool"` when `project`/`role` are unset) and then
-   `core.approval.wait_for_approval`, which **MUST NOT** return until the record is granted,
-   denied, or its own timeout elapses.
-   - This timeout is **`config.TOOL_APPROVAL_TIMEOUT`** (default 120s) — a **separate**, shorter
-     knob from the async `APPROVAL_TIMEOUT` (900s) `core/dispatch.py`'s require_approval gate
-     uses. The two differ because they block different things: `APPROVAL_TIMEOUT` costs only wall
-     clock (a task sits `waiting_approval`, nothing is running); `TOOL_APPROVAL_TIMEOUT` blocks a
-     live call — the model's turn and, under `docket start`, a real worker slot — so it is kept
-     well under `core/dispatch.py`'s `DEFAULT_TIMEOUT` (300s, one hop's whole budget), leaving
-     room for the tool to actually run after a grant.
-   - The wait **MUST** poll, not busy-spin (`config.TOOL_APPROVAL_POLL_INTERVAL_S`, default 2s).
-   - A timeout **MUST** resolve the record to **denied** — the same fail-closed contract
-     `approval_sweep_expired` already guarantees for the async path — via the same shared
-     `_resolve_timeout_as_denied` helper, never left dangling in `pending`.
+   most-restrictive-wins (`deny` > `ask` > `allow`), the ranking the engine itself uses between
+   competing policies. Either side alone can decide: a `block-destructive` `require_approval` on
+   an otherwise-allowlisted `write` call binds exactly as a classifier `ask` on an unmatched `bash`
+   command does. One exception: an `ask` on the `consult` built-in **MUST** resolve to `allow`
+   (the verdict keeps the raw `policy_id` and `policy_action`), because the consultation is itself
+   the human's decision and asking approval to ask would put one decision to the operator twice.
+   A `deny` on `consult` still denies.
+4. `ToolContext` **MUST** carry `role` and `project` (both default `""`), feeding
+   `policy_eval_detail`'s `applies_to` matching and the approval record. Every shipped template
+   uses `applies_to: ["*"]`, which **MUST** match an empty role, so a bare `ToolContext()` is not
+   exempt from any installed policy. `project` also selects which pod's own policy directory joins
+   the call's evaluation (Policy engine 9): `evaluate_tool_call` **MUST** pass
+   `project=ctx.project`. `DocketDriver.run_turn` **MUST** resolve `project` as the dispatch hop's
+   own trace project when it has one, else the calling agent's pod, else the agent id, so a
+   standalone pod-member turn sees its pod's policies and a non-pod agent sees the global set.
+5. An `ask` verdict (with `approval_mode="wait"`, requirement 11) **MUST** block the call
+   synchronously on the real approval store: `dispatch_tool` calls `approval_create` (project
+   `"operator"` and role `"tool"` when the context has none; `context: {"tool", "callId",
+   "argsDigest"}`) and then `wait_for_approval`, which **MUST NOT** return until the record is
+   granted, denied, or its own timeout elapses.
+   - The timeout is `TOOL_APPROVAL_TIMEOUT` (default 120 s) unless the hop supplies its own
+     approval timeout. It is a separate, shorter knob than `APPROVAL_TIMEOUT` (900 s), which bounds
+     a record's life in the store: a task sitting in `waiting_approval` costs only wall clock,
+     while an in-turn wait blocks a live call, the model's turn and, under `docket start`, a worker
+     slot. So it stays well under a hop's default timeout (300 s), leaving room for the tool to run
+     after a grant.
+   - The wait **MUST** poll, not busy-spin (`TOOL_APPROVAL_POLL_INTERVAL_S`, default 2 s).
+   - A timeout **MUST** resolve the record to **denied** through the same fail-closed resolution
+     `approval_sweep_expired` uses, never leaving it `pending`.
    - Granted: the call proceeds to the handler. Denied (explicitly, or by timeout): the handler
      **MUST NOT** run.
-6. Every non-`allow` gate decision, and every `warn`/`redact` policy hit, **MUST** be recorded via
-   `audit_log` (`tool.deny`, `tool.ask`, `tool.warn`, `tool.redact`), with the rendered call
-   redacted through `core.trace.redact` first — a tool call's arguments can carry a secret (an API
-   key in a `write` call's content, a credential in a `bash` command). Approval resolution itself
-   (grant, explicit deny, or timeout-deny) continues to be recorded by `core/approval.py`'s
-   existing `approval.grant`/`approval.deny` audit entries, so a fully gated call leaves **both**
-   the gate's own decision and its resolution in `docket log`.
+6. Every non-`allow` gate decision, and every `warn` or `redact` policy hit, **MUST** be audited
+   (`tool.deny`, `tool.ask`, `tool.warn`, `tool.redact`) naming the tool, agent, role, project,
+   `policy_id` and `policy_action`, with the rendered call passed through `redact` first, since a
+   call's arguments can carry a secret (an API key in a `write`, a credential in a `bash`
+   command). Approval resolution (grant, explicit deny, or timeout deny) is recorded by the
+   store's own `approval.grant` and `approval.deny` entries, so a fully gated call leaves both the
+   gate's decision and its resolution in `docket log`.
 7. Every denied, non-executed `ToolResult` **MUST** carry exactly one closed, privacy-safe denial
-   kind: `invalid_call` for an unknown tool, undecodable arguments, or missing required arguments;
-   `gate_denied` for a direct command-classifier or policy denial; `approval_denied` for an explicit
-   operator denial; `approval_timeout` for an unanswered approval that times out; and
-   `approval_unavailable` for an `ask` verdict refused under `approval_mode="refuse"` because no
-   approval wait was attempted at all (item 11 below). A result that executes, including an allowed
-   handler failure, **MUST** carry no denial kind. `as_tool_output()` **MUST** include the stable
-   denial kind in the model-visible refusal without raw arguments, approval tokens, or private
-   values.
-8. **Scope — stated precisely, matching the Status line (corrected for P19-5/P19-7a/P19-7b).**
-   This section governs `core/tools.py`'s `dispatch_tool` and nothing else. As of this version:
-   - **Every** pod-dispatch hop now calls `core/tools.py`: `core/dispatch.py`'s hop-execution call
-     sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`,
-     `edges/adapters/docket_runtime.py`), whose `run_turn` runs `core.agent_loop.run_agent_turn`,
-     which dispatches every tool call through `dispatch_tool`. This is a change from every prior
-     version of this spec, which described this dispatcher as real but not yet on the live path —
-     Phase 19 P19-5 built the wiring and P19-7a (the runtime cutover) made it the one every
-     production caller resolves.
-   - There is no more daemon tool-calling loop to contrast this with. Phase 19 P19-7b deleted the
-     daemon outright, so the G-5 findings below (no bridge to *the daemon's* live exec-approval
-     prompt) are now a historical record of a question that no longer has a live subject, not a
-     description of a gap in today's coverage.
-   - `core/tools.py` is the thing a pod-dispatch hop actually runs through, full stop — this
-   section can now be cited as evidence that a pod-dispatch hop today is gated by
-   `pre_tool_call` and the command classifier; that was not true before P19-5/P19-7a landed.
-9. **Cooperative run cancellation (W26-C10b).** `ToolContext` carries one optional
-   `cancellation_check: Callable[[], bool]` supplied only by an owned run. `dispatch_tool` checks it
-   before approval continuation and immediately before the handler. Cancellation before execution
-   returns a denied, non-executed result with `denial_kind="run_cancelled"`; the model-visible form
-   is exactly `REFUSED [run_cancelled]: run cancellation requested before execution` and contains
-   no token, arguments, or private value. Callers without the callback are unchanged.
+   kind: `invalid_call` for an unknown tool, undecodable arguments or missing required arguments;
+   `gate_denied` for a classifier or policy denial; `approval_denied` for an explicit operator
+   denial; `approval_timeout` for an unanswered approval that timed out; `approval_unavailable`
+   for an `ask` refused under `approval_mode="refuse"` (requirement 11) or a consultation nobody
+   can answer; `approval_parked` for a parked call ("Parked calls and single-use pre-grants") or
+   a parked consultation; and `run_cancelled` for a cancellation before execution (requirement 9).
+   A result that executes, including an allowed handler failure, **MUST** carry no denial kind.
+   `as_tool_output()` **MUST** include the denial kind in the model-visible refusal
+   (`REFUSED [<kind>]: <reason>`) without raw arguments, approval tokens or private values.
+8. **Scope.** This section governs `dispatch_tool`. Every pod-dispatch hop resolves the default
+   driver (`DocketDriver`), whose `run_turn` runs the agent loop, which dispatches every tool call
+   through `dispatch_tool`; there is no other execution path for a tool call. A pod-dispatch hop is
+   therefore gated by `pre_tool_call` and the command classifier on every call.
+9. **Cooperative run cancellation.** `ToolContext` carries an optional
+   `cancellation_check: Callable[[], bool]`, supplied only by an owned run. `dispatch_tool` checks
+   it before the approval continuation and immediately before the handler. Cancellation before
+   execution returns a denied, non-executed result with `denial_kind="run_cancelled"`; the
+   model-visible form is exactly `REFUSED [run_cancelled]: run cancellation requested before
+   execution` and contains no token, arguments or private value. A caller without the callback is
+   unaffected.
 10. A cancellation observed while an in-turn approval is pending **MUST** conditionally deny that
-    pending record through the existing locked transition. A concurrent grant/deny remains the
-    winner if it committed first, but cancellation after a granted wait still prevents the handler.
-    Cancellation is not an approval timeout and **MUST NOT** fabricate a second terminal decision,
-    audit event, or trace event.
-11. **Non-interactive approval mode (W30-C2).**
-    `ToolContext` carries `approval_mode: Literal["wait", "refuse"] = "wait"`. Under `"wait"`,
-    behavior is byte-identical to every requirement above — record creation, the synchronous wait,
-    and timeout semantics are unchanged. Under `"refuse"`, an `ask` verdict **MUST** still be
-    audited via `tool.ask` exactly as `"wait"` audits it, and **MUST NOT** create an approval
-    record or call `wait_for_approval` at all — zero wait, not a zero-length one. It **MUST**
-    return immediately with `decision="deny"`, `denial_kind="approval_unavailable"`, and
-    `reason` equal to the verdict's own reason. `ToolResult` gains a `policy_id` field, copied from
-    `ToolVerdict.policy_id` whenever the verdict's decision is not `allow` (both `"wait"` and
-    `"refuse"`); it stays `""` for an `allow` decision and for a structural refusal that never
-    reached a verdict (`invalid_call` from an unknown tool, undecodable arguments, or missing
-    required arguments). This mode is fixed and non-interactive by design — it answers "can this
-    caller wait for a human," not "let a human answer from somewhere else".
-    - **A pod's own `approvalMode: "refuse"` setting is the one producer.** It sets
-      `DOCKET_APPROVAL_MODE=refuse` on `RuntimeDriver.run_turn`'s `env`
-      (`core.runtime_driver.DOCKET_APPROVAL_MODE`), the internal coordinate `DocketDriver` maps
-      onto this field (`core.pod.PodSettings`, threaded in by `core/dispatch.py::_compose_hop`
-      for every hop of that pod — see `pod-dispatch.spec.md`, "Unattended approval posture").
-      An unset or unrecognised value is `wait`.
-
-12. **Cancellation reaches an in-flight `bash` command (W30-C1, D-35 decision 9 amends D-30 for
-    this handler only).** The `bash` tool's `handler=` registration in
-    `core/tools.py::builtin_registry` passes the same `ctx.cancellation_check` through to
-    `edges/adapters/toolbox.py::run_bash`'s optional `cancelled` parameter. Given one, `run_bash`
-    waits in a short bounded poll instead of blocking for the whole timeout in `communicate()`; a
-    true callback **MUST** kill the running command exactly the way a timeout already does
-    (`system.docker_kill` under the docker backend, then `_kill_group`) and **MUST** return a
-    complete `ToolOutcome(ok=False, error="cancelled before completion")`, carrying the same
-    sandbox tag every other `bash` failure does. D-30's "an already-running handler may finish"
-    rule is otherwise unchanged: it still governs every other handler (`read`, `write`, `edit`,
-    `glob`, `grep`, `fetch`, an MCP-adapted tool) and, for `bash` itself, an HTTP request or Python
-    call made from within the shell command rather than by docket's own dispatcher. A caller that
-    never passes `cancelled` (the default, `None`) **MUST** see today's exact behavior, including
-    the timeout message, byte for byte.
-
-13. **A pod's `allowCommands` reaches the live gate via `ToolContext`, never read inside
-    `core/tools.py` itself.** `ToolContext` carries `allow_commands: tuple[str, ...] = ()`;
-    `evaluate_tool_call` is its one consumer, passing `classify_command(command,
-    extra_bins=frozenset(ctx.allow_commands))` for an `exec` tool — the only edit this capability
-    makes inside `core/tools.py`. The field is filled once per turn by the driver
-    (`edges/adapters/docket_runtime.py::run_turn`), which resolves the calling agent's pod
-    (`core.pod.pod_of`) and reads that pod's `PodSettings.allow_commands` — the same source
-    `docket pod show/set/unset allowCommands` reads and writes, so there is one
-    reader and one writer, not a second copy. A non-pod agent, or a pod whose Lead's stored
-    settings fail `PodSettings` validation for any reason, **MUST** resolve to an empty tuple
-    (fail closed to the unmodified `SAFE_BINS` allowlist) rather than raise out of `run_turn` or
-    grant anything wider. An agent belonging to a different pod **MUST NOT** observe another pod's
-    `allowCommands` — the setting is read from that turn's own agent's pod only.
-
+    record through the locked transition (channel `cancellation`). A concurrent grant or deny
+    remains the winner if it committed first, but cancellation after a granted wait still prevents
+    the handler. Cancellation is not an approval timeout and **MUST NOT** fabricate a second
+    terminal decision, audit event or trace event.
+11. **Approval modes.** `ToolContext.approval_mode` is `Literal["wait", "park", "refuse"]`,
+    default `"wait"`. Under `"wait"` an `ask` waits (requirement 5). Under `"park"` it is parked
+    ("Parked calls and single-use pre-grants"). Under `"refuse"`, an `ask` **MUST** still be
+    audited through `tool.ask` exactly as `"wait"` audits it, **MUST NOT** create an approval
+    record or call `wait_for_approval` at all (zero wait, not a zero-length one), and **MUST**
+    return immediately with `decision="deny"`, `denial_kind="approval_unavailable"` and `reason`
+    equal to the verdict's own reason. A matching pre-grant is consumed before any mode applies.
+    `ToolResult.policy_id` is copied from the verdict's `policy_id` whenever its decision is not
+    `allow`, in every mode; it stays `""` for an `allow` and for a structural refusal that never
+    reached a verdict (`invalid_call`). The mode answers "can this caller wait for a human", not
+    "let a human answer from somewhere else".
+    - **Where the mode comes from.** Dispatch resolves each hop's mode: the pod's own
+      `approvalMode` (`wait`, `park` or `refuse`) when the pod sets one, otherwise the caller's
+      default (`park` for `docket start --dispatch` and a dispatch without a terminal, `wait` for
+      a foreground dispatch on a terminal). A `park` or `refuse` mode reaches the driver as the
+      internal `DOCKET_APPROVAL_MODE` key of `run_turn`'s `env`, which `DocketDriver` pops into
+      this field; it is never read from the process environment, so exporting it does nothing.
+      An unset or unrecognised value is `wait` (pod-dispatch.spec.md, "Unattended approval
+      posture").
+12. **Cancellation reaches an in-flight `bash` command.** The `bash` tool passes
+    `ctx.cancellation_check` to `run_bash`'s optional `cancelled` parameter. Given one, `run_bash`
+    waits in a short bounded poll instead of blocking for the whole timeout; a true callback
+    **MUST** kill the running command exactly the way a timeout does (`docker_kill` under the
+    docker backend, then the process-group kill) and **MUST** return a complete
+    `ToolOutcome(ok=False, error="cancelled before completion")` carrying the same sandbox tag every
+    other `bash` failure does. Every other handler (`read`, `write`, `edit`, `glob`, `grep`,
+    `fetch`, an MCP-adapted tool) runs to completion once started (D-30), as does an HTTP request
+    or Python call made from inside the shell command. A caller that passes no `cancelled` (the
+    default) **MUST** see the uncancellable behaviour, including the timeout message.
+13. **A pod's `allowCommands` reaches the live gate through `ToolContext`, never read inside the
+    gate.** `ToolContext` carries `allow_commands: tuple[str, ...] = ()`; `evaluate_tool_call` is
+    its one consumer, passing `classify_command(command, extra_bins=frozenset(ctx.allow_commands),
+    ...)` for an `exec` tool. `DocketDriver.run_turn` fills it once per turn from the calling
+    agent's pod's `PodSettings.allow_commands`, the value `docket pod show`, `docket pod set` and
+    `docket pod unset` read and write, so there is one reader and one writer. A non-pod agent, or a
+    pod whose stored settings fail `PodSettings` validation for any reason, **MUST** resolve to an
+    empty tuple (fail closed to the plain `SAFE_BINS` allowlist) rather than raise out of
+    `run_turn` or grant anything wider. An agent in one pod **MUST NOT** observe another pod's
+    `allowCommands`.
 14. **Every refusal inside a handler is audited as `tool.refused`.** A file tool's
     `PathEscapeError` and a `fetch` allowlist refusal are returned by the handler as a failed
-    `ToolOutcome`, so the gate verdict never saw them. `ToolOutcome` carries a typed
-    `refusal` (`""`, `path_escape` or `fetch_not_allowed`); `dispatch_tool` **MUST** write exactly
-    one `audit_log("tool.refused", ...)` entry for an outcome whose `refusal` is set, naming
-    `tool`, `agent`, `role`, `project`, `kind` and, for a path tool, the attempted `path`
-    argument (for `fetch`, the host). The entry **MUST NOT** carry any file content, command
-    output or URL query, and the free text passes through the redactor. An allowed call and an
-    ordinary failure (file not found, HTTP error) **MUST NOT** write one. The containment
-    branch of `classify_command` needs no entry here: it returns `ask` or `deny`, which the
-    existing `tool.ask`/`tool.deny` entries already record. Verdicts are unchanged.
+    `ToolOutcome`, so the gate verdict never saw them. `ToolOutcome` carries a typed `refusal`
+    (`""`, `path_escape` or `fetch_not_allowed`); `dispatch_tool` **MUST** write exactly one
+    `tool.refused` audit entry for an outcome whose `refusal` is set, naming `tool`, `agent`,
+    `role`, `project`, `kind` and, for a path tool, the attempted `path` argument (for `fetch`,
+    the host). The entry **MUST NOT** carry any file content, command output or URL query, and the
+    free text passes through the redactor. An allowed call and an ordinary failure (file not
+    found, HTTP error) **MUST NOT** write one. The classifier's containment branch needs no entry
+    here: it returns `ask` or `deny`, which `tool.ask` and `tool.deny` already record.
 
-### File-tool containment — symlinks (implemented, ROADMAP Phase 38 D-55)
+### File-tool containment — symlinks
 
-The file tools `read`, `write`, `edit`, `glob`, and `grep` are in-process path checks that
-**MUST** not be circumvented by symlinks. Symlinks met during a walk (`glob` and `grep`) that
-resolve outside the allowed roots **MUST** be skipped, not followed; and `write` / `edit` with a
+The file tools `read`, `write`, `edit`, `glob` and `grep` are in-process path checks that **MUST
+NOT** be circumvented by symlinks. Symlinks met during a walk (`glob` and `grep`) that resolve
+outside the allowed roots **MUST** be skipped, not followed; `write` and `edit` with a
 final-component symlink target **MUST** refuse if that symlink points outside.
 
-1. **`glob_files` and `grep_files` skip symlink escapes.** When walking a root with a glob pattern,
-   a matched path whose resolved form (after following symlinks) points outside the allowed roots
-   **MUST** be skipped — that path is not included in the results. The walk proceeds, but the path
-   never reaches the caller. This applies equally to `glob_files` (no path in the output) and
-   `grep_files` (no match lines from the escaped path in the output). `resolve_within` already
-   checks the path argument itself; this closes the gap of a symlink met *during* the walk,
-   whether the symlink is the matched file itself or a directory on its path (`linkdir/*` where
+1. **`glob` and `grep` skip symlink escapes.** When walking a root with a glob pattern, a matched
+   path whose resolved form (after following symlinks) is outside the allowed roots **MUST** be
+   skipped: the path never reaches the caller (no path in `glob`'s output, no match lines from it
+   in `grep`'s). `resolve_within` checks the path argument itself; this covers a symlink met
+   *during* the walk, whether it is the matched file or a directory on its path (`linkdir/*` where
    `linkdir` points outside). The same check stops a `..` in the pattern itself
-   (`../*/workspaces/...`), which reached files beside the root before.
-2. **Symlinks pointing inside the root continue to work.** A symlink from `./link -> ./target` or
+   (`../*/workspaces/...`).
+2. **Symlinks pointing inside the roots keep working.** `./link -> ./target` and
    `./link -> ../codebase/target` both remain valid as long as the resolved path is within some
    allowed root. The containment check **MUST** check only the resolved path, not the symlink
    itself.
-3. **`write` and `edit` refuse to write through a final-component symlink to outside.** When the
-   final path component is a symlink, `write` and `edit` **MUST** resolve it first (as they always
-   do via `resolve_within`); if it points outside the roots, they fail with a `PathEscapeError`.
+3. **`write` and `edit` refuse to write through a final-component symlink to outside.** They
+   resolve the path through `resolve_within`; if it points outside the roots, they fail with
+   `PathEscapeError`.
 
-### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
+### Exec sandbox for the `bash` tool (opt-in)
 
-The section above is a gate: it decides whether a `bash` call may run at all. It was never a
-sandbox, and never claimed to be one — `edges/adapters/toolbox.py`'s module docstring has said so
-since P19-2. `resolve_within`'s containment only ever checked path *arguments* the file tools were
-given; a `bash` command's shell text was never checked against it, and still is not. Once a command
-clears the gate, this section is what constrains what it can reach while it runs — additive to the
-gate, never a replacement for it, and additive to `resolve_within`, never a replacement for that
-either.
+The tool-call gate decides whether a `bash` call may run at all; it is not a sandbox.
+`resolve_within` checks only the path *arguments* file tools are given, never a `bash` command's
+shell text. Once a command clears the gate, this section constrains what it can reach while it
+runs: additive to the gate and to `resolve_within`, never a replacement for either.
 
-1. **Backend detection is real, not assumed.** `edges.adapters.system.sandbox_availability()`
-   probes, on every call, which backend the host actually has *right now*, in descending
-   strength:
-   - **`landlock`** — the Linux kernel's own sandbox (`python -m docket.jail`, requirement 10).
-     Requires a real ABI probe (`landlock_available`: `landlock_create_ruleset` with the VERSION
-     flag returns >= 1); a kernel without Landlock, or one whose seccomp policy blocks the
-     syscall, is `false`, never assumed.
-   - **`docker`** — a container, used only when the operator chose it (`sandboxBackend: docker`);
-     never probed or picked under `auto`. Requires not just the binary (`docker_available`) but a reachable
-     daemon (`docker_daemon_reachable`, a real `docker info` probe) — a binary with no running or
-     reachable daemon is common enough (rootless setups, a freshly installed package whose service
-     was never started) that "installed" **MUST NOT** be treated as "usable".
-   - **`none`** — neither is usable. The command still runs (subject to the gate above and to
-     `ToolContext.sandbox` — see below); it is just not jailed, and this **MUST** be visible to the
-     caller (requirement 4).
-   - **`seatbelt`** — macOS `sandbox-exec` (requirement 11), the macOS counterpart of `landlock`; usable
-     when the host is darwin and `/usr/bin/sandbox-exec` exists.
-   - `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`none`) **MUST** override the automatic choice —
-     for tests and for an operator who wants to force or disable a backend regardless of what is installed.
-2. **Opt-in, default off — a narrower default than the gate itself, deliberately.**
-   `core/tools.py`'s `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the `bash` tool
-   handler **MUST NOT** ask for a jail unless the caller explicitly sets `sandbox="auto"`. This
-   mirrors the existing Docker workspace isolation posture (`docket setup sandbox on|off`, also opt-in) for
-   the same reason: docker is not installed on every developer machine, landlock needs a recent
-   Linux kernel, and turning a jail on by default for a codebase
-   that does not have Rack CLI's own testing behind it risks breaking ordinary tool calls in ways
-   the gate never does (the P19-3 gate only ever narrows *which* commands need a human; a
-   filesystem jail can break a command that gate would have allowed outright, e.g. one that reads a
-   path genuinely outside the workspace roots for a legitimate reason). Recommendation: **leave
-   `"off"` until an operator has verified a backend works on their fleet's hosts**, then opt
-   in fleet-wide with `docket setup sandbox on` — the same "opt in, verify, then adopt" path Docker
-   workspace isolation already used before it, too, was wired live (W18-3; see requirement 9).
-3. **The jail is additive to `resolve_within`, never a replacement.** A `landlock` jail grants each of
-   `ToolContext.roots` read-write and the system directories read-only, and nothing else: the
-   operator's `$HOME` and `DOCKET_HOME` (`secrets.json`, every pod's sessions and traces, the
-   audit log) are denied for read as well as write (requirement 10) — the same
-   "contain to a known set of roots" shape `resolve_within` already uses for file tools,
-   extended to the exec surface. A `docker` jail is stronger still: nothing outside the
-   mounted roots exists inside the container's filesystem at all. Both **MUST** hold at the same
-   time as `resolve_within`'s own check on file-tool calls — a `ToolContext.sandbox="auto"` **MUST
-   NOT** change what a `read`/`write`/`edit`/`glob`/`grep` call is allowed to touch, and a bash
-   command's jail **MUST NOT** be treated as a substitute for gating that command in the first
-   place. Both are test-pinned (`tests/integration/test_sandboxed_exec.py`).
-4. **Honest capability reporting: two distinct questions, two distinct answers.**
-   - *"Is sandboxing configured/available?"* — a pure, side-effect-free capability probe,
-     `sandbox_availability()`, answerable with no command run at all (the future `docket setup`
-     hook this card leaves for; not wired to any CLI surface yet, per this wave's file-ownership
-     split).
-   - *"Did **this** command run in a jail?"* — a per-call answer. `toolbox.run_bash` **MUST** report
-     the backend actually used whenever `sandbox="auto"` was asked for, as a trailing
-     `[sandbox: <backend>]` marker on the result. When no backend is usable at call time (forced
-     `none` included), `sandbox="auto"` **MUST NOT** run the command: it returns a failure
-     `not run: no sandbox backend is usable [sandbox: none (...)]` with the real reason, because
-     the gate allowed the command on the promise of a jail (Tool-approval gates item 1). `sandbox="off"` (the default) **MUST NOT** emit this
-     marker at all, and **MUST NOT** change `run_bash`'s output in any other way — the unsandboxed
-     path is byte-for-byte the function that shipped in P19-2.
-   - A boolean meaning "sandboxing is configured" **MUST NOT** be conflated with "this command ran
-     in a jail" anywhere this is surfaced. Requirement 5 covers the specific failure mode this rule
-     exists to prevent.
-5. **A jail that fails to start MUST fail closed, not fall back to unsandboxed.** If `sandbox="auto"`
-   resolves to a real backend (`sandbox_availability()` said `landlock`, `seatbelt` or `docker`) but the actual
-   subprocess launch raises (`OSError` — the binary vanished, permissions changed, the daemon died
-   between the probe and the call), `run_bash` **MUST** return a failure naming the backend that
-   failed to start (`"sandbox (<backend>) failed to start: <error>"`) and **MUST NOT** silently retry
-   the command unsandboxed. A jail that is claimed and absent is worse than no jail at all, because
-   it is trusted; a refusal is honest.
-6. **Environment is minimized inside a real jail, never inherited wholesale.** When an actual
-   backend (`landlock`, `seatbelt` or `docker`) is in effect, the jailed process **MUST NOT** receive the full host
-   environment `run_bash`'s unsandboxed path uses — only `PATH`, the operator's git identity
-   (`system.git_identity_env`: the four `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variables when set, else
-   `user.name`/`user.email` as host git resolves them in the root, so a jailed commit carries the
-   operator's identity on either backend; never a credential), plus whatever `ToolContext.env`
-   explicitly injects (e.g. `DOCKET_SCRATCH_DIR`, per the existing pod resource-allocation
-   convention in `core/resources.py`; it wins over the identity). Forwarding the full host environment into a "sandboxed" call
-   would hand it every credential the unsandboxed path has anyway, undermining the containment this
-   section exists to add. `sandbox="off"`, and `sandbox="auto"` when it resolves to `"none"`, are
-   unaffected — both keep `run_bash`'s original full-environment behavior, since no jail is actually
-   applied in either case.
-7. **Timeout and process-group kill hold under every backend, verified per-backend, not assumed.**
-   `edges/adapters/toolbox.py`'s existing timeout contract — start the command in its own session so
-   a hang with forked children can still be killed as a whole (`_kill_group`) — **MUST** continue to
-   leave no orphan under a real jail:
-   - **landlock** (and seatbelt): `_kill_group`'s existing process-group `SIGKILL` **MUST** suffice
-     on its own. The jail entry `exec`s the command in place, so it and everything it forks stay in
-     the same host process group `_kill_group` already signals. Verified empirically (see
-     `test_sandboxed_exec.py`'s landlock orphan test): a command that forks two background
-     `sleep`s and hangs leaves zero matching processes after a timeout.
-   - **docker**: `_kill_group` alone **MUST NOT** be relied on — `docker run`'s own CLI process is a
-     thin client, and the real command runs under `dockerd`, a separate process tree the CLI's
-     process group never covers. Killing only the CLI's process group leaves the container running
-     (verified empirically while building this card: a `docker run --rm` process killed via its own
-     process group left its container executing). `run_bash`'s timeout handler **MUST** call
-     `system.docker_kill(<container name>)` — a direct `docker kill`, which (combined with the
-     original run's `--rm`) also removes the container — before, or in addition to, killing the CLI's
-     own process group.
-   - This is a real, test-pinned regression class, not a hypothetical: the docker case was planted
-     and verified red during this card's development by temporarily removing the `docker_kill` call
-     from the timeout handler — the container was still `docker ps`-visible after the call returned;
-     reverted, it is not (see `test_sandboxed_exec.py::TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`).
-8. **Network is left reachable inside a real jail, under the open mode, by deliberate choice, not
-   oversight.** `landlock_argv` passes `--net open` (no network rule); the docker
-   backend leaves the image's default bridge network untouched. Most legitimate `bash`-tool work
-   (`git fetch`/`push`, package installs) needs network access, and cutting it off is a materially
-   larger, separate decision this card does not make — a network-isolated mode is a natural future
-   addition, not a gap being silently left open. This **MUST NOT** be described as network isolation
-   anywhere in user-facing material; this section governs filesystem and process containment only.
-9. **Scope — stated precisely, matching the Status line (corrected for W18-3: this piece is now
-   live, gated behind the operator's own on/off switch).** This section governs
-   `edges/adapters/toolbox.py`'s `run_bash` and the `bash` tool registration in `core/tools.py`;
-   `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` is the one production caller that
-   decides what `ToolContext.sandbox` a real turn gets. As of this version:
-   - `ToolContext.sandbox` defaults to `"off"` everywhere `ToolContext` is constructed directly
-     (tests, and any future driver). `DocketDriver.run_turn` is the one call site that can pass
-     `"auto"`, and only does so when `core.fleet.get_isolation_enabled()` is true, which only a
-     recorded `docket setup sandbox on` makes it. A `DOCKET_HOME` with no recorded choice is not
-     isolated, and its turns never probe for a backend.
-   - **Fail closed, not fail open, when isolation is on and no backend is usable.**
-     `DocketDriver.run_turn` probes `system.sandbox_availability()` itself before building
-     `ToolContext` (a second call, independent of the one `toolbox.run_bash` makes per `bash` call
-     when `sandbox="auto"`): if isolation is on and the probe comes back `"none"`, the turn is
-     refused outright (`DocketDriver.run_turn` raises `DispatchError`, so pod dispatch settles the
-     task `failed`/`dispatch_refused` after one attempt instead of retrying) and the refusal is
-     audited once (`audit_log("isolation.refused", ...)`) — no LLM call is made and no tool executes.
-     This is deliberately *not* the same behaviour as handing `sandbox="auto"` straight to
-     `toolbox.run_bash` and letting each `bash` call fail individually (requirement 4): a
-     per-call failure only an operator reading raw tool output would ever see is not an acceptable
-     substitute for "isolation is on" actually meaning something, so the turn-level gate refuses
-     before any call gets the chance to fail. The refusal text names the fixes: use Linux 5.13+ (landlock) or macOS (seatbelt), choose docker
-     with `docket setup sandbox backend docker`, or run `docket setup sandbox off`.
+1. **Backend detection is real, not assumed.** `sandbox_availability()` probes, on every call,
+   which backend the host has *right now*:
+   - **`landlock`**: the Linux kernel's own sandbox (`python -m docket.jail`, requirement 10).
+     Requires a real ABI probe (`landlock_create_ruleset` with the VERSION flag returns >= 1); a
+     kernel without Landlock, or one whose seccomp policy blocks the syscall, is unavailable, never
+     assumed.
+   - **`seatbelt`**: macOS `sandbox-exec` (requirement 12), the macOS counterpart of `landlock`;
+     usable when the host is darwin and `/usr/bin/sandbox-exec` exists.
+   - **`docker`**: a container, used only when the operator chose it (`sandboxBackend: docker`)
+     and never probed or picked under `auto`. Requires not just the binary but a reachable daemon
+     (a real `docker info` probe): "installed" **MUST NOT** be treated as "usable".
+   - **`none`**: nothing usable. A turn that asked for isolation is refused (requirement 9); a
+     single `bash` call that asked for a jail runs nothing (requirement 4).
+   - `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`none`) **MUST** override the
+     automatic choice, for tests and for an operator who wants to force or disable a backend.
+     `DOCKET_SANDBOX_PROBE=none` makes the landlock and seatbelt probes report unavailable, as on a
+     host without the kernel feature.
+2. **Opt-in, default off.** `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the
+   `bash` handler **MUST NOT** ask for a jail unless the caller sets `sandbox="auto"`. A jail can
+   break a command the gate would allow (one that reads a path outside the roots for a legitimate
+   reason), and a backend is not on every machine, so an operator verifies a backend on their
+   hosts and then opts in fleet-wide with `docket setup sandbox on` (requirement 9).
+3. **The jail is additive to `resolve_within`, never a replacement.** A `landlock` or `seatbelt`
+   jail grants each of `ToolContext.roots` read-write and the system directories read-only, and
+   nothing else: the operator's `$HOME` and `DOCKET_HOME` (`secrets.json`, every pod's sessions
+   and traces, the audit log) are denied for read as well as write. A `docker` jail is stronger
+   still: nothing outside the mounted roots exists inside the container. Both **MUST** hold at the
+   same time as `resolve_within`'s check on file-tool calls: `sandbox="auto"` **MUST NOT** change
+   what a `read`, `write`, `edit`, `glob` or `grep` call may touch, and a command's jail **MUST
+   NOT** be treated as a substitute for gating that command.
+4. **Honest capability reporting: two questions, two answers.**
+   - *"Is a jail available?"* is a side-effect-free probe, `sandbox_availability()`, answerable
+     with no command run. `docket setup` and `docket setup sandbox` report it (`--json`:
+     `backend`, `kernel`, `available`, `missing`).
+   - *"Did **this** command run in a jail?"* is per call. `run_bash` **MUST** report the backend
+     actually used whenever `sandbox="auto"` was asked for, as a trailing `[sandbox: <backend>]`
+     marker on the result. When no backend is usable at call time (forced `none` included),
+     `sandbox="auto"` **MUST NOT** run the command: it returns
+     `not run: no sandbox backend is usable [sandbox: none (<reasons>)]` with the real reason,
+     because the gate allowed the command on the promise of a jail (Tool-approval gates 1).
+     `sandbox="off"` **MUST NOT** emit the marker and **MUST NOT** change `run_bash`'s output in
+     any other way.
+   - A flag meaning "sandboxing is configured" **MUST NOT** be conflated with "this command ran in
+     a jail" anywhere this is surfaced.
+5. **A jail that fails to start MUST fail closed, not fall back to unsandboxed.** If
+   `sandbox="auto"` resolves to a real backend but the launch raises (`OSError`: the binary
+   vanished, permissions changed, the daemon died between probe and call), `run_bash` **MUST**
+   return a failure naming the backend (`"sandbox (<backend>) failed to start: <error>"`) and
+   **MUST NOT** retry the command unsandboxed. A jail that is claimed and absent is worse than
+   none, because it is trusted.
+6. **The environment is minimized inside a real jail, never inherited.** Under `landlock`,
+   `seatbelt` or `docker` the jailed process **MUST NOT** receive the host environment. It gets
+   only: `PATH` (landlock and seatbelt); the operator's git identity (`git_identity_env`: the four
+   `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variables when set, else `user.name`/`user.email` as host git
+   resolves them in the root, so a jailed commit carries the operator's identity on every backend;
+   never a credential); the pod cache variables (`HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`,
+   `UV_CACHE_DIR`, `PIP_CACHE_DIR`, `npm_config_cache`) pointing at the pod's cache dir when the
+   turn has one; `TMPDIR`, `TMP` and `TEMP` pointing at the launch's private temp dir (landlock and
+   seatbelt); and whatever `ToolContext.env` explicitly injects (e.g. `DOCKET_SCRATCH_DIR`), which
+   wins over all of these. Docker receives the same overlay as `-e` flags. `sandbox="off"` launches
+   with `task_environment`, the host environment minus docket's credentials ("Credentials in task
+   processes").
+7. **Timeout and process-group kill hold under every backend.** `run_bash` starts the command in
+   its own session so a hang with forked children can be killed as a whole; this **MUST** leave no
+   orphan under a real jail:
+   - **landlock** and **seatbelt**: the process-group `SIGKILL` **MUST** suffice on its own. The
+     jail entry `exec`s the command in place, so it and everything it forks stay in the host
+     process group that is signalled: a command that forks two background `sleep`s and hangs leaves
+     zero matching processes after a timeout.
+   - **docker**: the process-group kill alone **MUST NOT** be relied on. `docker run`'s CLI process
+     is a thin client, and the command runs under `dockerd`, a separate process tree; killing only
+     the CLI's group leaves the container running. The timeout handler **MUST** call
+     `docker_kill(<container name>)` (a direct `docker kill`, which with the run's `--rm` also
+     removes the container) before, or in addition to, killing the CLI's group.
+8. **Under network `open` the jail leaves the network reachable.** `landlock_argv` passes
+   `--net open` (no network rule), the seatbelt profile allows `network*`, and docker keeps the
+   image's default bridge. An open jail **MUST NOT** be described as network isolation anywhere in
+   user-facing material; the lockdown is "Network egress and the `fetch` tool" requirement 7.
+9. **Who asks for the jail, and fail closed.** `ToolContext.sandbox` is `"off"` wherever a
+   `ToolContext` is constructed directly. `DocketDriver.run_turn` is the one production caller
+   that passes `"auto"`, and only when isolation is recorded on (`docket setup sandbox on`); a
+   `DOCKET_HOME` with no recorded choice is not isolated, and its turns never probe for a backend.
+   - **Fail closed when isolation is on and no backend is usable.** `DocketDriver.run_turn` probes
+     `sandbox_availability()` itself before building the `ToolContext` (independently of the probe
+     `run_bash` makes per call): if isolation is on and the probe says `none`, the turn **MUST** be
+     refused outright (`DispatchError`, so pod dispatch settles the task `failed` with
+     `dispatch_refused` after one attempt instead of retrying) and audited once
+     (`isolation.refused`); no model call is made and no tool runs. A per-call failure only an
+     operator reading raw tool output would see is not an acceptable substitute for "isolation is
+     on" meaning something. The refusal names the fixes: use Linux 5.13+ (landlock) or macOS
+     (seatbelt), choose docker with `docket setup sandbox backend docker`, or record
+     `docket setup sandbox off`.
    - `docket setup` probes `sandbox_availability()` and reports the backend a turn would use, or
-     that turns will be refused and the two fixes; its JSON `securityGates` carries `isolation`
-     (`off (default)` | `on` | `off`) and `sandboxBackend`. `docket setup sandbox` reports the
-     isolation state only (no host-dependent probe).
-   - There is no more daemon exec path for this section to be contrasted with (P19-7b deleted it);
-     what this section adds is layered underneath the `pre_tool_call`/command-classifier gate
-     above — a second, independent layer on top of calls that already cleared that gate, exactly
-     as requirement 3 states.
-
-10. **The Landlock jail (`docket.jail`, `edges/adapters/landlock.py`).** `landlock_argv(roots,
-    command, network)` returns `[sys.executable, "-m", "docket.jail", "--rw", <root>..., "--net",
-    none|open, "--", "/bin/sh", "-c", command]`; the first root is the cwd. The entry sets
-    `PR_SET_NO_NEW_PRIVS`, then a Landlock ruleset that handles every filesystem right the probed
-    ABI knows: read-write (read, write, make-*, remove, plus refer/truncate/ioctl-dev where the
-    ABI has them) on the roots, including the launch's private temp dir (never the shared system
-    temp dir); read and execute only on `/usr`, `/lib`, `/lib64`,
-    `/bin`, `/sbin`, `/etc`, `/opt`, `sys.prefix`, `sys.base_prefix` (a venv's interpreter and
-    stdlib) and `/dev/zero|urandom`, read-write on
-    `/dev/null|tty`. Nothing else is granted, so the operator's home and `DOCKET_HOME` are denied
-    for read as well as write. A listed path that does not exist is skipped. Under `--net none` the
-    entry handles Landlock TCP bind/connect with no rule when ABI >= 4, and installs a seccomp
-    filter (via `prctl`, no libseccomp) that returns `EPERM` for `socket(AF_INET|AF_INET6)`,
-    for `io_uring_setup`, for any x32 syscall number, and for any architecture other than x86_64
-    and aarch64. `--net open` installs no filter and handles no network right. The entry fails
-    closed: if the ruleset cannot be enforced, or `--net none` can be enforced by neither layer, it
-    exits 125 naming the reason and runs nothing. It does not hide `/proc`. A Landlock rule cannot
-    take a right away from a sub-path of a granted root, so the entry takes `--ro <path>` for the
-    git dir, and `--rw` only for the git dir's writable parts (Enablement requirement 3); a root holding a `.git` directory
-    is passed `--refuse <reason>`, which exits 125 naming it and runs nothing. Pinned by
-    unit tests over the ruleset plan, the argv and the BPF program (no syscall) and by
-    `tests/integration/test_jail_landlock.py` on a real kernel.
-11. **One jail builder for every command docket launches.** `edges/adapters/system.py::jail_launch(roots,
-    command, backend, network, env, extra_rw)` is the only place that turns a backend, the roots
-    and an optional `extra_rw: tuple[Path, ...]` (read-write beside the roots, never the cwd) into an
-    argv, a child environment (PATH plus the explicit overlay plus the operator's git identity; no
-    host environment) and, for docker, a container name. `toolbox.run_bash`, `run_verify_cmd` and the
-    `run:` executor all call it, so a `verifyCmd` or a `run:` command runs under exactly the jail a
-    `bash` call of the same pod would. The decision is the turn's own: isolation recorded on and a
-    usable backend (`docket_runtime._resolve_sandbox`), the pod's network
-    (`docket_runtime._resolve_network`). **Fail closed**: with isolation on and no usable backend
-    the command is not run and the verify gate fails (`[verify not run: ...]`) and the `run:` step
-    fails; a jail that cannot start is a failure, never a retry on the host. With isolation off both
-    run on the host as before, byte for byte, still with `task_environment`. The
-    `classify_command`/`match_high_risk` refusal of the verify command stays ahead of any
-    subprocess. Stdio MCP servers are jailed by the same backends in `mcp_client._jailed_command`
-    whenever the turn is isolated and the server does not declare `isolate: false`.
-12. **The Seatbelt jail (`system.seatbelt_argv`).** `seatbelt_argv(roots, command, network)` returns
-    `["/usr/bin/sandbox-exec", "-p", <profile>, "/bin/sh", "-c", command]`. The profile is one fixed
-    template: `(version 1)`, `(deny default)`, `process-exec*`, `process-fork`, `sysctl-read`,
-    `mach-lookup`, `file-read-metadata` and signals to self allowed; `file-read-data` of the
-    literal `/` (the root's entry names, not its subtree: macOS 26 aborts a process that cannot
-    list it, with SIGABRT and no output); read-only `subpath` rules for `/usr`, `/bin`, `/sbin`,
-    `/etc`, `/opt` (Homebrew's libraries), `/private/etc`, `/System/Library`, `/Library`,
-    `sys.prefix` and `sys.base_prefix`;
-    read of `/dev/random|urandom`, read-write of `/dev/null|zero|tty|dtracehelper`; read-write
-    `subpath` rules for each root, its repository dirs and the launch's private temp dir (never
-    the real `$TMPDIR`); a
-    `(deny file-write* ...)` for each guarded git path (hooks, config) after the grants; then
-    `(deny network*)` or `(allow network*)`. Paths are quoted for the profile language (`\` and `"`
-    escaped). The operator's home and `DOCKET_HOME` are unreadable. `sandbox-exec` is deprecated by
-    Apple but still ships. `jail_launch` (item 11) builds it like the `landlock` argv, so `bash`,
-    verify and `run:` all reach it.
-
+     that turns will be refused and the fixes; its `--json` `securityGates` carries `isolation`
+     (`off (default)` | `on` | `off`), `sandboxBackend`, `sandboxUsable`, `dockerImageHasGit`,
+     `network` and `networkEnforced`. `docket setup sandbox` reports the gate, the isolation state,
+     the probed backend, the network mode and the read-only grants.
+10. **The Landlock jail (`python -m docket.jail`).** `landlock_argv(roots, command, network,
+    read_only)` returns `[sys.executable, "-m", "docket.jail", "--rw", <path>..., "--ro",
+    <path>..., ["--refuse", <reason>], "--net", none|open, "--", "/bin/sh", "-c", command]`; the
+    first root is the cwd. The entry sets `PR_SET_NO_NEW_PRIVS`, then a Landlock ruleset that
+    handles every filesystem right the probed ABI knows: read-write (read, write, make-*, remove,
+    plus refer, truncate and ioctl-dev where the ABI has them) on the `--rw` paths, which include
+    the launch's private temp dir (never the shared system temp dir); read and execute only on
+    `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/etc`, `/opt`, `sys.prefix`, `sys.base_prefix` (a
+    venv's interpreter and stdlib), `/dev/zero`, `/dev/urandom` and the `--ro` paths; read-write on
+    `/dev/null` and `/dev/tty`. Nothing else is granted, so the operator's home and `DOCKET_HOME`
+    are denied for read as well as write. A listed path that does not exist is skipped. Under
+    `--net none` the entry handles Landlock TCP bind and connect with no rule when the ABI is >= 4,
+    and on x86_64 and aarch64 installs a seccomp filter (through `prctl`, no libseccomp) that
+    returns `EPERM` for `socket(AF_INET|AF_INET6)`, for `io_uring_setup`, for any x32 syscall
+    number, and for any syscall made under a different audit architecture than the host's. On
+    another host architecture there is no filter, and `--net none` relies on Landlock alone.
+    `--net open` installs no filter and handles no network right. The entry fails closed: if the
+    ruleset cannot be enforced, or `--net none` can be enforced by neither layer, it exits 125
+    naming the reason and runs nothing. It does not hide `/proc`. A Landlock rule cannot take a
+    right away from a sub-path of a granted root, so the git dir goes in as `--ro`, and only the git
+    dir's writable parts as `--rw` (Workspace isolation 4); a root holding a `.git` directory is
+    passed `--refuse <reason>`, which exits 125 naming it and runs nothing.
+11. **One jail builder for every command docket launches.** `jail_launch(roots, command, backend,
+    *, network, env, extra_rw, cache_dir, read_only)` is the only place that turns a backend, the
+    roots, `extra_rw` (read-write beside the roots, never the cwd), the pod cache dir (writable,
+    and the jailed command's home and caches) and the read-only grants into an argv, a child
+    environment (requirement 6; no host environment) and, for docker, a container name. `run_bash`
+    and `run_command` (so `verifyCmd`, `run:` steps and the prepare install) all call it, so a
+    `verifyCmd` or a `run:` command runs under exactly the jail a `bash` call of the same pod
+    would. The decision is the turn's own: isolation recorded on and a usable backend, with the
+    pod's network. **Fail closed**: with isolation on and no usable backend the command is not run,
+    the verify gate fails (`[verify not run: ...]`) and the `run:` step fails; a jail that cannot
+    start is a failure, never a retry on the host. With isolation off both run on the host with
+    `task_environment`. The `match_high_risk` refusal stays ahead of any subprocess. Stdio MCP
+    servers are jailed by the same backends whenever the turn is isolated, with no per-server
+    opt-out; with isolation on and no usable backend the server is not spawned.
+12. **The Seatbelt jail.** `seatbelt_argv(roots, command, network, read_only)` returns
+    `["/usr/bin/sandbox-exec", "-p", <profile>, "/bin/sh", "-c", command]`. The profile is one
+    fixed template: `(version 1)`, `(deny default)`; `process-exec*`, `process-fork`,
+    `sysctl-read`, `mach-lookup`, `file-read-metadata` and signals to self allowed;
+    `file-read-data` of the literal `/` (the root's entry names, not its subtree: macOS 26 aborts a
+    process that cannot list it, with SIGABRT and no output); read-only `subpath` rules for `/usr`,
+    `/bin`, `/sbin`, `/etc`, `/opt` (Homebrew's libraries), `/private/etc`, `/System/Library`,
+    `/Library`, `sys.prefix`, `sys.base_prefix` and the read-only grants; read of
+    `/dev/random|urandom`, read-write of `/dev/null|zero|tty|dtracehelper`; read-write `subpath`
+    rules for each root, its repository dirs and the launch's private temp dir (never the real
+    `$TMPDIR`); a `(deny file-write* ...)` for each guarded git path after the grants, then the
+    re-opened task branch ref dirs; then `(deny network*)` or `(allow network*)`. Paths are quoted
+    for the profile language (`\` and `"` escaped). The operator's home and `DOCKET_HOME` are
+    unreadable. `sandbox-exec` is deprecated by Apple but still ships. `jail_launch` builds it like
+    the `landlock` argv, so `bash`, verify and `run:` all reach it.
 13. **Host-side git never reads what the jail can write.** `provision_task_worktree` records the
     worktree's `gitDir` and `commonDir` beside `dir`, `branch` and `baseCommit`. Resolving a task's
-    worktree (`dispatch._task_worktree_dir`) registers them with `system.trust_worktree`, and from
-    then on every host-side git call for that path (`system._git_run`: status, the pin commit, diffs,
-    the identity lookup) names them through `GIT_DIR`, `GIT_COMMON_DIR` and `GIT_WORK_TREE`, and
-    `system.git_dirs` answers from the record when building the next jail. A `.git` file, `gitdir`
-    or `commondir` the agent rewrote is therefore never followed. A worktree whose `config.worktree`
-    exists while the shared config enables `extensions.worktreeConfig` is refused by those calls
-    (the file can name a program to run), since Landlock cannot keep it unwritable. A task with no
-    recorded `gitDir` (one that ran in place) is not covered. The escape matrix pins this with a
-    planted `core.fsmonitor` that must never run.
+    worktree registers them (`trust_worktree`), and from then on every host-side git call for that
+    path (status, the pin commit, diffs, the identity lookup) names them through `GIT_DIR`,
+    `GIT_COMMON_DIR` and `GIT_WORK_TREE`, and `git_dirs` answers from the record when building the
+    next jail. A `.git` file, `gitdir` or `commondir` the agent rewrote is therefore never
+    followed. A worktree whose `config.worktree` exists while the shared config enables
+    `extensions.worktreeConfig` is refused by those calls (the file can name a program to run),
+    since Landlock cannot keep it unwritable. A task with no recorded `gitDir` (one that ran in
+    place) is not covered.
 14. **The operator grants the toolchain read-only.** A tool installed under the operator's home
     (a version manager's Node, the user site of the system Python) is unreadable in the jail, so a
     gate that needs it fails like a failing test. `docket setup sandbox read add <path>` records
-    an absolute path in `FleetSecurity.read_only` (`fleet.json` `security.readOnly`, machine-wide,
-    audited `gates.read`), and `read remove <path>` drops a recorded path, existing or not (exit
-    1 when it is not recorded). `add` is refused (exit 1, nothing written) for a relative or
-    missing path, `DOCKET_HOME` or a path inside it, and the operator's home or any ancestor of
-    it or of `DOCKET_HOME`. A recorded path is stored resolved. A pod may only narrow the
-    machine's list, never widen it: its `readOnly` setting (`docket pod set readOnly ...` or a
-    `pod.yaml` `settings` mapping) is unset (every machine grant), `none` (no grant), or a
-    comma-separated list whose every path must already be a machine grant when it is written
-    (`coerce` refuses any other, so a repository's team directory cannot add a path). A turn's
-    grants are `core/pod.py::effective_read_only`: the machine's list, kept only where the pod
-    names it; a grant the operator later removes leaves every pod, and unreadable pod settings
-    fail closed to none. Every jail docket starts while isolation is on reads and executes those
-    paths and never writes them: `--ro` for Landlock, a read-only `subpath` for Seatbelt, a
-    `:ro` bind mount for docker; `bash`, `verifyCmd`, `run:` steps and stdio MCP servers alike,
-    through `jail_launch` and `mcp_client._jailed_command`. A path removed from disk after it was
-    recorded is skipped like any other missing grant. `docket setup sandbox` lists them, and its
-    `--json` carries `readOnly` (a list, empty by default). With isolation off nothing changes.
+    an absolute path in `fleet.json` `security.readOnly` (machine-wide, audited `gates.read`), and
+    `docket setup sandbox read remove <path>` drops a recorded path, existing or not (exit 1 when
+    it is not recorded). `add` is refused (exit 1, nothing written) for a relative or missing path,
+    `DOCKET_HOME` or a path inside it, and the operator's home or any ancestor of it or of
+    `DOCKET_HOME`. A recorded path is stored resolved. A pod may only narrow the machine's list,
+    never widen it: its `readOnly` setting (`docket pod set readOnly ...` or a `pod.yaml` `settings`
+    mapping) is unset (every machine grant), `none` (no grant), or a comma-separated list whose
+    every path must already be a machine grant when it is written (`PodSettings.coerce` refuses any
+    other, so a repository's team directory cannot add a path). A turn's grants are
+    `effective_read_only(pod)`: the machine's list, kept only where the pod names it; a grant the
+    operator later removes leaves every pod, and unreadable pod settings fail closed to none.
+    Every jail docket starts while isolation is on reads and executes those paths and never writes
+    them: `--ro` for Landlock, a read-only `subpath` for Seatbelt, a `:ro` bind mount for docker;
+    `bash`, `verifyCmd`, `run:` steps and stdio MCP servers alike. A path removed from disk after
+    it was recorded is skipped like any other missing grant. `docket setup sandbox` lists them,
+    and its `--json` carries `readOnly` (a list, empty by default). With isolation off nothing
+    changes.
     A jailed `bash` call that exits 126 (found but cannot execute) **MUST** say so in its error,
     after `command exited 126`: the jail could not execute it, a retry will not help, and the
-    operator grants a toolchain with `docket setup sandbox read add <path>`. It is a message,
-    not a new stop condition: the no-progress stop still bounds a model that keeps retrying.
-15. **A prepared worktree is readable, never writable, and its install has the network (P45-1,
-    ADR 0029 point 1).** The install command of a task's worktree (`pod-dispatch.spec.md` "Task
+    operator grants a toolchain with `docket setup sandbox read add <path>`. It is a message, not a
+    new stop condition: the no-progress stop still bounds a model that keeps retrying.
+15. **A prepared worktree is readable, never writable, and its install has the network
+    (ADR 0029).** The install command of a task's worktree (pod-dispatch.spec.md, "Task
     preparation") is a docket-launched command like a `verifyCmd`: with isolation on it runs
     through `jail_launch` with the worktree writable and **the network open for that launch
     only**, whatever the pod's `network` records; with isolation off it runs on the host. Hops,
     `verifyCmd`, `run:` steps and gates keep the pod's `network`. The cache entry the install is
-    kept in (`DOCKET_HOME/cache/prepare/<codebase>/<entry>`) is added as a read-only root, as
+    kept in (`$DOCKET_HOME/cache/prepare/<codebase>/<entry>`) is added as a read-only root, as
     requirement 14's grants are, to every jailed command whose worktree holds a symlink into it
-    (`core/prepare.py::linked_entries`): readable and executable, not writable, so a hop cannot
-    alter what the next task of the codebase links. The entry is found from the worktree's own
-    links, never from a setting a repository can write. Escape-matrix rows: a jailed command reads
-    the entry and cannot write it (an unjailed control can), and a prepare launch reaches a
-    listener while a hop under `network: none` does not.
+    (`linked_entries`): readable and executable, not writable, so a hop cannot alter what the next
+    task of the codebase links. The entry is found from the worktree's own links, never from a
+    setting a repository can write.
 
-### Protected paths and the reviewed digest (P45-3, ADR 0029 point 3)
+### Protected paths and the reviewed digest (ADR 0029)
 
-A check is never defined by the change it checks. `core/protected_paths.py` holds the rules as
-pure functions; `pod-dispatch.spec.md` "A change that edits its own check" is where a task meets
-them.
+A check is never defined by the change it checks. The rules below are pure functions over
+repository-relative paths; pod-dispatch.spec.md "A change that edits its own check" is where a
+task meets them.
 
-1. **Defaults.** A path is protected when it matches one of: the lockfiles `core/prepare.py`
-   knows (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`,
-   `Cargo.lock`), `package.json`, `pyproject.toml`, `Cargo.toml`, `.eslintrc*`, `eslint.config.*`,
+1. **Defaults.** A path is protected when it matches one of: the lockfiles the prepare step knows
+   (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Cargo.lock`),
+   `package.json`, `pyproject.toml`, `Cargo.toml`, `.eslintrc*`, `eslint.config.*`,
    `tsconfig*.json`, `vitest.config.*`, `jest.config.*`, `ruff.toml`, `setup.cfg`, `tox.ini`,
    `pytest.ini`, `mypy.ini`, `.docket/**` and `.github/workflows/**`. A pattern without a `/` is
    matched against the file name at any depth (`web/package.json` is protected); a pattern with a
@@ -1141,487 +902,392 @@ them.
    with a leading `./` removed, that is a tracked file of the repository is protected. Only files
    are named this way: `pytest tests/` names a directory and protects nothing, and a `make` or
    `npm run` target is covered only through the files it reads that the defaults already hold.
-4. **The reviewed digest covers those files' contents.** `core.reviewed_repos` computes the
-   digest of a set of run items together with, for each tracked file those items' commands name
-   (items of kind `allow-commands`, `network` and `role-loosens` name none), the file's git blob
-   id as it stands in the codebase root. A file whose content changes, or which is added or
-   removed from the set, changes the digest and the 16-hex review code, so `pod update` and
-   `docket run` ask the person again; the stored items are unchanged, so a refusal shows the same
-   before/now lines. A root that is not a git repository contributes no files.
+4. **The reviewed digest covers those files' contents.** The reviewed digest of a set of run items
+   covers, for each tracked file those items' commands name (items of kind `allow-commands`,
+   `network` and `role-loosens` name none), the file's git blob id as it stands in the codebase
+   root. A file whose content changes, or which is added to or removed from the set, changes the
+   digest and the 16-hex review code, so `docket pod update` and `docket run` ask the person again;
+   the stored items are unchanged, so a refusal shows the same before/now lines. A root that is
+   not a git repository contributes no files.
 
-### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
+### Network egress and the `fetch` tool (D-23)
 
-**Say the true thing: the network default is `none`, but only a sandbox can enforce it.** With isolation off (the default, D-56) a turn's network is still open and the mode reads `none (default)`; nothing is refused until the operator records `none` (global or pod) explicitly. This is not a
-gap being quietly disclosed — it is the explicit, deliberate outcome of decision D-23, and this
-section exists so no other part of this spec (or any user-facing material) is read as implying
-otherwise.
+**The network default is `none`, but only a sandbox can enforce it.** With isolation off (the
+default) a turn's network is open and the mode reads `none (default)`; nothing is refused until
+the operator records `none` (global or pod) explicitly. No part of this spec, and no user-facing
+material, may be read as saying otherwise.
 
-1. **The measured gap, precisely — not a general worry.** `bash`'s command classifier
-   (`core/security.py`'s `classify_command`) correctly routes `curl`/`wget` to `ask`, because
-   neither is a member of `SAFE_BINS`. But `python3`, `node`, and `git` **are** curated-allowlist
-   members (`SAFE_BINS` includes all three) — `python3 -c "import urllib.request; ..."`, a `node`
-   one-liner, and `git clone <url>` **MUST NOT** be described as gated: they run unattended today
-   under the existing allowlist, exactly like `git status` or `npm test` does, because the
-   classifier gates by binary + argument shape, not by "does this binary happen to also make
-   network calls". Both interpreters are on the allowlist because agents need them constantly for
-   ordinary, benign work — removing them would be a far larger regression than this card scopes
-   (the same tradeoff the "High-risk action classes" section above already made for `git`/`npm`).
-2. **What this card ships instead: an inspectable path, not a closed gate.** `fetch`
-   (`edges/adapters/fetch.py`'s `fetch_url`, registered in `core/tools.py`'s `builtin_registry()`
-   as a `kind="read"` tool only while `FETCH_ALLOWED_DOMAINS` is non-empty, P44-3) is a
-   first-class, gated tool an agent can reach for instead of the
-   escape hatches above. It enforces, inside the handler itself (mechanism, not policy — the same
-   discipline `toolbox.resolve_within` uses for file paths):
-   - **A domain allowlist** (`config.FETCH_ALLOWED_DOMAINS`, exact hostnames, comma-separated,
-     **empty by default**). A host not on the list **MUST** be refused before any socket opens —
-     `fetch` does not default to "reachable everywhere" just because the fleet's overall egress
-     posture is open; an operator opts a domain in explicitly.
-   - **A response size cap** (`config.FETCH_MAX_RESPONSE_BYTES`, default 200,000 bytes). A
-     response over the cap **MUST** be truncated with the truncation announced in the returned
-     text, matching `toolbox.MAX_OUTPUT_CHARS`'s existing announced-truncation contract for every
-     other built-in.
-   - **A wall-clock deadline** (`config.FETCH_TIMEOUT_S`, default 15s). The timeout bounds the
-     whole call, not each socket operation: the body is read in chunks and the call fails with a
-     timed-out verdict once the monotonic deadline passes, so a server dripping bytes slower than
-     the deadline cannot hold the call open. The deadline is checked between chunks; a single
-     blocked read ends at the socket timeout, so the call returns at most one socket timeout past
-     the deadline. The tool's own `timeout` argument is clamped to `FETCH_CLAMP_MULTIPLE` (4) times
-     `FETCH_TIMEOUT_S` (60s by default); a larger value is silently bounded to that, never
-     accepted as-is, and a non-positive value falls back to `FETCH_TIMEOUT_S`.
-   - **A redirect guard.** A redirect off the domain allowlist **MUST** be refused, not silently
-     followed — otherwise the allowlist would be decorative (an allowlisted host could simply
-     redirect anywhere). `edges/adapters/fetch.py`'s `_DomainLockedRedirectHandler` intercepts
-     `urllib`'s own redirect-following at the documented extension point
-     (`HTTPRedirectHandler.redirect_request`) before a connection to the new host is ever opened.
-3. **Gated exactly like every other built-in — no second execution path.** `fetch` is registered
-   through `ToolRegistry.register` like `read`/`write`/`bash`, and every call still passes through
-   `core/tools.py`'s single chokepoint (`dispatch_tool` -> `evaluate_tool_call`) — a `pre_tool_call`
-   policy can `block`/`require_approval`/`warn`/`redact` a `fetch` call exactly as it can any other
-   tool, rendered the same `"fetch url=... timeout=..."` shape `render_tool_call` already produces
-   for everything else. Because `kind="read"`, a `fetch` call does **not** additionally route
-   through the exec command classifier (there is no shell command to classify) — its containment
-   is the domain allowlist above, enforced in the handler, the same layering `ToolContext.sandbox`
-   uses for the `bash` tool (mechanism underneath the gate, never a substitute for it).
-4. **What the `fetch` card did not ship, and where it landed (decisions D-23/D-24, then ADR 0020
-   §4).** The opt-in `--network none`/`--unshare-net` sandbox lockdown from "Exec sandbox for the
-   `bash` tool" above's requirement 8 was **deferred** by that card and is now requirement 7
-   below. It would need to be
-   default-off to avoid breaking `npm install`/`pip`/`git clone` (the same three commands most
-   `bash`-tool work already depends on), which means it would buy a config option nobody has yet
-   asked to turn on, not a guarantee — see D-23/D-24 in `ROADMAP.md`. `fetch` closes none of the
-   escape hatches named in requirement 1; it exists so reaching for the network doesn't have to
-   mean reaching for one of them.
-5. **Scope — stated precisely, matching the Status line.** This section governs
-   `edges/adapters/fetch.py`'s `fetch_url` and the `fetch` tool registration in `core/tools.py`
-   only. `FETCH_ALLOWED_DOMAINS` is empty in a default install — no domain is reachable through
-   `fetch` until an operator configures one — and nothing in this section changes what `bash`,
-   `python3`, `node`, or `git` may already do; those stay exactly as described in requirement 1.
-6. **Fetch results pass `pre_input` exactly like MCP results (ADR 0020 §7).** The text of a
-   successful `fetch` response and the error text of a failed one **MUST** be evaluated through
-   `core.policy.policy_eval_detail(ctx.role, "pre_input", text, trusted=False)` inside the
-   `_fetch_tool` handler; a result with no text (an empty response or a fetch error before any
-   text is produced) passes unchanged and unaudited. A `block` or `require_approval` result
-   **MUST** replace the outcome with `ok=False` naming the policy id, and **MUST** be audited
-   (`fetch.result_blocked`, naming url and host). A `redact` result **MUST** return the text
-   passed through `core.trace.redact`, and a `warn` result **MUST** return it unchanged; both
-   **MUST** be audited (`fetch.result_warn`). `allow`, or no hit, passes the outcome byte-identical
-   with no audit entry.
-7. **A network lockdown mode (ADR 0020 §4, default `none` since ADR 0024 §5).** `none` is the default: a fresh home reports `network none`, `open` is an operator grant (`docket setup sandbox network open`) and a pod's `network` can only narrow it. The refusal below fires only when `none` was recorded explicitly (global or pod); the unrecorded default with isolation off runs, with the network open, because nothing can cut it. The global mode
-   (`docket setup sandbox network none|open`, `FleetSecurity.network_mode`, audited `gates.network`) and
-   the pod setting `network` (`none`|`open`; `open` means follow the global mode) resolve through
-   `core.pod.effective_network`: `none` when either says `none`, so a pod's `open` never widens a
-   global `none` and a pod's `none` narrows a global `open`; unreadable pod settings fail closed
-   to `none`. Under `none`, `system.landlock_argv(..., network=False)` passes `--net none` and `system.docker_run_argv(..., network=False)`
-   adds `--network none`; `ToolContext.network` carries it to `toolbox.run_bash`. Only the sandbox
-   can enforce it, so a turn whose effective mode is `none` with isolation off **MUST** be refused
-   before any model call (`DispatchError`, as for the isolation refusal: one attempt, one
-   `network.refused` audit entry, task `dispatch_refused`), naming both settings. `fetch` runs in
-   docket's own process and is untouched: its domain allowlist stays the inspectable path.
-   `docket setup sandbox`, `docket setup` and `docket pod show` report the mode and scope.
+1. **The open path, precisely.** `bash`'s command classifier routes `curl` and `wget` to `ask`,
+   because neither is on `SAFE_BINS`. But `python3`, `node` and `git` **are** on the allowlist:
+   `python3 -c "import urllib.request; ..."`, a `node` one-liner and `git clone <url>` **MUST NOT**
+   be described as gated. They run unattended under the allowlist, like `git status` or `npm test`,
+   because the classifier gates by binary and argument shape, not by whether a binary can also
+   make network calls. They stay on the allowlist because agents need them constantly for
+   ordinary work (the trade-off "High-risk action classes" makes for `git` and `npm`).
+2. **`fetch`: an inspectable path, not a closed gate.** `fetch` (`fetch_url`) is a built-in,
+   gated tool of kind `read`, offered to the model only while `FETCH_ALLOWED_DOMAINS` is non-empty
+   (agent-loop.spec.md requirement 83). It enforces, inside the handler itself (mechanism, as
+   `resolve_within` is for file paths):
+   - **A domain allowlist** (`FETCH_ALLOWED_DOMAINS`, exact hostnames, comma-separated, **empty
+     by default**). A host not on the list **MUST** be refused before any socket opens; `fetch`
+     does not reach everywhere because egress is otherwise open, an operator opts a domain in.
+   - **A response size cap** (`FETCH_MAX_RESPONSE_BYTES`, default 200,000 bytes). A response over
+     the cap **MUST** be truncated with the truncation announced in the returned text, the
+     announced-truncation contract every other built-in has.
+   - **A wall-clock deadline** (`FETCH_TIMEOUT_S`, default 15 s). The deadline bounds the whole
+     call, not each socket operation: the body is read in chunks and the call fails as timed out
+     once the monotonic deadline passes, so a server dripping bytes cannot hold the call open. The
+     deadline is checked between chunks; a single blocked read ends at the socket timeout, so the
+     call returns at most one socket timeout past the deadline. The tool's own `timeout` argument
+     is clamped to four times `FETCH_TIMEOUT_S` (60 s by default); a larger value is silently
+     bounded, and a non-positive value falls back to `FETCH_TIMEOUT_S`.
+   - **A redirect guard.** A redirect off the domain allowlist **MUST** be refused, not followed,
+     or the allowlist would be decorative. `urllib`'s redirect-following is intercepted at its
+     extension point (`HTTPRedirectHandler.redirect_request`) before a connection to the new host
+     opens.
+3. **Gated like every other built-in, no second execution path.** `fetch` is registered like
+   `read`, `write` and `bash`, and every call passes `dispatch_tool` → `evaluate_tool_call`: a
+   `pre_tool_call` policy can `block`, `require_approval`, `warn` or `redact` a `fetch` call,
+   rendered `"fetch url=... timeout=..."` by `render_tool_call`. Being of kind `read`, a `fetch`
+   call does not pass the exec command classifier (there is no shell command); its containment is
+   the domain allowlist in the handler.
+4. **`fetch` closes none of the open paths in requirement 1.** It exists so reaching for the
+   network does not have to mean reaching for one of them. Cutting a jailed command's network is
+   requirement 7.
+5. **Scope.** This section governs `fetch_url` and the `fetch` tool registration. A default
+   install reaches no domain through `fetch`, and nothing here changes what `bash`, `python3`,
+   `node` or `git` may do; those stay as requirement 1 describes.
+6. **`fetch` results pass `pre_input` like MCP results (ADR 0020).** The text of a successful
+   `fetch` response and the error text of a failed one **MUST** be evaluated through
+   `policy_eval_detail(ctx.role, "pre_input", text, trusted=False, project=ctx.project)` inside the
+   `fetch` handler, so the pod's own policies apply; a result with no text (an empty response, or
+   a fetch error before any text) passes unchanged and unaudited. A `block` or `require_approval`
+   result **MUST** replace the outcome with `ok=False` naming the policy id, and **MUST** be audited
+   (`fetch.result_blocked`, naming url and host). A `redact` result **MUST** return the text passed
+   through `redact`, and a `warn` result **MUST** return it unchanged; both **MUST** be audited
+   (`fetch.result_warn`). `allow`, or no hit, passes the outcome unchanged with no audit entry.
+7. **The network lockdown mode (ADR 0020, default `none` per ADR 0024).** `none` is the default: a
+   fresh home reports network `none`, `open` is an operator grant (`docket setup sandbox network
+   open`), and a pod's `network` can only narrow it. The refusal below fires only when `none` was
+   recorded explicitly (global or pod); the unrecorded default with isolation off runs, with the
+   network open, because nothing can cut it. The global mode (`docket setup sandbox network
+   none|open`, `fleet.json` `security.networkMode`, audited `gates.network`) and the pod setting
+   `network` (`none`|`open`; `open` means follow the global mode) resolve through
+   `effective_network`: `none` when either says `none`, so a pod's `open` never widens a global
+   `none` and a pod's `none` narrows a global `open`; unreadable pod settings fail closed to
+   `none`. Under `none`, `landlock_argv(..., network=False)` passes `--net none`, the seatbelt
+   profile denies `network*`, and `docker_run_argv(..., network=False)` adds `--network none`;
+   `ToolContext.network` carries it to `run_bash`. Only the sandbox can enforce it, so a turn whose
+   effective mode is a recorded `none` with isolation off **MUST** be refused before any model
+   call (`DispatchError`, as for the isolation refusal: one attempt, one `network.refused` audit
+   entry naming the scope, task `dispatch_refused`), naming the setting and the two fixes.
+   `fetch` runs in docket's own process and is untouched: its domain allowlist stays the
+   inspectable path. `docket setup sandbox`, `docket setup` and `docket pod show` report the mode
+   and scope.
    **Reporting the mode (one owner).** Only the sandbox cuts the network, so every surface that
-   prints the global mode (`docket setup sandbox` and its `--json`, the `docket setup sandbox network`
-   confirmation, `docket status`'s sandbox phrase, `docket setup` and its `--json`) **MUST**
-   take its wording from `core.network_posture.global_posture` and **MUST NOT** claim the network
-   is cut unless isolation is on. With isolation off and mode `none` the line reads `none (<scope>),
-   not enforced: isolation off, egress is open`, carries no `ok` marker, and the status phrase reads
-   `network none (not enforced: isolation off)`. With isolation on the line is unchanged
-   (`none (<scope>); jailed tool calls have no network`). The JSON surfaces gain `networkEnforced`
-   (true only when isolation is on and the mode is `none`). `docket pod show`'s `Network:` line (a
-   member's or a pod's effective mode) is worded by the same `core.network_posture.network_posture`;
-   its `--json` keeps `{mode, scope}`. `core.pod.effective_network` is not changed by reporting.
+   prints the mode (`docket setup sandbox` and its `--json`, the `docket setup sandbox network`
+   confirmation, `docket status`'s sandbox phrase, `docket setup` and its `--json`, `docket pod
+   show`'s `Network:` line) **MUST** take its wording from one posture function
+   (`network_posture`; `global_posture` for the fleet record) and **MUST NOT** claim the network is
+   cut unless isolation is on. With isolation off and mode `none` the line reads `none (<scope>),
+   not enforced: isolation off, egress is open`, carries no `ok` marker, and the status phrase
+   reads `network none (not enforced: isolation off)`. With isolation on the line reads
+   `none (<scope>); jailed tool calls have no network`. The JSON surfaces carry `networkEnforced`
+   (true only when isolation is on and the mode is `none`). `docket pod show --json` keeps
+   `{mode, scope}`.
 
-### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
+### Parked calls and single-use pre-grants (ADR 0016)
 
-An in-turn `ask` verdict may need to end the turn without blocking the calling thread on a human
-answer, and a human's grant of that exact call needs a way to reach a later, re-entered turn
-without asking again.
+An in-turn `ask` may need to end the turn without blocking on a human answer, and a human's grant
+of that exact call needs a way to reach a later, re-entered turn without asking again.
 
-1. **`ToolContext.approval_mode`** is `Literal["wait", "park", "refuse"]`. `"wait"` and
-   `"refuse"` are unchanged from the existing behaviour this spec already describes. Under
-   `"park"`, `dispatch_tool`'s `ask` branch **MUST NOT** call `core.approval.wait_for_approval`;
-   it creates a pending approval record naming the exact call and returns immediately.
-2. **The parked record.** `core.approval.approval_create` is called with
-   `context={"tool": <tool name>, "callId": <call id>, "argsDigest": <digest>, "parked": True}`,
-   plus `context["project"]`/`context["role"]` when `ToolContext.project`/`.role` are non-empty.
-   `<digest>` is `core.operator_contract.canonical_args_digest(tool.name, args)` — a stable
-   SHA-256 digest of the tool's canonical-JSON arguments, independent of key order. The result's
-   `decision` **MUST** be `"deny"`, `denial_kind` **MUST** be `"approval_parked"`, and the new
-   `ToolResult.approval_token` field carries the created record's token.
-3. **The record's own expiry.** When `ToolContext.approval_expires_at` (an ISO UTC string) is
-   set, the parked record carries it as `expiresAt`; `core.approval.approval_sweep_expired` reads
-   a pending record's own `expiresAt` when present, falling back to
-   `created + config.APPROVAL_TIMEOUT` otherwise (unchanged for a record with no `expiresAt`).
-   Both paths resolve through the existing `_resolve_timeout_as_denied` — a parked call's
-   timeout is not a second terminal path, just a per-record deadline on the one that already
-   existed.
-4. **Single-use pre-grants.** `core.approval.create_pregrant(project, role, tool, args_digest,
-   *, task_id=None, expires_at=None, channel, actor="")` persists a record already `state:
-   "granted"`, `context={"kind": "pregrant", "tool": ..., "argsDigest": ..., ["taskId": ...]}`,
-   audited `approval.pregrant`. `core.approval.consume_pregrant(token)` atomically (through
-   `edges/store.py::read_modify_write`) marks it `consumedAt` and returns `True` exactly once, for
-   a record still `granted`, never previously consumed, and not past its own `expiresAt` when one
-   is set; every later call, or a call past expiry, returns `False` without changing the record. A
-   successful consumption audits `approval.consume`.
+1. **Park.** Under `ToolContext.approval_mode == "park"`, `dispatch_tool`'s `ask` branch **MUST
+   NOT** call `wait_for_approval`; it creates a pending approval record naming the exact call and
+   returns immediately.
+2. **The parked record.** `approval_create` is called with `context={"tool": <tool name>,
+   "callId": <call id>, "argsDigest": <digest>, "parked": True}`, plus `project` and `role` when
+   `ToolContext.project`/`.role` are non-empty and `taskId` when the turn serves a task.
+   `<digest>` is `canonical_args_digest(tool.name, args)`, a stable SHA-256 digest of the tool's
+   canonical-JSON arguments, independent of key order. The result's `decision` **MUST** be
+   `"deny"`, `denial_kind` **MUST** be `"approval_parked"`, and `ToolResult.approval_token` carries
+   the record's token.
+3. **The record's own expiry.** When `ToolContext.approval_expires_at` (an ISO UTC string) is set,
+   the parked record carries it as `expiresAt`; dispatch sets it for each parking hop from the
+   pod's `approvalExpiryHours` (default 24). Otherwise the record's `expiresAt` is
+   `created + APPROVAL_TIMEOUT` (Approval tokens 3). `approval_sweep_expired` resolves a pending
+   record past its own `expiresAt` through the one fail-closed path; a parked call's timeout is
+   not a second terminal path.
+4. **Single-use pre-grants.** `create_pregrant(project, role, tool, args_digest, *, task_id=None,
+   expires_at=None, channel, actor="")` persists a record already `state: "granted"`,
+   `context={"kind": "pregrant", "tool": ..., "argsDigest": ..., ["taskId": ...]}`, audited
+   `approval.pregrant`. `consume_pregrant(token)` atomically (the store's locked
+   read-modify-write) marks it `consumedAt` and returns `True` exactly once, for a record still
+   `granted`, never consumed, and not past its own `expiresAt` when one is set; every later call,
+   or a call past expiry, returns `False` without changing the record. A successful consumption
+   audits `approval.consume`.
 5. **Where pre-grants are checked.** In `dispatch_tool`'s `ask` branch, **before** the
    `approval_mode` dispatch (`refuse`/`park`/`wait`), every entry of `ToolContext.pregrants` (a
-   tuple of `Pregrant(token, tool, args_digest)`) whose `(tool, args_digest)` matches this call's
-   `(tool.name, <digest>)` is tried against `consume_pregrant`; the first one that consumes
-   successfully allows the call (`decision="allow"`, `ToolResult.approval_token` set to its
-   token) and the handler runs. This check applies **regardless of `approval_mode`** — a
-   pre-grant answers a question that was already asked, so it wins even under `"refuse"`. A call
-   whose canonical arguments do not match any pre-grant's digest, or whose only match was already
-   consumed or is past its own expiry, falls through to the ordinary `approval_mode` handling
-   unaffected.
-6. **Unconsumed pre-grants expire too.** `approval_sweep_expired` additionally prunes a `granted`,
+   tuple of `Pregrant(token, tool, args_digest)`) whose `(tool, args_digest)` matches the call's
+   `(tool.name, <digest>)` is tried against `consume_pregrant`; the first that consumes allows the
+   call (`decision="allow"`, `ToolResult.approval_token` set to its token) and the handler runs.
+   This applies **regardless of `approval_mode`**: a pre-grant answers a question already asked,
+   so it wins even under `"refuse"`. A call whose canonical arguments match no pre-grant, or whose
+   only match was consumed or is past its expiry, falls through to the ordinary mode handling.
+6. **Unconsumed pre-grants expire too.** `approval_sweep_expired` also prunes a `granted`,
    unconsumed `context.kind == "pregrant"` record once past its own `expiresAt`: denied
-   (fail-closed), audited `approval.deny` with `channel=timeout`. This is a record born already
-   `granted` (its birth state, not a contested decision), so it is resolved directly rather than
-   through `_set_state`'s grant/deny-race guard, which exists for the two-sided ordinary approval
-   flow; a pre-grant swept this way is never consumable afterward.
-7. **The turn loop.** `core/agent_loop.py` treats `denial_kind == "approval_parked"` as terminal
-   for the batch, exactly like `"approval_unavailable"`: the turn stops with
+   (fail-closed), audited `approval.deny` with `channel=timeout`. The record was born `granted`
+   (its birth state, not a contested decision), so it is resolved directly rather than through the
+   grant/deny race guard; a pre-grant swept this way is never consumable afterward.
+7. **The turn loop.** The agent loop treats `denial_kind == "approval_parked"` as terminal for the
+   batch, exactly like `"approval_unavailable"`: the turn stops with
    `stop_reason == "approval_parked"`, rendered by `approval_parked_error` in the same key=value
-   shape `approval_unavailable_error` uses, plus `approval_token`. See agent-loop.spec.md, "The
-   approval_parked stop".
+   shape `approval_unavailable_error` uses, plus `approval_token` (agent-loop.spec.md, "The
+   approval_parked stop").
 
 ### Approval tokens and approval packs
 
-1. **Tokens are validated before use.** An approval token must match the minted form
-   `apr-<uuid4>`. A token of any other shape is refused, so no path under the approvals directory
-   is ever built from caller text. The check lives in `core/approval.py::_approval_path`
-   (`APPROVAL_TOKEN_RE`), the one place a token becomes a filename, so the HTTP route, Telegram,
-   MCP and the CLI are covered without each validating on its own: a malformed token is
-   `ApprovalError("Approval not found")`, never a path.
-2. **Approval packs (P36-6, ADR 0018 decision 3).** An approval made for a gated tool call (wait
-   and park postures) carries a pack on its record and on `approval_requested`, as additive
-   fields: `rationale` and `options`.
-   - `rationale` is the assistant text of the message that made the call
-     (`ToolContext.rationale`, set by the agent loop per tool-call batch). It is screened with
-     `policy_eval_detail("lead", "pre_input", text, trusted=False)`, redacted, and truncated to
-     `APPROVAL_RATIONALE_MAX_CHARS` (500). A `block` hit makes it `""` and adds
-     `rationaleBlocked: true` to the payload. The key is always present for a gated call, `""` when
-     there is no text. Approvals created outside a tool call carry neither key.
-   - `options` is exactly three operator-v1.1 `Option`s, built through the model, in order:
-     `approve_once`, `approve_task`, `deny`.
-   - `approve_task`: a grant that chose `approve_task` records the option on the pending record
-     (`approval_set_option`) before the grant. When the waiting call sees a granted record with
-     that option, it creates a pre-grant for that exact call
-     (`create_pregrant`, channel `cli`, tool and canonical argument digest) and adds it to
-     `ToolContext.pregrants`, so one identical later call in the same turn context runs without a
-     new approval. It is single-use.
-3. **Every approval records its own deadline.** `core/approval.py::approval_create` always stores
-   `expiresAt`: the caller's value, else `created + config.APPROVAL_TIMEOUT` (ISO 8601 UTC). The
-   record, the `GET /approvals` view and the inbox item therefore carry the same deadline the
-   sweep enforces.
+1. **Tokens are validated before use.** An approval token **MUST** match the minted form
+   `apr-<uuid4>` (`APPROVAL_TOKEN_RE`). A token of any other shape is refused, so no path under the
+   approvals directory is ever built from caller text. The check sits where a token becomes a file
+   name, so the HTTP route, Telegram, MCP and the CLI are covered without each validating on its
+   own: a malformed token is `ApprovalError("Approval not found: <token>")`, never a path.
+2. **Approval packs (ADR 0018).** An approval made for a gated tool call (wait and park modes)
+   carries a pack on its record and on the `approval_requested` trace event, as additive fields:
+   `rationale` and `options`.
+   - `rationale` is the assistant text of the message that made the call (`ToolContext.rationale`,
+     set by the agent loop per tool-call batch). It is screened with
+     `policy_eval_detail("lead", "pre_input", text, trusted=False)`, redacted, and cut to 500
+     characters. A `block` hit makes it `""` and adds `rationaleBlocked: true` to the trace
+     payload. The key is always present for a gated call, `""` when there is no text. Approvals
+     created outside a tool call carry neither key.
+   - `options` is exactly three operator-v1.1 `Option`s, in order: `approve_once`,
+     `approve_task`, `deny`.
+   - `approve_task`: a grant that chose `approve_task` (`docket task approve --task`, HTTP or MCP
+     `option: "approve_task"`, Telegram) records the option on the pending record before the grant.
+     When the waiting call sees a granted record with that option, it creates a pre-grant for that
+     exact call (`create_pregrant`, channel `cli`, the tool and canonical argument digest) and adds
+     it to `ToolContext.pregrants`, so one identical later call in the same turn context runs
+     without a new approval. It is single-use.
+3. **Every approval records its own deadline.** `approval_create` always stores `expiresAt`: the
+   caller's value, else `created + APPROVAL_TIMEOUT` (ISO 8601 UTC). The record, the
+   `GET /approvals` view and the inbox item therefore carry the deadline the sweep enforces.
 
-### Credentials in task processes (implemented, ADR 0020 §8)
+### Credentials in task processes (ADR 0020)
 
-1. `edges/adapters/system.py::task_environment(overlay)` returns the host environment minus
+1. `task_environment(overlay, cache_dir=None)` returns the host environment minus
    `DOCKET_LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, every credential name any provider in the catalog
-   (built-in or global) declares in `auth.credentials`, and every name in the secret store, then
-   applies `overlay` last, so an explicit value (`DOCKET_TASK_ID`) always arrives.
-2. `run_verify_cmd` and `run_bash` with `sandbox="off"` both launch their child with this
-   environment. The jailed paths are unchanged: they already forward no host environment.
-3. Reading the secret store and the catalog never creates `DOCKET_HOME`.
-4. `edges/adapters/system.py::make_non_dumpable()` calls `prctl(PR_SET_DUMPABLE, 0)` through
-   `ctypes` on Linux, so a same-uid process cannot read this process's `/proc/<pid>/environ` or
-   `mem` (`EACCES`). It is a no-op off Linux and on any failure, never raises, and the flag resets
-   across `execve`, so children stay debuggable. `docket start` (before the
-   `--mcp` branch) and `DocketDriver.run_turn` call it before any task process is spawned;
-   `core/` never does. Hiding the environment from root is a non-goal.
+   (built-in or global) declares in `auth.credentials`, and every name in the secret store; then
+   the pod cache variables when a cache dir is given; then `overlay` last, so an explicit value
+   (`DOCKET_TASK_ID`) always arrives.
+2. `run_command` (verify commands, `run:` steps, the prepare install) and `run_bash` with
+   `sandbox="off"` both launch their child with this environment. The jailed paths forward no host
+   environment at all (Exec sandbox 6).
+3. Reading the secret store and the catalog for this never creates `DOCKET_HOME`.
+4. `make_non_dumpable()` calls `prctl(PR_SET_DUMPABLE, 0)` through `ctypes` on Linux, so a
+   same-uid process cannot read this process's `/proc/<pid>/environ` or `mem` (`EACCES`). It is a
+   no-op off Linux and on any failure, never raises, and the flag resets across `execve`, so
+   children stay debuggable. `docket start` (before its `--mcp` branch) and
+   `DocketDriver.run_turn` call it before any task process is spawned. Hiding the environment from
+   root is a non-goal.
 
-### Profiles (implemented, ADR 0025 D2 as amended)
+### Profiles (ADR 0025)
 
 1. **Two profiles.** `attended` (the default; nothing recorded) changes nothing. `lights-out` is a
    recorded operator choice that makes a pod's dispatch refuse to start unless the requirements
-   below hold. The same binary runs both; the profile adds demands, it moves no default (ADR 0021
+   below hold. The same binary runs both; the profile adds demands and moves no default (ADR 0021
    and ADR 0004 stand).
-2. **Recording.** Globally: `FleetSecurity.profile` (`fleet.json` `security.profile`), `unset`
-   until `docket setup profile lights-out` writes `lights-out`; `docket setup profile attended`
-   returns it to `unset`. Per pod: `PodSettings.profile` (`pod set profile lights-out|attended`).
-   The effective profile is `lights-out` when either is `lights-out`; a pod can only move toward
-   stricter, so `PodSettings.coerce("profile", "attended")` is refused while the global profile is
-   `lights-out` (this covers `pod set` and a `pod.yaml` `settings` mapping). Writes are audited
-   (`gates.profile`, `pod.config`).
-3. **Requirements** (`core/profile.py::lights_out_violations`, a pure function over a `Facts`
-   dataclass; `gather_facts` fills it from the existing readers and decides nothing itself). Each
-   violation names its requirement and its fix:
-   - `isolation`: isolation is on (`get_isolation_enabled`) and `sandbox_availability().backend`
-     is not `none` (the decision `_resolve_sandbox` makes);
-   - `network`: `effective_network(pod)` is `none` with scope `global` or `pod` (a recorded
-     choice; the unrecorded default does not count) and, with isolation on, the jail enforces it;
+2. **Recording.** Globally: `fleet.json` `security.profile`, unset until `docket setup profile
+   lights-out` writes `lights-out`; `docket setup profile attended` returns it to unset. Per pod:
+   `PodSettings.profile` (`docket pod set profile lights-out|attended`). The effective profile is
+   `lights-out` when either is `lights-out`, and when the pod's settings cannot be read. A pod can
+   only move toward stricter, so `PodSettings.coerce("profile", "attended")` is refused while the
+   global profile is `lights-out` (this covers `docket pod set` and a `pod.yaml` `settings`
+   mapping). Writes are audited (`gates.profile`, `pod.config`).
+3. **Requirements** (`lights_out_violations`, a pure function over a `Facts` record;
+   `gather_facts` fills it from the existing readers and decides nothing). Each violation names
+   its requirement and its fix:
+   - `isolation`: isolation is on and `sandbox_availability().backend` is not `none` (the decision
+     the driver makes before a turn);
+   - `network`: the pod's effective network is `none` from a recorded choice (scope `global` or
+     `pod`; the unrecorded default does not count);
    - `external-gate`: every planned step whose role is `implementer` (a role target, or an agent
-     target whose recorded role is `implementer`) carries an `ExternalGate`; a `parallel` group is
+     target whose recorded role is `implementer`) carries an external gate; a `parallel` group is
      walked;
    - `secrets`: no variable docket injects for the pod (the Implementer's port and scratch
      variables, and the `env` of each MCP server in the pod's effective set) is named in the
      secret store.
    There is no HTTP MCP server check: MCP servers are stdio only and run in the jail.
 4. **Refuse, do not degrade.** `dispatch_task` evaluates the profile once, after the pipeline is
-   planned and before `_run_pipeline`. A violation audits `profile.refused` (pod, task and the
+   planned and before any hop runs. A violation audits `profile.refused` (pod, task and the
    requirements), runs no hop and raises `DispatchError` naming each requirement and its fix; it
    folds into `failure_kind "dispatch_refused"`, which is resumable once the operator fixes the
-   cause. This covers `run` and `start --dispatch`. `exec` is out of scope (no `--profile`).
-5. **One reader.** `doctor` and `status` show the effective profile and its violations from the
-   same `gather_facts` + `lights_out_violations` call. With the effective profile `attended`
-   they print nothing extra.
+   cause. This covers `docket run` and `docket start --dispatch`.
+5. **One reader.** `docket setup` and `docket status` (and their `--json`, under `profile`) show
+   each `lights-out` pod's violations from the same `gather_facts` + `lights_out_violations`
+   call; recording `docket setup profile lights-out` lists the fleet-level gaps. With every
+   effective profile `attended` they print nothing extra.
 
-### Task restrictions (implemented, ADR 0027 point 3)
+### Task restrictions (ADR 0027)
 
-A task may carry `restrictions` (`deniedTools`, `network`, `policies`; shape and the refusal of
-anything that would widen are enforced at enqueue, operator-api.spec.md "Arguments"). They narrow
-the hops of that one task and never widen anything.
+A task may carry `restrictions` (`deniedTools`, `network`, `policies`; their shape, and the refusal
+of anything that would widen, are enforced at enqueue, operator-api.spec.md "Arguments"). They
+narrow the hops of that one task and never widen anything.
 
 1. **Narrow only.** The hop's denied set is the union of the role's `denied_tools`, the pod's
-   `deniedTools` and the task's `deniedTools`; the hop's network is `none` when the pod, the
-   global setting or the task says `none` (`core/dispatch.py::_hop_network`); the task's policy
-   documents evaluate in addition to the global and pod policies, never instead of them.
-2. **Where it lands.** `core/dispatch.py::_compose_hop` hands the restrictions to the driver
-   through three internal env coordinates (`DOCKET_TASK_DENIED_TOOLS`, `DOCKET_TASK_NETWORK`,
-   `DOCKET_TASK_POLICIES`, popped by `DocketDriver` like `DOCKET_APPROVAL_MODE`, never visible to
-   a tool). `core/tools.py::dispatch_tool` is untouched: it still evaluates `pre_tool_call`
-   policies through `core/policy.py::policy_eval_detail`, which also reads the turn's task
-   policy documents (`policy.task_policies`, a context variable set by the driver around
-   `run_agent_turn`).
+   `deniedTools` and the task's `deniedTools`; the hop's network is `none` when the pod, the global
+   setting or the task says `none`; the task's policy documents evaluate in addition to the global
+   and pod policies, never instead of them.
+2. **Where it lands.** Dispatch hands the restrictions to the driver as three internal keys of
+   `run_turn`'s `env` (`DOCKET_TASK_DENIED_TOOLS`, `DOCKET_TASK_NETWORK`, `DOCKET_TASK_POLICIES`),
+   which `DocketDriver` pops like `DOCKET_APPROVAL_MODE`, so no tool sees them. `dispatch_tool` is
+   unchanged: it evaluates `pre_tool_call` policies through `policy_eval_detail`, which also reads
+   the turn's task policy documents (`task_policies`, set by the driver around the turn).
 3. **`deniedTools` is a block policy, not a registry removal.** The driver turns the denied names
-   into one `pre_tool_call` policy with `action: block` and `policy_id` `task-restriction`, so a
-   refused call is an audited `tool.deny` carrying `policy_id='task-restriction'` and the hop
-   continues with the refusal as the tool result. The set is closed by capability as
-   `registry_for_role` does: every tool of a denied built-in's kind (an MCP tool is
-   registered `write`) is named in the policy too.
+   into one `pre_tool_call` policy with `action: block` and id `task-restriction`, so a refused call
+   is an audited `tool.deny` carrying `policy_id='task-restriction'`, and the hop continues with the
+   refusal as the tool result. The set is closed by capability as `registry_for_role` does: every
+   tool of a denied built-in's kind (an MCP tool is registered `write`) is named in the policy too.
 4. **`policies` are block-only, re-checked at the hop.** Each document is normalised, validated
-   with the policy validator and its action MUST be `block`; a document that fails either check
-   refuses the hop before it starts (`DispatchError`, so the task fails `dispatch_refused`).
-   Whatever its own `id`, a task document evaluates under the id `task-restriction`, so the
-   audit entry names the source.
+   with the policy validator, and its action **MUST** be `block`; a document that fails either
+   check refuses the hop before it starts (`DispatchError`, so the task fails `dispatch_refused`).
+   Whatever its own `id`, a task document evaluates under the id `task-restriction`, so the audit
+   entry names the source.
 5. **`network: "none"` fails closed.** The jail's network is `none` for the hop whatever the pod
    records. With isolation off nothing can cut the network, so the turn is refused up front and
-   audited `network.refused` with scope `task`, exactly as a recorded pod `none` is.
+   audited `network.refused` with scope `task`, as a recorded pod `none` is.
 6. **Not covered.** `verifyCmd` and `run:` steps keep the pod's network posture; a per-task
    `allowCommands` does not exist; nothing here is a dollar budget.
 
 ## Interface Contracts
 
-### `docket setup sandbox` command (implemented)
+### `docket setup sandbox` command
 
 ```bash
-# The tool-call gate itself (policy engine + high-risk command classifier) is unconditionally
-# active (Phase 19 P19-3) -- nothing below turns IT on or off. These commands manage
-# isolation posture only (core/fleet.py's FleetSecurity), per cli/_setup_sandbox.py.
-docket setup sandbox            # MUST report the gate as always-active, plus isolation posture
-docket setup sandbox <other>           # any other subcommand (enable/disable included): MUST print an
-                                #   unknown-subcommand error plus usage and exit 2
-docket setup sandbox on|off           # MUST record on/off explicitly; bare (or any other word) is a read: print the
-                                #   isolation posture plus usage, write and audit nothing, exit 2 (on requires a usable backend per
-                                #   sandbox_availability(): landlock, seatbelt or a chosen docker). Consumed on the live path: DocketDriver.run_turn
-                                #   runs tools with sandbox="auto" while it is on, and refuses the
-                                #   turn (audited isolation.refused) when no backend is
-                                #   usable -- see Exec sandbox requirement 9
-docket setup sandbox backend auto|docker # MUST record the backend choice in fleet.json (audited
-                                #   gates.backend); anything else: usage, exit 2. auto = landlock/seatbelt
-docket setup sandbox network none|open # MUST record the global network mode (audited gates.network);
-                                #   anything else: usage, exit 2. See Network egress requirement 7
-docket setup sandbox classes           # MUST list the documented high-risk action classes, read-only
-docket setup sandbox read add|remove PATH # MUST record or drop a read-only grant for every jail
-                                #   (audited gates.read); refusals per Exec sandbox requirement 14
-docket init                    # the tool-call gate needs no install step (always active); there
-                                #   is no --gates/--no-gates option (Enablement requirement 2)
-docket setup sandbox           # MUST report gate status, isolation posture and the backend (a read)
+# The tool-call gate (policy engine + high-risk command classifier) is always active; nothing
+# below turns it on or off. These commands manage the isolation, backend, network and read-only
+# posture recorded in fleet.json's security block.
+docket setup sandbox [--json]          # a read, exit 0: gate (always active), isolation, the
+                                       #   probed backend, network mode, read-only grants
+docket setup sandbox status [--json]   # the same read
+docket setup sandbox on                # record isolation on (audited gates.isolate); exit 1 and
+                                       #   record nothing when no backend is usable
+docket setup sandbox off               # record isolation off (audited gates.isolate)
+docket setup sandbox backend auto      # record the backend choice (audited gates.backend);
+docket setup sandbox backend docker    #   auto = landlock on Linux, seatbelt on macOS
+docket setup sandbox network none      # record the global network mode (audited gates.network);
+docket setup sandbox network open      #   see Network egress requirement 7
+docket setup sandbox classes           # list the high-risk action classes, read-only
+docket setup sandbox read add PATH     # record a read-only grant for every jail (audited
+docket setup sandbox read remove PATH  #   gates.read); refusals per Exec sandbox requirement 14
+docket setup profile [CHOICE]          # show, or record lights-out|attended (audited gates.profile)
+# Any other verb, or an unrecognised flag, is a usage error: exit 2.
 ```
 
 ### Approval channels
 
 ```bash
-# docket's approval store -- the only approval system that exists since Phase 19 P19-7b deleted
-# the daemon (production producer since Phase 15 G-1: core/dispatch.py's require_approval gate,
-# plus P19-3's in-turn core/tools.py gate -- see pod-dispatch.spec.md)
-docket inbox                        # List what is waiting for you, with the exact approve line
-docket task approve <id>            # Grant the approval a task holds — headless, no chat session needed
-                                #   (G-1: also resumes any dispatch task it gated)
-docket task deny <id>               # Deny the approval a task holds — headless, no chat session needed
-                                #   (G-1: also fails any dispatch task it gated, terminally)
-GET  /approvals                # docket start: list pending approvals (bearer auth)
-POST /approvals/<token>        # docket start: {"action": "grant"|"deny"} (bearer auth)
-                                #   (G-1: same resume/kill behavior as the CLI channel)
-
-# /approve <token> and /deny <token> in a chat bound via `docket setup notify bind`, answered by docket's
-# own bot (`docket start --telegram`, ROADMAP Phase 19 P19-8) -- same resume/kill behavior,
-# same audit trail, tagged channel="telegram". See telegram-integration.spec.md.
-#
-# There is no longer a daemon-side gate prompt to contrast any of the above with (P19-7b
-# deleted the daemon outright); every channel above answers the same, single, docket-owned
-# approval store.
+# docket's approval store is the only approval system. Producers: the pod's require_approval gate
+# and the pre_input enqueue gate (a dispatch task waiting_approval), and the in-turn tool-call
+# gate (wait or park). See pod-dispatch.spec.md for the task side.
+docket inbox                        # what is waiting for you, with the exact approve line
+docket task approve <id>            # grant the approval a task holds; resumes the task it gated
+docket task approve <id> --task     # also allow this exact call for the rest of the task
+docket task deny <id>               # deny it; fails the task it gated, terminally
+GET  /approvals                     # docket start: list pending approvals (bearer auth)
+POST /approvals/<token>             # docket start: {"action": "grant"|"deny", "option"?,
+                                    #   "reason"?, "channel"?: "http"|"tack"} (bearer auth)
+# MCP (docket start --mcp): approvals_list, approvals_grant(token, option), approvals_deny(token)
+# Telegram (docket start --telegram): /approve and /deny in a chat bound with
+#   docket setup notify enable telegram or docket setup notify bind; channel "telegram".
+#   See telegram-integration.spec.md.
 ```
 
-### `docket pod policies` and `docket pod check` commands (implemented, ROADMAP Phase 15 G-2)
+### `docket pod policies`, `docket pod check` and `docket pod validate`
 
 ```bash
-docket pod policies [<id>] [--json] [--plugins] [--pod <p>]
-                                             # MUST list installed policies (id/hook/action/description)
-                                             #   or, with an id, print that policy's raw JSON; a pod's
-                                             #   own policy directory is folded in (ROADMAP P27-2);
-                                             #   --plugins adds the predicate plugins section
+docket pod policies [POLICY_ID] [--json] [--plugins] [--pod <p>]
+                                    # list the policies in force (id, hook, action, description),
+                                    #   or show one; the pod's own directory is folded in;
+                                    #   --plugins adds the predicate plugins section
 docket pod check "<text>" --role <role> [--hook <hook>] [--tool <name>] [--arg key=value] [--pod <p>]
-                                             # MUST dry-run the evaluator (no trace emitted);
-                                             #   --tool picks the built-in tool whose kind decides
-                                             #   whether the command classifier applies (default bash);
-                                             #   the pod's own policies are folded in (ROADMAP P27-2)
-docket pod validate [PATH]                   # MUST schema-check a policy file, or a directory's policies/
+                                    # dry-run the evaluator (no trace written); --tool picks the
+                                    #   built-in tool whose kind decides whether the command
+                                    #   classifier applies (default bash); the pod's own policies
+                                    #   are folded in
+docket pod validate [PATH]          # schema-check a policy file, or a directory's policies/
 ```
 
 ## Examples
 
-### Approval flow — shipped state (dispatch-gated, ROADMAP Phase 15 G-1)
+### A dispatch gate, granted and denied
 
-This one *is* real today — narrower than the target state above (it gates a pod dispatch hop,
-not an arbitrary daemon exec prompt), but genuinely end to end, store to task:
+A pod whose `requireApprovalRoles` includes `implementer` parks the task before that hop:
+`docket run` reports it `waiting_approval` with its token, `docket inbox` shows the exact approve
+line, `docket task approve <id>` grants it and the next `docket run` finishes the task. An
+unanswered token fails closed: under `docket start`, `approval_sweep_expired` resolves it to
+`denied` once past its `expiresAt`, and the task fails terminally (`failureKind:
+"approval_denied"`) without anyone calling `docket task deny`.
 
-```text
-$ docket run
-  [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-1234)
+### The enqueue-time gate
 
-$ docket task approve task-9a1b2c3d
-✓ Approval granted: apr-1234
-  The waiting action may now proceed.
+A `require_approval` `pre_input` policy that matches a task's description gates it before it is
+ever claimable; the same resolution path, fed from a second source:
 
-$ docket run
-  [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
+```bash
+docket task add "URGENT WIRE the vendor before EOD"   # queued as waiting_approval
+docket task approve task-9a1b                          # the task becomes pending
+docket run                                             # runs it
 ```
 
-An unanswered token fail-closes the same way: `approval_sweep_expired` (running only under
-`docket start`) resolves it to `denied` after `APPROVAL_TIMEOUT`, and the dispatch task fails
-terminally (`failureKind: "approval_denied"`) without anyone calling `docket task deny` at all. See
-`pod-dispatch.spec.md` v2.1.0 for the full state-machine contract this flow is built on.
+A `block` match never reaches the queue: `docket task add "wipe the prod database tonight"` fails
+with `task rejected by guardrail policy 'no-wipes' at enqueue: absolutely not`, nothing is
+persisted, and the trace holds one closed session (`guardrail_check`, `guardrail_block`,
+`session_end` with status `aborted`).
 
-### Policy engine flow — enqueue-time gate (implemented, ROADMAP Phase 15 G-2)
+### High-risk action classes: examples
 
-A `require_approval` policy match on a task's description gates it before it is ever claimable —
-same resolution path as the G-1 example above, fed from a second source:
+`docket setup sandbox classes` prints one row per class (`CLASS`, `DESCRIPTION`, `PATTERN`,
+`ALLOWLISTED BINS`): `money-movement` and `secret-access` show `none allowlisted; always asks`,
+`prod-deploy` shows `git, npm`. The footer reads `Every shell command is classified before it
+runs; a match asks for approval.`
 
-```text
-$ docket task add "URGENT WIRE the vendor before EOD"
-✓ Queued for pod 'myapp': [task-9a1b2c3d-...] URGENT WIRE the vendor before EOD
+### Docket-launched process classification: examples
 
-$ docket task list
-  [task-9a1b2c3d-...] waiting_approval — URGENT WIRE the vendor before EOD
+A verify command matching a high-risk class is refused before a shell starts:
 
-$ docket task approve task-9a1b2c3d
-✓ Approval granted: apr-5678
-
-$ docket run
-  [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
+```bash
+docket pod add implementer --verify "stripe charge customer --amount 500 && uv run pytest"
+docket run      # the task fails at the verify gate
 ```
 
-A `block` match never reaches the queue at all — the CLI reports the rejection immediately and
-nothing is persisted:
+The task's trace records a `verification_failed` event whose output names the class:
 
 ```text
-$ docket task add "wipe the prod database tonight"
-✗ task rejected by guardrail policy 'no-wipes' at enqueue: absolutely not
+[verify command refused: matches high-risk class 'money-movement' (Payment/financial operations: charges, refunds, payouts, transfers) -- see `docket setup sandbox classes`]
 ```
 
-`docket status` reads its "Guardrail trips" tally from exactly the `guardrail_block` events
-either flow (this one, or a `pre_output` block mid-dispatch) produces:
-
-```text
-$ docket status
-docket status  (window: 12 terminal sessions)
-
-  Success rate   83.3%  (10 success / 2 failure / 0 aborted)
-  ...
-  Guardrail trips:
-    no-wipes                       1
-    forbidden-marker               1
-```
-
-### High-risk action classes (implemented)
-
-```text
-$ docket setup sandbox classes
-High-risk action classes
-
-  Documented action classes considered especially consequential
-  (money movement, prod deploys, secret access).
-
-money-movement — Payment/financial operations: charges, refunds, payouts, transfers
-  pattern: \bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer|refund.*amount|...
-  none of this class's bins are allowlisted — always asks today
-
-prod-deploy — Production deploys and release pushes
-  pattern: git\s+push\s+.*\b(main|master|production|prod)\b|npm\s+publish|...
-  overlaps allowlisted bins: git, npm — classify_command reads the whole command line, so
-  a high-risk invocation still asks even though the bin itself is allowlisted
-
-secret-access — Secret/credential writes and key generation
-  pattern: vault\s+(write|kv\s+put)|ssh-keygen|openssl\s+genrsa|...
-  none of this class's bins are allowlisted — always asks today
-
-  This seed list is intentionally small and built-in (not yet user-configurable).
-  Wired: core/tools.py's dispatch_tool classifies every shell command before it runs;
-  run_verify_cmd separately refuses a matching verify command outright (fails closed);
-  a hop's real output is also scanned for a match on pre_output (logged, not blocked).
-```
-
-### Docket-launched process classification — examples (implemented, ROADMAP Phase 15 G-3)
-
-A verify command matching a high-risk class is refused before the shell ever starts:
-
-```text
-$ docket pod add --verify "stripe charge customer --amount 500 && uv run pytest"
-$ docket run
-  [task-...] failed — verifyCmd failed: 'stripe charge customer --amount 500 && uv run pytest'
-```
-
-The task's trace records a `verification_failed` event whose `output` names the matched class:
-`[verify command refused: matches high-risk class 'money-movement' (Payment/financial
-operations: charges, refunds, payouts, transfers) -- see \`docket setup sandbox classes\`]` — the
-subprocess is never started, not merely reported as failing.
+The subprocess is never started.
 
 A hop that reports having run a high-risk command is flagged, not blocked, on the `pre_output`
-path (no installed JSON policy also matched here, so the built-in classifier's `warn` floor is
-what fires):
+path (no installed policy also matched, so the built-in `warn` floor fires):
 
 ```text
 $ docket task trace <id>
   ... guardrail_check  {"hook": "pre_output", "policy": "high-risk:secret-access", "action": "warn"}
 ```
 
-### In-turn tool-call gate — examples (implemented, ROADMAP Phase 19 P19-3)
+### In-turn tool-call gate: examples
 
-These are `dispatch_tool` call shapes, not shell transcripts, because the gate operates one tool
-call at a time inside a turn — there is no separate `docket` CLI command that exercises it in
-isolation. Since Phase 19 P19-5/P19-7a wired `DocketDriver` onto every real pod-dispatch hop (see
-the scope note in "In-turn tool-call gate" above), this is exactly what happens on every real
-`bash`/`write`/etc. call a hop makes today, not merely a future contract. Each shape below is
-exactly what `tests/integration/test_pre_tool_call_policy.py` asserts.
+These are `dispatch_tool` call shapes, since the gate works one tool call at a time inside a
+turn; each is what the gate's test suite asserts, and what every real hop's calls go through.
 
-A `block-destructive` policy gates an `rm -rf` call; the handler never runs:
+The `block-destructive` policy gates an `rm -rf` call; with nobody answering, the wait times out
+and the handler never runs:
 
 ```text
 >>> dispatch_tool(ToolCall(id="c1", name="bash", arguments='{"command": "rm -rf /var/data"}'), ctx, registry)
 ToolResult(decision='deny', executed=False, denial_kind='approval_timeout',
-           policy_id='block-destructive', reason="approval timed out and was denied")
-# the registered handler's own side effect never happened
+           policy_id='block-destructive', reason='approval timed out and was denied')
 ```
 
 `high-risk-deploy` catches a production push by argument; the same tool with a feature branch is
@@ -1634,92 +1300,83 @@ ToolVerdict(decision='ask', policy_id='high-risk-deploy', ...)
 ToolVerdict(decision='allow', policy_id='', ...)
 ```
 
-A `require_approval` policy asks, then executes once granted — through the same
-`core.approval.wait_for_approval` that fails a call closed on timeout:
+A `require_approval` policy asks, then executes once granted, through the same
+`wait_for_approval` that fails a call closed on timeout:
 
 ```text
->>> dispatch_tool(ToolCall(id="c1", name="write", arguments='{"x": "launch-codes"}'), ctx, registry)
-# blocks; a concurrent `docket task approve <id>` (or the timeout above) resolves it
+>>> dispatch_tool(ToolCall(id="c1", name="custom", arguments='{"x": "launch-codes"}'), ctx, registry)
+# blocks; a concurrent grant (or the timeout) resolves it
 ToolResult(decision='allow', executed=True, ok=True, ...)   # granted
 ToolResult(decision='deny', executed=False, ...)            # denied, or unanswered past
                                                              #   TOOL_APPROVAL_TIMEOUT
 ```
 
-Every gated call above leaves an audit trail, not just a return value:
+Every gated call leaves an audit trail, not just a return value:
 
 ```text
 $ docket log
-  ... tool.ask     tool=bash agent=... role=implementer project=demo policy_id='block-destructive' policy_action='require_approval': ... call=bash command="rm -rf /var/data"
+  ... tool.ask      tool=bash agent=... role=implementer project=demo policy_id='block-destructive' policy_action='require_approval': ... call=bash command="rm -rf /var/data"
   ... approval.deny token=apr-... project=demo channel=timeout
 ```
 
-### Exec sandbox — examples (implemented, opt-in, ROADMAP Phase 19 P19-9)
+### Exec sandbox: examples
 
-These are `toolbox.run_bash`/`dispatch_tool` call shapes, exactly what
-`tests/integration/test_sandboxed_exec.py` asserts, not shell transcripts a user can run directly — but
-unlike the P19-9 version of this section, they are no longer hypothetical: `DocketDriver.run_turn`
-is a real, live caller that picks `sandbox="auto"` for exactly these shapes whenever `docket setup sandbox
-isolate on` is set and a backend is usable (`tests/integration/test_docket_driver.py`'s
-`TestIsolationWiring`).
+These are `run_bash` call shapes; `DocketDriver.run_turn` passes `sandbox="auto"` for every `bash`
+call of a turn while isolation is on and a backend is usable.
 
-The default — `sandbox="off"` — is the same function that shipped in P19-2, byte for byte:
+The default, `sandbox="off"`, carries no marker:
 
 ```text
->>> toolbox.run_bash((workspace,), "printf %s hi", env={"X": "1"})
-ToolOutcome(ok=True, content='hi', error='')          # no marker, ever, unless asked
+>>> run_bash((workspace,), "printf %s hi", env={"X": "1"})
+ToolOutcome(ok=True, content='hi', error='')
 ```
 
-Asking for a jail (`sandbox="auto"`) on a host with a usable backend reports which one ran —
-here, a command that tries to write outside its allowed root is contained by the jail itself, on
-top of (not instead of) the gate that already let it through:
+Asking for a jail on a host with a usable backend reports which one ran; a write outside the root
+is contained by the jail itself, on top of the gate that let the command through:
 
 ```text
->>> toolbox.run_bash((workspace,), 'echo breached > /etc/should-not-write; echo rc=$?', sandbox="auto")
+>>> run_bash((workspace,), 'echo breached > /etc/should-not-write; echo rc=$?', sandbox="auto")
 ToolOutcome(ok=True,
             content='/bin/sh: 1: cannot create /etc/should-not-write: Permission denied\nrc=2\n\n[sandbox: landlock]',
             error='')
 ```
 
-On a host with no usable backend the same call runs nothing, because the gate allowed it on the
-promise of a jail:
+On a host with no usable backend the same call runs nothing:
 
 ```text
->>> toolbox.run_bash((workspace,), "printf %s hi", sandbox="auto")
+>>> run_bash((workspace,), "printf %s hi", sandbox="auto")
 ToolOutcome(ok=False, content='', error='not run: no sandbox backend is usable [sandbox: none (landlock unavailable, docker not chosen or unreachable)]')
 ```
 
-A jail that was asked for but fails to actually start is a reported failure, not a silent
-unsandboxed run:
+A jail that was asked for but fails to start is a reported failure, not an unsandboxed run:
 
 ```text
->>> toolbox.run_bash((workspace,), "echo should-never-run", sandbox="auto")   # the jail entry vanishes mid-launch
+>>> run_bash((workspace,), "echo should-never-run", sandbox="auto")   # the jail entry vanishes mid-launch
 ToolOutcome(ok=False, content='', error='sandbox (landlock) failed to start: [Errno 2] ...')
 ```
 
 In a linked task worktree, git metadata the host would later trust is read-only while a commit
-still works (`TestGitMetadataTheHostLaterRuns`, `TestJailedCommit`):
+still works:
 
 ```text
->>> toolbox.run_bash((wt,), "echo 'gitdir: /x/evil' > .git", sandbox="auto")   # ok=False; .git unchanged
->>> toolbox.run_bash((sup,), "git -C sub config core.hooksPath /x", sandbox="auto")   # ok=False
->>> toolbox.run_bash((wt,), "echo x > f && git add f && git commit -q -m m", sandbox="auto")   # ok=True
+>>> run_bash((wt,), "echo 'gitdir: /x/evil' > .git", sandbox="auto")   # ok=False; .git unchanged
+>>> run_bash((sup,), "git -C sub config core.hooksPath /x", sandbox="auto")   # ok=False
+>>> run_bash((wt,), "echo x > f && git add f && git commit -q -m m", sandbox="auto")   # ok=True
 ```
 
-A timed-out command that forked children leaves nothing behind under either real backend — the
-docker case specifically needs `system.docker_kill`, not just a process-group signal, because
-`docker run`'s CLI process does not cover the container the daemon actually runs:
+A timed-out command that forked children leaves nothing behind; under docker that needs
+`docker_kill`, because `docker run`'s CLI process does not cover the container:
 
 ```text
->>> toolbox.run_bash((workspace,), "sleep 20", timeout=1, sandbox="auto")   # DOCKET_SANDBOX_BACKEND=docker
+>>> run_bash((workspace,), "sleep 20", timeout=1, sandbox="auto")   # DOCKET_SANDBOX_BACKEND=docker
 ToolOutcome(ok=False, content='', error='command timed out after 1s [sandbox: docker]')
 $ docker ps -a --filter name=docket-sbx- --format '{{.Names}}'
-                                                                             # (empty — no orphan)
+                                                                     # (empty: no orphan)
 ```
 
-### Network egress and the `fetch` tool — examples (implemented, ROADMAP Phase 19 P19-11)
+### Network egress and the `fetch` tool: examples
 
-A host not on the allowlist is refused before any connection opens — the default state, since
-`FETCH_ALLOWED_DOMAINS` is empty until an operator configures it:
+A host not on the allowlist is refused before any connection opens:
 
 ```text
 >>> fetch_url("https://example.com/status")
@@ -1728,7 +1385,7 @@ ToolOutcome(ok=False, content='',
                   "add it to FETCH_ALLOWED_DOMAINS to permit it")
 ```
 
-Once configured, the same call succeeds, is size-capped, and a redirect off the allowlist is
+Once a domain is configured, the call succeeds, is size-capped, and a redirect off the allowlist is
 refused rather than followed:
 
 ```text
@@ -1748,149 +1405,203 @@ ToolOutcome(ok=False, content='',
                   "'attacker.example', which is not on the fetch domain allowlist")
 ```
 
-Escape hatches the allowlist does **not** apply to — named here so this is never read as "network
-egress is gated" — stay exactly as capable as they were before this card, because that gap is
-explicitly out of scope (decision D-23):
+The open paths the allowlist does **not** cover, named so this is never read as "network egress
+is gated":
 
 ```text
 $ python3 -c "import urllib.request; urllib.request.urlopen('https://anywhere.example')"
-# runs unattended today -- python3 is a SAFE_BINS member; classify_command never sees the URL
+# runs unattended: python3 is on SAFE_BINS; classify_command never sees the URL
 $ node -e "require('https').get('https://anywhere.example')"
-# runs unattended today -- same reason, for node
+# runs unattended: same reason, for node
 $ git clone https://anywhere.example/repo.git
-# runs unattended today -- git is a SAFE_BINS member
+# runs unattended: git is on SAFE_BINS
 ```
 
 ## Validation
 
 ### Pre-conditions
 
-- No external runtime is required. Docket’s policy engine and high-risk classifier are active on
-  every tool call, and every `DocketDriver` turn routes through that chokepoint.
+- No external runtime is required. The policy engine and high-risk classifier are active on every
+  tool call, and every docket turn routes through that one chokepoint.
 
 ### Post-conditions
 
-- Dangerous operations **MUST** be gated on every tool call docket dispatches — unconditionally,
-  not contingent on an install flag (`core/tools.py`'s `dispatch_tool`, live on every pod-dispatch
-  hop via `DocketDriver`).
-- Grants and denials through docket's approval store **MUST** appear in the audit log
-  (tagged with its channel — see Tool-approval gates requirement 4). There is no daemon-side `/approve` left to write a
-  competing, un-audited response — docket's store is the only approval system (P19-7b).
-- A gate prompt with no approver **MUST** resolve to denied. For an in-turn `core/tools.py` call
-  this is `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate"); for an async dispatch-level
-  gate, stale docket-store records resolve to **denied** (fail-closed, not merely "expire") while
-  `docket start` runs, and — since G-1 — a dispatch task waiting on such a record is failed
-  terminally as part of that same resolution.
-- Since ROADMAP Phase 19 P19-3, every non-`allow` decision `core/tools.py`'s `dispatch_tool`
-  makes (`deny`, `ask`, and a `warn`/`redact` hit that still allows the call) **MUST** appear in
-  the audit log, with the gated call's rendered arguments passed through `core.trace.redact`
-  first.
-- A default install (`FETCH_ALLOWED_DOMAINS` unset) **MUST** leave `fetch` unable to reach any
-  host — the allowlist starts empty, not populated with a starter set, so "network egress is
-  open" is never confused with "`fetch` reaches anywhere by default" (ROADMAP Phase 19 P19-11).
-  Since Phase 44 P44-3 it **MUST ALSO** not be offered to the model: `builtin_registry()` leaves
-  `fetch` out while the allowlist is empty (agent-loop requirement 83), so a default install
-  advertises no `fetch` tool at all.
-- The escape matrix (`tests/integration/test_escape_matrix.py`, subject `docket.jail`) **MUST**
-  pass on every backend the host has (landlock, docker when its daemon answers, seatbelt on
-  macOS; a missing backend skips with a reason) and runs in the `release-journey` CI job on
-  Linux and macOS. It builds every jailed command through `system.jail_launch`, keeps every
-  protected path outside every temp dir the jails grant, and gives each negative row three
-  oracles: a marker the jailed command wrote proves it ran, the effect is absent afterwards, and
-  the same attempt without the jail (the network open, for the connect row) has the effect. The
-  rows are: a positive write inside the root; a positive `git add`/`commit`/`branch` inside a
-  jailed task worktree; a seeded secret under a fake home is unreadable; a write outside the
-  roots is refused; `<common>/hooks/pre-commit` and `<common>/config` cannot be written; a
-  `config.worktree`, a rewritten `.git` file and a rewritten `commondir` never make dispatch's
-  host-side git execute a planted `core.fsmonitor` (and `git_dirs` still returns the recorded
-  dirs); a `connect` to a host listener fails under network `none` and succeeds when open;
-  `/proc/<ppid>/environ` with a seeded key is unreadable (docker: `/proc/*/environ`); a
-  `verifyCmd` run through `dispatch._run_in_envelope` cannot write outside its worktree; a main
-  checkout root is refused on landlock and has guarded hooks and config on docker and seatbelt.
+- Dangerous operations **MUST** be gated on every tool call docket dispatches, unconditionally,
+  not contingent on an install flag.
+- Grants and denials through docket's approval store **MUST** appear in the audit log, tagged with
+  their channel (Tool-approval gates 4).
+- A gate with no approver **MUST** resolve to denied: an in-turn call at its approval timeout; a
+  store record past its `expiresAt` while `docket start` runs, failing the dispatch task waiting on
+  it as part of that resolution.
+- Every non-`allow` decision `dispatch_tool` makes (`deny`, `ask`, and a `warn` or `redact` hit
+  that still allows the call) **MUST** appear in the audit log, with the gated call's rendered
+  arguments passed through `redact` first.
+- A default install (`FETCH_ALLOWED_DOMAINS` unset) **MUST** leave `fetch` unable to reach any host
+  and **MUST NOT** offer it to the model at all: the registry leaves `fetch` out while the
+  allowlist is empty (agent-loop.spec.md requirement 83).
+- The escape matrix **MUST** pass on every backend the host has (landlock, docker when its daemon
+  answers, seatbelt on macOS; a missing backend skips with a reason), on Linux and macOS in CI. It
+  builds every jailed command through `jail_launch`, keeps every protected path outside every temp
+  dir the jails grant, and gives each negative row three oracles: a marker the jailed command
+  wrote proves it ran, the effect is absent afterwards, and the same attempt without the jail (the
+  network open, for the connect row) has the effect. The rows are: a positive write inside the
+  root; a positive `git add`/`commit`/`branch` inside a jailed task worktree; a seeded secret
+  under a fake home is unreadable; a write outside the roots is refused;
+  `<common>/hooks/pre-commit` and `<common>/config` cannot be written; a `config.worktree`, a
+  rewritten `.git` file and a rewritten `commondir` never make dispatch's host-side git execute a
+  planted `core.fsmonitor` (and `git_dirs` still returns the recorded dirs); a `connect` to a host
+  listener fails under network `none` and succeeds when open; `/proc/<ppid>/environ` with a seeded
+  key is unreadable (docker: `/proc/*/environ`); a `verifyCmd` run in the pod's envelope cannot
+  write outside its worktree; a main checkout root is refused on landlock and has guarded hooks
+  and config on docker and seatbelt; a jailed command reads a prepared cache entry and cannot
+  write it (an unjailed control can); and a prepare launch reaches a listener while a hop under
+  `network: none` does not.
+- Real-docker tests build a `FROM alpine:3.20` + `apk add --no-cache git` image to prove a jailed
+  commit in a linked worktree and `network none` against a host-side listener.
 
 ### Invariants
 
-- A denied or timed-out request **MUST NOT** execute — enforced entirely by docket now that
-  P19-7b removed the daemon: `core/approval.py`'s `wait_for_approval` (called from `core/tools.py`'s
-  `dispatch_tool`) and `TOOL_APPROVAL_TIMEOUT` for an
-  in-turn tool call, and `core/dispatch.py`'s `resolve_waiting_approval` for a G-1
+- A denied or timed-out request **MUST NOT** execute: `wait_for_approval` and
+  `TOOL_APPROVAL_TIMEOUT` for an in-turn tool call, `resolve_waiting_approval` for a
   require_approval gate on a pod dispatch hop.
-- Audit log entries **SHOULD NOT** be silently editable by the agent. As of ROADMAP Phase 15
-  G-4, the log carries a `seq`/`prev_hash` tamper-evidence chain (`docket log verify` detects
-  an altered line) and the prior `DOCKET_NO_AUDIT=1` kill switch has been removed entirely — see
-  audit.spec.md.
+- Audit log entries **SHOULD NOT** be silently editable by the agent: the log carries a
+  `seq`/`prev_hash` tamper-evidence chain (`docket log verify` detects an altered line), and there
+  is no switch that turns auditing off (audit.spec.md).
 - A high-risk pattern match **MUST NOT** be bypassed by allowlist status on any path docket
-  controls. All three classes — money-movement, secret-access, and (since P19-7b removed the
-  daemon's binary-path-only exec-allowlist this used to be qualified against) prod-deploy — are
-  now **fully enforced**: a `git push origin main`-shaped command routed through `core/tools.py`'s
-  dispatcher, which is now every real pod-dispatch hop, is genuinely gated by argument, by both
-  the command classifier and the `high-risk-deploy` policy template; see "In-turn tool-call gate"
-  above for the scope this applies to.
-- A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue —
+  controls. All three classes are fully enforced: a `git push origin main`-shaped command through
+  `dispatch_tool`, which every pod-dispatch hop's calls pass, is gated by argument, by both the
+  command classifier and the `high-risk-deploy` policy.
+- A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue:
   `enqueue_task` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
-  `block` **MUST NOT** let a later pipeline step run — the hop that tripped it **MUST** be the
+  `block` **MUST NOT** let a later pipeline step run; the hop that tripped it **MUST** be the
   task's last recorded hop when it fails.
-- `pre_tool_call` **MUST NOT** be evaluated a second time inside `core/dispatch.py`'s
-  hop-orchestration flow itself — that module orchestrates hops, it does not re-gate a call
-  `core/tools.py` already gated. It **MUST** be evaluated on every call made through
-  `core/tools.py`'s `dispatch_tool` (ROADMAP Phase 19 P19-3), which — since Phase 19 P19-5/P19-7a
-  wired `DocketDriver` onto every real hop, and P19-7b removed the daemon that used to be the
-  only alternative execution path — is now every tool call any pod-dispatch hop makes. A call
-  that reaches that function and is not gated by `evaluate_tool_call` is the specific regression
-  `tests/integration/test_pre_tool_call_policy.py` exists to catch.
-- A `require_approval`/`ask`-gated tool call through `core/tools.py` **MUST NOT** execute before
-  its approval resolves, and **MUST NOT** be left waiting indefinitely — `wait_for_approval`
-  **MUST** eventually return `granted` or `denied`, the latter both for an explicit deny and for
-  an unanswered `TOOL_APPROVAL_TIMEOUT`. A denied or timed-out call's handler **MUST NOT** run;
-  `tests/integration/test_pre_tool_call_policy.py::TestDispatchToolApprovalRouting` proves this with the
-  handler's own execution flag, not just the returned decision.
+- `pre_tool_call` **MUST NOT** be evaluated a second time by the hop-orchestration flow, and
+  **MUST** be evaluated on every call through `dispatch_tool`. A call that reaches `dispatch_tool`
+  and is not gated by `evaluate_tool_call` is the regression the gate's suite exists to catch.
+- An `ask`-gated tool call **MUST NOT** execute before its approval resolves, and **MUST NOT** wait
+  indefinitely: `wait_for_approval` **MUST** eventually return granted or denied, the latter for an
+  explicit deny and for an unanswered timeout. A denied or timed-out call's handler **MUST NOT**
+  run, proven by the handler's own execution flag, not just the returned decision.
 - A `waiting_approval` dispatch task **MUST NOT** be resumable by anything other than a grant
-  resolving that exact token (see `pod-dispatch.spec.md`'s claim-eligibility invariant) — this
-  spec does not duplicate that state machine, only the approval-store side of it.
+  resolving that exact token (pod-dispatch.spec.md's claim-eligibility invariant); this spec owns
+  the approval-store side only.
 - A verify command matching a `HIGH_RISK_PATTERNS` class **MUST NOT** be started as a subprocess
-  at all (`edges/adapters/system.py`'s `run_verify_cmd` fails closed before calling
-  `subprocess.run`) — this is a real behavior change, not documentation, and **MUST** be
-  provable by a test that asserts `subprocess.run` is never invoked for a high-risk `cmd`.
-- A `HIGH_RISK_PATTERNS` match on a hop's real output **MUST NOT** be described as blocking or
-  redacting anything by itself — it is a `guardrail_check`-visible classification signal only
-  (ROADMAP Phase 15 G-3), layered underneath whatever the installed JSON policy engine already
-  decided, never on top of it.
-- `ToolContext.sandbox="off"` (the default) **MUST** produce byte-for-byte the same `run_bash`
-  output as before ROADMAP Phase 19 P19-9 existed — no marker, no environment change, no argv
-  change. `tests/integration/test_sandboxed_exec.py::TestSandboxOffIsUnchanged` pins this.
+  at all, provable by a test that asserts no process is launched for a high-risk command.
+- A `HIGH_RISK_PATTERNS` match on a hop's output **MUST NOT** be described as blocking or redacting
+  anything by itself: it is a `guardrail_check`-visible signal only, beneath whatever the installed
+  policies decided.
+- `ToolContext.sandbox="off"` (the default) **MUST** produce no sandbox marker, no jail argv and no
+  jailed environment.
 - `sandbox="auto"` resolving to a real backend that then fails to start (`OSError` on launch)
-  **MUST NOT** cause the command to run unsandboxed instead — it **MUST** be reported as a failure
-  naming the backend. `TestHonestReportingIsDeterministic::test_a_jail_that_fails_to_start_is_a_reported_failure_not_a_silent_fallback`
-  proves this by forcing the launch to raise and asserting the command's own side effect (a marker
-  it would otherwise have printed) never happens.
-- A real exec jail (landlock, seatbelt or docker) **MUST NOT** weaken `resolve_within`'s containment for
-  `read`/`write`/`edit`/`glob`/`grep` calls, and `resolve_within`'s containment **MUST NOT** be
-  read as covering `bash` — the two are independent and both apply at once.
-  `TestChokepointWiring::test_file_tool_containment_is_unaffected_by_ctx_sandbox` and the real-jail
-  write-outside-roots tests in `TestRealLandlockJail` each prove one direction; neither implies the
-  other.
-- A timed-out `bash` call running under a real backend **MUST NOT** leave an orphan: no surviving
-  process for landlock (`TestRealLandlockJail::test_timeout_leaves_no_orphaned_children`, a host-wide
-  `pgrep` check), no surviving container for docker
-  (`TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`, a `docker ps`
-  check) — both skipped, with an explicit reason, on a host lacking the relevant backend, never
-  silently passing in its absence.
-- A real exec jail's environment **MUST NOT** include the full host environment — only `PATH`, the
-  operator's git identity and `ToolContext.env`'s explicit entries. `sandbox="off"`, and `sandbox="auto"` when it resolves to
-  `"none"`, are unaffected and **MUST** keep receiving the full host environment exactly as before
-  this card.
-- `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS` — the
-  refusal happens before `urllib.request.build_opener` is ever called, not merely before the
-  content is returned. `tests/unit/edges/adapters/test_fetch.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
-  proves this by making `build_opener` raise if invoked at all.
-- A redirect `fetch` follows **MUST NOT** land on a host absent from the same allowlist — the
-  domain allowlist governs the whole request, including any redirect chain, not just the
-  originally requested URL. `TestRedirects::test_redirect_off_the_allowlist_is_refused` proves
-  this against a real HTTP 302 response, not a mocked assumption about `urllib`'s behavior.
-- `fetch`'s response size cap **MUST** be enforced with an announced truncation, matching
-  `toolbox.MAX_OUTPUT_CHARS`'s existing contract for every other built-in — a truncated `fetch`
-  result **MUST NOT** be indistinguishable from a response that was genuinely that short.
-- `fetch` **MUST** be gated through `core/tools.py`'s existing chokepoint like every other
-  built-in — a `pre_tool_call` policy that blocks a rendered `fetch` call **MUST** deny it before
-  the handler runs, exactly as it would for `bash`/`write`. This card adds no second execution
-  path and no second gate.
+  **MUST NOT** run the command unsandboxed; it **MUST** be reported as a failure naming the
+  backend, proven by asserting the command's own side effect never happens.
+- A real exec jail **MUST NOT** weaken `resolve_within`'s containment for `read`, `write`, `edit`,
+  `glob` and `grep`, and `resolve_within`'s containment **MUST NOT** be read as covering `bash`;
+  the two are independent and both apply at once.
+- A timed-out `bash` call under a real backend **MUST NOT** leave an orphan: no surviving process
+  for landlock (a host-wide `pgrep` check), no surviving container for docker (a `docker ps`
+  check); both are skipped, with a reason, on a host lacking the backend, never silently passing.
+- A real exec jail's environment **MUST NOT** include the host environment (Exec sandbox 6).
+  `sandbox="off"` **MUST** receive the host environment minus docket's credentials.
+- `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS`: the refusal
+  happens before an opener is built, not merely before the content is returned.
+- A redirect `fetch` follows **MUST NOT** land on a host absent from the allowlist: the allowlist
+  governs the whole redirect chain, proven against a real HTTP 302 response.
+- `fetch`'s response cap **MUST** be enforced with an announced truncation: a truncated result
+  **MUST NOT** be indistinguishable from a response that was genuinely that short.
+- `fetch` **MUST** be gated through `dispatch_tool` like every other built-in: a `pre_tool_call`
+  policy that blocks a rendered `fetch` call **MUST** deny it before the handler runs. There is no
+  second execution path and no second gate.
+
+## Implementation
+
+- `src/docket/core/tools.py`: `dispatch_tool`, `evaluate_tool_call`, `render_tool_call`,
+  `ToolContext`, `ToolResult`, `ToolVerdict`, `Pregrant`, `screen_tool_result`, `builtin_registry`
+  (the `bash`, `consult` and `fetch` registrations), the wait, park, pre-grant and `approve_task`
+  handling, the `tool.*` audit entries
+- `src/docket/core/security.py`: `SAFE_BINS`, `HighRiskClass`, `HIGH_RISK_PATTERNS`,
+  `match_high_risk`, `classify_command`, `CommandVerdict`, `apply_workspace_isolation`,
+  `disable_workspace_isolation`
+- `src/docket/core/approval.py`: `approval_create`, `approval_get`, `approval_grant`,
+  `approval_deny`, `approval_set_option`, `approval_options`, `wait_for_approval`,
+  `approval_sweep_expired`, `create_pregrant`, `consume_pregrant`, `screen_rationale`,
+  `APPROVAL_CHANNELS`, `APPROVAL_TOKEN_RE`, `APPROVAL_RATIONALE_MAX_CHARS`, `ApprovalError`,
+  `ApprovalNoop`, `ApprovalConflict`
+- `src/docket/core/policy.py`: `policy_files`, `policy_eval`, `policy_eval_detail`, `policy_test`,
+  `normalize_policy`, `read_policy`, `validate_policy`, `install_policies`, `ToolCallFacts`,
+  `PolicyHit`, `task_policies`, `TASK_POLICY_ID`, `denied_tools_document`,
+  `task_policy_document`, the `when` and `plugin` predicate evaluation
+- `src/docket/plugins.py`: the `docket.plugins` API (`PLUGIN_API_VERSION`, `predicate`,
+  `ToolCall`, `PolicyContext`, `REGISTRY`)
+- `src/docket/core/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`
+- `src/docket/core/dispatch.py`: `enqueue_task` (the `pre_input` gate), `dispatch_task` (the
+  `pre_output` scan, the profile check), `pod_approval_mode`, hop composition
+  (`DOCKET_APPROVAL_MODE`, `DOCKET_APPROVAL_EXPIRES_AT`, the task restriction keys, the hop
+  network), the verify, `run:` and prepare launches, `resolve_waiting_approval`
+- `src/docket/core/runtime_driver.py`: `DOCKET_APPROVAL_MODE`, `DOCKET_TASK_DENIED_TOOLS`,
+  `DOCKET_TASK_NETWORK`, `DOCKET_TASK_POLICIES`
+- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver.run_turn` (isolation and network
+  resolution, `isolation.refused`, `network.refused`, approval mode, `allow_commands`, project
+  resolution, task policies, `make_non_dumpable`), `resolve_command_jail`
+- `src/docket/edges/adapters/system.py`: `sandbox_availability`, `SandboxAvailability`,
+  `landlock_available`, `seatbelt_available`, `docker_daemon_reachable`, `jail_launch`,
+  `JailPolicy`, `landlock_argv`, `seatbelt_argv`, `seatbelt_profile`, `docker_run_argv`,
+  `docker_kill`, `docker_image_has_git`, `git_identity_env`, `git_dirs`, `trust_worktree`,
+  `task_environment`, `credential_names`, `run_command`, `run_verify_cmd`, `make_non_dumpable`,
+  `git_current_branch`
+- `src/docket/edges/adapters/landlock.py`: `abi_version`, `plan_ruleset`, `socket_filter`,
+  `DEFAULT_RO`, `DEFAULT_RO_FILES`, `DEFAULT_RW_FILES`
+- `src/docket/jail.py`: the `python -m docket.jail` entry (`--rw`, `--ro`, `--refuse`, `--net`,
+  exit 125)
+- `src/docket/edges/adapters/toolbox.py`: `run_bash`, `resolve_within`, `PathEscapeError`,
+  `ToolOutcome`, `glob_files`, `grep_files`
+- `src/docket/edges/adapters/mcp_client.py`: the jailed stdio MCP launch
+- `src/docket/edges/adapters/fetch.py`: `fetch_url`, the domain-locked redirect handler
+- `src/docket/core/fleet.py`: `FleetSecurity`, `get_isolation_enabled`, `get_isolation_state`,
+  `get_network_mode`, `get_sandbox_backend`, `add_read_only`, `remove_read_only`, `get_profile`,
+  `set_profile`
+- `src/docket/core/pod.py`: `PodSettings`, `effective_network`, `effective_read_only`, `pod_of`
+- `src/docket/core/network_posture.py`: `network_posture`, `global_posture`
+- `src/docket/core/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
+  `effective_profile`
+- `src/docket/core/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
+- `src/docket/core/reviewed_repos.py`: `review_code` and the reviewed digest
+- `src/docket/core/prepare.py`: `LOCKFILES`, `linked_entries`
+- `src/docket/core/pod_apply.py`: `REPO_REFUSED_COMMANDS`, `review_decision`, `apply_directory`
+- `src/docket/core/pod_provisioning.py`: `provision_task_worktree`
+- `src/docket/core/operator_contract.py`: `canonical_args_digest`
+- `src/docket/core/archetypes.py`: `registry_for_role`
+- `src/docket/core/agent_loop.py`: the `approval_parked` stop, `approval_parked_error`
+- `src/docket/core/telegram.py`: the `/approve` and `/deny` handlers
+- `src/docket/serve.py`: `GET /approvals`, `POST /approvals/<token>` and its channel set,
+  `POST /tasks` (`trusted`), the expiry sweep, `/metrics` (`docket_policy_hits_total`)
+- `src/docket/cli/_setup_sandbox.py`: `docket setup sandbox` and its verbs, `docket setup profile`,
+  the `gates.*` audit entries
+- `src/docket/cli/_setup_check.py`: `docket setup`'s security report and `securityGates`
+- `src/docket/cli/_task.py`: `docket task approve`, `docket task deny`
+- `src/docket/cli/_mcp.py`: `approvals_list`, `approvals_grant`, `approvals_deny`
+- `src/docket/cli/_progress.py`: the `docket run` approval prompt
+- `src/docket/cli/_pod_config.py`: `docket pod check`, `docket pod policies`,
+  `docket pod validate`, `docket pod update`
+- `src/docket/cli/_agents.py`: `docket init` (policy install, the repository shell refusal)
+- `src/docket/cli/_run.py`: `docket run`'s re-apply of a repository directory
+- `src/docket/cli/_service.py`: `docket start` (`make_non_dumpable`)
+- `src/docket/cli/_status.py`: `docket status`'s profile and network lines
+- `src/docket/config.py`: `TOOL_APPROVAL_TIMEOUT`, `TOOL_APPROVAL_POLL_INTERVAL_S`,
+  `APPROVAL_TIMEOUT`, `FETCH_ALLOWED_DOMAINS`, `FETCH_MAX_RESPONSE_BYTES`, `FETCH_TIMEOUT_S`,
+  `POLICIES_DIR`, `PLUGINS_DIR`, `APPROVALS_DIR`, `SANDBOX_DOCKER_IMAGE`, `JAIL_TMP_DIR`,
+  `PREPARE_CACHE_DIR`, `pod_config_dir`
+- `src/docket/templates/policies/`: the six shipped policy templates
+- Tests that pin this spec: `tests/integration/test_pre_tool_call_policy.py`
+  (`TestRenderToolCallShape`, `TestBlockDestructiveShippedTemplate`,
+  `TestDispatchToolApprovalRouting`), `tests/integration/test_policy_engine.py`,
+  `tests/integration/test_sandboxed_exec.py` (`TestSandboxOffIsUnchanged`,
+  `TestHonestReportingIsDeterministic`, `TestChokepointWiring`, `TestRealLandlockJail`,
+  `TestRealDockerJail`, `TestGitMetadataTheHostLaterRuns`, `TestJailedCommit`),
+  `tests/integration/test_docket_driver.py` (`TestIsolationWiring`),
+  `tests/integration/test_jail_landlock.py`, `tests/integration/test_escape_matrix.py` (the
+  `release-journey` CI job), `tests/integration/test_envelope_commands.py`,
+  `tests/integration/test_network_lockdown.py`, `tests/integration/test_lights_out_profile.py`,
+  `tests/integration/test_task_credentials.py`, `tests/integration/test_process_non_dumpable.py`,
+  `tests/unit/edges/adapters/test_fetch.py` (`TestDomainAllowlist`, `TestRedirects`),
+  `tests/unit/core/test_approval.py`

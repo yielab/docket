@@ -93,39 +93,39 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
-| Agent Lifecycle | 2.1.0 | Complete |
-| Agent Loop | 1.43.0 | Implemented and live |
-| API Keys | 1.8.0 | Complete |
-| Audit | 2.14.1 | Implemented |
-| Config Format | 1.11.0 | Implemented |
-| Cost Tracking | 1.10.1 | Implemented, recorded dollars unavailable |
-| Model Profiles | 3.6.1 | Complete |
-| Observability Export | 1.12.3 | Implemented and live |
-| Pipeline Format | 2.18.0 | Implemented |
-| Pod Blueprints | 1.36.0 | Implemented |
-| Pod Dispatch | 6.61.0 | Complete |
-| Role Archetypes | 1.26.0 | Implemented |
-| Security Gates | 0.65.0 | Implemented (gate always on; isolation opt-in) |
-| Session History | 1.9.0 | Implemented and live |
-| Session Scoping | 3.0.0 | Complete |
-| Telegram Integration | 2.7.0 | Implemented |
-| Trace Store | 1.13.0 | Implemented and live |
-| Workspace Structure | 1.22.0 | Complete |
-| CLI Interface | 2.18.0 | Complete |
-| MCP Client | 1.11.1 | Implemented and wired to the live turn path |
-| Runtime Library | 2.2.1 | Implemented (artifact-tested; **not published to any index**) |
-| MCP Server | 1.9.3 | Implemented |
-| CLI JSON Shapes | 1.38.0 | Complete |
-| docket-meta schema | 3.6.3 | Complete |
-| Docket Store | 1.0.0 | Implemented |
-| Operator API | 6.1.0 | Implemented (Phase 43, ADR 0027) |
-| Serve Read API | 3.12.1 | Stable |
-| Adoption Benchmark | 1.2.3 | Implemented |
-| Input Validation | 1.6.2 | Partial |
-| Test Framework | 2.21.0 | Active |
-| Starter Journey | 1.0.2 | Implemented |
-| Operator Loop | 1.11.0 | Implemented |
-| User Stories | 1.6.0 | Active |
+| Agent Lifecycle | 3.0.0 | Complete |
+| Agent Loop | 2.0.0 | Implemented and live |
+| API Keys | 2.0.0 | Complete |
+| Audit | 3.0.0 | Implemented |
+| Config Format | 1.11.1 | Implemented |
+| Cost Tracking | 1.10.2 | Implemented, recorded dollars unavailable |
+| Model Profiles | 4.0.0 | Complete |
+| Observability Export | 2.0.0 | Implemented and live |
+| Pipeline Format | 3.0.0 | Implemented |
+| Pod Blueprints | 2.0.0 | Implemented |
+| Pod Dispatch | 7.0.0 | Implemented |
+| Role Archetypes | 2.0.0 | Implemented |
+| Security Gates | 1.0.1 | Implemented (gate always on; isolation opt-in) |
+| Session History | 1.9.1 | Implemented and live |
+| Session Scoping | 4.0.0 | Complete |
+| Telegram Integration | 3.0.0 | Implemented |
+| Trace Store | 2.0.0 | Implemented and live |
+| Workspace Structure | 2.0.0 | Complete |
+| CLI Interface | 3.0.0 | Complete |
+| MCP Client | 2.0.0 | Implemented and wired to the live turn path |
+| Runtime Library | 2.2.2 | Implemented (artifact-tested; **not published to any index**) |
+| MCP Server | 1.9.4 | Implemented |
+| CLI JSON Shapes | 2.0.0 | Complete |
+| docket-meta schema | 4.0.0 | Complete |
+| Docket Store | 2.0.0 | Implemented |
+| Operator API | 6.1.1 | Implemented (Phase 43, ADR 0027) |
+| Serve Read API | 4.0.0 | Stable |
+| Adoption Benchmark | 2.0.0 | Implemented |
+| Input Validation | 2.0.0 | Implemented |
+| Test Framework | 3.0.0 | Active |
+| Starter Journey | 2.0.0 | Implemented |
+| Operator Loop | 2.0.0 | Implemented |
+| User Stories | 2.0.0 | Active |
 
 ## Tools
 

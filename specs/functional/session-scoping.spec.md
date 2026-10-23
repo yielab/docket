@@ -1,8 +1,8 @@
 # Session Scoping Specification
 
-**Version**: 3.0.0
+**Version**: 4.0.0
 **Status**: Complete
-**Last Updated**: 2026-10-07
+**Last Updated**: 2026-10-22
 
 ## Purpose
 
@@ -19,19 +19,20 @@ This specification covers:
 
 This specification does NOT cover the workspace file layout (see `workspace-structure.spec.md`),
 session serialization/compaction (see `session-history.spec.md`), or the complete pipeline-key and
-trace contract (see `pod-dispatch.spec.md` W20-C4).
+trace contract (see `pod-dispatch.spec.md`).
 
 ## Requirements
 
 ### Session key
 
-1. Every agent's metadata **MUST** have a base session key of the form
-   `agent:<id>:<project>`.
+1. Every agent's metadata **MUST** have a base session key of the form `agent:<id>:<project>`,
+   where `<id>` is the agent's own id for a standalone agent and the pod's name for a pod member.
 2. The `<project>` component **MUST** equal the agent's `projectKey` field.
 3. The default project key **MUST** be `default`.
-4. `sessionKey` and `projectKey` **MUST** be stored in `.docket-meta.json`, docket's source of
-   truth, written once by provisioning. No command changes them afterwards. There is no daemon
-   registry or secondary configuration mirror.
+4. `sessionKey` and `projectKey` **MUST** be stored in the agent's `.docket-meta.json`, docket's
+   source of truth. Provisioning writes both. No command changes either value afterwards; a pod
+   apply writes back the values it read. There is no daemon registry or secondary configuration
+   mirror.
 5. A pod-dispatch step **MUST NOT** overwrite this base key. It derives a task-and-step-specific
    durable key from member, project, task, and pipeline `step_id` as defined by
    `pod-dispatch.spec.md`.
@@ -46,11 +47,24 @@ trace contract (see `pod-dispatch.spec.md` W20-C4).
 
 ## Interface Contracts
 
-No command reads or writes the session key. It is a metadata field provisioning writes once.
+Provisioning writes `sessionKey` and `projectKey` into the metadata of each agent it creates: a
+standalone agent at declarative `init`, and every pod member at pod provisioning and pod apply.
+No public command reads the base key as a history key, and no command sets it: the pod settings
+command rejects both `sessionKey` and `projectKey` as unknown settings.
 
 ## Examples
 
-### A derived key
+### A pod member's derived key
+
+The Lead of pod `mywebsite` (default project key):
+
+```json
+{"projectKey": "default", "sessionKey": "agent:mywebsite:default"}
+```
+
+### A standalone agent's derived key
+
+The standalone agent `mywebsite-lead` (default project key):
 
 ```json
 {"projectKey": "default", "sessionKey": "agent:mywebsite-lead:default"}
@@ -60,5 +74,16 @@ No command reads or writes the session key. It is a metadata field provisioning 
 
 ### Invariants
 
-- `sessionKey` **MUST** always equal `agent:<id>:<projectKey>`.
+- `sessionKey` **MUST** always equal `agent:<id>:<projectKey>`, with `<id>` as defined in
+  requirement 1 of "Session key".
 - Nothing after provisioning mutates a pod task's derived step-history or trace identity.
+
+## Implementation
+
+- `src/docket/core/pod.py`: `session_key`, `PodMember.session_key`, `PodSettings.KEYS`
+- `src/docket/core/pod_provisioning.py`: `provision_member` (writes `sessionKey` and `projectKey` for each pod member)
+- `src/docket/core/pod_apply.py`: pod apply reads `projectKey` from the Lead and re-derives each member's key
+- `src/docket/cli/_agents.py`: `_provision_agent` (standalone agent at declarative `init`), `_create_workspace` (renders the SOUL.md session line)
+- `src/docket/core/dispatch.py`: `step_session_key` (the per-hop durable history key)
+- `src/docket/core/fleet.py`: `meta_set` (generic metadata write; no caller sets either key)
+- `src/docket/core/models.py`: `AgentMeta.session_key`, `AgentMeta.project_key`

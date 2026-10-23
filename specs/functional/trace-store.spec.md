@@ -1,23 +1,22 @@
 # Trace Store Specification
 
-**Version**: 1.13.0
-**Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
-every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
-`core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
-`core/security.py`'s guardrail checks. Before v1.0.0
-the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
-subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-10-20
+**Version**: 2.0.0
+**Status**: Implemented and live. Every component that traces writes through `trace_event` into
+one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
+and expires old ones. `trace_ingest` exists and is tested but has no production caller.
+**Last Updated**: 2026-10-22
 
 ## Purpose
 
 Docket traces every agent action it can observe to `$TRACES_DIR/<project>/<session_id>.jsonl`,
 one append-only file per session. This specification defines that store: the record shape written
-per line, the full `EVENT_TYPES` vocabulary an event type must belong to before it is accepted,
-the `subscribe` seam a live consumer (`docket task trace --tail`) reads from
-without touching disk, `redact`'s secret-shape scrubbing, the `trace_ingest` bridge that projects
-a driver's own session log into this store, and the retention functions (`sweep_all`,
-`expire_old_traces`) that keep it bounded.
+per line, the closed `EVENT_TYPES` vocabulary an event type must belong to before it is accepted,
+the subscriber seam (`subscribe`, `add_subscriber`) through which an in-process consumer receives
+each record as it is written without reading the file (the `docket run` progress view and the
+trace exporter pipeline), `redact`'s secret-shape scrubbing, the `trace_ingest` bridge that
+projects a driver's own session log into this store, the sweep that closes stale traces
+(`sweep_all`), the retention function (`expire_old_traces`) that keeps the store bounded, and the
+terminal-outcome summary read from it (`terminal_outcomes`).
 
 ## Scope
 
@@ -26,26 +25,32 @@ This specification covers:
 - The on-disk JSONL record shape and its required/optional fields
 - `EVENT_TYPES`, the closed set of event-type strings `trace_event` accepts
 - `trace_event`'s three-outcome return contract (`TraceStatus`) and `DOCKET_NO_TRACE=1`
-- The `subscribe`/`TraceSink` seam: synchronous, best-effort, redacted-record delivery
-- `redact`: the always-on secret-shape patterns plus stored-secret-value scrubbing
+- The `subscribe`/`add_subscriber`/`TraceSink` seam: synchronous, best-effort, redacted-record
+  delivery
+- `redact`: the always-on secret-shape patterns plus stored- and exported-secret-value scrubbing
 - `trace_ingest`: idempotent, offset-tracked projection of a `RuntimeDriver`'s own session log
   into `tool_call`/`tool_result`/`session_start`/`session_end` records
 - `sweep_all`/`expire_old_traces`: synthetic `session_end` for stale-open traces, and retention
-  deletion of terminated traces past `TRACE_RETENTION_S`
-- The `llm_call` event type this version adds (ROADMAP P32-1, ADR 0014 rule 1)
+  deletion of terminated traces past the retention window
+- The payload keys of `llm_call` and `tool_result` that carry captured content and the request
+  breakdown, and the `process_started`/`process_exited` lifecycle events
+- `terminal_outcomes`: the count of a pod's finished sessions read back from its trace files
 
 This specification does NOT cover:
 
 - What each individual event type's payload *means*, beyond the shape needed to validate and
-  redact it — the producing module's own spec owns that: `agent-loop.spec.md` owns `tool_call`,
-  `tool_result`, `session_compaction`, `request_fit`, and (as of its 1.25.0) `llm_call`;
-  `pod-dispatch.spec.md` owns the verdict/rework/approval/run-cancellation event family;
-  `security-gates.spec.md` owns `guardrail_check`/`guardrail_block`; `cost-tracking.spec.md`
-  owns `cost_charged`/`budget_warning`/`budget_exceeded`
+  redact it — the producing component's own spec owns that: `agent-loop.spec.md` owns
+  `tool_call`, `tool_result`, `prompt_composed`, `session_compaction`, `request_fit` and the
+  meaning of `llm_call`; `pod-dispatch.spec.md` owns the verdict/rework/approval/run-cancellation
+  and hop event family, `cost_charged` and `budget_exceeded`; `security-gates.spec.md` owns
+  `guardrail_check`/`guardrail_block`; `cost-tracking.spec.md` owns `budget_warning`'s unpriced
+  action; `operator-loop.spec.md` owns `input_requested`, `input_answered`, `question_asked` and
+  `input_expired`
 - The read API surface over this store (`docket task trace`, `GET` routes) — see
   `serve-read-api.spec.md`
-- Audit (`core/audit.py`'s hash-chained log) — a separate store, separate guarantees, never
-  merged with this one
+- How a trace record is projected into an exported span — see `observability-export.spec.md`
+- Audit (the hash-chained `audit.log`) — a separate store, separate guarantees, never merged
+  with this one
 
 ## Requirements
 
@@ -55,7 +60,8 @@ This specification does NOT cover:
    `$TRACES_DIR/<project>/<session_id>.jsonl`, containing at minimum `ts` (UTC, second
    precision, `YYYY-MM-DDTHH:MM:SSZ`), `project`, `session_id`, `agent_role`, `event_type`, and
    `payload` (a JSON value; a payload that fails to parse as JSON **MUST** be wrapped as
-   `{"text": <redacted string>}` rather than rejected).
+   `{"text": <redacted string>}` rather than rejected). A trace file is created mode 0600, and
+   a project directory the write creates is mode 0700.
 2. `event_type` **MUST** be a member of `EVENT_TYPES`; `trace_event` **MUST** return
    `"rejected"` and write nothing for any other value.
 3. `trace_event` **MUST** return `"suppressed"` and write nothing whenever `DOCKET_NO_TRACE=1`,
@@ -66,91 +72,108 @@ This specification does NOT cover:
 5. `cost_usd` **MUST** be included on a record only when the caller passes a value that parses
    as `float`; when included, it **MUST** be the field name `cost_usd`. `duration_ms` follows the
    same optional-inclusion rule, parsed as `int`.
-6. `EVENT_TYPES` **MUST** include exactly: `session_start`, `tool_call`, `tool_result`,
-   `context_composed`, `prompt_composed`, `session_compaction`, `request_fit`,
+6. `EVENT_TYPES` **MUST** be exactly these 49 members: `session_start`, `tool_call`,
+   `tool_result`, `context_composed`, `prompt_composed`, `session_compaction`, `request_fit`,
    `guardrail_check`, `guardrail_block`, `approval_requested`, `approval_granted`,
    `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`, `drift_alert`,
    `verification_failed`, `tester_verdict_failed`, `reviewer_verdict_unparseable`,
    `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
-   `paused_refused`,
-   `approval_required`, `approval_resumed`, `approval_task_denied`,
+   `paused_refused`, `approval_required`, `approval_resumed`, `approval_task_denied`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
-   `verdict_unparseable`, `step_skipped`, `command_step`, `route_taken`, `llm_call`,
-   `hop_started`, `hop_finished`, `memory_update`, `prepare`, `error`, `session_end`. Adding a member **MUST** be a one-line
-   change to this frozenset; removing one is a breaking change to every consumer enumerated in
-   Scope above.
+   `verdict_unparseable`, `step_skipped`, `command_step`, `route_taken`, `input_requested`,
+   `input_answered`, `question_asked`, `input_expired`, `llm_call`, `hop_started`,
+   `hop_finished`, `memory_update`, `prepare`, `process_started`, `process_exited`, `error`,
+   `session_end`. Adding a member **MUST** be a one-line change to this frozenset; removing one
+   is a breaking change to every consumer enumerated in Scope above.
 
 ### Redaction
 
-7. `redact` **MUST** run before a record's payload is stored, applying every pattern in
-   `_REDACT_PATTERNS` (key-shaped assignments, vendor-prefixed env-var names, a generic
-   `NAME_API_KEY`/`_SECRET`/`_TOKEN` shape, bare vendor tokens with no prefix at all --
+7. `redact` **MUST** run before a record's payload is stored, applying every always-on pattern
+   (key-shaped assignments; vendor-prefixed names, `ANTHROPIC`, `OPENAI`, `GOOGLE`, `OPENROUTER`,
+   `AI_GATEWAY`, `VERCEL`, `COHERE`, followed by a value; a generic
+   `NAME_API_KEY`/`_SECRET`/`_TOKEN`/`_KEY` assignment; bare vendor tokens with no prefix at all,
    `sk-`/`sk-ant-`/`sk-proj-`, `ghp_`/`gho_`/`ghs_`, `xox[abp]-`, and a Telegram bot token
-   `<8-10 digits>:<35 chars>` -- and email addresses) and replacing each match with
-   the literal `[REDACTED]`. The key-shaped pattern's labels (`sk`, `pk`, `api`, `key`, `tok`,
-   `secret`, `bearer`, `auth`, `Basic`) **MUST** match only where no letter or digit precedes
-   them, so `task=<id>` and `risk=<value>` pass unchanged while `api_key=<value>` (the `_` is a
-   boundary) is still redacted.
-8. `redact` **MUST** additionally replace the exact value of any secret currently held in
-   `core/secrets.py`'s store, and of every credential-shaped variable in the process
-   environment (`DOCKET_LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, any name ending in `_API_KEY`,
-   `_TOKEN`, `_SECRET` or `_PASSWORD`; values longer than 8 characters), after the regex pass,
-   so a credential that does not match any generic shape -- stored, or exported in the shell and
-   never stored -- is still scrubbed by its own value.
+   `<8-10 digits>:<35 chars>`; and email addresses) and replacing each match with the literal
+   `[REDACTED]`. The key-shaped pattern's labels (`sk`, `pk`, `api`, `key`, `tok`, `secret`,
+   `bearer`, `auth`, `Basic`, matched case-insensitively) **MUST** match only where no letter or
+   digit precedes them, so `task=<id>` and `risk=<value>` pass unchanged while `api_key=<value>`
+   (the `_` is a boundary) is still redacted.
+8. `redact` **MUST** additionally replace, after the pattern pass, the exact value of every
+   secret held in the file-backed secret store (`secrets.json`; the keyring backend keeps no
+   values at rest, so it contributes none) and of every credential-shaped variable in the
+   process environment (`DOCKET_LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, any name ending in
+   `_API_KEY`, `_TOKEN`, `_SECRET` or `_PASSWORD`), in both cases only for values longer than 8
+   characters, so a credential that does not match any generic shape -- stored, or exported in
+   the shell and never stored -- is still scrubbed by its own value.
+9. `redact` **MUST NOT** raise for any input, including a secrets-store read failure — a
+   redaction fault degrades to "no stored-value scrubbing this call", never a lost or blocked
+   trace write.
 9a. `trace_event` **MUST** parse the payload as JSON first and apply `redact` to every string
    value of the parsed document (nested dicts and lists included), then serialize, so redaction
    never changes whether a payload is structured: a secret-shaped substring inside a string value
    is replaced and every sibling field survives intact. Only a payload that does not parse is
    redacted as a whole string and wrapped as `{"text": ...}` (requirement 1).
-9. `redact` **MUST NOT** raise for any input, including a secrets-store read failure — a
-   redaction fault degrades to "no stored-value scrubbing this call", never a lost or blocked
-   trace write.
 
 ### Subscriber seam
 
 10. `subscribe(sink)` **MUST** register *sink* to receive the exact (already redacted) record
-    about to be appended, synchronously, on the calling thread, for the duration of its context
-    manager, and **MUST** deregister exactly that one registration on exit — including when two
-    subscriptions of the same callable are active, where exiting one **MUST** leave the other in
-    place.
+    about to be appended, synchronously, on the calling thread, before the append, for the
+    duration of its context manager, and **MUST** deregister exactly that one registration on
+    exit — including when two subscriptions of the same callable are active, where exiting one
+    **MUST** leave the other in place.
 11. A raising subscriber **MUST NOT** change `trace_event`'s return value or prevent the
     append; the exception is suppressed and no other subscriber is skipped because of it.
-12. `DOCKET_NO_TRACE=1` **MUST** suppress subscriber notification along with the write — a
-    subscriber **MUST NOT** ever observe a record that was not durably written.
+12. `DOCKET_NO_TRACE=1` **MUST** suppress subscriber notification along with the write: under
+    it, a subscriber **MUST NOT** observe any record from `trace_event` or `trace_ingest`.
+35. `add_subscriber(sink)` **MUST** register *sink* on the same subscriber list, with the same
+    delivery rules as requirements 10-12, for a long-lived subscriber that has no single `with`
+    block to own, and **MUST** return a callable that removes exactly that one registration.
+    `subscribe` is the context-manager form of the same registration.
 
 ### Ingestion bridge
 
-13. `trace_ingest(project)` **MUST** be idempotent: each session's own `.ingest-index.json`
-    offset **MUST** ensure a turn already projected is never re-emitted on a later call.
-14. `trace_ingest` **MUST** read a driver's session log only through the `RuntimeDriver` port
-    (`core/runtime_driver.py`) — it **MUST NOT** parse any driver's on-disk format directly.
+13. `trace_ingest(project)` **MUST** be idempotent: each session's offset in the project's
+    `.ingest-index.json` **MUST** ensure a turn already projected is never re-emitted on a later
+    call.
+14. `trace_ingest` **MUST** read a driver's session log only through the `RuntimeDriver` port —
+    it **MUST NOT** parse any driver's on-disk format directly.
 15. `trace_ingest` **MUST** synthesize a `session_end` record (`payload.status == "aborted"`,
     `payload.source == "timeout-sweep"`) for a session whose last observed turn is older than
-    `config.SESSION_TIMEOUT`, and **MUST NOT** do so for a session that already has one.
+    `SESSION_TIMEOUT` seconds, and **MUST NOT** do so for a session that already has one.
+20. `trace_ingest` **MUST** notify every registered subscriber with each record it is about to
+    append — including the synthetic `session_end` for a timed-out session — before that record
+    is written, the same notify-then-append order `trace_event` uses (requirement 10).
+
+### Stale-trace sweep
+
+36. `sweep_all()` **MUST** append a synthetic `session_end` (`payload.status == "aborted"`,
+    `payload.source == "timeout-sweep"`, `agent_role` `"unknown"`) to every trace file under
+    `$TRACES_DIR` whose last record's `ts` is older than `SESSION_TIMEOUT` seconds and that has
+    no `session_end` yet, and **MUST** leave every other file unchanged. The append goes straight
+    to the file: it is not delivered to subscribers and is not gated by `DOCKET_NO_TRACE`. The
+    periodic sweep of `docket start` runs it once at startup and then on every interval, before
+    the retention sweep.
 
 ### Retention
 
 16. `expire_old_traces` **MUST** delete a trace file only when it already carries a
-    `session_end` event (real or synthetic) whose timestamp is older than the retention window
-    (`config.TRACE_RETENTION_S` by default); a trace with no `session_end` **MUST** be kept
-    regardless of age.
+    `session_end` event (real or synthetic) and the `ts` of its last timestamped record (not
+    necessarily the `session_end`) is older than the retention window (`TRACE_RETENTION_DAYS`,
+    30 days by default, unless the caller passes `retention_s`); a trace with no `session_end`, or with no parseable `ts`, **MUST** be
+    kept regardless of age. It runs on every periodic sweep of `docket start`, and on demand,
+    scoped to one pod, through `docket task prune --traces` (`--days` sets the window).
 17. `expire_old_traces(dry_run=True)` **MUST** report exactly what a real run would delete
     (`TraceExpiryReport.expired`) without deleting anything or mutating any `.ingest-index.json`.
 18. Deleting a session's trace file **MUST** also drop that session's id from its project's
     `.ingest-index.json`, since a session id is never reused and a stale offset entry for one
     can never be read again.
 
-### Task attribution (v1.1.0)
+### Task attribution
 
 19. A record **MAY** carry an optional `task_id` field, included only when the caller passes a
     non-empty value, and placed immediately after `event_type` in the record's key order so a
     reader sees it early; a record written with no `task_id` **MUST NOT** carry the key at all
     (never an empty string).
-20. `trace_ingest` **MUST** notify every registered subscriber with each record it is about to
-    append — including the synthetic `session_end` for a timed-out session — before that record
-    is durably written, the same notify-then-append order `trace_event` itself uses (requirement
-    10). Before this version, `trace_ingest` appended directly and no subscriber ever observed an
-    ingested record.
 
 ### Captured content
 
@@ -158,11 +181,9 @@ This specification does NOT cover:
     `outputMessages`, `systemInstructions` (each in the OTel GenAI `{"role", "parts"}`
     conversation shape) and `systemInstructionsSha256` (a hex SHA-256 string) — written only
     when the caller supplies the exchange's messages and only for the content classes an
-    enabled exporter has been granted (`core.telemetry.capture_classes()`, ADR 0015). A call
-    made with no messages, or with an empty grant, **MUST** produce a payload carrying none of
-    these keys, with the same keys and the same insertion order a payload built before this
-    capability existed would have. Requirement 28's `request` key is not one of these keys: it is
-    written on every call that supplies messages, whatever the grant.
+    enabled exporter has been granted (`capture_classes()`, ADR 0015). A call made with no
+    messages, or with an empty grant, **MUST** produce a payload carrying none of these keys.
+    Requirement 28's `request` key is not one of these keys and does not depend on the grant.
 22. `outputMessages` **MUST** appear only when `"completions"` is granted, and **MUST** render
     the reply message as one entry: a `text` part for its text (when non-empty) and one
     `tool_call` part per requested tool call, each carrying `id`, `name` and `arguments`.
@@ -173,29 +194,30 @@ This specification does NOT cover:
     becomes a `text` part.
 24. `systemInstructions` **MUST** appear only when `"instructions"` is granted and a system
     message is present in the captured exchange, and then only on the first call recorded for a
-    trace key or a later call whose system text's SHA-256 differs from the last one recorded for
-    that trace key. `systemInstructionsSha256` **MUST** accompany every such call regardless of
-    whether the text itself was repeated, so a reader can always tell whether the instructions
-    changed even when the text was omitted to avoid repeating it.
+    trace key in the process or a later call whose system text's SHA-256 differs from the last
+    one recorded for that trace key. `systemInstructionsSha256` **MUST** accompany every such
+    call regardless of whether the text itself was repeated, so a reader can always tell whether
+    the instructions changed even when the text was omitted to avoid repeating it.
 25. Every captured text value — a `text` part's `content`, a `tool_call` part's `arguments`, a
     `tool_call_response` part's `response`, and `systemInstructions` — **MUST** be cut to a fixed
-    4,000-character on-disk bound before the record is handed to `trace_event`, independent of
-    any exporter's own narrower truncation at projection time.
+    4,000-character on-disk bound, followed by a `…[truncated N chars]` marker naming how much
+    was cut, before the record is handed to `trace_event`, independent of any exporter's own
+    narrower truncation at projection time.
 26. Captured content receives no redaction pass of its own: requirement 7's whole-payload
     `redact` call, which already runs before every record is stored, is the only scrubbing it
     receives — a secret-shaped substring anywhere in a captured part is scrubbed exactly as it
     would be in any other payload field.
 27. A `tool_result` record **MUST** carry a `text` key — the tool output fed back to the model,
-    cut to the same 4,000-character bound — only when `"toolResults"` is granted; with no such
-    grant its payload **MUST** carry no `text` key. (Found by the live privacy proof: the
-    projection's `gen_ai.tool.call.result` read a `text` key that the live loop never wrote.)
+    cut to the same 4,000-character bound — only when `"toolResults"` is granted and the call
+    produced output; with no such grant its payload **MUST** carry no `text` key.
 
 ### Request breakdown
 
-28. An `llm_call` record **MUST** carry `request` whenever the backend measured its request: the
-    OpenAI-compatible adapter (`edges/adapters/llm.py::request_part_bytes`, the only module that
-    knows the wire format) counts the body it actually sent and returns it on
-    `ChatResponse.request_bytes`; a backend that does not measure leaves the key out. `request` **MUST** hold exactly the keys
+28. An `llm_call` record **MUST** carry `request` whenever the backend returned a measure of the
+    request it sent (`ChatResponse.request_bytes`): the OpenAI-compatible adapter, the only
+    component that knows the wire format, counts the body it actually sent (`request_part_bytes`)
+    and returns it on every reply it decodes; a reply that failed before a body was decoded, and
+    a backend that does not measure, leave the key out. `request` **MUST** hold exactly the keys
     `system`, `tools`, `toolResults`, `assistant` and `user`, each an object `{"bytes": int,
     "estTokens": int}`. `bytes` is the UTF-8 length of the JSON encoding, as the transport
     serialises it, of each object in that part: `system` counts the messages with role `system`,
@@ -205,49 +227,59 @@ This specification does NOT cover:
     so the five `bytes` values sum to the bytes of the messages and tools as sent. The JSON is
     encoded as UTF-8 (`ensure_ascii=False`) by the transport and the measure alike, so a non-ASCII
     part is its UTF-8 length, not six bytes per escaped character. `estTokens` is
-    `bytes // config.CONTEXT_BYTES_PER_TOKEN`: an estimate, never a measured count, which stays
+    `bytes // CONTEXT_BYTES_PER_TOKEN`: an estimate, never a measured count, which stays
     `inputTokens`. A compaction call advertises no tools, so its `tools` part is `{"bytes": 0,
-    "estTokens": 0}`. A call made without messages carries no `request` key.
+    "estTokens": 0}`.
     An `llm_call` record **MUST** also carry `cacheWriteTokens` (the part of `inputTokens` the
     endpoint reported writing to a cache, `TokenUsage.cache_write_tokens`) when it is positive,
-    and no such key otherwise, so a record of an endpoint that reports none is unchanged.
+    and no such key otherwise, so a record of an endpoint that reports none carries no such key.
 
-## Process lifecycle events
+### Process lifecycle events
 
-Added by P35-3 (ADR 0017 section 2): one event marking the start, and one marking the matching
-exit, of a real OS process group a tool handler spawns. The only current producer is
-`edges/adapters/toolbox.py::run_bash`'s `on_process` callback, threaded through
-`core/tools.py::ToolContext.on_process` and wired to real trace emission by
-`edges/adapters/docket_runtime.py::DocketDriver`. Built for an external plan-of-record (Tack)
-that needs to show and cancel a long-running `bash` call spawned by a pod task.
+One event marks the start, and one the matching exit, of a real OS process group a tool handler
+spawns (ADR 0017). The only producer is the `bash` built-in tool: `run_bash` reports each
+lifecycle step to the turn's `ToolContext.on_process` callback, and `DocketDriver` turns each
+report into a trace event, so an external plan-of-record can show and cancel a long-running
+`bash` call spawned by a pod task.
 
-1. `EVENT_TYPES` **MUST** additionally include `process_started` and `process_exited`.
-2. `process_started`'s payload **MUST** carry exactly `{"pgid": <int>}` — the spawned process
-   group's id — as reported by `run_bash`; the `bash` tool handler further tags it with
-   `"tool": "bash"` before it reaches this store (added in `core/tools.py`, not by `run_bash`
-   itself, which knows nothing about which tool called it).
-3. `process_exited`'s payload **MUST** carry `pgid` plus exactly one of `exitCode` (int, the
-   process's real exit status, including a normal zero) or `signal` (the string `"SIGKILL"`,
-   present only when `run_bash` itself killed the group on a timeout or a cancellation) — never
-   both, never neither.
-4. Exactly one `process_started`/`process_exited` pair **MUST** be emitted per process group a
-   tool handler starts, and **MUST** fire even when the process is killed rather than left to
-   exit on its own; a `Popen` call that raises before a process exists **MUST NOT** produce
-   either event.
-5. A turn with no process-spawning tool call **MUST** produce a trace carrying no
-   `process_started`/`process_exited` events at all — byte-identical to a trace recorded before
-   this capability existed.
-6. When a dispatch run is current (`core.runs.current_run_id()` is not `None`) at the moment a
-   `process_started`/`process_exited` event is reported, the reporting driver **MUST**
-   register or clear that pgid against the run (`core.runs.add_hop_pid`/`remove_hop_pid`) so
-   `docket task cancel` reaches it; with no run current, the event is still traced, but no pid
-   is registered anywhere.
+29. `EVENT_TYPES` **MUST** include `process_started` and `process_exited`.
+30. `process_started`'s payload **MUST** carry exactly `{"pgid": <int>}` — the spawned process
+    group's id — as reported by `run_bash`; the `bash` tool handler further tags it with
+    `"tool": "bash"` before it reaches this store (`run_bash` itself knows nothing about which
+    tool called it).
+31. `process_exited`'s payload **MUST** carry `pgid` plus exactly one of `exitCode` (int, the
+    process's real exit status, including a normal zero) or `signal` (the string `"SIGKILL"`,
+    present only when `run_bash` itself killed the group on a timeout or a cancellation) — never
+    both, never neither — and is tagged with `"tool": "bash"` the same way.
+32. Exactly one `process_started`/`process_exited` pair **MUST** be emitted per process group a
+    tool handler starts, and **MUST** fire even when the process is killed rather than left to
+    exit on its own; a `Popen` call that raises before a process exists **MUST NOT** produce
+    either event.
+33. A turn with no process-spawning tool call **MUST** produce a trace carrying no
+    `process_started`/`process_exited` events at all.
+34. When a dispatch run is current (`current_run_id()` is not `None`) at the moment a
+    `process_started`/`process_exited` event is reported, the reporting driver **MUST**
+    register or clear that pgid against the run (`add_hop_pid`/`remove_hop_pid`) so
+    `docket task cancel` reaches it; with no run current, the event is still traced, but no pid
+    is registered anywhere.
 
 This store owns only the shape and firing rule of these events, not a consumer's contract.
 
+### Terminal outcomes
+
+37. `terminal_outcomes(project, window=N)` **MUST** read the project's trace files in file-name
+    order and classify each by the `payload.status` of its last `session_end`: `done`/`success`
+    count as success, `failed`/`failure` as failure, `cancelled`/`blocked`/`aborted` as aborted,
+    and a `session_end` with a dict payload but no `status` as success. A file with no
+    `session_end`, with a non-dict payload, or with any other status (a parked `waiting_*` task)
+    **MUST** be skipped. It **MUST** keep only the last *N* classified files of that order (all
+    of them when *N* is 0 or less) and report each one's duration from its last `session_start`
+    `ts` to its `session_end` `ts`, in milliseconds, when both parse. `docket status` reads it
+    with `METRICS_WINDOW` (50 by default).
+
 ## Interface Contracts
 
-### Module API (`docket.core.trace`)
+### Module API
 
 ```python
 TraceStatus = Literal["written", "rejected", "suppressed"]
@@ -262,6 +294,7 @@ def trace_event(
 ) -> TraceStatus: ...
 
 def subscribe(sink: TraceSink) -> AbstractContextManager[None]: ...
+def add_subscriber(sink: TraceSink) -> Callable[[], None]: ...
 def redact(text: str) -> str: ...
 def trace_ingest(project: str) -> None: ...
 def sweep_all() -> None: ...
@@ -275,6 +308,7 @@ def find_trace(session_id: str) -> Path | None: ...
 def project_trace_dir(project: str) -> Path: ...
 def latest_trace_file(project: str) -> Path | None: ...
 def export_lines(project: str, since: str = "") -> list[str]: ...
+def terminal_outcomes(project: str, *, window: int) -> TerminalOutcomes: ...
 
 class ExpiredTrace:                 # one file the retention sweep deleted (or would)
     project: str; session_id: str; path: Path; last_event_ts: str; age_days: float; bytes: int
@@ -283,14 +317,24 @@ class TraceExpiryReport:
     dry_run: bool; retention_s: int; scanned: int = 0
     expired: list[ExpiredTrace] = []; kept_open: int = 0; kept_recent: int = 0
     bytes_reclaimed: int = 0
+    expired_count: int              # property: len(expired)
+
+class TerminalOutcomes:             # frozen
+    success: int = 0; failure: int = 0; aborted: int = 0
+    durations_ms: tuple[int, ...] = ()
+    total: int; mean_ms: int | None; p95_ms: int | None   # properties
 ```
 
-### Config (`docket.config`)
+### Environment
 
 ```text
 TRACES_DIR              default $DOCKET_HOME/traces
-TRACE_RETENTION_DAYS    default 30      (TRACE_RETENTION_S = days * 86400)
-DOCKET_NO_TRACE         unset/"0" normally; "1" suppresses every write and subscriber notification
+TRACE_RETENTION_DAYS    default 30      (retention window = days * 86400 seconds)
+SESSION_TIMEOUT         default 3600    (seconds before an open trace counts as stale)
+CONTEXT_BYTES_PER_TOKEN default 4       (divisor of requirement 28's estTokens; at least 1)
+METRICS_WINDOW          default 50      (requirement 37's window for docket status)
+DOCKET_NO_TRACE         unset/"0" normally; "1" suppresses every trace_event/trace_ingest write
+                        and subscriber notification
 ```
 
 ## Examples
@@ -298,16 +342,14 @@ DOCKET_NO_TRACE         unset/"0" normally; "1" suppresses every write and subsc
 ### A subscriber sees exactly what was written
 
 ```python
-from docket.core import trace
-
 received: list[dict[str, object]] = []
-with trace.subscribe(received.append):
-    status = trace.trace_event("proj", "s1", "tester", "session_start", '{"a": 1}')
+with subscribe(received.append):
+    status = trace_event("proj", "s1", "tester", "session_start", '{"a": 1}')
 # status == "written"
-# received == trace.read_trace(trace.project_trace_dir("proj") / "s1.jsonl")
+# received == read_trace(project_trace_dir("proj") / "s1.jsonl")
 ```
 
-### An `llm_call` record (P32-1)
+### An `llm_call` record
 
 ```json
 {"ts": "2026-09-27T18:04:11Z", "project": "docket-dev", "session_id": "agent:demo:default",
@@ -321,7 +363,7 @@ with trace.subscribe(received.append):
 No `cost_usd` key appears on this or any `llm_call` record: token counts are measured, but this
 store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 
-### A record with `task_id` (v1.1.0)
+### A record with `task_id`
 
 ```json
 {"ts": "2026-09-27T18:04:11Z", "project": "docket-dev", "session_id": "agent:demo:task-9",
@@ -336,10 +378,10 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 
 ### Pre-conditions
 
-- *project*/*session_id* **MUST** be non-empty strings; this module treats both as opaque
+- *project*/*session_id* **MUST** be non-empty strings; this store treats both as opaque
   coordinates, exactly as `session-history.spec.md` does for its own session key.
 - A payload passed to `trace_event` **MUST** be a string (already-serialized JSON or plain
-  text) — never a live object the module would need to serialize itself.
+  text) — never a live object the store would need to serialize itself.
 
 ### Post-conditions
 
@@ -350,7 +392,35 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 ### Invariants
 
 - Two distinct `(project, session_id)` pairs **MUST NOT** ever share a trace file.
-- A record's `payload` **MUST NOT** contain a value `redact` would have scrubbed — redaction
-  runs before the write, never after, and never conditionally.
+- A record's `payload` written by `trace_event` **MUST NOT** contain a value `redact` would have
+  scrubbed — redaction runs before the write, never after, and never conditionally.
 - Every deleted trace file **MUST** already have a `session_end`; `expire_old_traces` **MUST
   NEVER** delete a file a live turn could still be appending to.
+
+## Implementation
+
+- `src/docket/core/trace.py`: `trace_event`, `TraceStatus`, `TraceSink`, `EVENT_TYPES`,
+  `subscribe`, `add_subscriber`, `redact`, `trace_ingest`, `sweep_all`, `expire_old_traces`,
+  `ExpiredTrace`, `TraceExpiryReport`, `read_trace`, `find_trace`, `project_trace_dir`,
+  `latest_trace_file`, `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
+- `src/docket/config.py`: `TRACES_DIR`, `TRACE_RETENTION_DAYS`/`TRACE_RETENTION_S`,
+  `SESSION_TIMEOUT`, `CONTEXT_BYTES_PER_TOKEN`, `METRICS_WINDOW`, `no_trace` (`DOCKET_NO_TRACE`)
+- `src/docket/core/secrets.py`: `secret_values` (the stored values requirement 8 scrubs)
+- `src/docket/core/agent_loop.py`: the `llm_call` and `tool_result` payload builders
+  (requirements 21-28)
+- `src/docket/core/telemetry.py`: `capture_classes`, and the exporter pipeline that registers
+  through `add_subscriber`
+- `src/docket/core/llm.py`: `ChatResponse.request_bytes`
+- `src/docket/core/session.py`: `TokenUsage.cache_write_tokens`
+- `src/docket/edges/adapters/llm.py`: `request_part_bytes`
+- `src/docket/edges/adapters/toolbox.py`: `run_bash` (the `on_process` reports)
+- `src/docket/core/tools.py`: `ToolContext.on_process`, the `bash` handler's `"tool": "bash"` tag
+- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver` (turns `on_process` reports into
+  `process_*` events, registers pgids), `default_driver` (the driver `trace_ingest` reads)
+- `src/docket/core/runs.py`: `current_run_id`, `add_hop_pid`, `remove_hop_pid`
+- `src/docket/core/runtime_driver.py`: `RuntimeDriver` (`list_sessions`, `read_new_turns`)
+- `src/docket/serve.py`: the periodic sweep that calls `sweep_all` then `expire_old_traces`
+- `src/docket/cli/_progress.py`: the `docket run` progress view's `subscribe` consumer
+- `src/docket/cli/_task.py`: `docket task trace` (`--tail` polls the file), `docket task prune
+  --traces`
+- `src/docket/cli/_status.py`: the `docket status` caller of `terminal_outcomes`

@@ -1,492 +1,210 @@
 # Input Validation Specification
 
-**Version**: 1.6.2
-**Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
-project/pod-id check (§1), the boundary sanitization rules, and `AgentMeta` are implemented. The
-forbidden-directory path check (§2), the numeric range/leading-zero helper (§4) and the
-session-key grammar check (§5) are **Deferred — no measured need**: `validate_path`,
-`validate_number`, `validate_session_key` and `confine_to_base` are reference sketches only, with
-no implementing function in `src/` and no incident or measured gap that calls for one today (see
-the reason stated under each section and the note under Rules).
-**Last Updated**: 2026-10-08
+**Version**: 2.0.0
+**Status**: Implemented for project/pod ids, model ids, command verbs and arguments, credential
+values and `AgentMeta`. Three gaps in what reaches those checks are recorded under the rules they
+affect (flat `docket init --from` entries; an over-long directory name given to `docket init`).
+**Last Updated**: 2026-10-22
 
 ## Purpose
 
-This specification defines all input validation rules for docket CLI commands to ensure data
-integrity, security, and proper error handling.
+This specification defines the input validation rules that docket enforces on what an operator,
+an HTTP caller or a spec file hands it, so that data stays well formed, a bad id never reaches a
+filesystem path, and a refusal is an ordinary error rather than a crash.
 
-Since the Bash→Python cutover (M6), docket is a Python package under `src/docket/` organised
-into three layers — `cli/ → core/ → edges/`. Validation lives in the **`core/`** layer
-(Pydantic models in `core/models.py`, typed helpers in `core/utils.py` /
-`core/models_policy.py`), is surfaced to the user from the **`cli/`** layer via
-`typer.Exit` and the Rich helpers in `src/docket/ui.py` (`info`/`success`/`warn`/`error`),
-and all side-effecting I/O is funnelled through the **`edges/`** layer (Docket-owned JSON via
-`src/docket/edges/store.py`; external protocols via focused adapters). The rules below are the **contract**; the Python
-snippets and module pointers show how that contract is enforced today.
+Validation is domain logic: it raises a typed error (or returns a warning list) and never prints.
+The command layer turns a refusal into one error line and a non-zero exit; the HTTP layer turns it
+into a `400`. Every side effect on docket-owned JSON goes through one atomic writer.
 
 ## Rules
 
-> **Implementation note (2026-09-18 truth pass; §1 updated W36-C1; §2/§4/§5 marked deferred
-> W36-C11).** `rg` over `src/docket/` finds no `validate_path`, `_FORBIDDEN_DIRS`,
-> `validate_number`, `validate_session_key` or `confine_to_base` — nothing enforces the
-> forbidden system directories (§2), the numeric range/leading-zero rule (§4) or the
-> session-key grammar (§5). The Python blocks in §2, §4 and §5 are therefore reference sketches of the MUST
-> rules, not the shipped code. Each is deferred rather than open because a specific measured-need
-> check comes back negative today (the reason is repeated under each section): §2's codebase path
-> is only ever chosen by the same local operator who already has unrestricted shell access to
-> that filesystem — a forbidden-dir check would not restrict an untrusted actor docket's threat
-> model includes; §4's ranges (reset level 1-3, cost period 1-365, timeout 1-3600) do not match
-> any live numeric argument — no `docket` command takes a numeric reset level, and `docket status --days N` is an untyped-range `int` with no such bound; §5's session key
-> is URL-quoted before it ever becomes a path component (`core/session.py::_session_dir`) and
-> nothing in `src/` parses a session key back into its components, so an unvalidated grammar
-> cannot reach the filesystem or be misread downstream. Whether to implement them anyway, or to
-> retire the MUST rules outright, remains a maintainer decision — this pass only records why no
-> trigger has fired. §1 is different: project/pod ids are produced by `core/provisioning.py`'s
-> `slugify` and validated by that module's `validate_project_id`, called as the first statement of
-> `core/pod_provisioning.py::provision_pod` — every caller (`docket pod add`, `docket init --from`,
-> `POST /pods`, and the four other `serve.py` handlers that take a project path segment) rejects
-> an invalid id before it reaches workspace-path construction.
+### 1. Project / pod id
 
-Validation rules are grouped by input field. Each category states the field, the commands
-that consume it, the RFC 2119 rule set, and the reference implementation (Python module /
-function or Pydantic model).
-
-### 1. Agent/Project ID Validation
-
-**Field**: agent-id / project-id
-**Used By**: init, add, info, delete, maintain, profile, scope, pod; enforced at the core
-provisioning boundary (`core/pod_provisioning.py::provision_pod`) and every HTTP/CLI surface that
-takes a project id.
+**Field**: project id, the id of a pod (`docket init`'s pod, the `name` of `POST /pods`, the
+`<project>` segment of an HTTP route).
+**Used By**: `docket init` (the id is the slug of the name, or of the directory name), the
+blueprint entries of `docket init --from`, `POST /pods`, and every HTTP route that takes a project
+path segment.
 
 **Rules**:
-- **MUST** be non-empty
-- **MUST** be at most 64 characters
-- **MUST** match pattern: `^[a-z0-9]+(?:-[a-z0-9]+)*$` (lowercase alphanumeric segments joined by
-  a single hyphen — no leading, trailing, or consecutive hyphen; exactly the set the slugifier
-  below can emit)
-- **MUST** be unique (for creation)
+- **MUST** be non-empty.
+- **MUST** be at most 64 characters.
+- **MUST** match `^[a-z0-9]+(?:-[a-z0-9]+)*$`: lowercase alphanumeric segments joined by a single
+  hyphen, with no leading, trailing or consecutive hyphen. This is exactly the set the slug
+  function can emit from a display name (`slugify`: lowercase, every run of other characters
+  becomes one hyphen, strip hyphens at both ends).
+- **MUST** be unique for creation. Uniqueness is enforced at each creation site, not by the id
+  check: `docket init` refuses when a project or pod directory of that id exists, and pod
+  provisioning raises `PodAlreadyExistsError` (`POST /pods` answers `409`, or `200` with
+  `created: false` when `ensure` is set).
+- No id is reserved; there is no reserved-word list.
 
-**Reference**: ids are derived from a display name by the slugifier shared by every add path
-(`src/docket/core/provisioning.py`, `slugify` → `re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")`)
-and enforced by that module's `validate_project_id`, which is **implemented and live**:
+**Enforcement**: `validate_project_id` returns the id unchanged or raises `ProjectIdError` naming
+the rule. Pod provisioning (`provision_pod`) calls it first, before the per-project lock and
+before any workspace path is built. A blueprint entry of `docket init --from` reports the error,
+skips the entry and makes the command exit 1; `POST /pods` answers `400`. Every other HTTP route
+with a project path segment calls it right after authentication and answers `400 {"error": ...}`.
 
-```python
-import re
+A `docket init --from` entry **without** a `blueprint` field provisions a single flat agent, and
+its `id` is not checked by this rule.
 
-_PROJECT_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_PROJECT_ID_MAX_LEN = 64
+### 2. Model id
 
-
-class ProjectIdError(ValueError):
-    """A project/pod id failed validate_project_id."""
-
-
-def validate_project_id(project: str) -> str:
-    """Raise ProjectIdError (core/ never prints) if project is not a valid id; return it
-    unchanged otherwise."""
-    if not project or len(project) > _PROJECT_ID_MAX_LEN or not _PROJECT_ID_RE.match(project):
-        raise ProjectIdError(
-            "project id must be non-empty, at most 64 characters, and match "
-            f"^[a-z0-9]+(?:-[a-z0-9]+)*$ (got: {project[:40]!r})"
-        )
-    return project
-```
-
-`core/pod_provisioning.py::provision_pod` calls `validate_project_id` as its first statement,
-before the per-project lock and before any workspace path is built, so every path that reaches
-it — `docket pod add`/`docket init --from`'s blueprint entries, and `POST /pods` — rejects an invalid
-id (`ProjectIdError` → CLI exit 1 / HTTP 400) before touching disk. `serve.py`'s four other
-project-path-segment handlers (`GET /tasks/<project>`, `GET /traces/<project>`,
-`POST /tasks/<project>`, `POST /dispatch/<project>`) call `validate_project_id` directly and
-return 400 on failure, since those do not go through `provision_pod`. Uniqueness (for creation)
-is still enforced ad hoc at each call site — a pre-existing project/pod workspace directory, or
-`PodAlreadyExistsError` from `provision_pod` — not by this function. There is no reserved-word
-list (a deliberate non-goal, W36-C1).
-
-### 2. Path Validation
-
-**Status: Deferred — no measured need.** The forbidden-directory check would guard against
-pointing an agent at a system root, but the codebase path is chosen by the same local operator
-who already has unrestricted shell access to that filesystem — docket's threat model has no
-untrusted actor for this check to stop. No incident has needed it.
-
-**Field**: codebase-path, file-path
-**Used By**: init, add
+**Field**: model.
+**Used By**: `docket setup model set <role|default> <provider/model>`; `docket init --from` flat
+entries carry a `model` through the same check but keep the value as given when it fails (below).
 
 **Rules**:
-- **MUST** be absolute path or start with ~
-- **MUST** exist (for codebase)
-- **MUST** be readable
-- **MUST NOT** be a system directory
-- **MUST** resolve symlinks
+- **MUST** be a well-formed `provider/model` id matching `^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$`
+  (for example `anthropic/claude-sonnet-4-6`). There are no model aliases.
+- A well-formed id docket does not know is **accepted** with a warning. For a local provider there
+  is no warning (a local endpoint is priced at $0). For a marketplace provider the warning says
+  the per-model price is not tracked and cost shows as `n/a (bring your own)`. Otherwise the
+  warning says the model is not in the pricing table and cost shows as `n/a`.
+- A malformed id **MUST** be rejected with a hard error that names the id, asks for a full
+  `provider/model` id and lists the current role policy. `docket setup model set` prints it as one
+  error and exits 1.
+- A bare word, a tier name (`economy`/`standard`/`premium`) or an alias such as `claude-sonnet-4`
+  is malformed and rejected like any other.
+- docket does not check that the provider serves the model; an unknown model fails when a turn
+  first uses it.
 
-**Forbidden Paths**:
-- /, /bin, /sbin, /usr, /lib, /lib64
-- /etc, /boot, /dev, /proc, /sys
-- /root, /var/log
-
-**Reference**: paths are handled with `pathlib.Path` — `Path.expanduser()` for tilde,
-`Path.resolve()` to make absolute and resolve symlinks, `.is_dir()`/`.is_file()`/`os.access`
-for existence and readability. The forbidden-directory check guards against pointing an agent
-at a system root:
-
-```python
-import os
-from pathlib import Path
-import typer
-from docket import ui
-
-_FORBIDDEN_DIRS = {
-    Path(p)
-    for p in (
-        "/", "/bin", "/sbin", "/usr", "/lib", "/lib64",
-        "/etc", "/boot", "/dev", "/proc", "/sys", "/root", "/var/log",
-    )
-}
-
-
-def validate_path(raw: str, *, must_exist: bool = True, kind: str = "dir") -> Path:
-    """Return the resolved Path or raise typer.Exit(1)."""
-    path = Path(raw).expanduser().resolve()  # tilde + absolute + symlinks
-    if path in _FORBIDDEN_DIRS:
-        ui.error(f"Cannot use system directory: {path}")
-        raise typer.Exit(1)
-    if must_exist:
-        ok = path.is_dir() if kind == "dir" else path.is_file()
-        if not ok:
-            ui.error(f"{'Directory' if kind == 'dir' else 'File'} not found: {path}")
-            raise typer.Exit(1)
-        if not os.access(path, os.R_OK):
-            ui.error(f"Permission denied: {path}")
-            raise typer.Exit(1)
-    return path
+```bash
+docket setup model set implementer anthropic/claude-sonnet-4-5   # accepted
+docket setup model set implementer gpt-5                         # rejected: no provider/ prefix
 ```
 
-### 3. Model Validation
+In `docket init --from`, a flat entry's `model` is passed through the check and, when the check
+raises, the value is stored as written.
 
-**Field**: model, profile
-**Used By**: add, profile, models
+### 3. Command verbs and arguments
+
+**Field**: sub-command, option, argument.
+**Used By**: every command and command group (`task`, `pod`, `log`, `setup` and its `provider`,
+`model`, `sandbox`, `notify`, `export`, `mcp` groups, and the top-level commands).
 
 **Rules**:
-- **MUST** be a well-formed provider/model id matching `^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$`
-  (e.g. `anthropic/claude-sonnet-4-6`), OR a known model-id alias (e.g. `claude-sonnet-4` →
-  `claude-sonnet-4-6`)
-- An unknown-but-well-formed id is **accepted** with a warning that it is absent from
-  docket's pricing table (cost will render as `n/a`)
-- A malformed id, or anything else that isn't a well-formed id or a known alias, **MUST** be
-  rejected with a hard error listing the current role policy
-- Tier names (`economy`/`standard`/`premium`) are **not accepted** anywhere a model is
-  expected (removed in 0.2.0, D-2 exit) — they fall into the hard-error case above, exactly
-  like any other malformed input. They are not resolved, warned about specially, or given
-  their own error message
+- **MUST** be a verb the group declares; an unknown verb or unknown option is a usage error that
+  exits 2, before any command body runs.
+- Verbs and options are case sensitive: a verb in the wrong case is an unknown verb and exits 2.
+- A missing required argument is a usage error that exits 2.
+- A typed parameter (an `int`, for instance) that cannot be converted is a usage error (exit 2);
+  a bound such as `--count` at least 1 is declared on the parameter.
 
-**Reference**: `validate_model()` in `src/docket/core/models_policy.py` returns
-`(canonical_model, warnings)` and raises `ValueError` on a malformed id or tier name (the
-`cli/` layer converts that into a `ui.error` + `typer.Exit`). The id grammar is the
-module-level `_MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")`. Resolution order
-is:
+No command body matches an action word by hand: the verbs and their required arguments are
+declared in the command signatures.
 
-1. known model-id alias → its resolved id (warned);
-2. well-formed `provider/model` id → accepted (warned only if unpriced);
-3. otherwise (malformed, including tier names) → `ValueError` with the current role policy
-   listing.
+### 4. Credentials
 
-```python
-from docket.core.models_policy import validate_model
-
-canonical, warnings = validate_model("anthropic/claude-sonnet-4-6")
-# canonical == "anthropic/claude-sonnet-4-6"; warnings == [] when priced.
-# validate_model("gpt-5") raises ValueError (no provider/ prefix → malformed).
-```
-
-### 4. Numeric Validation
-
-**Status: Deferred — no measured need.** These ranges predate the current CLI surface and no
-live argument matches them: no `docket` command takes a numeric reset level, and
-`docket status --days N` is a typed `int` with default 0 = no limit and no upper bound. Typer's
-`int` conversion already rejects non-numeric input; nothing measured has needed the range or
-leading-zero checks on top of that.
-
-**Field**: level, period, timeout
-**Used By**: maintain, cost, various
+**Field**: credential name and value.
+**Used By**: `docket setup provider add`, `docket setup provider rotate`.
 
 **Rules**:
-- **MUST** be a positive integer
-- **MUST** be within the allowed range
-- **MUST NOT** have leading zeros
+- A credential name is never free-typed: it is the name the provider's catalog entry declares
+  (`ANTHROPIC_API_KEY`), or, for a custom provider, derived from the provider name by upper-casing,
+  turning every run of other characters into `_` and appending `_API_KEY`.
+- A credential value **MUST NOT** be empty. With no `--credential` flag and no value in the
+  provider's environment variable, a terminal gets a hidden prompt; without a terminal the command
+  fails saying the variable is required.
+- A value **SHOULD** start with the `credentialPrefix` of the catalog entry that declares the
+  credential (the shipped catalog sets one for anthropic `sk-ant-`, openai `sk-`, google `AIza` and
+  openrouter `sk-or-`). A mismatch prints `Key format: should start with '<prefix>'` as a warning
+  and the value is stored anyway: keys from new providers must stay storable. No minimum length is
+  checked, and a credential with no declared prefix is never warned about.
 
-**Ranges**:
-- Reset level: 1-3
-- Cost period: 1-365 days
-- Timeout: 1-3600 seconds
-
-**Reference**: numeric arguments are declared as typed `typer` options/arguments (`int`),
-so Typer rejects non-numeric input before the command body runs. Range and leading-zero
-checks are enforced in the command (or via a small helper) and surfaced through `ui.error` +
-`typer.Exit`:
-
-```python
-import typer
-from docket import ui
-
-
-def validate_number(raw: str, *, lo: int, hi: int, name: str = "value") -> int:
-    """Return the int in [lo, hi] or raise typer.Exit(1)."""
-    if not raw.isdigit():
-        ui.error(f"{name} must be a number")
-        raise typer.Exit(1)
-    if len(raw) > 1 and raw[0] == "0":
-        ui.error(f"{name} cannot have leading zeros")
-        raise typer.Exit(1)
-    value = int(raw)
-    if not lo <= value <= hi:
-        ui.error(f"{name} must be between {lo} and {hi}")
-        raise typer.Exit(1)
-    return value
+```bash
+docket setup provider add anthropic --credential <key>
+docket setup provider rotate anthropic
 ```
 
-### 5. Session Key Validation
+### Boundary sanitization
 
-**Status: Deferred — no measured need.** The session key is URL-quoted before it ever becomes a
-path component (`core/session.py::_session_dir`), so an unvalidated key cannot reach the
-filesystem unsafely, and nothing in `src/` parses a session key back into its components, so a
-malformed grammar cannot be misread downstream either.
-
-**Field**: session-key, project-key
-**Used By**: provisioning
-
-**Rules**:
-- **MUST** follow format: `agent:<id>:<project>`
-- **MUST** have a valid agent ID component
-- **MUST** have a valid project component
-- Project **MUST** be alphanumeric + dash (same grammar as an agent id)
-- **MUST NOT** exceed 100 characters total
-
-**Reference**: the session key is composed, never free-typed — provisioning writes
-`session_key = f"agent:{aid}:default"` (both `projectKey` and `sessionKey`) and no command changes
-it afterwards. No parse-back validator exists (see the implementation note above); the intended check is:
-
-```python
-import re
-import typer
-from docket import ui
-
-_SESSION_KEY_RE = re.compile(r"^agent:([a-z0-9][a-z0-9-]*[a-z0-9]):([a-z0-9][a-z0-9-]*[a-z0-9])$")
-
-
-def validate_session_key(key: str) -> tuple[str, str]:
-    """Return (agent_id, project) or raise typer.Exit(1)."""
-    if len(key) > 100:
-        ui.error("Session key too long (max 100 characters)")
-        raise typer.Exit(1)
-    m = _SESSION_KEY_RE.match(key)
-    if not m:
-        ui.error("Session key must follow format: agent:<id>:<project>")
-        raise typer.Exit(1)
-    return m.group(1), m.group(2)
-```
-
-### 6. Command Action Validation
-
-**Field**: action / sub-command
-**Used By**: task, pod, log, setup (and its provider, model, sandbox, notify, export, mcp and shell groups)
-
-**Rules**:
-- **MUST** be a verb declared by the group; an unknown verb or flag is a usage error (exit 2)
-- Case sensitive
-- **MUST** have the required arguments; a missing one is a usage error (exit 2)
-
-**Reference**: each group is a Typer sub-app (`src/docket/cli/__init__.py` registers them), so
-the verbs and their required arguments are declared in the command signatures and no command
-body matches an action word by hand.
-
-### 7. API Key Validation
-
-**Field**: api-key
-**Used By**: setup provider
-
-**Rules**:
-- Key **name** **MUST** match `^[A-Z][A-Z0-9_]*$` (UPPERCASE_WITH_UNDERSCORES)
-- Key **value** **MUST NOT** be empty
-- Value **SHOULD** match the provider's expected prefix / minimum length (a mismatch is a
-  non-fatal warning, not a hard reject — keys from new providers must still be storable)
-
-**Provider Formats** (`_KEY_PREFIXES` in `src/docket/cli/_keys.py`, `(prefix, min_len)`):
-- `ANTHROPIC_API_KEY`: prefix `sk-ant-`, min length 40
-- `OPENAI_API_KEY`: prefix `sk-`, min length 40
-- `GOOGLE_AI_API_KEY`: prefix `AIza`
-- `OPENROUTER_API_KEY`: prefix `sk-or-`
-- `AI_GATEWAY_API_KEY`: no stable prefix requirement; non-empty value only
-
-**Reference**: `_keys_add()` enforces the name grammar and non-empty value
-(`ui.error` + `typer.Exit`), then calls `_validate_key_format()`, whose format mismatch is
-surfaced as a `ui.warn`:
-
-```python
-# src/docket/cli/_keys.py
-_KEY_PREFIXES: dict[str, tuple[str, int]] = {
-    "ANTHROPIC_API_KEY": ("sk-ant-", 40),
-    "OPENAI_API_KEY": ("sk-", 40),
-    "GOOGLE_AI_API_KEY": ("AIza", 0),
-    "OPENROUTER_API_KEY": ("sk-or-", 0),
-}
-
-
-def _validate_key_format(name: str, value: str) -> tuple[bool, str]:
-    """Return (ok, reason). reason is empty when ok."""
-    if name in _KEY_PREFIXES:
-        prefix, min_len = _KEY_PREFIXES[name]
-        if not value.startswith(prefix):
-            return False, f"should start with '{prefix}'"
-        if min_len and len(value) < min_len:
-            return False, f"too short (< {min_len} chars)"
-    return True, ""
-```
-
-## Functions
-
-The reference implementations above define the canonical validation surface. Every command
-MUST route untrusted input through the matching validator (typed `typer` parameter, Pydantic
-model, or `core/` helper) before acting on it. Validators report failure by emitting a
-`ui.error`/`ui.warn` and raising `typer.Exit` (or, in `core/`, raising `ValueError` for the
-`cli/` layer to translate).
-
-| Function / model | Module | Validates | Returns |
-|------------------|--------|-----------|---------|
-| `validate_agent_id` (id rule above) — **not implemented** | — | Agent ID format, length, reserved words, uniqueness | `None`, or `typer.Exit(1)` |
-| `validate_path` (path rule above) — **not implemented** | — | Tilde/absolute path, existence, readability, forbidden dirs | resolved `Path`, or `typer.Exit(1)` |
-| `validate_model(model)` | `core/models_policy.py` | Provider/model id grammar, aliases, deprecated tiers | `(canonical, warnings)`, or raises `ValueError` |
-| `validate_number(raw, lo, hi, name)` — **not implemented**; typed `int` params only | — | Positive integer within range, no leading zeros | `int`, or `typer.Exit(1)` |
-| `validate_session_key(key)` — **not implemented** | — | `agent:<id>:<project>` format and components | `(agent_id, project)`, or `typer.Exit(1)` |
-| action matching | `cli/__init__.py`, `cli/_*.py` | Action is in the command's allowed set with required args | proceeds, or `typer.Exit(1)` |
-| `_validate_key_format(name, value)` | `cli/_keys.py` | Provider prefix / min length | `(ok, reason)` — caller warns on mismatch |
-| `AgentMeta` | `core/models.py` | Whole `.docket-meta.json` record (kind/scope/type/model/keys) | parsed model, or `pydantic.ValidationError` |
-
-The **`AgentMeta`** Pydantic model in `src/docket/core/models.py` is the structural validator
-for an agent's persisted metadata: it constrains `kind`/`type`/`model_source`/`scope` to their
-enums and backfills `scope` for legacy records. Records are read/written only through
-`src/docket/edges/store.py`.
-
-### Boundary sanitization (no shell, no hand-rolled JSON)
-
-The Python core does **not** shell out with interpolated input and does **not** hand-build
-JSON strings, so the old `sanitize_for_shell` / `escape_json_value` helpers are obsolete:
-
-- **Shell injection**: every external call goes through typed argv wrappers in
-  `src/docket/edges/adapters/system.py` (`subprocess.run([...])` with an argument **list** —
-  never `shell=True`), so user input can never be interpreted by a shell.
-- **JSON escaping**: all Docket-owned JSON is serialised by the standard library via
-  `src/docket/edges/store.py` (`json` with atomic write + `filelock` + `.bak` rotation +
-  `0600` perms). Escaping is the encoder's job.
-- **Path traversal**: agent workspaces are addressed by validated agent id under
-  `config.PROJECTS_DIR` (`~/.docket/workspaces/projects/<agent-id>/`). To confine a
-  user-supplied path to a base, resolve and check containment with `pathlib`:
-
-```python
-from pathlib import Path
-import typer
-from docket import ui
-import docket.config as cfg
-
-
-def confine_to_base(raw: str, base: Path = cfg.PROJECTS_DIR) -> Path:
-    """Return a resolved path proven to live under *base*, else typer.Exit(1)."""
-    path = Path(raw).expanduser().resolve()
-    base = base.resolve()
-    if base not in path.parents and path != base:
-        ui.error("Path traversal detected")
-        raise typer.Exit(1)
-    return path
-```
+- **Shell injection**: every external call is built as an argument list and never goes through a
+  shell, with one deliberate exception. A pod's verify command is an operator-owned string stored
+  in `.docket-meta.json` and run through a shell, because real verify pipelines use `&&`, pipes
+  and redirects. It is bounded rather than interpreted: `validate_verify_cmd` rejects a NUL byte,
+  a newline or carriage return, and a length over 2000 characters, at `docket pod set verify`,
+  `--verify` and `POST /pods`; and the run refuses a command that matches a high-risk class. The
+  gate and the jail that contain it are specified in `security-gates.spec.md`.
+- **JSON escaping**: docket-owned JSON is serialised by the standard library through the one
+  atomic writer (file lock, `.bak` rotation, `0600` permissions); no JSON is built by hand.
+- **Path traversal**: an agent's file-tool paths are resolved (`..` and symlinks included) and
+  must lie under the tool call's allowed roots (the agent's workspace and codebase); a path outside
+  every root, or a call with no roots, is refused. A workspace is addressed by a project id that
+  passed rule 1.
 
 ### Error message conventions
 
-Errors are emitted through the Rich helpers in `src/docket/ui.py`
-(`info`/`success`/`warn`/`error`/`fail`) and the command aborts by raising `typer.Exit(1)`.
-There is no Bash-style `validation_error` formatter — the convention is a single
-`ui.error("<what failed> …")` line (optionally followed by a usage hint), then `typer.Exit`.
+A refusal is one `error` line with an optional hint line, and the command exits 1 (usage errors
+exit 2, rule 3). Core code raises `ValueError` subclasses and never prints.
 
-| Validation | Error Message | Suggestion |
-|------------|---------------|------------|
-| Agent ID format | "Agent ID must be lowercase alphanumeric with dashes" | "Example: my-project-1" |
-| Path not found | "Directory not found: `<path>`" | "Check the path exists and is readable" |
-| Invalid model | "Invalid model: `'<id>'`" | "Use a full provider/model ID, e.g. anthropic/claude-sonnet-4-6" |
-| Number range | "level must be between 1 and 3" | "Use 1 for light, 2 for deep, 3 for complete" |
+| Validation | Message | Hint |
+|------------|---------|------|
+| Project id (`ProjectIdError`) | `project id must be non-empty, at most 64 characters, and match ^[a-z0-9]+(?:-[a-z0-9]+)*$ (got: '<id>')` | none |
+| Model id | `Invalid model: '<id>'` followed by the role policy | `Use provider/model` |
+| Empty credential value | `Value cannot be empty` | none |
+
+## Functions
+
+Every command **MUST** route untrusted input through the matching validator (a typed parameter,
+a Pydantic model or a domain helper) before acting on it.
+
+| Function / model | Validates | Returns |
+|------------------|-----------|---------|
+| `validate_project_id(project)` | Project/pod id grammar and length | the id, or raises `ProjectIdError` |
+| `slugify(name)` | Not a validator: derives an id from a name | the slug |
+| `validate_model(model)` | `provider/model` grammar | `(model, warnings)`, or raises `ValueError` |
+| `validate_verify_cmd(cmd)` | Verify command: no NUL, no newline, at most 2000 characters | the command, or raises `VerifyCmdError` |
+| verb and argument declarations | Verb in the group's set, required arguments present, typed parameters | the command body runs, or exit 2 |
+| credential prefix check | Value against the catalog's `credentialPrefix` | `(ok, reason)`; the caller warns on a mismatch |
+| `AgentMeta` | The whole `.docket-meta.json` record | a parsed model, or `pydantic.ValidationError` |
+
+`AgentMeta` is the structural validator of an agent's persisted metadata. `kind` and `scope` accept
+only `project`; `workspaceKind` accepts `codebase` or `workdir` (default `codebase`); `scope`
+defaults to `project`; fields use camelCase aliases and either spelling is accepted on input;
+unknown keys are kept on a round trip. Setting one metadata field validates the whole record before
+it is written.
 
 ## Testing
 
-Validation is covered by the **pytest** suite under `tests/unit/`, `tests/integration/` and
-`tests/guards/` (the historical Bash harness `tests/unit/test-validation.sh` no longer exists).
-Run it with:
+Validation is covered by the pytest suite (unit, integration and guards lanes):
 
 ```bash
 uv run pytest
 ```
 
-Data-layer and metadata validation (`AgentMeta`, store round-trips, scope backfill) is
-exercised in `tests/integration/test_data_layer.py`; command-level argument and action
-validation is exercised across the `test_list_info_cost_commands.py`, `test_profile_scope_models.py` and their siblings, with
-model-id validation in the policy tests. Lint, format, and strict type checks gate CI
-alongside the suite:
+- Project id: accepted and rejected ids, `slugify`, a blueprint entry of `init --from` with a
+  traversal id (exit 1, nothing provisioned), and `POST /pods` with a traversal name.
+- Model id: the unknown-model, local-provider and marketplace-provider warnings.
+- `AgentMeta`: camelCase round trip and the field set.
+- Verbs: unknown verb, missing argument and bounded-option usage errors exit 2.
+- Credentials: add, rotate and remove flows and their audit entries.
 
-```bash
-uv run pytest               # unit/integration/guards suite (tests/unit/, tests/integration/, tests/guards/)
-uv run ruff check .         # lint
-uv run ruff format --check .  # format
-uv run mypy src             # strict type check
-```
-
-Representative cases the suite asserts (expressed as pytest, mirroring the old assertions):
-
-```python
-import pytest
-
-
-@pytest.mark.parametrize(
-    "agent_id",
-    ["test-agent-1", "abc123"],  # valid: dashes, alphanumeric
-)
-def test_agent_id_valid(agent_id):
-    assert _AGENT_ID_RE.match(agent_id) and agent_id not in _RESERVED
-
-
-@pytest.mark.parametrize(
-    "agent_id",
-    ["", "a", "Test-Agent", "test--agent", "-test", "test-", "system"],
-    # invalid: empty, too short, uppercase, consecutive dashes, leading/
-    # trailing dash, reserved word
-)
-def test_agent_id_invalid(agent_id):
-    with pytest.raises(SystemExit):  # typer.Exit
-        validate_agent_id(agent_id)
-
-
-def test_model_id_rejects_bare_name():
-    import pytest
-    from docket.core.models_policy import validate_model
-
-    with pytest.raises(ValueError):
-        validate_model("gpt-5")  # no provider/ prefix → malformed
-    assert validate_model("anthropic/claude-sonnet-4-6")[0] == "anthropic/claude-sonnet-4-6"
-```
+Untested: the rejection of a malformed or tier-name model id and its error text; the
+`Key format` prefix warning; the verb case-sensitivity rule; the `400` on each project-segment
+HTTP route other than `POST /pods`.
 
 ## Performance
 
-### Validation Timing
+Validators are in-process regex, type and file-read checks; none calls the network. No latency
+budget is specified, and validation results are not cached.
 
-These are regex/`pathlib`/`int` checks with negligible cost; the only one that touches the
-filesystem is path/uniqueness validation:
+## Implementation
 
-- Agent ID (regex + reserved set): < 1ms
-- Path validation (`resolve` + `is_dir` + `os.access`): < 10ms
-- Model validation (regex + dict lookups): < 1ms
-- Session key (regex): < 1ms
-- API key format (prefix/length): < 5ms
+Where the names above live today:
 
-### Caching
-
-Validation is cheap and ID-keyed, so results are not memoised in a cache; the meaningful I/O
-caches in docket sit one layer down in `core/` (e.g. the `.cost-index.json` /
-`.cost-history.json` incremental indexes in `core/utils.py`, keyed by file `(mtime, size)`
-signatures), not in the validators. Persisted reads that validators depend on go through
-`src/docket/edges/store.py`, which already serialises access with a `filelock`.
+- `src/docket/core/provisioning.py`: `slugify`, `validate_project_id`, `ProjectIdError`
+- `src/docket/core/pod_provisioning.py`: `provision_pod`, `PodAlreadyExistsError`, `validate_verify_cmd`, `VerifyCmdError`
+- `src/docket/core/models_policy.py`: `validate_model`
+- `src/docket/core/models.py`: `AgentMeta`, `AgentKind`, `AgentScope`, `WorkspaceKind`
+- `src/docket/core/fleet.py`: `meta_set` (validates the record before writing)
+- `src/docket/serve.py`: the project-segment check on every route with a project segment, and `POST /pods`
+- `src/docket/cli/_agents.py`: `docket init`, `docket init --from` (blueprint and flat entries)
+- `src/docket/cli/_pod.py`: `build_pod_from_blueprint`, `docket pod set verify`
+- `src/docket/cli/_setup_model.py`: `docket setup model set`, `docket setup provider add|rotate`, the credential prefix check and name derivation
+- `src/docket/cli/__init__.py`: the command and group registry that declares the verbs
+- `src/docket/core/provider.py`: the provider catalog (`credentialPrefix`); shipped entries under `src/docket/templates/providers/`
+- `src/docket/edges/adapters/system.py`: `run_verify_cmd`, the one shell invocation
+- `src/docket/edges/adapters/toolbox.py`: `resolve_within`, the allowed-roots check for file tools
+- `src/docket/edges/store.py`: the atomic JSON writer
+- Tests: `tests/unit/core/test_provisioning.py`, `tests/integration/test_pod_blueprint_provisioning.py`, `tests/integration/test_serve_pods_endpoint.py`, `tests/integration/test_provider_agnosticism.py`, `tests/integration/test_data_layer.py`, `tests/unit/cli/test__setup_model.py`, `tests/unit/cli/test__task.py`
