@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import point_home_at, record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _setup_model, _setup_sandbox
@@ -300,8 +300,7 @@ class TestRunTurn:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.delenv(provider_key, raising=False)
-        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
-        monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
+        point_home_at(monkeypatch, tmp_path)
 
         assert _setup_model._write_credential(provider_key, secret, "add")
         _write_meta("gateway-agent", model=model)

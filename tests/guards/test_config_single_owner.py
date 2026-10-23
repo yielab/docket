@@ -24,20 +24,16 @@ _CONFIG_FILE = _SRC_ROOT / "config.py"
 # The env var names config.py is the single declaration site for. Each is
 # read either as a plain module-level constant (METRICS_WINDOW,
 # RUNAWAY_TURNS_THRESHOLD, RUNAWAY_COST_THRESHOLD, DOCKET_KEY_MAX_AGE_DAYS,
-# DOCKET_KEYRING_SERVICE, DOCKET_SANDBOX_IMAGE) or, where call-time re-reads
-# matter (a test toggles it with monkeypatch.setenv after config.py's first
-# import -- see no_trace()/secrets_backend_requested()'s docstrings), through
-# a config.py function that still owns the one os.environ.get call
-# (DOCKET_NO_TRACE, DOCKET_SECRETS_BACKEND).
+# DOCKET_KEYRING_SERVICE, DOCKET_SANDBOX_IMAGE). DOCKET_NO_TRACE,
+# DOCKET_NO_EXPORT and DOCKET_SECRETS_BACKEND are read live (a test toggles them with
+# monkeypatch.setenv) by one function each in edges/adapters/system.py, not here.
 _OWNED_ENV_VARS: frozenset[str] = frozenset(
     {
         "METRICS_WINDOW",
         "RUNAWAY_TURNS_THRESHOLD",
         "RUNAWAY_COST_THRESHOLD",
         "DOCKET_KEY_MAX_AGE_DAYS",
-        "DOCKET_SECRETS_BACKEND",
         "DOCKET_KEYRING_SERVICE",
-        "DOCKET_NO_TRACE",
         "DOCKET_SANDBOX_IMAGE",
         "DOCKET_TOOL_MAX_OUTPUT_CHARS",
     }

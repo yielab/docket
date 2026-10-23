@@ -8,12 +8,13 @@ secrets).
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 
 import docket.config as _cfg
-from docket.core import secrets as _secrets
+import docket.kernel.home as _home
 
 _LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 2.0, "integration": 10.0}
 
@@ -83,22 +84,6 @@ def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.fixture(autouse=True)
-def _isolate_secrets_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Safety net: default docket's secrets store to an ephemeral path.
-
-    ``core/secrets.py`` reads ``SECRETS_FILE``/``SECRETS_META_FILE`` as
-    module-level constants computed once at import (``DOCKET_HOME /
-    "secrets.json"`` etc.), not through ``_cfg`` at call time -- so isolating
-    them means patching the ``core.secrets`` module's own attributes
-    directly.
-    """
-    monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "_autouse_secrets.json", raising=True)
-    monkeypatch.setattr(
-        _secrets, "SECRETS_META_FILE", tmp_path / "_autouse_secrets_meta.json", raising=True
-    )
-
-
-@pytest.fixture(autouse=True)
 def _keep_pytest_dumpable(monkeypatch: pytest.MonkeyPatch) -> None:
     """An in-process turn must not make the pytest process non-dumpable for every later test;
     the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
@@ -159,19 +144,24 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
 # is added there, with nothing to fail. DOCKET_HOME and FLEET_FILE are set
 # explicitly because neither is in _DOCKET_HOME_PATHS (DOCKET_HOME is the
 # tuple's input, not a derived path, and FLEET_FILE has its own dedicated
-# _isolate_fleet_file fixture). core/secrets.py's SECRETS_FILE/SECRETS_META_FILE
-# are also named explicitly: they bind from DOCKET_HOME at import time, not
-# through config at call time, so patching DOCKET_HOME alone does not move
-# them. All four still need to move with the rest of the constants whenever a
-# test repoints to its own chosen home, or they would silently keep pointing
-# at the autouse fixtures' home instead -- a home split in two with nothing
-# to fail.
+# _isolate_fleet_file fixture). The kernel Home (what core/secrets.py reads) is
+# named explicitly too: it does not follow config.DOCKET_HOME, so a test that
+# repoints to its own chosen home must move it with the rest of the constants,
+# or the secrets store would silently keep pointing at the autouse fixtures'
+# home -- a home split in two with nothing to fail.
+def point_home_at(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
+    """Make *root* the root of the process-default kernel Home, for a test that cannot wrap
+    its body in ``use_home``. A ``use_home`` block still wins over it."""
+    monkeypatch.setattr(
+        _home, "_DEFAULT", dataclasses.replace(_home.current_home(), root=root), raising=True
+    )
+
+
 def repoint_docket_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
     """Point every DOCKET_HOME-derived constant at *home*."""
     monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
     monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
+    point_home_at(monkeypatch, home)
     for attr, leaf in _DOCKET_HOME_PATHS:
         monkeypatch.setattr(_cfg, attr, home / leaf, raising=True)
 
@@ -198,6 +188,7 @@ def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     home = tmp_path / "_autouse_docket_home"
     for attr, leaf in _DOCKET_HOME_PATHS:
         monkeypatch.setattr(_cfg, attr, home / leaf, raising=True)
+    point_home_at(monkeypatch, home)
 
 
 def register_local_provider(

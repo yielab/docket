@@ -58,6 +58,25 @@ def _which(binary: str) -> bool:
     return False
 
 
+def secrets_backend_requested() -> str:
+    """Which stored-secret backend the operator asked for: ``"keyring"`` (secret-tool/libsecret)
+    or the default ``"file"`` (secrets.json). Read live, never cached: a change made in the
+    environment mid-process takes effect on the next call. Whether ``secret-tool`` exists is
+    ``secret_tool_available``."""
+    return os.environ.get("DOCKET_SECRETS_BACKEND", "file")
+
+
+def no_trace() -> bool:
+    """True when DOCKET_NO_TRACE=1 asks every trace write to be a no-op. Read live."""
+    return os.environ.get("DOCKET_NO_TRACE", "0") == "1"
+
+
+def no_export() -> bool:
+    """True when DOCKET_NO_EXPORT=1 asks every export queue and flush action to be a no-op.
+    Read live."""
+    return os.environ.get("DOCKET_NO_EXPORT", "0") == "1"
+
+
 def secret_tool_available() -> bool:
     """Return True if the `secret-tool` (libsecret) binary is on PATH."""
     return _which("secret-tool")

@@ -44,7 +44,7 @@ def _say(text: str = "") -> None:
 
 
 def _keyring_active() -> bool:
-    return _cfg.secrets_backend_requested() == "keyring" and _system.secret_tool_available()
+    return _system.secrets_backend_requested() == "keyring" and _system.secret_tool_available()
 
 
 def _validate_key_format(name: str, value: str) -> tuple[bool, str]:

@@ -913,3 +913,24 @@ class TestGitInfoExclude:
         blocker = tmp_path / "file"
         blocker.write_text("x")
         _sys.git_info_exclude(str(blocker), ("/node_modules",))
+
+
+# ── live environment switches ─────────────────────────────────────────────────
+
+
+def test_the_environment_switches_are_read_live(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("DOCKET_NO_TRACE", "DOCKET_NO_EXPORT", "DOCKET_SECRETS_BACKEND"):
+        monkeypatch.delenv(name, raising=False)
+    assert (_sys.no_trace(), _sys.no_export(), _sys.secrets_backend_requested()) == (
+        False,
+        False,
+        "file",
+    )
+    monkeypatch.setenv("DOCKET_NO_TRACE", "1")
+    monkeypatch.setenv("DOCKET_NO_EXPORT", "1")
+    monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
+    assert (_sys.no_trace(), _sys.no_export(), _sys.secrets_backend_requested()) == (
+        True,
+        True,
+        "keyring",
+    )

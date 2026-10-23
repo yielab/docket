@@ -208,19 +208,6 @@ META_FILE = ".docket-meta.json"
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
 
-def mkdir_private(path: Path) -> None:
-    """Create *path* and any missing parents; every directory this call creates is 0700,
-    whatever the umask. An existing directory's mode is never changed."""
-    missing: list[Path] = []
-    current = path
-    while not current.exists() and current != current.parent:
-        missing.append(current)
-        current = current.parent
-    path.mkdir(parents=True, exist_ok=True)
-    for made in missing:
-        os.chmod(made, 0o700)
-
-
 def workspace_dir(agent_id: str) -> Path:
     """Resolve the workspace path for a pod member."""
     return PROJECTS_DIR / agent_id
@@ -527,54 +514,11 @@ TELEGRAM_OFFSET_FILE = DOCKET_HOME / "docket-telegram-offset.json"
 # target.
 INBOX_CURSOR_FILE = DOCKET_HOME / "inbox-cursor.json"
 
-# ── docket-owned secrets store (core/secrets.py, cli/_doctor.py) ──
-
-
-def secrets_backend_requested() -> str:
-    """Which stored-secret backend the operator asked for: "keyring" (opt
-    into secret-tool/libsecret) or the default "file" (secrets.json).
-
-    A function, not a cached constant, because both callers
-    (``core.secrets.secret_values``'s redaction path and
-    ``cli._doctor._secrets_backend``'s health check) must see a change made
-    with ``monkeypatch.setenv``/an operator's real env edit within the same
-    process -- an import-time snapshot would freeze whichever value was set
-    before ``docket.config`` was first imported. Availability of the
-    ``secret-tool`` binary itself is a separate probe each caller does
-    locally (``edges/adapters/system.py``); this only resolves which backend
-    was requested.
-    """
-    return os.environ.get("DOCKET_SECRETS_BACKEND", "file")
-
-
 # KEYRING_SERVICE: the libsecret "service" name secrets are stored/looked up
-# under when secrets_backend_requested() is "keyring". No caller needs a
+# under when the keyring backend is requested. No caller needs a
 # call-time re-read (nothing monkeypatches this one), so a plain constant
 # matches the rest of this file.
 KEYRING_SERVICE = os.environ.get("DOCKET_KEYRING_SERVICE", "docket-cli")
-
-# ── trace suppression (core/trace.py) ──
-
-
-def no_trace() -> bool:
-    """True when DOCKET_NO_TRACE=1 should no-op every trace write.
-
-    A function, not a cached constant: tests toggle this per-test with
-    ``monkeypatch.setenv`` and expect ``trace_append`` to
-    see the change within the same process, which a module-level constant
-    (read once at import) cannot do.
-    """
-    return os.environ.get("DOCKET_NO_TRACE", "0") == "1"
-
-
-# ── export suppression (core/exporter.py) ──
-
-
-def no_export() -> bool:
-    """True when DOCKET_NO_EXPORT=1 should no-op every export queue/flush action. A function,
-    not a cached constant, so a test can toggle it with ``monkeypatch.setenv`` mid-process."""
-    return os.environ.get("DOCKET_NO_EXPORT", "0") == "1"
-
 
 # ── sandboxed exec (edges/adapters/system.py) ──
 # SANDBOX_DOCKER_IMAGE: image for the docker exec-jail. Small and generic on

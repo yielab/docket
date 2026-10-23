@@ -31,6 +31,7 @@ from docket.core.utils import aggregate_cost, gating_cost, project_ids
 from docket.edges import store
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
 RUNAWAY_TURNS_THRESHOLD = _cfg.RUNAWAY_TURNS_THRESHOLD
@@ -294,7 +295,7 @@ def _check_key_hygiene() -> int:
     if _secrets_backend() == "keyring":
         ui.success("  Backend: keyring (values in OS keyring, not plaintext at rest)")
     else:
-        ui.warn(f"  Backend: file — secrets are plaintext at rest in {_secrets.SECRETS_FILE}")
+        ui.warn(f"  Backend: file — secrets are plaintext at rest in {current_home().secrets_file}")
         ui.dim("    For at-rest protection: DOCKET_SECRETS_BACKEND=keyring (libsecret)")
     stale = 0
     for state, name, detail in report:
@@ -693,7 +694,7 @@ def _fmt_num(s: str) -> str:
 
 def _secrets_backend() -> str:
     """Resolve the secrets backend (keyring if requested + available, else file)."""
-    if _cfg.secrets_backend_requested() == "keyring" and shutil.which("secret-tool"):
+    if _sys.secrets_backend_requested() == "keyring" and shutil.which("secret-tool"):
         return "keyring"
     return "file"
 

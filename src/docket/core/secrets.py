@@ -18,29 +18,27 @@ from docket.edges import store
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Unavailable
-
-SECRETS_FILE = _cfg.DOCKET_HOME / "secrets.json"
-SECRETS_META_FILE = _cfg.DOCKET_HOME / "secrets.meta.json"
+from docket.kernel.home import current_home
 
 
 def load_secrets() -> dict[str, str]:
     """Return the stored {KEY_NAME: value} map ({} if absent/malformed)."""
-    raw = store.read_json(SECRETS_FILE)
+    raw = store.read_json(current_home().secrets_file)
     return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
 
 
 def save_secrets(secrets: dict[str, str]) -> None:
-    store.write_json(SECRETS_FILE, secrets)
+    store.write_json(current_home().secrets_file, secrets)
 
 
 def load_secrets_meta() -> dict[str, Any]:
     """Return the raw secrets.meta.json contents ({} if absent/malformed)."""
-    raw = store.read_json(SECRETS_META_FILE)
+    raw = store.read_json(current_home().secrets_meta_file)
     return raw if isinstance(raw, dict) else {}
 
 
 def save_secrets_meta(meta: dict[str, Any]) -> None:
-    store.write_json(SECRETS_META_FILE, meta)
+    store.write_json(current_home().secrets_meta_file, meta)
 
 
 def secrets_keys() -> set[str]:
@@ -53,7 +51,7 @@ def secret_value(name: str) -> str | None:
     raw = load_secrets()
     if name not in raw:
         return None
-    if _cfg.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
+    if _system.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
         value = _system.secret_tool_lookup(_cfg.KEYRING_SERVICE, name)
     else:
         value = raw.get(name)
@@ -65,7 +63,7 @@ def store_backend() -> str:
     """The backend a credential write goes to: ``"keyring"`` or ``"file"``. Raises ``Unavailable``
     when the keyring was requested and ``secret-tool`` is not on ``PATH``, so a write never
     falls back to plaintext in silence."""
-    if _cfg.secrets_backend_requested() != "keyring":
+    if _system.secrets_backend_requested() != "keyring":
         return "file"
     if not _system.secret_tool_available():
         raise Unavailable(
@@ -87,7 +85,7 @@ def secret_values() -> list[str]:
     if not raw:
         return []
     backend = "file"
-    if _cfg.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
+    if _system.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
         backend = "keyring"
     if backend == "keyring":
         service = _cfg.KEYRING_SERVICE

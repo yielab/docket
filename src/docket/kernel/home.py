@@ -469,6 +469,15 @@ class Home:
     def reviewed_repos_file(self) -> Path:
         return self.root / "reviewed-repos.json"
 
+    # Stored provider credentials and their added/rotated bookkeeping (core/secrets.py).
+    @property
+    def secrets_file(self) -> Path:
+        return self.root / "secrets.json"
+
+    @property
+    def secrets_meta_file(self) -> Path:
+        return self.root / "secrets.meta.json"
+
     @property
     def user_recipes_dir(self) -> Path:
         return self.root / "recipes"

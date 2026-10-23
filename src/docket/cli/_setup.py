@@ -14,8 +14,8 @@ import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.core import policy as _policy
-from docket.core import secrets as _secrets
 from docket.edges.adapters import system as _system
+from docket.kernel.home import current_home
 
 setup_app = typer.Typer(
     name="setup",
@@ -185,7 +185,8 @@ def _version_callback(value: bool) -> None:
 def step_security() -> None:
     """Tighten docket-owned config and secrets files to owner-only."""
     hardened: list[str] = []
-    for path in (_cfg.FLEET_FILE, _secrets.SECRETS_FILE, _secrets.SECRETS_META_FILE):
+    home = current_home()
+    for path in (_cfg.FLEET_FILE, home.secrets_file, home.secrets_meta_file):
         if not path.is_file():
             continue
         try:
