@@ -44,8 +44,9 @@ from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.refs import resolve_task
 from docket.tasks.domain import task as _task
-from docket.tasks.domain.refs import TaskRef, TaskRefError, resolve_task, short_id
+from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
 from docket.teams import report as _report
 from docket.teams import task_worktrees as _task_worktrees
 

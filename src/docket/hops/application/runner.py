@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json as _json
-from urllib.parse import quote as _url_quote
 
 from docket.agent import driver as _dr
 from docket.agent import ports as _rd
@@ -23,6 +22,7 @@ from docket.hops.gates.pre_hop import (
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.ids import step_session_key
 from docket.models import selection as _models_policy
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import runs as _runs
@@ -36,17 +36,6 @@ from docket.teams.settings import _retries_for_role
 # verdict is a real answer and must never be retried (retrying would risk
 # masking a genuine failure as a transient one, and burns budget for nothing).
 _RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"})
-
-
-def step_session_key(member_id: str, project: str, task_id: str, step_id: str) -> str:
-    """Collision-free durable-history key (member + globally-unique step id) so repeated
-    roles and parallel children never replay each other's raw turns.
-    """
-    member = _url_quote(member_id, safe="")
-    project_part = _url_quote(project, safe="")
-    task = _url_quote(task_id, safe="")
-    step = _url_quote(step_id, safe="")
-    return f"agent:{member}:{project_part}:task:{task}:step:{step}"
 
 
 def _run_hop_turn(

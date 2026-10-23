@@ -3,12 +3,6 @@
 #   python tests/architecture/test_import_contracts.py --write
 domain imports kernel and its own domain | docket.pipeline.domain.plan -> docket.teams.role_schema
 domain imports kernel and its own domain | docket.pipeline.domain.plan -> docket.teams.roles
-domain imports kernel and its own domain | docket.tasks.domain.options -> docket.governance.policy
-domain imports kernel and its own domain | docket.tasks.domain.options -> docket.hops.workspace.prepare
-domain imports kernel and its own domain | docket.tasks.domain.options -> docket.teams.roles
-domain imports kernel and its own domain | docket.tasks.domain.refs -> docket.hops.application.runner
-domain imports kernel and its own domain | docket.tasks.domain.refs -> docket.tasks.application.queue
-domain imports kernel and its own domain | docket.tasks.domain.refs -> docket.tasks.application.runs
 application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.observability.trace
 application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.operator.contract
 application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.tasks.application.actions
@@ -542,6 +536,7 @@ interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.c
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.interruptions
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.lifecycle
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.refs
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.runs
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.domain.refs
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.domain.task

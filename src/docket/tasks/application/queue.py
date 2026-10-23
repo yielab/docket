@@ -25,6 +25,7 @@ from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.platform import read_json, read_modify_write
 from docket.tasks.domain import options as _task_options
+from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import (
     DispatchError,
     HopResult,
@@ -35,7 +36,7 @@ from docket.tasks.domain.task import (
 from docket.teams import fleet as _fleet
 from docket.teams import models as _models
 from docket.teams import pod as _pod
-from docket.teams.settings import _pod_settings, pod_task_list_path
+from docket.teams.settings import _pod_settings, builtin_tool_names, pod_task_list_path
 
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
@@ -47,7 +48,7 @@ _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 # hop/gate outcome, so neither is a "real gate/hop failure" in the sense
 # "blocked and terminal-failure re-entry" uses that phrase for. Shared by
 # ``interfaces/cli/commands/run.py``'s "anything to do?" gate so the two never drift apart.
-RESUMABLE_FAILURE_KINDS: frozenset[str] = frozenset({"stale_claim", "dispatch_refused"})
+RESUMABLE_FAILURE_KINDS: frozenset[str] = _state.RESUMABLE_FAILURE_KINDS
 
 
 def read_tasks(project: str) -> list[dict[str, Any]]:
@@ -107,8 +108,13 @@ def _enqueue_pre_input_gate(
 def validate_task_options(**raw: Any) -> _task_options.TaskOptions:
     """Validate the addressable-task fields; a wrong shape raises DispatchError, a widening
     restriction its subclass TaskRestrictionError."""
+    rules = _task_options.OptionRules(
+        known_tools=builtin_tool_names(),
+        check_policy=_policy.task_policy_document,
+        check_prepare=_prepare.check_command,
+    )
     try:
-        return _task_options.validate_task_options(**raw)
+        return _task_options.validate_task_options(rules=rules, **raw)
     except _task_options.TaskRestrictionError as exc:
         raise TaskRestrictionError(str(exc)) from exc
     except _task_options.TaskOptionsError as exc:

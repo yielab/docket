@@ -6,30 +6,31 @@ pod's limits."""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Collection
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 
-from docket.governance import policy as _policy
-from docket.hops.workspace import prepare as _prepare
 from docket.kernel.errors import InvalidInput
-from docket.teams import roles as _archetypes
+from docket.tasks.domain.state import Status
 
 _GATE_LABELS = ("pass", "fail", "needs_human")
-TASK_STATUSES = frozenset(
-    {
-        "pending",
-        "running",
-        "in_progress",
-        "waiting_input",
-        "waiting_approval",
-        "blocked",
-        "failed",
-        "done",
-        "cancelled",
-    }
-)
+TASK_STATUSES = frozenset(status.value for status in Status)
 _REF_MAX = 200
+
+
+@dataclass(frozen=True)
+class OptionRules:
+    """What validating an option needs from outside the task domain, passed in as data.
+
+    ``known_tools`` is the built-in tool names a restriction may deny; ``check_policy`` raises on a
+    malformed task policy document; ``check_prepare`` returns a valid prepare command or raises
+    ``ValueError``."""
+
+    known_tools: Collection[str]
+    check_policy: Callable[[Any], object]
+    check_prepare: Callable[[object], str]
 
 
 class TaskOptionsError(InvalidInput):
@@ -95,10 +96,10 @@ def _check_gate(gate: TaskGate) -> None:
             )
 
 
-def _check_restrictions(restrictions: TaskRestrictions) -> None:
+def _check_restrictions(restrictions: TaskRestrictions, rules: OptionRules) -> None:
     if restrictions.network not in (None, "none"):
         raise TaskRestrictionError("restrictions.network may only be 'none' (open would widen)")
-    known = set(_archetypes.BUILTIN_TOOL_KINDS)
+    known = set(rules.known_tools)
     for name in restrictions.denied_tools or []:
         if name not in known:
             raise TaskRestrictionError(
@@ -106,13 +107,14 @@ def _check_restrictions(restrictions: TaskRestrictions) -> None:
             )
     for index, doc in enumerate(restrictions.policies or []):
         try:
-            _policy.task_policy_document(doc)
+            rules.check_policy(doc)
         except Exception as exc:
             raise TaskRestrictionError(f"restrictions.policies[{index}]: {exc}") from exc
 
 
 def validate_task_options(
     *,
+    rules: OptionRules,
     external_ref: Any = None,
     idempotency_key: Any = None,
     base_ref: Any = None,
@@ -122,8 +124,8 @@ def validate_task_options(
     prepare: Any = None,
     restrictions: Any = None,
 ) -> TaskOptions:
-    """Validate the raw values (``None`` is unset); raises TaskOptionsError, or its subclass
-    TaskRestrictionError for a restriction that would widen."""
+    """Validate the raw values (``None`` is unset) against *rules*; raises TaskOptionsError, or its
+    subclass TaskRestrictionError for a restriction that would widen."""
     raw = {
         "externalRef": external_ref,
         "idempotencyKey": idempotency_key,
@@ -144,9 +146,9 @@ def validate_task_options(
         _check_gate(options.gate)
     if options.prepare is not None:
         try:
-            _prepare.check_command(options.prepare)
+            rules.check_prepare(options.prepare)
         except ValueError as exc:
             raise TaskOptionsError(f"invalid prepare: {exc}") from exc
     if options.restrictions is not None:
-        _check_restrictions(options.restrictions)
+        _check_restrictions(options.restrictions, rules)
     return options
