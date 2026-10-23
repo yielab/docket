@@ -170,6 +170,8 @@ def _flush_notify_after_dispatch() -> None:
     report = _notify.flush(
         list(_channel.load_catalog().entries.values()), _channels.sink_for, now=now
     )
+    if report.error:
+        ui.warn(escape(f"  notify: {report.error}"))
     if report.failed:
         ui.warn(f"  notify: {report.failed} delivery failure(s) — see channels-health.json")
     if report.events:

@@ -456,6 +456,16 @@ class TestFlushNotifyAfterDispatch:
         _run._flush_notify_after_dispatch()
         assert capsys.readouterr().out == ""
 
+    def test_a_flush_that_ended_early_is_named(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import notify as _notify
+
+        report = _notify.FlushReport(error="inbox unreadable: [Errno 13]")
+        monkeypatch.setattr(_notify, "flush", lambda *_a, **_k: report)
+        _run._flush_notify_after_dispatch()
+        assert "notify: inbox unreadable: [Errno 13]" in capsys.readouterr().out
+
 
 _PIPELINE = "name: p\nsteps:\n  - id: migrate\n    run: {run}\n"
 _SKILL = "---\nname: style-guide\ndescription: house style\n---\n{body}\n"
