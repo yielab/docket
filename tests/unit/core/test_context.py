@@ -216,10 +216,9 @@ class TestCompileArtifact:
         assert compiled.original_tokens == compiled.tokens
 
     def test_fields_are_shed_in_declared_drop_order(self) -> None:
-        """diff -> notes -> diff_ref -> files_changed -> verdict, one at a time, stopping the moment the render fits -- pinned against `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this test breaks (loudly) if the order is ever changed there."""
+        """diff -> diff_ref -> files_changed -> verdict, one at a time, stopping the moment the render fits -- pinned against `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this test breaks (loudly) if the order is ever changed there."""
         assert HandoffArtifact.DROP_ORDER == (
             "diff",
-            "notes",
             "diff_ref",
             "files_changed",
             "verdict",
@@ -230,7 +229,6 @@ class TestCompileArtifact:
             verdict="approve",
             files_changed=["a.py", "b.py"],
             diff_ref="/repo/worktree",
-            notes="took two tries",
             diff="--- new file: a.py\nprint(1)\n",
         )
         full = art.render()
@@ -240,7 +238,7 @@ class TestCompileArtifact:
         compiled = _ctx.compile_artifact(art, budget_tokens=budget)
         assert compiled.dropped_fields == ("diff",)
         assert "Diff:" not in compiled.text
-        assert "Notes: took two tries" in compiled.text  # least-valuable shed first, only
+        assert "Diff ref: /repo/worktree" in compiled.text  # least-valuable shed first, only
 
     def test_sheds_every_droppable_field_before_touching_summary(self) -> None:
         art = HandoffArtifact(
@@ -248,19 +246,18 @@ class TestCompileArtifact:
             verdict="approve",
             files_changed=["a.py"],
             diff_ref="/repo",
-            notes="n",
             diff="d",
         )
         # A budget that only the bare summary fits -- every droppable field
         # must go, in order, none of them left behind.
         budget = _ctx.estimate_tokens(art.summary)
         compiled = _ctx.compile_artifact(art, budget_tokens=budget)
-        assert compiled.dropped_fields == ("diff", "notes", "diff_ref", "files_changed", "verdict")
+        assert compiled.dropped_fields == ("diff", "diff_ref", "files_changed", "verdict")
         assert compiled.text == art.summary
         assert compiled.summary_truncated is False
 
     def test_empty_fields_are_skipped_not_reported_as_dropped(self) -> None:
-        """A field that was already empty (the honest state of `notes`/ `diff_ref`/`files_changed` today -- dispatch has no producer for them yet, see `core/handoff.py`) is never claimed as "dropped": there was nothing there to shed."""
+        """A field that was already empty (the honest state of `diff_ref`/`files_changed` today -- dispatch has no producer for them yet, see `core/handoff.py`) is never claimed as "dropped": there was nothing there to shed."""
         art = HandoffArtifact(summary="x" * 10_000)  # only summary is set
         compiled = _ctx.compile_artifact(art, budget_tokens=1)
         # Nothing was droppable -- straight to summary truncation.
@@ -268,7 +265,7 @@ class TestCompileArtifact:
         assert compiled.summary_truncated is True
 
     def test_summary_is_never_silently_dropped_only_truncated_with_a_marker(self) -> None:
-        art = HandoffArtifact(summary="A" * 5000, notes="expendable")
+        art = HandoffArtifact(summary="A" * 5000, diff="expendable")
         compiled = _ctx.compile_artifact(art, budget_tokens=5)
         assert compiled.summary_truncated is True
         assert compiled.text != ""
@@ -286,7 +283,7 @@ class TestCompileArtifact:
 
     def test_result_stays_within_budget_for_reasonable_budgets(self) -> None:
         """For any budget that can actually fit the truncation marker itself, the compiled result's own token estimate never exceeds it."""
-        art = HandoffArtifact(summary="C" * 3000, verdict="fail", files_changed=["x.py"], notes="n")
+        art = HandoffArtifact(summary="C" * 3000, verdict="fail", files_changed=["x.py"])
         for budget in (2000, 500, 100, 50):
             compiled = _ctx.compile_artifact(art, budget_tokens=budget)
             assert compiled.tokens <= budget

@@ -44,18 +44,13 @@ class TestHandoffArtifactModel:
             verdict="approve",
             files_changed=["a.py", "b.py"],
             diff_ref="/repo/worktree",
-            notes="took two tries",
         )
         assert art.render() == (
-            "did the thing\n"
-            "Verdict: approve\n"
-            "Files changed: a.py, b.py\n"
-            "Diff ref: /repo/worktree\n"
-            "Notes: took two tries"
+            "did the thing\nVerdict: approve\nFiles changed: a.py, b.py\nDiff ref: /repo/worktree"
         )
 
     def test_render_omits_empty_optional_fields(self) -> None:
-        art = _handoff.HandoffArtifact(summary="s", files_changed=[], notes="")
+        art = _handoff.HandoffArtifact(summary="s", files_changed=[])
         assert art.render() == "s"
 
     def test_from_output_is_summary_only(self) -> None:
@@ -64,17 +59,16 @@ class TestHandoffArtifactModel:
         assert art.files_changed == []
         assert art.diff_ref is None
         assert art.verdict is None
-        assert art.notes == ""
         assert art.render() == "raw text"
 
     def test_dropped_resets_only_the_named_field(self) -> None:
-        art = _handoff.HandoffArtifact(summary="s", verdict="approve", notes="n")
-        dropped = art.dropped("notes")
-        assert dropped.notes == ""
+        art = _handoff.HandoffArtifact(summary="s", verdict="approve", files_changed=["a.py"])
+        dropped = art.dropped("files_changed")
+        assert dropped.files_changed == []
         assert dropped.verdict == "approve"
         assert dropped.summary == "s"
         # The original is untouched (frozen model, dropped() returns a copy).
-        assert art.notes == "n"
+        assert art.files_changed == ["a.py"]
 
     def test_dropped_rejects_summary(self) -> None:
         art = _handoff.HandoffArtifact(summary="s")
@@ -92,7 +86,6 @@ class TestHandoffArtifactModel:
         # them and still be left with a valid (if minimal) artifact.
         assert set(_handoff.HandoffArtifact.DROP_ORDER) == {
             "diff",
-            "notes",
             "diff_ref",
             "files_changed",
             "verdict",
@@ -149,9 +142,7 @@ class TestHopResultArtifactBackfill:
 
 class TestHopRecordRoundTrip:
     def test_hop_record_persists_and_restores_artifact_exactly(self) -> None:
-        art = _handoff.HandoffArtifact(
-            summary="s", verdict="fail", files_changed=["x.py"], notes="n"
-        )
+        art = _handoff.HandoffArtifact(summary="s", verdict="fail", files_changed=["x.py"])
         hop = _dispatch.HopResult(
             role="tester", member_id="demo-tester", ok=True, output="s", artifact=art
         )

@@ -11,7 +11,7 @@ carried forward across any number of prior hops never reaches the total
 budget, while the most recent, most relevant hop is squeezed the least. Once
 a hop's share is exceeded, ``compile_artifact`` sheds the artifact's own
 less-valuable fields first, in ``HandoffArtifact.DROP_ORDER``'s declared
-order (``notes`` -> ``diff_ref`` -> ``files_changed`` -> ``verdict``),
+order (``diff_ref`` -> ``files_changed`` -> ``verdict``),
 checking the budget after each drop and stopping the moment it fits.
 ``summary`` is never in ``DROP_ORDER`` — it is the artifact's minimum viable
 content — so the worst case is an explicitly *marked* truncation of
@@ -238,10 +238,9 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        the common case (a small hop composes exactly as if there were no
        budget at all).
     2. Otherwise shed ``HandoffArtifact.DROP_ORDER`` fields one at a time
-       (``notes``, then ``diff_ref``, then ``files_changed``, then
+       (``diff_ref``, then ``files_changed``, then
        ``verdict``), re-measuring after each drop and stopping the moment it
-       fits. A field that is already empty (``notes`` is reserved but never
-       populated by dispatch; ``files_changed``/``diff_ref`` are only
+       fits. A field that is already empty (``files_changed``/``diff_ref`` are only
        populated for a successful Implementer hop, see `core/handoff.py`/
        `core/dispatch.py`) is skipped rather than reported as "dropped": there
        was nothing there to shed, so claiming otherwise in the trace would be

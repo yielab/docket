@@ -90,7 +90,7 @@ class TestFindRegistryProblems:
 
 class TestResolveStepModel:
     """A pipeline step's own ``model`` (pipeline-format.spec.md Steps Req. 10) resolved for
-    one hop -- model-profiles.spec.md's "Model intent per agent" requirement 4."""
+    one hop -- model-profiles.spec.md's "Where a member's model comes from" requirement 3."""
 
     def test_rank_word_resolves_to_the_live_anchor(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

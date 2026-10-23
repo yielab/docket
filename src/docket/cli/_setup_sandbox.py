@@ -359,7 +359,7 @@ def profile(choice: str | None) -> int:
     ui.success("Profile lights-out; a task is refused until every requirement holds")
     for violation in _profile.fleet_violations():
         ui.warn(f"{violation.requirement}: {violation.detail}. Fix: {violation.fix}")
-    ui.dim("Per-pod requirements (external gate, secrets) show in docket status and doctor.")
+    ui.dim("Per-pod requirements (external gate, secrets) show in docket status and docket setup.")
     return 0
 
 

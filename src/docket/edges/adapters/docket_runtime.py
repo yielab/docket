@@ -741,7 +741,7 @@ class DocketDriver:
             driver_name="docket",
             # cost_usd is 0.0 everywhere in this driver by design (see
             # run_turn/usage docstrings and CLAUDE.md's standing rule) --
-            # MODEL_PRICING powers comparative estimates only, never a
+            # the provider catalog's prices power comparative estimates only, never a
             # billing claim.
             reports_cost_usd=False,
             # list_sessions/usage read real, durable

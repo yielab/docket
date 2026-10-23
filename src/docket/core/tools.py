@@ -187,17 +187,6 @@ class ToolRegistry:
                 clone.register(tool)
         return clone
 
-    def without_kind(self, *kinds: ToolKind) -> ToolRegistry:
-        """A copy with every tool whose ``kind`` is in *kinds* removed. Keyed on
-        capability, not name, so a namespaced MCP-adapted tool still gets excluded from a
-        role that denies that capability. See specs/functional/role-archetypes.spec.md
-        and the sole caller, ``core.archetypes.registry_for_role``."""
-        clone = ToolRegistry()
-        for tool in self._tools.values():
-            if tool.kind not in kinds:
-                clone.register(tool)
-        return clone
-
     def __len__(self) -> int:
         return len(self._tools)
 

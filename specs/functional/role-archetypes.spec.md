@@ -582,7 +582,7 @@ docket pod validate ./producer.yaml
   `find_overlay_problems`, `BUILTIN_TOOL_KINDS`, `registry_for_role`, `validate_archetype_dict`,
   `parse_yaml_file`, `normalize_role` (short form), `to_short_role`, `load_role_file`,
   `add_user_archetype`
-- `src/docket/core/tools.py`: `ToolRegistry.without`, `ToolRegistry.without_kind`, `Tool.kind`,
+- `src/docket/core/tools.py`: `ToolRegistry.without`, `Tool.kind`,
   `builtin_registry` (the `bash` description sentence)
 - `src/docket/core/pod.py`: `normalize_role`, `member_id`, `pod_prefix`, `pod_of`, `members_of`,
   `parse_member_id`, `resolve_member`, `DEFAULT_POD_ROLES`, `FULL_POD_ROLES`, `PodSettings`

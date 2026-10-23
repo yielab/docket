@@ -799,12 +799,6 @@ _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat trac
 _REGISTERED_CREDENTIAL_NAMES: set[str] = set()
 
 
-def register_credential_name(name: str) -> None:
-    """Treat *name* as a credential in this process (stripped from every child environment)."""
-    if name:
-        _REGISTERED_CREDENTIAL_NAMES.add(name)
-
-
 def credential_names() -> set[str]:
     """Every environment name docket treats as a credential: ``DOCKET_LLM_API_KEY``,
     ``TELEGRAM_BOT_TOKEN``, each name the provider catalog declares and each in the secret store.
@@ -1201,20 +1195,6 @@ def git_worktree_changes(cwd: str) -> list[tuple[str, str]]:
             index += 1
         changes.append((code, os.path.join(root, path)))
     return changes
-
-
-def git_worktree_fingerprint(cwd: str) -> dict[str, tuple[str, int, int]]:
-    """Map every path `git_worktree_changes` reports to ``(status, size, mtime_ns)``, so two
-    snapshots can tell a path that changed between them from one that merely stayed dirty. A
-    path that no longer exists (a deletion) fingerprints as size and mtime ``-1``."""
-    prints: dict[str, tuple[str, int, int]] = {}
-    for code, path in git_worktree_changes(cwd):
-        try:
-            stat = os.stat(path)
-            prints[path] = (code, stat.st_size, stat.st_mtime_ns)
-        except OSError:
-            prints[path] = (code, -1, -1)
-    return prints
 
 
 def git_worktree_add(

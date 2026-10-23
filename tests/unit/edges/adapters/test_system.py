@@ -770,15 +770,6 @@ class TestTrustedWorktree:
         assert out.returncode == 1 and ran == []
 
 
-def test_a_registered_credential_name_is_stripped_from_task_environments(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(_sys, "_REGISTERED_CREDENTIAL_NAMES", set())
-    monkeypatch.setenv("SETUP_ONLY_API_KEY", "value-the-child-must-not-see")
-    _sys.register_credential_name("SETUP_ONLY_API_KEY")
-    assert "SETUP_ONLY_API_KEY" not in _sys.task_environment()
-
-
 class TestPrivateJailTmp:
     def test_the_dir_lives_under_the_cache_dir_and_is_private(self, tmp_path: Path) -> None:
         tmp = _sys.jail_tmp_dir((tmp_path / "w",), tmp_path / "cache")

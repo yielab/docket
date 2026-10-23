@@ -69,7 +69,7 @@ CLI run registry.
 6. The deterministic model MUST issue exactly one admitted `write` call with call id
    `starter-write`, observe its matching tool result, and then return the terminal summary
    `Starter journey completed.`. The done task's persisted final hop MUST contain the complete
-   `HandoffArtifact` object (`summary`, `files_changed`, `diff_ref`, `diff`, `verdict`, `notes`, and
+   `HandoffArtifact` object (`summary`, `files_changed`, `diff_ref`, `diff`, `verdict`, and
    `brief`), and its legacy `output` MUST equal the typed artifact's summary.
 7. The installed public CLI MUST successfully execute `docket task show <id> --pod docket-starter
    --json`, `docket task trace <id> --pod docket-starter --export`, and `docket log verify`.

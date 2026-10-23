@@ -95,7 +95,7 @@ def test_gate_failed_section_is_recorded_in_the_composition() -> None:
         cost_usd=0.0,
         step_id="build",
         next_step="build",
-        verify={"cmd": "x", "exitCode": 1, "durationS": 0.1, "outputTail": MARKER, "touched": []},
+        verify={"cmd": "x", "exitCode": 1, "durationS": 0.1, "outputTail": MARKER},
     )
     message, comp = _dispatch._hop_message(
         {"description": "d"}, "implementer", [hop], rework_hop=hop
@@ -147,7 +147,7 @@ def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(
         cost_usd=0.0,
         step_id="build",
         next_step="build",
-        verify={"cmd": "x", "exitCode": 1, "durationS": 0.1, "outputTail": MARKER, "touched": []},
+        verify={"cmd": "x", "exitCode": 1, "durationS": 0.1, "outputTail": MARKER},
     )
     _prior, index, _rework, routes, pending = _dispatch._resolve_resume_state(steps, [lead, gated])
     assert index == 1
@@ -156,7 +156,7 @@ def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(
 
 
 def test_a_backward_route_out_of_a_passing_gate_carries_no_gate_failure() -> None:
-    passed = {"cmd": "x", "exitCode": 0, "durationS": 0.1, "outputTail": MARKER, "touched": []}
+    passed = {"cmd": "x", "exitCode": 0, "durationS": 0.1, "outputTail": MARKER}
     hop = _dispatch.HopResult(
         role="implementer",
         member_id="demo-implementer",

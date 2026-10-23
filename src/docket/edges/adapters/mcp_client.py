@@ -69,7 +69,7 @@ def _truncate(text: str) -> str:
 
 def _stdio_params(config: McpServerConfig, launch: StdioLaunch | None = None) -> Any:
     """Build the SDK's spawn parameters for *config*. With *launch* the server starts in its
-    ``cwd``, and inside the turn's jail when the turn is isolated and *config* does not opt out.
+    ``cwd``, and inside the turn's jail when the turn is isolated.
     Imported lazily -- only called once ``_sdk_available()`` has confirmed the SDK."""
     from mcp.client.stdio import StdioServerParameters
 
