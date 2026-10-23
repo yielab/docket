@@ -28,7 +28,7 @@ from docket.hops.gates.pre_hop import (
     _pause_lead_for_budget,
     _refuse_unmet_profile,
 )
-from docket.observability import trace as _trace
+from docket.observability import trace_event
 from docket.pipeline.application.steps import (
     _run_command_step,
     _run_input_step,
@@ -435,7 +435,7 @@ def dispatch_task(
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"
 
-    _trace.trace_event(
+    trace_event(
         project,
         session_id,
         "lead",
@@ -505,11 +505,11 @@ def dispatch_task(
         result.status = "failed"
         result.reason = str(exc)
         result.failure_kind = "dispatch_refused"
-        _trace.trace_event(
+        trace_event(
             project, session_id, "lead", "dispatch_refused", _json.dumps({"reason": str(exc)})
         )
 
-    _trace.trace_event(
+    trace_event(
         project,
         session_id,
         "lead",

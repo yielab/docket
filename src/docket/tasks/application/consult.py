@@ -25,7 +25,7 @@ from pydantic import ValidationError
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import trace_event
 from docket.operator.contract import AnswerResultV11, QuestionV11, new_question_id
 from docket.platform import read_json, write_json
 
@@ -149,7 +149,7 @@ def _trace_question(question: QuestionV11, ctx: ToolContext) -> None:
         "mode": ctx.approval_mode,
         "question": question.model_dump(by_alias=True, mode="json"),
     }
-    _trace.trace_event(
+    trace_event(
         ctx.project or ctx.agent_id,
         ctx.session_key,
         ctx.role,

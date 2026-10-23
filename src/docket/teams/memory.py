@@ -23,7 +23,7 @@ from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import read_trace, trace_event
 from docket.platform import git as _git
 from docket.platform import read_json, read_modify_write
 from docket.teams import fleet as _fleet
@@ -288,7 +288,7 @@ def _session_events(link: dict[str, str] | None) -> list[dict[str, Any]] | None:
     if not project or not session or Path(project).name != project or Path(session).name != session:
         return None
     path = current_home().traces_dir / project / f"{session}.jsonl"
-    return _trace.read_trace(path) if path.is_file() else None
+    return read_trace(path) if path.is_file() else None
 
 
 def _payload(event: dict[str, Any]) -> dict[str, Any]:
@@ -486,7 +486,7 @@ def _announce(project: str, action: str, entry: MemoryEntry, task: str, actor: s
         "task": task,
     }
     session = f"agent:{project}:{task or 'memory'}"
-    _trace.trace_event(project, session, "lead", "memory_update", json.dumps(payload), task_id=task)
+    trace_event(project, session, "lead", "memory_update", json.dumps(payload), task_id=task)
     detail = f"{project} entry={entry.id} kind={entry.kind} status={entry.status} actor={actor}"
     audit_log(f"pod.memory.{action}", detail + (f" task={task}" if task else ""))
 
@@ -516,7 +516,7 @@ def _record_task_memory(
     changes: list[MemoryEntry] = []
     for hop, line in wanted:
         if line.refusal:
-            _trace.trace_event(
+            trace_event(
                 project,
                 f"agent:{project}:{task_id}",
                 "lead",
@@ -646,7 +646,7 @@ def reset(project: str, *, actor: str = "operator") -> int:
     read_modify_write(current_home().pod_memory_path(project), _fn)
     if removed:
         audit_log("pod.memory.reset", f"{project} entries={len(removed)} actor={actor}")
-        _trace.trace_event(
+        trace_event(
             project,
             f"agent:{project}:memory",
             "lead",

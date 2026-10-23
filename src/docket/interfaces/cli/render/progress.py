@@ -22,7 +22,7 @@ from docket.governance import approval as _ap
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import subscribe
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain.refs import short_id
@@ -192,7 +192,7 @@ def dispatch_with_progress(
         events.put_nowait(record)
 
     def _worker() -> None:
-        with _trace.subscribe(_sink):
+        with subscribe(_sink):
             outcome.append(_runs.execute(run_id, fn))
 
     worker = _threads.new_thread(_worker)

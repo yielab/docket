@@ -13,7 +13,7 @@ from docket.governance import audit as _audit
 from docket.hops.application.record import _hop_record
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import trace_event
 from docket.platform import git as _git
 from docket.platform import process as _process
 from docket.platform import read_modify_write
@@ -143,7 +143,7 @@ def _sweep_stale_claims(project: str) -> None:
     read_modify_write(pod_task_list_path(project), _fn)
     for t in swept:
         task_id = str(t.get("id", "task"))
-        _trace.trace_event(
+        trace_event(
             project,
             f"agent:{project}:{task_id}",
             "lead",

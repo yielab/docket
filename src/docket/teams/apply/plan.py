@@ -25,7 +25,7 @@ from docket.hops.workspace import protected_paths as _protected
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.models import selection as _mp
-from docket.observability import exporter as _exporter
+from docket.observability import load_catalog
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -445,7 +445,7 @@ def _plan_exporters(manifest: dict[str, Any]) -> tuple[str, ...]:
         return ()
     if not isinstance(raw, list):
         raise PodApplyError("pod.yaml: 'exporters' must be a list")
-    catalog = _exporter.load_catalog()
+    catalog = load_catalog()
     names: list[str] = []
     for entry in raw:
         if not isinstance(entry, str) or not _documents.NAME_RE.match(entry):
