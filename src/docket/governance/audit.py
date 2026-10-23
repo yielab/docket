@@ -28,7 +28,7 @@ from filelock import FileLock, Timeout
 
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.platform import store
+from docket.platform import mkdir_private
 
 # Sentinel prev_hash for the first entry of a chain (fresh log, or the first
 # entry appended after a corrupt line / rotation boundary). Deliberately the
@@ -242,7 +242,7 @@ def audit_log(action: str, detail: str = "") -> AuditWriteResult:
     """
     logf = current_home().audit_log
     try:
-        store.mkdir_private(logf.parent)
+        mkdir_private(logf.parent)
     except OSError:
         return AuditWriteResult("failed")
 

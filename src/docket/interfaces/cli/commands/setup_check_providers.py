@@ -9,7 +9,7 @@ from docket.kernel.home import current_home
 from docket.models import catalog as _prov
 from docket.models.catalog import ProviderSpec
 from docket.platform import process as _process
-from docket.platform import store
+from docket.platform import read_json
 from docket.teams import fleet as _fleet
 
 
@@ -90,7 +90,7 @@ def _provider_catalog_problems() -> list[tuple[str, str]]:
     (name, "field: message") pairs. Read-only: never edits the catalog."""
     from pydantic import ValidationError
 
-    raw = store.read_json(current_home().providers_file)
+    raw = read_json(current_home().providers_file)
     providers = raw.get("providers") if isinstance(raw, dict) else None
     problems: list[tuple[str, str]] = []
     if not isinstance(providers, dict):

@@ -10,7 +10,7 @@ import typer
 
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.platform import store
+from docket.platform import read_json
 from docket.teams.utils import project_ids
 
 POD_OPTION_HELP = (
@@ -37,7 +37,7 @@ def _pod_for_directory(directory: Path) -> tuple[str | None, list[str]]:
 
     matches: dict[str, int] = {}
     for aid in project_ids():
-        raw = store.read_json(current_home().meta_path(aid))
+        raw = read_json(current_home().meta_path(aid))
         pod_id = str(raw.get("pod", ""))
         if not pod_id:
             continue

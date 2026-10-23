@@ -5,7 +5,7 @@ from typing import Any
 from docket.agent import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.platform import git as _git
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import task_worktrees as _task_worktrees
@@ -128,5 +128,5 @@ def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
                 t["worktree"] = stored
         return {"tasks": tasks}
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    read_modify_write(pod_task_list_path(project), _fn)
     claimed["worktree"] = stored

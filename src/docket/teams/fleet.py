@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.platform import store
+from docket.platform import read_json, write_json
 from docket.teams.models import AgentMeta
 
 _LENIENT = ConfigDict(extra="allow", populate_by_name=True)
@@ -93,12 +93,12 @@ class FleetConfig(BaseModel):
 
 def load_fleet() -> FleetConfig:
     """Return the full fleet registry as a validated model."""
-    raw = store.read_json(current_home().fleet_file)
+    raw = read_json(current_home().fleet_file)
     return FleetConfig.model_validate(raw)
 
 
 def _save_fleet(cfg: FleetConfig) -> None:
-    store.write_json(current_home().fleet_file, cfg)
+    write_json(current_home().fleet_file, cfg)
 
 
 def meta_get(agent_id: str, field: str, default: str = "") -> str:
@@ -106,7 +106,7 @@ def meta_get(agent_id: str, field: str, default: str = "") -> str:
     path = current_home().meta_path(agent_id)
     if not path.exists():
         return default
-    raw = store.read_json(path)
+    raw = read_json(path)
     val = raw.get(field)
     return str(val) if val is not None else default
 
@@ -114,10 +114,10 @@ def meta_get(agent_id: str, field: str, default: str = "") -> str:
 def meta_set(agent_id: str, field: str, value: Any) -> None:
     """Write a single field to .docket-meta.json; validates the full record before writing."""
     path = current_home().meta_path(agent_id)
-    raw = store.read_json(path)
+    raw = read_json(path)
     raw[field] = value
     AgentMeta.model_validate(raw)
-    store.write_json(path, raw)
+    write_json(path, raw)
 
 
 def list_agents(cfg: FleetConfig | None = None) -> list[FleetAgent]:

@@ -27,7 +27,7 @@ from docket.kernel.errors import InvalidInput, Refused
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.operator.contract import AnswerResultV11, QuestionV11, new_question_id
-from docket.platform import store as _store
+from docket.platform import read_json, write_json
 
 if TYPE_CHECKING:
     from docket.agent.tools.registry import ToolContext
@@ -71,7 +71,7 @@ def park_token(question: QuestionV11) -> str:
     token never carries question text, so no error string or trace field holds it unredacted."""
     if not _QUESTION_ID.fullmatch(question.id):
         raise ConsultUnavailable(f"cannot park question id {question.id!r}")
-    _store.write_json(_parked_file(question.id), question.model_dump(by_alias=True, mode="json"))
+    write_json(_parked_file(question.id), question.model_dump(by_alias=True, mode="json"))
     return PARK_TOKEN_PREFIX + question.id
 
 
@@ -84,7 +84,7 @@ def parked_question(token: str) -> QuestionV11 | None:
     if not _QUESTION_ID.fullmatch(question_id):
         return None
     path = _parked_file(question_id)
-    data = _store.read_json(path)
+    data = read_json(path)
     for leftover in (path, path.with_suffix(path.suffix + ".bak")):
         with contextlib.suppress(OSError):
             leftover.unlink()

@@ -32,7 +32,7 @@ from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.platform import process as _process
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 
 if TYPE_CHECKING:
     pass
@@ -279,7 +279,7 @@ def _load_builtin_providers() -> dict[str, ProviderSpec]:
 
 
 def _load_global_providers() -> dict[str, ProviderSpec]:
-    return _global_providers_from(_store.read_json(current_home().providers_file))
+    return _global_providers_from(read_json(current_home().providers_file))
 
 
 def _global_providers_from(raw: object) -> dict[str, ProviderSpec]:
@@ -378,7 +378,7 @@ def save_provider(spec: ProviderSpec) -> None:
         current["providers"] = providers
         return current
 
-    _store.read_modify_write(current_home().providers_file, _update)
+    read_modify_write(current_home().providers_file, _update)
 
 
 def delete_provider(name: str) -> bool:
@@ -396,7 +396,7 @@ def delete_provider(name: str) -> bool:
         removed = True
         return current
 
-    _store.read_modify_write(current_home().providers_file, _update)
+    read_modify_write(current_home().providers_file, _update)
     return removed
 
 
@@ -446,7 +446,7 @@ class ResolvedLimits:
 
 
 def _observed_entry(provider: str) -> dict[str, Any]:
-    providers = _store.read_json(current_home().provider_models_file).get("providers")
+    providers = read_json(current_home().provider_models_file).get("providers")
     entry = providers.get(provider) if isinstance(providers, dict) else None
     return entry if isinstance(entry, dict) else {}
 

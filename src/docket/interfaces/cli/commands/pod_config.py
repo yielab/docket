@@ -22,7 +22,7 @@ from docket.observability import exporter as _exporter
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.platform import store as _store
+from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
@@ -246,9 +246,7 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _model.
     except _config_docs.ConfigDocError as exc:
         _fail(str(exc))
     if document.kind == "role":
-        roles = _store.read_json(current_home().pod_config_dir(project) / "roles.json").get(
-            "roles", {}
-        )
+        roles = read_json(current_home().pod_config_dir(project) / "roles.json").get("roles", {})
         exists = document.name in roles
     elif document.kind == "policy":
         exists = (current_home().pod_config_dir(project) / "policies" / path.name).is_file()

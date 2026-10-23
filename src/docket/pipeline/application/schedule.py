@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from docket.kernel.errors import InvalidInput
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 
 
 def parse_interval(spec: str) -> int | None:
@@ -234,7 +234,7 @@ def record_last_run(path: Path, project: str, ts: float) -> None:
         last_run[project] = ts
         return {"schedules": schedules, "lastRun": last_run}
 
-    _store.read_modify_write(path, _fn)
+    read_modify_write(path, _fn)
 
 
 class ScheduleError(InvalidInput):
@@ -273,7 +273,7 @@ def set_schedule(path: Path, project: str, spec: str) -> None:
         last_run = dict(last_run_raw) if isinstance(last_run_raw, dict) else {}
         return {"schedules": schedules, "lastRun": last_run}
 
-    _store.read_modify_write(path, _fn)
+    read_modify_write(path, _fn)
 
 
 def unset_schedule(path: Path, project: str) -> None:
@@ -288,7 +288,7 @@ def unset_schedule(path: Path, project: str) -> None:
         last_run = dict(last_run_raw) if isinstance(last_run_raw, dict) else {}
         return {"schedules": schedules, "lastRun": last_run}
 
-    _store.read_modify_write(path, _fn)
+    read_modify_write(path, _fn)
 
 
 def find_schedule_problems(path: Path) -> list[tuple[str, str]]:

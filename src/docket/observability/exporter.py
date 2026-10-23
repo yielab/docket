@@ -29,7 +29,7 @@ from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.observability.trace import EVENT_TYPES
 from docket.platform import process as _process
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
 
@@ -256,7 +256,7 @@ def _merge_with_builtin_raw(name: str, raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_global_exporters() -> dict[str, ExporterSpec]:
-    raw = _store.read_json(current_home().exporters_file)
+    raw = read_json(current_home().exporters_file)
     exporters = raw.get("exporters") if isinstance(raw, dict) else None
     entries: dict[str, ExporterSpec] = {}
     if not isinstance(exporters, dict):
@@ -316,7 +316,7 @@ def save_exporter(spec: ExporterSpec) -> None:
         current["exporters"] = exporters
         return current
 
-    _store.read_modify_write(current_home().exporters_file, _update)
+    read_modify_write(current_home().exporters_file, _update)
 
 
 def delete_exporter(name: str) -> None:
@@ -334,7 +334,7 @@ def delete_exporter(name: str) -> None:
         removed = True
         return current
 
-    _store.read_modify_write(current_home().exporters_file, _update)
+    read_modify_write(current_home().exporters_file, _update)
     if removed:
         return
 
@@ -379,7 +379,7 @@ def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> Expor
         current["exporters"] = exporters
         return current
 
-    _store.read_modify_write(current_home().exporters_file, _update)
+    read_modify_write(current_home().exporters_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -411,7 +411,7 @@ def disable_exporter(name: str) -> ExporterSpec:
         current["exporters"] = exporters
         return current
 
-    _store.read_modify_write(current_home().exporters_file, _update)
+    read_modify_write(current_home().exporters_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -479,7 +479,7 @@ def set_privacy(
         current_doc["exporters"] = exporters
         return current_doc
 
-    _store.read_modify_write(current_home().exporters_file, _update)
+    read_modify_write(current_home().exporters_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -547,7 +547,7 @@ def activation_state(
 def read_health() -> dict[str, dict[str, Any]]:
     """Every exporter's health record (``Home.exporters_health_file``), keyed by name -- a
     read-only view, through ``platform/store.py`` like every other docket-owned JSON read."""
-    raw = _store.read_json(current_home().exporters_health_file)
+    raw = read_json(current_home().exporters_health_file)
     if not isinstance(raw, dict):
         return {}
     return {str(name): block for name, block in raw.items() if isinstance(block, dict)}

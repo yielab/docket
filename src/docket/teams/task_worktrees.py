@@ -8,7 +8,7 @@ from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.platform import git as _git
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 from docket.sandbox import landlock as _landlock
 from docket.teams import pod
 
@@ -95,9 +95,7 @@ def _worktree_owner(project: str, wt_dir: str) -> tuple[str, str] | None:
         if resolved.parent != task_worktrees_dir(member_id).resolve():
             continue
         try:
-            raw = _store.read_json(
-                current_home().projects_dir / member_id / current_home().meta_file
-            )
+            raw = read_json(current_home().projects_dir / member_id / current_home().meta_file)
         except Exception:
             return None
         return member_id, str(raw.get("codebase", ""))
@@ -165,7 +163,7 @@ def prune_task_worktrees(
     worktree."""
     from docket.tasks.application.queue import RESUMABLE_FAILURE_KINDS as resumable
 
-    raw = _store.read_json(_task_list_file(project))
+    raw = read_json(_task_list_file(project))
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
     entries: list[WorktreePruneEntry] = []
     for task in tasks if isinstance(tasks, list) else []:
@@ -195,5 +193,5 @@ def prune_task_worktrees(
                     t["worktree"]["prunedAt"] = stamp
             return doc
 
-        _store.read_modify_write(_task_list_file(project), _fn)
+        read_modify_write(_task_list_file(project), _fn)
     return entries

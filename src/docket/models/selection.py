@@ -9,7 +9,7 @@ from typing import Any, NamedTuple
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
-from docket.platform import store as _store
+from docket.platform import write_json
 from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -400,4 +400,4 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
                     reg.setdefault("rankAnchors", {})[anchor] = v
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    _store.write_json(path, reg)
+    write_json(path, reg)

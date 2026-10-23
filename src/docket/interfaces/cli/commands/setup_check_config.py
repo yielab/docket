@@ -7,7 +7,7 @@ from docket.governance import policy as _pol
 from docket.governance import profile as _profile
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
-from docket.platform import store
+from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
@@ -191,7 +191,7 @@ def _check_runtime_contract(ids: list[str]) -> int:
     missing = _agents_missing_contract(ids)
     for aid in missing:
         ws = current_home().workspace_dir(aid)
-        meta = store.read_json(current_home().meta_path(aid))
+        meta = read_json(current_home().meta_path(aid))
         codebase = str(meta.get("codebase", ""))
         stack = str(meta.get("stack", ""))
         name = str(meta.get("name", "") or aid)

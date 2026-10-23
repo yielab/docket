@@ -23,7 +23,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import steps as _steps
-from docket.platform import store
+from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain import task as _task
@@ -47,7 +47,7 @@ def pod_ids() -> list[str]:
     """Return registered pod ids once each, excluding flat non-pod agents."""
     projects: set[str] = set()
     for agent in _fleet.list_agents():
-        raw = store.read_json(current_home().meta_path(agent.id))
+        raw = read_json(current_home().meta_path(agent.id))
         project = str(raw.get("pod", "")) or (_pod.pod_of(agent.id) or "")
         if project:
             projects.add(project)
@@ -130,7 +130,7 @@ def _project_summary(project: str) -> dict[str, Any]:
     degraded = False
 
     for member_id, role, _index in members:
-        raw = store.read_json(current_home().meta_path(member_id))
+        raw = read_json(current_home().meta_path(member_id))
         root = str(raw.get("workDir") or raw.get("codebase") or "")
         if root:
             roots.append(root)
@@ -201,7 +201,7 @@ def _inventory() -> dict[str, Any]:
     agents: list[dict[str, Any]] = []
     total = 0.0
     for pid in project_ids():
-        raw = store.read_json(current_home().meta_path(pid))
+        raw = read_json(current_home().meta_path(pid))
         cost = aggregate_cost(pid).cost_usd
         total += cost
         agents.append(
@@ -233,7 +233,7 @@ def cost_snapshot() -> dict[str, Any]:
     rows = []
     total = 0.0
     for pid in project_ids():
-        raw = store.read_json(current_home().meta_path(pid))
+        raw = read_json(current_home().meta_path(pid))
         totals = aggregate_cost(pid)
         budget = raw.get("budgetUsd")
         total += totals.cost_usd

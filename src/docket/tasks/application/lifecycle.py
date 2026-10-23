@@ -16,7 +16,7 @@ from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.platform import git as _git
 from docket.platform import process as _process
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.queue import _task_record
 from docket.tasks.domain.task import DispatchError, TaskNotFoundError, TaskResult, _normalize_task
@@ -99,7 +99,7 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
                 return {"tasks": tasks}
         return None
 
-    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = read_modify_write(pod_task_list_path(project), _fn)
     tasks_after = doc.get("tasks")
     lead_id = _pod.member_id(project, "lead")
     _mem.sync_dispatch_tasks(
@@ -140,7 +140,7 @@ def _sweep_stale_claims(project: str) -> None:
             changed = True
         return {"tasks": tasks} if changed else None
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    read_modify_write(pod_task_list_path(project), _fn)
     for t in swept:
         task_id = str(t.get("id", "task"))
         _trace.trace_event(
@@ -197,7 +197,7 @@ def reclaim_stale_running(project: str) -> None:
             changed = True
         return {"tasks": tasks} if changed else None
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    read_modify_write(pod_task_list_path(project), _fn)
     for task_id, why in reclaimed:
         _audit.audit_log("task.reclaimed", f"{project}/{task_id}: {why}")
 
@@ -223,7 +223,7 @@ def retry_task(project: str, task_id: str) -> bool:
                 return {"tasks": tasks}
         return None
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    read_modify_write(pod_task_list_path(project), _fn)
     if found:
         _audit.audit_log("task.retry", f"{project}/{task_id}")
     return found
@@ -259,7 +259,7 @@ def cancel_parked_task(
             return {"tasks": tasks}
         return None
 
-    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = read_modify_write(pod_task_list_path(project), _fn)
     if not prior:
         return ""
     if token:
@@ -409,5 +409,5 @@ def unblock_pod(project: str) -> int:
                 changed = True
         return {"tasks": tasks} if changed else None
 
-    _store.read_modify_write(path, _fn)
+    read_modify_write(path, _fn)
     return count

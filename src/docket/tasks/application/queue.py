@@ -22,7 +22,7 @@ from docket.kernel import ids as _ids
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.operator import contract as _oc
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 from docket.sandbox import launch as _launch
 from docket.tasks.domain import options as _task_options
 from docket.tasks.domain.task import (
@@ -52,7 +52,7 @@ RESUMABLE_FAILURE_KINDS: frozenset[str] = frozenset({"stale_claim", "dispatch_re
 
 def read_tasks(project: str) -> list[dict[str, Any]]:
     """Return the pod's task list ([] if the queue file is absent), normalized."""
-    raw = _store.read_json(pod_task_list_path(project))
+    raw = read_json(pod_task_list_path(project))
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
     if not isinstance(tasks, list):
         return []
@@ -220,7 +220,7 @@ def enqueue_task_once(
         tasks.append(task)
         return {"tasks": tasks}
 
-    _store.read_modify_write(path, _fn)
+    read_modify_write(path, _fn)
     if existing:
         return existing[0], False
     _audit.audit_log("task.enqueue", f"project={project} task={task_id} channel={channel}")
@@ -274,7 +274,7 @@ def _refuse_claimed_task(
                 return {"tasks": tasks}
         return None
 
-    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = read_modify_write(pod_task_list_path(project), _fn)
     _trace.trace_event(
         project,
         f"agent:{project}:{task_id}",
@@ -343,7 +343,7 @@ def _store_prepared(project: str, task: dict[str, Any], prepared: dict[str, Any]
                 t["prepared"] = prepared
         return {"tasks": tasks}
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    read_modify_write(pod_task_list_path(project), _fn)
 
 
 def _prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | None:
@@ -433,7 +433,7 @@ def _claim_next_task(
         t.pop("gateOverridePipelineIndex", None)
         return {"tasks": tasks}
 
-    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = read_modify_write(pod_task_list_path(project), _fn)
     if claimed is None:
         return None
     _ensure_task_worktree(project, claimed)
@@ -460,7 +460,7 @@ def _touch_claim(project: str, task_id: str) -> None:
                 return {"tasks": tasks}
         return None
 
-    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = read_modify_write(pod_task_list_path(project), _fn)
     tasks_after = doc.get("tasks")
     lead_id = _pod.member_id(project, "lead")
     _mem.sync_dispatch_tasks(

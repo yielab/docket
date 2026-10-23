@@ -41,7 +41,7 @@ from docket.pipeline.application.steps import (
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import git as _git
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.tasks.application.queue import pod_full_roster
 from docket.tasks.domain.task import DispatchError, HopResult, TaskResult, TaskRunRefusal
 from docket.teams import roles as _archetypes
@@ -94,7 +94,7 @@ def _record_task_run(project: str, task: dict[str, Any], source: str) -> None:
                 t["gateApplied"] = task["gateApplied"]
         return {"tasks": tasks}
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    read_modify_write(pod_task_list_path(project), _fn)
 
 
 def _run_group_node(

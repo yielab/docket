@@ -24,7 +24,7 @@ from docket.operator import contract as _oc
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import step as _step
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.tasks.application import queue as _queue
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import settings as _settings
@@ -218,5 +218,5 @@ def record_pregrant(
                 return {"tasks": found_tasks}
         return None
 
-    _store.read_modify_write(_settings.pod_task_list_path(project), _fn)
+    read_modify_write(_settings.pod_task_list_path(project), _fn)
     return token

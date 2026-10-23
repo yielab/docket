@@ -25,7 +25,7 @@ from docket.kernel.errors import Conflict
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.platform import git as _git
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
@@ -472,7 +472,7 @@ def _write(entries: list[MemoryEntry]) -> dict[str, Any]:
 
 def list_entries(project: str, status: str | None = None) -> list[MemoryEntry]:
     """The pod's entries, oldest first, optionally only those with *status*."""
-    entries = _load(_store.read_json(current_home().pod_memory_path(project)))
+    entries = _load(read_json(current_home().pod_memory_path(project)))
     return [e for e in entries if status is None or e.status == status]
 
 
@@ -558,7 +558,7 @@ def _record_task_memory(
             applied.append(new)
         return _write(entries) if applied else None
 
-    _store.read_modify_write(current_home().pod_memory_path(project), _merge)
+    read_modify_write(current_home().pod_memory_path(project), _merge)
     for entry in applied:
         _announce(project, entry.status, entry, task_id, "docket")
     return applied
@@ -585,7 +585,7 @@ def _decide_entry(
         decided.append(new)
         return _write([new if e.id == entry_id_ else e for e in entries])
 
-    _store.read_modify_write(current_home().pod_memory_path(project), _fn)
+    read_modify_write(current_home().pod_memory_path(project), _fn)
     _announce(project, action, decided[0], decided[0].provenance.get("task", ""), actor)
     return decided[0]
 
@@ -643,7 +643,7 @@ def reset(project: str, *, actor: str = "operator") -> int:
         removed.extend(_load(doc))
         return {"entries": []} if removed else None
 
-    _store.read_modify_write(current_home().pod_memory_path(project), _fn)
+    read_modify_write(current_home().pod_memory_path(project), _fn)
     if removed:
         audit_log("pod.memory.reset", f"{project} entries={len(removed)} actor={actor}")
         _trace.trace_event(

@@ -12,7 +12,7 @@ from docket.hops.application.record import _UnitContext
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.teams import pod as _pod
 from docket.teams.settings import _pod_settings, pod_task_list_path
 
@@ -127,7 +127,7 @@ def resolve_waiting_approval_detail(
             return {"tasks": tasks}
         return None
 
-    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = read_modify_write(pod_task_list_path(project), _fn)
     if updated:
         _trace.trace_event(
             project,

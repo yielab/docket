@@ -14,7 +14,7 @@ from docket.pipeline.application import schedule as _sched
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.platform import store
+from docket.platform import read_json, write_json
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
@@ -71,9 +71,9 @@ def _set_member_verify(project: str, member_id: str, command: str) -> None:
 
 def _unset_member_verify(project: str, member_id: str) -> None:
     _implementer_member(project, member_id)
-    raw = store.read_json(current_home().meta_path(member_id))
+    raw = read_json(current_home().meta_path(member_id))
     raw.pop("verifyCmd", None)
-    store.write_json(current_home().meta_path(member_id), raw)
+    write_json(current_home().meta_path(member_id), raw)
     _regenerate_member_tools(member_id, project)
     audit_log("pod.unset-verify", f"member={member_id}")
     ui.success(f"Cleared the verify command for {member_id}")

@@ -50,7 +50,7 @@ from typing import Any
 
 from docket.agent.tools.registry import ToolKind, ToolRegistry
 from docket.kernel.home import current_home
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 from docket.teams.builtin_roles import (
     _STARTER_AGENTS_TEMPLATE,
     BUILTIN_ARCHETYPES,
@@ -125,7 +125,7 @@ def _read_overlay_raw(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        return _store.read_json(path)
+        return read_json(path)
     except Exception:
         return {}
 
@@ -136,7 +136,7 @@ def _overlay_problems(path: Path) -> list[tuple[str, str]]:
     if not path.exists():
         return []
     try:
-        raw = _store.read_json(path)
+        raw = read_json(path)
     except Exception as exc:
         return [(str(path), f"unreadable/malformed: {exc}")]
     roles = raw.get("roles", {})
@@ -491,5 +491,5 @@ def add_user_archetype(doc: dict[str, Any], project: str) -> RoleArchetype:
         current_home().pods_dir.chmod(0o700)
         path.parent.parent.chmod(0o700)
         path.parent.chmod(0o700)
-    _store.read_modify_write(path, _fn)
+    read_modify_write(path, _fn)
     return arch
