@@ -13,7 +13,6 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -23,6 +22,7 @@ import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.config"
@@ -66,7 +66,7 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -143,7 +143,7 @@ class TestQueueShapeMatchesReadTasks:
         class _Handler(_DocketHandler):
             serve_token = _TEST_TOKEN
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         port = srv.server_address[1]
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
@@ -341,7 +341,7 @@ def dispatching_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type
         serve_token = _TEST_TOKEN
         dispatch_on = True
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{srv.server_address[1]}", _TEST_TOKEN
     srv.shutdown()

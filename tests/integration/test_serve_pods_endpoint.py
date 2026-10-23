@@ -17,7 +17,6 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +30,7 @@ from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 from docket.core import pod_report as _pod_report
 from docket.edges import store as _store
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -58,7 +58,7 @@ def live_server(pod_home: Path):  # type: ignore[no-untyped-def]
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()

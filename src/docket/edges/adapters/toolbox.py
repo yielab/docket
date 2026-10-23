@@ -17,7 +17,6 @@ import os
 import re
 import subprocess
 import sys
-import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,6 +28,7 @@ from docket.edges.adapters import system as _system
 from docket.edges.adapters.system import SandboxAvailability, SandboxBackend
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel import threads as _threads
 from docket.kernel.errors import Refused
 
 SandboxMode = Literal["off", "auto"]
@@ -510,8 +510,7 @@ def _wait_cancellable(
         with contextlib.suppress(OSError, ValueError):
             drained.append(proc.stdout.read())  # type: ignore[union-attr]
 
-    reader = threading.Thread(target=_drain, daemon=True)
-    reader.start()
+    reader = _threads.start_thread(_drain)
 
     deadline = _clock.monotonic() + timeout
     while True:

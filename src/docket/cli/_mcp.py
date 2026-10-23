@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import contextlib
 import sys
-import threading
 from typing import Any
 
 from docket.cli import _status
@@ -21,6 +20,7 @@ from docket.core import interruptions as _interruptions
 from docket.core import runs as _runs
 from docket.core.audit import audit_log
 from docket.kernel import clock as _clock
+from docket.kernel import threads as _threads
 from docket.kernel.errors import InvalidInput
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
@@ -133,7 +133,7 @@ def tool_dispatch(project: str, resume: bool = False, timeout: int | None = None
             ),
         )
 
-    threading.Thread(target=_run, daemon=True).start()
+    _threads.start_thread(_run)
     return {"ok": True, "run": record["id"], "project": project, "status": "dispatched"}
 
 

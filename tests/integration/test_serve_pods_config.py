@@ -6,7 +6,6 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +15,7 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.core import audit as _audit
 from docket.core import fleet as _fleet
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -39,7 +39,7 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     class _Handler(_DocketHandler):
         serve_token = _TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{srv.server_address[1]}"
     codebase = tmp_path / "codebase"

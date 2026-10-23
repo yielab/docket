@@ -239,9 +239,9 @@ class TestRenderHealth:
 
 class TestHttpServer:
     def test_endpoints_over_socket(self, fake_home: Path) -> None:
-        from http.server import ThreadingHTTPServer
+        from docket.kernel.threads import ContextHTTPServer
 
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _DocketHandler)
+        server = ContextHTTPServer(("127.0.0.1", 0), _DocketHandler)
         port = server.server_address[1]
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()

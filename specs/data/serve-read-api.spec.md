@@ -35,7 +35,9 @@ The addressable-task fields of `POST /tasks/<project>`, the `GET /tasks/<project
 `/health`).
 
 The server binds to `127.0.0.1` by default; `docket start --bind <addr>` sets the listen
-address and the startup banner warns when it is not loopback. `/status.json`, `/metrics` and
+address and the startup banner warns when it is not loopback. Every request thread, and every
+thread the server starts (sweeps, scheduled and webhook dispatches, the Telegram poll), serves the
+`DOCKET_HOME` the server was started with. `/status.json`, `/metrics` and
 `/health` require no auth. Every other route requires `Authorization: Bearer <token>`, compared in
 constant time; the token is `DOCKET_SERVE_TOKEN` when set, otherwise a random one printed at
 startup (or written 0600 to `docket start --token-file <path>`). A server with no token refuses
@@ -812,6 +814,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   `LoopMetrics`, the request handler (every route above, the Bearer check, the body cap
   `MAX_POST_BODY_BYTES`, the `/traces` cursor and hold-back), the sweep pool started by
   `POST /tasks` under dispatch, `run_serve`
+- `src/docket/kernel/threads.py`: `ContextHTTPServer`, `new_thread`, `start_thread`, `submit`
 - `src/docket/core/escalation.py`: `count_escalation_metrics` (`docket_tasks_started_total`,
   `docket_questions_total`, `docket_decision_latency_seconds`)
 - `src/docket/core/inbox.py`: `build_inbox`, `task_view`

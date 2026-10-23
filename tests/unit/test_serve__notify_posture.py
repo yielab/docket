@@ -25,7 +25,7 @@ class _FakeServer:
 
 def _run(monkeypatch: pytest.MonkeyPatch, *, dispatch: bool) -> None:
     monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-    monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+    monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
     monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
     serve.run_serve(port=0, interval=30, dispatch=dispatch)
 

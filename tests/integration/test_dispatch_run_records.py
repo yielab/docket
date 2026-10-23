@@ -18,7 +18,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +31,7 @@ from docket.cli import _pod, _run
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
 from docket.edges import store as _store
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.runs"
@@ -426,7 +426,7 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()

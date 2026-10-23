@@ -19,7 +19,6 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +37,7 @@ from docket.core import trace as _trace
 from docket.core.llm import ChatResponse, TokenUsage, assistant
 from docket.edges.adapters import docket_runtime as _drt
 from docket.kernel import clock as _clock
+from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.dispatch"
@@ -112,7 +112,7 @@ def live_server(pod_home: Path):
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()

@@ -200,8 +200,8 @@ _INBOX_TEST_TOKEN = "test-serve-token-inbox-p34-6"
 @pytest.fixture()
 def inbox_live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     import threading
-    from http.server import ThreadingHTTPServer
 
+    from docket.kernel.threads import ContextHTTPServer
     from docket.serve import _DocketHandler
 
     home = tmp_path / ".docket"
@@ -212,7 +212,7 @@ def inbox_live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type:
     class _Handler(_DocketHandler):
         serve_token = _INBOX_TEST_TOKEN
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -287,8 +287,8 @@ class TestStatusJsonPublishesNoPeerIds:
         self, api_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import threading
-        from http.server import ThreadingHTTPServer
 
+        from docket.kernel.threads import ContextHTTPServer
         from docket.serve import _DocketHandler
 
         fleet = dict(FLEET_CONFIG)
@@ -305,7 +305,7 @@ class TestStatusJsonPublishesNoPeerIds:
         class _Handler(_DocketHandler):
             serve_token = "test-serve-token-p40-9"
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
         port = srv.server_address[1]
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
