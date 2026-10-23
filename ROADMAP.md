@@ -17,8 +17,10 @@ closed 2026-10-23 on branch `plan/phase-46-structure` (unmerged, unpushed): `src
 recorded baselines (748 import exceptions, 20 local imports). The specs truth pass and Wave 120
 fixed 87 code defects first. A real run on `fab-dev` matches the pre-move baseline hop for hop and
 event for event and found one defect, a resuming sweep that re-claimed a refused task without
-pause, fixed at the root. **Phase 47** (the public surface, ports, one owner of `status`, the
-runtime package without a hook, the tests) is planned on `TODO.md` and waits for the maintainer.
+pause, fixed at the root. **Phase 47** (a public surface per context, ports only at the edges tests fake,
+a functional core for the task's state and the gates, the runtime package without a hook, the
+tests the 2026-10-23 audit asked for; seven cards sized for one docket run each, ADR 0030
+§"After Phase 46") is planned on `TODO.md` and waits for the maintainer.
 Phase 45 (a prepared task worktree, model
 limits from the provider, protected paths, approvals per team; D-65,
 [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md))

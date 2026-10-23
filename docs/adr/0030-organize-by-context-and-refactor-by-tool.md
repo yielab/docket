@@ -1,5 +1,11 @@
 # ADR 0030 (D-66): organize by context, refactor by tool
 
+> **Amended 2026-10-23, at the Phase 46 close** (§"After Phase 46"): a context's public surface is
+> an explicit `__all__`; ports only where a test fakes a boundary or a contract forbids the import;
+> a context's `domain/` is a functional core for decisions; the test layout follows the 2026-10-23
+> test audit; one testing budget replaces the gate after every commit. Phase 47 on `TODO.md` is the
+> card list for what Phase 46 left.
+
 **Question:** docket's source is three technical layers (`cli/`, `core/`, `edges/`) with 63 domain
 modules in `core/`. The layer rule exists in prose, not in a check: 31 of 63 `core` modules import
 `edges`, 206 function-local imports hide a 38-module import cycle, `core/dispatch.py` is 4,727
@@ -29,9 +35,13 @@ cites move.
    contracts: a domain package never imports an adapter, a context talks to another only through
    its `__init__`, no module imports `interfaces/`, `agent/` depends on `kernel/` alone. Function-
    local imports of `docket.*` are forbidden; the current 206 are a baseline that only shrinks.
+   *Amended 2026-10-23:* a context's `__init__` declares `__all__` with exactly the names other
+   contexts import, and an export nothing uses fails the contracts test.
 3. **One owner of the task's state.** `tasks/domain/state.py` holds the transition table and the
    one function that writes `status`; an AST guard refuses `["status"] =` anywhere else. This is
-   the same chokepoint pattern as `dispatch_tool` and `store.py`, applied to state.
+   the same chokepoint pattern as `dispatch_tool` and `store.py`, applied to state. *Amended
+   2026-10-23:* the table and a pure `decide()` live in `domain/`; the one writer that applies the
+   decision lives in `application/`.
 4. **Configuration is an object.** `kernel/home.py::Home` replaces the 102 module-level constants
    of `config.py`; a `ContextVar` makes `current_home()` available without threading a parameter
    through every call, and a test owns its `Home(tmp_path)`.
@@ -39,6 +49,9 @@ cites move.
    pytest markers, not directories; `tests/fixtures/` is the one source of fakes, each fake proven
    by a contract suite that also runs against the real adapter; `tests/contracts/`, `tests/e2e/`,
    `tests/architecture/` and `tests/release/` are the only directories that do not mirror a module.
+   *Amended 2026-10-23* (§"After Phase 46", Tests): lanes stay directories; shared helpers and
+   fakes live in `tests/support/`; integration files sit under `integration/<context>/` and name
+   their entry module as `SUBJECT`.
 6. **The refactor is done by tools, not by models.** One mapping file (`refactor/target-map.toml`)
    is the plan; a libcst codemod executes it; one gate script decides pass or fail. A failing step
    is reverted and the mapping corrected; nothing is iterated "until green". A model writes code
@@ -113,7 +126,7 @@ Allowed dependencies (import-linter contracts, enforced from A3 on):
 | `kernel` | nothing in `docket` |
 | `<context>/domain` | `kernel`, its own `domain` |
 | `<context>/application` | `kernel`, its own `domain` and `ports`, other contexts' `__init__` |
-| `<context>/adapters`, `platform`, `sandbox` | `kernel`, the ports and domain types they implement |
+| `<context>/adapters`, `platform`, `sandbox` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), the ports and domain types they implement |
 | `agent` | `kernel` only (plus its own packages) |
 | `interfaces` | `kernel`, `bootstrap`, contexts' `__init__` |
 | `bootstrap` | everything |
@@ -309,26 +322,102 @@ retired list) is deleted in the close commit: the architecture tests are the dur
 *Expected:* identical behaviour with the metrics at their targets. *Verified:* the trace diff is
 empty; the gate; the Phase 46 acceptance below.
 
+## After Phase 46 (amended 2026-10-23)
+
+Phase 46 moved the tree, split every module over 700 lines, wrote `bootstrap.py` and the route
+table, and put the contracts in `tests/architecture/`. It closed against **recorded baselines that
+only shrink** (748 import exceptions, 20 function-local imports), not against the empty lists the
+acceptance below names; a real run matched the pre-move baseline hop for hop. Steps P46-10, 12, 13
+and 14 continue as Phase 47 cards; P46-11 waits for a measured need. Measuring the 748 exceptions
+showed four things this ADR had left open.
+
+### A context's public surface is an explicit `__all__`
+
+624 of the 748 exceptions import another context's internal module, because every context
+`__init__.py` was empty: the rule "talk through `__init__`" had nothing to talk through. Each
+context's `__init__` re-exports exactly the names other contexts import, under `__all__`, and the
+contracts test fails on an export nothing outside the context uses (dead code applies to a facade
+too). `platform` and `sandbox` are contexts like the rest and are reached the same way.
+
+*Rejected:* a port for every edge (624 protocols and bindings, with no less coupling); letting
+`interfaces` import `application` modules (it legalizes the CLI reaching into a domain type and
+leaves the domain edges open); re-exporting every name (it hides the boundary instead of drawing it).
+
+### Ports only where a test fakes a boundary or a contract forbids the import
+
+Hexagonal ports between internal packages are what produced the 748: a port was asked for where a
+facade was needed. A port exists in two cases. **A boundary that tests fake** (git, processes, the
+sandbox launcher, the LLM, outbound channels): today the tests reach them by patching a private
+alias (113 patches on `_git`, `_launch`, `_process`), which breaks on any refactor. **An import a
+contract forbids** (`agent` depends on `kernel` alone, so what it needs from a context is a port in
+`agent/ports.py`). The store is not a port: it is the one JSON chokepoint, and no test fakes it.
+
+A port follows the idiom `kernel/clock.py` already uses: a `Protocol`, a `ContextVar` and a
+`use_<port>()` context manager. `bootstrap.py` binds the real adapter at each entry, the test
+conftest binds the real one by default, and a test swaps in the single fake from `tests/support/`.
+Each port has one fake and a contract suite run against both, `[real, fake]`. No DI framework.
+
+### A context's `domain/` is a functional core for decisions
+
+The design principle is "functional core, imperative shell" (Gary Bernhardt, *Boundaries*, 2012).
+The core is functions that receive data and return a decision, with no file, process, clock or
+environment access. The shell, in `application/` or `hops/gates/`, gathers the facts, calls the
+core and performs the effects. In docket it applies to **decisions**: task state transitions,
+gate outcomes, budget and token limits, profile requirements. It does not apply to LLM calls,
+git, the store or processes; those stay in the shell and are not made pure.
+
+The evidence: `status` has 16 writers with no transition table; `tasks/domain` and
+`pipeline/domain` import `application` modules, `teams`, `governance` and `sandbox` (10
+exceptions), so the domain reads state instead of receiving it; the post-hop gates (605 lines)
+mix running a command, writing a reasons file and tracing with the decision, and no test names
+them as subject. The payoff is that a rule is tested as a table of cases, without disk or patches,
+and read in one place. The check is the existing domain contract plus a table test per decision;
+`decide()` in `tasks/domain/state.py` is the first instance (item 3 above).
+
+### Tests: what the 2026-10-23 audit changed
+
+The test layout in item 5 and in P46-4/P46-14 is replaced by the audit's: lanes stay directories
+(`unit`, `integration`, `guards`, `architecture`, `agent`, `golden`), not markers; shared helpers
+and the fakes live in `tests/support/`, one owner each; integration files sit under
+`integration/<context>/`, at most 800 lines, and `SUBJECT` names the entry module they drive;
+a unit file opens no socket or process. A test stays only if it pins a `specs/` requirement, pins
+live-path behaviour nobody would notice breaking, or is the regression of a defect found by
+running the product. The `test_ids.txt` manifest and the autouse patch wrapper are dropped: the
+moves they guarded are done, and AST guards with shrink-only baselines do the same job statically.
+
+### How a change is verified (replaces "the gate after every commit")
+
+Per commit, only the static checks (`ruff`, `mypy src`, `pytest --co`; about 10 s). While
+iterating, only the tests of the files touched. At the end of a card, one parallel run of the
+default suite (about 50 s), with failures fixed by cause and re-run with `--lf` only. Goldens, the
+agent lane and a real run happen once, at the phase close. A check that fails again after one fix
+stops the work and reports; nothing is iterated until green. `refactor_gate.sh`, `analyze.py` and
+`move.py` are deleted at the Phase 47 close; the architecture tests are the durable record.
+
 ## Phase acceptance
 
+Phase 46 closed against recorded baselines (§"After Phase 46"); these clauses are Phase 47's
+acceptance.
+
 - `tests/architecture/` passes with: import-linter ignore list empty; function-local `docket`
-  imports 0; largest module ≤ 700 lines; `status` writers 1; every monkeypatch target defined in
-  the patched module; every test file at its module's mirror path.
+  imports 0; largest module ≤ 700 lines; `status` writers 1; no patch on another module's private
+  alias; every unit test file at its module's mirror path and every integration file under
+  `integration/<context>/`.
 - `docket_runtime` installs from `agent/` + `kernel/` with no build hook.
 - The HTTP API 6 tests, the golden suite and the `docket_runtime` boundary tests pass unchanged.
 - The before/after live traces are identical modulo ids and timestamps.
 - `src/docket` has no `cli/`, `core/`, `edges/`, `serve.py`, `config.py`, `jail.py`, `plugins.py`.
 
-## What this unlocks (Phase 47, planned, not scheduled)
+## What this unlocks after Phase 47 (not scheduled; each waits for a measured trigger)
 
-Behaviour-preserving reductions that the new structure makes safe, each a card with a before/after
+Declarative HTTP routes landed in Phase 46 (P46-9), and dead code by fan-in was deleted before the
+move (Wave 120). The rest are behaviour-preserving reductions that the new structure makes safe, each a card with a before/after
 measure as its acceptance: the task as a typed aggregate with a repository (−1,500 to −2,000
 lines; removes the 639 `Any` annotations, 15 find-by-id loops, 32 store closures); pod settings
 as one injected object (−500 incl. tests); a `@degrades_to(default)` decorator for the 30
 identical fallback blocks in the system adapter (−250); typed trace and audit events (−300, and
 redaction on fields rather than on serialized JSON); hop prompt composition as prioritized sections
-(−200); declarative HTTP routes (−400); one reader per question (−150); dead code by fan-in
-(−300 to −500). And one small behaviour addition with its own card: reconciliation of a granted
+(−200); one reader per question (−150). And one small behaviour addition with its own card: reconciliation of a granted
 approval whose task is still waiting, at sweep start, preceded by the crash test that shows the
 window.
 

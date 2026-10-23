@@ -36,8 +36,8 @@ task; load only the referenced section or spec.
    and the store module as the sole writer of docket-owned JSON. The contracts, as the ADR's
    table states them: `kernel` imports nothing in `docket`; `<context>/domain` imports `kernel`
    and its own `domain`; `<context>/application` imports `kernel`, its own `domain` and `ports`,
-   and other contexts' `__init__`; `<context>/adapters`, `platform` and `sandbox` import `kernel`
-   and the ports and domain types they implement; `agent` imports `kernel` only (plus its own
+   and other contexts' `__init__`; `<context>/adapters`, `platform` and `sandbox` import `kernel`,
+   `platform`'s `__init__` and the ports and domain types they implement; `agent` imports `kernel` only (plus its own
    packages); `interfaces` imports `kernel`, `bootstrap` and contexts' `__init__`; `bootstrap`
    imports everything. No function-local `docket.*` import; no module over 700 lines. The
    contracts are enforced by `tests/architecture/`; `cli/`, `core/` and `edges/` no longer exist.
