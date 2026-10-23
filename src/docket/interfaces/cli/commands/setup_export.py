@@ -19,33 +19,10 @@ from docket.interfaces.cli.commands.setup_notify import NotifySetupError, store_
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.observability import (
-    ATTRIBUTE_CLASSES,
-    DEFAULT_EVENTS,
-    ExporterError,
-    ExporterSpec,
-    ExportPolicy,
-    ProbeResult,
-    ProjectionState,
-    Span,
-    activation_state,
-    delete_exporter,
-    disable_exporter,
-    enable_exporter,
-    export_exporter,
-    find_trace,
-    flush_open,
-    is_widening,
-    load_catalog,
-    load_exporter_document,
-    project,
-    read_health,
-    read_trace,
-    resolve_credentials,
-    save_exporter,
-    set_privacy,
-    verify_endpoint,
-)
+from docket.observability import exporter as _exp
+from docket.observability import projection as _projection
+from docket.observability import spans as _spans
+from docket.observability import trace as _trace
 from docket.observability.adapters import otlp_http as _otlp_http
 
 export_app = typer.Typer(
@@ -59,8 +36,8 @@ _PER_PART_ATTR = "gen_ai.input.messages"
 _CONTENT_KEYS = ("inputMessages", "outputMessages", "systemInstructions")
 
 
-def _spec_or_exit(name: str) -> ExporterSpec:
-    spec = load_catalog().get(name)
+def _spec_or_exit(name: str) -> _exp.ExporterSpec:
+    spec = _exp.load_catalog().get(name)
     if spec is None:
         ui.error(f"Unknown exporter '{name}'", "Run: docket setup export list")
         raise typer.Exit(1)
@@ -71,7 +48,7 @@ def _split(raw: str | None) -> list[str] | None:
     return [s.strip() for s in raw.split(",") if s.strip()] if raw else None
 
 
-def _auth_header_for(spec: ExporterSpec, values: list[str]) -> tuple[str, str] | None:
+def _auth_header_for(spec: _exp.ExporterSpec, values: list[str]) -> tuple[str, str] | None:
     """Translate the auth type into the one header a wire adapter's probe takes."""
     if spec.auth.type == "none" or not values or not any(values):
         return None
@@ -87,12 +64,12 @@ def _auth_header_for(spec: ExporterSpec, values: list[str]) -> tuple[str, str] |
     return None
 
 
-def _probe_for(spec: ExporterSpec) -> ProbeResult:
-    values, _source = resolve_credentials(spec)
+def _probe_for(spec: _exp.ExporterSpec) -> _exp.ProbeResult:
+    values, _source = _exp.resolve_credentials(spec)
     if spec.dialect == "otlp-http":
         raw = _otlp_http.probe(spec.endpoint, _auth_header_for(spec, values), spec.headers)
-        return ProbeResult(status=raw.status, error=raw.error)
-    return ProbeResult(status=None, error=f"no probe for dialect '{spec.dialect}'")
+        return _exp.ProbeResult(status=raw.status, error=raw.error)
+    return _exp.ProbeResult(status=None, error=f"no probe for dialect '{spec.dialect}'")
 
 
 def _host_of(endpoint: str) -> str:
@@ -103,7 +80,7 @@ def _shares_display(classes: frozenset[str]) -> str:
     return ", ".join(sorted(classes)) if classes else "structure only"
 
 
-def _render_leaves_this_host(spec: ExporterSpec) -> None:
+def _render_leaves_this_host(spec: _exp.ExporterSpec) -> None:
     ui.console.print("  Leaves this host:", markup=False)
     for cls, granted, attrs in _privacy.describe(spec.privacy_classes):
         mark = "yes" if granted else "no "
@@ -129,9 +106,9 @@ def _confirm_widening(
     return _contract.confirm(f"Widen '{name}'", yes=yes)
 
 
-def _verify(spec: ExporterSpec, refusal: str) -> None:
+def _verify(spec: _exp.ExporterSpec, refusal: str) -> None:
     """Probe the endpoint; an unreachable one refuses with ``refusal`` appended."""
-    verification = verify_endpoint(spec, _probe_for(spec))
+    verification = _exp.verify_endpoint(spec, _probe_for(spec))
     if not verification.reachable:
         why = f": {verification.warning}" if verification.warning else ""
         ui.error(f"Could not reach {spec.endpoint}{why}", refusal)
@@ -145,15 +122,15 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
     """List every export destination with its state and privacy level.
 
     Example: docket setup export list"""
-    catalog = load_catalog()
-    health = read_health()
+    catalog = _exp.load_catalog()
+    health = _exp.read_health()
     names = sorted(catalog.entries)
     if json_out:
         rows = [
             {
                 "name": n,
                 "dialect": catalog.entries[n].dialect,
-                "state": activation_state(catalog.entries[n], health.get(n))[0],
+                "state": _exp.activation_state(catalog.entries[n], health.get(n))[0],
                 "credentials": list(catalog.entries[n].auth.credentials),
                 "scope": catalog.source_of(n),
             }
@@ -170,7 +147,7 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
             [
                 n,
                 catalog.entries[n].dialect,
-                activation_state(catalog.entries[n], health.get(n))[0],
+                _exp.activation_state(catalog.entries[n], health.get(n))[0],
                 ", ".join(catalog.entries[n].auth.credentials) or "-",
                 catalog.source_of(n),
                 catalog.entries[n].privacy_label,
@@ -190,9 +167,9 @@ def cmd_show(
 
     Example: docket setup export show langfuse"""
     spec = _spec_or_exit(name)
-    scope = load_catalog().source_of(name)
-    health = read_health().get(name, {})
-    state, missing = activation_state(spec, health)
+    scope = _exp.load_catalog().source_of(name)
+    health = _exp.read_health().get(name, {})
+    state, missing = _exp.activation_state(spec, health)
     if json_out:
         _contract.emit_json(
             {
@@ -244,7 +221,7 @@ def cmd_enable(
 
     Example: docket setup export enable langfuse --privacy actions"""
     spec = _spec_or_exit(name)
-    values, _source = resolve_credentials(spec)
+    values, _source = _exp.resolve_credentials(spec)
     missing = [c for c, v in zip(spec.auth.credentials, values, strict=True) if not v]
     if missing and not _contract.is_tty():
         ui.error(f"Exporter '{name}' needs credentials that are not set: {', '.join(missing)}")
@@ -278,7 +255,7 @@ def cmd_enable(
         overrides["privacy" if privacy is not None else "share"] = (
             privacy if privacy is not None else shares
         )
-        if is_widening(spec.privacy_classes, new_classes) and not _confirm_widening(
+        if _exp.is_widening(spec.privacy_classes, new_classes) and not _confirm_widening(
             name,
             spec.endpoint,
             spec.privacy_label,
@@ -294,7 +271,7 @@ def cmd_enable(
     if not no_verify:
         _verify(effective, f"Exporter '{name}' was not enabled")
     try:
-        enabled = enable_exporter(name, overrides)
+        enabled = _exp.enable_exporter(name, overrides)
     except InvalidInput as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
@@ -309,8 +286,8 @@ def cmd_disable(name: str = typer.Argument(..., help="Exporter name")) -> None:
 
     Example: docket setup export disable langfuse"""
     try:
-        disable_exporter(name)
-    except ExporterError as exc:
+        _exp.disable_exporter(name)
+    except _exp.ExporterError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     ui.success(f"Exporter disabled: {name}")
@@ -323,7 +300,7 @@ def cmd_test(name: str = typer.Argument(..., help="Exporter name")) -> None:
 
     Example: docket setup export test langfuse"""
     spec = _spec_or_exit(name)
-    verification = verify_endpoint(spec, _probe_for(spec))
+    verification = _exp.verify_endpoint(spec, _probe_for(spec))
     if not verification.reachable:
         why = f": {verification.warning}" if verification.warning else ""
         ui.error(f"Could not reach {spec.endpoint}{why}")
@@ -344,14 +321,14 @@ def cmd_add(
 
     Example: docket setup export add ./my-exporter.yaml"""
     try:
-        spec = load_exporter_document(file)
-    except ExporterError as exc:
+        spec = _exp.load_exporter_document(file)
+    except _exp.ExporterError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
-    existing = load_catalog().get(spec.name)
+    existing = _exp.load_catalog().get(spec.name)
     old_label = existing.privacy_label if existing else "minimal"
     old_classes = existing.privacy_classes if existing else frozenset()
-    if is_widening(old_classes, spec.privacy_classes) and not _confirm_widening(
+    if _exp.is_widening(old_classes, spec.privacy_classes) and not _confirm_widening(
         spec.name,
         spec.endpoint,
         old_label,
@@ -363,7 +340,7 @@ def cmd_add(
         raise typer.Exit(1)
     if not no_verify:
         _verify(spec, "Exporter was not added")
-    save_exporter(spec)
+    _exp.save_exporter(spec)
     audit_log(
         "exporter.added", f"name={spec.name} privacy={spec.privacy_label} endpoint={spec.endpoint}"
     )
@@ -379,15 +356,15 @@ def cmd_remove(
     """Remove an exporter document.
 
     Example: docket setup export remove my-exporter --yes"""
-    if load_catalog().source_of(name) == "built-in":
+    if _exp.load_catalog().source_of(name) == "built-in":
         ui.error(f"'{name}' is a built-in exporter with no global override", "Nothing to remove")
         raise typer.Exit(1)
     if not _contract.confirm(f"Remove exporter '{name}'", yes=yes):
         ui.warn("Aborted.")
         raise typer.Exit(1)
     try:
-        delete_exporter(name)
-    except ExporterError as exc:
+        _exp.delete_exporter(name)
+    except _exp.ExporterError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     audit_log("exporter.removed", f"name={name}")
@@ -404,8 +381,8 @@ def cmd_export(
 
     Example: docket setup export export langfuse ./langfuse.yaml"""
     try:
-        text = export_exporter(name)
-    except ExporterError as exc:
+        text = _exp.export_exporter(name)
+    except _exp.ExporterError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     if file is None:
@@ -442,13 +419,13 @@ def cmd_privacy(
         except ValueError as exc:
             ui.error(str(exc))
             raise typer.Exit(1) from exc
-    if is_widening(spec.privacy_classes, new_classes) and not _confirm_widening(
+    if _exp.is_widening(spec.privacy_classes, new_classes) and not _confirm_widening(
         name, spec.endpoint, spec.privacy_label, new_label, spec.privacy_classes, new_classes, yes
     ):
         raise typer.Exit(1)
     try:
-        updated = set_privacy(name, privacy=level, share=shares, content_max_chars=max_chars)
-    except (ExporterError, InvalidInput) as exc:
+        updated = _exp.set_privacy(name, privacy=level, share=shares, content_max_chars=max_chars)
+    except (_exp.ExporterError, InvalidInput) as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     ui.success(f"Exporter privacy updated: {name}")
@@ -464,13 +441,13 @@ def _newest_trace_file() -> Path | None:
     return max(files, key=lambda p: p.stat().st_mtime)
 
 
-def _events_for(spec: ExporterSpec) -> frozenset[str] | None:
+def _events_for(spec: _exp.ExporterSpec) -> frozenset[str] | None:
     """Mirrors `observability.telemetry.start`'s own inline resolution -- nothing is factored out of
     `start` itself, this call site just reads the same three fields it reads."""
     if spec.events == "all":
         return None
     if spec.events == "default":
-        return DEFAULT_EVENTS
+        return _projection.DEFAULT_EVENTS
     return frozenset(spec.events)
 
 
@@ -480,7 +457,7 @@ def _attribute_class(key: str) -> str:
     a content class for every attribute `ATTRIBUTE_CLASSES` names, else `"structure"`."""
     if key == _PER_PART_ATTR:
         return "per part"
-    return ATTRIBUTE_CLASSES.get(key, "structure")
+    return _spans.ATTRIBUTE_CLASSES.get(key, "structure")
 
 
 def _display(value: object) -> str:
@@ -490,15 +467,15 @@ def _display(value: object) -> str:
     return text
 
 
-def _project(records: list[dict[str, Any]], policy: ExportPolicy) -> list[Span]:
-    state = ProjectionState()
-    spans: list[Span] = []
+def _project(records: list[dict[str, Any]], policy: _spans.ExportPolicy) -> list[_spans.Span]:
+    state = _spans.ProjectionState()
+    spans: list[_spans.Span] = []
     for record in records:
         admitted = policy.admit(record)
         if admitted is None:
             continue
-        spans.extend(project(admitted, state, policy))
-    spans.extend(flush_open(state))
+        spans.extend(_projection.project(admitted, state, policy))
+    spans.extend(_projection.flush_open(state))
     return spans
 
 
@@ -520,7 +497,7 @@ def _render(
     tracefile: Path,
     label: str,
     classes: frozenset[str],
-    spans: list[Span],
+    spans: list[_spans.Span],
     total_bytes: int,
     note: str | None,
 ) -> None:
@@ -585,7 +562,7 @@ def cmd_preview(
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     if session:
-        tracefile = find_trace(session)
+        tracefile = _trace.find_trace(session)
         if tracefile is None:
             ui.error(f"No trace found for session: {session}")
             raise typer.Exit(1)
@@ -594,8 +571,8 @@ def cmd_preview(
         if tracefile is None:
             ui.error("No local sessions found")
             raise typer.Exit(1)
-    records = read_trace(tracefile)
-    policy = ExportPolicy(
+    records = _trace.read_trace(tracefile)
+    policy = _spans.ExportPolicy(
         events=_events_for(spec),
         classes=classes,
         label=label,

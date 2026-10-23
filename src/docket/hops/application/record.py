@@ -13,7 +13,7 @@ from docket.agent import ports as _rd
 from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability import TraceStatus, trace_event
+from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.platform import process as _process
@@ -256,12 +256,12 @@ def _replay_pipeline_position(
     )
 
 
-def _trace_locked(*args: Any, **kwargs: Any) -> TraceStatus:
+def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
     """``trace.trace_event``, serialized against ``orchestrator.trace_write_lock`` because a
     parallel group's children share one task's tracefile (the append-only exemption is safe
     only across *different* session files). See pod-dispatch.spec.md ("Parallel step groups")."""
     with _orch.trace_write_lock:
-        return trace_event(*args, **kwargs)
+        return _trace.trace_event(*args, **kwargs)
 
 
 def _verdict_event_names(role: str) -> tuple[str, str, str]:

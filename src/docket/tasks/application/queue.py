@@ -20,7 +20,7 @@ from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.home import current_home
-from docket.observability import redact, trace_event
+from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.platform import read_json, read_modify_write
 from docket.sandbox import launch as _launch
@@ -72,14 +72,14 @@ def _enqueue_pre_input_gate(
         return hit
 
     if hit.action == "block":
-        trace_event(
+        _trace.trace_event(
             project,
             session_id,
             "lead",
             "session_start",
             _json.dumps({"source": "enqueue", "task": task_id}),
         )
-    trace_event(
+    _trace.trace_event(
         project,
         session_id,
         "lead",
@@ -87,14 +87,14 @@ def _enqueue_pre_input_gate(
         _json.dumps({"hook": "pre_input", "policy": hit.policy_id, "action": hit.action}),
     )
     if hit.action == "block":
-        trace_event(
+        _trace.trace_event(
             project,
             session_id,
             "lead",
             "guardrail_block",
             _json.dumps({"hook": "pre_input", "policy": hit.policy_id, "action": hit.action}),
         )
-        trace_event(
+        _trace.trace_event(
             project,
             session_id,
             "lead",
@@ -169,7 +169,7 @@ def enqueue_task_once(
 
     task: dict[str, Any] = {
         "id": task_id,
-        "description": redact(description) if hit.action == "redact" else description,
+        "description": _trace.redact(description) if hit.action == "redact" else description,
         "priority": priority if priority in ("high", "normal", "low") else "normal",
         "status": "pending",
         "created": _clock.iso(),
@@ -195,7 +195,7 @@ def enqueue_task_once(
         task["status"] = "waiting_approval"
         task["approvalToken"] = token
         task["pendingApprovalIndex"] = 0
-        trace_event(
+        _trace.trace_event(
             project,
             session_id,
             "lead",
@@ -275,7 +275,7 @@ def _refuse_claimed_task(
         return None
 
     doc = read_modify_write(pod_task_list_path(project), _fn)
-    trace_event(
+    _trace.trace_event(
         project,
         f"agent:{project}:{task_id}",
         "lead",
@@ -305,7 +305,7 @@ def _run_prepare_command(project: str, cmd: str, cwd: str) -> tuple[int | None, 
 
 def _prepare_reason(command: str, outcome: _prepare.PrepareOutcome) -> str:
     status = f"exit {outcome.exit_code}" if outcome.exit_code is not None else "no exit status"
-    tail = redact(outcome.output)[-current_home().verify_evidence_tail_chars :]
+    tail = _trace.redact(outcome.output)[-current_home().verify_evidence_tail_chars :]
     return f"prepare failed: {command} ({status}): {tail}"
 
 
@@ -319,7 +319,7 @@ def _trace_prepare(
         "seconds": round(outcome.seconds, 3),
         "exit": outcome.exit_code,
     }
-    trace_event(
+    _trace.trace_event(
         project,
         f"agent:{project}:{task_id}",
         "lead",
@@ -388,7 +388,7 @@ def _claim_next_task(
     A task id in *skip* (one this run already claimed) is never picked again."""
     lead_id = _pod.member_id(project, "lead")
     if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")):
-        trace_event(
+        _trace.trace_event(
             project,
             f"agent:{project}:dispatch",
             "lead",

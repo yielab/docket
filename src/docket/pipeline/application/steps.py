@@ -21,7 +21,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.models import selection as _models_policy
-from docket.observability import redact
+from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
@@ -306,7 +306,7 @@ def _run_command_step(
         ctx.project, "run", cmd, cwd, timeout, env=_task_command_env(ctx, prior, node.env)
     )
     passed = code == 0
-    redacted = redact(raw_output)
+    redacted = _trace.redact(raw_output)
     _trace_locked(
         ctx.project,
         ctx.session_id,

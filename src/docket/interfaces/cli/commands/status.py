@@ -21,7 +21,7 @@ from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability import terminal_outcomes
+from docket.observability import trace as _trace
 from docket.pipeline.application import steps as _steps
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
@@ -154,7 +154,7 @@ def _project_summary(project: str) -> dict[str, Any]:
         state = "ready"
     lead = _pod.member_id(project, "lead")
 
-    outcomes = terminal_outcomes(project, window=current_home().metrics_window)
+    outcomes = _trace.terminal_outcomes(project, window=current_home().metrics_window)
     return {
         "id": project,
         "path": roots[0] if roots else "",

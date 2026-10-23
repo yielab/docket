@@ -23,7 +23,7 @@ from docket.hops.application import record as _record
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, Refused
-from docket.observability import trace_event
+from docket.observability import trace as _trace
 from docket.operator.contract import (
     AnswerResult,
     AnswerResultV11,
@@ -390,7 +390,7 @@ def _record_answer_audit_and_trace(
         f"project={project} task={task_id} step={outcome.get('step', '')} "
         f"channel={channel} actor={actor} action={result.action}",
     )
-    trace_event(
+    _trace.trace_event(
         project,
         f"agent:{project}:{task_id}",
         "lead",
@@ -447,7 +447,7 @@ def sweep_expired_questions(now: str | None = None) -> int:
         read_modify_write(path, _fn)
         for task_id, question_id in expired:
             count += 1
-            trace_event(
+            _trace.trace_event(
                 project,
                 f"agent:{project}:{task_id}",
                 "lead",

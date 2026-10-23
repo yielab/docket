@@ -15,7 +15,7 @@ from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability import read_trace
+from docket.observability import trace as _trace
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -120,7 +120,7 @@ def _count_tasks_started() -> int:
             continue
         for trace_file in traces_dir.glob("*.jsonl"):
             try:
-                events = read_trace(trace_file)
+                events = _trace.read_trace(trace_file)
                 for event in events:
                     if event.get("event_type") == "session_start":
                         # Count only dispatch-sourced claims

@@ -19,7 +19,7 @@ from docket.governance import policy as _policy
 from docket.kernel.errors import InvalidInput
 from docket.models import catalog as _provider
 from docket.models import selection as _models_policy
-from docket.observability import ExporterError, ExporterSpec, load_exporter_document
+from docket.observability import exporter as _exporter
 from docket.operator import channel as _channel
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import role_schema as _role_schema
@@ -144,7 +144,7 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "pipeline": PipelineDocument,
     "policy": PolicyDocument,
     "pod": PodDocument,
-    "exporter": ExporterSpec,
+    "exporter": _exporter.ExporterSpec,
     "channel": _channel.ChannelSpec,
     "mcp-server": _mcp_tools.McpServerDocument,
 }
@@ -329,8 +329,8 @@ def _validate_provider(path: Path) -> None:
 
 def _validate_exporter(path: Path) -> None:
     try:
-        load_exporter_document(path)
-    except ExporterError as exc:
+        _exporter.load_exporter_document(path)
+    except _exporter.ExporterError as exc:
         raise ConfigDocError(path, str(exc)) from exc
 
 

@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from docket.governance import network_posture as _np
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
-from docket.observability import load_catalog, read_health
+from docket.observability import exporter as _exporter
 from docket.operator import channel as _channel
 from docket.sandbox import docker as _docker
 from docket.sandbox import launch as _launch
@@ -18,8 +18,8 @@ _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 def _exporter_report() -> list[dict[str, Any]]:
     """One row per enabled exporter: name, failed exports since last success, privacy label and
     the non-loopback host receiving content (else None)."""
-    catalog = load_catalog()
-    health = read_health()
+    catalog = _exporter.load_catalog()
+    health = _exporter.read_health()
     rows: list[dict[str, Any]] = []
     for name in sorted(n for n, spec in catalog.entries.items() if spec.enabled):
         spec = catalog.entries[name]

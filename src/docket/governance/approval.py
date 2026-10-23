@@ -30,7 +30,7 @@ from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import NotFound
 from docket.kernel.home import current_home
-from docket.observability import redact, trace_event
+from docket.observability import trace as _trace
 from docket.operator.contract import Option
 from docket.platform import read_modify_write, with_lock, write_json
 
@@ -107,7 +107,7 @@ def _redact(text: str) -> str:
     never break approval, so any error returns the original text unchanged; the local
     import avoids a cycle with trace."""
     try:
-        return redact(text)
+        return _trace.redact(text)
     except Exception:
         return text
 
@@ -131,7 +131,7 @@ def _emit_trace(
     """Best-effort trace hook to docket.observability.trace.trace_event; any failure is swallowed
     so a trace problem never breaks the approval. Local import avoids a cycle."""
     try:
-        trace_event(project, session, role, event_type, json.dumps(payload))
+        _trace.trace_event(project, session, role, event_type, json.dumps(payload))
     except Exception:
         return None
 

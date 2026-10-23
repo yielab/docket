@@ -9,7 +9,7 @@ from docket.governance import audit as _audit
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability import read_trace
+from docket.observability import trace as _trace
 from docket.operator import inbox as _inbox
 from docket.platform import read_json
 from docket.tasks.application import escalation as _escalation
@@ -111,7 +111,7 @@ def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
     for tf in sorted(traces_dir.glob("*/*.jsonl")):
         start_ts: Any = None
         end_ts: Any = None
-        for rec in read_trace(tf):
+        for rec in _trace.read_trace(tf):
             etype = rec.get("event_type")
             raw_payload = rec.get("payload")
             payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}

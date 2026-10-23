@@ -9,7 +9,7 @@ from typing import Any
 from rich.markup import escape
 
 from docket.interfaces.cli.render import ui
-from docket.observability import project_trace_dir, read_trace
+from docket.observability import trace as _trace
 from docket.platform import git as _git
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import interruptions as _interruptions
@@ -214,7 +214,7 @@ def _event_line(r: dict[str, Any]) -> str:
 
 
 def _trace_file(found: TaskRef) -> Path:
-    return project_trace_dir(found.project) / f"agent:{found.project}:{found.task_id}.jsonl"
+    return _trace.project_trace_dir(found.project) / f"agent:{found.project}:{found.task_id}.jsonl"
 
 
 def _follow(path: Path) -> None:
@@ -222,7 +222,7 @@ def _follow(path: Path) -> None:
     seen = 0
     with contextlib.suppress(KeyboardInterrupt):
         while True:
-            records = read_trace(path)
+            records = _trace.read_trace(path)
             for r in records[seen:]:
                 _say(_event_line(r))
             seen = len(records)

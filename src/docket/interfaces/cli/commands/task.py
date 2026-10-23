@@ -34,7 +34,7 @@ from docket.interfaces.cli.commands.task_render import (
     _worktree,
 )
 from docket.interfaces.cli.render import ui
-from docket.observability import expire_old_traces, read_trace
+from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
@@ -278,13 +278,13 @@ def cmd_trace(
     if export:
         sys.stdout.write(path.read_text(encoding="utf-8"))
     elif json_out:
-        _contract.emit_json({"pod": found.project, "events": read_trace(path)})
+        _contract.emit_json({"pod": found.project, "events": _trace.read_trace(path)})
     elif tail:
         ui.header("trace", short_id(found.task_id))
         _follow(path)
     else:
         ui.header("trace", short_id(found.task_id))
-        for r in read_trace(path):
+        for r in _trace.read_trace(path):
             _say(_event_line(r))
 
 
@@ -299,7 +299,7 @@ def _prune_worktrees(project: str, force: bool, dry_run: bool) -> None:
 
 def _prune_records(project: str, days: int | None, dry_run: bool) -> None:
     retention_s = days * 86400 if days is not None else None
-    report = expire_old_traces(retention_s=retention_s, dry_run=dry_run, project=project)
+    report = _trace.expire_old_traces(retention_s=retention_s, dry_run=dry_run, project=project)
     verb = "Would delete" if dry_run else "Deleted"
     ui.info(f"{verb} {report.expired_count} trace file(s) past {report.retention_s // 86400} days.")
     removed = _runs.prune_terminal(retention_s=retention_s, dry_run=dry_run, project=project)

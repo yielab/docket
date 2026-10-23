@@ -4,7 +4,7 @@ import datetime as _dt
 from dataclasses import dataclass, field
 from typing import Any
 
-from docket.observability import trace_event
+from docket.observability import trace as _trace
 
 _CANCELLATION_REASON = "operator request"
 _CANCELLATION_SOURCE = "cli"
@@ -115,7 +115,7 @@ def _emit_cancellation_trace(project: str, run_id: str, source: str, event_type:
     try:
         import json as _json
 
-        trace_event(
+        _trace.trace_event(
             project,
             f"agent:{project}:dispatch",
             "lead",
