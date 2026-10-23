@@ -628,14 +628,19 @@ HOME_MODULE_PATH = KERNEL_ROOT / "home.py"
 
 
 @functools.cache
-def _home_members() -> tuple[frozenset[str], frozenset[str]]:
-    """Every public name ``Home`` offers, and the subset that are properties."""
+def _home_class() -> type:
     spec = importlib.util.spec_from_file_location("_adopt_kernel_home", HOME_MODULE_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    home = module.Home
+    return module.Home  # type: ignore[no-any-return]
+
+
+@functools.cache
+def _home_members() -> tuple[frozenset[str], frozenset[str]]:
+    """Every public name ``Home`` offers, and the subset that are properties."""
+    home = _home_class()
     names = {f.name for f in dataclasses.fields(home)}
     names |= {n for n in dir(home) if not n.startswith("_") and n != "from_environ"}
     props = {n for n in names if isinstance(getattr(home, n, None), property)}
@@ -833,8 +838,8 @@ class _Scope(NamedTuple):
     kind: str  # "test", "fixture" or "block"
 
 
-def _scope_of(stmt: ast.stmt, parents: dict[int, ast.AST]) -> _Scope | str:
-    """Where a repointing statement's effect ends, or why it cannot be reproduced."""
+def _scope_of(stmt: ast.stmt, parents: dict[int, ast.AST], what: str = "repoint") -> _Scope | str:
+    """Where a *what* statement's effect ends, or why it cannot be reproduced."""
     holder = parents[id(stmt)]
     if isinstance(holder, ast.AsyncFunctionDef):
         return "an async function"
@@ -846,14 +851,31 @@ def _scope_of(stmt: ast.stmt, parents: dict[int, ast.AST]) -> _Scope | str:
         if holder.name.startswith("test"):
             return _Scope(holder.body, holder, "test")
         return (
-            f"in helper {holder.name}(): the repoint outlives the function that makes it; "
+            f"in helper {holder.name}(): the {what} outlives the function that makes it; "
             "turn the helper into a context manager or a fixture by hand"
         )
     if isinstance(holder, ast.With) and stmt in holder.body:
         context = holder.items[0].context_expr if len(holder.items) == 1 else None
         if isinstance(context, ast.Call) and ast.unparse(context.func) in MONKEYPATCH_CONTEXT:
             return _Scope(holder.body, holder, "block")
-    return f"inside a {type(holder).__name__}, where the repoint's end is not the block's end"
+    return f"inside a {type(holder).__name__}, where the {what}'s end is not the block's end"
+
+
+def _monkeypatch_refusal(receiver: ast.expr, scope: _Scope) -> str | None:
+    """Why *receiver* is not the monkeypatch of the scope that owns the statement, else ``None``."""
+    name = receiver.id if isinstance(receiver, ast.Name) else ast.unparse(receiver)
+    owner = scope.owner
+    if isinstance(owner, ast.With):
+        target = owner.items[0].optional_vars
+        mine = isinstance(receiver, ast.Name) and isinstance(target, ast.Name)
+        mine = mine and target.id == name
+    else:
+        assert isinstance(owner, ast.FunctionDef)
+        params = [
+            a.arg for a in (*owner.args.posonlyargs, *owner.args.args, *owner.args.kwonlyargs)
+        ]
+        mine = isinstance(receiver, ast.Name) and name == "monkeypatch" and name in params
+    return None if mine else f"{name} is not the monkeypatch of its own scope"
 
 
 def _arg_refusal(call: ast.Call, scope: _Scope) -> str | None:
@@ -863,49 +885,112 @@ def _arg_refusal(call: ast.Call, scope: _Scope) -> str | None:
     first = call.args[0] if call.args else None
     if not (ok and isinstance(first, ast.Name)):
         return "arguments other than (monkeypatch, path)"
-    owner = scope.owner
-    if isinstance(owner, ast.With):
-        target = owner.items[0].optional_vars
-        mine = isinstance(target, ast.Name) and target.id == first.id
-    else:
-        assert isinstance(owner, ast.FunctionDef)
-        params = [
-            a.arg for a in (*owner.args.posonlyargs, *owner.args.args, *owner.args.kwonlyargs)
-        ]
-        mine = first.id == "monkeypatch" and first.id in params
-    return None if mine else f"{first.id} is not the monkeypatch of its own scope"
+    return _monkeypatch_refusal(first, scope)
 
 
 def _indent(text: str, by: str) -> str:
     return "".join(f"{by}{line}" if line.strip() else line for line in text.splitlines(True))
 
 
-def _render(lines: list[str], stmts: list[ast.stmt], lo: int, hi: int, source: str) -> str:
-    """Lines ``lo:hi`` with each direct repoint wrapping everything after it in ``use_home``."""
-    first = next((i for i, s in enumerate(stmts) if _repoint_stmt(s) is not None), None)
-    if first is None:
+# what opens a block at the first of these statements: (statements it covers, its ``with`` line)
+Opener = Callable[[list[ast.stmt]], tuple[int, str] | None]
+
+
+def _render(lines: list[str], stmts: list[ast.stmt], lo: int, hi: int, opener: Opener) -> str:
+    """Lines ``lo:hi`` with each statement *opener* recognises wrapping everything after it."""
+    for first in range(len(stmts)):
+        if (group := opener(stmts[first:])) is not None:
+            break
+    else:
         return "".join(lines[lo:hi])
+    taken, header = group
     stmt = stmts[first]
-    call = _repoint_stmt(stmt)
-    assert call is not None and stmt.end_lineno is not None
-    s, e = span(call.args[1], source)
-    path = source.encode("utf-8")[s:e].decode("utf-8")
+    covered = stmts[first : first + taken]
+    assert stmt.end_lineno is not None and covered[-1].end_lineno is not None
     pad = " " * stmt.col_offset
     before = "".join(lines[lo : stmt.lineno - 1])
-    inner = _render(lines, stmts[first + 1 :], stmt.end_lineno, hi, source)
-    return f"{before}{pad}with use_home(Home({path})):\n{_indent(inner, '    ')}"
+    # comments between the statements of one group stay above the block they now share
+    between = "".join(
+        line
+        for a, b in itertools.pairwise(covered)
+        for line in lines[(a.end_lineno or a.lineno) : b.lineno - 1]
+        if line.strip()
+    )
+    inner = _render(lines, stmts[first + taken :], covered[-1].end_lineno, hi, opener)
+    return f"{before}{between}{pad}{header}\n{_indent(inner, '    ')}"
+
+
+def _wrap_scope(
+    scope: _Scope,
+    direct: list[ast.stmt],
+    refusals: list[str],
+    opener: Opener,
+    what: str,
+    source: str,
+    strings: list[tuple[int, int]],
+) -> tuple[list[Edit], str]:
+    """The edits that put everything from ``direct[0]`` to the scope's end under the blocks
+    *opener* opens, or the reasons it cannot be reproduced."""
+    lines = source.splitlines(True)
+    starts = line_starts(source)
+    stmts = scope.stmts[scope.stmts.index(direct[0]) :]
+    lo, hi = stmts[0].lineno - 1, stmts[-1].end_lineno or stmts[-1].lineno
+    for c in direct:
+        end = c.end_lineno or c.lineno
+        if "#" in "".join(lines[c.lineno - 1 : end]):
+            refusals.append(f"a comment inside the {what} statement")
+        elif "\t" in lines[c.lineno - 1][: c.col_offset]:
+            refusals.append("tab indentation")
+    if any(a <= hi and lo + 1 <= b for a, b in strings):
+        refusals.append("a multi-line string literal that re-indenting would change")
+    owner = scope.owner
+    fixture_edits: list[Edit] = []
+    extra_yield = False
+    if THREADS.search("".join(lines[owner.lineno - 1 : owner.end_lineno])):
+        refusals.append("the function starts threads, which a ContextVar does not reach")
+    if scope.kind == "fixture":
+        assert isinstance(owner, ast.FunctionDef)
+        plan = _fixture_plan(owner, source)
+        if isinstance(plan, str):
+            refusals.append(plan)
+        else:
+            fixture_edits, extra_yield = plan
+    elif direct[-1] is scope.stmts[-1]:
+        refusals.append(f"nothing follows the {what} in the {scope.kind}")
+    if refusals:
+        return [], "; ".join(dict.fromkeys(refusals))
+    work = list(lines)
+    if scope.kind == "fixture":
+        _fixture_returns(owner, work)  # type: ignore[arg-type]
+    if extra_yield:
+        work.insert(hi, f"{' ' * direct[0].col_offset}yield\n")
+    text = _render(work, stmts, lo, hi + (1 if extra_yield else 0), opener)
+    end = starts[hi] if hi < len(starts) else len(source.encode("utf-8"))
+    return [Edit(starts[lo], end, text, f"use_home x{len(direct)}"), *fixture_edits], ""
+
+
+def _scope_imports(out: Outcome) -> None:
+    """The imports a rewrite that wraps a scope in ``use_home`` and may yield depends on."""
+    if any(e.text.startswith("Iterator[") for e in out.edits):
+        out.imports.append(ITERATOR_IMPORT)
 
 
 def repointers(tree: ast.Module, source: str, rel: str) -> Outcome:
     """A repointed home becomes ``use_home(Home(path))`` around the rest of its scope."""
     out = Outcome()
     parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
-    lines = source.splitlines(True)
     strings = _multiline_strings(source)
-    starts = line_starts(source)
     data = source.encode("utf-8")
     sites = {line for line, _ in MEASURE.repointers(tree, rel)}  # type: ignore[attr-defined]
     done: set[int] = set()  # statements a wrapping already covers
+
+    def opener(stmts: list[ast.stmt]) -> tuple[int, str] | None:
+        call = _repoint_stmt(stmts[0])
+        if call is None:
+            return None
+        s, e = span(call.args[1], source)
+        return 1, f"with use_home(Home({data[s:e].decode('utf-8')})):"
+
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and n.lineno in sites]
     for call in sorted(calls, key=lambda n: n.lineno):
         stmt = parents[id(call)]
@@ -920,49 +1005,14 @@ def repointers(tree: ast.Module, source: str, rel: str) -> Outcome:
             continue
         direct = [s for s in scope.stmts if _repoint_stmt(s) is not None]
         refusals = [r for c in direct if (r := _arg_refusal(_repoint_stmt(c), scope))]  # type: ignore[arg-type]
-        stmts = scope.stmts[scope.stmts.index(direct[0]) :]
-        lo, hi = stmts[0].lineno - 1, stmts[-1].end_lineno or stmts[-1].lineno
-        for c in direct:
-            end = c.end_lineno or c.lineno
-            if "#" in "".join(lines[c.lineno - 1 : end]):
-                refusals.append("a comment inside the repoint statement")
-            elif "\t" in lines[c.lineno - 1][: c.col_offset]:
-                refusals.append("tab indentation")
-        if any(a <= hi and lo + 1 <= b for a, b in strings):
-            refusals.append("a multi-line string literal that re-indenting would change")
-        owner = scope.owner
-        fixture_edits: list[Edit] = []
-        extra_yield = False
-        if THREADS.search("".join(lines[owner.lineno - 1 : owner.end_lineno])):
-            refusals.append("the function starts threads, which a ContextVar does not reach")
-        if scope.kind == "fixture":
-            assert isinstance(owner, ast.FunctionDef)
-            plan = _fixture_plan(owner, source)
-            if isinstance(plan, str):
-                refusals.append(plan)
-            else:
-                fixture_edits, extra_yield = plan
-        elif scope.kind == "test" and not stmts[1:]:
-            refusals.append("nothing follows the repoint in the test")
-        if refusals:
-            for c in direct:
-                out.unmappable.append((c.lineno, "; ".join(dict.fromkeys(refusals))))
-            done.update(id(c) for c in direct)
-            continue
-        work = list(lines)
-        if scope.kind == "fixture":
-            _fixture_returns(owner, work)  # type: ignore[arg-type]
-        if extra_yield:
-            work.insert(hi, f"{' ' * direct[0].col_offset}yield\n")
-        text = _render(work, stmts, lo, hi + (1 if extra_yield else 0), source)
-        end = starts[hi] if hi < len(starts) else len(data)
-        out.edits.append(Edit(starts[lo], end, text, f"use_home x{len(direct)}"))
-        out.edits += fixture_edits
+        edits, why = _wrap_scope(scope, direct, refusals, opener, "repoint", source, strings)
+        if why:
+            out.unmappable += [(c.lineno, why) for c in direct]
+        out.edits += edits
         done.update(id(c) for c in direct)
     if out.edits:
         out.imports += HOME_IMPORTS
-        if any(e.text.startswith("Iterator[") for e in out.edits):
-            out.imports.append(ITERATOR_IMPORT)
+        _scope_imports(out)
     return out
 
 
@@ -992,6 +1042,152 @@ def _fixture_returns(fn: ast.FunctionDef, work: list[str]) -> None:
         work[last.lineno - 1] = (line[:cut] + b"yield" + line[cut + len("return") :]).decode(
             "utf-8"
         )
+
+
+# config-patches --------------------------------------------------------------------------------
+#
+# ``monkeypatch.setattr(config, "NAME", value)`` changes a constant nothing reads once reads go
+# through ``current_home()``. It becomes a ``Home`` override around the rest of its scope. The
+# scope machinery is the repointers rule's, so a patch is reproduced where a repoint is and
+# refused where a repoint is.
+
+DATACLASSES_IMPORT = "import dataclasses"
+USE_HOME_IMPORT = "from docket.kernel.home import use_home"
+CONFIG_STRING = f"{CONFIG_MODULE}."
+
+
+class _Patch(NamedTuple):
+    stmt: ast.Expr
+    receiver: ast.expr  # what ``setattr`` is called on: the monkeypatch
+    field: str  # the Home field that holds the patched value
+    value: ast.expr
+
+
+@functools.cache
+def _home_fields() -> frozenset[str]:
+    return frozenset(f.name for f in dataclasses.fields(_home_class()))  # type: ignore[arg-type]
+
+
+def _patch_field(name: str) -> tuple[str, str]:
+    """The ``Home`` field a patch of ``config.<name>`` sets, else (``""``, why there is none)."""
+    member = _home_member(name)
+    if member is None:
+        return "", f"config.{name} has no Home field"
+    for candidate in (member, f"{member}_override"):
+        if candidate in _home_fields():
+            return candidate, ""
+    if member in _home_members()[1]:
+        return "", (
+            f"Home.{member} is derived, not a field; set the root or the field it is derived from"
+        )
+    return "", f"Home.{member} is a Home method, not a field"
+
+
+def _patch_call(call: ast.Call) -> tuple[ast.expr, str, ast.expr] | str:
+    """(receiver, patched name, value) of ``setattr(<config>, "NAME", value)``, else why not."""
+    func = call.func
+    if not isinstance(func, ast.Attribute):
+        return "the builtin setattr on the config module cannot be undone when the scope ends"
+    if func.attr == "delattr":
+        return "monkeypatch.delattr removes the constant; a Home field cannot be removed"
+    args = call.args
+    if any(isinstance(a, ast.Starred) for a in args) or not args:
+        return "arguments other than (config, NAME, value)"
+    first = args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        name = first.value.removeprefix(CONFIG_STRING)
+        if len(args) != 2 or "." in name:
+            return 'arguments other than ("docket.config.NAME", value)'
+        value = args[1]
+    else:
+        if len(args) != 3:
+            return "arguments other than (config, NAME, value)"
+        key = args[1]
+        if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+            return "the patched name is not a string literal"
+        name, value = key.value, args[2]
+    for keyword in call.keywords:
+        flag = keyword.value
+        if keyword.arg != "raising" or not (
+            isinstance(flag, ast.Constant) and flag.value in (True, False)
+        ):
+            return "a keyword other than raising=True"
+        if flag.value is False:
+            return "raising=False: the constant may not exist, which a Home field cannot express"
+    return func.value, name, value
+
+
+def config_patches(tree: ast.Module, source: str, rel: str) -> Outcome:
+    """Patches of ``docket.config`` constants become ``use_home(replace(current_home(), ...))``."""
+    out = Outcome()
+    aliases = _aliases(tree, rel)
+    reads = _config_names(tree, aliases) | {"current_home", "use_home"}
+    parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    strings = _multiline_strings(source)
+    data = source.encode("utf-8")
+    by_scope: dict[int, tuple[_Scope, list[_Patch]]] = {}
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    for call in sorted((c for c in calls if MEASURE.patches_config(c, aliases)), key=_line):  # type: ignore[attr-defined]
+        stmt = parents[id(call)]
+        if not (isinstance(stmt, ast.Expr) and stmt.value is call):
+            out.unmappable.append((call.lineno, "a config patch used as a value"))
+            continue
+        parts = _patch_call(call)
+        if isinstance(parts, str):
+            out.unmappable.append((call.lineno, parts))
+            continue
+        field, why = _patch_field(parts[1])
+        scope = _scope_of(stmt, parents, "patch")
+        if why or isinstance(scope, str):
+            out.unmappable.append((call.lineno, why or str(scope)))
+            continue
+        if why := _monkeypatch_refusal(parts[0], scope):
+            out.unmappable.append((call.lineno, why))
+            continue
+        patch = _Patch(stmt, parts[0], field, parts[2])
+        by_scope.setdefault(id(scope.owner), (scope, []))[1].append(patch)
+    for scope, patches in by_scope.values():
+        taken = {id(p.stmt): p for p in patches}
+
+        def opener(
+            stmts: list[ast.stmt], taken: dict[int, _Patch] = taken
+        ) -> tuple[int, str] | None:
+            group: list[_Patch] = []
+            for stmt in stmts:
+                patch = taken.get(id(stmt))
+                # a patch is applied before the next value is evaluated, so one that reads the
+                # home it follows, or sets a field twice, cannot share a replace()
+                if patch is None or any(p.field == patch.field for p in group):
+                    break
+                if (
+                    group
+                    and {n.id for n in ast.walk(patch.value) if isinstance(n, ast.Name)} & reads
+                ):
+                    break
+                group.append(patch)
+            if not group:
+                return None
+            fields = ", ".join(f"{p.field}={_text(p.value, source, data)}" for p in group)
+            return len(group), f"with use_home(dataclasses.replace(current_home(), {fields})):"
+
+        direct = [p.stmt for p in patches]
+        edits, why = _wrap_scope(scope, direct, [], opener, "patch", source, strings)
+        if why:
+            out.unmappable += [(stmt.lineno, why) for stmt in direct]
+        out.edits += edits
+    if out.edits:
+        out.imports += [DATACLASSES_IMPORT, CURRENT_HOME_IMPORT, USE_HOME_IMPORT]
+        _scope_imports(out)
+    return out
+
+
+def _line(node: ast.AST) -> int:
+    return getattr(node, "lineno", 0)
+
+
+def _text(node: ast.expr, source: str, data: bytes) -> str:
+    start, end = span(node, source)
+    return data[start:end].decode("utf-8")
 
 
 # wrappers --------------------------------------------------------------------------------------
@@ -1236,13 +1432,20 @@ RULES: dict[str, tuple[Rule, str]] = {
     "clock": (clock, "time"),
     "errors": (errors, "Error"),
     "config-reads": (config_reads, "config"),
+    "config-patches": (config_patches, "config"),
     "repointers": (repointers, "repoint_docket_home"),
 }
 # the trees a rule rewrites; a rule absent here rewrites src/docket only
 RULE_ROOTS: dict[str, tuple[Path, ...]] = {
     "config-reads": (SRC_ROOT, TESTS_ROOT),
+    "config-patches": (TESTS_ROOT,),
     "repointers": (TESTS_ROOT,),
 }
+# Rules that move a scope's lines are applied one after another, each over the files the one
+# before left, in this order: a patch's value may read the config (config-reads first), and a
+# repoint that follows a patch must find it already rewritten, or the repoint's Home would
+# replace the patched one (config-patches before repointers). Every other rule shares one pass.
+HOME_ORDER = ("config-reads", "config-patches", "repointers")
 # rules that read the whole tree first: rule -> the rewrite it wants per file
 PROJECT_RULES: dict[str, Callable[[], dict[str, Outcome]]] = {"wrappers": wrappers}
 
@@ -1275,13 +1478,20 @@ def _bound_names(tree: ast.Module) -> set[str]:
     return names
 
 
+def _binding(statement: str) -> tuple[str, str]:
+    """The local name an import statement binds and the dotted name it stands for."""
+    stmt = ast.parse(statement).body[0]
+    assert isinstance(stmt, (ast.Import, ast.ImportFrom))
+    alias = stmt.names[0]
+    if isinstance(stmt, ast.ImportFrom):
+        return alias.asname or alias.name, f"{stmt.module}.{alias.name}"
+    head = alias.name.split(".")[0]
+    return (alias.asname, alias.name) if alias.asname else (head, head)
+
+
 def _conflicts(statement: str, tree: ast.Module, aliases: dict[str, str]) -> bool:
     """True when the import's local name is already taken by something it does not stand for."""
-    stmt = ast.parse(statement).body[0]
-    assert isinstance(stmt, ast.ImportFrom)
-    alias = stmt.names[0]
-    local = alias.asname or alias.name
-    target = f"{stmt.module}.{alias.name}"
+    local, target = _binding(statement)
     if aliases.get(local) == target:
         return False
     return local in aliases or local in _bound_names(tree)
@@ -1369,10 +1579,8 @@ def plan_outcomes(
 
 
 def _present(statement: str, aliases: dict[str, str]) -> bool:
-    stmt = ast.parse(statement).body[0]
-    assert isinstance(stmt, ast.ImportFrom)
-    alias = stmt.names[0]
-    return aliases.get(alias.asname or alias.name) == f"{stmt.module}.{alias.name}"
+    local, target = _binding(statement)
+    return aliases.get(local) == target
 
 
 def plan_project(rule: str) -> list[FilePlan]:
@@ -1408,13 +1616,21 @@ def run_ruff(paths: list[Path]) -> int:
     return max(subprocess.run(step, cwd=REPO_ROOT).returncode for step in steps)
 
 
+def stages(rules: list[str]) -> list[list[str]]:
+    """*rules* as passes over the tree: the plain rules together, then each home rule alone."""
+    plain = [r for r in rules if r not in HOME_ORDER]
+    return ([plain] if plain else []) + [[r] for r in HOME_ORDER if r in rules]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "rules",
         nargs="*",
         help=f"default: every per-file rule ({', '.join(RULES)}); "
-        f"{', '.join(PROJECT_RULES)} reads the whole tree and runs alone",
+        f"{', '.join(PROJECT_RULES)} reads the whole tree and runs alone. "
+        f"{', '.join(HOME_ORDER)} each run as their own pass, in that order; a dry run or "
+        "--check shows each against the tree as it is on disk, only --write feeds one the next",
     )
     parser.add_argument("--dry-run", action="store_true", help="print the diff (the default)")
     parser.add_argument("--write", action="store_true", help="apply the rewrites, then run ruff")
@@ -1428,42 +1644,47 @@ def main() -> int:
     if args.write and args.check:
         parser.error("--write and --check are exclusive")
 
-    plans = plan_tree(args.rules or list(RULES))
-    rewritable = [p for p in plans if p.sites]
-    sites = sum(len(p.sites) for p in rewritable)
-
-    if args.check:
-        for p in rewritable:
-            for line, text in p.sites:
-                print(f"{p.rel}:{line}  -> {text}")
-    elif not args.write:
-        for p in rewritable:
-            sys.stdout.writelines(
-                difflib.unified_diff(
-                    p.before.splitlines(keepends=True),
-                    p.after.splitlines(keepends=True),
-                    f"a/{p.rel}",
-                    f"b/{p.rel}",
+    passes = stages(args.rules or list(RULES))
+    total, status = 0, 0
+    for rules in passes:
+        plans = plan_tree(rules)
+        rewritable = [p for p in plans if p.sites]
+        sites = sum(len(p.sites) for p in rewritable)
+        total += sites
+        if len(passes) > 1:
+            print(f"\n== {', '.join(rules)}")
+        if args.check:
+            for p in rewritable:
+                for line, text in p.sites:
+                    print(f"{p.rel}:{line}  -> {text}")
+        elif not args.write:
+            for p in rewritable:
+                sys.stdout.writelines(
+                    difflib.unified_diff(
+                        p.before.splitlines(keepends=True),
+                        p.after.splitlines(keepends=True),
+                        f"a/{p.rel}",
+                        f"b/{p.rel}",
+                    )
                 )
-            )
-    if args.unmappable:
+        if args.unmappable:
+            for p in plans:
+                for line, why in p.unmappable:
+                    print(f"unmappable {p.rel}:{line}  {why}")
         for p in plans:
-            for line, why in p.unmappable:
-                print(f"unmappable {p.rel}:{line}  {why}")
-    for p in plans:
-        for why in p.skipped:
-            print(f"skipped {p.rel}: {why}")
-        for note in p.notes:
-            print(f"note {p.rel}: {note}")
+            for why in p.skipped:
+                print(f"skipped {p.rel}: {why}")
+            for note in p.notes:
+                print(f"note {p.rel}: {note}")
 
-    print(f"\n{sites} site(s) in {len(rewritable)} file(s)")
+        print(f"\n{sites} site(s) in {len(rewritable)} file(s)")
+        if args.write and rewritable:
+            for p in rewritable:
+                p.path.write_text(p.after, encoding="utf-8")
+            status = max(status, run_ruff([p.path for p in rewritable]))
     if args.write:
-        for p in rewritable:
-            p.path.write_text(p.after, encoding="utf-8")
-        if rewritable:
-            return run_ruff([p.path for p in rewritable])
-        return 0
-    return 1 if args.check and sites else 0
+        return status
+    return 1 if args.check and total else 0
 
 
 if __name__ == "__main__":

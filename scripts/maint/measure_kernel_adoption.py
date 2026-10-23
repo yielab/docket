@@ -3,7 +3,7 @@
 
 One rule per kernel module: reading the clock, minting an id, cutting text, declaring or raising
 an error outside the ``kernel/errors.py`` tree, reading the environment, and reading
-``docket.config`` or calling ``repoint_docket_home`` instead of using ``Home``. Each count may
+``docket.config`` or patching it or calling ``repoint_docket_home`` instead of using ``Home``. Each count may
 only go down: ``tests/guards/kernel_adoption_baseline.txt`` records it, and the commit that
 migrates sites lowers it with ``--write``. ``kernel/`` itself is never scanned.
 """
@@ -239,6 +239,26 @@ def config_reads(tree: ast.Module, rel: str) -> Iterator[tuple[int, str]]:
                     yield node.lineno, f"from docket.config import {alias.name}"
 
 
+def patches_config(call: ast.Call, aliases: dict[str, str]) -> bool:
+    """``setattr(<docket.config>, ...)`` or ``delattr``, or the same with ``"docket.config.NAME"``."""
+    func = call.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+    if name not in {"setattr", "delattr"} or not call.args:
+        return False
+    first = call.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value.startswith("docket.config.")
+    return _dotted(first, aliases) == "docket.config"
+
+
+def config_patches(tree: ast.Module, rel: str) -> Iterator[tuple[int, str]]:
+    """A test patching a constant of ``docket.config``; a ``Home`` override replaces it."""
+    aliases = _aliases(tree, rel)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and patches_config(node, aliases):
+            yield node.lineno, "patch of docket.config"
+
+
 def repointers(tree: ast.Module, rel: str) -> Iterator[tuple[int, str]]:
     """A test isolating its home by patching constants; ``use_home(Home(tmp_path))`` replaces it."""
     for node in ast.walk(tree):
@@ -258,6 +278,7 @@ RULES: dict[str, tuple[Detector, Path, str]] = {
     "error-raises": (error_raises, SRC_ROOT, ""),
     "environ": (environ, SRC_ROOT, ""),
     "config-reads": (config_reads, SRC_ROOT, ""),
+    "config-patches": (config_patches, TESTS_ROOT, "config"),
     "repointers": (repointers, TESTS_ROOT, "repoint_docket_home"),
 }
 

@@ -52,7 +52,8 @@ def _plan(
 
 
 def test_every_rule_is_registered() -> None:
-    assert {"ids", "text", "clock", "errors", "config-reads", "repointers"} <= set(_CODEMOD.RULES)
+    wanted = {"ids", "text", "clock", "errors", "config-reads", "config-patches", "repointers"}
+    assert wanted <= set(_CODEMOD.RULES)
 
 
 def test_ids_prefixed_uuid_becomes_new_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -568,6 +569,488 @@ def test_repointers_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert _quiet("repointers", plan.after, TEST_REL)
 
 
-def test_the_two_rules_scan_the_trees_the_guard_counts() -> None:
+def test_the_home_rules_scan_the_trees_the_guard_counts() -> None:
     assert _CODEMOD.RULE_ROOTS["repointers"] == (_CODEMOD.TESTS_ROOT,)
+    assert _CODEMOD.RULE_ROOTS["config-patches"] == (_CODEMOD.TESTS_ROOT,)
     assert _CODEMOD.SRC_ROOT in _CODEMOD.RULE_ROOTS["config-reads"]
+
+
+# config-patches --------------------------------------------------------------------------------
+
+PHEAD = (
+    "import docket.config as _cfg\nimport pytest\nfrom docket.kernel.home import current_home\n\n\n"
+)
+PATCH_IMPORTS = (
+    "import dataclasses\n"
+    "from docket.kernel.home import current_home\n"
+    "from docket.kernel.home import use_home\n"
+)
+
+
+def _patch(source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    return _plan("config-patches", PHEAD + source, tmp_path, monkeypatch, TEST_REL)
+
+
+def _run(after: str, name: str, *args: Any) -> Any:
+    scope: dict[str, Any] = {}
+    exec(compile(after, "sample", "exec"), scope)
+    return scope[name](*args)
+
+
+def test_a_patched_field_becomes_a_home_override_for_the_rest_of_the_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    before = 1\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "    # kept\n"
+        "    run(\n        before,\n    )\n"
+        "    assert True\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert (
+        "    before = 1\n"
+        "    with use_home(dataclasses.replace(current_home(), tool_approval_timeout=7)):\n"
+        "        # kept\n"
+        "        run(\n            before,\n        )\n"
+        "        assert True\n"
+    ) in plan.after
+    for statement in PATCH_IMPORTS.splitlines(keepends=True):
+        assert plan.after.count(statement) == 1
+    assert not plan.unmappable
+
+
+@pytest.mark.parametrize(
+    ("name", "field"),
+    [
+        ("DOCKET_HOME", "root"),
+        ("TRACES_DIR", "traces_dir_override"),
+        ("FLEET_FILE", "fleet_file_override"),
+        ("RUNS_FILE", "runs_file_override"),
+        ("CONTEXT_TOKEN_BUDGET", "context_token_budget_override"),
+        ("TOOL_MAX_OUTPUT_CHARS", "tool_max_output_chars"),
+    ],
+)
+def test_a_patched_name_maps_to_the_home_field_that_holds_it(
+    name: str, field: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        f"def test_a(monkeypatch):\n    monkeypatch.setattr(_cfg, '{name}', 5)\n    run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert f"dataclasses.replace(current_home(), {field}=5)" in plan.after
+
+
+def test_consecutive_patches_become_one_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "    # the second one\n"
+        "    monkeypatch.setattr(_cfg, 'TRACES_DIR', tmp_path / 't', raising=True)\n"
+        "    run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert plan.after.count("with use_home(") == 1
+    assert (
+        "    # the second one\n"
+        "    with use_home(dataclasses.replace(current_home(), tool_approval_timeout=7, "
+        "traces_dir_override=tmp_path / 't')):\n"
+        "        run()\n"
+    ) in plan.after
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        "monkeypatch.setattr(_cfg, 'TRACES_DIR', _cfg.DOCKET_HOME / 't')",
+        "monkeypatch.setattr(_cfg, 'TRACES_DIR', current_home().root / 't')",
+        "monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 9)",
+    ],
+)
+def test_a_patch_that_reads_the_patched_home_or_repeats_a_field_nests(
+    second: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        f"    {second}\n"
+        "    run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert plan.after.count("dataclasses.replace(") == 2
+    assert "        with use_home(dataclasses.replace(" in plan.after
+    assert "            run()\n" in plan.after
+
+
+def test_patches_apart_nest_around_what_lies_between(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "    prepare()\n"
+        "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 3)\n"
+        "    run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert (
+        "    with use_home(dataclasses.replace(current_home(), tool_approval_timeout=7)):\n"
+        "        prepare()\n"
+        "        with use_home(dataclasses.replace(current_home(), session_timeout=3)):\n"
+        "            run()\n"
+    ) in plan.after
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "monkeypatch.setattr('docket.config.TOOL_APPROVAL_TIMEOUT', 7)",
+        "monkeypatch.setattr(docket.config, 'TOOL_APPROVAL_TIMEOUT', 7)",
+        "monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7, raising=True)",
+    ],
+)
+def test_every_spelling_of_the_patch_is_found(
+    call: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        f"import docket.config\n\n\ndef test_a(monkeypatch):\n    {call}\n    run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert "dataclasses.replace(current_home(), tool_approval_timeout=7)" in plan.after
+    assert "setattr" not in plan.after
+
+
+def test_an_aliased_config_import_is_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = (
+        "from docket import config as cfg\n"
+        "from docket.kernel.home import current_home\n\n\n"
+        "def test_a(monkeypatch):\n    monkeypatch.setattr(cfg, 'SESSION_TIMEOUT', 3)\n    run()\n"
+    )
+    plan = _plan("config-patches", source, tmp_path, monkeypatch, TEST_REL)
+    assert "dataclasses.replace(current_home(), session_timeout=3)" in plan.after
+
+
+def test_a_patch_in_a_fixture_holds_the_home_until_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docket.kernel.home import current_home
+
+    plan = _patch(
+        "@pytest.fixture(autouse=True)\n"
+        "def slow(monkeypatch) -> None:\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "\n\n"
+        "@pytest.fixture\n"
+        "def paths(monkeypatch, tmp_path) -> Path:\n"
+        "    monkeypatch.setattr(_cfg, 'TRACES_DIR', tmp_path)\n"
+        "    return tmp_path\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert "def slow(monkeypatch) -> Iterator[None]:" in plan.after
+    assert "from collections.abc import Iterator\n" in plan.after
+    monkeypatch.setattr(pytest, "fixture", lambda fn=None, **_: fn or (lambda f: f))
+    scope: dict[str, Any] = {"Path": Path}
+    exec(compile(plan.after, "sample", "exec"), scope)
+    before = current_home().tool_approval_timeout
+    fixture = scope["slow"](None)
+    next(fixture)
+    assert current_home().tool_approval_timeout == 7
+    with pytest.raises(StopIteration):
+        next(fixture)
+    assert current_home().tool_approval_timeout == before
+    fixture = scope["paths"](None, tmp_path)
+    assert next(fixture) == tmp_path
+    assert current_home().traces_dir == tmp_path
+    with pytest.raises(StopIteration):
+        next(fixture)
+
+
+def test_a_patch_in_a_monkeypatch_context_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        "def test_a(tmp_path):\n"
+        "    with pytest.MonkeyPatch.context() as mp:\n"
+        "        mp.setattr(_cfg, 'SESSION_TIMEOUT', 3)\n"
+        "        run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert (
+        "    with pytest.MonkeyPatch.context() as mp:\n"
+        "        with use_home(dataclasses.replace(current_home(), session_timeout=3)):\n"
+        "            run()\n"
+    ) in plan.after
+
+
+def test_the_rewrite_holds_the_patch_for_the_scope_and_ends_with_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docket.kernel.home import current_home
+
+    plan = _patch(
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "    monkeypatch.setattr(_cfg, 'TRACES_DIR', tmp_path / 't')\n"
+        "    return current_home().tool_approval_timeout, current_home().traces_dir\n",
+        tmp_path,
+        monkeypatch,
+    )
+    before = current_home()
+    assert _run(plan.after, "test_a", None, tmp_path) == (7, tmp_path / "t")
+    assert current_home() == before
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        (
+            "def test_a(monkeypatch):\n    monkeypatch.setattr(_cfg, 'AUDIT_LOG', 1)\n    run()\n",
+            "Home.audit_log is derived",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'TRACE_RETENTION_S', 1)\n    run()\n",
+            "Home.trace_retention_s is derived",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'PROVIDER_TEMPLATES_DIR', 1)\n    run()\n",
+            "config.PROVIDER_TEMPLATES_DIR has no Home field",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'workspace_dir', lambda a: a)\n    run()\n",
+            "a Home method",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1, raising=False)\n    run()\n",
+            "raising=False",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1, raising=flag)\n    run()\n",
+            "keyword other than raising=True",
+        ),
+        (
+            "def test_a(monkeypatch):\n    monkeypatch.delattr(_cfg, 'SESSION_TIMEOUT')\n    run()\n",
+            "monkeypatch.delattr",
+        ),
+        (
+            "def test_a(monkeypatch, name):\n    monkeypatch.setattr(_cfg, name, 1)\n    run()\n",
+            "patched name is not a string literal",
+        ),
+        (
+            "def test_a(monkeypatch):\n    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT')\n    run()\n",
+            "arguments other than",
+        ),
+        (
+            "def test_a():\n    setattr(_cfg, 'SESSION_TIMEOUT', 1)\n    run()\n",
+            "the builtin setattr",
+        ),
+        (
+            "def test_a(monkeypatch):\n    x = monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n",
+            "used as a value",
+        ),
+        (
+            "def _seed(monkeypatch):\n    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n",
+            "outlives the function",
+        ),
+        (
+            "def test_a(monkeypatch, ps):\n    for p in ps:\n"
+            "        monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', p)\n        run()\n",
+            "inside a For",
+        ),
+        (
+            "def test_a(monkeypatch):\n    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n",
+            "nothing follows the patch",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)  # why\n    run()\n",
+            "a comment inside the patch statement",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n"
+            '    text = """a\nb"""\n',
+            "multi-line string literal",
+        ),
+        (
+            "def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n"
+            "    threading.Thread(target=run).start()\n",
+            "starts threads",
+        ),
+        (
+            "def test_a(mp, monkeypatch):\n    mp.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n    run()\n",
+            "not the monkeypatch of its own scope",
+        ),
+        (
+            "async def test_a(monkeypatch):\n"
+            "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n    run()\n",
+            "an async function",
+        ),
+    ],
+)
+def test_a_patch_that_cannot_be_reproduced_is_left_alone(
+    body: str, why: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(body, tmp_path, monkeypatch)
+    assert plan.after == PHEAD + body
+    assert [reason for _, reason in plan.unmappable if why in reason]
+
+
+def test_a_refused_patch_does_not_hold_back_its_neighbours(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _patch(
+        "def test_a(monkeypatch):\n"
+        "    monkeypatch.setattr(_cfg, 'AUDIT_LOG', 1)\n"
+        "    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 3)\n"
+        "    monkeypatch.setattr(_cfg, 'PROVIDER_TEMPLATES_DIR', 1)\n"
+        "    run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert "    monkeypatch.setattr(_cfg, 'AUDIT_LOG', 1)\n" in plan.after
+    assert (
+        "    with use_home(dataclasses.replace(current_home(), session_timeout=3)):\n"
+        "        monkeypatch.setattr(_cfg, 'PROVIDER_TEMPLATES_DIR', 1)\n"
+        "        run()\n"
+    ) in plan.after
+    assert len(plan.unmappable) == 2
+
+
+def test_a_module_binding_dataclasses_to_something_else_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (
+        "import docket.config as _cfg\n\ndataclasses = dict\n\n\n"
+        "def test_a(monkeypatch):\n    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 1)\n    run()\n"
+    )
+    plan = _plan("config-patches", source, tmp_path, monkeypatch, TEST_REL)
+    assert plan.after == source
+    assert plan.skipped
+
+
+def test_config_patches_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = _patch(
+        "def test_a(monkeypatch):\n    monkeypatch.setattr(_cfg, 'SESSION_TIMEOUT', 3)\n    run()\n",
+        tmp_path,
+        monkeypatch,
+    )
+    assert _quiet("config-patches", plan.after, TEST_REL)
+
+
+# the order of the three home rules ---------------------------------------------------------------
+
+
+def test_the_home_rules_run_one_after_another_in_a_fixed_order() -> None:
+    assert _CODEMOD.stages(["repointers", "config-patches", "config-reads", "ids"]) == [
+        ["ids"],
+        ["config-reads"],
+        ["config-patches"],
+        ["repointers"],
+    ]
+    assert _CODEMOD.stages(["ids", "clock"]) == [["ids", "clock"]]
+    assert _CODEMOD.stages(["repointers"]) == [["repointers"]]
+    assert _CODEMOD.stages(list(_CODEMOD.RULES))[-3:] == [
+        ["config-reads"],
+        ["config-patches"],
+        ["repointers"],
+    ]
+
+
+def test_each_home_rule_builds_on_the_one_before_it_in_one_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A test that repoints, patches and reads is one scope all three rules rewrite."""
+    from docket.kernel.home import current_home
+
+    source = (
+        "import docket.config as _cfg\n"
+        "from tests.conftest import repoint_docket_home\n\n\n"
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    repoint_docket_home(monkeypatch, tmp_path / 'h')\n"
+        "    monkeypatch.setattr(_cfg, 'TRACES_DIR', _cfg.DOCKET_HOME / 'elsewhere')\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "    return _cfg.DOCKET_HOME, _cfg.TRACES_DIR, _cfg.TOOL_APPROVAL_TIMEOUT\n"
+    )
+    for step, rule in enumerate(["config-reads", "config-patches", "repointers"]):
+        source = _plan(rule, source, tmp_path / str(step), monkeypatch, TEST_REL).after
+    before = current_home()
+    assert _run(source, "test_a", None, tmp_path) == (
+        tmp_path / "h",
+        tmp_path / "h" / "elsewhere",
+        7,
+    )
+    assert current_home() == before
+    assert "setattr" not in source
+
+
+def test_the_stages_rewrite_a_tree_in_the_order_that_keeps_it_correct(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    roots = {"REPO_ROOT": ".", "SRC_ROOT": "src/docket", "TESTS_ROOT": "tests"}
+    for name, leaf in roots.items():
+        monkeypatch.setattr(_CODEMOD, name, tmp_path / leaf)
+    monkeypatch.setattr(_CODEMOD, "KERNEL_ROOT", tmp_path / "src/docket/kernel")
+    monkeypatch.setattr(
+        _CODEMOD,
+        "RULE_ROOTS",
+        {
+            "config-reads": (_CODEMOD.SRC_ROOT, _CODEMOD.TESTS_ROOT),
+            "config-patches": (_CODEMOD.TESTS_ROOT,),
+            "repointers": (_CODEMOD.TESTS_ROOT,),
+        },
+    )
+    monkeypatch.setattr(_CODEMOD, "run_ruff", lambda paths: 0)
+    test_file = tmp_path / "tests" / "test_sample.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        "import docket.config as _cfg\n"
+        "from tests.conftest import repoint_docket_home\n\n\n"
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    repoint_docket_home(monkeypatch, tmp_path / 'h')\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "    return _cfg.DOCKET_HOME, _cfg.TOOL_APPROVAL_TIMEOUT\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["adopt_kernel.py", "--write", "config-patches", "repointers", "config-reads"]
+    )
+    assert _CODEMOD.main() == 0
+    assert _run(test_file.read_text(encoding="utf-8"), "test_a", None, tmp_path) == (
+        tmp_path / "h",
+        7,
+    )
+
+
+def test_a_repoint_after_a_patch_is_left_for_hand_not_converted_the_wrong_way_round(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run the other way round, the repoint's Home would silently replace the patched one."""
+    source = (
+        "import docket.config as _cfg\n"
+        "from tests.conftest import repoint_docket_home\n\n\n"
+        "def test_a(monkeypatch, tmp_path):\n"
+        "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
+        "    repoint_docket_home(monkeypatch, tmp_path / 'h')\n"
+        "    run()\n"
+    )
+    patched = _plan("config-patches", source, tmp_path / "1", monkeypatch, TEST_REL)
+    repointed = _plan("repointers", patched.after, tmp_path / "2", monkeypatch, TEST_REL)
+    assert repointed.after == patched.after
+    assert [why for _, why in repointed.unmappable if "inside a With" in why]

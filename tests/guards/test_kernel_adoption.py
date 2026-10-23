@@ -91,6 +91,11 @@ BITES = {
         "from .. import config as cfg\ncfg.AUDIT_LOG",
         "from docket.config import DOCKET_HOME",
     ],
+    "config-patches": [
+        "from docket import config as _cfg\nmonkeypatch.setattr(_cfg, 'AUDIT_LOG', p)",
+        "import docket.config\nm.delattr(docket.config, 'AUDIT_LOG')",
+        "monkeypatch.setattr('docket.config.AUDIT_LOG', p)",
+    ],
     "repointers": [
         "repoint_docket_home(monkeypatch, tmp_path)",
         "conftest.repoint_docket_home(m, p)",
@@ -115,6 +120,11 @@ QUIET = {
     "error-raises": ["raise", "raise TypeError('wrong type')", "raise InvalidInput('bad')"],
     "environ": ["environ = {}\nenviron['X']", "import os\nos.path.join('a')"],
     "config-reads": ["from docket import ui\nui.error('x')", "config = {}\nconfig['DOCKET_HOME']"],
+    "config-patches": [
+        "from docket.core import secrets\nmonkeypatch.setattr(secrets, 'SECRETS_FILE', p)",
+        "monkeypatch.setattr('docket.core.secrets.SECRETS_FILE', p)",
+        "use_home(dataclasses.replace(current_home(), fleet_file_override=p))",
+    ],
     "repointers": ["use_home(Home(tmp_path))"],
 }
 
