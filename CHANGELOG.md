@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/maint/live-dispatch-baseline.sh` records one real dispatch through the HTTP API (task,
   trace, diff, raw trace files) so a phase's real run and a before/after comparison use one
   command.
+- `scripts/maint/measure_dead_code.py` counts the definitions no file names, those only a test names
+  and the groups of identical function bodies under `src/docket`; `tests/guards/test_dead_code.py`
+  holds the three totals to `dead_code_baseline.txt`, which may only shrink.
 - **A model's limits come from the provider's `/models`.** `setup provider add` and, once a day,
   the `docket start --dispatch` sweep read what each operator-registered provider publishes
   (Anthropic `max_input_tokens`/`max_tokens`, the gateway's `context_window`/`max_tokens`,
@@ -126,6 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Four spent one-off maintenance scripts that nothing called: `remove_harness_mode.py`,
+  `split_cli_registry.py`, `move_pod_report.py` and `strip_spec_changelogs.py`.
 - **The `inPlace` meta key**, which nothing wrote; `_ensure_task_worktree` no longer reads it.
 - **The per-member daily-log pipeline (P44-7).** Daily logs under `memory/`, their seeding at
   provisioning and their distillation into MEMORY.md are gone: nothing wrote them in a pod task.
