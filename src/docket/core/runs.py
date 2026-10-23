@@ -58,15 +58,6 @@ from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 
 RunSource = Literal["cli", "webhook", "schedule", "sweep", "mcp"]
-RunState = Literal[
-    "queued",
-    "running",
-    "succeeded",
-    "failed",
-    "cancelled",
-    "waiting_input",
-    "waiting_approval",
-]
 RunTerminalState = Literal["succeeded", "failed", "cancelled", "waiting_input", "waiting_approval"]
 
 _SOURCES: frozenset[str] = frozenset({"cli", "webhook", "schedule", "sweep", "mcp"})

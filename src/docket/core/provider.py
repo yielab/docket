@@ -317,11 +317,6 @@ def load_catalog() -> Catalog:
     return _merged_catalog(_load_global_providers())
 
 
-def catalog_from_global(raw: object) -> Catalog:
-    """The merged catalog with *raw* (a ``docket-providers.json`` object) as the global layer."""
-    return _merged_catalog(_global_providers_from(raw))
-
-
 def _merged_catalog(global_entries: dict[str, ProviderSpec]) -> Catalog:
     entries: dict[str, ProviderSpec] = {}
     scopes: dict[str, str] = {}

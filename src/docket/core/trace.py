@@ -508,14 +508,6 @@ def project_trace_dir(project: str) -> Path:
     return current_home().traces_dir / project
 
 
-def latest_trace_file(project: str) -> Path | None:
-    """Most-recently-modified *.jsonl for *project*, or None."""
-    files = list((current_home().traces_dir / project).glob("*.jsonl"))
-    if not files:
-        return None
-    return max(files, key=lambda p: p.stat().st_mtime)
-
-
 def export_lines(project: str, since: str = "") -> list[str]:
     """Raw JSONL lines of *project* in sorted filename order, filtered to ts >= *since* when
     given; a line with no parseable ts, or that is not a JSON object, is kept."""

@@ -125,16 +125,6 @@ def secret_tool_lookup(service: str, key: str) -> str | None:
     return result.stdout or None
 
 
-def keyring_secret(name: str) -> str | None:
-    """*name*'s value from the OS keyring under docket's service, or ``None`` when ``secret-tool``
-    is missing or the lookup fails (no D-Bus session, no entry)."""
-    if not secret_tool_available():
-        return None
-
-    value = secret_tool_lookup(current_home().keyring_service, name)
-    return value.strip() if value else None
-
-
 def secret_tool_store(service: str, key: str, value: str) -> bool:
     """Store one secret via `secret-tool store` (value piped over stdin, never argv). Returns
     ``False`` on any failure -- unlike `secret_tool_lookup`, the caller treats that as an

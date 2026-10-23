@@ -145,11 +145,6 @@ def agent_registered(agent_id: str, cfg: FleetConfig | None = None) -> bool:
     return get_agent(agent_id, cfg) is not None
 
 
-def agent_count() -> int:
-    """Return the number of agents registered in the fleet."""
-    return len(load_fleet().agents)
-
-
 def add_agent(agent_id: str) -> None:
     """Register agent_id in the fleet (no-op if already present). Model and session keys live
     in ``.docket-meta.json`` (``AgentMeta``), never here."""

@@ -844,7 +844,6 @@ names = [
     "secret_tool_available",
     "desktop_notifications_available",
     "secret_tool_lookup",
-    "keyring_secret",
     "secret_tool_store",
     "secret_tool_clear",
     "_TRUSTED_TREES",
