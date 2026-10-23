@@ -132,15 +132,23 @@ class PromptOutcome:
     message: str | None = None
 
 
+def _lost(err: _ap.ApprovalError) -> PromptOutcome:
+    """The answer lost to a decision already made (or to a record that is gone): say so."""
+    if isinstance(err, _ap.ApprovalConflict):
+        return PromptOutcome("noop", f"  (already {err.winning_state}; your answer did not apply)")
+    return PromptOutcome("noop", f"  ({err})")
+
+
 def handle_approval_prompt(token: str, answer: str) -> PromptOutcome:
-    """Apply *answer* to *token* via the grant/deny + ``resolve_waiting_approval``
-    pair ``docket task approve``/``docket task deny`` use. Keeps waiting on an empty or
-    unknown answer; reports rather than raises a token resolved elsewhere."""
+    """Apply *answer* to *token* as ``docket task approve``/``deny`` do. Keeps waiting on an
+    empty or unknown answer; reports, never raises, a token already decided or with no record."""
     if answer == "a":
         try:
             _ap.approval_grant(token, channel="cli")
         except _ap.ApprovalNoop:
             return PromptOutcome("noop", "  (already resolved elsewhere)")
+        except _ap.ApprovalError as err:
+            return _lost(err)
         _dispatch.resolve_waiting_approval(token, "granted")
         return PromptOutcome("granted")
     if answer == "d":
@@ -148,6 +156,8 @@ def handle_approval_prompt(token: str, answer: str) -> PromptOutcome:
             _ap.approval_deny(token, channel="cli")
         except _ap.ApprovalNoop:
             return PromptOutcome("noop", "  (already resolved elsewhere)")
+        except _ap.ApprovalError as err:
+            return _lost(err)
         _dispatch.resolve_waiting_approval(token, "denied")
         return PromptOutcome("denied")
     return PromptOutcome("waiting")

@@ -58,10 +58,12 @@ the one command that fixes it; both are strings.
 
 ### `docket setup --fix --json`
 
-The health report. The exit status is 0 when `healthy` is true, else 1. `--fix` first repairs what
-it can (the baseline policies, the security settings, the dispatch ledger) and then reports; the run
-that installs the baseline policies prints one `ok Installed <n> baseline policies` line on stdout
-before the JSON.
+The health report. The exit status is 0 when `healthy` is true, else 1. `--fix` first tightens
+the modes of `fleet.json` and the secrets files and installs the missing baseline policies, then
+reports; the report itself repairs nothing (the dispatch-ledger re-sync and the `WORKFLOW_AUTO.md`
+re-seed belong to the text report). Each repair line, such as the run that installs the baseline
+policies printing `ok Installed <n> baseline policies`, goes to stderr, so stdout is only the
+JSON.
 
 ```json
 {
@@ -127,6 +129,8 @@ project agent; and the problem count of each of `modelRegistry`, `schedules`,
   "id":          "string (pod id)",
   "path":        "string (codebase or workDir; may be empty)",
   "status":      "ready | active | waiting | attention | degraded (degraded: a member's workspace is missing or the pod has no members; waiting: a task is waiting_approval or waiting_input; active: a task is running; attention: a task failed)",
+  "paused":      "boolean (the pod's Lead is paused, as the budget gate does)",
+  "pausedReason": "string (why: 'budget'; \"\" when not paused)",
   "memberCount": "number",
   "isolation":   "string (the sandbox posture: 'on (<backend>, network <open|none>)' or '<off (default)|off>; <backend|no backend> found, network <open|none>', where isolation off and mode none reads 'network none (not enforced: isolation off)')",
   "members":     "array of { id, role, status: ready | missing }",

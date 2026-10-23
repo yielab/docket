@@ -233,3 +233,31 @@ class TestFix:
         assert result.exit_code == 0
         assert calls == [True]
         assert (_cfg.POLICIES_DIR).is_dir()
+
+    def test_fix_json_keeps_stdout_a_single_json_document(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The install line goes to stderr, so a fresh home's stdout parses as JSON."""
+        _home(tmp_path, monkeypatch)
+
+        result = _runner.invoke(app, ["setup", "--fix", "--json"])
+
+        assert "healthy" in json.loads(result.stdout)
+        assert "Installed" in result.stderr
+        assert "Installed" not in result.stdout
+
+    def test_fix_without_json_still_prints_the_install_line_on_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+
+        result = _runner.invoke(app, ["setup", "--fix"])
+
+        assert "Installed" in result.stdout
+
+    def test_the_fix_help_names_only_the_repairs_it_makes(self) -> None:
+        output = _runner.invoke(app, ["setup", "--help"]).output
+        text = " ".join(output.replace("│", " ").split())
+
+        assert "baseline policies" in text and "dispatch ledger" in text
+        assert "workspace files" not in text and "permissions" not in text

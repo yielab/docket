@@ -257,7 +257,10 @@ provisioning belongs to `init`, including multi-project automation.
   counts (including waiting approval, waiting input, failed and "approved, ready"; a pod with a
   `waiting_input` task is `waiting`), measured tokens with a labelled dollar
   estimate, the success/failure/aborted counts and latency from trace `session_end` events, the
-  last run, and whether `docket start` is running (its `serve.pid` names a live process).
+  last run, and whether `docket start` is running (its `serve.pid` names a live process). The task
+  counts are the queue counts `GET /pods` carries (`pod_report.task_counts`). A pod whose Lead is
+  paused shows a `Paused` row naming the reason and `docket run --resume`; JSON carries `paused`
+  and `pausedReason` for every pod.
   When the operator has allowed a repository's commands (`reviewed-repos.json`), a `Commands`
   row reads `N allowed on <date> (code <16 hex>)`, and when the repository's `.docket/` now
   holds a run-on-this-machine item that differs from the allowed one, a second row reads `N
@@ -598,7 +601,8 @@ policies only ever add), or one policy's JSON; `--json` prints a list of
   instead of listing entries
 **Output**: Timestamped log of mutating operations, or a chain-verification result
 **Return**: 0 for the listing form; for `verify`, 0 when the chain is clean (or no log exists
-yet), 1 when a broken link is detected; 2 for an unknown verb
+yet), 1 when a broken link is detected; 2 for an argument that is neither a count nor a verb,
+the message naming it (`'abc' is not an entry count or a command. Usage: docket log [N] | verify`)
 
 #### docket setup
 **Purpose**: Set up this workstation. `docket setup` with no verb is the first run: a flow, not a
@@ -622,9 +626,12 @@ background service. The report is computed by `readiness()`, which prints and wr
 - **Off a terminal** it prints the report with the commands and exits 1 when the model endpoint
   is missing, 0 otherwise; it writes nothing. `--json` emits the report
   (`{"ready": bool, "pieces": [{name, ok, reason, command}]}`) with the same exit code.
-- `--fix` hardens the permissions of docket-owned files, installs the baseline guardrail
-  policies and runs the health checks with repair (permissions, missing workspace files,
-  session-key resync, the dispatch ledger re-sync); it is the only `setup` form that repairs.
+- `--fix` tightens the modes of `fleet.json` and the secrets files, installs the missing baseline
+  guardrail policies, then runs the health checks, re-syncing the dispatch ledger from
+  `TASK_LIST.json` (not with `--json`, which only reports it). It writes no workspace file other
+  than a missing or stale `WORKFLOW_AUTO.md`, which the text report re-seeds; a pod member's
+  missing managed file is named with `docket pod update --pod <p>` as its remedy. Under `--json`
+  the repair lines go to stderr. Its option help lists only these repairs.
 The wizard has no logic of its own: it calls the functions the verbs call, so every store keeps
 one writer.
 
@@ -999,8 +1006,10 @@ one line from stdin. `a` MUST grant the approval on channel `cli` and settle the
 as granted; `d` MUST deny it on channel `cli` and settle the task as denied — the same
 grant-or-deny-then-settle operation `docket task approve`/`docket task deny` perform, so an
 in-place answer is indistinguishable from a second terminal's. Any other input (including a bare Enter)
-keeps waiting. A token already resolved through another channel (`ApprovalNoop`) prints one dim
-notice and the prompt keeps waiting on the next event; it MUST NOT raise out of the dispatch call.
+keeps waiting. A token already resolved through another channel prints one dim notice and the
+prompt keeps waiting on the next event; it MUST NOT raise out of the dispatch call. That covers a
+token resolved the same way (`ApprovalNoop`), one the opposite decision already won
+(`ApprovalConflict`, the notice naming the winning state), and one with no record.
 
 ### Flags
 

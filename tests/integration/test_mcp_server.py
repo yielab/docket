@@ -171,6 +171,18 @@ class TestToolCost:
         ids = {a["id"] for a in result["agents"]}
         assert {"demo-lead", "demo-implementer"} <= ids
 
+    def test_the_snapshot_is_the_one_status_builds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.cli import _status
+
+        _seed_pod(tmp_path, monkeypatch)
+        row = {"id": "demo-lead", "costUsd": 0.0}
+        monkeypatch.setattr(_status, "cost_snapshot", lambda: {"agents": [row], "totalUsd": 0.0})
+
+        assert _mcp.tool_cost() == {"agents": [row], "totalUsd": 0.0}
+        assert _mcp.tool_cost("demo-lead") == row
+
     def test_single_agent_lookup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
         result = _mcp.tool_cost("demo-lead")

@@ -210,6 +210,31 @@ class TestHandleApprovalPrompt:
         assert outcome.action == "noop"
         assert outcome.message
 
+    @pytest.mark.parametrize(("first", "second"), [("d", "a"), ("a", "d")])
+    def test_the_opposite_decision_having_won_is_reported_not_raised(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first: str, second: str
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+        _progress.handle_approval_prompt(token, first)
+        state = _ap.approval_get(token)["state"]
+
+        outcome = _progress.handle_approval_prompt(token, second)
+
+        assert outcome.action == "noop"
+        assert state in (outcome.message or "")
+        assert _ap.approval_get(token)["state"] == state
+
+    def test_a_token_with_no_record_is_reported_not_raised(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+
+        outcome = _progress.handle_approval_prompt("no-such-token", "a")
+
+        assert outcome.action == "noop"
+        assert outcome.message
+
 
 # ── stdin_reader_loop ─────────────────────────────────────────────────────────
 

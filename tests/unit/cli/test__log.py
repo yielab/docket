@@ -53,6 +53,18 @@ class TestLog:
     def test_an_unknown_verb_is_a_usage_error(self, home: Path) -> None:
         assert runner.invoke(app, ["log", "bogus"]).exit_code == 2
 
+    def test_a_word_that_is_not_a_count_is_named_with_the_usage(self, home: Path) -> None:
+        result = runner.invoke(app, ["log", "abc"])
+        assert result.exit_code == 2
+        assert "'abc'" in result.output and "[N]" in result.output
+        assert "No such command" not in result.output
+
+    def test_the_empty_log_message_names_what_is_recorded_without_scope(self, home: Path) -> None:
+        result = runner.invoke(app, ["log"])
+        assert result.exit_code == 0
+        assert "No log yet." in result.output
+        assert "scope" not in result.output
+
     def test_audit_is_not_a_command(self, home: Path) -> None:
         assert runner.invoke(app, ["audit"]).exit_code == 2
 

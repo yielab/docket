@@ -136,6 +136,61 @@ class TestCurrentPod:
         assert runner.invoke(_app, ["status"]).exit_code == 1
 
 
+class TestPaused:
+    def test_a_budget_paused_pod_says_so_in_json_and_text(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import fleet as _fleet
+
+        _seed(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-lead", "paused", True)
+        _fleet.meta_set("demo-lead", "pausedReason", "budget")
+
+        body = _json("--pod", "demo")
+        out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+
+        assert body["paused"] is True and body["pausedReason"] == "budget"
+        line = next(ln for ln in out.splitlines() if ln.strip().startswith("Paused:"))
+        assert "budget" in line and "docket run --resume" in line
+
+    def test_a_pod_that_is_not_paused_has_no_paused_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+
+        body = _json("--pod", "demo")
+        out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+
+        assert body["paused"] is False and body["pausedReason"] == ""
+        assert "Paused:" not in out
+
+    def test_all_json_carries_it_per_pod(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import fleet as _fleet
+
+        _seed(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-lead", "paused", True)
+        _fleet.meta_set("demo-lead", "pausedReason", "budget")
+
+        assert _json("--all")["projects"][0]["paused"] is True
+
+
+class TestQueueCounts:
+    def test_the_task_block_is_the_pod_reports_queue_counts_plus_approved_ready(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import pod_report as _pod_report
+
+        _seed(tmp_path, monkeypatch)
+        _tasks("demo", "pending", "pending", "running", "waiting_approval", "failed", "done")
+
+        tasks = _json("--pod", "demo")["tasks"]
+
+        assert tasks == {**_pod_report.task_counts("demo"), "approvedReady": 0}
+        assert tasks["completed"] == 1 and tasks["pending"] == 2
+
+
 class TestAllPods:
     def test_all_shows_failed_counts(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed(tmp_path, monkeypatch)

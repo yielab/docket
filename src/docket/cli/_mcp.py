@@ -13,15 +13,13 @@ import sys
 import threading
 from typing import Any
 
-import docket.config as _cfg
+from docket.cli import _status
 from docket.core import answers as _answers
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import interruptions as _interruptions
 from docket.core import runs as _runs
-from docket.core import utils as _utils
 from docket.core.audit import audit_log
-from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput
 
@@ -237,35 +235,12 @@ def tool_inbox(since: str | None = None) -> dict[str, Any]:
     return view.model_dump(by_alias=True, mode="json")
 
 
-def _cost_row(agent_id: str) -> tuple[dict[str, Any], float]:
-    raw = _store.read_json(_cfg.meta_path(agent_id))
-    budget_raw = raw.get("budgetUsd")
-    totals = _utils.aggregate_cost(agent_id)
-    budget = float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
-    row = {
-        "id": agent_id,
-        "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
-        "input": totals.input_tokens,
-        "output": totals.output_tokens,
-        "costUsd": round(totals.cost_usd, 6),
-        "pricingKnown": True,
-        "turns": totals.turns,
-        "budgetUsd": budget,
-    }
-    return row, totals.cost_usd
-
-
-def _cost_snapshot() -> dict[str, Any]:
-    rows = [_cost_row(pid) for pid in _utils.project_ids()]
-    return {"agents": [r for r, _ in rows], "totalUsd": round(sum(c for _, c in rows), 6)}
-
-
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
     *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
     figure); the ``MODEL_PRICING`` estimate `docket status` shows is not returned here."""
     _audit("cost", f"agent={agent_id or ''}")
-    snapshot = _cost_snapshot()
+    snapshot = _status.cost_snapshot()
     if not agent_id:
         return snapshot
     agents: list[dict[str, Any]] = snapshot["agents"]
