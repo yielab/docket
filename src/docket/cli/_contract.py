@@ -9,10 +9,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 
 import typer
 
 from docket import ui
+from docket.cli._target import resolve_pod
 
 
 def _is_tty() -> bool:
@@ -43,6 +45,12 @@ def require_value(name: str, value: str | None, flag: str) -> str:
         return value
     ui.error(f"{name} is required", f"Pass {flag}")
     raise typer.Exit(1)
+
+
+def resolve_pod_here(pod: str | None) -> str:
+    """The pod a command acts on: ``pod``, then ``DOCKET_POD``, then the cwd. Raises
+    ``TargetError`` when none or several match; each command words its own refusal."""
+    return resolve_pod(pod, env=os.environ, cwd=Path.cwd())
 
 
 def next_step(command: str) -> None:

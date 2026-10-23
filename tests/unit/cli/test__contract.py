@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 import typer
 
 from docket.cli import _contract
+from docket.cli._target import TargetError
 
 SUBJECT = "docket.cli._contract"
 
@@ -74,3 +76,16 @@ def test_next_step_prints_one_line_on_stderr_unless_silenced(
     monkeypatch.setenv("DOCKET_NO_HINTS", "1")
     _contract.next_step("docket status")
     assert capsys.readouterr().err == ""
+
+
+def test_resolve_pod_here_reads_the_process_environment_and_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DOCKET_POD", raising=False)
+    assert _contract.resolve_pod_here("explicit") == "explicit"
+    monkeypatch.setenv("DOCKET_POD", " from-env ")
+    assert _contract.resolve_pod_here(None) == "from-env"
+    monkeypatch.delenv("DOCKET_POD")
+    with pytest.raises(TargetError):
+        _contract.resolve_pod_here(None)

@@ -4,7 +4,6 @@ recipe, role and policy libraries. Registered onto ``pod_app`` by the registry."
 from __future__ import annotations
 
 import json as _json
-import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, NoReturn
@@ -15,7 +14,7 @@ from rich.markup import escape
 import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
-from docket.cli._target import TargetError, pod_option, resolve_pod
+from docket.cli._target import TargetError, pod_option
 from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import dispatch as _dispatch
@@ -41,7 +40,7 @@ def _fail(what: str, do: str = "", code: int = 1) -> NoReturn:
 def _pod_name(pod: str | None) -> str:
     """The pod this command acts on; exits 1 naming what was looked for when none resolves."""
     try:
-        return resolve_pod(pod, env=os.environ, cwd=Path.cwd())
+        return _contract.resolve_pod_here(pod)
     except TargetError as exc:
         _fail(str(exc))
 
@@ -49,7 +48,7 @@ def _pod_name(pod: str | None) -> str:
 def _scope_pod(pod: str | None) -> str:
     """The pod whose overlay applies to a library read, or ``""`` for the global set."""
     try:
-        return resolve_pod(pod, env=os.environ, cwd=Path.cwd())
+        return _contract.resolve_pod_here(pod)
     except TargetError:
         return ""
 

@@ -152,11 +152,11 @@ def _stored_secret_values() -> list[str]:
         values.extend(v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8)
     except Exception:
         pass
-    for name, raw in os.environ.items():
-        if name in _ENV_CREDENTIAL_NAMES or name.endswith(_ENV_CREDENTIAL_SUFFIXES):
-            value = raw.strip()
-            if len(value) > 8:
-                values.append(value)
+    values.extend(
+        v
+        for v in _system.credential_env_values(_ENV_CREDENTIAL_NAMES, _ENV_CREDENTIAL_SUFFIXES)
+        if len(v) > 8
+    )
     return values
 
 

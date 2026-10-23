@@ -58,6 +58,24 @@ def _which(binary: str) -> bool:
     return False
 
 
+def env_value(name: str) -> str:
+    """One environment variable, stripped; ``""`` when unset. Read live, for the credential names
+    a provider or exporter document declares."""
+    return os.environ.get(name, "").strip()
+
+
+def credential_env_values(names: tuple[str, ...], suffixes: tuple[str, ...]) -> list[str]:
+    """The stripped, non-empty values of every variable that is in *names* or ends in one of
+    *suffixes*, so a key exported in the shell after startup is seen. Read live."""
+    values = []
+    for name, raw in os.environ.items():
+        if name in names or name.endswith(suffixes):
+            value = raw.strip()
+            if value:
+                values.append(value)
+    return values
+
+
 def secrets_backend_requested() -> str:
     """Which stored-secret backend the operator asked for: ``"keyring"`` (secret-tool/libsecret)
     or the default ``"file"`` (secrets.json). Read live, never cached: a change made in the
