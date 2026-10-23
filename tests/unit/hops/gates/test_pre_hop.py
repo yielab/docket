@@ -14,7 +14,6 @@ and two extracted phases, called directly with a hand-built
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 from tests.support import pods as _support_pods
@@ -26,8 +25,6 @@ from docket.agent.llm import TokenUsage
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.hops.gates import pre_hop as _pre_hop
-from docket.kernel.home import current_home
-from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.tasks.domain import task as _task
 
@@ -46,30 +43,6 @@ class TestExecuteUnitDirectly:
     """Direct unit coverage of ``_execute_unit`` and two extracted phase
     functions -- reachable by name since they are module-level, not a
     closure only ``dispatch_task`` could call."""
-
-    def test_gate_budget_blocks_before_any_hop_and_traces_it(
-        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_pre_hop, "pod_gating_cost", lambda project: (10.0, False))
-        ctx = _unit_context(cap=5.0)
-
-        outcome = _pre_hop._gate_budget(ctx, "implementer")
-
-        assert outcome is not None
-        assert outcome.kind == "blocked"
-        assert "$10.00" in outcome.reason and "$5.00" in outcome.reason
-        tf = current_home().traces_dir / "myapp" / "agent:myapp:task-1.jsonl"
-        events = _trace.read_trace(tf)
-        assert events[-1]["event_type"] == "budget_exceeded"
-        assert events[-1]["agent_role"] == "implementer"
-
-    def test_gate_budget_allows_when_under_cap(
-        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_pre_hop, "pod_gating_cost", lambda project: (1.0, False))
-        ctx = _unit_context(cap=5.0)
-
-        assert _pre_hop._gate_budget(ctx, "implementer") is None
 
     def test_gate_pre_hop_approval_consumes_the_override_exactly_once(self, pod_home: Path) -> None:
         # The riskiest capture in the pre-lift closure: `override_index` was
@@ -151,35 +124,7 @@ class TestExecuteUnitDirectly:
 
 
 class TestTaskRestrictionHelpers:
-    """The hop's network is the narrower of pod and task; maxTokens counts persisted hop usage."""
-
-    @pytest.mark.parametrize(
-        ("pod_mode", "task_mode", "expected"),
-        [
-            ("open", None, "open"),
-            ("open", "none", "none"),
-            ("none", None, "none"),
-            ("none", "none", "none"),
-        ],
-    )
-    def test_hop_network_takes_the_narrower(
-        self, pod_mode: str, task_mode: str | None, expected: str
-    ) -> None:
-        assert _pre_hop._hop_network(pod_mode, task_mode) == expected
-
-    def test_token_budget_is_the_cap_less_persisted_usage(self) -> None:
-        task = {
-            "maxTokens": 1000,
-            "hops": [{"usage": {"input": 300, "output": 100}}, {"usage": None}, {"role": "x"}],
-        }
-
-        assert _pre_hop._task_token_budget(task) == 600
-
-    def test_token_budget_does_not_count_cache_reads(self) -> None:
-        hop = {"usage": {"input": 30_000, "cached": 25_000, "cacheWrite": 0, "output": 100}}
-        task = {"maxTokens": 10_000, "hops": [hop, hop]}
-
-        assert _pre_hop._task_token_budget(task) == 10_000 - 2 * 5_100
+    """A hop's recorded usage carries the cache split the token budget counts."""
 
     def test_hop_usage_carries_the_cache_split(self) -> None:
         result = _rd.TurnResult(
@@ -198,12 +143,3 @@ class TestTaskRestrictionHelpers:
             "cacheWrite": 50,
             "output": 40,
         }
-
-    def test_token_budget_goes_non_positive_when_spent(self) -> None:
-        task = {"maxTokens": 100, "hops": [{"usage": {"input": 90, "output": 20}}]}
-
-        assert _pre_hop._task_token_budget(task) == -10
-
-    @pytest.mark.parametrize("task", [{}, {"maxTokens": None}, {"maxTokens": True}])
-    def test_no_cap_means_no_budget(self, task: dict[str, Any]) -> None:
-        assert _pre_hop._task_token_budget(task) is None

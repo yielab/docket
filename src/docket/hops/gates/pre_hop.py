@@ -11,6 +11,7 @@ from docket.governance import policy as _policy
 from docket.governance import profile as _profile
 from docket.governance import secrets as _secrets
 from docket.hops.application.record import _trace_locked, _UnitContext, _UnitOutcome
+from docket.hops.domain import gate_decisions as _decide
 from docket.hops.workspace import protected_paths as _protected
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel.home import current_home
@@ -72,25 +73,8 @@ def _approval_action_text(role: str, task: dict[str, Any]) -> str:
     return f"pod dispatch — {role} hop for task {task_id}: {desc}"[:1000]
 
 
-def _hop_network(pod_mode: str, task_mode: str | None) -> str:
-    """The hop's jail network: ``"none"`` when the pod or the task says so, else ``"open"``.
-    A task can only cut the network, never open one the pod closed."""
-    return "none" if "none" in (pod_mode, task_mode) else "open"
-
-
-def _task_token_budget(task: dict[str, Any]) -> int | None:
-    """What *task*'s ``maxTokens`` has left after its persisted hops' counted usage (input minus
-    cache reads, plus output); ``None`` without a cap. Zero or less means no hop may start."""
-    cap = task.get("maxTokens")
-    if not isinstance(cap, int) or isinstance(cap, bool):
-        return None
-    used = 0
-    for hop in task.get("hops") or []:
-        usage = hop.get("usage") if isinstance(hop, dict) else None
-        if isinstance(usage, dict):
-            fresh = int(usage.get("input") or 0) - int(usage.get("cached") or 0)
-            used += max(0, fresh) + int(usage.get("output") or 0)
-    return cap - used
+# `interfaces/http/routes/health.py` reads the task token budget through this name.
+_task_token_budget = _decide.task_token_budget
 
 
 def _current_task(ctx: _UnitContext) -> dict[str, Any]:
@@ -103,14 +87,14 @@ def _current_task(ctx: _UnitContext) -> dict[str, Any]:
 
 def _gate_task_tokens(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
     """Fail the task with ``failureKind: "budget"`` when its ``maxTokens`` is spent before *role*."""
-    left = _task_token_budget(_current_task(ctx))
-    if left is None or left > 0:
-        return None
-    return _UnitOutcome(
-        kind="failed",
-        reason=f"task token budget reached (maxTokens={ctx.task.get('maxTokens')}) before {role}",
-        failure_kind="budget",
+    decision = _decide.decide_task_tokens(
+        left=_decide.task_token_budget(_current_task(ctx)),
+        max_tokens=ctx.task.get("maxTokens"),
+        role=role,
     )
+    if decision.kind == "advance":
+        return None
+    return _UnitOutcome(kind="failed", reason=decision.reason, failure_kind=decision.failure_kind)
 
 
 def _apply_task_restrictions(
@@ -125,7 +109,7 @@ def _apply_task_restrictions(
             extra[_rd.DOCKET_TASK_DENIED_TOOLS] = _json.dumps(list(restrictions["deniedTools"]))
         task_mode = restrictions.get("network")
         if task_mode == "none":
-            extra[_rd.DOCKET_TASK_NETWORK] = _hop_network(
+            extra[_rd.DOCKET_TASK_NETWORK] = _decide.hop_network(
                 _teams_pod_settings.effective_network(ctx.project)[0], task_mode
             )
         if restrictions.get("policies"):
@@ -134,7 +118,7 @@ def _apply_task_restrictions(
             except ValueError as exc:
                 raise DispatchError(f"task restrictions refused: {exc}") from exc
             extra[_rd.DOCKET_TASK_POLICIES] = _json.dumps(documents)
-    left = _task_token_budget(_current_task(ctx))
+    left = _decide.task_token_budget(_current_task(ctx))
     if left is not None:
         extra[_rd.DOCKET_TURN_TOKEN_BUDGET] = str(left)
     return {**(env or {}), **extra} if extra else env
@@ -150,27 +134,13 @@ def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
     if ctx.cap <= 0.0:
         return None
     spent, estimated = pod_gating_cost(ctx.project)
-    if spent < ctx.cap:
+    decision = _decide.decide_pod_budget(cap=ctx.cap, spent=spent, estimated=estimated, role=role)
+    if decision.kind == "advance":
         return None
-    spent_label = f"~${spent:.2f} (estimated — no cost recorded)" if estimated else f"${spent:.2f}"
     _trace_locked(
-        ctx.project,
-        ctx.session_id,
-        role,
-        "budget_exceeded",
-        _json.dumps(
-            {
-                "spent": round(spent, 6),
-                "cap": round(ctx.cap, 6),
-                "role": role,
-                "estimated": estimated,
-            }
-        ),
+        ctx.project, ctx.session_id, role, decision.event, _json.dumps(dict(decision.detail))
     )
-    return _UnitOutcome(
-        kind="blocked",
-        reason=f"pod budget reached ({spent_label} ≥ ${ctx.cap:.2f}) before {role}",
-    )
+    return _UnitOutcome(kind="blocked", reason=decision.reason)
 
 
 def _hop_model(node: _orch.PlannedUnit, member_id: str) -> str:
@@ -194,9 +164,9 @@ def _unpriced(model: str) -> bool:
 def _warn_unpriced_hop(ctx: _UnitContext, role: str, model: str) -> None:
     """Under a budget, an unpriced model adds nothing to the estimate, so the cap cannot stop
     this hop's spend: trace a ``budget_warning`` and let the hop run (cost-tracking.spec.md)."""
-    if ctx.cap <= 0.0 or not _unpriced(model):
+    reason = _decide.unpriced_budget_warning(cap=ctx.cap, model=model, unpriced=_unpriced(model))
+    if reason is None:
         return
-    reason = f"pod budget ${ctx.cap:.2f} cannot stop this hop: {model} has no price"
     _trace_locked(
         ctx.project,
         ctx.session_id,
@@ -218,12 +188,15 @@ def _gate_pre_hop_approval(
     Mutates ``ctx.override_index``, consuming a granted approval's single-use override the
     first time a run reaches its minted position, so a later hop revisiting that position
     (a rework cycle) still gates normally. Returns ``None`` when the hop may proceed."""
-    if not check_approval:
-        return None
-    if index_for_context == ctx.override_index:
+    choice = _decide.decide_pre_hop_approval(
+        check_approval=check_approval,
+        index=index_for_context,
+        override_index=ctx.override_index,
+        requires_approval=_pipeline_step_requires_approval(node.gate),
+    )
+    if choice == "consume_override":
         ctx.override_index = None
-        return None
-    if not _pipeline_step_requires_approval(node.gate):
+    if choice != "require":
         return None
     action = _approval_action_text(role, ctx.task)
     token = _ap.approval_create(
@@ -260,28 +233,25 @@ def _consult_budget_env(ctx: _UnitContext, env: dict[str, str] | None) -> dict[s
 def _check_brief_resources(project: str, brief: _oc.TaskBrief) -> list[str]:
     """The subset of *brief*'s own ``resources`` entries a deterministic check cannot
     confirm (unconfigured secret, missing path, no ``verifyCmd``); ``[]`` means every
-    one named is present. Pure, no side effects."""
-    missing: list[str] = []
-    configured_secrets: set[str] | None = None
-    for item in brief.resources:
-        if item.startswith("secret:"):
-            if configured_secrets is None:
-                configured_secrets = _secrets.secrets_keys()
-            if item[len("secret:") :] not in configured_secrets:
-                missing.append(item)
-        elif item.startswith("path:"):
-            if not Path(item[len("path:") :]).exists():
-                missing.append(item)
-        elif item == "verify":
-            implementer_id = pod_full_roster(project).get("implementer")
-            verify_cmd = (
-                str(_fleet.meta_get(implementer_id, "verifyCmd", "") or "")
-                if implementer_id
-                else ""
-            )
-            if not verify_cmd:
-                missing.append(item)
-    return missing
+    one named is present. Gathers each fact only when an entry needs it."""
+    items = brief.resources
+    secrets = (
+        _secrets.secrets_keys() if any(i.startswith("secret:") for i in items) else frozenset[str]()
+    )
+    paths = frozenset(
+        i[len("path:") :]
+        for i in items
+        if i.startswith("path:") and Path(i[len("path:") :]).exists()
+    )
+    verify_cmd = ""
+    if "verify" in items:
+        implementer_id = pod_full_roster(project).get("implementer")
+        verify_cmd = (
+            str(_fleet.meta_get(implementer_id, "verifyCmd", "") or "") if implementer_id else ""
+        )
+    return _decide.missing_resources(
+        items, secrets=frozenset(secrets), existing_paths=paths, has_verify_cmd=bool(verify_cmd)
+    )
 
 
 def _block_on_missing_resources(
@@ -295,12 +265,12 @@ def _block_on_missing_resources(
     brief = outcome.hops[-1].artifact.brief if outcome.hops[-1].artifact else None
     if brief is None:
         return False
-    missing = _check_brief_resources(ctx.project, brief)
-    if not missing:
+    decision = _decide.decide_resources(_check_brief_resources(ctx.project, brief))
+    if decision.kind == "advance":
         return False
     result.status = "blocked"
-    result.blocked_reason = "resources"
-    result.reason = "brief names missing resources: " + ", ".join(missing)
+    result.blocked_reason = decision.label
+    result.reason = decision.reason
     return True
 
 
@@ -309,15 +279,17 @@ def _refuse_unmet_profile(
 ) -> None:
     """Under the ``lights-out`` profile, refuse the task before its first hop when a requirement
     is unmet: audit ``profile.refused`` and raise ``DispatchError`` naming each fix."""
-    violations = _profile.project_violations(project, runtime_steps)
-    if not violations:
-        return
-    _audit.audit_log(
-        "profile.refused",
-        f"pod={project} task={task_id} requirements={','.join(v.requirement for v in violations)}",
+    refusal = _decide.profile_refusal(
+        [
+            (v.requirement, v.detail, v.fix)
+            for v in _profile.project_violations(project, runtime_steps)
+        ]
     )
-    lines = "; ".join(f"{v.requirement}: {v.detail} ({v.fix})" for v in violations)
-    raise DispatchError(f"lights-out profile not met -- {lines}")
+    if refusal is None:
+        return
+    requirements, message = refusal
+    _audit.audit_log("profile.refused", f"pod={project} task={task_id} requirements={requirements}")
+    raise DispatchError(message)
 
 
 def _checked_commands(
@@ -359,9 +331,7 @@ def _park_if_check_changed(
     )
     if not paths:
         return
-    listed = ", ".join(paths[: _protected.MAX_LISTED_PATHS])
-    if len(paths) > _protected.MAX_LISTED_PATHS:
-        listed += f" and {len(paths) - _protected.MAX_LISTED_PATHS} more"
+    listed = _decide.describe_changed_paths(paths, _protected.MAX_LISTED_PATHS)
     token = _ap.approval_create(
         ctx.project,
         "lead",
