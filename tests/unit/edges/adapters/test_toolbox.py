@@ -12,6 +12,7 @@ specs/functional/trace-store.spec.md "Process lifecycle events".
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -99,6 +100,45 @@ class TestOnProcessLifecycle:
         assert not out.ok
         assert [kind for kind, _ in recorder.events] == ["started", "exited"]
         assert recorder.events[1][1]["signal"] == "SIGKILL"
+
+    def test_output_that_cannot_be_decoded_is_a_failed_outcome_with_a_paired_exit(
+        self, workspace: Path
+    ) -> None:
+        recorder = _Recorder()
+
+        out = toolbox.run_bash((workspace,), "printf '\\377\\376'", timeout=5, on_process=recorder)
+
+        assert not out.ok
+        assert "could not be read" in out.error
+        assert [kind for kind, _ in recorder.events] == ["started", "exited"]
+        exited_data = recorder.events[1][1]
+        assert exited_data["exitCode"] == 0
+        assert "signal" not in exited_data
+
+    def test_a_read_failure_with_the_command_still_running_kills_the_group(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        recorder = _Recorder()
+        real_popen = toolbox.subprocess.Popen
+
+        class _FailingRead(real_popen):  # type: ignore[type-arg, misc]
+            def communicate(self, *args: object, **kwargs: object) -> tuple[str, str]:
+                if not getattr(self, "_failed_once", False):
+                    self._failed_once = True
+                    raise RuntimeError("pipe broke")
+                return super().communicate(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(toolbox.subprocess, "Popen", _FailingRead)
+        command = 'exec python3 -c "import time; time.sleep(30)"'
+
+        out = toolbox.run_bash((workspace,), command, timeout=60, on_process=recorder)
+
+        assert not out.ok
+        assert [kind for kind, _ in recorder.events] == ["started", "exited"]
+        assert recorder.events[1][1]["signal"] == "SIGKILL"
+        assert "exitCode" not in recorder.events[1][1]
+        with pytest.raises(ProcessLookupError):
+            os.killpg(int(str(recorder.events[0][1]["pgid"])), 0)
 
     def test_with_no_callback_nothing_is_invoked_and_behaviour_is_unchanged(
         self, workspace: Path

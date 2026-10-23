@@ -306,7 +306,12 @@ This specification does NOT cover:
     (built-in or global), and on success **MUST** write only `{kind, name, enabled: true,
     <overrides>}` into that name's global entry, merged over whatever that entry already
     stores, never the full inherited document, so the rest of the entry keeps resolving from
-    the built-in of the same name at read time (requirement 25).
+    the built-in of the same name at read time (requirement 25). An override of `privacy` **MUST**
+    also store `share` as `null`, and an override of `share` **MUST** also store `privacy` as
+    `null`, so the entry never holds both. Before it writes, `enable_exporter` **MUST** check that
+    the merged entry is a valid exporter document, and **MUST** raise `InvalidInput`, writing no
+    file and no audit entry, when it is not (for instance when *overrides* names both `privacy`
+    and `share`).
 59. `disable_exporter(name)` **MUST** flip only `enabled` to `false` in the global catalog,
     leaving any other stored override (e.g. a prior `endpoint` override) untouched, and **MUST
     NOT** remove or alter any credential in the secret store.
@@ -436,8 +441,11 @@ This specification does NOT cover:
     same way the privacy `resolve` does. On success it **MUST** write only the changed key(s)
     into the global override, the same minimal patch `enable_exporter` writes, and setting
     `privacy` **MUST** clear a stored `share` to `null` (and vice versa) so the two stay
-    mutually exclusive on disk. Called with all three arguments `None`, it **MUST** make no
-    change and write nothing.
+    mutually exclusive on disk. Before it writes, `set_privacy` **MUST** check that the merged entry
+    is a valid exporter document, and **MUST** raise `InvalidInput`, writing no file and no
+    audit entry, when it is not (a `content_max_chars` of 0 or below, or above 100,000, for
+    instance). Called with all three arguments `None`, it **MUST** make no change and write
+    nothing.
 89. `is_widening(old, new)` **MUST** return `True` exactly when `new` (a `frozenset[str]` of
     content classes) contains a class absent from `old`, and `False` for an equal or narrower
     set.

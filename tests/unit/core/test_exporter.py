@@ -13,9 +13,11 @@ from pathlib import Path
 import pytest
 
 import docket.config as _cfg
+from docket.core import audit as _audit
 from docket.core import exporter as _exporter
 from docket.core import secrets as _secrets
 from docket.edges import store as _store
+from docket.kernel.errors import InvalidInput
 
 SUBJECT = "docket.core.exporter"
 
@@ -384,3 +386,47 @@ class TestExportExporter:
     def test_unknown_name_is_refused(self) -> None:
         with pytest.raises(_exporter.ExporterError):
             _exporter.export_exporter("does-not-exist")
+
+
+def _exporter_audit_actions() -> list[str]:
+    return [e["action"] for e in _audit.read_audit() if e["action"].startswith("exporter.")]
+
+
+class TestWritersValidateBeforeWriting:
+    def test_enable_with_a_share_over_a_builtin_that_declares_a_level_is_valid(self) -> None:
+        spec = _exporter.enable_exporter("langfuse", {"share": ["errors"]})
+
+        assert _exporter.load_catalog().source_of("langfuse") == "global"
+        assert spec.enabled is True
+        assert spec.share == ["errors"]
+        assert spec.privacy is None
+
+    def test_enable_with_a_level_over_a_stored_share_is_valid(self) -> None:
+        _exporter.set_privacy("langfuse", share=["errors"])
+
+        spec = _exporter.enable_exporter("langfuse", {"privacy": "actions"})
+
+        assert spec.enabled is True
+        assert spec.privacy == "actions"
+        assert spec.share is None
+
+    def test_enable_refuses_both_a_level_and_a_share_and_writes_nothing(self) -> None:
+        before = _store.read_json(_cfg.EXPORTERS_FILE)
+        with pytest.raises(InvalidInput, match="mutually exclusive"):
+            _exporter.enable_exporter("langfuse", {"privacy": "actions", "share": ["errors"]})
+
+        assert _store.read_json(_cfg.EXPORTERS_FILE) == before
+        assert _exporter_audit_actions() == []
+
+    def test_set_privacy_refuses_a_zero_content_bound_and_writes_nothing(self) -> None:
+        before = _store.read_json(_cfg.EXPORTERS_FILE)
+        with pytest.raises(InvalidInput, match="contentMaxChars"):
+            _exporter.set_privacy("langfuse", content_max_chars=0)
+
+        assert _store.read_json(_cfg.EXPORTERS_FILE) == before
+        assert _exporter_audit_actions() == []
+
+    def test_set_privacy_that_succeeds_is_audited_once(self) -> None:
+        _exporter.set_privacy("langfuse", content_max_chars=100)
+
+        assert _exporter_audit_actions() == ["exporter.privacy"]

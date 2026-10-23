@@ -92,34 +92,6 @@ class TestExpireOldTraces:
         assert report.expired_count == 0
         assert report.kept_open == 1
 
-    def test_index_stays_consistent_after_deletion(self, oc_dir: Path) -> None:
-        pdir = oc_dir / "traces" / "myshop"
-        _write_trace(
-            pdir,
-            "old",
-            [
-                {"ts": "2000-01-01T00:00:00Z", "event_type": "session_start"},
-                {"ts": "2000-01-01T00:05:00Z", "event_type": "session_end"},
-            ],
-        )
-        recent = _clock.stamp()
-        _write_trace(
-            pdir,
-            "recent",
-            [
-                {"ts": recent, "event_type": "session_start"},
-                {"ts": recent, "event_type": "session_end"},
-            ],
-        )
-        index_file = pdir / ".ingest-index.json"
-        index_file.write_text(json.dumps({"old": 42, "recent": 7}), encoding="utf-8")
-
-        trace_core.expire_old_traces()
-
-        index = json.loads(index_file.read_text(encoding="utf-8"))
-        assert "old" not in index
-        assert index["recent"] == 7
-
     def test_dry_run_deletes_nothing(self, oc_dir: Path) -> None:
         pdir = oc_dir / "traces" / "myshop"
         tf = _write_trace(
@@ -130,17 +102,12 @@ class TestExpireOldTraces:
                 {"ts": "2000-01-01T00:05:00Z", "event_type": "session_end"},
             ],
         )
-        index_file = pdir / ".ingest-index.json"
-        index_file.write_text(json.dumps({"old": 3}), encoding="utf-8")
-
         report = trace_core.expire_old_traces(dry_run=True)
 
         assert tf.exists()
         assert report.dry_run is True
         assert report.expired_count == 1
         assert report.bytes_reclaimed == 0
-        # dry-run must not touch the index either
-        assert json.loads(index_file.read_text(encoding="utf-8")) == {"old": 3}
 
     def test_audit_log_untouched_by_sweep(self, oc_dir: Path) -> None:
         audit_log = oc_dir / "audit.log"

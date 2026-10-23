@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
+from pathlib import Path
 
 import pytest
 
@@ -191,23 +193,6 @@ class TestTaskId:
         assert "task_id" not in record
 
 
-class TestIngestNotifiesSubscribers:
-    def test_ingest_notifies_subscribers_before_append(self) -> None:
-        from docket.core import session as _session
-        from docket.core.llm import ToolCall, assistant, tool_result, user
-
-        session_key = "agent:myshop:default"
-        call = ToolCall(id="t1", name="read", arguments="{}")
-        _session.append_messages(
-            session_key, [user("go"), assistant(tool_calls=[call]), tool_result(call, "ok")]
-        )
-        received: list[dict[str, object]] = []
-        with trace.subscribe(received.append):
-            trace.trace_ingest("myshop")
-        tracefile = trace.project_trace_dir("myshop") / f"{session_key}.jsonl"
-        assert received == trace.read_trace(tracefile)
-
-
 def _session(project: str, name: str, status: str, end: str = "10:00:05") -> None:
     import json
 
@@ -252,6 +237,107 @@ class TestTerminalOutcomes:
 
     def test_an_unknown_project_is_all_zero(self) -> None:
         assert trace.terminal_outcomes("nobody", window=50).total == 0
+
+    def test_the_window_is_the_latest_by_end_time_not_by_file_name(self) -> None:
+        # Session ids are random, so the file-name order says nothing about recency.
+        _session("demo", "task-ffff", "failed", end="10:00:05")
+        _session("demo", "task-0000", "done", end="11:00:05")
+        _session("demo", "task-8888", "failed", end="10:30:05")
+
+        out = trace.terminal_outcomes("demo", window=1)
+
+        assert (out.success, out.failure) == (1, 0)
+
+    def test_a_line_that_is_not_an_object_does_not_break_the_count(self) -> None:
+        _session("demo", "a", "done")
+        tf = trace.project_trace_dir("demo") / "a.jsonl"
+        tf.write_text(tf.read_text() + '[1, 2]\n42\n"text"\n')
+
+        assert trace.terminal_outcomes("demo", window=50).success == 1
+
+
+class TestSweepAll:
+    def _stale(self, name: str = "stale") -> Path:
+        import docket.config as _cfg
+
+        d = _cfg.TRACES_DIR / "demo"
+        d.mkdir(parents=True, exist_ok=True)
+        tf = d / f"{name}.jsonl"
+        tf.write_text(json.dumps({"ts": "2000-01-01T00:00:00Z", "event_type": "tool_call"}) + "\n")
+        return tf
+
+    def test_the_synthetic_session_end_reaches_subscribers_before_it_is_appended(self) -> None:
+        tf = self._stale()
+        received: list[dict[str, object]] = []
+
+        with trace.subscribe(received.append):
+            trace.sweep_all()
+
+        assert received == [trace.read_trace(tf)[-1]]
+        assert received[0]["event_type"] == "session_end"
+
+    def test_no_trace_suppresses_the_sweep_write_and_the_notification(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tf = self._stale()
+        before = tf.read_text()
+        received: list[dict[str, object]] = []
+        monkeypatch.setenv("DOCKET_NO_TRACE", "1")
+
+        with trace.subscribe(received.append):
+            trace.sweep_all()
+
+        assert tf.read_text() == before
+        assert received == []
+
+    def test_a_line_that_is_not_an_object_does_not_stop_the_sweep(self) -> None:
+        tf = self._stale("a-stale")
+        tf.write_text("[1]\n" + tf.read_text())
+        other = self._stale("b-stale")
+
+        trace.sweep_all()
+
+        assert trace.read_trace(tf)[-1]["event_type"] == "session_end"
+        assert trace.read_trace(other)[-1]["event_type"] == "session_end"
+
+
+class TestLinesThatAreNotObjects:
+    def _write(self) -> Path:
+        import docket.config as _cfg
+
+        d = _cfg.TRACES_DIR / "demo"
+        d.mkdir(parents=True, exist_ok=True)
+        tf = d / "s.jsonl"
+        tf.write_text(
+            '{"ts": "2026-10-01T10:00:00Z", "event_type": "session_start"}\n'
+            "[1, 2]\n"
+            "42\n"
+            '"text"\n'
+            "null\n"
+            '{"ts": "2026-10-01T10:00:09Z", "event_type": "session_end"}\n'
+        )
+        return tf
+
+    def test_read_trace_returns_only_objects(self) -> None:
+        tf = self._write()
+
+        assert [r["event_type"] for r in trace.read_trace(tf)] == ["session_start", "session_end"]
+
+    def test_export_lines_with_a_since_filter_does_not_raise(self) -> None:
+        self._write()
+
+        lines = trace.export_lines("demo", since="2026-10-01T10:00:05Z")
+
+        assert [ln for ln in lines if ln.startswith("{")] == [
+            '{"ts": "2026-10-01T10:00:09Z", "event_type": "session_end"}'
+        ]
+
+    def test_retention_skips_them(self) -> None:
+        self._write()
+
+        report = trace.expire_old_traces(retention_s=1)
+
+        assert report.expired_count == 1
 
 
 def test_a_new_trace_project_directory_is_created_0700(tmp_path, permissive_umask) -> None:

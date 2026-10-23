@@ -9,11 +9,7 @@ with ``DOCKET_NO_TRACE=1``.
 
 Exempt from the store.py single-writer rule: appends are line-independent,
 not a read-modify-write of a whole document, so this module writes JSONL
-directly rather than through ``edges/store.py``. The ingestion bridge
-(``trace_ingest``) projects turns into this store, but reads them only
-through the RuntimeDriver port (``edges.adapters.docket_runtime.DocketDriver``);
-this module itself has no knowledge of any driver's on-disk session format,
-only of its own.
+directly rather than through ``edges/store.py``.
 """
 
 from __future__ import annotations
@@ -65,7 +61,6 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "cost_charged",
         "budget_warning",
         "budget_exceeded",
-        "drift_alert",
         "verification_failed",
         "tester_verdict_failed",
         "reviewer_verdict_unparseable",
@@ -209,6 +204,18 @@ def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
         os.chmod(tracefile, 0o600)
 
 
+def _parse_record(line: str) -> dict[str, Any] | None:
+    """The JSON object on *line*, or None when it is blank, malformed or not an object."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        parsed = json.loads(line)
+    except (json.JSONDecodeError, RecursionError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 # Same list, same lock, same semantics as subscribe() below (now expressed over this, byte for
 # byte the same behaviour): a raising sink is suppressed (mirrors _emit_trace's best-effort rule
 # in core/approval.py) and never changes trace_event's return value; the returned callable
@@ -298,123 +305,6 @@ def trace_event(
     return "written"
 
 
-def trace_ingest(project: str) -> None:
-    """Idempotently project the active driver's session logs into the trace
-    store: tool_call/tool_result events, offset-tracked
-    (.ingest-index.json) to avoid double-emit; synthesises a session_end for
-    timed-out open sessions. No-ops under DOCKET_NO_TRACE=1 or no sessions.
-
-    All knowledge of the on-disk session-log format lives behind the
-    RuntimeDriver port, not here (see core/runtime_driver.py). Resolves
-    the same driver ``core/dispatch.py``'s hop execution writes turns
-    through, so ingestion and hop execution always agree on where a
-    session's turns live.
-    """
-    if _cfg.no_trace():
-        return
-
-    from docket.edges.adapters import docket_runtime as _dr
-
-    driver = _dr.default_driver()
-    sessions = driver.list_sessions(project)
-    if not sessions:
-        return
-
-    project_dir = _cfg.TRACES_DIR / project
-    try:
-        _cfg.mkdir_private(project_dir)
-        os.chmod(project_dir, 0o700)
-    except OSError:
-        return
-    index_file = project_dir / ".ingest-index.json"
-    timeout_s = _cfg.SESSION_TIMEOUT
-
-    try:
-        index: dict[str, int] = json.loads(index_file.read_text(encoding="utf-8"))
-    except Exception:
-        index = {}
-
-    now = _clock.epoch()
-    changed = False
-
-    for summary in sessions:
-        session_id = summary.session_id
-        offset = int(index.get(session_id, 0))
-        tracefile = project_dir / f"{session_id}.jsonl"
-
-        sl = driver.read_new_turns(project, session_id, offset)
-        if not sl.had_new_content:
-            continue
-
-        records: list[dict[str, Any]] = []
-        if offset == 0:
-            records.append(
-                {
-                    "ts": sl.session_start_ts or _clock.stamp(),
-                    "project": project,
-                    "session_id": session_id,
-                    "agent_role": "unknown",
-                    "event_type": "session_start",
-                    "payload": {"source": "ingested"},
-                }
-            )
-
-        for turn in sl.turns:
-            if turn.kind not in ("tool_call", "tool_result"):
-                continue
-            records.append(
-                {
-                    "ts": turn.ts,
-                    "project": project,
-                    "session_id": session_id,
-                    "agent_role": "unknown",
-                    "event_type": turn.kind,
-                    "payload": {
-                        "source": "ingested",
-                        "daemon_type": turn.daemon_type,
-                        "id": turn.record_id,
-                    },
-                }
-            )
-
-        for r in records:
-            _notify_subscribers(r)
-        _append(tracefile, records)
-
-        index[session_id] = sl.next_offset
-        changed = True
-
-        # Synthetic session_end for timed-out open traces.
-        if sl.last_ts:
-            last_epoch = _epoch_from_iso(sl.last_ts)
-            if (
-                last_epoch is not None
-                and (now - last_epoch) > timeout_s
-                and not _has_session_end(tracefile)
-            ):
-                end_record = _end_record(project, session_id)
-                _notify_subscribers(end_record)
-                _append(tracefile, [end_record])
-
-    if changed:
-        _write_index(index_file, index)
-
-
-def _has_session_end(tracefile: Path) -> bool:
-    if not tracefile.exists():
-        return False
-    try:
-        for line in tracefile.read_text(encoding="utf-8").splitlines():
-            try:
-                if json.loads(line).get("event_type") == "session_end":
-                    return True
-            except json.JSONDecodeError:
-                continue
-    except OSError:
-        return False
-    return False
-
-
 def _end_record(project: str, session_id: str) -> dict[str, Any]:
     return {
         "ts": _clock.stamp(),
@@ -426,17 +316,12 @@ def _end_record(project: str, session_id: str) -> dict[str, Any]:
     }
 
 
-def _write_index(index_file: Path, index: dict[str, int]) -> None:
-    tmp = index_file.with_suffix(index_file.suffix + ".tmp")
-    tmp.write_text(json.dumps(index, indent=2), encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, index_file)
-
-
 def sweep_all() -> None:
-    """Coerce stale open traces to 'aborted' (called by docket start).
-    Appends a synthetic session_end to any trace whose last event is older
-    than SESSION_TIMEOUT and has no session_end yet."""
+    """Append a synthetic 'aborted' session_end, after notifying subscribers, to every trace
+    older than SESSION_TIMEOUT that has none (called by docket start).
+    No-ops under DOCKET_NO_TRACE=1."""
+    if _cfg.no_trace():
+        return
     traces_root = _cfg.TRACES_DIR
     if not traces_root.is_dir():
         return
@@ -447,12 +332,8 @@ def sweep_all() -> None:
         last_ts_str: str | None = None
         try:
             for line in tf.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    r: dict[str, Any] = json.loads(line)
-                except json.JSONDecodeError:
+                r = _parse_record(line)
+                if r is None:
                     continue
                 if r.get("event_type") == "session_end":
                     has_end = True
@@ -471,7 +352,10 @@ def sweep_all() -> None:
         except ValueError:
             project = "unknown"
         session_id = tf.name[: -len(".jsonl")]
-        _append(tf, [_end_record(project, session_id)])
+        end_record = _end_record(project, session_id)
+        _notify_subscribers(end_record)
+        with _TRACE_APPEND_LOCK:
+            _append(tf, [end_record])
 
 
 @dataclass
@@ -504,25 +388,6 @@ class TraceExpiryReport:
         return len(self.expired)
 
 
-def _prune_index(project_dir: Path, removed_session_ids: set[str]) -> None:
-    """Drop *removed_session_ids* from a project's ``.ingest-index.json``. A
-    stale entry is a bug, not a no-op -- session_ids are never reused, so a
-    future ``trace_ingest`` would read a wrong offset for one that can't recur."""
-    index_file = project_dir / ".ingest-index.json"
-    if not index_file.is_file():
-        return
-    try:
-        index: dict[str, int] = json.loads(index_file.read_text(encoding="utf-8"))
-    except Exception:
-        return
-    changed = False
-    for sid in removed_session_ids:
-        if index.pop(sid, None) is not None:
-            changed = True
-    if changed:
-        _write_index(index_file, index)
-
-
 def expire_old_traces(
     retention_s: int | None = None,
     dry_run: bool = False,
@@ -550,7 +415,6 @@ def expire_old_traces(
 
     now = _clock.epoch()
     pattern = f"{project}/*.jsonl" if project else "*/*.jsonl"
-    removed_by_dir: dict[Path, set[str]] = {}
 
     for tf in sorted(traces_root.glob(pattern)):
         report.scanned += 1
@@ -558,12 +422,8 @@ def expire_old_traces(
         last_ts_str: str | None = None
         try:
             for line in tf.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    r: dict[str, Any] = json.loads(line)
-                except json.JSONDecodeError:
+                r = _parse_record(line)
+                if r is None:
                     continue
                 if r.get("event_type") == "session_end":
                     has_end = True
@@ -603,7 +463,6 @@ def expire_old_traces(
                 tf.unlink()
             except OSError:
                 continue
-            removed_by_dir.setdefault(tf.parent, set()).add(session_id)
             report.bytes_reclaimed += size
 
         report.expired.append(
@@ -617,9 +476,6 @@ def expire_old_traces(
             )
         )
 
-    for pdir, sids in removed_by_dir.items():
-        _prune_index(pdir, sids)
-
     return report
 
 
@@ -632,20 +488,17 @@ def find_trace(session_id: str) -> Path | None:
 
 
 def read_trace(tracefile: Path) -> list[dict[str, Any]]:
-    """Parse every JSON line of *tracefile* in file order; skip malformed lines."""
+    """Parse every JSON object line of *tracefile* in file order; skip blank, malformed and
+    non-object lines."""
     out: list[dict[str, Any]] = []
     try:
         text = tracefile.read_text(encoding="utf-8")
     except OSError:
         return out
     for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+        record = _parse_record(line)
+        if record is not None:
+            out.append(record)
     return out
 
 
@@ -662,9 +515,8 @@ def latest_trace_file(project: str) -> Path | None:
 
 
 def export_lines(project: str, since: str = "") -> list[str]:
-    """Return raw JSONL lines for *project*, optionally filtered to ts >=
-    *since*. Lines are concatenated across session files in sorted filename
-    order; a line with an unparseable ts is kept when a since filter is set."""
+    """Raw JSONL lines of *project* in sorted filename order, filtered to ts >= *since* when
+    given; a line with no parseable ts, or that is not a JSON object, is kept."""
     pdir = _cfg.TRACES_DIR / project
     out: list[str] = []
     for tf in sorted(pdir.glob("*.jsonl")):
@@ -677,12 +529,9 @@ def export_lines(project: str, since: str = "") -> list[str]:
             if not line:
                 continue
             if since:
-                try:
-                    ts = str(json.loads(line).get("ts", ""))
-                    if ts < since:
-                        continue
-                except json.JSONDecodeError:
-                    pass
+                record = _parse_record(line)
+                if record is not None and str(record.get("ts", "")) < since:
+                    continue
             out.append(line)
     return out
 
@@ -724,10 +573,10 @@ class TerminalOutcomes:
 
 
 def terminal_outcomes(project: str, *, window: int) -> TerminalOutcomes:
-    """Count the last *window* finished sessions of *project* from its trace files.
+    """Count the *window* sessions of *project* whose ``session_end`` ts is latest.
 
     Open sessions and parked tasks (``waiting_*``) are not terminal and are skipped."""
-    sessions: list[tuple[str, int | None]] = []
+    sessions: list[tuple[str, str, int | None]] = []
     for tf in sorted(project_trace_dir(project).glob("*.jsonl")):
         start_ts = end_ts = outcome = None
         for rec in read_trace(tf):
@@ -751,11 +600,12 @@ def terminal_outcomes(project: str, *, window: int) -> TerminalOutcomes:
                 duration = int(delta.total_seconds() * 1000)
             except ValueError:
                 duration = None
-        sessions.append((outcome, duration))
+        sessions.append((end_ts or "", outcome, duration))
+    sessions.sort(key=lambda s: s[0])
     recent = sessions[-window:] if window > 0 else sessions
     return TerminalOutcomes(
-        success=sum(1 for o, _ in recent if o == "success"),
-        failure=sum(1 for o, _ in recent if o == "failure"),
-        aborted=sum(1 for o, _ in recent if o == "aborted"),
-        durations_ms=tuple(d for _, d in recent if d is not None),
+        success=sum(1 for _, o, _ in recent if o == "success"),
+        failure=sum(1 for _, o, _ in recent if o == "failure"),
+        aborted=sum(1 for _, o, _ in recent if o == "aborted"),
+        durations_ms=tuple(d for _, _, d in recent if d is not None),
     )
