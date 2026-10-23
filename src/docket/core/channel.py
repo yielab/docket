@@ -5,7 +5,7 @@ with the model/price/preset fields dropped and destination-shaped ones added: `c
 (how much a delivery carries -- `minimal < actions < conversation`, never the export-only
 `full`), `actors` (who may converse or decide through it), and `secret` (a credential name,
 never a value). Two scopes, nearest-wins by name: built-in and global
-(`config.CHANNELS_FILE`).
+(`Home.channels_file`).
 
 This module owns the document, the catalog, and validation; actual delivery lives elsewhere --
 a channel document only declares what it is allowed to send and to whom.
@@ -29,7 +29,7 @@ from pydantic import (
     model_validator,
 )
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core.operator_contract import EVENT_KINDS
 from docket.edges import store as _store
 from docket.kernel.errors import DocumentError, InvalidInput
@@ -263,7 +263,7 @@ class Catalog:
 
 
 def _load_builtin_channels() -> dict[str, ChannelSpec]:
-    directory = _cfg.CHANNEL_TEMPLATES_DIR
+    directory = _templates.CHANNEL_TEMPLATES_DIR
     entries: dict[str, ChannelSpec] = {}
     if not directory.is_dir():
         return entries
@@ -320,8 +320,8 @@ def _load_global_channels() -> dict[str, ChannelSpec]:
 
 
 def load_catalog() -> Catalog:
-    """The merged channel catalog: every built-in under ``config.CHANNEL_TEMPLATES_DIR``,
-    overridden by the operator's own global entries in ``config.CHANNELS_FILE``, nearest-wins
+    """The merged channel catalog: every built-in under ``kernel.templates.CHANNEL_TEMPLATES_DIR``,
+    overridden by the operator's own global entries in ``Home.channels_file``, nearest-wins
     by name."""
     entries: dict[str, ChannelSpec] = {}
     scopes: dict[str, str] = {}
@@ -335,7 +335,7 @@ def load_catalog() -> Catalog:
 
 
 def save_channel(spec: ChannelSpec) -> None:
-    """Write *spec* into the global catalog (``config.CHANNELS_FILE``), through
+    """Write *spec* into the global catalog (``Home.channels_file``), through
     ``edges/store.py`` -- the sole writer of docket-owned JSON."""
     spec = _with_inherited_identity(spec)
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import models_policy as _mp
 from docket.kernel.home import Home, current_home, use_home
 
@@ -127,7 +127,7 @@ class TestResolveRoleModelInPodScope:
 
         with _point_at(tmp_path) as home:
             self._registry_on_local(home)
-            role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
+            role_file = _templates.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
             _arch.add_user_archetype(_config_docs.load_document(role_file).doc, "p")
 
             assert _mp.resolve_role_model("security-vetter", project="p") == "local/x"

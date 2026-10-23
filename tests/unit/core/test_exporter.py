@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import audit as _audit
 from docket.core import exporter as _exporter
 from docket.core import secrets as _secrets
@@ -28,7 +28,7 @@ SUBJECT = "docket.core.exporter"
 
 class TestBuiltinCatalog:
     def test_every_built_in_document_loads(self) -> None:
-        directory = _cfg.EXPORTER_TEMPLATES_DIR
+        directory = _templates.EXPORTER_TEMPLATES_DIR
         files = sorted(directory.glob("*.yaml"))
         assert len(files) == 5, f"expected 5 built-in exporter documents, found {len(files)}"
         for path in files:
@@ -251,7 +251,9 @@ class TestGlobalOverrideInheritance:
         assert spec.endpoint == "https://lf.internal/api/public/otel/v1/traces"
         assert spec.auth.type == "basic"
         assert spec.auth.credentials == ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
-        builtin = _exporter.load_exporter_document(_cfg.EXPORTER_TEMPLATES_DIR / "03-langfuse.yaml")
+        builtin = _exporter.load_exporter_document(
+            _templates.EXPORTER_TEMPLATES_DIR / "03-langfuse.yaml"
+        )
         assert spec.aliases == builtin.aliases
         assert spec.resource == {"service.name": "docket"}
 

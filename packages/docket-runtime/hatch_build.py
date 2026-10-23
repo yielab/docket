@@ -18,7 +18,6 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 _RUNTIME_FILES = (
     "__init__.py",
-    "config.py",
     "plugins.py",
     "core/__init__.py",
     "core/agent_loop.py",
@@ -61,6 +60,7 @@ _RUNTIME_FILES = (
     "kernel/errors.py",
     "kernel/home.py",
     "kernel/ids.py",
+    "kernel/templates.py",
     "kernel/text.py",
     "kernel/threads.py",
 )

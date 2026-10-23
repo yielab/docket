@@ -379,5 +379,5 @@ result = sess.compact_session(
 - `src/docket/core/agent_loop.py`: the live caller (`run_compaction`, `summarize_without_reentry`,
   the request builder that applies `condense_history`)
 - `src/docket/core/llm.py`: `ChatMessage`, `ToolCall`, `TokenUsage` (the Examples import `docket.core.session` and `docket.core.llm`)
-- `src/docket/config.py`: `SESSIONS_DIR`, `DISTILL_TIMEOUT_S`
+- `src/docket/kernel/home.py`: the `Home` members `sessions_dir`, `distill_timeout_s`
 - `src/docket/edges/store.py`: the locked atomic read-modify-write underneath

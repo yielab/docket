@@ -2,7 +2,7 @@
 
 Each recipe is data only: role YAML(s), a pipeline YAML, a small `pod.yaml`, and an optional
 policy pack, applied in one command (`docket pod update`, `core.pod_apply`). The tests below
-read exactly what the wheel ships (`docket.config.recipes_dir()`), so a recipe that fails to
+read exactly what the wheel ships (`kernel.templates.recipes_dir()`), so a recipe that fails to
 validate, resolve against a real roster, or actually dispatch fails here first, never only in an
 operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
 pod-blueprints.spec.md ("Pod manifests: apply").
@@ -22,7 +22,7 @@ import typer
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.cli import _pod
 from docket.core import archetypes as _arch
 from docket.core import audit as _audit
@@ -37,9 +37,9 @@ from docket.core import tools as _tools
 from docket.core import trace as _trace
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.config"
+SUBJECT = "docket.core.pod_apply"
 
-RECIPES_DIR = _cfg.recipes_dir()
+RECIPES_DIR = _templates.recipes_dir()
 
 
 def _pod_cli(*args: str) -> Any:
@@ -75,16 +75,6 @@ def _pod_manifest_members(recipe_dir: Path) -> list[str]:
     doc = _yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
     members = doc.get("members") or []
     return [str(m) for m in members] if isinstance(members, list) else []
-
-
-def _pipeline_roles(spec: _pipeline.PipelineSpec) -> list[str]:
-    """Every ``role`` a step (or parallel child) targets, in first-seen order."""
-    roles: list[str] = []
-    for step in spec.steps:
-        for unit in step.parallel or [step]:
-            if unit.role and unit.role not in roles:
-                roles.append(unit.role)
-    return roles
 
 
 def test_at_least_three_recipes_are_shipped() -> None:
@@ -722,7 +712,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
             encoding="utf-8",
         )
 
-        _pod_apply.apply(_pod_apply.plan_apply(project, _cfg.recipes_dir() / "secure-build"))
+        _pod_apply.apply(_pod_apply.plan_apply(project, _templates.recipes_dir() / "secure-build"))
 
         from docket.core import fleet as _fleet
 

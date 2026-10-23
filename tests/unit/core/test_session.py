@@ -66,7 +66,7 @@ def _empty_reply_driver(
 
 
 @pytest.fixture(autouse=True)
-def _isolate_sessions_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolate_sessions_dir(tmp_path: Path) -> Iterator[None]:
     with use_home(dataclasses.replace(current_home(), sessions_dir_override=tmp_path / "sessions")):
         yield
 

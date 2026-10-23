@@ -12,7 +12,7 @@ import pytest
 import yaml
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import archetypes as _archetypes
 from docket.core import config_docs
 
@@ -137,7 +137,7 @@ def _load_gen_config_schemas_script() -> types.ModuleType:
 
 def _recipe_files(pattern_dir: str, glob: str) -> list[Path]:
     files: list[Path] = []
-    for recipe_dir in sorted(p for p in _cfg.recipes_dir().iterdir() if p.is_dir()):
+    for recipe_dir in sorted(p for p in _templates.recipes_dir().iterdir() if p.is_dir()):
         sub = recipe_dir / pattern_dir
         if sub.is_dir():
             files.extend(sorted(sub.glob(glob)))

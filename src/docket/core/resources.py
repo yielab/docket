@@ -5,7 +5,7 @@ writes the allocation table via edges/store.py.
 
 Each pod gets a reserved, non-overlapping **port range** (100 ports by default)
 and an isolated **scratch data directory**. Ranges are tracked in a flat JSON
-table at PORT_ALLOC_FILE (see config.py). The lowest available gap is assigned
+table at `Home.port_alloc_file`. The lowest available gap is assigned
 on each allocation, so freed ranges are reused before expanding the ceiling.
 """
 

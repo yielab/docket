@@ -100,14 +100,14 @@ class McpServerConfig(BaseModel):
         """The actual per-call bound this server's calls will honor.
 
         Never trusts a configured ``timeout`` outright: it is clamped to
-        :data:`docket.config.MCP_CLIENT_MAX_TIMEOUT_S` so one server's config (careless or
+        :data:`Home.mcp_client_max_timeout_s` so one server's config (careless or
         hostile) cannot buy itself an effectively unbounded wait."""
         requested = self.timeout if self.timeout > 0 else current_home().mcp_client_timeout_s
         return min(requested, current_home().mcp_client_max_timeout_s)
 
 
 class McpServerRegistry(BaseModel):
-    """The on-disk shape of :data:`docket.config.MCP_SERVERS_FILE`."""
+    """The on-disk shape of :data:`Home.mcp_servers_file`."""
 
     model_config = ConfigDict(populate_by_name=True)
 

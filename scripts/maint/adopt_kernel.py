@@ -13,17 +13,14 @@ from __future__ import annotations
 import argparse
 import ast
 import bisect
-import dataclasses
 import difflib
 import functools
 import importlib.util
-import io
 import itertools
 import json
 import re
 import subprocess
 import sys
-import tokenize
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,7 +28,6 @@ from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "docket"
-TESTS_ROOT = REPO_ROOT / "tests"
 KERNEL_ROOT = SRC_ROOT / "kernel"
 
 
@@ -620,576 +616,6 @@ def errors(tree: ast.Module, source: str, rel: str) -> Outcome:
     return out
 
 
-# config-reads ----------------------------------------------------------------------------------
-
-CONFIG_MODULE = "docket.config"
-CURRENT_HOME_IMPORT = "from docket.kernel.home import current_home"
-HOME_MODULE_PATH = KERNEL_ROOT / "home.py"
-
-
-@functools.cache
-def _home_class() -> type:
-    spec = importlib.util.spec_from_file_location("_adopt_kernel_home", HOME_MODULE_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module.Home  # type: ignore[no-any-return]
-
-
-@functools.cache
-def _home_members() -> tuple[frozenset[str], frozenset[str]]:
-    """Every public name ``Home`` offers, and the subset that are properties."""
-    home = _home_class()
-    names = {f.name for f in dataclasses.fields(home)}
-    names |= {n for n in dir(home) if not n.startswith("_") and n != "from_environ"}
-    props = {n for n in names if isinstance(getattr(home, n, None), property)}
-    return frozenset(names), frozenset(props)
-
-
-def _home_member(name: str) -> str | None:
-    """The ``Home`` member that answers ``config.<name>``, else ``None``."""
-    attr = "root" if name == "DOCKET_HOME" else name.lower()
-    return attr if attr in _home_members()[0] else None
-
-
-def _import_time(tree: ast.Module) -> dict[int, str]:
-    """Each node evaluated when the module is imported, mapped to the context that does it."""
-    found: dict[int, str] = {}
-
-    def visit(node: ast.AST, why: str | None) -> None:
-        if why is not None:
-            found[id(node)] = why
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            args = node.args
-            outer = [(d, "default argument value") for d in args.defaults]
-            outer += [(d, "default argument value") for d in args.kw_defaults if d is not None]
-            if not isinstance(node, ast.Lambda):
-                outer += [(d, "decorator argument") for d in node.decorator_list]
-                outer += [(a.annotation, "annotation") for a in ast.walk(args) if _annotated(a)]
-                outer += [(node.returns, "annotation")] if node.returns is not None else []
-            for part, label in outer:
-                visit(part, label if why is not None else None)
-            for child in [node.body] if isinstance(node, ast.Lambda) else node.body:
-                visit(child, None)
-        elif isinstance(node, ast.ClassDef) and why is not None:
-            for child in ast.iter_child_nodes(node):
-                visit(child, "class body" if why == "module level" else why)
-        else:
-            for child in ast.iter_child_nodes(node):
-                visit(child, why)
-
-    visit(tree, "module level")
-    return found
-
-
-def _annotated(node: ast.AST) -> bool:
-    return isinstance(node, ast.arg) and node.annotation is not None
-
-
-def _config_names(tree: ast.Module, aliases: dict[str, str]) -> set[str]:
-    """Local names the module binds to ``docket.config``."""
-    return {local for local, target in aliases.items() if target == CONFIG_MODULE}
-
-
-def _rebound(tree: ast.Module, names: set[str]) -> set[str]:
-    """Which of *names* the module also assigns, declares as a parameter or defines."""
-    taken: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-            taken.add(node.id)
-        elif isinstance(node, ast.arg):
-            taken.add(node.arg)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            taken.add(node.name)
-    return names & taken
-
-
-def _handed_on(call: ast.AST | None, module: ast.Name) -> str:
-    """Why the config module passed as a value is left alone; a patch of one constant says which."""
-    if isinstance(call, ast.Call) and len(call.args) >= 2 and call.args[0] is module:
-        key = call.args[1]
-        if isinstance(key, ast.Constant) and isinstance(key.value, str):
-            member = _home_member(key.value)
-            if member is None:
-                return f"patches config.{key.value}, which has no Home field"
-            return f"patches config.{key.value}; set Home.{member} on the test's home"
-    return "the config module handed on as a value"
-
-
-def config_reads(tree: ast.Module, source: str, rel: str) -> Outcome:
-    """``config.NAME`` reads become ``current_home().<field>``; everything else is listed."""
-    aliases = _aliases(tree, rel)
-    names = _config_names(tree, aliases)
-    out = Outcome()
-    inside = _inside_fstring(tree) if sys.version_info < (3, 12) else set()
-    at_import = _import_time(tree)
-    shadowed = _rebound(tree, names)
-    parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
-    as_base = {
-        id(n.value)
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
-    }
-    properties = _home_members()[1]
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if node.value.id not in names:
-                continue
-            what = f"config.{node.attr}"
-            member = _home_member(node.attr)
-            call = parents.get(id(node))
-            as_call = isinstance(call, ast.Call) and call.func is node
-            as_call = as_call and not call.args and not call.keywords
-            if node.value.id in shadowed:
-                why = f"{node.value.id} is also a variable, parameter or definition here"
-            elif not isinstance(node.ctx, ast.Load):
-                why = "a write to the module's constant belongs to the repointers rule"
-            elif member is None:
-                why = "no Home field"
-            elif id(node) in at_import:
-                why = f"read at import time ({at_import[id(node)]}); it would freeze the home"
-            elif id(node) in inside:
-                why = "inside an f-string"
-            elif member in properties and node.attr.islower() and not as_call:
-                why = f"{member} is a Home property; the function is not called here"
-            else:
-                why = ""
-            if why:
-                out.unmappable.append((node.lineno, f"{what}: {why}"))
-            elif member in properties and node.attr.islower():
-                assert isinstance(call, ast.Call)
-                out.edits.append(Edit(*span(call, source), f"current_home().{member}"))
-            else:
-                out.edits.append(Edit(*span(node, source), f"current_home().{member}"))
-        elif isinstance(node, ast.Name) and node.id in names and node.id not in shadowed:
-            if isinstance(node.ctx, ast.Load) and id(node) not in as_base:
-                out.unmappable.append((node.lineno, _handed_on(parents.get(id(node)), node)))
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if aliases.get(alias.asname or alias.name, "").startswith(f"{CONFIG_MODULE}."):
-                    out.unmappable.append(
-                        (node.lineno, f"imported by name: {alias.name}; rewrite its uses by hand")
-                    )
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if node.value.startswith(f"{CONFIG_MODULE}."):
-                out.unmappable.append((node.lineno, f"named by a string: {node.value}"))
-    if out.edits:
-        out.imports.append(CURRENT_HOME_IMPORT)
-    return out
-
-
-# repointers ------------------------------------------------------------------------------------
-
-HOME_IMPORTS = ["from docket.kernel.home import Home", "from docket.kernel.home import use_home"]
-ITERATOR_IMPORT = "from collections.abc import Iterator"
-THREADS = re.compile(r"\b(Thread|threading|ThreadPoolExecutor|Executor|Timer|serve_forever)\b")
-MONKEYPATCH_CONTEXT = frozenset({"pytest.MonkeyPatch.context", "MonkeyPatch.context"})
-BODY_FIELDS = ("body", "orelse", "finalbody")
-
-
-def _repoint_stmt(stmt: ast.stmt) -> ast.Call | None:
-    """The call of a statement that is exactly ``repoint_docket_home(<name>, <path>)``."""
-    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
-        return None
-    call = stmt.value
-    func = call.func
-    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-    return call if name == "repoint_docket_home" else None
-
-
-def _own_nodes(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
-    """Every node of *fn*'s body that runs in *fn* itself, not in a nested scope."""
-    found: list[ast.AST] = []
-    stack: list[ast.AST] = list(fn.body)
-    while stack:
-        node = stack.pop()
-        found.append(node)
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
-            stack.extend(ast.iter_child_nodes(node))
-    return found
-
-
-def _multiline_strings(source: str) -> list[tuple[int, int]]:
-    """Line ranges of string literals that span lines; re-indenting them changes their value."""
-    ranges: list[tuple[int, int]] = []
-    fstring_start = getattr(tokenize, "FSTRING_START", None)
-    fstring_end = getattr(tokenize, "FSTRING_END", None)
-    opened: list[int] = []
-    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-        if tok.type == tokenize.STRING and tok.start[0] != tok.end[0]:
-            ranges.append((tok.start[0], tok.end[0]))
-        elif fstring_start is not None and tok.type == fstring_start:
-            opened.append(tok.start[0])
-        elif fstring_end is not None and tok.type == fstring_end:
-            first = opened.pop()
-            if first != tok.end[0]:
-                ranges.append((first, tok.end[0]))
-    return ranges
-
-
-def _is_fixture(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return any("fixture" in ast.unparse(d) for d in fn.decorator_list)
-
-
-class _Scope(NamedTuple):
-    stmts: list[ast.stmt]  # the body the repointing statement sits in
-    owner: ast.AST  # the function or the MonkeyPatch.context() block that owns it
-    kind: str  # "test", "fixture" or "block"
-
-
-def _scope_of(stmt: ast.stmt, parents: dict[int, ast.AST], what: str = "repoint") -> _Scope | str:
-    """Where a *what* statement's effect ends, or why it cannot be reproduced."""
-    holder = parents[id(stmt)]
-    if isinstance(holder, ast.AsyncFunctionDef):
-        return "an async function"
-    if isinstance(holder, ast.FunctionDef):
-        if stmt not in holder.body:
-            return "not directly in the function body"
-        if _is_fixture(holder):
-            return _Scope(holder.body, holder, "fixture")
-        if holder.name.startswith("test"):
-            return _Scope(holder.body, holder, "test")
-        return (
-            f"in helper {holder.name}(): the {what} outlives the function that makes it; "
-            "turn the helper into a context manager or a fixture by hand"
-        )
-    if isinstance(holder, ast.With) and stmt in holder.body:
-        context = holder.items[0].context_expr if len(holder.items) == 1 else None
-        if isinstance(context, ast.Call) and ast.unparse(context.func) in MONKEYPATCH_CONTEXT:
-            return _Scope(holder.body, holder, "block")
-    return f"inside a {type(holder).__name__}, where the {what}'s end is not the block's end"
-
-
-def _monkeypatch_refusal(receiver: ast.expr, scope: _Scope) -> str | None:
-    """Why *receiver* is not the monkeypatch of the scope that owns the statement, else ``None``."""
-    name = receiver.id if isinstance(receiver, ast.Name) else ast.unparse(receiver)
-    owner = scope.owner
-    if isinstance(owner, ast.With):
-        target = owner.items[0].optional_vars
-        mine = isinstance(receiver, ast.Name) and isinstance(target, ast.Name)
-        mine = mine and target.id == name
-    else:
-        assert isinstance(owner, ast.FunctionDef)
-        params = [
-            a.arg for a in (*owner.args.posonlyargs, *owner.args.args, *owner.args.kwonlyargs)
-        ]
-        mine = isinstance(receiver, ast.Name) and name == "monkeypatch" and name in params
-    return None if mine else f"{name} is not the monkeypatch of its own scope"
-
-
-def _arg_refusal(call: ast.Call, scope: _Scope) -> str | None:
-    """Why the call's arguments are not ``(<the monkeypatch>, <path>)``, else ``None``."""
-    ok = len(call.args) == 2 and not call.keywords
-    ok = ok and not any(isinstance(a, ast.Starred) for a in call.args)
-    first = call.args[0] if call.args else None
-    if not (ok and isinstance(first, ast.Name)):
-        return "arguments other than (monkeypatch, path)"
-    return _monkeypatch_refusal(first, scope)
-
-
-def _indent(text: str, by: str) -> str:
-    return "".join(f"{by}{line}" if line.strip() else line for line in text.splitlines(True))
-
-
-# what opens a block at the first of these statements: (statements it covers, its ``with`` line)
-Opener = Callable[[list[ast.stmt]], tuple[int, str] | None]
-
-
-def _render(lines: list[str], stmts: list[ast.stmt], lo: int, hi: int, opener: Opener) -> str:
-    """Lines ``lo:hi`` with each statement *opener* recognises wrapping everything after it."""
-    for first in range(len(stmts)):
-        if (group := opener(stmts[first:])) is not None:
-            break
-    else:
-        return "".join(lines[lo:hi])
-    taken, header = group
-    stmt = stmts[first]
-    covered = stmts[first : first + taken]
-    assert stmt.end_lineno is not None and covered[-1].end_lineno is not None
-    pad = " " * stmt.col_offset
-    before = "".join(lines[lo : stmt.lineno - 1])
-    # comments between the statements of one group stay above the block they now share
-    between = "".join(
-        line
-        for a, b in itertools.pairwise(covered)
-        for line in lines[(a.end_lineno or a.lineno) : b.lineno - 1]
-        if line.strip()
-    )
-    inner = _render(lines, stmts[first + taken :], covered[-1].end_lineno, hi, opener)
-    return f"{before}{between}{pad}{header}\n{_indent(inner, '    ')}"
-
-
-def _wrap_scope(
-    scope: _Scope,
-    direct: list[ast.stmt],
-    refusals: list[str],
-    opener: Opener,
-    what: str,
-    source: str,
-    strings: list[tuple[int, int]],
-) -> tuple[list[Edit], str]:
-    """The edits that put everything from ``direct[0]`` to the scope's end under the blocks
-    *opener* opens, or the reasons it cannot be reproduced."""
-    lines = source.splitlines(True)
-    starts = line_starts(source)
-    stmts = scope.stmts[scope.stmts.index(direct[0]) :]
-    lo, hi = stmts[0].lineno - 1, stmts[-1].end_lineno or stmts[-1].lineno
-    for c in direct:
-        end = c.end_lineno or c.lineno
-        if "#" in "".join(lines[c.lineno - 1 : end]):
-            refusals.append(f"a comment inside the {what} statement")
-        elif "\t" in lines[c.lineno - 1][: c.col_offset]:
-            refusals.append("tab indentation")
-    if any(a <= hi and lo + 1 <= b for a, b in strings):
-        refusals.append("a multi-line string literal that re-indenting would change")
-    owner = scope.owner
-    fixture_edits: list[Edit] = []
-    extra_yield = False
-    if THREADS.search("".join(lines[owner.lineno - 1 : owner.end_lineno])):
-        refusals.append("the function starts threads, which a ContextVar does not reach")
-    if scope.kind == "fixture":
-        assert isinstance(owner, ast.FunctionDef)
-        plan = _fixture_plan(owner, source)
-        if isinstance(plan, str):
-            refusals.append(plan)
-        else:
-            fixture_edits, extra_yield = plan
-    elif direct[-1] is scope.stmts[-1]:
-        refusals.append(f"nothing follows the {what} in the {scope.kind}")
-    if refusals:
-        return [], "; ".join(dict.fromkeys(refusals))
-    work = list(lines)
-    if scope.kind == "fixture":
-        _fixture_returns(owner, work)  # type: ignore[arg-type]
-    if extra_yield:
-        work.insert(hi, f"{' ' * direct[0].col_offset}yield\n")
-    text = _render(work, stmts, lo, hi + (1 if extra_yield else 0), opener)
-    end = starts[hi] if hi < len(starts) else len(source.encode("utf-8"))
-    return [Edit(starts[lo], end, text, f"use_home x{len(direct)}"), *fixture_edits], ""
-
-
-def _scope_imports(out: Outcome) -> None:
-    """The imports a rewrite that wraps a scope in ``use_home`` and may yield depends on."""
-    if any(e.text.startswith("Iterator[") for e in out.edits):
-        out.imports.append(ITERATOR_IMPORT)
-
-
-def repointers(tree: ast.Module, source: str, rel: str) -> Outcome:
-    """A repointed home becomes ``use_home(Home(path))`` around the rest of its scope."""
-    out = Outcome()
-    parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
-    strings = _multiline_strings(source)
-    data = source.encode("utf-8")
-    sites = {line for line, _ in MEASURE.repointers(tree, rel)}  # type: ignore[attr-defined]
-    done: set[int] = set()  # statements a wrapping already covers
-
-    def opener(stmts: list[ast.stmt]) -> tuple[int, str] | None:
-        call = _repoint_stmt(stmts[0])
-        if call is None:
-            return None
-        s, e = span(call.args[1], source)
-        return 1, f"with use_home(Home({data[s:e].decode('utf-8')})):"
-
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and n.lineno in sites]
-    for call in sorted(calls, key=lambda n: n.lineno):
-        stmt = parents[id(call)]
-        if not isinstance(stmt, ast.stmt) or _repoint_stmt(stmt) is not call:
-            out.unmappable.append((call.lineno, "repoint_docket_home() used as a value"))
-            continue
-        if id(stmt) in done:
-            continue
-        scope = _scope_of(stmt, parents)
-        if isinstance(scope, str):
-            out.unmappable.append((call.lineno, scope))
-            continue
-        direct = [s for s in scope.stmts if _repoint_stmt(s) is not None]
-        refusals = [r for c in direct if (r := _arg_refusal(_repoint_stmt(c), scope))]  # type: ignore[arg-type]
-        edits, why = _wrap_scope(scope, direct, refusals, opener, "repoint", source, strings)
-        if why:
-            out.unmappable += [(c.lineno, why) for c in direct]
-        out.edits += edits
-        done.update(id(c) for c in direct)
-    if out.edits:
-        out.imports += HOME_IMPORTS
-        _scope_imports(out)
-    return out
-
-
-def _fixture_plan(fn: ast.FunctionDef, source: str) -> tuple[list[Edit], bool] | str:
-    """A fixture that holds ``use_home`` open must yield: the edits that make it a generator
-    and whether a closing ``yield`` is needed, or why it cannot be made one."""
-    own = _own_nodes(fn)
-    if any(isinstance(n, (ast.Yield, ast.YieldFrom)) for n in own):
-        return [], False
-    returns = [n for n in own if isinstance(n, ast.Return)]
-    if any(r is not fn.body[-1] for r in returns):
-        return "a fixture with a return that is not its last statement"
-    edits: list[Edit] = []
-    if fn.returns is not None:
-        data = source.encode("utf-8")
-        s, e = span(fn.returns, source)
-        edits.append(Edit(s, e, f"Iterator[{data[s:e].decode('utf-8')}]"))
-    return edits, not returns
-
-
-def _fixture_returns(fn: ast.FunctionDef, work: list[str]) -> None:
-    """Turn the fixture's closing ``return`` into ``yield``, in place on the line list."""
-    last = fn.body[-1]
-    if isinstance(last, ast.Return):
-        line = work[last.lineno - 1].encode("utf-8")
-        cut = last.col_offset
-        work[last.lineno - 1] = (line[:cut] + b"yield" + line[cut + len("return") :]).decode(
-            "utf-8"
-        )
-
-
-# config-patches --------------------------------------------------------------------------------
-#
-# ``monkeypatch.setattr(config, "NAME", value)`` changes a constant nothing reads once reads go
-# through ``current_home()``. It becomes a ``Home`` override around the rest of its scope. The
-# scope machinery is the repointers rule's, so a patch is reproduced where a repoint is and
-# refused where a repoint is.
-
-DATACLASSES_IMPORT = "import dataclasses"
-USE_HOME_IMPORT = "from docket.kernel.home import use_home"
-CONFIG_STRING = f"{CONFIG_MODULE}."
-
-
-class _Patch(NamedTuple):
-    stmt: ast.Expr
-    receiver: ast.expr  # what ``setattr`` is called on: the monkeypatch
-    field: str  # the Home field that holds the patched value
-    value: ast.expr
-
-
-@functools.cache
-def _home_fields() -> frozenset[str]:
-    return frozenset(f.name for f in dataclasses.fields(_home_class()))  # type: ignore[arg-type]
-
-
-def _patch_field(name: str) -> tuple[str, str]:
-    """The ``Home`` field a patch of ``config.<name>`` sets, else (``""``, why there is none)."""
-    member = _home_member(name)
-    if member is None:
-        return "", f"config.{name} has no Home field"
-    for candidate in (member, f"{member}_override"):
-        if candidate in _home_fields():
-            return candidate, ""
-    if member in _home_members()[1]:
-        return "", (
-            f"Home.{member} is derived, not a field; set the root or the field it is derived from"
-        )
-    return "", f"Home.{member} is a Home method, not a field"
-
-
-def _patch_call(call: ast.Call) -> tuple[ast.expr, str, ast.expr] | str:
-    """(receiver, patched name, value) of ``setattr(<config>, "NAME", value)``, else why not."""
-    func = call.func
-    if not isinstance(func, ast.Attribute):
-        return "the builtin setattr on the config module cannot be undone when the scope ends"
-    if func.attr == "delattr":
-        return "monkeypatch.delattr removes the constant; a Home field cannot be removed"
-    args = call.args
-    if any(isinstance(a, ast.Starred) for a in args) or not args:
-        return "arguments other than (config, NAME, value)"
-    first = args[0]
-    if isinstance(first, ast.Constant) and isinstance(first.value, str):
-        name = first.value.removeprefix(CONFIG_STRING)
-        if len(args) != 2 or "." in name:
-            return 'arguments other than ("docket.config.NAME", value)'
-        value = args[1]
-    else:
-        if len(args) != 3:
-            return "arguments other than (config, NAME, value)"
-        key = args[1]
-        if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
-            return "the patched name is not a string literal"
-        name, value = key.value, args[2]
-    for keyword in call.keywords:
-        flag = keyword.value
-        if keyword.arg != "raising" or not (
-            isinstance(flag, ast.Constant) and flag.value in (True, False)
-        ):
-            return "a keyword other than raising=True"
-        if flag.value is False:
-            return "raising=False: the constant may not exist, which a Home field cannot express"
-    return func.value, name, value
-
-
-def config_patches(tree: ast.Module, source: str, rel: str) -> Outcome:
-    """Patches of ``docket.config`` constants become ``use_home(replace(current_home(), ...))``."""
-    out = Outcome()
-    aliases = _aliases(tree, rel)
-    reads = _config_names(tree, aliases) | {"current_home", "use_home"}
-    parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
-    strings = _multiline_strings(source)
-    data = source.encode("utf-8")
-    by_scope: dict[int, tuple[_Scope, list[_Patch]]] = {}
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
-    for call in sorted((c for c in calls if MEASURE.patches_config(c, aliases)), key=_line):  # type: ignore[attr-defined]
-        stmt = parents[id(call)]
-        if not (isinstance(stmt, ast.Expr) and stmt.value is call):
-            out.unmappable.append((call.lineno, "a config patch used as a value"))
-            continue
-        parts = _patch_call(call)
-        if isinstance(parts, str):
-            out.unmappable.append((call.lineno, parts))
-            continue
-        field, why = _patch_field(parts[1])
-        scope = _scope_of(stmt, parents, "patch")
-        if why or isinstance(scope, str):
-            out.unmappable.append((call.lineno, why or str(scope)))
-            continue
-        if why := _monkeypatch_refusal(parts[0], scope):
-            out.unmappable.append((call.lineno, why))
-            continue
-        patch = _Patch(stmt, parts[0], field, parts[2])
-        by_scope.setdefault(id(scope.owner), (scope, []))[1].append(patch)
-    for scope, patches in by_scope.values():
-        taken = {id(p.stmt): p for p in patches}
-
-        def opener(
-            stmts: list[ast.stmt], taken: dict[int, _Patch] = taken
-        ) -> tuple[int, str] | None:
-            group: list[_Patch] = []
-            for stmt in stmts:
-                patch = taken.get(id(stmt))
-                # a patch is applied before the next value is evaluated, so one that reads the
-                # home it follows, or sets a field twice, cannot share a replace()
-                if patch is None or any(p.field == patch.field for p in group):
-                    break
-                if (
-                    group
-                    and {n.id for n in ast.walk(patch.value) if isinstance(n, ast.Name)} & reads
-                ):
-                    break
-                group.append(patch)
-            if not group:
-                return None
-            fields = ", ".join(f"{p.field}={_text(p.value, source, data)}" for p in group)
-            return len(group), f"with use_home(dataclasses.replace(current_home(), {fields})):"
-
-        direct = [p.stmt for p in patches]
-        edits, why = _wrap_scope(scope, direct, [], opener, "patch", source, strings)
-        if why:
-            out.unmappable += [(stmt.lineno, why) for stmt in direct]
-        out.edits += edits
-    if out.edits:
-        out.imports += [DATACLASSES_IMPORT, CURRENT_HOME_IMPORT, USE_HOME_IMPORT]
-        _scope_imports(out)
-    return out
-
-
-def _line(node: ast.AST) -> int:
-    return getattr(node, "lineno", 0)
-
-
-def _text(node: ast.expr, source: str, data: bytes) -> str:
-    start, end = span(node, source)
-    return data[start:end].decode("utf-8")
-
-
 # wrappers --------------------------------------------------------------------------------------
 #
 # A wrapper is a parameterless module-level ``def`` whose whole body is one kernel call. Deleting
@@ -1431,21 +857,7 @@ RULES: dict[str, tuple[Rule, str]] = {
     "text": (text, ""),
     "clock": (clock, "time"),
     "errors": (errors, "Error"),
-    "config-reads": (config_reads, "config"),
-    "config-patches": (config_patches, "config"),
-    "repointers": (repointers, "repoint_docket_home"),
 }
-# the trees a rule rewrites; a rule absent here rewrites src/docket only
-RULE_ROOTS: dict[str, tuple[Path, ...]] = {
-    "config-reads": (SRC_ROOT, TESTS_ROOT),
-    "config-patches": (TESTS_ROOT,),
-    "repointers": (TESTS_ROOT,),
-}
-# Rules that move a scope's lines are applied one after another, each over the files the one
-# before left, in this order: a patch's value may read the config (config-reads first), and a
-# repoint that follows a patch must find it already rewritten, or the repoint's Home would
-# replace the patched one (config-patches before repointers). Every other rule shares one pass.
-HOME_ORDER = ("config-reads", "config-patches", "repointers")
 # rules that read the whole tree first: rule -> the rewrite it wants per file
 PROJECT_RULES: dict[str, Callable[[], dict[str, Outcome]]] = {"wrappers": wrappers}
 
@@ -1597,13 +1009,8 @@ def plan_project(rule: str) -> list[FilePlan]:
 def plan_tree(rules: list[str]) -> list[FilePlan]:
     if rules and rules[0] in PROJECT_RULES:
         return plan_project(rules[0])
-    plans = []
-    roots = dict.fromkeys(r for rule in rules for r in RULE_ROOTS.get(rule, (SRC_ROOT,)))
-    for root in roots:
-        wanted = [r for r in rules if root in RULE_ROOTS.get(r, (SRC_ROOT,))]
-        files = (p for p in sorted(root.rglob("*.py")) if not p.is_relative_to(KERNEL_ROOT))
-        plans += [plan for p in files if (plan := plan_file(p, wanted)) is not None]
-    return plans
+    files = (p for p in sorted(SRC_ROOT.rglob("*.py")) if not p.is_relative_to(KERNEL_ROOT))
+    return [plan for p in files if (plan := plan_file(p, rules)) is not None]
 
 
 def run_ruff(paths: list[Path]) -> int:
@@ -1616,21 +1023,13 @@ def run_ruff(paths: list[Path]) -> int:
     return max(subprocess.run(step, cwd=REPO_ROOT).returncode for step in steps)
 
 
-def stages(rules: list[str]) -> list[list[str]]:
-    """*rules* as passes over the tree: the plain rules together, then each home rule alone."""
-    plain = [r for r in rules if r not in HOME_ORDER]
-    return ([plain] if plain else []) + [[r] for r in HOME_ORDER if r in rules]
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "rules",
         nargs="*",
         help=f"default: every per-file rule ({', '.join(RULES)}); "
-        f"{', '.join(PROJECT_RULES)} reads the whole tree and runs alone. "
-        f"{', '.join(HOME_ORDER)} each run as their own pass, in that order; a dry run or "
-        "--check shows each against the tree as it is on disk, only --write feeds one the next",
+        f"{', '.join(PROJECT_RULES)} reads the whole tree and runs alone",
     )
     parser.add_argument("--dry-run", action="store_true", help="print the diff (the default)")
     parser.add_argument("--write", action="store_true", help="apply the rewrites, then run ruff")
@@ -1644,47 +1043,39 @@ def main() -> int:
     if args.write and args.check:
         parser.error("--write and --check are exclusive")
 
-    passes = stages(args.rules or list(RULES))
-    total, status = 0, 0
-    for rules in passes:
-        plans = plan_tree(rules)
-        rewritable = [p for p in plans if p.sites]
-        sites = sum(len(p.sites) for p in rewritable)
-        total += sites
-        if len(passes) > 1:
-            print(f"\n== {', '.join(rules)}")
-        if args.check:
-            for p in rewritable:
-                for line, text in p.sites:
-                    print(f"{p.rel}:{line}  -> {text}")
-        elif not args.write:
-            for p in rewritable:
-                sys.stdout.writelines(
-                    difflib.unified_diff(
-                        p.before.splitlines(keepends=True),
-                        p.after.splitlines(keepends=True),
-                        f"a/{p.rel}",
-                        f"b/{p.rel}",
-                    )
+    plans = plan_tree(args.rules or list(RULES))
+    rewritable = [p for p in plans if p.sites]
+    sites = sum(len(p.sites) for p in rewritable)
+    if args.check:
+        for p in rewritable:
+            for line, text in p.sites:
+                print(f"{p.rel}:{line}  -> {text}")
+    elif not args.write:
+        for p in rewritable:
+            sys.stdout.writelines(
+                difflib.unified_diff(
+                    p.before.splitlines(keepends=True),
+                    p.after.splitlines(keepends=True),
+                    f"a/{p.rel}",
+                    f"b/{p.rel}",
                 )
-        if args.unmappable:
-            for p in plans:
-                for line, why in p.unmappable:
-                    print(f"unmappable {p.rel}:{line}  {why}")
+            )
+    if args.unmappable:
         for p in plans:
-            for why in p.skipped:
-                print(f"skipped {p.rel}: {why}")
-            for note in p.notes:
-                print(f"note {p.rel}: {note}")
+            for line, why in p.unmappable:
+                print(f"unmappable {p.rel}:{line}  {why}")
+    for p in plans:
+        for why in p.skipped:
+            print(f"skipped {p.rel}: {why}")
+        for note in p.notes:
+            print(f"note {p.rel}: {note}")
 
-        print(f"\n{sites} site(s) in {len(rewritable)} file(s)")
-        if args.write and rewritable:
-            for p in rewritable:
-                p.path.write_text(p.after, encoding="utf-8")
-            status = max(status, run_ruff([p.path for p in rewritable]))
+    print(f"\n{sites} site(s) in {len(rewritable)} file(s)")
     if args.write:
-        return status
-    return 1 if args.check and total else 0
+        for p in rewritable:
+            p.path.write_text(p.after, encoding="utf-8")
+        return run_ruff([p.path for p in rewritable]) if rewritable else 0
+    return 1 if args.check and sites else 0
 
 
 if __name__ == "__main__":

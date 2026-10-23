@@ -39,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _hermetic(tmp_path: Path) -> Iterator[None]:
     with (
         use_home(Home(tmp_path)),
         use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),

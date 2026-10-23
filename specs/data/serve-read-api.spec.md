@@ -835,7 +835,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/core/provisioning.py`: `validate_project_id`
 - `src/docket/core/pod_provisioning.py`: `provision_pod`, `validate_verify_cmd`
 - `src/docket/core/blueprints.py`: `DEFAULT_BLUEPRINT`, the blueprint registry
-- `src/docket/config.py`: `DISPATCH_SWEEP_WORKERS`, `TRACE_RETENTION_S`, `pod_work_dir`
+- `src/docket/kernel/home.py`: the `Home` members `dispatch_sweep_workers`, `trace_retention_s`,
+  `pod_work_dir`
 - Contract tests: `tests/unit/test_serve__read_api.py` (class `TestApiContract`),
   `tests/unit/test_serve.py`, `tests/unit/test_serve__traces_cursor.py`,
   `tests/unit/test_serve__contract_gaps.py`, `tests/unit/core/test_dispatch.py`,

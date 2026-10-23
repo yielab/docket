@@ -1,8 +1,8 @@
 """trace + audit.
 
-Both subsystems read paths from docket.config at call time, so we repoint the
-already-imported config attributes (TRACES_DIR, AUDIT_LOG, SESSION_TIMEOUT)
-at a temp seed and drive the public surfaces in-process.
+Both subsystems read paths from current_home() at call time, so each test runs in a
+`use_home` block on a temp seed (traces_dir, audit_log, session_timeout) and drives the public
+surfaces in-process.
 """
 
 from __future__ import annotations

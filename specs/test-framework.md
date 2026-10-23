@@ -44,11 +44,12 @@ contract before implementation, and the smallest coherent change makes it green.
 
 ### Properties every test must have
 
-- **Hermetic state:** autouse fixtures point every `DOCKET_HOME`-derived path (traces, approvals,
-  sessions, registries, the audit log, the fleet file, the secrets files) at a per-test temporary
-  directory, so no test can write the operator's real `~/.docket`. They do not set the
-  `DOCKET_HOME` environment variable: a test that spawns a child process sets it explicitly to a
-  temporary directory.
+- **Hermetic state:** an autouse fixture runs every test inside one `use_home` block on a per-test
+  temporary root, so every path the current `Home` derives (traces, approvals, sessions,
+  registries, the audit log, the fleet file, the secrets files) lies under it and no test can
+  write the operator's real `~/.docket`. A test that needs another root enters its own `use_home`
+  block. The fixture does not set the `DOCKET_HOME` environment variable: a test that spawns a
+  child process sets it explicitly to a temporary directory.
 - **No real credentials or network:** model, Telegram, MCP, and HTTP boundaries use deterministic
   fakes unless a separately-labelled environment test explicitly requires a live service.
 - **Real internal path:** tests call the same functions production calls; they do not mock the
@@ -143,14 +144,14 @@ Requirements:
    Enforced by the layout guard.
 10. **Guards** each assert one invariant, with a shrink-only committed baseline where the invariant
     is not yet fully true:
-    - *Home isolation.* No home-derived path resolves into the real `~/.docket` under the autouse
-      fixtures; the guard walks every path the current `Home` holds or derives; no test function sets the config's `DOCKET_HOME` without calling
-      `repoint_docket_home` (the allowlist is empty); the number of test functions that hand-roll
-      two or more home-derived constants without claiming a home may only fall.
-    - *Single owners.* A config constant is declared in one place; `fleet.json` has one writer and
-      the fleet registry does not duplicate what `.docket-meta.json` owns; docket-owned JSON is
-      written only through the store chokepoint (two JSONL-append exemptions); only the tool
-      chokepoint imports the tool-handler module.
+    - *Home isolation.* No path the current `Home` holds or derives resolves into the real
+      `~/.docket` under the autouse fixture; `test_docket_home_isolation.py` walks every field and
+      property that is a path, so a path added to `Home` is covered without editing the guard.
+    - *Single owners.* A setting read from the environment is read in one place,
+      `Home.from_environ`; `fleet.json` has one writer and the fleet registry does not duplicate
+      what `.docket-meta.json` owns; docket-owned JSON is written only through the store
+      chokepoint (two JSONL-append exemptions); only the tool chokepoint imports the tool-handler
+      module.
     - *Layering.* The domain and edge layers never print, never import the console helper, and the
       domain layer never imports `subprocess`.
     - *CLI surface.* Every leaf's `--help` exits 0 and carries an `Example:` line, and every
@@ -534,8 +535,8 @@ Where the names used above live today.
 
 - `src/docket/cli/__init__.py`: the CLI registry (rule 9); `src/docket/cli/_task.py`: the
   500-character task description ceiling.
-- `src/docket/config.py`: the constants derived from `DOCKET_HOME`; `src/docket/kernel/home.py`:
-  `Home`, `current_home`, `use_home`, which the autouse fixture and every test home go through.
+- `src/docket/kernel/home.py`: `Home`, `current_home`, `use_home`, which the autouse fixture and
+  every test home go through.
 - `src/docket/core/llm.py`: `ChatBackend`; `src/docket/core/runtime_driver.py`: `RuntimeDriver`;
   `src/docket/core/tools.py`: `dispatch_tool`.
 - `src/docket/edges/adapters/system.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.
@@ -548,11 +549,10 @@ Where the names used above live today.
   `scripts/maint/comment_lint.py` and `scripts/maint/comment-baseline.json`),
   `test_function_span.py` (`function_span_baseline.txt`, `scripts/maint/measure_function_spans.py`),
   `test_dead_code.py` (`dead_code_baseline.txt`, `scripts/maint/measure_dead_code.py`),
-  `test_docket_home_isolation.py`, `test_docket_home_repointer.py`, `test_partial_repointers.py`
-  (`partial_repointer_baseline.txt`, `scripts/maint/measure_partial_repointers.py`),
-  `test_config_single_owner.py`, `test_fleet_registry.py`, `test_no_print_in_core_edges.py`,
-  `test_no_ui_in_core_edges.py`, `test_no_subprocess_in_core.py`, `test_cli_help_examples.py`,
-  `test_cli_json_surface.py`, `test_cli_prompt_sites.py`, `test_completions_drift.py`,
+  `test_docket_home_isolation.py`, `test_home_single_owner.py`, `test_fleet_registry.py`,
+  `test_no_print_in_core_edges.py`, `test_no_ui_in_core_edges.py`, `test_no_subprocess_in_core.py`,
+  `test_cli_help_examples.py`, `test_cli_json_surface.py`, `test_cli_prompt_sites.py`,
+  `test_completions_drift.py`,
   `test_console_voice.py` (`console_voice_baseline.txt`), `test_cli_invocations_true.py`
   (`scripts/maint/lint_cli_invocations.py`), `test_no_removed_cli_names.py`
   (`scripts/maint/rewrite_cli_names.py`), `test_dispatch_never_rereads_the_repository.py`,

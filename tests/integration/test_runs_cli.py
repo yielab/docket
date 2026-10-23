@@ -15,7 +15,7 @@ SUBJECT = "docket.cli"
 
 
 @pytest.fixture()
-def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def runs_file(tmp_path: Path) -> Iterator[Path]:
     f = tmp_path / "docket-runs.json"
     with use_home(dataclasses.replace(current_home(), runs_file_override=f)):
         yield f

@@ -329,7 +329,7 @@ def build_test_event(spec: Any, *, now: str) -> CloudEvent:
 
 
 def read_state() -> dict[str, Any]:
-    """The persisted dedupe snapshot (`config.NOTIFY_STATE_FILE`), through `edges/store.py`
+    """The persisted dedupe snapshot (`Home.notify_state_file`), through `edges/store.py`
     like every other docket-owned JSON read. `{}` before the first flush."""
     return _store.read_json(current_home().notify_state_file)
 

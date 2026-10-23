@@ -22,8 +22,8 @@ RECIPES_MD = ROOT / "docs" / "recipes.md"
 
 sys.path.insert(0, str(SRC))
 
-from docket import config as _cfg  # noqa: E402
 from docket.core import pod_apply as _pod_apply  # noqa: E402
+from docket.kernel import templates as _templates  # noqa: E402
 
 HEADER = """# The recipe library
 
@@ -84,7 +84,7 @@ def _readme_body(directory: Path) -> str:
 
 
 def render() -> str:
-    recipes = sorted(p for p in _cfg.recipes_dir().iterdir() if p.is_dir())
+    recipes = sorted(p for p in _templates.recipes_dir().iterdir() if p.is_dir())
     summaries = {p.name: _pod_apply.summarize_recipe(p) for p in recipes}
     lines = [HEADER, "| Recipe | Brings | Description |", "| --- | --- | --- |"]
     for p in recipes:

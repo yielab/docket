@@ -450,7 +450,7 @@ Where the names above live today. Phase 46 rewrites this section and nothing els
 - `src/docket/core/telegram.py`: the Telegram bot commands
 - `src/docket/templates/policies/block-destructive.yaml`, `src/docket/core/security.py`: the default
   gates (`HIGH_RISK_PATTERNS`, `classify_command`)
-- `src/docket/config.py`: `TOOL_APPROVAL_TIMEOUT`
+- `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`
 
 Tests cited by name above:
 

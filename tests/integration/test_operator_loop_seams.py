@@ -22,7 +22,7 @@ from typing import Any, ClassVar
 import pytest
 from tests.conftest import record_isolation_off
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.cli import _pod
 from docket.core import answers as _answers
 from docket.core import approval as _approval
@@ -318,7 +318,7 @@ def _bind_pipeline(project: str, text: str) -> None:
 
 
 def _bind_intake_pipeline(project: str) -> None:
-    text = (_cfg.recipes_dir() / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
+    text = (_templates.recipes_dir() / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
     result = _pipeline.load_pipeline(text)
     assert result.spec is not None, result.errors
     _bind_pipeline(project, text)

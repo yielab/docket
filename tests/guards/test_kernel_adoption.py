@@ -36,7 +36,7 @@ _BASELINE = _MEASURE.read_baseline()
 
 
 def _hits(rule: str, source: str, rel: str = "src/docket/core/sample.py") -> list[str]:
-    detector = _MEASURE.RULES[rule][0]
+    detector = _MEASURE.RULES[rule]
     return [what for _, what in detector(ast.parse(source), rel)]
 
 
@@ -58,8 +58,7 @@ def test_count_equals_the_baseline(rule: str) -> None:
 def test_kernel_is_never_scanned() -> None:
     # Every rule reads its modules through `_parsed`, the one place `kernel/` is left out, so
     # checking what it returns covers every rule without running the detectors a second time.
-    parsed = {(root, needle) for _, root, needle in _MEASURE.RULES.values()}
-    assert not [rel for key in parsed for rel, _ in _MEASURE._parsed(*key) if "/kernel/" in rel]
+    assert not [rel for rel, _ in _MEASURE._parsed() if "/kernel/" in rel]
 
 
 # Each rule must see the shapes it exists for, through any import spelling, and stay quiet on
@@ -86,20 +85,6 @@ BITES = {
         "import os\nos.getenv('X')",
         "from os import environ\nenviron['X']",
     ],
-    "config-reads": [
-        "from docket import config as _cfg\n_cfg.DOCKET_HOME",
-        "from .. import config as cfg\ncfg.AUDIT_LOG",
-        "from docket.config import DOCKET_HOME",
-    ],
-    "config-patches": [
-        "from docket import config as _cfg\nmonkeypatch.setattr(_cfg, 'AUDIT_LOG', p)",
-        "import docket.config\nm.delattr(docket.config, 'AUDIT_LOG')",
-        "monkeypatch.setattr('docket.config.AUDIT_LOG', p)",
-    ],
-    "repointers": [
-        "repoint_docket_home(monkeypatch, tmp_path)",
-        "conftest.repoint_docket_home(m, p)",
-    ],
 }
 QUIET = {
     "clock": ["import time\ntime.sleep(1)", "from docket.kernel import clock\nclock.now()"],
@@ -119,13 +104,6 @@ QUIET = {
     ],
     "error-raises": ["raise", "raise TypeError('wrong type')", "raise InvalidInput('bad')"],
     "environ": ["environ = {}\nenviron['X']", "import os\nos.path.join('a')"],
-    "config-reads": ["from docket import ui\nui.error('x')", "config = {}\nconfig['DOCKET_HOME']"],
-    "config-patches": [
-        "from docket.core import secrets\nmonkeypatch.setattr(secrets, 'SECRETS_FILE', p)",
-        "monkeypatch.setattr('docket.core.secrets.SECRETS_FILE', p)",
-        "use_home(dataclasses.replace(current_home(), fleet_file_override=p))",
-    ],
-    "repointers": ["use_home(Home(tmp_path))"],
 }
 
 

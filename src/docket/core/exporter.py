@@ -4,7 +4,7 @@ endpoint, named credentials, never a value) with the model/price/preset fields d
 destination-shaped ones added: `resource`/`aliases`, `events`, `privacy`/`share` (what a
 document shares beyond structure -- ADR 0015 §1), and `enabled` (a present credential never activates an
 exporter by itself). Two scopes, nearest-wins by name: built-in and global
-(`config.EXPORTERS_FILE`, the operator's own).
+(`Home.exporters_file`, the operator's own).
 
 This module owns the document, the catalog, and pure classification; the wire encoding and
 CLI surface live elsewhere.
@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import privacy as _privacy
 from docket.core.trace import EVENT_TYPES
 from docket.edges import store as _store
@@ -236,7 +236,7 @@ class Catalog:
 
 
 def _load_builtin_exporters() -> dict[str, ExporterSpec]:
-    directory = _cfg.EXPORTER_TEMPLATES_DIR
+    directory = _templates.EXPORTER_TEMPLATES_DIR
     entries: dict[str, ExporterSpec] = {}
     if not directory.is_dir():
         return entries
@@ -293,8 +293,8 @@ def _load_global_exporters() -> dict[str, ExporterSpec]:
 
 
 def load_catalog() -> Catalog:
-    """The merged exporter catalog: every built-in under ``config.EXPORTER_TEMPLATES_DIR``,
-    overridden by the operator's own global entries in ``config.EXPORTERS_FILE``, nearest-wins
+    """The merged exporter catalog: every built-in under ``kernel.templates.EXPORTER_TEMPLATES_DIR``,
+    overridden by the operator's own global entries in ``Home.exporters_file``, nearest-wins
     by name."""
     entries: dict[str, ExporterSpec] = {}
     scopes: dict[str, str] = {}
@@ -323,7 +323,7 @@ def _refuse_invalid_entry(name: str, entry: dict[str, Any]) -> None:
 
 
 def save_exporter(spec: ExporterSpec) -> None:
-    """Write *spec* into the global catalog (``config.EXPORTERS_FILE``), through
+    """Write *spec* into the global catalog (``Home.exporters_file``), through
     ``edges/store.py`` -- the sole writer of docket-owned JSON."""
     spec = _with_inherited_identity(spec)
 
@@ -572,7 +572,7 @@ def activation_state(
 
 
 def read_health() -> dict[str, dict[str, Any]]:
-    """Every exporter's health record (``config.EXPORTERS_HEALTH_FILE``), keyed by name -- a
+    """Every exporter's health record (``Home.exporters_health_file``), keyed by name -- a
     read-only view, through ``edges/store.py`` like every other docket-owned JSON read."""
     raw = _store.read_json(current_home().exporters_health_file)
     if not isinstance(raw, dict):

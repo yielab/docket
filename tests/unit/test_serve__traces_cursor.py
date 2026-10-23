@@ -58,7 +58,7 @@ class _ClockedHandler(_DocketHandler):
 
 
 @pytest.fixture()
-def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def live_server(tmp_path: Path):  # type: ignore[no-untyped-def]
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
     with use_home(Home(home)):
@@ -78,7 +78,7 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
 
 
 @pytest.fixture()
-def traces_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def traces_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
     with use_home(Home(home)):

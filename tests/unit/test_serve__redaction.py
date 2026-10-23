@@ -2,8 +2,8 @@
 
 An approval's own action text and any stored secret value found in a trace
 payload must never reach the trace log or the approval record verbatim.
-Fixtures repoint docket.config's already-imported store paths at a temp seed
-and drive core.approval/core.trace directly, in-process.
+Fixtures run in a `use_home` block on a temp seed and drive core.approval/core.trace
+directly, in-process.
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ class TestApprovalTrace:
 
 
 class TestStoredSecretRedaction:
-    def test_redacts_stored_secret_value(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_redacts_stored_secret_value(self, home: Path) -> None:
         # File-backend secrets.json maps KEY -> value.
         secret = "supersecretvalue1234567890"
         (home / "secrets.json").write_text(json.dumps({"MY_TOKEN": secret}))
@@ -108,14 +108,12 @@ class TestStoredSecretRedaction:
         assert secret not in out
         assert "[REDACTED]" in out
 
-    def test_short_stored_value_not_redacted(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_short_stored_value_not_redacted(self, home: Path) -> None:
         # redact.sh only redacts stored values longer than 8 chars.
         (home / "secrets.json").write_text(json.dumps({"SHORT": "abc123"}))
         assert _trace.redact("value abc123 here") == "value abc123 here"
 
-    def test_redaction_in_trace_event(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_redaction_in_trace_event(self, home: Path) -> None:
         secret = "anothersecretvalue0987654321"
         (home / "secrets.json").write_text(json.dumps({"K": secret}))
         _trace.trace_event("p", "s", "r", "tool_call", json.dumps({"text": f"x {secret} y"}))

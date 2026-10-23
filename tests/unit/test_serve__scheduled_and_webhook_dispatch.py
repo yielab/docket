@@ -40,7 +40,7 @@ _TEST_TOKEN = "test-serve-token-cd6-xyz987"
 
 
 @pytest.fixture()
-def schedule_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def schedule_file(tmp_path: Path) -> Iterator[Path]:
     f = tmp_path / "docket-schedules.json"
     with use_home(
         dataclasses.replace(
@@ -53,7 +53,7 @@ def schedule_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[P
 
 
 @pytest.fixture()
-def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def live_server(tmp_path: Path):
     """Real server on a random port. Yields (base_url, token)."""
     # Minimal APPROVALS_DIR to satisfy any sweep that might run.
     d = tmp_path / "approvals"

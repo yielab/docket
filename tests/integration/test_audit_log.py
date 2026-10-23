@@ -4,8 +4,8 @@ Pins the hash chain (seq + prev_hash, GENESIS_HASH: clean on a fresh log,
 a tampered middle line detected, tolerant of pre-chain and malformed lines),
 `docket log verify`, and that keys/profile/agent commands each
 write exactly one correctly-shaped, secret-free entry (pod.add/pod.remove
-coverage lives in test_pod_provisioning.py). Every fixture repoints
-``_cfg.AUDIT_LOG`` explicitly rather than relying on the autouse isolation
+coverage lives in test_pod_provisioning.py). Every fixture enters its
+own ``use_home`` block rather than relying on the autouse isolation
 fixture, since these tests inspect what got written.
 """
 
@@ -50,36 +50,6 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
         yield home
 
 
-@contextmanager
-def _seed_agent(tmp_path: Path, aid: str = "demo") -> Iterator[Path]:
-    """A minimal, non-pod project agent: workspace + meta + fleet.json entry."""
-    home = tmp_path / ".docket"
-    ws = home / "workspaces" / "projects" / aid
-    ws.mkdir(parents=True)
-    meta = {
-        "kind": "project",
-        "name": "Demo",
-        "role": "repo",
-        "model": "anthropic/claude-sonnet-4-6",
-        "sessionKey": f"agent:{aid}:default",
-        "projectKey": "default",
-    }
-    (ws / ".docket-meta.json").write_text(json.dumps(meta), encoding="utf-8")
-
-    (home / "fleet.json").write_text(
-        json.dumps(
-            {
-                "agents": [{"id": aid, "model": "anthropic/claude-sonnet-4-6"}],
-                "bindings": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with use_home(Home(home)):
-        yield home
-
-
 def _concurrent_audit_writer(
     start: multiprocessing.synchronize.Barrier,
     results: multiprocessing.queues.Queue[tuple[str, str]],
@@ -107,7 +77,7 @@ def _hold_audit_lock(
 
 
 @pytest.fixture()
-def audit_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def audit_home(tmp_path: Path) -> Iterator[Path]:
     """A bare DOCKET_HOME for exercising core/audit.py directly."""
     d = tmp_path / ".docket"
     d.mkdir()
@@ -695,7 +665,7 @@ _KEY_VALUE = "sk-ant-testvalue00000000000000"
 
 class TestKeysAudit:
     @pytest.fixture()
-    def keys_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    def keys_home(self, tmp_path: Path) -> Iterator[Path]:
         d = tmp_path / ".docket"
         d.mkdir()
         with use_home(Home(d)):

@@ -69,7 +69,7 @@ reported as ``AgentLoopResult.stop_reason``:
   use for compaction — see ``core/session.py``'s "Budgeting honesty" section,
   which this mirrors. The loop combines prior counted usage with the next
   request estimate (scaled by the last measured/estimated ratio, never below
-  1) and the output reserve (``config.DEFAULT_MAX_OUTPUT_TOKENS`` when the
+  1) and the output reserve (``Home.default_max_output_tokens`` when the
   endpoint registers none) before transport. If an ordinary tool-enabled round
   no longer fits, it offers at most one explicit tool-free terminal response
   that itself must fit.

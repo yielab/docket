@@ -2,7 +2,7 @@
 
 Covers `edges/adapters/docket_runtime.py::DocketDriver.run_turn`'s lazy, idempotent start of
 `core.telemetry`'s bounded pipeline, its flush on every return path (bounded even when the
-destination hangs), and the `config.EXPORTERS_HEALTH_FILE` write -- see
+destination hangs), and the `Home.exporters_health_file` write -- see
 observability-export.spec.md's "Pipeline" and "The module-level registry and wiring" sections,
 and agent-loop.spec.md requirements 72-74. Every HTTP target here is a local server this file
 starts and stops; nothing reaches a real vendor host.
@@ -36,7 +36,7 @@ SUBJECT = "docket.edges.adapters.docket_runtime"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolate_stores(tmp_path: Path) -> Iterator[None]:
     with use_home(Home(tmp_path / "docket")):
         record_isolation_off(tmp_path / "docket")
         with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
@@ -401,7 +401,7 @@ class TestZeroExportersAndNoExport:
 class TestHungDestination:
     def test_a_hanging_destination_does_not_lengthen_the_turn(self) -> None:
         """The server accepts the connection and never answers; `run_turn` must still return
-        promptly (bounded by `config.EXPORT_FLUSH_TIMEOUT_S`) and report the same result as a
+        promptly (bounded by `Home.export_flush_timeout_s`) and report the same result as a
         run with no exporter configured at all."""
         with use_home(dataclasses.replace(current_home(), export_flush_timeout_s=0.2)):
             _write_meta("baseline-agent")
@@ -440,7 +440,7 @@ class TestHungDestination:
             # The bounded flush above gave up long before the background sender's own transport
             # timeout could fire, so the eventual failure lands in `core.telemetry.health()` (the
             # live, in-process registry) some time after `run_turn` already returned -- read that
-            # directly rather than `config.EXPORTERS_HEALTH_FILE`, which `run_turn` only snapshots
+            # directly rather than `Home.exporters_health_file`, which `run_turn` only snapshots
             # once, at the moment `flush` gave up (before the send had failed).
             deadline = _time.monotonic() + 6.0
             health = _telemetry.health().get("local") or {}

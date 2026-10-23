@@ -437,7 +437,7 @@ message: canary
 
 
 @pytest.fixture()
-def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def pod_input_policy(tmp_path: Path) -> Iterator[Path]:
     """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
 
     home = tmp_path / "home"

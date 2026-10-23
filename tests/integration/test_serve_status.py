@@ -20,7 +20,7 @@ _TOKEN = "test-serve-token-status"
 
 
 @pytest.fixture()
-def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def live_server(tmp_path: Path):  # type: ignore[no-untyped-def]
     with use_home(Home(tmp_path / ".docket")):
         (tmp_path / ".docket").mkdir(exist_ok=True)
         approvals_dir = tmp_path / "approvals"

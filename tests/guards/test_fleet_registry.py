@@ -3,7 +3,7 @@
 Two invariants pinned here: (1) **fleet.json has exactly one writer** --
 agent registration, channel bindings, and gates/isolation flags are
 docket-owned and read/written through `core/fleet.py`, which goes through
-`edges/store.py`; a second module reaching for `config.FLEET_FILE` directly
+`edges/store.py`; a second module reaching for `Home.fleet_file` directly
 would reopen second-writer drift. (2) **The fleet registry does not
 duplicate what `.docket-meta.json` already owns** -- `FleetAgent` tracks
 only the bare `id`, no `model`/`sessionKey`; re-adding either would recreate
@@ -25,25 +25,22 @@ DOCKET_SRC = REPO_ROOT / "src" / "docket"
 
 
 class TestFleetSingleWriter:
-    """Only core/fleet.py (and config.py, which just defines the constant) may
-    reference FLEET_FILE. Mirrors test_tool_registry.py's
-    'only the chokepoint imports the handler module' guard."""
+    """Only core/fleet.py (and kernel/home.py, which defines the path) may open fleet.json.
+    The two CLI modules below only name its path, to tighten its mode and to report it.
+    Mirrors test_tool_registry.py's 'only the chokepoint imports the handler module' guard."""
 
     ALLOWED_REFERRERS: ClassVar[set[str]] = {
-        "config.py",
+        "kernel/home.py",
         "core/fleet.py",
+        "cli/_setup.py",
+        "cli/_setup_check.py",
     }
 
     @staticmethod
     def _references_fleet_file(tree: ast.AST) -> bool:
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id == "FLEET_FILE":
-                return True
-            if isinstance(node, ast.ImportFrom) and any(
-                alias.name == "FLEET_FILE" for alias in node.names
-            ):
-                return True
-        return False
+        return any(
+            isinstance(node, ast.Attribute) and node.attr == "fleet_file" for node in ast.walk(tree)
+        )
 
     def test_only_the_acl_references_fleet_file(self) -> None:
         offenders = [

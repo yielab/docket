@@ -268,7 +268,7 @@ class TestStore:
 
 
 @pytest.fixture()
-def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def oc_env(tmp_path: Path) -> Iterator[Path]:
     """Set up a temp DOCKET_HOME with fleet.json and a project workspace."""
     home = tmp_path / ".docket"
     home.mkdir()

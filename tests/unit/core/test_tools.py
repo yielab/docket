@@ -43,7 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolate_gates(tmp_path: Path) -> Iterator[None]:
     """Isolate `core/policy.py` and `core/approval.py`'s real stores from a
     developer's ``~/.docket``, and set the approval timeout to 0 so a gated
     call nothing grants resolves immediately (fail-closed to denied)."""
@@ -772,7 +772,7 @@ class TestResultReportedBackToTheModel:
 
 class TestRegistry:
     @pytest.fixture(autouse=True)
-    def _fetch_allowlisted(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    def _fetch_allowlisted(self) -> Iterator[None]:
         """`fetch` is offered only with an allowlist (agent-loop requirement 83); these tests
         describe the full built-in set."""
         with use_home(
@@ -959,7 +959,7 @@ message: canary
 
 
 @pytest.fixture()
-def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def pod_input_policy(tmp_path: Path) -> Iterator[Path]:
     """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
 
     home = tmp_path / "home"

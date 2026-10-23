@@ -20,7 +20,7 @@ SUBJECT = "docket.core.task_ref"
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def home(tmp_path: Path) -> Iterator[Path]:
     h = tmp_path / ".docket"
     (h / "workspaces" / "projects").mkdir(parents=True)
     (h / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

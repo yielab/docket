@@ -65,7 +65,7 @@ class Profile:
     run_marker_key: str = "taskIds"
     generic_keys: frozenset[str] = frozenset({"id", "error", "created", "state", "status"})
     test_exclude: tuple[str, ...] = ("tests/guards/fixtures/refactor",)
-    keep_modules: tuple[str, ...] = ("docket", "docket.__main__", "docket.config")
+    keep_modules: tuple[str, ...] = ("docket", "docket.__main__")
     keep_prefixes: tuple[str, ...] = ("docket.kernel",)
     module_map: Pairs = _MODULES
     definition_rules: dict[str, Pairs] = field(default_factory=lambda: dict(_RULES))

@@ -46,7 +46,7 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def fake_home(tmp_path: Path) -> Iterator[Path]:
     """Seed a temp DOCKET_HOME with one project agent + fleet.json."""
     home = tmp_path / ".docket"
     home.mkdir()
@@ -114,9 +114,7 @@ class TestBuildStatus:
         assert a["lastActivity"] == "2026-06-20"
         assert a["bindings"] == [{"channel": "telegram"}]
 
-    def test_last_activity_never_when_empty(
-        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_last_activity_never_when_empty(self, fake_home: Path) -> None:
         # Remove the agent's only session so last_activity falls back to the sentinel.
         shutil.rmtree(fake_home / "sessions")
         assert serve.build_status()["agents"][0]["lastActivity"] == "never"

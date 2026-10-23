@@ -25,7 +25,7 @@ empty section. ``brief`` (a Lead's typed intake, ADR 0016 §4) is excluded from
 **No tokenizer dependency.** A new heavyweight dependency is out of scope
 for this. ``estimate_tokens`` reuses the project's existing,
 already-documented chars-per-token approximation
-(``config.CONTEXT_BYTES_PER_TOKEN``, default 4 bytes/token — the same ratio
+(``Home.context_bytes_per_token``, default 4 bytes/token — the same ratio
 ``core/identity.py``'s prompt budget already uses for
 its own context-size guards) rather than inventing a second,
 independently-tunable ratio that could quietly drift from the first. This is
@@ -126,7 +126,7 @@ SUMMARY_TRUNCATION_MARKER = "\n[... summary truncated: {n} bytes omitted ...]\n"
 def estimate_tokens(text: str) -> int:
     """Approximate *text*'s token count.
 
-    ``len(text.encode("utf-8")) // config.CONTEXT_BYTES_PER_TOKEN`` — the
+    ``len(text.encode("utf-8")) // Home.context_bytes_per_token`` — the
     same bytes-per-token approximation (default 4) ``core/identity.py``'s
     prompt budget already uses for its own context-size guards. This is honestly an approximation, not a real count
     from the model's own tokenizer — good enough to bound a prompt

@@ -11,7 +11,7 @@ import pytest
 from tests.conftest import record_isolation_off
 from typer.testing import CliRunner
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.cli import _pod, _pod_config, app
 from docket.core import archetypes as _arch
 from docket.core import pod as _pod_core
@@ -118,7 +118,7 @@ class TestPodApply:
 
     def test_a_policy_file_is_copied_into_the_pod(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            source = sorted(_cfg.policy_templates_dir().glob("*.yaml"))[0]
+            source = sorted(_templates.policy_templates_dir().glob("*.yaml"))[0]
             result = _pod_run("update", str(source), "--pod", "demo")
             assert result.exit_code == 0
             assert (current_home().pod_config_dir("demo") / "policies" / source.name).is_file()

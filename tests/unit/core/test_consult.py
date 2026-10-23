@@ -22,7 +22,7 @@ SUBJECT = "docket.core.consult"
 
 
 @pytest.fixture(autouse=True)
-def _short_waits(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+def _short_waits(tmp_path: Path) -> Iterator[None]:
     with use_home(
         dataclasses.replace(
             current_home(), tool_approval_timeout=1, policies_dir_override=tmp_path / "_policies"

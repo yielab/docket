@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.cli import _agents, _setup
 from docket.core import models_policy as _models_policy
 from docket.core import provider as _prov
@@ -122,7 +122,7 @@ def test_step_policies_seeds_the_shipped_set_and_is_idempotent(
         second = capsys.readouterr().out
 
         installed = {f.name for f in (home / "policies").glob("*.json")}
-        assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
+        assert installed == {f.name for f in _templates.policy_templates_dir().glob("*.json")}
         assert "Installed" in first
         assert "Installed" not in second
 

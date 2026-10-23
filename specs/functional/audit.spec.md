@@ -374,7 +374,8 @@ x Tamper check FAILED at line 1 of 6: chain claims continuation from seq=214, bu
 - `src/docket/core/audit.py`: `audit_log`, `AuditWriteResult`, `read_audit`, `read_audit_text`,
   `verify_chain`, `VerifyResult`, `ChainBreak`, `GENESIS_HASH`, the head sidecar and rotation.
 - `src/docket/cli/_log.py`: `docket log [N]`, `--json`, `verify`.
-- `src/docket/config.py`: `AUDIT_LOG`, `AUDIT_LOG_MAX_BYTES`, `TRACE_RETENTION_S`.
+- `src/docket/kernel/home.py`: the `Home` members `audit_log`, `audit_log_max_bytes`,
+  `trace_retention_s`
 - `src/docket/core/approval.py`: `approval.*` entries and the 512-character bound.
 - `src/docket/core/tools.py`: `tool.*`, `fetch.result_*`, `skills.body_*` entries.
 - `src/docket/core/mcp_tools.py`: `mcp_client.*` entries. `src/docket/cli/_mcp.py`: `mcp.<tool>`.

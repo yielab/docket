@@ -773,7 +773,7 @@ class SpanSink(Protocol):
 @dataclass
 class PipelineStats:
     """One exporter's delivery counters -- the exact per-name shape
-    `config.EXPORTERS_HEALTH_FILE` holds (observability-export.spec.md requirement 32)."""
+    `Home.exporters_health_file` holds (observability-export.spec.md requirement 32)."""
 
     exported: int = 0
     dropped: int = 0
@@ -1047,7 +1047,7 @@ def capture_classes() -> frozenset[str]:
 
 
 def health() -> dict[str, dict[str, Any]]:
-    """Every started exporter's current counters, in `config.EXPORTERS_HEALTH_FILE`'s shape --
+    """Every started exporter's current counters, in `Home.exporters_health_file`'s shape --
     the caller (`edges/adapters/docket_runtime.py::run_turn`) writes this through
     `edges/store.py`; this function itself performs no I/O."""
     with _REGISTRY_LOCK:

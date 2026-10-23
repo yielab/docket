@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from tests.fakes import FakeDriver
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.cli import _pod as _cli_pod
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
@@ -26,9 +26,9 @@ from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.config"
+SUBJECT = "docket.core.pod_apply"
 
-RECIPES_DIR = _cfg.recipes_dir()
+RECIPES_DIR = _templates.recipes_dir()
 RECIPE_NAMES = ("tdd", "spec-first", "reflexion", "dual-review", "frugal")
 
 

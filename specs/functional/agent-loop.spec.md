@@ -885,7 +885,7 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 - `src/docket/core/mcp_tools.py`: `load_mcp_tools`
 - `src/docket/core/trace.py`: `trace_event`
 - `src/docket/core/telemetry.py`: `start`, `flush`, `health`, `capture_classes`
-- `src/docket/config.py`: `AGENT_LOOP_*`, `DEFAULT_MAX_OUTPUT_TOKENS`, `CONTEXT_TOKEN_BUDGET`,
-  `CONTEXT_TOKEN_BUDGET_DEFAULT`, `CONTEXT_BYTES_PER_TOKEN`, `POD_MEMORY_RENDER_MAX_BYTES`,
-  `SKILLS_DIR`, `TOOL_MAX_OUTPUT_CHARS`, `FETCH_ALLOWED_DOMAINS`, `EXPORT_FLUSH_TIMEOUT_S`,
-  `EXPORTERS_HEALTH_FILE`, `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`
+- `src/docket/kernel/home.py`: the `Home` members `agent_loop_*`, `default_max_output_tokens`,
+  `context_token_budget`, `context_token_budget_default`, `context_bytes_per_token`,
+  `pod_memory_render_max_bytes`, `skills_dir`, `tool_max_output_chars`, `fetch_allowed_domains`,
+  `export_flush_timeout_s`, `exporters_health_file`

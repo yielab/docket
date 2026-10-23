@@ -112,7 +112,7 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     Refuses before ever opening a socket when the host is not allowlisted —
     same "fail before any side effect" shape `dispatch_tool` already uses for
     a half-specified call. A non-positive *timeout* falls back to
-    `config.FETCH_TIMEOUT_S`, matching `run_bash`'s own
+    `Home.fetch_timeout_s`, matching `run_bash`'s own
     `_int_arg(..., ctx.timeout) or ctx.timeout` pattern in `core/tools.py`.
     """
     parsed = urllib.parse.urlsplit(url)

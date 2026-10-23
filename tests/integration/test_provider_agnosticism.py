@@ -8,7 +8,7 @@ never a fabricated figure; unpriced models render an informative "n/a", never "$
 dead-end guidance strings in cli/_provider.py name commands that actually exist.
 
 Unit tests import `docket.core.models_policy` directly; CLI-surface tests use CliRunner with
-every DOCKET_HOME-derived config constant patched to a temp directory."""
+a `use_home` block on a temp directory."""
 
 from __future__ import annotations
 

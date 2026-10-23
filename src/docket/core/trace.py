@@ -404,7 +404,7 @@ def expire_old_traces(
     ``sweep_all()`` first to make stale-but-open traces eligible (``docket
     serve``'s periodic sweep already does).
 
-    *retention_s* defaults to ``config.TRACE_RETENTION_S``; *dry_run*
+    *retention_s* defaults to ``Home.trace_retention_s``; *dry_run*
     reports without deleting or touching any index; *project* restricts the
     sweep to one project. Never touches ``audit.log`` -- out of scope by
     design (see ``core/audit.py``); only ever globs ``TRACES_DIR``.

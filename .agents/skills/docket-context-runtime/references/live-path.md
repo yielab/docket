@@ -9,7 +9,7 @@ composition, or MCP/tool output.
 - Trace the default production caller. Implemented and unit-tested machinery with no live consumer
   is still absent product behavior.
 - Locate the configuration owner named by the owning spec and resolve it at the contract's stated
-  time. MCP output currently reads `config.py` per call; built-ins expose the imported
+  time. MCP output reads `current_home().tool_max_output_chars` per call; built-ins expose the imported
   `toolbox.MAX_OUTPUT_CHARS` override. Test the declared owner with the same constructed runtime
   before and after mutation; unifying owners is a separate behavior change, not assumed evidence.
 - MCP tools load before role narrowing. Every adapted capability must still cross

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import exporter as _exporter
@@ -229,7 +229,7 @@ def resolve_recipe(name_or_dir: str) -> Path:
     operator_candidate = operator_dir / name_or_dir
     if operator_candidate.is_dir():
         return operator_candidate
-    shipped = _cfg.recipes_dir() / name_or_dir
+    shipped = _templates.recipes_dir() / name_or_dir
     if shipped.is_dir():
         return shipped
     operator_names = (
@@ -237,7 +237,7 @@ def resolve_recipe(name_or_dir: str) -> Path:
         if operator_dir.is_dir()
         else []
     )
-    shipped_names = sorted(p.name for p in _cfg.recipes_dir().iterdir() if p.is_dir())
+    shipped_names = sorted(p.name for p in _templates.recipes_dir().iterdir() if p.is_dir())
     raise PodApplyError(
         f"unknown recipe {name_or_dir!r}; operator: {', '.join(operator_names)}; "
         f"shipped: {', '.join(shipped_names)}"
@@ -406,7 +406,7 @@ def list_recipes() -> list[RecipeInfo]:
     same-named shipped one -- the same resolution order ``resolve_recipe`` applies to a single
     lookup. Sorted by name; used by ``docket pod recipes``."""
     by_name: dict[str, RecipeInfo] = {}
-    shipped_dir = _cfg.recipes_dir()
+    shipped_dir = _templates.recipes_dir()
     if shipped_dir.is_dir():
         for entry in sorted(shipped_dir.iterdir()):
             if entry.is_dir():
@@ -958,7 +958,7 @@ class PlanReview:
 def is_shipped_recipe(directory: Path) -> bool:
     """Whether *directory* is a recipe docket ships (exempt from the operator review)."""
     try:
-        directory.resolve().relative_to(_cfg.recipes_dir().resolve())
+        directory.resolve().relative_to(_templates.recipes_dir().resolve())
     except ValueError:
         return False
     return True
@@ -1486,7 +1486,7 @@ def _export_schemas(directory: Path) -> None:
     """Copy the four published config-v1 JSON Schemas into ``<directory>/.schemas/`` so every
     exported YAML's `# yaml-language-server:` header resolves without reaching outside the
     export -- ``apply``/``discover_config_paths`` never look under ``.schemas/``."""
-    src_dir = _cfg.config_schemas_dir()
+    src_dir = _templates.config_schemas_dir()
     dest_dir = directory / ".schemas"
     dest_dir.mkdir(parents=True, exist_ok=True)
     for kind in ("role", "pipeline", "policy", "pod"):

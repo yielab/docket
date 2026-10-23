@@ -33,7 +33,7 @@ _TEST_TOKEN = "test-serve-token-contract-gaps"
 
 
 @pytest.fixture()
-def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def live_server(tmp_path: Path):  # type: ignore[no-untyped-def]
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
     with use_home(Home(home)):

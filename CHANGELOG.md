@@ -153,6 +153,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `POST /tasks/<pod>` that creates a task answers `201` (was `200`).
 - `docket task diff` shows the task branch's commits against its base, not the worktree's
   uncommitted changes (`_pin_implementer_tree` commits every real run).
+- `docket.config` is gone. Every setting is a field of `docket.kernel.home.Home`, read with
+  `current_home()` and built once from the environment by `Home.from_environ`; the templates that
+  ship in the wheel are found by `docket.kernel.templates`. No environment variable changed.
 
 ### Fixed
 

@@ -1,8 +1,8 @@
 """core.trace's age-based retention sweep (expire_old_traces) + `docket task prune --traces`.
 
 Mirrors the fixture pattern in test_trace_audit.py: trace.py reads paths from
-docket.config at call time, so config attributes are repointed at a temp seed
-per test rather than mocking the module.
+current_home() at call time, so each test runs in a `use_home` block on a temp seed
+rather than mocking the module.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from docket.core import trace as trace_core
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.config"
+SUBJECT = "docket.core.trace"
 
 
 @pytest.fixture()

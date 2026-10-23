@@ -609,7 +609,8 @@ docket pod validate ./producer.yaml
 - `src/docket/cli/_pod.py`: `docket pod add`, the `docket pod set pipeline` role check against the pod roster
 - `src/docket/cli/_run.py`: `docket run` plan resolution
 - `src/docket/cli/_setup_check.py`: overlay problem and stale-template reports for `docket setup`
-- `src/docket/config.py`: `pod_config_dir`, `recipes_dir`
+- `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`
+- `src/docket/kernel/templates.py`: `recipes_dir`
 - `src/docket/templates/recipes/`: the shipped recipe library
 - Tests: `tests/integration/test_pod_role_workspace_parity.py` (byte identity),
   `tests/integration/test_archetypes.py` and `tests/unit/core/test_pipeline__spec.py` (gate

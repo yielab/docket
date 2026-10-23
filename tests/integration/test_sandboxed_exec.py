@@ -46,7 +46,7 @@ needs_landlock = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolate_gates(tmp_path: Path) -> Iterator[None]:
     """Tests here call `dispatch_tool` directly, which consults `core/policy.py` and
     `core/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
     developer's real ``~/.docket/policies`` or blocks on an approval nothing will grant."""

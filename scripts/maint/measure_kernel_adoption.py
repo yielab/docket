@@ -2,10 +2,10 @@
 """Count the code that still does by hand what a ``kernel/`` module owns.
 
 One rule per kernel module: reading the clock, minting an id, cutting text, declaring or raising
-an error outside the ``kernel/errors.py`` tree, reading the environment, and reading
-``docket.config`` or patching it or calling ``repoint_docket_home`` instead of using ``Home``. Each count may
-only go down: ``tests/guards/kernel_adoption_baseline.txt`` records it, and the commit that
-migrates sites lowers it with ``--write``. ``kernel/`` itself is never scanned.
+an error outside the ``kernel/errors.py`` tree, and reading the environment instead of using
+``Home``. Each count may only go down: ``tests/guards/kernel_adoption_baseline.txt`` records it,
+and the commit that migrates sites lowers it with ``--write``. ``kernel/`` itself is never
+scanned.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "docket"
-TESTS_ROOT = REPO_ROOT / "tests"
 KERNEL_ROOT = SRC_ROOT / "kernel"
 BASELINE_FILE = REPO_ROOT / "tests" / "guards" / "kernel_adoption_baseline.txt"
 
@@ -226,78 +225,28 @@ def environ(tree: ast.Module, rel: str) -> Iterator[tuple[int, str]]:
             yield node.lineno, name
 
 
-def config_reads(tree: ast.Module, rel: str) -> Iterator[tuple[int, str]]:
-    """A name read from ``docket.config``; ``current_home()`` answers it."""
-    aliases = _aliases(tree, rel)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if aliases.get(node.value.id) == "docket.config":
-                yield node.lineno, f"config.{node.attr}"
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if aliases.get(alias.asname or alias.name, "").startswith("docket.config."):
-                    yield node.lineno, f"from docket.config import {alias.name}"
-
-
-def patches_config(call: ast.Call, aliases: dict[str, str]) -> bool:
-    """``setattr(<docket.config>, ...)`` or ``delattr``, or the same with ``"docket.config.NAME"``."""
-    func = call.func
-    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-    if name not in {"setattr", "delattr"} or not call.args:
-        return False
-    first = call.args[0]
-    if isinstance(first, ast.Constant) and isinstance(first.value, str):
-        return first.value.startswith("docket.config.")
-    return _dotted(first, aliases) == "docket.config"
-
-
-def config_patches(tree: ast.Module, rel: str) -> Iterator[tuple[int, str]]:
-    """A test patching a constant of ``docket.config``; a ``Home`` override replaces it."""
-    aliases = _aliases(tree, rel)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and patches_config(node, aliases):
-            yield node.lineno, "patch of docket.config"
-
-
-def repointers(tree: ast.Module, rel: str) -> Iterator[tuple[int, str]]:
-    """A test isolating its home by patching constants; ``use_home(Home(tmp_path))`` replaces it."""
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            func = node.func
-            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-            if name == "repoint_docket_home":
-                yield node.lineno, "repoint_docket_home()"
-
-
-# rule -> (detector, tree it scans, text a module must contain to be parsed at all)
-RULES: dict[str, tuple[Detector, Path, str]] = {
-    "clock": (clock, SRC_ROOT, ""),
-    "ids": (ids, SRC_ROOT, ""),
-    "text": (text, SRC_ROOT, ""),
-    "error-classes": (error_classes, SRC_ROOT, ""),
-    "error-raises": (error_raises, SRC_ROOT, ""),
-    "environ": (environ, SRC_ROOT, ""),
-    "config-reads": (config_reads, SRC_ROOT, ""),
-    "config-patches": (config_patches, TESTS_ROOT, "config"),
-    "repointers": (repointers, TESTS_ROOT, "repoint_docket_home"),
+RULES: dict[str, Detector] = {
+    "clock": clock,
+    "ids": ids,
+    "text": text,
+    "error-classes": error_classes,
+    "error-raises": error_raises,
+    "environ": environ,
 }
 
 
 @functools.cache
-def _parsed(root: Path, needle: str) -> tuple[tuple[str, ast.Module], ...]:
-    """Every module under *root* outside ``kernel/`` whose text contains *needle*, parsed."""
-    files = (p for p in sorted(root.rglob("*.py")) if not p.is_relative_to(KERNEL_ROOT))
+def _parsed() -> tuple[tuple[str, ast.Module], ...]:
+    """Every module under ``src/docket`` outside ``kernel/``, parsed."""
+    files = (p for p in sorted(SRC_ROOT.rglob("*.py")) if not p.is_relative_to(KERNEL_ROOT))
     sources = ((str(p.relative_to(REPO_ROOT)), p.read_text(encoding="utf-8")) for p in files)
-    return tuple((rel, ast.parse(src, filename=rel)) for rel, src in sources if needle in src)
+    return tuple((rel, ast.parse(src, filename=rel)) for rel, src in sources)
 
 
 def scan(rule: str) -> list[Hit]:
     """Every site *rule* finds outside ``kernel/``, in path and line order."""
-    detector, root, needle = RULES[rule]
     return sorted(
-        (rel, line, what)
-        for rel, tree in _parsed(root, needle)
-        for line, what in detector(tree, rel)
+        (rel, line, what) for rel, tree in _parsed() for line, what in RULES[rule](tree, rel)
     )
 
 

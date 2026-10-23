@@ -27,7 +27,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
-SUBJECT = "docket.config"
+SUBJECT = "docket.serve"
 
 _TEST_TOKEN = "test-serve-token-tasks-p22-2"
 

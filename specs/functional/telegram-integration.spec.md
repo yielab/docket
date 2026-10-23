@@ -359,8 +359,8 @@ Where the names above live today:
   `show`)
 - `src/docket/cli/_service.py`, `src/docket/serve.py`: `docket start --telegram` and its poll loop
   with the idle and error back-offs
-- `src/docket/config.py`: `TELEGRAM_BOT_TOKEN_KEY`, `TELEGRAM_OFFSET_FILE`,
-  `TELEGRAM_POLL_TIMEOUT_S`, `TELEGRAM_REQUEST_TIMEOUT_S`
+- `src/docket/kernel/home.py`: the `Home` members `telegram_bot_token_key`, `telegram_offset_file`,
+  `telegram_poll_timeout_s`, `telegram_request_timeout_s`
 - `src/docket/core/fleet.py`: `find_binding`, `upsert_binding`, `remove_binding`
 - `src/docket/core/approval.py`, `src/docket/core/dispatch.py`, `src/docket/core/answers.py`,
   `src/docket/core/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`

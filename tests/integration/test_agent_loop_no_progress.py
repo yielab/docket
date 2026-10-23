@@ -66,7 +66,7 @@ class _Backend:
 
 
 @pytest.fixture(autouse=True)
-def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolate(tmp_path: Path) -> Iterator[None]:
     with use_home(Home(tmp_path / "home")):
         yield
 
@@ -169,8 +169,8 @@ def test_default_comes_from_the_config_constant() -> None:
 
 def test_env_override_is_honoured(tmp_path: Path) -> None:
     code = (
-        "import docket.config as c; from docket.core.agent_loop import LoopConfig;"
-        "print(c.AGENT_LOOP_NO_PROGRESS_ROUNDS, LoopConfig().no_progress_rounds)"
+        "from docket.kernel.home import current_home; from docket.core.agent_loop import LoopConfig;"
+        "print(current_home().agent_loop_no_progress_rounds, LoopConfig().no_progress_rounds)"
     )
     env = {**os.environ, "AGENT_LOOP_NO_PROGRESS_ROUNDS": "7", "DOCKET_HOME": str(tmp_path)}
     out = subprocess.run(

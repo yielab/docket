@@ -44,7 +44,7 @@ SUBJECT = "docket.core"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolate_stores(tmp_path: Path) -> Iterator[None]:
     with (
         use_home(Home(tmp_path / "docket")),
         use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),

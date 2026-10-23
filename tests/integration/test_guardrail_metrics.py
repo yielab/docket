@@ -32,7 +32,7 @@ SUBJECT = "docket.core.tools"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _hermetic(tmp_path: Path) -> Iterator[None]:
     """On top of conftest's autouse store isolation, pins TOOL_APPROVAL_TIMEOUT to 0 so an
     unanswered `ask` fails closed immediately, with no real sleep."""
     with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):

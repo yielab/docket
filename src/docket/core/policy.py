@@ -23,7 +23,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 import docket.plugins as _plugin_api
 from docket.core import plugins as _plugins
 from docket.kernel.errors import InvalidInput
@@ -590,7 +590,7 @@ def install_policies() -> PolicyInstallResult:
     if that distinction matters to the caller. Pure logic, no UI: this is the shared producer
     behind the workstation foundation bootstrap's policy-provisioning step, so what "installed"
     means has one definition."""
-    template_dir = _cfg.policy_templates_dir()
+    template_dir = _templates.policy_templates_dir()
     result = PolicyInstallResult(
         template_dir=template_dir, policies_dir=current_home().policies_dir
     )

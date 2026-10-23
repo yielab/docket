@@ -131,7 +131,7 @@ Enter value for ANTHROPIC_API_KEY (hidden):
 
 ## Implementation
 
-- `src/docket/config.py`: `DOCKET_HOME`, `KEYRING_SERVICE`
+- `src/docket/kernel/home.py`: the `Home` members `root`, `keyring_service`
 - `src/docket/kernel/home.py`: `Home.secrets_file` (`secrets.json`), `Home.secrets_meta_file` (`secrets.meta.json`)
 - `src/docket/core/secrets.py`: `secret_value`, `secret_values`, `store_backend`, `touch_meta`
 - `src/docket/cli/_setup_model.py`: `provider add`, `provider rotate`, `provider remove` and the credential writes they share

@@ -1,7 +1,7 @@
 """bind, unbind — writer commands.
 
-All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
-config constant patched to a temp directory so tests are hermetic. fleet.json is
+All tests invoke the CLI in-process via CliRunner, inside a `use_home` block on a
+temp directory so tests are hermetic. fleet.json is
 docket's only agent/binding registry.
 """
 
@@ -19,7 +19,7 @@ from docket.cli import _contract
 from docket.cli import app as _app
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.config"
+SUBJECT = "docket.cli"
 
 _runner = CliRunner()
 

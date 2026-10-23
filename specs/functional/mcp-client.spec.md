@@ -557,8 +557,8 @@ dispatch_tool(
 - `src/docket/core/pod.py`: `PodSettings` `mcpServers` validation (Requirement 38)
 - `src/docket/core/pod_apply.py`: recipe `mcp-servers/` planning and the pod-scoped file write
 - `src/docket/cli/_setup_mcp.py`: `docket setup mcp list/add/remove`
-- `src/docket/config.py`: `MCP_SERVERS_FILE`, `MCP_CLIENT_TIMEOUT_S`, `MCP_CLIENT_MAX_TIMEOUT_S`,
-  `TOOL_MAX_OUTPUT_CHARS`, `pod_config_dir`
+- `src/docket/kernel/home.py`: the `Home` members `mcp_servers_file`, `mcp_client_timeout_s`,
+  `mcp_client_max_timeout_s`, `tool_max_output_chars`, `pod_config_dir`
 - Tests: `tests/integration/test_mcp_client.py` (`TestCollisionRule`, `TestGatedExactlyLikeABuiltin`,
   `TestOnlyTheInertResultTypeIsImported`), `tests/unit/core/test_mcp_tools.py`
   (`TestZeroServersIsUnchanged`, `TestReviewerNeverGainsAWriteCapableMcpTool`),

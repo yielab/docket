@@ -38,7 +38,7 @@ _TEST_TOKEN = "test-serve-token-g6-xyz789"
 
 
 @pytest.fixture()
-def approvals_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def approvals_dir(tmp_path: Path) -> Iterator[Path]:
     d = tmp_path / "approvals"
     d.mkdir()
     with use_home(dataclasses.replace(current_home(), approvals_dir_override=d)):

@@ -79,7 +79,7 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def pod_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
     projects = home / "workspaces" / "projects"

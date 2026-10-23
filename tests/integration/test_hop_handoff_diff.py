@@ -15,10 +15,9 @@ from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _tool_call_response
 
 from docket.cli import _pod
-from docket.config import HANDOFF_DIFF_MAX_CHARS
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.dispatch"
 
@@ -106,7 +105,7 @@ def test_a_note_past_the_cap_is_cut_with_a_marker(tmp_path: Path, llm_server: An
         assert "line-00001" in critic_first
         assert "line-04999" not in critic_first
         assert "diff cut at" in critic_first
-        assert len(hops[0]["artifact"]["diff"]) < HANDOFF_DIFF_MAX_CHARS + 200
+        assert len(hops[0]["artifact"]["diff"]) < current_home().handoff_diff_max_chars + 200
 
 
 def test_a_hop_that_changed_nothing_adds_no_diff(tmp_path: Path, llm_server: Any) -> None:

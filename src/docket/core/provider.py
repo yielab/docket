@@ -3,8 +3,8 @@
 A provider is a `ProviderSpec` -- name, dialect, base URL, named credentials (never a value),
 selectable models with optional pricing, and named presets -- loaded the same way a role or
 policy is (model-profiles.spec.md "Provider catalog"). Two scopes, nearest-wins by name: built-in
-(`config.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
-(`config.PROVIDERS_FILE`, the operator's own). `edges/adapters/llm.py`'s `resolve_endpoint` reads
+(`kernel.templates.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
+(`Home.providers_file`, the operator's own). `edges/adapters/llm.py`'s `resolve_endpoint` reads
 the merged catalog; this module has no knowledge of terminals. `core/models_policy.py`'s
 `presets`/`preset_table`/`is_local_provider`/`is_marketplace`/`price_for`/`rank_anchors` are the
 only readers of the catalog's presets and pricing; every other per-provider fact (base URLs,
@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core.llm import ModelLimits
 from docket.edges import store as _store
 from docket.edges.adapters import system as _system
@@ -280,7 +280,7 @@ class Catalog:
 
 
 def _load_builtin_providers() -> dict[str, ProviderSpec]:
-    directory = _cfg.PROVIDER_TEMPLATES_DIR
+    directory = _templates.PROVIDER_TEMPLATES_DIR
     entries: dict[str, ProviderSpec] = {}
     if not directory.is_dir():
         return entries
@@ -386,7 +386,7 @@ def check_rank_anchors(spec: ProviderSpec) -> None:
 
 
 def save_provider(spec: ProviderSpec) -> None:
-    """Write *spec* into the global catalog (``config.PROVIDERS_FILE``), through
+    """Write *spec* into the global catalog (``Home.providers_file``), through
     ``edges/store.py`` -- the sole writer of docket-owned JSON."""
     spec = _with_inherited_identity(spec)
 
@@ -474,7 +474,7 @@ def _observed_entry(provider: str) -> dict[str, Any]:
 
 def observed_limits(provider: str, model_id: str) -> ModelLimits | None:
     """What *provider*'s ``/models`` last published for *model_id*, or ``None`` when that model
-    was never observed. The only reader of ``config.PROVIDER_MODELS_FILE``."""
+    was never observed. The only reader of ``Home.provider_models_file``."""
     models = _observed_entry(provider).get("models")
     row = models.get(model_id) if isinstance(models, dict) else None
     if not isinstance(row, dict):
@@ -519,7 +519,7 @@ def resolve_limits(spec: ProviderSpec, model_id: str) -> ResolvedLimits:
 def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
     """Replace *spec*'s observed models with what *probe* advertised, dated today. A probe that
     is not a 200 records nothing and leaves an earlier observation alone. The only writer of
-    ``config.PROVIDER_MODELS_FILE``."""
+    ``Home.provider_models_file``."""
     if probe.status != 200:
         return
     models = {
