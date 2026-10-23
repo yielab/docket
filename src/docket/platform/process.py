@@ -1,3 +1,12 @@
+"""Process adapter: typed wrappers over the host's tools (secret-tool, notify-send, process groups)
+and the environment switches read live.
+
+Every subprocess call catches FileNotFoundError / TimeoutExpired / OSError and degrades gracefully
+so a missing binary never crashes a command. Functions are module-level and typed so callers can
+monkeypatch them. The git wrappers live in ``platform/git.py`` and the sandbox mechanism in
+``sandbox/``; ``specs/functional/security-gates.spec.md`` covers the scoping rationale.
+"""
+
 from __future__ import annotations
 
 import ctypes
@@ -168,3 +177,40 @@ def kill_process_group(pgid: int, grace_s: float = 2.0) -> bool:
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(pgid, _signal.SIGKILL)
     return True
+
+
+def env_value(name: str) -> str:
+    """One environment variable, stripped; ``""`` when unset. Read live, for the credential names
+    a provider or exporter document declares."""
+    return os.environ.get(name, "").strip()
+
+
+def credential_env_values(names: tuple[str, ...], suffixes: tuple[str, ...]) -> list[str]:
+    """The stripped, non-empty values of every variable that is in *names* or ends in one of
+    *suffixes*, so a key exported in the shell after startup is seen. Read live."""
+    values = []
+    for name, raw in os.environ.items():
+        if name in names or name.endswith(suffixes):
+            value = raw.strip()
+            if value:
+                values.append(value)
+    return values
+
+
+def secrets_backend_requested() -> str:
+    """Which stored-secret backend the operator asked for: ``"keyring"`` (secret-tool/libsecret)
+    or the default ``"file"`` (secrets.json). Read live, never cached: a change made in the
+    environment mid-process takes effect on the next call. Whether ``secret-tool`` exists is
+    ``secret_tool_available``."""
+    return os.environ.get("DOCKET_SECRETS_BACKEND", "file")
+
+
+def no_trace() -> bool:
+    """True when DOCKET_NO_TRACE=1 asks every trace write to be a no-op. Read live."""
+    return os.environ.get("DOCKET_NO_TRACE", "0") == "1"
+
+
+def no_export() -> bool:
+    """True when DOCKET_NO_EXPORT=1 asks every export queue and flush action to be a no-op.
+    Read live."""
+    return os.environ.get("DOCKET_NO_EXPORT", "0") == "1"

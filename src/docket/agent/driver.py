@@ -45,7 +45,7 @@ from docket.agent.ports import (
 )
 from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry, builtin_registry
-from docket.edges.adapters import exporters as _exporters
+from docket.observability.adapters import sinks as _exporters
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.workspace import prepare as _prepare

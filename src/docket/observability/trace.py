@@ -24,9 +24,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.platform import process as _process
 from docket.platform import store
 
 # A sink receives the exact record trace_event is about to append (after
@@ -153,7 +153,7 @@ def _stored_secret_values() -> list[str]:
         pass
     values.extend(
         v
-        for v in _system.credential_env_values(_ENV_CREDENTIAL_NAMES, _ENV_CREDENTIAL_SUFFIXES)
+        for v in _process.credential_env_values(_ENV_CREDENTIAL_NAMES, _ENV_CREDENTIAL_SUFFIXES)
         if len(v) > 8
     )
     return values
@@ -260,7 +260,7 @@ def trace_event(
     ``"suppressed"`` under DOCKET_NO_TRACE=1 -- three outcomes a caller can
     tell apart, so a suppressed write is never mistaken for a real one.
     payload is parsed as JSON when possible, else wrapped as ``{"text": ...}``."""
-    if _system.no_trace():
+    if _process.no_trace():
         return "suppressed"
     if event_type not in EVENT_TYPES:
         return "rejected"
@@ -312,7 +312,7 @@ def sweep_all() -> None:
     """Append a synthetic 'aborted' session_end, after notifying subscribers, to every trace
     older than SESSION_TIMEOUT that has none (called by docket start).
     No-ops under DOCKET_NO_TRACE=1."""
-    if _system.no_trace():
+    if _process.no_trace():
         return
     traces_root = current_home().traces_dir
     if not traces_root.is_dir():

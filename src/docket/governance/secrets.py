@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
@@ -51,7 +50,7 @@ def secret_value(name: str) -> str | None:
     raw = load_secrets()
     if name not in raw:
         return None
-    if _system.secrets_backend_requested() == "keyring" and _process.secret_tool_available():
+    if _process.secrets_backend_requested() == "keyring" and _process.secret_tool_available():
         value = _process.secret_tool_lookup(current_home().keyring_service, name)
     else:
         value = raw.get(name)
@@ -63,7 +62,7 @@ def store_backend() -> str:
     """The backend a credential write goes to: ``"keyring"`` or ``"file"``. Raises ``Unavailable``
     when the keyring was requested and ``secret-tool`` is not on ``PATH``, so a write never
     falls back to plaintext in silence."""
-    if _system.secrets_backend_requested() != "keyring":
+    if _process.secrets_backend_requested() != "keyring":
         return "file"
     if not _process.secret_tool_available():
         raise Unavailable(
@@ -85,7 +84,7 @@ def secret_values() -> list[str]:
     if not raw:
         return []
     backend = "file"
-    if _system.secrets_backend_requested() == "keyring" and _process.secret_tool_available():
+    if _process.secrets_backend_requested() == "keyring" and _process.secret_tool_available():
         backend = "keyring"
     if backend == "keyring":
         service = current_home().keyring_service

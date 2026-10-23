@@ -28,11 +28,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 import docket.kernel.templates as _templates
 from docket.agent.llm import ModelLimits
-from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel import document_fields as _documents
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
+from docket.platform import process as _process
 from docket.platform import store as _store
 
 if TYPE_CHECKING:
@@ -404,13 +404,13 @@ def resolve_credential(spec: ProviderSpec) -> tuple[str, str]:
     """Resolve *spec*'s credential value: ``(value, source)``, source one of ``"override"``
     (``DOCKET_LLM_API_KEY``), ``"env"``, ``"store"`` or ``"none"``, checked in that order per
     name in ``auth.credentials``."""
-    override = _system.env_value("DOCKET_LLM_API_KEY")
+    override = _process.env_value("DOCKET_LLM_API_KEY")
     if override:
         return override, "override"
     if spec.auth.type == "none":
         return "", "none"
     for name in spec.auth.credentials:
-        value = _system.env_value(name)
+        value = _process.env_value(name)
         if value:
             return value, "env"
     from docket.governance import secrets as _secrets
@@ -732,7 +732,7 @@ def model_readiness(model: str) -> ModelReadiness:
     credential_names = tuple(spec.auth.credentials) if spec else ()
     credential_name = credential_names[0] if credential_names else ""
     credential_present = any(
-        bool(_system.env_value(name)) or bool(_secrets.secret_value(name))
+        bool(_process.env_value(name)) or bool(_secrets.secret_value(name))
         for name in credential_names
     )
     endpoint = _llm.resolve_endpoint(model)

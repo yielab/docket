@@ -1,9 +1,9 @@
 """Wire adapters for observability export.
 
 Each module here is the only place in docket that knows one destination's wire
-format; ``core/telemetry.py``'s ``Span``/``SpanEvent`` model stays vendor-free.
+format; ``observability/telemetry.py``'s ``Span``/``SpanEvent`` model stays vendor-free.
 
-``sink_for`` is the one factory `core/telemetry.py::start` calls to turn a resolved
+``sink_for`` is the one factory `observability/telemetry.py::start` calls to turn a resolved
 `ExporterSpec` plus its already-resolved credential values into a `SpanSink` -- dispatching on
 `spec.dialect` through `_DIALECTS`. Today only `otlp-http` is registered.
 """
@@ -21,7 +21,7 @@ from docket.observability.telemetry import SpanSink
 
 def _auth_header(spec: ExporterSpec, values: list[str]) -> AuthHeader:
     """Build the resolved auth header pair for *spec*'s ``auth.type`` from its already-resolved
-    credential *values* (`core.exporter.resolve_credentials`) -- this module never reads a
+    credential *values* (`observability.exporter.resolve_credentials`) -- this module never reads a
     credential by name, only what the caller already resolved."""
     auth_type = spec.auth.type
     if auth_type == "none":

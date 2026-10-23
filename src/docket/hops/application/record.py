@@ -10,13 +10,13 @@ from docket.agent import conversations as _conv
 from docket.agent import handoff as _handoff
 from docket.agent import memory as _mem
 from docket.agent import ports as _rd
-from docket.edges.adapters import system as _sys
 from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.platform import process as _process
 from docket.platform import store as _store
 from docket.tasks.application import consult as _consult
 from docket.tasks.domain.task import HopResult
@@ -359,7 +359,7 @@ def _hop_usage(run_res: _rd.TurnResult) -> dict[str, int] | None:
 def _hop_trace_link(ctx: _UnitContext, first_ts: str) -> dict[str, str] | None:
     """The hop's trace link; ``lastTs`` is refreshed once the hop's closing events are written
     (``_persist_hop_and_trace``). ``None`` under ``DOCKET_NO_TRACE``."""
-    if _sys.no_trace() or not first_ts:
+    if _process.no_trace() or not first_ts:
         return None
     return {
         "project": ctx.project,

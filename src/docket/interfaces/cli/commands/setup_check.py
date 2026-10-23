@@ -17,7 +17,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from docket.agent import memory as _mem
-from docket.edges.adapters import system as _sys
 from docket.governance import network_posture as _np
 from docket.governance import policy as _pol
 from docket.governance import profile as _profile
@@ -28,6 +27,7 @@ from docket.kernel.home import current_home
 from docket.models import selection as _mp
 from docket.observability import exporter as _exporter
 from docket.operator import channel as _channel
+from docket.platform import process as _process
 from docket.platform import store
 from docket.sandbox import docker as _docker
 from docket.sandbox import launch as _launch
@@ -696,7 +696,7 @@ def _fmt_num(s: str) -> str:
 
 def _secrets_backend() -> str:
     """Resolve the secrets backend (keyring if requested + available, else file)."""
-    if _sys.secrets_backend_requested() == "keyring" and shutil.which("secret-tool"):
+    if _process.secrets_backend_requested() == "keyring" and shutil.which("secret-tool"):
         return "keyring"
     return "file"
 

@@ -17,13 +17,13 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
-from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.observability import exporter as _exporter
 from docket.observability import trace
+from docket.platform import process as _process
 
 AttrValue = str | int | bool
 Attributes = dict[str, AttrValue]
@@ -970,7 +970,7 @@ def start(specs: Sequence[Any], sink_for: SinkFactory) -> int:
     subscribing one fan-out sink through `core.trace.add_subscriber`. Returns the count of
     pipelines actually started."""
     global _UNSUBSCRIBE
-    if _system.no_export():
+    if _process.no_export():
         return 0
     with _REGISTRY_LOCK:
         if _REGISTRY or _UNSUBSCRIBE is not None:

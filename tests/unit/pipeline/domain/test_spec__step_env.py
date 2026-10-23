@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 import yaml
-from tests.unit.tasks.application.test_queue import _unit_context
+from tests.unit.pipeline.application.test_steps import _unit_context
 
 from docket.governance import secrets as _secrets
 from docket.hops.application import record as _record

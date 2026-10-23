@@ -8,11 +8,11 @@ unresolvable ref. `subprocess.run` is monkeypatched throughout, mirroring
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 
-from docket.edges.adapters import system as _sys
 from docket.kernel.home import Home, use_home
 from docket.platform import git as _git
 from docket.sandbox import docker as _docker
@@ -26,9 +26,9 @@ SUBJECT = "docket.sandbox.launch"
 class TestChosenBackend:
     def _hosts(self, monkeypatch: pytest.MonkeyPatch, *, landlock: bool, docker: bool) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(_landlock, "landlock_available", lambda: landlock)
-        monkeypatch.setattr(_seatbelt, "seatbelt_available", lambda: False)
-        monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: docker)
+        monkeypatch.setattr(_launch, "landlock_available", lambda: landlock)
+        monkeypatch.setattr(_launch, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: docker)
 
     def test_auto_never_picks_docker(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._hosts(monkeypatch, landlock=False, docker=True)
@@ -65,7 +65,7 @@ class TestChosenBackend:
         self._hosts(monkeypatch, landlock=False, docker=False)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
         assert _launch.sandbox_availability("auto").backend == "none"
-        assert not hasattr(_sys, "bwrap_argv")
+        assert not hasattr(_launch, "bwrap_argv")
 
 
 class TestTaskEnvironmentCacheDir:
@@ -114,7 +114,7 @@ class TestJailLaunch:
         launch = _launch.jail_launch(
             (tmp_path,), "echo hi", "landlock", network=False, env={"A": "1"}, extra_rw=(cache,)
         )
-        assert launch.argv[:3] == [_sys.sys.executable, "-m", "docket.sandbox.jail"]
+        assert launch.argv[:3] == [sys.executable, "-m", "docket.sandbox.jail"]
         rw = [launch.argv[i + 1] for i, a in enumerate(launch.argv) if a == "--rw"]
         assert rw[:2] == [str(tmp_path.resolve()), str(cache.resolve())]
         assert launch.argv[launch.argv.index("--net") + 1] == "none"

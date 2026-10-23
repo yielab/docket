@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import struct
+import sys
 from pathlib import Path
 
 import pytest
 
-from docket.edges.adapters import system as _sys
 from docket.sandbox import docker as _docker
 from docket.sandbox import landlock
 from docket.sandbox import launch as _launch
@@ -119,7 +119,7 @@ class TestPlanRuleset:
 class TestLandlockBackend:
     def test_argv_runs_the_jail_entry_with_the_roots_and_network_mode(self, tmp_path: Path) -> None:
         argv = landlock.landlock_argv((tmp_path,), "echo hi", network=False)
-        assert argv[:3] == [_sys.sys.executable, "-m", "docket.sandbox.jail"]
+        assert argv[:3] == [sys.executable, "-m", "docket.sandbox.jail"]
         assert argv[argv.index("--rw") + 1] == str(tmp_path.resolve())
         assert argv[argv.index("--net") + 1] == "none"
         assert argv[-4:] == ["--", "/bin/sh", "-c", "echo hi"]
@@ -133,11 +133,11 @@ class TestLandlockBackend:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(landlock, "landlock_available", lambda: True)
-        monkeypatch.setattr(_seatbelt, "seatbelt_available", lambda: False)
-        monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(_launch, "landlock_available", lambda: True)
+        monkeypatch.setattr(_launch, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: True)
         assert _launch.sandbox_availability("auto").backend == "landlock"
-        monkeypatch.setattr(landlock, "landlock_available", lambda: False)
+        monkeypatch.setattr(_launch, "landlock_available", lambda: False)
         assert _launch.sandbox_availability("auto").backend == "none"
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         assert _launch.sandbox_availability().backend == "landlock"

@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from docket.edges.adapters import system as _sys
 from docket.sandbox import docker as _docker
 from docket.sandbox import landlock as _landlock
 from docket.sandbox import launch as _launch
@@ -25,10 +24,10 @@ SUBJECT = "docket.sandbox.seatbelt"
 
 
 def _pin_profile_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_sys.sys, "prefix", "/opt/py")
-    monkeypatch.setattr(_sys.sys, "base_prefix", "/opt/py")
-    monkeypatch.setattr(_sys.os.path, "realpath", lambda p: str(p))
-    monkeypatch.setattr(_landlock, "_mount_dirs", lambda roots: ([str(r) for r in roots], []))
+    monkeypatch.setattr(_seatbelt.sys, "prefix", "/opt/py")
+    monkeypatch.setattr(_seatbelt.sys, "base_prefix", "/opt/py")
+    monkeypatch.setattr(_seatbelt.os.path, "realpath", lambda p: str(p))
+    monkeypatch.setattr(_seatbelt, "_mount_dirs", lambda roots: ([str(r) for r in roots], []))
 
 
 _PROFILE_HEAD = (
@@ -83,7 +82,7 @@ class TestSeatbeltBackend:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_profile_env(monkeypatch)
-        monkeypatch.setattr(_landlock, "_mount_dirs", lambda roots: (["/w/a"], ["/w/a/.git/hooks"]))
+        monkeypatch.setattr(_seatbelt, "_mount_dirs", lambda roots: (["/w/a"], ["/w/a/.git/hooks"]))
         profile = _seatbelt.seatbelt_profile((Path("/w/a"),), False)
         assert profile.endswith(
             '(allow file-read* file-write* (subpath "/w/a"))\n'
@@ -108,17 +107,17 @@ class TestSeatbeltBackend:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_PROBE", raising=False)
-        monkeypatch.setattr(_sys.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
-        monkeypatch.setattr(_sys.sys, "platform", "linux")
+        monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
+        monkeypatch.setattr(_seatbelt.sys, "platform", "linux")
         assert _seatbelt.seatbelt_available() is False
-        monkeypatch.setattr(_sys.sys, "platform", "darwin")
+        monkeypatch.setattr(_seatbelt.sys, "platform", "darwin")
         assert _seatbelt.seatbelt_available() is True
-        monkeypatch.setattr(_sys.os.path, "exists", lambda p: False)
+        monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: False)
         assert _seatbelt.seatbelt_available() is False
 
     def test_the_probe_override_hides_seatbelt(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_sys.sys, "platform", "darwin")
-        monkeypatch.setattr(_sys.os.path, "exists", lambda p: True)
+        monkeypatch.setattr(_seatbelt.sys, "platform", "darwin")
+        monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: True)
         monkeypatch.setenv("DOCKET_SANDBOX_PROBE", "none")
         assert _seatbelt.seatbelt_available() is False
 
@@ -127,14 +126,36 @@ class TestSeatbeltBackend:
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         monkeypatch.delenv("DOCKET_SANDBOX_PROBE", raising=False)
-        monkeypatch.setattr(_sys.sys, "platform", "darwin")
-        monkeypatch.setattr(_sys.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
-        monkeypatch.setattr(_landlock, "landlock_available", lambda: False)
+        monkeypatch.setattr(_seatbelt.sys, "platform", "darwin")
+        monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
+        monkeypatch.setattr(_launch, "landlock_available", lambda: False)
         monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: True)
         availability = _launch.sandbox_availability("auto")
         assert availability.backend == "seatbelt"
         assert availability.landlock is False
-        monkeypatch.setattr(_sys.os.path, "exists", lambda p: False)
+        monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: False)
         assert _launch.sandbox_availability("auto").backend == "none"
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "seatbelt")
         assert _launch.sandbox_availability().backend == "seatbelt"
+
+
+class TestRefNarrowingOnSeatbelt:
+    def _linked(self, tmp_path: Path, head: str) -> tuple[Path, Path, Path]:
+        wt, common = tmp_path / "wt", tmp_path / "main" / ".git"
+        gitdir = common / "worktrees" / "wt"
+        for d in (wt, gitdir, common / "objects", common / "refs", common / "logs" / "refs"):
+            d.mkdir(parents=True)
+        (gitdir / "HEAD").write_text(head)
+        return wt, common, gitdir
+
+    def test_seatbelt_allows_the_task_branch_dirs_after_the_ref_denies(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        wt, common, gitdir = self._linked(tmp_path, "ref: refs/heads/docket/pod/wt\n")
+        monkeypatch.setattr(_landlock, "git_dirs", lambda r: [gitdir, common])
+        lines = _seatbelt.seatbelt_profile((wt,), False).splitlines()
+        deny = lines.index(f'(deny file-write* (subpath "{common / "refs"}"))')
+        branch = common / "refs" / "heads" / "docket" / "pod"
+        allow = lines.index(f'(allow file-read* file-write* (subpath "{branch}"))')
+        assert allow > deny
+        assert f'(deny file-write* (subpath "{common / "packed-refs"}"))' in lines

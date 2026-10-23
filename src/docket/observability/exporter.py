@@ -21,12 +21,12 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import docket.kernel.templates as _templates
-from docket.edges.adapters import system as _system
 from docket.governance import privacy as _privacy
 from docket.kernel import document_fields as _documents
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
 from docket.observability.trace import EVENT_TYPES
+from docket.platform import process as _process
 from docket.platform import store as _store
 
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
@@ -506,7 +506,7 @@ def resolve_credentials(spec: ExporterSpec) -> tuple[list[str], str]:
     values: list[str] = []
     sources: set[str] = set()
     for name in spec.auth.credentials:
-        env_value = _system.env_value(name)
+        env_value = _process.env_value(name)
         if env_value:
             values.append(env_value)
             sources.add("env")

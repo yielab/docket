@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 
-from docket.edges.adapters import system as _sys
 from docket.platform import git as _git
 from docket.sandbox import landlock as _landlock
 
@@ -83,7 +82,7 @@ class TestGitHeadSha:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         sha = "a" * 40
         monkeypatch.setattr(
-            _sys.subprocess,
+            _git.subprocess,
             "run",
             lambda *a, **k: _FakeCompleted(returncode=0, stdout=sha + "\n"),
         )
@@ -91,7 +90,7 @@ class TestGitHeadSha:
 
     def test_none_when_not_a_repo(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
         assert _git.git_head_sha("/tmp/notrepo") is None
 
     def test_none_when_git_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,7 +99,7 @@ class TestGitHeadSha:
         def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
             raise AssertionError("must not shell out without git")
 
-        monkeypatch.setattr(_sys.subprocess, "run", boom)
+        monkeypatch.setattr(_git.subprocess, "run", boom)
         assert _git.git_head_sha("/tmp/repo") is None
 
     def test_none_on_missing_binary(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -109,16 +108,16 @@ class TestGitHeadSha:
         def raise_fnf(*_a: Any, **_k: Any) -> _FakeCompleted:
             raise FileNotFoundError
 
-        monkeypatch.setattr(_sys.subprocess, "run", raise_fnf)
+        monkeypatch.setattr(_git.subprocess, "run", raise_fnf)
         assert _git.git_head_sha("/tmp/repo") is None
 
     def test_none_on_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
 
         def raise_timeout(*_a: Any, **_k: Any) -> _FakeCompleted:
-            raise _sys.subprocess.TimeoutExpired(cmd="git", timeout=5)
+            raise _git.subprocess.TimeoutExpired(cmd="git", timeout=5)
 
-        monkeypatch.setattr(_sys.subprocess, "run", raise_timeout)
+        monkeypatch.setattr(_git.subprocess, "run", raise_timeout)
         assert _git.git_head_sha("/tmp/repo") is None
 
 
@@ -130,7 +129,7 @@ class TestGitMergeBase:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         sha = "b" * 40
         monkeypatch.setattr(
-            _sys.subprocess,
+            _git.subprocess,
             "run",
             lambda *a, **k: _FakeCompleted(returncode=0, stdout=sha + "\n"),
         )
@@ -138,7 +137,7 @@ class TestGitMergeBase:
 
     def test_none_for_unknown_ref(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
         assert _git.git_merge_base("/tmp/repo", "no-such-branch") is None
 
     def test_none_when_git_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,7 +146,7 @@ class TestGitMergeBase:
         def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
             raise AssertionError("must not shell out without git")
 
-        monkeypatch.setattr(_sys.subprocess, "run", boom)
+        monkeypatch.setattr(_git.subprocess, "run", boom)
         assert _git.git_merge_base("/tmp/repo", "main") is None
 
 
@@ -159,7 +158,7 @@ class TestGitDiffStat:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         summary = " 2 files changed, 10 insertions(+), 3 deletions(-)\n"
         monkeypatch.setattr(
-            _sys.subprocess,
+            _git.subprocess,
             "run",
             lambda *a, **k: _FakeCompleted(returncode=0, stdout=summary),
         )
@@ -173,7 +172,7 @@ class TestGitDiffStat:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         summary = " 1 file changed, 1 insertion(+)\n"
         monkeypatch.setattr(
-            _sys.subprocess,
+            _git.subprocess,
             "run",
             lambda *a, **k: _FakeCompleted(returncode=0, stdout=summary),
         )
@@ -186,7 +185,7 @@ class TestGitDiffStat:
     def test_empty_summary_reports_all_zero_not_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         monkeypatch.setattr(
-            _sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout="")
+            _git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout="")
         )
         assert _git.git_diff_stat("/tmp/repo", "abc123") == {
             "files": 0,
@@ -196,12 +195,12 @@ class TestGitDiffStat:
 
     def test_none_for_unresolvable_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
         assert _git.git_diff_stat("/tmp/repo", "no-such-ref") is None
 
     def test_none_when_not_a_repo(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
         assert _git.git_diff_stat("/tmp/notrepo", "HEAD") is None
 
     def test_none_when_git_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -210,7 +209,7 @@ class TestGitDiffStat:
         def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
             raise AssertionError("must not shell out without git")
 
-        monkeypatch.setattr(_sys.subprocess, "run", boom)
+        monkeypatch.setattr(_git.subprocess, "run", boom)
         assert _git.git_diff_stat("/tmp/repo", "HEAD") is None
 
 
@@ -220,14 +219,14 @@ class TestGitTrackedFilesAndBlobIds:
     ) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         listing = "scripts/check.sh\0README.md\0"
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(stdout=listing))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(stdout=listing))
         assert _git.git_tracked_files("/tmp/repo") == ["README.md", "scripts/check.sh"]
 
     def test_tracked_files_are_empty_outside_a_repo_or_without_git(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(128))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(128))
         assert _git.git_tracked_files("/tmp/notrepo") == []
         monkeypatch.setattr(_git, "git_available", lambda: False)
         assert _git.git_tracked_files("/tmp/repo") == []
@@ -237,7 +236,7 @@ class TestGitTrackedFilesAndBlobIds:
     ) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         answers = {"a.sh": _FakeCompleted(stdout="abc123\n"), "gone.sh": _FakeCompleted(128)}
-        monkeypatch.setattr(_sys.subprocess, "run", lambda argv, **k: answers[argv[-1]])
+        monkeypatch.setattr(_git.subprocess, "run", lambda argv, **k: answers[argv[-1]])
         got = _git.git_blob_ids("/tmp/repo", ["a.sh", "gone.sh", "../x", "/etc/passwd"])
         assert got == {"a.sh": "abc123"}
 
@@ -267,7 +266,7 @@ class TestTrustedWorktree:
             seen.update(kw)
             return _FakeCompleted(0, "main\n")
 
-        monkeypatch.setattr(_sys.subprocess, "run", fake)
+        monkeypatch.setattr(_git.subprocess, "run", fake)
         _git.trust_worktree(str(wt), str(tmp_path / "g"), str(tmp_path / "c"))
         _git._git_run(str(wt), ["status"], 5)
         env = seen["env"]
@@ -285,7 +284,7 @@ class TestTrustedWorktree:
         (gitdir / "config.worktree").write_text("[core]\n")
         (common / "config").write_text("[extensions]\n\tworktreeConfig = true\n")
         ran: list[object] = []
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: ran.append(a))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: ran.append(a))
         _git.trust_worktree(str(wt), str(gitdir), str(common))
         out = _git._git_run(str(wt), ["status"], 5)
         assert out.returncode == 1 and ran == []
@@ -303,7 +302,7 @@ class TestGitWorktreeAddStartPoint:
             return _FakeCompleted(returncode=0)
 
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", _run)
+        monkeypatch.setattr(_git.subprocess, "run", _run)
         return argvs
 
     def test_start_point_is_the_last_argument(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -341,7 +340,7 @@ class TestGitDiffRange:
             seen.append(argv)
             return _FakeCompleted(returncode=0, stdout="diff --git a/x b/x\n")
 
-        monkeypatch.setattr(_sys.subprocess, "run", _run)
+        monkeypatch.setattr(_git.subprocess, "run", _run)
         assert _git.git_diff_range("/tmp/repo", "abc", "br") == "diff --git a/x b/x\n"
         assert seen[0][-2:] == ["diff", "abc..br"]
 
@@ -349,7 +348,7 @@ class TestGitDiffRange:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         big = "x" * (_git.DIFF_MAX_CHARS + 10)
         monkeypatch.setattr(
-            _sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout=big)
+            _git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout=big)
         )
         patch = _git.git_diff_range("/tmp/repo", "a", "b")
         assert patch is not None
@@ -358,7 +357,7 @@ class TestGitDiffRange:
 
     def test_none_on_failure_or_without_git(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
         assert _git.git_diff_range("/tmp/repo", "a", "b") is None
         monkeypatch.setattr(_git, "git_available", lambda: False)
         assert _git.git_diff_range("/tmp/repo", "a", "b") is None
@@ -369,13 +368,13 @@ class TestGitUntracked:
         monkeypatch.setattr(_git, "git_available", lambda: True)
         out = " M tracked.py\n?? b/new.txt\n?? a.txt\nA  added.py\n"
         monkeypatch.setattr(
-            _sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout=out)
+            _git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0, stdout=out)
         )
         assert _git.git_untracked("/tmp/wt") == ["a.txt", "b/new.txt"]
 
     def test_empty_when_not_a_repo(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
+        monkeypatch.setattr(_git.subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=128))
         assert _git.git_untracked("/tmp/nowhere") == []
 
 

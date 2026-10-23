@@ -14,7 +14,6 @@ import typer
 from pydantic import ValidationError
 from rich.markup import escape
 
-from docket.edges.adapters import system as _system
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
@@ -45,7 +44,7 @@ def _say(text: str = "") -> None:
 
 
 def _keyring_active() -> bool:
-    return _system.secrets_backend_requested() == "keyring" and _process.secret_tool_available()
+    return _process.secrets_backend_requested() == "keyring" and _process.secret_tool_available()
 
 
 def _validate_key_format(name: str, value: str) -> tuple[bool, str]:

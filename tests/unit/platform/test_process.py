@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pytest
 
-from docket.edges.adapters import system as _sys
 from docket.platform import process as _process
 
 SUBJECT = "docket.platform.process"
@@ -18,7 +17,7 @@ SUBJECT = "docket.platform.process"
 
 class TestDesktopNotificationsAvailable:
     def test_linux_needs_a_session_and_notify_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_sys.sys, "platform", "linux")
+        monkeypatch.setattr(_process.sys, "platform", "linux")
         monkeypatch.setattr(_process, "_which", lambda binary: binary == "notify-send")
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
@@ -29,7 +28,45 @@ class TestDesktopNotificationsAvailable:
         assert _process.desktop_notifications_available() is False
 
     def test_macos_needs_only_osascript(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_sys.sys, "platform", "darwin")
+        monkeypatch.setattr(_process.sys, "platform", "darwin")
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.setattr(_process, "_which", lambda binary: binary == "osascript")
         assert _process.desktop_notifications_available() is True
+
+
+# ── live environment switches ─────────────────────────────────────────────────
+
+
+def test_the_environment_switches_are_read_live(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("DOCKET_NO_TRACE", "DOCKET_NO_EXPORT", "DOCKET_SECRETS_BACKEND"):
+        monkeypatch.delenv(name, raising=False)
+    assert (_process.no_trace(), _process.no_export(), _process.secrets_backend_requested()) == (
+        False,
+        False,
+        "file",
+    )
+    monkeypatch.setenv("DOCKET_NO_TRACE", "1")
+    monkeypatch.setenv("DOCKET_NO_EXPORT", "1")
+    monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
+    assert (_process.no_trace(), _process.no_export(), _process.secrets_backend_requested()) == (
+        True,
+        True,
+        "keyring",
+    )
+
+
+def test_env_value_is_stripped_and_empty_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DOCKET_TEST_CRED", raising=False)
+    assert _process.env_value("DOCKET_TEST_CRED") == ""
+    monkeypatch.setenv("DOCKET_TEST_CRED", "  abc  ")
+    assert _process.env_value("DOCKET_TEST_CRED") == "abc"
+
+
+def test_credential_env_values_match_by_name_or_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EXACT_NAME", " one ")
+    monkeypatch.setenv("SOMETHING_API_KEY", "two")
+    monkeypatch.setenv("EMPTY_API_KEY", "  ")
+    monkeypatch.setenv("UNRELATED_VALUE", "three")
+    values = _process.credential_env_values(("EXACT_NAME",), ("_API_KEY",))
+    assert "one" in values and "two" in values
+    assert "three" not in values and "" not in values

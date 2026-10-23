@@ -1,3 +1,8 @@
+"""Git adapter: typed wrappers over the ``git`` binary. Each degrades to a neutral value
+(``None``, ``False``, an empty list) on a missing binary, a non-repository directory or an
+unresolvable ref, rather than raising.
+"""
+
 from __future__ import annotations
 
 import contextlib
