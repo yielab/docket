@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -80,7 +81,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Path:
     """Full pod via ``build_pod`` (a real persisted TASK_LIST.json queue) — used
     only by the ``dispatch_pod``-level integration tests (stale-claim + timeouts
     that read the Lead's meta), not the direct ``dispatch_task`` unit tests."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     return current_home().root
 
 

@@ -20,6 +20,7 @@ from threading import Barrier
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import conversations as _conv
@@ -49,7 +50,7 @@ def _seed_pod(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        build_pod(project, roles, codebase=f"/src/{project}")
         yield home
 
 

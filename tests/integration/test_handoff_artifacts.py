@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import context as _context
@@ -246,7 +247,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo", *, full: bool = False) -> I
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         roles = _pod.pod.FULL_POD_ROLES if full else _pod.pod.DEFAULT_POD_ROLES
-        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        build_pod(project, roles, codebase=f"/src/{project}")
         yield home
 
 

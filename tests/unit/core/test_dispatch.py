@@ -25,8 +25,8 @@ from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
-from docket.cli import _pod as _cli_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import orchestrator as _orch
@@ -1526,7 +1526,7 @@ class TestHopEvents:
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             record_isolation_off(home)
-            _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
             monkeypatch.setenv("DOCKET_NO_TRACE", "0")
             backend = _ScriptedBackend(["lead plan", "implementer done"])
             driver = _drt.DocketDriver(backend_factory=lambda model: backend)
@@ -1581,7 +1581,7 @@ class TestHopEvents:
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             record_isolation_off(home)
-            _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
             task = _dispatch.enqueue_task("demo", "usage", channel="cli")
             task_id = str(task["id"])
             hops = [

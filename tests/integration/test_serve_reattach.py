@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import answers as _answers
@@ -95,7 +96,7 @@ def _task_list(project: str = "demo") -> list[dict[str, Any]]:
 
 def _gated_pod() -> None:
     """A full pod whose pipeline is the default one with an approval gate on the Implementer."""
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+    build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
     spec = _pipeline.default_pipeline()
     steps = [
         step.model_copy(update={"gate": _pipeline.ApprovalGate()})
@@ -147,7 +148,7 @@ def _consult() -> ChatResponse:
 def _park_on_consult(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     workspace = tmp_path / "codebase"
     workspace.mkdir()
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
+    build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
     _fleet.meta_set("demo-implementer", "codebase", str(workspace))
     _fleet.meta_set("demo-implementer", "verifyCmd", "true")
     _fleet.meta_set(
@@ -243,7 +244,7 @@ class TestAnswerAcrossRestart:
 
 class TestIdempotencyKey:
     def test_a_retry_with_the_same_key_after_a_failure_returns_the_failed_task(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         with _server() as first:
             _, created = _call(
                 "POST", f"{first}/tasks/demo", {"description": "x", "idempotencyKey": "K:1"}
@@ -294,7 +295,7 @@ class TestExpiryStates:
 
 class TestStaleClaim:
     def test_a_stale_claim_failure_is_resumed_by_the_next_sweep(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         task = _dispatch.enqueue_task("demo", "x", channel="cli")
         path = _dispatch.pod_task_list_path("demo")
         doc = json.loads(path.read_text())

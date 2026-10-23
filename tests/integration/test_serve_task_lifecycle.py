@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _tool_call_response
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import audit as _audit
@@ -93,7 +94,7 @@ def _seed_pod(tmp_path: Path, base_url: str = "") -> Iterator[Path]:
         record_isolation_off(home)
         if base_url:
             register_local_provider(home, "local", [{"id": "stub"}], base_url=base_url)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         if base_url:
             for role in ("lead", "implementer"):
                 _fleet.meta_set(_pod.pod.member_id("demo", role), "model", "local/stub")

@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 import typer
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
@@ -137,7 +138,7 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 
@@ -674,7 +675,7 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
 
         default_dir = codebase / ".docket"
         default_dir.mkdir()

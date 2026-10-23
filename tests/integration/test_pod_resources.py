@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import pod_provisioning as _pp
@@ -166,7 +167,7 @@ class TestPortAllocation:
 class TestPodResources:
     def test_build_pod_allocates_resources_for_implementer(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             meta = _meta(home, "demo-implementer")
             assert meta["portRangeStart"] == _res.PORT_BASE
             assert meta["portRangeCount"] == _res.PORT_RANGE_SIZE
@@ -175,14 +176,14 @@ class TestPodResources:
 
     def test_lead_does_not_get_port_resources(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             meta = _meta(home, "demo-lead")
             assert "portRangeStart" not in meta
             assert "scratchDir" not in meta
 
     def test_implementer_tools_md_contains_port_range(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
             assert tools_path.exists(), "TOOLS.md should be written for the implementer"
             content = tools_path.read_text()
@@ -192,14 +193,14 @@ class TestPodResources:
 
     def test_lead_has_no_tools_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             tools_path = home / "workspaces" / "projects" / "demo-lead" / "TOOLS.md"
             assert not tools_path.exists()
 
     def test_two_pods_get_disjoint_port_ranges(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
             meta_a = _meta(home, "alpha-implementer")
             meta_b = _meta(home, "beta-implementer")
             start_a = meta_a["portRangeStart"]
@@ -212,42 +213,42 @@ class TestPodResources:
 
     def test_scratch_dir_is_created(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             meta = _meta(home, "demo-implementer")
             scratch = Path(meta["scratchDir"])
             assert scratch.is_dir(), "scratch dir must exist after provisioning"
 
     def test_two_pods_get_distinct_scratch_dirs(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
-            _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
             scratch_a = _meta(home, "alpha-implementer")["scratchDir"]
             scratch_b = _meta(home, "beta-implementer")["scratchDir"]
             assert scratch_a != scratch_b
 
     def test_pod_delete_frees_port_range(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             # Free the port range by simulating pod teardown.
-            _pod.free_pod_resources("demo")
+            _pp.free_pod_resources("demo")
             # Re-provisioning the same project should get PORT_BASE (reused slot).
-            _pod.build_pod("demo2", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo2", _pod.pod.DEFAULT_POD_ROLES)
             meta = _meta(home, "demo2-implementer")
             assert meta["portRangeStart"] == _res.PORT_BASE
 
     def test_pod_delete_removes_scratch_dir(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             meta = _meta(home, "demo-implementer")
             scratch = Path(meta["scratchDir"])
             assert scratch.is_dir()
-            _pod.free_pod_resources("demo")
+            _pp.free_pod_resources("demo")
             assert not scratch.exists(), "scratch dir must be removed on pod teardown"
 
     def test_free_pod_resources_idempotent(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             # Calling free on a pod that never existed is safe.
-            _pod.free_pod_resources("nonexistent")
+            _pp.free_pod_resources("nonexistent")
 
     def test_provision_lock_dir_is_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
@@ -262,12 +263,12 @@ class TestPodResources:
             _pp.provision_pod("demo", "software", location="/src/demo")
             lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
             assert lock_dir.is_dir()
-            _pod.free_pod_resources("demo")
+            _pp.free_pod_resources("demo")
             assert not lock_dir.exists(), "provision lock dir must be removed on pod teardown"
 
     def test_pods_dir_and_project_dir_are_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             pods_dir = home / "workspaces" / "pods"
             project_dir = pods_dir / "demo"
             assert pods_dir.is_dir()

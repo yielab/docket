@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.cli import _pod as _cli_pod
@@ -51,7 +52,7 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 

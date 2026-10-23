@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from docket.cli import _pod
+from tests.pods import build_pod
+
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.kernel.home import Home, current_home, use_home
@@ -25,7 +26,7 @@ def _work(root: Path, task: str) -> None:
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
-        _pod.build_pod(_PROJECT, ("lead", "implementer"), codebase=f"/src/{_PROJECT}")
+        build_pod(_PROJECT, ("lead", "implementer"), codebase=f"/src/{_PROJECT}")
         _dispatch.enqueue_task(_PROJECT, task, channel="cli")
         _audit.audit_log("test.two_homes", task)
 

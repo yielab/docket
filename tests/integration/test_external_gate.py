@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import answers as _answers
@@ -57,7 +58,7 @@ def _seed(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         # The member's own check must never run for an external gate.
         _fleet.meta_set("demo-implementer", "verifyCmd", f"touch {tmp_path / 'verifycmd-ran'}")

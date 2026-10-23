@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod
@@ -34,7 +35,7 @@ def _make_ws(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         ws = current_home().projects_dir / _MEMBER
         (ws / "memory").mkdir(exist_ok=True)
         (ws / "HEARTBEAT.md").write_text(

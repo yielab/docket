@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
@@ -40,7 +41,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path / "code"))
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path / "code"))
         yield home
 
 

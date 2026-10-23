@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import archetypes as _arch
@@ -86,7 +87,7 @@ class TestCustomRoleEndingInRegisteredRoleName:
     def test_dispatch_reaches_done(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             _register_security_reviewer()
-            _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
+            build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
             _pod.add_members("proj", "security-reviewer")
 
             # The provisioned member's own meta is what makes pod_of resolvable -- confirm the
@@ -119,8 +120,8 @@ class TestCustomRoleEndingInRegisteredRoleName:
 
     def test_a_genuinely_cross_pod_member_id_is_still_refused(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
-            _pod.build_pod("other", pod.DEFAULT_POD_ROLES, codebase="/src/other")
+            build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
+            build_pod("other", pod.DEFAULT_POD_ROLES, codebase="/src/other")
 
             assert pod.pod_of("other-lead") == "other"
             assert pod.pod_of("other-lead") != "proj"

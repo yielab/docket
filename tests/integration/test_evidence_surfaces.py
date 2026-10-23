@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod, app
@@ -39,7 +40,7 @@ def _seed(tmp_path: Path) -> Iterator[str]:
     approvals = tmp_path / "approvals"
     approvals.mkdir()
     with use_home(dataclasses.replace(Home(home), approvals_dir_override=approvals)):
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
         hop = _dispatch._hop_record(
             _dispatch.HopResult(

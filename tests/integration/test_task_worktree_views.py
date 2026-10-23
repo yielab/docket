@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod, app
@@ -47,7 +48,7 @@ def seeded(tmp_path: Path) -> Iterator[dict[str, Any]]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
         wt = tmp_path / "wt"
         _git(repo, "worktree", "add", "-q", "-b", "docket/demo/t1", str(wt), base)
         (wt / "calc.py").write_text("x = 2\n")

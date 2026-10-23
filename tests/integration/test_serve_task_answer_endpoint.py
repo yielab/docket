@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import audit as _audit
@@ -107,7 +108,7 @@ def _bind_pipeline(project: str, text: str) -> None:
 def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     """A real pod with a real ``waiting_input`` task, reached by actually dispatching
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
     _dispatch.enqueue_task(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
@@ -201,7 +202,7 @@ class TestHappyPath:
 class TestErrorMapping:
     def test_unknown_task_is_404(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         status, body = _post(
             f"{url}/tasks/no-such-task/answer",
             {"pod": "demo", "action": "accept", "content": {"answer": "x"}},
@@ -212,7 +213,7 @@ class TestErrorMapping:
 
     def test_not_waiting_input_is_409(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         plain_task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
         status, body = _post(
             f"{url}/tasks/{plain_task['id']}/answer",
@@ -271,7 +272,7 @@ class TestCreateWithBrief:
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         status, _body = _post(
             f"{url}/tasks/demo",
             {"description": "fix it", "brief": {"acceptance": ["not an objective"]}},
@@ -284,7 +285,7 @@ class TestCreateWithBrief:
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         status, body = _post(
             f"{url}/tasks/demo",
             {"description": "fix it", "brief": {"objective": "fix the flaky test"}},
@@ -298,7 +299,7 @@ class TestCreateWithBrief:
 
     def test_brief_must_be_an_object(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         status, _body = _post(
             f"{url}/tasks/demo", {"description": "fix it", "brief": "not an object"}, token=token
         )
@@ -307,7 +308,7 @@ class TestCreateWithBrief:
 
     def test_no_brief_is_unaffected(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         status, body = _post(f"{url}/tasks/demo", {"description": "fix it"}, token=token)
         assert status == 201
         assert body["status"] == "pending"

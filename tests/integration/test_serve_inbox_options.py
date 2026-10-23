@@ -10,9 +10,9 @@ from typing import Any
 
 import jsonschema
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
@@ -54,7 +54,7 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
         task = {
             "id": "task-q",
             "status": "waiting_input",

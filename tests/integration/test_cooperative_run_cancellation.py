@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import agent_loop as _agent_loop
@@ -41,7 +42,7 @@ def _seed_pod(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         yield home
 
 
@@ -225,7 +226,7 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
 
         codebase = tmp_path / "codebase"
         codebase.mkdir()
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         agent_id = _pod.pod.member_id("demo", "implementer")
         task = _dispatch.enqueue_task("demo", "sleep in bash", channel="cli")
         _mark_running("demo", task["id"])

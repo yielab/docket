@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _agents, _pod, _setup_check
 from docket.core import blueprints as _bp
@@ -193,7 +194,7 @@ class TestSoftwareParity:
                     "demo", "software", location="/src/demo", stack="Python", description="the app"
                 )
             else:
-                _pod.build_pod(
+                build_pod(
                     "demo",
                     _pod_core.DEFAULT_POD_ROLES,
                     codebase="/src/demo",

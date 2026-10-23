@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod, _run
@@ -86,7 +87,7 @@ def _pod_policy(name: str, body: str, project: str = "demo") -> None:
 
 
 def _seed_pod(tmp_path: Path, roles: tuple[str, ...] = ("lead", "implementer")) -> None:
-    _pod.build_pod("demo", roles, codebase=str(tmp_path / "code"))
+    build_pod("demo", roles, codebase=str(tmp_path / "code"))
 
 
 def _pod_run(*args: str) -> Any:
@@ -99,7 +100,7 @@ def _seed_auditor_pod(tmp_path: Path) -> None:
     (tmp_path / "auditor.md").write_text("You audit.\n", encoding="utf-8")
     (tmp_path / "auditor.yaml").write_text(_AUDITOR_ROLE, encoding="utf-8")
     assert _pod_run("update", str(tmp_path / "auditor.yaml"), "--pod", "demo").exit_code == 0
-    _pod.build_pod("demo", ("lead", "implementer", "auditor"), codebase=str(tmp_path / "code"))
+    build_pod("demo", ("lead", "implementer", "auditor"), codebase=str(tmp_path / "code"))
     digest = hashlib.sha256(_AUDITOR_PIPELINE.encode("utf-8")).hexdigest()
     bound = _pod.pod.bound_pipeline_path("demo")
     bound.parent.mkdir(parents=True, exist_ok=True)

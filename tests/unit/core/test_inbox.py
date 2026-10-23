@@ -6,8 +6,8 @@ approval-to-task linking rule, the `since` cursor semantics, and paused-pod incl
 from __future__ import annotations
 
 import pytest
+from tests.pods import build_pod
 
-from docket.cli import _pod
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -37,8 +37,8 @@ def _seed_task(project: str, task_id: str, **fields: object) -> None:
 
 class TestBuildInboxSections:
     def _seed(self) -> None:
-        _pod.build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
-        _pod.build_pod("beta", ("lead", "implementer"), codebase="/src/beta")
+        build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
+        build_pod("beta", ("lead", "implementer"), codebase="/src/beta")
 
         _seed_task("alpha", "task-pending", status="pending", created="2026-09-28T01:00:00+00:00")
         _seed_task("alpha", "task-running", status="running", created="2026-09-28T01:00:00+00:00")
@@ -109,7 +109,7 @@ class TestBuildInboxSections:
     def test_approval_a_task_holds_by_token_is_folded_even_without_task_id(self) -> None:
         """A parked approval whose record never learned its task is still the task's: the
         task carries the token as `approvalToken`, so one item, not two."""
-        _pod.build_pod("gamma", ("lead", "implementer"), codebase="/src/gamma")
+        build_pod("gamma", ("lead", "implementer"), codebase="/src/gamma")
         token = _approval.approval_create(
             "gamma", "implementer", "bash: git push", context={"tool": "bash", "parked": True}
         )
@@ -156,7 +156,7 @@ def _only_token() -> str:
 
 class TestNextTimestamp:
     def test_next_is_the_maximum_task_timestamp_with_no_approvals(self) -> None:
-        _pod.build_pod("solo", ("lead", "implementer"), codebase="/src/solo")
+        build_pod("solo", ("lead", "implementer"), codebase="/src/solo")
         _seed_task(
             "solo",
             "task-early",
@@ -178,7 +178,7 @@ class TestNextTimestamp:
 
 class TestPausedPodsAreIncluded:
     def test_a_paused_pods_tasks_still_appear(self) -> None:
-        _pod.build_pod("gamma", ("lead", "implementer"), codebase="/src/gamma")
+        build_pod("gamma", ("lead", "implementer"), codebase="/src/gamma")
         _seed_task("gamma", "task-g1", status="blocked", blockedReason="budget")
         lead_id = _pod_mod.member_id("gamma", "lead")
         _fleet.meta_set(lead_id, "paused", True)
@@ -218,8 +218,8 @@ class TestPendingMemory:
         _store.write_json(path, {"entries": entries})
 
     def test_only_pending_entries_of_every_pod_are_listed_with_their_pod(self) -> None:
-        _pod.build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
-        _pod.build_pod("beta", ("lead", "implementer"), codebase="/src/beta")
+        build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
+        build_pod("beta", ("lead", "implementer"), codebase="/src/beta")
         self._entries("alpha", ("pitfall", "a.py", "pending"), ("generated", "dist", "accepted"))
         self._entries("beta", ("convention", ".", "pending"), ("pitfall", "b.py", "refused"))
 
@@ -231,7 +231,7 @@ class TestPendingMemory:
         ]
 
     def test_a_pod_without_memory_adds_nothing_and_the_view_is_unchanged(self) -> None:
-        _pod.build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
+        build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
 
         assert _inbox.pending_memory() == []
         assert _inbox.build_inbox(now=_NOW).needs_you == []

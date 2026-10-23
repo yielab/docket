@@ -1,4 +1,4 @@
-"""The interaction contract: confirm, emit_json, require_value, next_step."""
+"""The interaction contract: confirm, emit_json, next_step."""
 
 from __future__ import annotations
 
@@ -52,16 +52,6 @@ def test_confirm_on_tty_reads_the_typed_name(monkeypatch: pytest.MonkeyPatch) ->
 def test_emit_json_is_plain_json(capsys: pytest.CaptureFixture[str]) -> None:
     _contract.emit_json({"a": [1, 2], "b": "x"})
     assert json.loads(capsys.readouterr().out) == {"a": [1, 2], "b": "x"}
-
-
-def test_require_value_returns_a_value_and_refuses_a_missing_one(
-    no_tty: None, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert _contract.require_value("pod", "x", "--pod") == "x"
-    with pytest.raises(typer.Exit) as exc:
-        _contract.require_value("pod", None, "--pod")
-    assert exc.value.exit_code == 1
-    assert "--pod" in capsys.readouterr().err
 
 
 def test_next_step_prints_one_line_on_stderr_unless_silenced(

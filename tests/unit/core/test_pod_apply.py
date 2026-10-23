@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.core import orchestrator as _orch
@@ -24,13 +25,12 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     """A minimal two-role pod (lead + implementer) in an isolated ``DOCKET_HOME`` --
     ``plan_apply``'s existing-pod lookup (``_dispatch.pod_pipeline``) needs one to resolve
     against, even for a manifest that never reaches roles/policies/settings."""
-    from docket.cli import _pod as _cli_pod
 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 

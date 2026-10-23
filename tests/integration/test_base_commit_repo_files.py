@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -152,7 +153,7 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **repo_kwargs: bool)
         record_isolation_off(home)
         repo = tmp_path / "repo"
         _init_repo(repo, **repo_kwargs)
-        _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES, codebase=str(repo))
+        build_pod("demo", _pod.pod.FULL_POD_ROLES, codebase=str(repo))
         path = _pod.pod.bound_pipeline_path("demo")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_PIPELINE, encoding="utf-8")

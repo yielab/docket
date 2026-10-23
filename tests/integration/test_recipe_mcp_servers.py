@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod as _cli_pod
 from docket.cli import _pod_config
 from docket.core import config_docs as _config_docs
 from docket.core import mcp_tools as _mt
@@ -47,7 +47,7 @@ def _home(tmp_path: Path) -> Iterator[None]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         for project in ("shop", "other"):
-            _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+            build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 

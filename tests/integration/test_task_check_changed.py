@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import approval as _ap
@@ -68,7 +69,7 @@ def _seed_pod(tmp_path: Path, repo: Path, pipeline: str = _PIPELINE) -> Iterator
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
         path = _pod.pod.bound_pipeline_path("demo")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(pipeline, encoding="utf-8")

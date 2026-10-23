@@ -23,6 +23,7 @@ from typing import Any, ClassVar
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import approval as _approval
@@ -63,7 +64,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def _seed_pod(project: str = "demo") -> None:
-    _pod.build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
+    build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
 
 
 def _bind(agent_id: str, peer_id: str, channel: str = "telegram") -> None:
@@ -92,7 +93,7 @@ def _bind_pipeline(project: str, text: str) -> None:
 def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     """A real pod with a real ``waiting_input`` task (single-property ``answer`` schema),
     reached by actually dispatching through an ``input`` step."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
     _dispatch.enqueue_task(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
@@ -592,7 +593,7 @@ class TestAnswer:
 
 def _park_consult(project: str = "demo") -> dict[str, Any]:
     """A real pod whose one task is parked on a v1.1 consult question with two options."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _dispatch.enqueue_task(project, "pick a design", channel="cli")
     tasks = _dispatch.read_tasks(project)
     question = QuestionV11.model_validate(

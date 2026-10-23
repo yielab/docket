@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod
@@ -46,7 +47,7 @@ def _seed(
 @contextmanager
 def _build(tmp_path: Path, project: str = "proj") -> Iterator[None]:
     with _seed(tmp_path):
-        _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 

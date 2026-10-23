@@ -11,9 +11,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
@@ -31,7 +31,7 @@ def _seed(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
+        build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
         yield home
 
 

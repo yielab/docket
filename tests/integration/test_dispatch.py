@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.cli import _pod
@@ -74,7 +75,7 @@ def _seed_pod(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        build_pod(project, roles, codebase=f"/src/{project}")
         yield home
 
 
@@ -422,7 +423,7 @@ class TestPipeline:
     def test_no_cross_pod_dispatch(self, tmp_path: Path) -> None:
         # Two pods exist; dispatching 'demo' must never touch 'other'.
         with _seed_pod(tmp_path, project="demo") as oc_dir:
-            _pod.build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/other")
+            build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/other")
             _dispatch.enqueue_task("demo", "Stay in my lane", channel="cli")
             runner = FakeDriver()
             _dispatch.dispatch_pod("demo", runner=runner)
@@ -1186,8 +1187,8 @@ class TestSweepDoesNotStallOnAParkedPod:
             ),
         ):
             record_isolation_off(home)
-            _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
-            _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
+            build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
+            build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
             install_policies()
 
             # dispatchable_pods() walks fleet.json's own agent order -- alpha's Lead

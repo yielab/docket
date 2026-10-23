@@ -21,6 +21,7 @@ from typing import Any, ClassVar
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.cli import _pod
@@ -60,7 +61,7 @@ def _seed_pod(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        build_pod(project, roles, codebase=f"/src/{project}")
         yield home
 
 

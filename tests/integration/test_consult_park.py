@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import answers as _answers
@@ -105,7 +106,7 @@ def _start(
 ) -> _Run:
     workspace = tmp_path / "codebase"
     workspace.mkdir()
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
+    build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
     _fleet.meta_set("demo-implementer", "codebase", str(workspace))
     _fleet.meta_set("demo-implementer", "verifyCmd", "true")
     _fleet.meta_set("demo-lead", "approvalMode", _pod.pod.PodSettings.coerce("approvalMode", mode))

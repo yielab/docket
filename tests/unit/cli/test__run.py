@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod, _run, _setup
@@ -45,7 +46,7 @@ def _seed_pod(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, roles or _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, roles or _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -495,7 +496,7 @@ def _repo_pod(tmp_path: Path, run: str = "make migrate") -> Iterator[Path]:
         (code / ".docket" / "skills" / "style-guide" / "SKILL.md").write_text(
             _SKILL.format(body="v1")
         )
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
         _pa.apply(_pa.plan_apply("demo", code / ".docket"))
         _rr.remember(code, "demo", _pa.classify_directory(code / ".docket").runs)
         yield code

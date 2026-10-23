@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -49,7 +50,7 @@ def pod(tmp_path: Path) -> Iterator[tuple[Path, str]]:
         subprocess.run(["git", "init", "-q", str(root)], check=True)
         _git(root, "add", ".")
         _git(root, "commit", "-q", "-m", "init")
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(root))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(root))
         yield root, _git(root, "rev-parse", "HEAD")
 
 
@@ -120,7 +121,7 @@ def test_memory_is_the_pods_not_a_members_or_another_pods(
     other_root = tmp_path / "other-origin"
     other_root.mkdir()
     subprocess.run(["git", "init", "-q", str(other_root)], check=True)
-    _pod.build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase=str(other_root))
+    build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase=str(other_root))
     other = _identity.compose_agent_prompt("other-implementer", project_roots=(other_root,))
 
     assert "dist/bundle.js" in lead.text

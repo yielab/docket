@@ -16,6 +16,7 @@ import pytest
 from tests.conftest import record_isolation_off, register_local_provider
 from tests.fakes import FakeDriver
 from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -42,7 +43,7 @@ def home(tmp_path: Path) -> Iterator[Path]:
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
         record_isolation_off(root)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
         _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         yield root
 

@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import archetypes as _arch
@@ -41,9 +42,7 @@ def pod_home(tmp_path: Path) -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(
-            "demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(_checkout(tmp_path / "origin"))
-        )
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(_checkout(tmp_path / "origin")))
         yield home
 
 
