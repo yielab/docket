@@ -4,7 +4,7 @@
 # Since the Bash→Python cutover (M6), every command is implemented in the
 # Python package `docket` (src/docket/). This shim only resolves an interpreter
 # and execs the module; all argument handling, aliasing, version and help live
-# in Python (docket.__main__ / docket.cli).
+# in Python (docket.__main__ / docket.interfaces.cli).
 #
 # Interpreter resolution order:
 #   1. $DOCKET_PYTHON           — explicit override (Homebrew points this at its venv)

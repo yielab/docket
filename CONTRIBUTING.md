@@ -66,7 +66,7 @@ git checkout -b feature/your-feature
 - Target Python 3.11+; type-annotate everything (the suite is checked with `mypy --strict`)
 - Format and lint with `ruff` (`uv run ruff format .` / `uv run ruff check .`)
 - Use meaningful names (snake_case for functions/vars, PascalCase for classes/Pydantic models)
-- Keep functions focused; prefer pure functions in `core/`
+- Keep functions focused; prefer pure functions in a context's `domain/`
 - Comments explain *why* something is shaped the way it is — never what it does or when it
   arrived. No card ids, phase numbers, dates or "used to" narration; git history holds those.
   A docstring is one line unless it states a contract (what is guaranteed, what fails closed).
@@ -103,12 +103,9 @@ context's `__init__`, and nothing imports `interfaces/`. Function-local imports 
 forbidden because they hide cycles; the existing ones are a baseline that only shrinks. A module
 over **700 lines is a defect**, and the ceiling ratchets down to it from today's largest module.
 
-**What holds today.** The tree is still the three technical layers `cli/ -> core/ -> edges/`, and
-nothing above is enforced yet. Phase 46 moves the code (P46-7 to P46-12): until a module is moved,
-add to the layer it lives in and follow the same direction (`cli` may call `core` and `edges`;
-`core` never imports `cli`). New code that has no home yet is written to the dependency table, so
-the move does not have to untangle it. Once the moves land `cli/`, `core/` and `edges/` do not
-exist and this section is the whole rule.
+**What holds today.** The code has moved: `cli/`, `core/` and `edges/` no longer exist, the CLI
+is `interfaces/cli/` and the HTTP control plane is `interfaces/http/`, and this section is the
+whole rule. The import contracts live in `tests/architecture/`.
 
 Two invariants matter most and are enforced by tests rather than convention alone; they do not
 move with the refactor:
@@ -117,7 +114,7 @@ move with the refactor:
    `agent/tools/registry.py`). docket's governance stack — the policy engine, the approval store, the
    high-risk classifier, the audit log — only means anything if there is exactly one place a tool
    can execute from. An AST test enforces this:
-   `tests/unit/core/test_tools.py::test_only_the_chokepoint_imports_the_handler_module`.
+   `tests/unit/agent/tools/test_registry.py::test_only_the_chokepoint_imports_the_handler_module`.
 2. **docket-owned JSON goes through the one store module** (today `platform/store.py`: atomic write
    + filelock + `.bak` rotation + 0600 perms) — never write those files directly. The one
    documented exemption is append-only JSONL (`observability/trace.py`, `governance/audit.py`), which writes
@@ -125,19 +122,21 @@ move with the refactor:
 
 Where things go today:
 
-- **Commands** are Typer functions in `src/docket/cli/` — add them to `interfaces/cli/app/__init__.py`, or to
-  a `_<group>.py` module for a larger subcommand group (e.g. `interfaces/cli/app/_gates.py`).
-- **Domain logic / helpers** go in `src/docket/core/` — Pydantic models in `teams/models.py`,
-  plus pure services (policy resolution, sync, security, audit, trace, the turn loop, the tool
-  registry, the model-endpoint port).
-- **I/O and side effects** go in `src/docket/edges/`:
+- **Commands** are Typer functions in `src/docket/interfaces/cli/` — register them in
+  `interfaces/cli/app/__init__.py`, with the command bodies in `interfaces/cli/commands/<group>.py`
+  (e.g. `commands/pod.py`, `commands/task.py`) and the Rich output in `interfaces/cli/render/`.
+- **Domain logic / helpers** go in the owning context's `domain/` or `application/` — Pydantic models
+  in `teams/models.py`, plus pure services (policy resolution in `governance/`, trace in
+  `observability/`, the turn loop and the tool registry in `agent/`, the model-endpoint port in
+  `models/`).
+- **I/O and side effects** go in a context's `adapters/`, in `platform/` or in `sandbox/`:
   - docket-owned JSON (`.docket-meta.json`, etc.) is read/written **only** through
     `platform/store.py`, per invariant 2 above.
   - the model endpoint (`models/adapters/openai_http.py`), MCP client (`agent/tools/mcp_client.py`),
     Telegram Bot API (`interfaces/telegram/client.py`), the sandboxed-exec/fetch tool handlers
     (`agent/tools/builtins/toolbox.py`, `platform/fetch.py`), and shell-outs to `docker` / `git`
-    (`edges/adapters/system.py`) each live behind their own adapter module — no other module
-    should know their wire formats.
+    (`platform/git.py`, `platform/process.py`, `sandbox/docker.py`) each live behind their own
+    adapter module — no other module should know their wire formats.
 - **Tests** go in `tests/` (see [Testing](#testing)); **specs** go in `specs/`;
   **documentation** goes in `docs/`.
 
@@ -221,10 +220,12 @@ docket follows spec-driven development (see [SSD-WORKFLOW.md](SSD-WORKFLOW.md)).
 command:
 
 1. Write a spec under `specs/functional/<command>.spec.md`.
-2. Register the command as a Typer function in `src/docket/cli/` (in `interfaces/cli/app/__init__.py`, or a
-   `_<group>.py` module for a larger group) and wire its help into `interfaces/cli/render/help.py`.
-3. Put domain logic in `core/` and any I/O behind `edges/` (`store.py` for docket JSON,
-   `system.py` for shell-outs to `docker`/`git`).
+2. Register the command as a Typer function under `src/docket/interfaces/cli/` (registered in
+   `interfaces/cli/app/__init__.py`, body in `interfaces/cli/commands/<group>.py`) and wire its help
+   into `interfaces/cli/render/help.py`.
+3. Put domain logic in the owning context and any I/O behind that context's `adapters/` or in
+   `platform/` (`platform/store.py` for docket JSON, `platform/git.py` and `platform/process.py`
+   for shell-outs to `git` and the host).
 4. Add pytest coverage in the unit file named for the module (see [Testing](#testing)), and
    golden cases if the output is frozen.
 5. Run the CI gates (see [Testing](#testing)).

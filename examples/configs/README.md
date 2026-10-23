@@ -3,11 +3,11 @@
 Two kinds of example live here:
 
 - **`agents.yaml` / `agents.json`** — declarative fleet specs for `docket init --from <file>`.
-  Verified against the real loader (`docket.cli._agents._cmd_add_declarative`): every entry
+  Verified against the real loader (`docket.interfaces.cli.commands.agents._cmd_add_declarative`): every entry
   actually provisions.
 - **`*-agent-meta.json`** — sample `.docket-meta.json` files, one per workspace directory. These
   are illustrative snapshots of what docket itself writes, not files you hand-author and feed to
-  a loader — validated against the real `AgentMeta` model (`core/models.py`).
+  a loader — validated against the real `AgentMeta` model (`teams/models.py`).
 
 ## Declarative fleet specs
 
@@ -44,7 +44,7 @@ it to the role policy.
 
 ## Field reference
 
-The authoritative shape is `AgentMeta` in `src/docket/core/models.py` (`extra="allow"`, so unknown
+The authoritative shape is `AgentMeta` in `src/docket/teams/models.py` (`extra="allow"`, so unknown
 fields round-trip harmlessly — see `notes` in the examples above). The fields that matter day to
 day:
 

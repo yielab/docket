@@ -2276,8 +2276,8 @@ def _run_operator_loop_scenario(
             stderr=subprocess.STDOUT,
         )
         try:
-            # `run_serve` runs one full sweep of every pod *before* opening the port or
-            # writing the token file (serve.py's own documented startup order) -- with the
+            # `run_serve` (interfaces/http/server.py) runs one full sweep of every pod *before*
+            # opening the port or writing the token file -- with the
             # scripted deterministic backend that sweep is sub-second, but with a real local
             # model generating every hop of four real tasks across two pods it can genuinely
             # take minutes. 15s was only ever exercised against the deterministic backend.
@@ -2322,7 +2322,7 @@ def _run_operator_loop_scenario(
             reason = str(task.get("reason", ""))
             # `implementer hop failed: consecutive tool denials reached configured
             # limit: ... kinds=approval_timeout,...` is the real persisted reason
-            # (core/dispatch.py) -- it names the denial_kind code, not the prose
+            # (agent/loop_steps.py) -- it names the denial_kind code, not the prose
             # `agent/tools/registry.py` uses for the underlying tool result ("approval timed
             # out and was denied"). Surface that prose too so the report reads the
             # same way a human would describe what happened.

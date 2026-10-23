@@ -85,31 +85,33 @@ one project's context never bleeds into another's.
 > describe *what* a pod does; this describes how docket's own codebase is put together to make
 > that real, safe to extend, and reversible if the underlying runtime ever needed to change.
 
-### Three layers, one direction of dependency
+### One package per context, one direction of dependency
 
-`src/docket/` is organized into three layers, and imports only ever point inward:
+`src/docket/` is organized as one package per business context (`kernel`, `tasks`, `pipeline`,
+`hops`, `agent`, `governance`, `sandbox`, `teams`, `models`, `observability`, `operator`,
+`platform`), the `interfaces/` that talk to the outside world (`cli`, `http`, `mcp`, `telegram`)
+and one `bootstrap.py` that wires them together. Inside a context there are at most two levels
+(`domain/`, `application/`, `adapters/`), and imports only point the way the ADR 0030 table allows:
 
-```
-cli/  ->  core/  ->  edges/
-```
-
-- **`cli/`** (Typer + Rich) — argument parsing, the interactive picker, and every line of
-  Rich-rendered output. This is the only layer allowed to talk to the user; a command aborts by
-  raising `typer.Exit` and renders whatever typed result `core/`/`edges/` handed back (a
-  `TaskResult`, a `VerifyResult`, a `CompactionResult`) through `ui.py`'s `info`/`success`/`warn`/
-  `error` helpers.
-- **`core/`** (Pydantic models + pure services) — the domain: agent data models, role→model
-  policy, dispatch's state machine, security/approval/audit/trace/policy logic.
-  `core/` never imports `cli/`, never imports `ui.py`, and never prints — every function returns a
-  typed result for `cli/` to render.
-- **`edges/`** (the only side-effecting layer) — `platform/store.py` is the single chokepoint for
-  every docket-owned JSON read/write (atomic, filelocked, 0600 permissions, `.bak` rotation);
-  `edges/adapters/system.py` wraps every shell-out to `docker`/`git` and the jail, degrading
+- **`interfaces/cli/`** (Typer + Rich) — argument parsing, the interactive picker, and every line
+  of Rich-rendered output. This is the only layer allowed to talk to the user; a command aborts by
+  raising `typer.Exit` and renders whatever typed result a context handed back (a `TaskResult`, a
+  `VerifyResult`, a `CompactionResult`) through `interfaces/cli/render/ui.py`'s
+  `info`/`success`/`warn`/`error` helpers.
+- **A context's `domain/` and `application/`** (Pydantic models + pure services) — the domain:
+  agent data models, role→model policy, dispatch's state machine, security/approval/audit/trace/
+  policy logic. A context never imports `interfaces/`, never prints, and every function returns a
+  typed result for the interface to render.
+- **`adapters/`, `platform/` and `sandbox/`** (the side-effecting code) — `platform/store.py` is
+  the single chokepoint for every docket-owned JSON read/write (atomic, filelocked, 0600
+  permissions, `.bak` rotation); `platform/git.py` and `platform/process.py` wrap the shell-outs
+  to `git` and the host and `sandbox/` owns the jail and the `docker` backend, each degrading
   gracefully when a binary is missing.
 
-This is not a style preference — it is enforced by what each layer is allowed to import, and a
-couple of the newest modules in the tree exist specifically to keep the boundary from eroding (see
-the RuntimeDriver port, below).
+This is not a style preference — it is enforced by import-linter contracts in
+`tests/architecture/`, and a couple of the newest modules in the tree exist specifically to keep
+the boundary from eroding (see the RuntimeDriver port, below). The table and the full tree are
+in [ADR 0030](adr/0030-organize-by-context-and-refactor-by-tool.md).
 
 ### No external daemon — docket owns the loop
 
@@ -132,10 +134,10 @@ Before the daemon was removed, a mid-2026 audit found that the *execution* slice
 coupling to it — parsing an agent turn's result, reading a session's on-disk JSONL, aggregating
 token/cost usage — had started leaking around the ACL rather than being contained by it.
 `agent/ports.py` is the fix that outlived the daemon it was first built for: a single
-typed `Protocol` — `RuntimeDriver` — that `core/` and `cli/` program against instead of a concrete
+typed `Protocol` — `RuntimeDriver` — that the contexts and `interfaces/` program against instead of a concrete
 driver's on-disk knowledge. It has four members:
 
-- `run_turn` — one costed agent turn: the hot path `core/dispatch.py`'s pipeline calls for every
+- `run_turn` — one costed agent turn: the hot path `hops/application/runner.py` calls for every
   hop, and, per decision D-18, docket's own self-originated LLM calls (session compaction)
 - `list_sessions` / `usage` — durable-session enumeration and token/cost aggregation
 - `capabilities` — what this driver instance can actually promise (for example, whether it
@@ -160,7 +162,7 @@ never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` �
 A program that plans work (a project manager, a CI job, an operator's script) does not spawn
 docket. It talks to a running `docket start --dispatch` over HTTP: it enqueues an addressable
 task on a pod, follows its hops, cancels, retries and diffs it, reads and applies the pod's
-configuration, and reads the corrections ledger. Those routes call the same `core/` functions the
+configuration, and reads the corrections ledger. Those routes (`interfaces/http/routes/`) call the same context functions the
 CLI uses, behind the same Bearer token, policy hooks and audit entries, and the program negotiates
 the version it needs from `apiVersion` in `GET /status.json`. The contract is
 [`specs/api/operator-api.spec.md`](../specs/api/operator-api.spec.md) and the read shapes are in
@@ -187,9 +189,9 @@ This is a narrower split than it looks: `fleet.json` deliberately does **not** d
 `sessionKey`/`projectKey` — those stay `.docket-meta.json`'s job alone. Before Phase 19, the
 second store was owned by an external daemon that could mutate it independently of Docket (or be
 hand-edited, or touched by its own CLI) — which is exactly what
-`core/sync.py`'s drift check used to exist to catch. With both files now written only by docket
+the retired `sync` module's drift check used to exist to catch. With both files now written only by docket
 through one code path, "a different program touched this file" is no longer possible, and that
-drift-detection machinery (the ACL, `core/sync.py`, `docket setup`'s session-key-sync check) is
+drift-detection machinery (the ACL, the `sync` module, `docket setup`'s session-key-sync check) is
 retired along with the daemon rather than kept around for a problem that no longer exists.
 
 ### Durable state docket owns
@@ -203,7 +205,8 @@ stores, all under `~/.docket/`:
   path: older messages are summarised, and an assistant tool call is never separated from its
   tool results.
 - **`HEARTBEAT.md`'s dispatch ledger** — every pod Lead's `HEARTBEAT.md` carries a delimited,
-  docket-owned region inside its `## Active Tasks` list that `core/dispatch.py` upserts
+  docket-owned region inside its `## Active Tasks` list that `hops/application/record.py` upserts
+  (through `agent/memory.py`'s `sync_dispatch_tasks`)
   mechanically at claim, at every persisted hop, and at finalize — not prose an agent is trusted
   to keep current by convention. `docket setup` flags a task the queue marks `running` with no
   matching ledger entry, or a ledger entry for a task that no longer is, and `--fix` re-syncs the
@@ -736,7 +739,7 @@ Tester:      ✓ Behavior-only validation
 queued tasks through its pipeline, one real, costed agent turn per hop. Earlier drafts of this
 document sketched a memory-file signaling protocol (`TASK.md`/`DONE.md`/`APPROVED.md`/
 `VALIDATED.md`) with Telegram polling and a fixed 3-retry escalation — that was never what
-`core/dispatch.py` implements. This section replaces it with the mechanism as it actually ships,
+dispatch (`pipeline/application/executor.py`, `hops/`, `tasks/`) implements. This section replaces it with the mechanism as it actually ships,
 resolved against a declarative pipeline by `pipeline/domain/plan.py`.
 
 ### Task state machine

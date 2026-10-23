@@ -92,7 +92,7 @@ docket pod set budgetUsd 5     # cap pod spend at $5 (token-based estimate)
 
 Before *each* hop, docket compares the pod's token-based dollar estimate to this cap — docket's
 own turn loop reports real, measured token counts but no billed dollar figure, so the gate always
-runs off the labelled estimate (`core/dispatch.py`'s `pod_gating_cost`), never a claimed "recorded
+runs off the labelled estimate (`hops/gates/pre_hop.py`'s `pod_gating_cost`), never a claimed "recorded
 spend". Over budget → the task is set to **blocked** and the Lead is paused, never silently
 run.
 
@@ -299,7 +299,7 @@ or swap in a different gate — without touching pod membership at all.
 
 ### Zero migration: nothing changes until you opt in
 
-A pod with no pipeline file behaves **exactly** like `core/dispatch.py`'s hardcoded pipeline
+A pod with no pipeline file behaves **exactly** like `pipeline/domain/spec.py`'s hardcoded `default_pipeline`
 always has: Lead (no gate) → Implementer (mechanical check against its own `verifyCmd`) →
 Reviewer (APPROVE/REQUEST-CHANGES, bounded rework back to the Implementer) → Tester
 (PASS/FAIL, hard gate, no rework). A lean pod without a Reviewer/Tester simply never reaches

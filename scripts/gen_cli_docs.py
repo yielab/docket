@@ -146,9 +146,9 @@ docket -V
 
 # NOTE ON THIS TABLE: like the old _ENV_VARS blob, this is still hand-typed prose, not
 # checked against the code -- fixing that would mean adding a canonical exit-code
-# registry somewhere in cli/, which no code currently defines and which is out of this
+# registry somewhere in interfaces/cli/, which no code currently defines and which is out of this
 # script's owned paths. What IS in scope, and done below: the codes are the ones a
-# `typer.Exit(N)`/`return N` grep across `src/docket/cli/` actually finds today (0, 1,
+# `typer.Exit(N)`/`return N` grep across `src/docket/interfaces/cli/` actually finds today (0, 1,
 # 2 only) -- a prior version of this table claimed 2 meant "Missing dependency" and
 # listed 3/4/5, none of which any command emits (`docket init`'s own missing-dependency
 # check returns 1, and Click's automatic usage-error path is what actually owns 2).
@@ -184,7 +184,7 @@ _BIN_DOCKET = ROOT / "bin" / "docket"
 
 # Real, but not something an operator tunes for docket's own behavior: PATH is the
 # ordinary OS search path, read only to build a minimal subprocess environment
-# (agent/tools/builtins/toolbox.py, edges/adapters/system.py); DISPLAY and WAYLAND_DISPLAY are the
+# (agent/tools/builtins/toolbox.py, platform/process.py); DISPLAY and WAYLAND_DISPLAY are the
 # desktop session's own markers, probed once to decide whether `docket init` may offer the
 # `desktop` channel (platform/process.py::desktop_notifications_available). Excluded by
 # name, not silently dropped, so the exclusion itself is visible to anyone reading this file.
@@ -408,7 +408,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     (("SESSION_TIMEOUT",), "Age past which an expired approval is denied (fail-closed)", "`3600`"),
     (
         ("APPROVAL_TIMEOUT",),
-        "The async approval-gate window (`core/dispatch.py`'s `require_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it",
+        "The async approval-gate window (`hops/gates/pre_hop.py`'s `_gate_pre_hop_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it",
         "`900`",
     ),
     (

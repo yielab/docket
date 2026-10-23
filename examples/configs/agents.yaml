@@ -4,7 +4,7 @@
 # file can live in git as the source of truth for a reproducible fleet.
 #
 # Required per entry: id, blueprint. Everything else has a default:
-#   blueprint    the pod shape (see `docket pod roles` / core/blueprints.py:
+#   blueprint    the pod shape (see `docket pod roles` / teams/blueprints.py:
 #                software, research, content, ops, agentic-product). An entry
 #                without one is refused.
 #   codebase     a software pod's codebase: an existing directory ("~" is
@@ -16,7 +16,7 @@
 #
 # Every member follows the normal role->model policy (docket setup model).
 #
-# Verified against the real loader (`docket init --from`, core/cli/_agents.py
+# Verified against the real loader (`docket init --from`, interfaces/cli/commands/agents.py
 # `_cmd_add_declarative`) — every entry below actually provisions.
 agents:
   - id: webapp

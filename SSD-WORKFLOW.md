@@ -33,7 +33,7 @@ docket/
 │       └── input-validation.spec.md
 ├── scripts/                     # SSD automation
 │   └── validate-specs.sh       # Validate spec structure (the real gate; CI-blocking)
-├── src/docket/                  # Python package (cli/ → core/ → edges/)
+├── src/docket/                  # Python package (one package per context; ADR 0030)
 └── tests/                       # Test implementation
     ├── unit/                   # Mirrors src/docket/; each file declares SUBJECT
     ├── integration/            # Cross-module integration tests
@@ -109,7 +109,7 @@ Write tests BEFORE implementation:
 # tests/integration/test_new_feature.py
 from typer.testing import CliRunner
 
-from docket.cli import app
+from docket.interfaces.cli.app import app
 
 runner = CliRunner()
 
@@ -132,23 +132,24 @@ uv run pytest tests/integration/test_new_feature.py
 
 ### 4. Implementation Phase
 
-Now implement to make tests pass. Commands are Typer functions in `src/docket/cli/`; domain
-logic lives in `core/` and any I/O goes through `edges/` (`store.py` for docket JSON,
-`edges/adapters/llm.py` for the model endpoint, `edges/adapters/mcp_client.py` for MCP servers,
-`edges/adapters/system.py` for shell-outs to `docker`/`git`).
+Now implement to make tests pass. Commands are Typer functions in `src/docket/interfaces/cli/`;
+domain logic lives in the owning context and any I/O goes through that context's `adapters/` or
+`platform/` (`platform/store.py` for docket JSON, `models/adapters/openai_http.py` for the model
+endpoint, `agent/tools/mcp_client.py` for MCP servers, `platform/git.py` and `platform/process.py`
+for shell-outs).
 
 ```python
-# src/docket/cli/__init__.py  (or a cli/_<group>.py module for a larger group)
+# src/docket/interfaces/cli/commands/<group>.py  (registered in interfaces/cli/app/__init__.py)
 import typer
 
 from docket.interfaces.cli.render import ui
-from docket.cli import app
+from docket.interfaces.cli.app import app
 
 
 @app.command("new-feature")
 def new_feature(value: str = typer.Argument(...)) -> None:
     """Implementation that satisfies the spec."""
-    # Pure logic lives in core/; I/O goes through edges/.
+    # Pure logic lives in the owning context; I/O goes through its adapters/ or platform/.
     ui.success("Feature executed successfully")
 ```
 
@@ -187,7 +188,7 @@ Update user-facing documentation:
 ```bash
 # Update README
 # Update CHANGELOG
-# Update help text in src/docket/cli/_help.py
+# Update help text in src/docket/interfaces/cli/render/help.py
 # Commit with spec reference
 
 git add .
@@ -335,8 +336,8 @@ yourself — there is no hook that does it for you.
 
 1. Create spec: `specs/functional/command-name.spec.md`
 2. Write tests: `tests/integration/test_command.py`
-3. Implement: a Typer command in `src/docket/cli/` (logic in `core/`, I/O via `edges/`)
-4. Update docs: README.md, `src/docket/cli/_help.py`
+3. Implement: a Typer command in `src/docket/interfaces/cli/` (logic in the owning context, I/O via its `adapters/` or `platform/`)
+4. Update docs: README.md, `src/docket/interfaces/cli/render/help.py`
 5. Validate: `./scripts/validate-specs.sh` + the CI gates
 
 ### Modifying Existing Feature
