@@ -106,9 +106,7 @@ class TestReturnedResultFold:
             assert trace_calls[0][3] == "error"
             assert json.loads(str(trace_calls[0][4]))["error"] == persisted["error"]
 
-    def test_failed_wins_a_mixed_result_and_preserves_every_task_id(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_failed_wins_a_mixed_result_and_preserves_every_task_id(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
         with use_home(Home(home)):
@@ -144,7 +142,6 @@ class TestReturnedResultFold:
     def test_unparked_nonfailed_returned_statuses_keep_invocation_successful(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
         results: list[_dispatch.TaskResult],
     ) -> None:
         home = tmp_path / ".docket"
@@ -162,7 +159,7 @@ class TestReturnedResultFold:
             assert persisted["error"] == ""
 
     def test_failure_summary_is_bounded_and_a_concurrent_cancel_still_wins(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
@@ -199,9 +196,7 @@ class TestReturnedResultFold:
             assert "RAW_TAIL_SENTINEL" not in failed["error"]
             assert "more" in failed["error"]
 
-    def test_execute_folds_the_returned_list_exactly_once(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_execute_folds_the_returned_list_exactly_once(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
         with use_home(Home(home)):
@@ -270,9 +265,7 @@ class TestReturnedResultFold:
             assert persisted["error"] == "cancelled by operator"
             assert trace_calls == []
 
-    def test_execute_never_revives_a_run_cancelled_while_queued(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_execute_never_revives_a_run_cancelled_while_queued(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
         with use_home(Home(home)):
@@ -359,7 +352,7 @@ class TestCliDispatchPath:
             assert f"[task-x] {status}" in capsys.readouterr().out
 
     def test_task_add_prints_the_queued_task_id_and_description_literally(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """The queued task id and a bracket-bearing description survive rendering."""
         with _seed_pod(tmp_path, project="demo"):

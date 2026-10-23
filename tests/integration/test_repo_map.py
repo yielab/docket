@@ -6,8 +6,6 @@ import dataclasses
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from docket.core import repo_map as R
 from docket.edges.adapters import toolbox
 from docket.kernel.home import current_home, use_home
@@ -52,9 +50,7 @@ class TestRenderRepoMap:
 
         assert "scratch" not in R.render_repo_map(str(root))
 
-    def test_a_deep_tree_falls_back_to_the_deepest_depth_that_fits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_deep_tree_falls_back_to_the_deepest_depth_that_fits(self, tmp_path: Path) -> None:
         files = [f"pkg/mod{i}/sub/f.py" for i in range(30)]
         root = _repo(tmp_path / "r", files)
         with use_home(dataclasses.replace(current_home(), repo_map_max_chars=200)):
@@ -62,9 +58,7 @@ class TestRenderRepoMap:
 
             assert rendered == "pkg/ (30 files)"
 
-    def test_a_wide_tree_is_cut_at_the_cap_with_a_marker(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_wide_tree_is_cut_at_the_cap_with_a_marker(self, tmp_path: Path) -> None:
         root = _repo(tmp_path / "r", [f"dir{i:03d}/f.py" for i in range(80)])
         with use_home(dataclasses.replace(current_home(), repo_map_max_chars=300)):
             rendered = R.render_repo_map(str(root))

@@ -82,9 +82,7 @@ def _seed_pod(
 
 
 class TestTaskAddCliBoundary:
-    def test_quoted_task_text_reaches_the_queue_losslessly(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_quoted_task_text_reaches_the_queue_losslessly(self, tmp_path: Path) -> None:
         from typer.testing import CliRunner
 
         from docket.cli import app
@@ -107,7 +105,7 @@ class TestTaskAddCliBoundary:
         ],
     )
     def test_invalid_input_does_not_enqueue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: list[str], code: int
+        self, tmp_path: Path, args: list[str], code: int
     ) -> None:
         from typer.testing import CliRunner
 
@@ -119,9 +117,7 @@ class TestTaskAddCliBoundary:
             assert result.exit_code == code
             assert _dispatch.read_tasks("demo") == []
 
-    def test_length_limit_applies_to_the_text(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_length_limit_applies_to_the_text(self, tmp_path: Path) -> None:
         from typer.testing import CliRunner
 
         from docket.cli import app
@@ -136,7 +132,7 @@ class TestTaskAddCliBoundary:
 
 class TestEnqueueTaskPreBrief:
     def test_a_valid_brief_folds_into_the_description_and_is_stored_on_the_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task(
@@ -152,9 +148,7 @@ class TestEnqueueTaskPreBrief:
             stored = _dispatch.read_tasks("demo")[0]
             assert stored["brief"]["objective"] == "add rate limiting"
 
-    def test_an_invalid_brief_raises_and_persists_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_invalid_brief_raises_and_persists_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             try:
                 _dispatch.enqueue_task(
@@ -166,9 +160,7 @@ class TestEnqueueTaskPreBrief:
                 raise AssertionError("an empty objective should have raised DispatchError")
             assert _dispatch.read_tasks("demo") == []
 
-    def test_no_brief_leaves_the_description_and_task_shape_unchanged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_brief_leaves_the_description_and_task_shape_unchanged(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task("demo", "plain task, no brief", channel="cli")
 
@@ -195,9 +187,7 @@ class TestEnqueueTaskPreBrief:
 
 
 class TestPipeline:
-    def test_lean_pod_runs_lead_then_implementer(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_lean_pod_runs_lead_then_implementer(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "Fix the bug", channel="cli")
             runner = FakeDriver()
@@ -215,9 +205,7 @@ class TestPipeline:
             assert runner.calls[1][1].startswith("agent:demo-implementer:demo:task:")
             assert runner.calls[1][1].endswith(":step:implementer")
 
-    def test_every_non_lead_hop_receives_the_task_worktree(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_every_non_lead_hop_receives_the_task_worktree(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
             worktree = current_home().projects_dir / "demo-implementer" / "tasks" / "wt1"
             worktree.mkdir(parents=True)
@@ -268,9 +256,7 @@ class TestPipeline:
                 )
                 assert env == {_rd.PIPELINE_WORKTREE_ENV: str(worktree)}
 
-    def test_default_approval_mode_leaves_every_hop_env_unchanged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_default_approval_mode_leaves_every_hop_env_unchanged(self, tmp_path: Path) -> None:
         """Pin: with no `approvalMode` configured, DOCKET_APPROVAL_MODE never reaches a hop's
         env -- today's "wait" behavior is byte-identical."""
         with _seed_pod(tmp_path):
@@ -295,9 +281,7 @@ class TestPipeline:
                 env is None or _rd.DOCKET_APPROVAL_MODE not in env for _agent_id, env in calls
             )
 
-    def test_approval_timeout_threads_into_every_hop_env(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_approval_timeout_threads_into_every_hop_env(self, tmp_path: Path) -> None:
         """A caller's approval wait bound reaches every hop's env, and is absent when unset."""
         with _seed_pod(tmp_path):
             calls: list[dict[str, str] | None] = []
@@ -323,9 +307,7 @@ class TestPipeline:
             _dispatch.dispatch_task("demo", again, runner=runner)
             assert all(env is None or _rd.DOCKET_APPROVAL_TIMEOUT not in env for env in calls)
 
-    def test_refuse_approval_mode_threads_into_every_hop_env(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_refuse_approval_mode_threads_into_every_hop_env(self, tmp_path: Path) -> None:
         """The pod's `approvalMode: refuse` setting reaches every hop's tool env the same
         internal-coordinate way PIPELINE_WORKTREE_ENV does -- popped by DocketDriver before
         ToolContext ever sees it."""
@@ -359,9 +341,7 @@ class TestPipeline:
                     # not replaced by, the approval-mode coordinate.
                     assert "DOCKET_PORT_BASE" in env
 
-    def test_task_persisted_with_status_and_hops(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_task_persisted_with_status_and_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "Ship it", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver(cost=0.05))
@@ -370,7 +350,7 @@ class TestPipeline:
             assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
             assert tasks[0]["costUsd"] == pytest.approx(0.10)
 
-    def test_traces_written_per_hop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_traces_written_per_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             _dispatch.enqueue_task("demo", "Trace me", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
@@ -388,9 +368,7 @@ class TestPipeline:
             assert types.count("tool_result") == 3
             assert "session_end" in types
 
-    def test_failed_hop_stops_pipeline(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_failed_hop_stops_pipeline(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
             _dispatch.enqueue_task("demo", "Break early", channel="cli")
             runner = FakeDriver(fail_role="implementer")
@@ -400,9 +378,7 @@ class TestPipeline:
             roles_called = [c[0].rsplit("-", 1)[-1] for c in runner.calls]
             assert roles_called == ["lead", "implementer"]
 
-    def test_typed_run_cancellation_cancels_task_and_stops_pipeline(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_typed_run_cancellation_cancels_task_and_stops_pipeline(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task("demo", "Stop cleanly", channel="cli")
             calls = 0
@@ -443,7 +419,7 @@ class TestPipeline:
             # to pending) — it only re-enters pending via unblock_pod/retry_task.
             assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
 
-    def test_no_cross_pod_dispatch(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_cross_pod_dispatch(self, tmp_path: Path) -> None:
         # Two pods exist; dispatching 'demo' must never touch 'other'.
         with _seed_pod(tmp_path, project="demo") as oc_dir:
             _pod.build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/other")
@@ -454,7 +430,7 @@ class TestPipeline:
             assert all(c[0].startswith("demo-") for c in runner.calls)
             assert (oc_dir / "traces" / "other").exists() is False
 
-    def test_no_lead_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_lead_raises(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             # Remove the lead from the fleet registry → no dispatchable pod.
             _fleet.remove_agent("demo-lead")
@@ -469,9 +445,7 @@ class TestHopEvidence:
     """A mechanical gate's real command, exit code, duration, and redacted output tail are
     persisted on the hop record itself (`HopResult.verify`), not just traced on failure."""
 
-    def test_passing_verify_persists_real_evidence(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_passing_verify_persists_real_evidence(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
             _fleet.meta_set("demo-implementer", "verifyCmd", "echo ok")
@@ -490,7 +464,7 @@ class TestHopEvidence:
             assert verify["durationS"] >= 0
 
     def test_failing_verify_persists_redacted_evidence_without_leaking_a_secret(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
@@ -512,9 +486,7 @@ class TestHopEvidence:
             assert secret_value not in verify["outputTail"]
             assert "[REDACTED]" in verify["outputTail"]
 
-    def test_no_verify_cmd_leaves_verify_unset(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_verify_cmd_leaves_verify_unset(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "no verify configured", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
@@ -537,9 +509,7 @@ class TestHopEnvInjection:
         assert _dispatch.hop_env("demo-reviewer", "reviewer") is None
         assert _dispatch.hop_env("demo-tester", "tester") is None
 
-    def test_hop_env_none_for_implementer_without_allocation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_hop_env_none_for_implementer_without_allocation(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             # build_pod always allocates ports for an implementer; simulate a member
             # with no allocation by clearing the meta fields directly.
@@ -551,9 +521,7 @@ class TestHopEnvInjection:
             path.write_text(json.dumps(raw))
             assert _dispatch.hop_env("demo-implementer", "implementer") is None
 
-    def test_hop_env_set_for_implementer_with_allocation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_hop_env_set_for_implementer_with_allocation(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             env = _dispatch.hop_env("demo-implementer", "implementer")
             assert env is not None
@@ -561,9 +529,7 @@ class TestHopEnvInjection:
             assert env["DOCKET_PORT_COUNT"] == str(_res.PORT_RANGE_SIZE)
             assert env["DOCKET_SCRATCH_DIR"]
 
-    def test_dispatch_pod_env_only_overridden_on_implementer_hop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_dispatch_pod_env_only_overridden_on_implementer_hop(self, tmp_path: Path) -> None:
         """Integration: dispatch_pod passes env=<dict> to the implementer hop's
         runner call and env=None to the lead hop — the acceptance gate end to end."""
         with _seed_pod(tmp_path):
@@ -579,7 +545,7 @@ class TestHopEnvInjection:
             assert impl_env["DOCKET_SCRATCH_DIR"]
 
     def test_dispatch_pod_no_env_override_for_implementer_without_allocation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             path = current_home().meta_path("demo-implementer")
@@ -1043,7 +1009,7 @@ class TestEndToEnd:
         assert colon != slash
 
     def test_parallel_children_with_one_role_receive_distinct_step_histories(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             spec = _pipeline.PipelineSpec(
@@ -1083,7 +1049,7 @@ class TestConcurrentDispatch:
     ``_claim_next_task``'s locked read-modify-write prevents this: never the same task twice."""
 
     def test_two_concurrent_dispatch_pod_calls_never_double_run_a_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             n_tasks = 8
@@ -1258,9 +1224,7 @@ class TestSweepDoesNotStallOnAParkedPod:
 
 
 class TestCrashRecovery:
-    def test_resume_skips_already_completed_hops(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_resume_skips_already_completed_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
             _dispatch.enqueue_task("demo", "Resume me", channel="cli")
 
@@ -1297,9 +1261,7 @@ class TestCrashRecovery:
                 ]
                 assert final["claimId"] is None
 
-    def test_stale_claim_without_resume_is_not_reclaimed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stale_claim_without_resume_is_not_reclaimed(self, tmp_path: Path) -> None:
         """The default (non-resume) dispatch never auto-retries a crashed task."""
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "Crash me", channel="cli")
@@ -1316,9 +1278,7 @@ class TestCrashRecovery:
                 assert task["status"] == "failed"
                 assert task["failureKind"] == "stale_claim"
 
-    def test_stale_claim_sweep_emits_trace_event(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stale_claim_sweep_emits_trace_event(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             _dispatch.enqueue_task("demo", "Crash me too", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
@@ -1355,9 +1315,7 @@ class TestDeterministicRefusalSettlesTheClaim:
     task and settles its claim instead of raising out of ``dispatch_pod`` -- see
     pod-dispatch.spec.md, "Deterministic refusal inside a claimed task"."""
 
-    def test_refusal_fails_the_task_not_the_whole_dispatch(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_refusal_fails_the_task_not_the_whole_dispatch(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "task one", channel="cli")
             _dispatch.enqueue_task("demo", "task two", channel="cli")
@@ -1377,7 +1335,7 @@ class TestDeterministicRefusalSettlesTheClaim:
             assert [h["role"] for h in tasks[0]["hops"]] == ["lead"]
 
     def test_resume_reclaims_a_dispatch_refused_task_once_the_pipeline_is_fixed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """No CLAIM_STALE_TIMEOUT override and no decoy task needed — unlike a swept crash, a
         settled deterministic refusal is immediately resumable once its cause is fixed."""
@@ -1457,7 +1415,7 @@ class TestDeterministicRefusalSettlesTheClaim:
             assert [r.status for r in resumed] == ["done"]
 
     def test_a_crash_mid_hop_still_leaves_the_task_running_for_the_stale_sweep(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Pin the non-goal: only a deterministic DispatchError is caught. An actual crash (any
         other exception) is unaffected — the task stays 'running', recoverable only through the
@@ -1595,9 +1553,7 @@ class TestBlockedStaysBlocked:
 
 
 class TestLegacyQueueLoads:
-    def test_legacy_task_without_v2_fields_loads_and_dispatches(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_legacy_task_without_v2_fields_loads_and_dispatches(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             legacy_path = _dispatch.pod_task_list_path("demo")
             legacy_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1634,9 +1590,7 @@ class TestLegacyQueueLoads:
             assert results[0].status == "done"
             assert _dispatch.read_tasks("demo")[0]["status"] == "done"
 
-    def test_legacy_queue_missing_tasks_key_loads_empty(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_legacy_queue_missing_tasks_key_loads_empty(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             legacy_path = _dispatch.pod_task_list_path("demo")
             legacy_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1733,7 +1687,7 @@ def _bind_pipeline(project: str, text: str) -> None:
 
 class TestOperatorInputStepsPark:
     def test_reaching_an_input_step_parks_with_no_hop_and_a_default_schema(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
@@ -1762,7 +1716,7 @@ class TestOperatorInputStepsPark:
             assert requested[0]["payload"]["questionId"] == question["id"]
 
     def test_a_waiting_input_task_is_never_reclaimed_by_a_plain_dispatch(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
@@ -1778,9 +1732,7 @@ class TestAnswerTaskResumesDispatch:
     """An answered `input` step's synthetic hop carries its own `nextStep`, so the resume
     builder (and its `route_counts` rebuild) continues correctly across a resume boundary."""
 
-    def test_an_accepted_answer_resumes_straight_through_to_done(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_accepted_answer_resumes_straight_through_to_done(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_pipeline("demo", _ASK_PIPELINE_YAML)
             task = _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
@@ -1807,7 +1759,7 @@ class TestAnswerTaskResumesDispatch:
             assert [h["role"] for h in final["hops"]] == ["lead", "operator", "implementer"]
 
     def test_a_declined_answer_routes_backward_and_a_second_decline_exhausts_its_cap(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """`max: 1` -- proves `route_counts` is rebuilt from the persisted hop's `nextStep`
         on resume: the second decline, a brand new `answer_task` call, must still see it."""
@@ -1918,56 +1870,44 @@ class TestCheckBriefResources:
     the intake-recipe integration tests above exercise `secret:` end to end through a real
     pipeline; these isolate `path:` and `verify` (and `secret:` again, for symmetry)."""
 
-    def test_an_unconfigured_secret_is_missing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_unconfigured_secret_is_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             brief = _oc.TaskBrief(objective="x", resources=["secret:NOPE"])
             assert _dispatch._check_brief_resources("demo", brief) == ["secret:NOPE"]
 
-    def test_a_configured_secret_is_not_missing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_configured_secret_is_not_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _secrets.save_secrets({"YES": "shh"})
             brief = _oc.TaskBrief(objective="x", resources=["secret:YES"])
             assert _dispatch._check_brief_resources("demo", brief) == []
 
-    def test_a_missing_path_is_reported(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_missing_path_is_reported(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             missing = str(tmp_path / "does-not-exist.txt")
             brief = _oc.TaskBrief(objective="x", resources=[f"path:{missing}"])
             assert _dispatch._check_brief_resources("demo", brief) == [f"path:{missing}"]
 
-    def test_an_existing_path_is_not_missing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_existing_path_is_not_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             present = tmp_path / "exists.txt"
             present.write_text("x")
             brief = _oc.TaskBrief(objective="x", resources=[f"path:{present}"])
             assert _dispatch._check_brief_resources("demo", brief) == []
 
-    def test_verify_is_missing_with_no_configured_verify_cmd(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_verify_is_missing_with_no_configured_verify_cmd(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             brief = _oc.TaskBrief(objective="x", resources=["verify"])
             assert _dispatch._check_brief_resources("demo", brief) == ["verify"]
 
     def test_verify_is_not_missing_once_the_implementer_has_a_verify_cmd(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             _fleet.meta_set(_pod.pod.member_id("demo", "implementer"), "verifyCmd", "pytest -q")
             brief = _oc.TaskBrief(objective="x", resources=["verify"])
             assert _dispatch._check_brief_resources("demo", brief) == []
 
-    def test_a_brief_with_no_resources_has_nothing_missing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_brief_with_no_resources_has_nothing_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             assert _dispatch._check_brief_resources("demo", _oc.TaskBrief(objective="x")) == []
 
@@ -2012,7 +1952,7 @@ class TestRequireVerify:
 
 class TestIntakeRecipeTaskBrief:
     def test_needs_input_then_ready_reaches_the_implementer_with_a_brief_view(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
@@ -2050,9 +1990,7 @@ class TestIntakeRecipeTaskBrief:
             # carried forward as ordinary prior-hop context (unaffected by this feature).
             assert _LEAD_READY_SENTINEL not in implementer_message
 
-    def test_a_brief_naming_a_missing_secret_blocks_with_resources(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_brief_naming_a_missing_secret_blocks_with_resources(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
             _dispatch.enqueue_task("demo", "call the API", channel="cli")
@@ -2070,7 +2008,7 @@ class TestIntakeRecipeTaskBrief:
             assert [h["role"] for h in task["hops"]] == ["lead"]
 
     def test_a_resources_block_does_not_stop_the_run_from_claiming_the_next_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
@@ -2082,9 +2020,7 @@ class TestIntakeRecipeTaskBrief:
 
             assert [r.status for r in results] == ["blocked", "done"]
 
-    def test_a_configured_secret_is_not_reported_missing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_configured_secret_is_not_reported_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
             _secrets.save_secrets({"MISSING_KEY": "shh"})
@@ -2096,7 +2032,7 @@ class TestIntakeRecipeTaskBrief:
             assert results[0].status == "done"
 
     def test_a_reply_with_no_parseable_brief_but_a_ready_marker_still_advances(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
@@ -2109,9 +2045,7 @@ class TestIntakeRecipeTaskBrief:
             task = _dispatch.read_tasks("demo")[0]
             assert [h["role"] for h in task["hops"]] == ["lead", "implementer", "reviewer"]
 
-    def test_reject_fails_the_task_as_rejected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reject_fails_the_task_as_rejected(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
             _dispatch.enqueue_task("demo", "delete production", channel="cli")

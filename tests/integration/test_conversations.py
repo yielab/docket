@@ -292,9 +292,7 @@ class TestLockedMutations:
 class TestPruneDurable:
     """``prune_closed_durable`` -- the call ``docket start``'s sweep makes."""
 
-    def test_prune_removes_old_done_conversations(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_prune_removes_old_done_conversations(self, tmp_path: Path) -> None:
         p = tmp_path / "docket-conversations.json"
         with use_home(Home(tmp_path)):
             _write(
@@ -313,9 +311,7 @@ class TestPruneDurable:
 
             assert C.load(p).conversations == []
 
-    def test_prune_dry_run_does_not_delete(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_prune_dry_run_does_not_delete(self, tmp_path: Path) -> None:
         p = tmp_path / "docket-conversations.json"
         with use_home(Home(tmp_path)):
             _write(

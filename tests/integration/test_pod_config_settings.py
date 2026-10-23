@@ -62,7 +62,7 @@ def _show(project: str = "proj") -> tuple[int, str]:
 
 class TestPodShowSettings:
     def test_defaults_when_nothing_configured(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             code, out = _show()
@@ -72,7 +72,7 @@ class TestPodShowSettings:
             assert data["budgetUsd"] == {"value": 0.0, "source": "default"}
 
     def test_invalid_stored_value_refuses_instead_of_showing_a_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             meta = _lead_meta("proj")
@@ -86,7 +86,7 @@ class TestPodShowSettings:
 
 class TestConfigSet:
     def test_set_persists_a_validated_value_and_dispatch_reads_it(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             _pod.set_setting("proj", "maxReworkCycles", "2")
@@ -94,7 +94,7 @@ class TestConfigSet:
             capsys.readouterr()
 
     def test_set_approval_mode_refuse_persists_and_dispatch_reads_it(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             assert _dispatch.pod_approval_mode("proj") == "wait"
@@ -103,7 +103,7 @@ class TestConfigSet:
             capsys.readouterr()
 
     def test_set_invalid_value_exits_1_and_leaves_meta_unchanged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             before = _lead_meta("proj")
@@ -115,7 +115,7 @@ class TestConfigSet:
             assert _lead_meta("proj") == before
 
     def test_set_unknown_key_exits_1(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             with pytest.raises(typer.Exit) as exc:
@@ -123,7 +123,7 @@ class TestConfigSet:
             assert exc.value.exit_code == 1
 
     def test_set_invalid_approval_mode_exits_1_and_leaves_meta_unchanged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             before = _lead_meta("proj")
@@ -137,7 +137,7 @@ class TestConfigSet:
 
 class TestConfigUnset:
     def test_unset_falls_back_to_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             _pod.set_setting("proj", "maxReworkCycles", "3")
@@ -162,7 +162,7 @@ class TestConfigSetPipeline:
     See ``test_dispatch.py::TestBoundPipeline`` for the resolution/refusal behavior."""
 
     def test_set_validates_plans_and_binds_a_valid_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             pipeline_file = tmp_path / "custom.yaml"
@@ -179,7 +179,7 @@ class TestConfigSetPipeline:
             assert [step.id for step in spec.steps] == ["kickoff", "assemble"]
 
     def test_set_refuses_when_a_step_targets_a_role_the_pod_lacks(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             pipeline_file = tmp_path / "needs-reviewer.yaml"
@@ -194,7 +194,7 @@ class TestConfigSetPipeline:
             assert not pod.bound_pipeline_path("proj").exists()
 
     def test_set_refuses_on_an_invalid_pipeline_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             pipeline_file = tmp_path / "broken.yaml"
@@ -206,7 +206,7 @@ class TestConfigSetPipeline:
             capsys.readouterr()
 
     def test_unset_removes_the_stored_copy_and_restores_the_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             pipeline_file = tmp_path / "custom.yaml"
@@ -233,7 +233,7 @@ class TestConfigSetSchedule:
     this way."""
 
     def test_set_validates_and_writes_the_schedules_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             _pod.set_setting("proj", "schedule", "@every 30m")
@@ -246,7 +246,7 @@ class TestConfigSetSchedule:
             assert _lead_meta("proj")["schedule"] == "@every 30m"
 
     def test_set_rejects_an_unrecognized_spec_and_writes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             before = _lead_meta("proj")
@@ -262,7 +262,7 @@ class TestConfigSetSchedule:
             assert _sched.load_schedules(current_home().schedule_file) == {}
 
     def test_unset_removes_it_from_the_schedules_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
             _pod.set_setting("proj", "schedule", "@every 30m")
@@ -305,32 +305,26 @@ class TestConfigSetSchedule:
 class TestBudgetSet:
     """`pod set budgetUsd` is the one budget writer; a new cap lifts the pause the old one set."""
 
-    def test_budget_is_stored_on_the_lead(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_budget_is_stored_on_the_lead(self, tmp_path: Path) -> None:
         with _build(tmp_path):
             _pod.set_setting("proj", "budgetUsd", "5")
             assert _lead_meta("proj")["budgetUsd"] == 5.0
 
-    def test_zero_removes_the_cap(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_zero_removes_the_cap(self, tmp_path: Path) -> None:
         with _build(tmp_path):
             _pod.set_setting("proj", "budgetUsd", "5")
             _pod.set_setting("proj", "budgetUsd", "0")
             assert _dispatch.pod_budget("proj") == 0.0
 
     @pytest.mark.parametrize("bad", ["abc", "-1"])
-    def test_a_bad_budget_exits_1_and_changes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: str
-    ) -> None:
+    def test_a_bad_budget_exits_1_and_changes_nothing(self, tmp_path: Path, bad: str) -> None:
         with _build(tmp_path):
             with pytest.raises(typer.Exit) as exc:
                 _pod.set_setting("proj", "budgetUsd", bad)
             assert exc.value.exit_code == 1
             assert "budgetUsd" not in _lead_meta("proj")
 
-    def test_a_new_cap_lifts_the_budget_pause(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_new_cap_lifts_the_budget_pause(self, tmp_path: Path) -> None:
         with _build(tmp_path):
             lead = pod.member_id("proj", "lead")
             meta = _lead_meta("proj")
@@ -343,9 +337,7 @@ class TestBudgetSet:
             assert _lead_meta("proj")["pausedReason"] == ""
 
     @pytest.mark.parametrize("how", ["set-zero", "unset"])
-    def test_removing_the_cap_lifts_the_budget_pause(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
-    ) -> None:
+    def test_removing_the_cap_lifts_the_budget_pause(self, tmp_path: Path, how: str) -> None:
         with _build(tmp_path):
             lead = pod.member_id("proj", "lead")
             meta = _lead_meta("proj")
@@ -366,7 +358,6 @@ class TestBudgetSet:
     def test_the_unblock_line_counts_every_task_it_requeues_and_says_so(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         with _build(tmp_path):

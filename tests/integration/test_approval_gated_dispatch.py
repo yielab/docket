@@ -321,9 +321,7 @@ class TestNotClaimableConcurrently:
         # waiting_approval task.
         assert _dispatch._claim_next_task("myapp", resume=True) is None
 
-    def test_stale_claim_sweep_does_not_touch_a_waiting_approval_task(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stale_claim_sweep_does_not_touch_a_waiting_approval_task(self) -> None:
         _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
@@ -663,7 +661,7 @@ class TestToolLevelApprovalMode:
     `block-destructive` template rather than a synthetic policy."""
 
     def test_refuse_mode_denies_immediately_with_no_record_and_one_audit_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         # A zero bound on the *wait* path so an ignored approval_mode fails fast
         # instead of blocking; the empty approvals dir is what proves no wait
@@ -694,7 +692,7 @@ class TestToolLevelApprovalMode:
             assert len(ask_entries) == 1
 
     def test_wait_mode_is_unchanged_still_creates_a_record_and_times_out(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """`approval_mode` defaults to `"wait"` -- today's behavior, byte for
         byte: a real record is created and an unanswered call times out to

@@ -94,9 +94,7 @@ def _prep_pod(
 
 
 class TestCustomRoleGeneratedHopInstruction:
-    def test_custom_verdict_role_gets_a_generated_marker_instruction(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_custom_verdict_role_gets_a_generated_marker_instruction(self, tmp_path: Path) -> None:
         with _prep_pod(tmp_path):
             seen: dict[str, str] = {}
             driver = FakeDriver()
@@ -122,7 +120,7 @@ class TestCustomRoleGeneratedHopInstruction:
 
 class TestStepInstructionsOverrideAndInterpolation:
     def test_step_instructions_override_the_role_and_interpolate_a_variable(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _prep_pod(tmp_path):
             seen: dict[str, str] = {}
@@ -151,9 +149,7 @@ class TestStepInstructionsOverrideAndInterpolation:
 
 
 class TestUnresolvedVariableRefusesBeforeAnyHop:
-    def test_missing_variable_refuses_the_run_before_any_hop_runs(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_variable_refuses_the_run_before_any_hop_runs(self, tmp_path: Path) -> None:
         with _prep_pod(tmp_path):
             calls: list[str] = []
 

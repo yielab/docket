@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from docket.core import pod_report
 from docket.core.models import AgentMeta
 from docket.kernel.home import Home, current_home, use_home
@@ -46,9 +44,7 @@ class TestScopeLabel:
 
 
 class TestNetworkText:
-    def test_none_with_isolation_off_says_it_is_not_enforced(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_none_with_isolation_off_says_it_is_not_enforced(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
         with use_home(Home(home)):

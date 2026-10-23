@@ -131,7 +131,7 @@ class TestAuth:
 
 class TestHappyPath:
     def test_answering_returns_a_task_view_and_appends_durably(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pod_home: Path
+        self, tmp_path: Path, pod_home: Path
     ) -> None:
         task = _seed_parked_task("demo")
 
@@ -164,9 +164,7 @@ class TestHappyPath:
             assert after["answers"][0]["channel"] == "http"
             assert after["answers"][0]["actor"] == "http"
 
-    def test_actor_field_labels_the_audit_entry(
-        self, monkeypatch: pytest.MonkeyPatch, pod_home: Path
-    ) -> None:
+    def test_actor_field_labels_the_audit_entry(self, pod_home: Path) -> None:
         task = _seed_parked_task("demo")
         with use_home(
             dataclasses.replace(current_home(), approvals_dir_override=pod_home / "approvals")

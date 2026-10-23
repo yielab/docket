@@ -270,9 +270,7 @@ class TestRegistryForRoleExcludesByKindToo:
         assert "mcp__fs__write_file" not in narrowed
         assert "read" in narrowed
 
-    def test_builtin_tool_kinds_matches_the_real_builtin_registry(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_builtin_tool_kinds_matches_the_real_builtin_registry(self) -> None:
         """Drift guard: a new built-in must gain a capability entry; fetch needs an allowlist."""
         with use_home(
             dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
@@ -441,7 +439,7 @@ class TestSystemPromptForAgent:
         assert "UPDATED-MEMORY" in refreshed
         assert "DURABLE-MEMORY" not in refreshed
 
-    def test_oversized_memory_is_visibly_truncated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_oversized_memory_is_visibly_truncated(self) -> None:
         with use_home(dataclasses.replace(current_home(), context_token_budget_override=350)):
             ws = _write_meta("bounded-context-agent")
             (ws / "SOUL.md").write_text("# SOUL\nidentity\n")

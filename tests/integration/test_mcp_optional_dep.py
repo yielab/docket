@@ -107,9 +107,7 @@ class TestRealSdkIntegration:
         names = {t.name for t in tools}
         assert names == set(_mcp._TOOL_NAMES)
 
-    def test_a_real_call_through_the_sdk_round_trips_a_dict_result(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_real_call_through_the_sdk_round_trips_a_dict_result(self, tmp_path: Path) -> None:
         pytest.importorskip("mcp")
         import asyncio
         import json as _json

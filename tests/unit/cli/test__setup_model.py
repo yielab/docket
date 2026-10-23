@@ -54,9 +54,7 @@ def _seed_workspace(home: Path, agent_id: str = "demo") -> Path:
 
 
 class TestNoEnvSync:
-    def test_credential_write_creates_no_env_in_any_workspace(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_credential_write_creates_no_env_in_any_workspace(self, tmp_path: Path) -> None:
         with _home(tmp_path) as home:
             ws = _seed_workspace(home)
 
@@ -185,9 +183,7 @@ class TestKeyringBackendStores:
 
 
 class TestFileBackendUnaffected:
-    def test_add_still_stores_the_real_value_in_secrets_json(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_add_still_stores_the_real_value_in_secrets_json(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             stored = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
@@ -280,9 +276,7 @@ class TestProviderAdd:
             assert "--credential" in result.stderr
             assert not (home / "docket-providers.json").exists()
 
-    def test_piped_remove_without_yes_fails_naming_the_flag(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_piped_remove_without_yes_fails_naming_the_flag(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             _prov.save_provider(
                 _prov.ProviderSpec(
@@ -295,9 +289,7 @@ class TestProviderAdd:
             assert result.exit_code == 1
             assert "--yes" in result.stderr
 
-    def test_model_set_rejects_an_unknown_role(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_model_set_rejects_an_unknown_role(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             result = _runner.invoke(app, ["setup", "model", "set", "unicorn", "anthropic/claude-x"])
 
@@ -422,9 +414,7 @@ class TestProviderLimits:
             assert (found.context_window, found.context_window_source) == (1000, "declared")
             assert (found.max_output, found.max_output_source) == (9000, "observed")
 
-    def test_show_prints_each_limit_with_its_source(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_show_prints_each_limit_with_its_source(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             spec = _prov.ProviderSpec(
                 name="gw",
@@ -460,9 +450,7 @@ class TestProviderLimits:
             assert rows["seen"] == f"32768 (observed {when}) unknown"
             assert rows["blank"] == "unknown unknown"
 
-    def test_show_json_carries_the_resolved_limits_and_sources(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_show_json_carries_the_resolved_limits_and_sources(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             spec = _prov.ProviderSpec(
                 name="gw",
@@ -493,9 +481,7 @@ class TestProviderLimits:
             assert blank["limitsSource"] == "unknown"
             assert blank["observedAt"] == ""
 
-    def test_a_built_in_model_nobody_observed_is_unknown(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_built_in_model_nobody_observed_is_unknown(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             result = _runner.invoke(app, ["setup", "provider", "show", "anthropic", "--json"])
             assert result.exit_code == 0, result.stdout + result.stderr
@@ -635,7 +621,7 @@ class TestKeyringRequestedWithoutSecretTool:
         monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
 
     def test_a_credential_write_refuses_and_names_the_way_out(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _home(tmp_path):
             stored = _setup_model._write_credential("ANTHROPIC_API_KEY", "sk-ant-secret1", "add")

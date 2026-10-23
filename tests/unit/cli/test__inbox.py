@@ -27,7 +27,7 @@ runner = CliRunner()
 
 
 @contextmanager
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Iterator[Path]:
+def _seed(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

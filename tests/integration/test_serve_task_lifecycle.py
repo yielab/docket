@@ -39,11 +39,12 @@ _IMPLEMENTER_ONLY = "name: implementer-only\nsteps:\n  - id: implementer\n    ro
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-    monkeypatch.setenv("DOCKET_TOOL_MAX_OUTPUT_CHARS", "2500")
 
 
-@pytest.fixture()
-def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+@contextmanager
+def _live_server() -> Iterator[str]:
+    """Built inside the seeded home: the server serves the home it was built in."""
+
     class _Handler(_DocketHandler):
         serve_token = _TOKEN
 
@@ -118,9 +119,7 @@ def _status(task_id: str) -> str:
     return next(t["status"] for t in _dispatch.read_tasks("demo") if t["id"] == task_id)
 
 
-def test_diff_reports_the_task_branch_against_its_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str, llm_server: Any
-) -> None:
+def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_server: Any) -> None:
     """The patch names the committed file, untracked lists a loose one, and it survives pruning."""
     server = llm_server(
         [
@@ -128,7 +127,7 @@ def test_diff_reports_the_task_branch_against_its_base(
             _final_response("done"),
         ]
     )
-    with _seed_pod(tmp_path, server.base_url) as codebase:
+    with _seed_pod(tmp_path, server.base_url) as codebase, _live_server() as live_server:
         task = _dispatch.enqueue_task("demo", "write a file", channel="cli")
         (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
         assert result.status == "done", result.reason
@@ -158,11 +157,9 @@ def test_diff_reports_the_task_branch_against_its_base(
         assert after["head"] == body["head"]
 
 
-def test_diff_of_an_in_place_task_is_a_conflict_with_a_reason(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
-) -> None:
+def test_diff_of_an_in_place_task_is_a_conflict_with_a_reason(tmp_path: Path) -> None:
     """A task with no worktree branch answers 409 and says it ran in place."""
-    with _seed_pod(tmp_path):
+    with _seed_pod(tmp_path), _live_server() as live_server:
         task = _dispatch.enqueue_task("demo", "plain", channel="cli")
 
         status, body = _call("GET", f"{live_server}/tasks/demo/{task['id']}/diff")
@@ -171,21 +168,17 @@ def test_diff_of_an_in_place_task_is_a_conflict_with_a_reason(
         assert body["reason"] == "task ran in place"
 
 
-def test_diff_of_an_unknown_task_is_not_found(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
-) -> None:
+def test_diff_of_an_unknown_task_is_not_found(tmp_path: Path) -> None:
     """An id the pod never queued answers 404 on diff, cancel and retry."""
-    with _seed_pod(tmp_path):
+    with _seed_pod(tmp_path), _live_server() as live_server:
         assert _call("GET", f"{live_server}/tasks/demo/task-nope/diff")[0] == 404
         assert _call("POST", f"{live_server}/tasks/demo/task-nope/cancel")[0] == 404
         assert _call("POST", f"{live_server}/tasks/demo/task-nope/retry")[0] == 404
 
 
-def test_lifecycle_routes_need_the_bearer_token(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
-) -> None:
+def test_lifecycle_routes_need_the_bearer_token(tmp_path: Path) -> None:
     """No token is 401 before anything else is looked at."""
-    with _seed_pod(tmp_path):
+    with _seed_pod(tmp_path), _live_server() as live_server:
         task = _dispatch.enqueue_task("demo", "plain", channel="cli")
         base = f"{live_server}/tasks/demo/{task['id']}"
 
@@ -194,11 +187,9 @@ def test_lifecycle_routes_need_the_bearer_token(
         assert _call("POST", f"{base}/retry", token="wrong")[0] == 401
 
 
-def test_cancel_stops_the_live_run_of_a_running_task_and_audits_the_channel(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
-) -> None:
+def test_cancel_stops_the_live_run_of_a_running_task_and_audits_the_channel(tmp_path: Path) -> None:
     """A running task with a live run is cancelled over HTTP; the audit names channel and reason."""
-    with _seed_pod(tmp_path):
+    with _seed_pod(tmp_path), _live_server() as live_server:
         task = _dispatch.enqueue_task("demo", "long", channel="cli")
         _set_task(task["id"], status="running", claimPid=os.getpid())
         run = _runs.create_run("cli", "demo")
@@ -216,11 +207,9 @@ def test_cancel_stops_the_live_run_of_a_running_task_and_audits_the_channel(
         assert "channel=http" in cancels[0]["detail"] and "wrong repo" in cancels[0]["detail"]
 
 
-def test_cancel_with_nothing_in_flight_is_a_conflict(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
-) -> None:
+def test_cancel_with_nothing_in_flight_is_a_conflict(tmp_path: Path) -> None:
     """A terminal task has nothing to cancel: 409 and the status unchanged."""
-    with _seed_pod(tmp_path):
+    with _seed_pod(tmp_path), _live_server() as live_server:
         task = _dispatch.enqueue_task("demo", "done already", channel="cli")
         _set_task(task["id"], status="done")
 
@@ -230,11 +219,9 @@ def test_cancel_with_nothing_in_flight_is_a_conflict(
         assert _status(task["id"]) == "done"
 
 
-def test_cancel_of_a_parked_task_ends_it_cancelled(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
-) -> None:
+def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
     """A task waiting for an answer is cancelled over HTTP and audited with the channel."""
-    with _seed_pod(tmp_path):
+    with _seed_pod(tmp_path), _live_server() as live_server:
         task = _dispatch.enqueue_task("demo", "ask", channel="cli")
         _set_task(task["id"], status="waiting_input", question={"text": "which?"})
 
@@ -249,11 +236,9 @@ def test_cancel_of_a_parked_task_ends_it_cancelled(
         )
 
 
-def test_retry_requeues_a_failed_task_and_refuses_a_done_one(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
-) -> None:
+def test_retry_requeues_a_failed_task_and_refuses_a_done_one(tmp_path: Path) -> None:
     """Retry flips failed to pending (200) and answers 409 on a done task."""
-    with _seed_pod(tmp_path):
+    with _seed_pod(tmp_path), _live_server() as live_server:
         failed = _dispatch.enqueue_task("demo", "broke", channel="cli")
         done = _dispatch.enqueue_task("demo", "fine", channel="cli")
         _set_task(failed["id"], status="failed")

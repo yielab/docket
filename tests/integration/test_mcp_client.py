@@ -495,21 +495,15 @@ class TestServerConfigPersistence:
 
 
 class TestTimeoutClamping:
-    def test_zero_timeout_uses_the_configured_default(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_zero_timeout_uses_the_configured_default(self) -> None:
         with use_home(dataclasses.replace(current_home(), mcp_client_timeout_s=7.0)):
             assert _config(timeout=0).resolved_timeout() == 7.0
 
-    def test_a_modest_timeout_passes_through_unchanged(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_modest_timeout_passes_through_unchanged(self) -> None:
         with use_home(dataclasses.replace(current_home(), mcp_client_max_timeout_s=60.0)):
             assert _config(timeout=15).resolved_timeout() == 15.0
 
-    def test_an_excessive_timeout_is_clamped_to_the_hard_ceiling(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_excessive_timeout_is_clamped_to_the_hard_ceiling(self) -> None:
         with use_home(dataclasses.replace(current_home(), mcp_client_max_timeout_s=60.0)):
             assert _config(timeout=999_999).resolved_timeout() == 60.0
 

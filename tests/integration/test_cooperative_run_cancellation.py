@@ -157,9 +157,7 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
         assert event_types.count("run_cancelled") == 1
 
 
-def test_returned_cancelled_task_terminalizes_the_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_returned_cancelled_task_terminalizes_the_run(tmp_path: Path) -> None:
     home = tmp_path / ".docket"
     home.mkdir()
     with use_home(Home(home)):
@@ -235,9 +233,7 @@ def _write_agent_meta(agent_id: str, codebase: Path) -> None:
     _fleet.add_agent(agent_id)
 
 
-def test_docket_task_cancel_reaches_a_real_bash_sleep(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
     """The whole-path proof: `docket task cancel`, through the production
     driver, terminalizes a run whose hop is sitting inside a real `bash
     sleep`-shaped command."""

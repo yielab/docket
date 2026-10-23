@@ -35,9 +35,7 @@ _runner = CliRunner()
 
 
 class TestRankAnchorsOverride:
-    def test_registry_overrides_anchors_and_reseeds_roles(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_registry_overrides_anchors_and_reseeds_roles(self, tmp_path: Path) -> None:
         registry_path = tmp_path / "docket-models.json"
         with use_home(Home(tmp_path)):
             registry_path.write_text(
@@ -63,9 +61,7 @@ class TestRankAnchorsOverride:
             assert role_models["implementer"] == "openai/gpt-4.1-mini"
             assert not any("claude" in m.lower() for m in role_models.values())
 
-    def test_malformed_anchor_entries_are_ignored(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_anchor_entries_are_ignored(self, tmp_path: Path) -> None:
         registry_path = tmp_path / "docket-models.json"
         with use_home(Home(tmp_path)):
             registry_path.write_text(
@@ -74,16 +70,12 @@ class TestRankAnchorsOverride:
             _role_models, tiers, _default = _mp.load_registry()
             assert tiers == dict(_mp.rank_anchors())  # untouched — built-ins survive
 
-    def test_no_registry_file_uses_builtin_anchors(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_registry_file_uses_builtin_anchors(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path)):
             _role_models, tiers, _default = _mp.load_registry()
             assert tiers == dict(_mp.rank_anchors())
 
-    def test_write_registry_persists_rank_keys(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_write_registry_persists_rank_keys(self, tmp_path: Path) -> None:
         registry_path = tmp_path / "docket-models.json"
         with use_home(Home(tmp_path)):
             _mp.write_registry(
@@ -100,9 +92,7 @@ class TestRankAnchorsOverride:
                 "premium": "openai/gpt-4.1",
             }
 
-    def test_write_registry_ignores_unknown_anchor_name(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_write_registry_ignores_unknown_anchor_name(self, tmp_path: Path) -> None:
         registry_path = tmp_path / "docket-models.json"
         with use_home(Home(tmp_path)):
             _mp.write_registry({"rank.bogus": "openai/gpt-4.1-nano"})

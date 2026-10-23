@@ -62,9 +62,7 @@ def _register_local(name: str, base_url: str, model_id: str) -> None:
 # ── readiness: the endpoint piece ───────────────────────────────────────────────────
 
 
-def test_an_unresolved_default_is_missing_and_names_the_command(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_unresolved_default_is_missing_and_names_the_command(tmp_path: Path) -> None:
     with _seed_fresh(tmp_path):
         _secrets.save_secrets({})
 
@@ -87,9 +85,7 @@ def test_a_direct_anthropic_key_is_sufficient_endpoint_readiness(
         assert piece.command == ""
 
 
-def test_a_registered_local_endpoint_needs_no_api_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_registered_local_endpoint_needs_no_api_key(tmp_path: Path) -> None:
     with _seed_fresh(tmp_path):
         _register_local("local", "http://127.0.0.1:8081/v1", "qwen-local")
 
@@ -103,7 +99,7 @@ def test_a_registered_local_endpoint_needs_no_api_key(
 
 
 def test_step_security_hardens_world_readable_secrets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with _seed_fresh(tmp_path) as home:
         secrets_file = home / "secrets.json"
@@ -117,7 +113,7 @@ def test_step_security_hardens_world_readable_secrets(
 
 
 def test_step_policies_seeds_the_shipped_set_and_is_idempotent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with _seed_fresh(tmp_path) as home:
         _setup.step_policies()
@@ -160,7 +156,7 @@ def test_init_without_an_endpoint_builds_the_team_and_points_at_setup(
 
 
 def test_init_with_an_endpoint_does_not_mention_setup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with _seed_fresh(tmp_path):
         _register_local("local", "http://127.0.0.1:8081/v1", "qwen-local")

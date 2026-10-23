@@ -70,7 +70,7 @@ class TestAudit:
         assert len(entries) == 1
         assert entries[0]["action"] == "keys.add"
 
-    def test_missing_dir_is_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_dir_is_created(self, tmp_path: Path) -> None:
         """A missing AUDIT_LOG parent means "first-ever docket write", not "docket isn't
         installed": nothing external bootstraps DOCKET_HOME, so audit_log must create its own
         parent directory, or the log would silently lose its first entry on a fresh ~/.docket."""
@@ -165,9 +165,7 @@ class TestTraceRecord:
 
 
 class TestTraceSweep:
-    def test_sweep_closes_stale_open_trace(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_sweep_closes_stale_open_trace(self, oc_dir: Path) -> None:
         with use_home(dataclasses.replace(current_home(), session_timeout=1)):
             pdir = oc_dir / "traces" / "myshop"
             pdir.mkdir(parents=True)
@@ -181,7 +179,7 @@ class TestTraceSweep:
             types = [r["event_type"] for r in trace_core.read_trace(pdir / "stale.jsonl")]
             assert types[-1] == "session_end"
 
-    def test_sweep_leaves_closed_trace(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sweep_leaves_closed_trace(self, oc_dir: Path) -> None:
         with use_home(dataclasses.replace(current_home(), session_timeout=1)):
             pdir = oc_dir / "traces" / "myshop"
             pdir.mkdir(parents=True)

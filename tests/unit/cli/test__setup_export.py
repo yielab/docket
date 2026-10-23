@@ -122,15 +122,11 @@ class TestRecordedContent:
 
 
 class TestNewestTraceFile:
-    def test_none_when_traces_dir_has_no_sessions(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_none_when_traces_dir_has_no_sessions(self, tmp_path: Path) -> None:
         with use_home(dataclasses.replace(current_home(), traces_dir_override=tmp_path / "traces")):
             assert _preview._newest_trace_file() is None
 
-    def test_picks_the_most_recently_modified_file_across_projects(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_picks_the_most_recently_modified_file_across_projects(self, tmp_path: Path) -> None:
         traces = tmp_path / "traces"
         with use_home(dataclasses.replace(current_home(), traces_dir_override=traces)):
             older = traces / "proj-a" / "sess-old.jsonl"

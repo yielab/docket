@@ -117,9 +117,7 @@ class TestTaskEvidence:
                 assert window, f"no events for {hop.role} inside its recorded window"
                 assert any(r["event_type"] == "llm_call" for r in window)
 
-    def test_legacy_record_without_the_new_fields_builds(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_legacy_record_without_the_new_fields_builds(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task("demo", "old", channel="cli")
             _seed_task(task["id"], [{"role": "lead", "member": "demo-lead", "ok": True}])
@@ -128,9 +126,7 @@ class TestTaskEvidence:
             assert hop.usage is None and hop.trace is None and hop.verify is None
             assert hop.commit is None and hop.step_id == "lead"
 
-    def test_unknown_task_raises_named_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unknown_task_raises_named_error(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path), pytest.raises(_ev.EvidenceNotFound):
             _ev.task_evidence("demo", "task-nope", "1.1.0")
 
@@ -170,9 +166,7 @@ def _schema(name: str) -> dict[str, Any]:
 
 
 class TestEvidence11:
-    def test_gate_and_directives_are_present_and_validate(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_gate_and_directives_are_present_and_validate(self, tmp_path: Path) -> None:
         import jsonschema
 
         with _gated_task(tmp_path) as task_id:
@@ -190,9 +184,7 @@ class TestEvidence11:
             ]
             jsonschema.validate(doc, _schema("evidence-v1.1"))
 
-    def test_a_task_with_neither_carries_neither_field(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_task_with_neither_carries_neither_field(self, tmp_path: Path) -> None:
         import jsonschema
 
         with _seed_pod(tmp_path):
@@ -205,9 +197,7 @@ class TestEvidence11:
             assert "directives" not in doc and "gate" not in doc["hops"][0]
             jsonschema.validate(doc, _schema("evidence-v1.1"))
 
-    def test_unknown_version_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unknown_version_is_refused(self, tmp_path: Path) -> None:
         with _gated_task(tmp_path) as task_id, pytest.raises(ValueError):
             _ev.task_evidence("demo", task_id, "2.0.0")
 

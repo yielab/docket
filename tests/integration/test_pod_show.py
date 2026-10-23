@@ -75,14 +75,12 @@ def _explain_text(agent_id: str, capsys: pytest.CaptureFixture[str]) -> str:
 
 
 class TestPodShowRefusals:
-    def test_a_name_that_is_not_a_member_refuses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_name_that_is_not_a_member_refuses(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             code, _out = _show("nope")
             assert code == 1
 
-    def test_no_pod_refuses(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_pod_refuses(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             code, _out = _show(project="ghost")
             assert code == 1
@@ -93,7 +91,7 @@ class TestPodShowMatchesRealDispatch:
     (through FakeDriver) actually used."""
 
     def test_model_pod_settings_and_pipeline_match_the_dispatched_hop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path):
             implementer = pod.member_id("demo", "implementer")
@@ -138,7 +136,7 @@ class TestPodShowMatchesRealDispatch:
             assert report["roleScope"] == "built-in"
 
     def test_lead_model_follows_policy_by_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path):
             lead = pod.member_id("demo", "lead")
@@ -151,7 +149,7 @@ class TestPodShowMatchesRealDispatch:
 
 class TestPodShowToolDenial:
     def test_reviewer_denied_tools_match_its_archetype(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path, roles=("lead", "implementer", "reviewer")):
             reviewer = pod.member_id("demo", "reviewer")
@@ -168,7 +166,7 @@ class TestPodShowTextUnchangedWithNoPodScope:
     when nothing has pod scope, pinning the exact lines `_render_human` touches."""
 
     def test_implementer_text_matches_the_base_exactly(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with (
             _seed(tmp_path),
@@ -185,7 +183,7 @@ class TestPodShowTextUnchangedWithNoPodScope:
             assert "  MCP servers:   (none configured)\n" in text
 
     def test_reviewer_text_matches_the_base_exactly(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with (
             _seed(tmp_path, roles=("lead", "implementer", "reviewer")),
@@ -203,7 +201,7 @@ class TestPodShowScopeLabels:
     operator's `~/.docket` overlay), or pod (this pod's own `config/`) -- produced it."""
 
     def test_pod_overlay_shadowed_role_policy_server_and_denial(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with (
             _seed(tmp_path, roles=("lead", "implementer", "reviewer")),
@@ -277,7 +275,7 @@ class TestPodShowScopeLabels:
             assert denied["write"] == "pod"
 
     def test_pod_only_denial_is_labeled_pod_even_for_a_built_in_role(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Negative case: an unshadowed built-in role plus a pod-only `deniedTools`
         setting -- `bash` avoids the kind-cascade so only one name is denied."""
@@ -292,7 +290,7 @@ class TestPodShowScopeLabels:
 
 class TestPodShowNonPodAgent:
     def test_agent_with_no_pod_reports_null_pipeline_and_pod_settings(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path) as home:
             ws = home / "workspaces" / "solo"
@@ -309,7 +307,7 @@ class TestPodShowNonPodAgent:
 
 class TestPodShowPolicies:
     def test_baseline_policies_apply_to_every_role(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path):
             result = _policy.install_policies()
@@ -328,7 +326,7 @@ class TestPodShowPolicies:
             assert ids == {_stem(name) for name in result.installed}
 
     def test_role_scoped_policy_is_excluded_for_other_roles(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path):
             policies_dir = current_home().policies_dir
@@ -354,7 +352,7 @@ class TestPodShowPolicies:
 
 class TestPodShowInvalidPodSettingsRefuses:
     def test_bad_stored_value_refuses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path):
             lead = pod.member_id("demo", "lead")
@@ -378,7 +376,7 @@ class TestPodShowProvider:
     catalog" requirement 7."""
 
     def test_agent_on_a_global_provider_document(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         from docket.core import provider as _prov
 
@@ -413,7 +411,7 @@ class TestPodShowProvider:
             }
 
     def test_observed_and_unknown_limits_name_their_source(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         from docket.core import provider as _prov
         from docket.core.llm import ModelLimits
@@ -456,7 +454,7 @@ class TestPodShowPod:
     resolves, pinned to ``core.dispatch.pod_approval_mode`` itself."""
 
     def test_pod_view_names_the_verify_command_and_the_dispatchers_approval_mode(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed(tmp_path):
             implementer = pod.member_id("demo", "implementer")
@@ -473,7 +471,7 @@ class TestPodShowPod:
 
     @pytest.mark.parametrize("mode", ["wait", "park", "refuse"])
     def test_an_explicit_approval_mode_is_what_the_dispatcher_uses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+        self, tmp_path: Path, mode: str
     ) -> None:
         with _seed(tmp_path):
             _fleet.meta_set(pod.member_id("demo", "lead"), "approvalMode", mode)
@@ -481,9 +479,7 @@ class TestPodShowPod:
             assert report["approvalMode"] == {"effective": mode, "source": "set"}
             assert _dispatch.pod_approval_mode("demo") == mode
 
-    def test_settings_carry_their_source(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_settings_carry_their_source(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             _fleet.meta_set(pod.member_id("demo", "lead"), "budgetUsd", 7.0)
             report = json.loads(_show("--json")[1])

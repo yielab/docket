@@ -21,9 +21,7 @@ def permissive_umask() -> Iterator[None]:
     os.umask(old)
 
 
-def test_a_fresh_home_directory_is_created_0700(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, permissive_umask: None
-) -> None:
+def test_a_fresh_home_directory_is_created_0700(tmp_path: Path, permissive_umask: None) -> None:
     home = tmp_path / "fresh-home"
     with use_home(Home(home)):
         assert audit.audit_log("pod.init").status == "written"

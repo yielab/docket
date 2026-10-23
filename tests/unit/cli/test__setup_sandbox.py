@@ -32,9 +32,7 @@ def _fresh_home(
         yield
 
 
-def test_bare_sandbox_is_a_read_that_writes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_bare_sandbox_is_a_read_that_writes_nothing(tmp_path: Path) -> None:
     with _fresh_home(tmp_path):
         fleet_before, audit_before = (
             _bytes(current_home().fleet_file),
@@ -49,9 +47,7 @@ def test_bare_sandbox_is_a_read_that_writes_nothing(
         assert _bytes(current_home().audit_log) == audit_before
 
 
-def test_a_bad_network_word_is_a_usage_error_and_writes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_bad_network_word_is_a_usage_error_and_writes_nothing(tmp_path: Path) -> None:
     with _fresh_home(tmp_path):
         fleet_before = _bytes(current_home().fleet_file)
 
@@ -178,9 +174,7 @@ class TestTheProbeReport:
             assert body["backend"] == "none"
 
 
-def test_a_fresh_home_does_not_claim_the_network_is_cut(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_fresh_home_does_not_claim_the_network_is_cut(tmp_path: Path) -> None:
     with _fresh_home(tmp_path):
         out = _runner.invoke(app, ["setup", "sandbox"]).stdout
         line = next(ln for ln in out.splitlines() if "Network:" in ln)
@@ -192,9 +186,7 @@ def test_a_fresh_home_does_not_claim_the_network_is_cut(
         assert body["networkEnforced"] is False
 
 
-def test_isolation_on_keeps_the_network_line_and_marks_it_enforced(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_isolation_on_keeps_the_network_line_and_marks_it_enforced(tmp_path: Path) -> None:
     from docket.core import fleet as _fleet
 
     with _fresh_home(tmp_path):
@@ -209,7 +201,7 @@ def test_isolation_on_keeps_the_network_line_and_marks_it_enforced(
 
 
 def test_recording_none_with_isolation_off_does_not_say_ok_for_a_cut_network(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     with _fresh_home(tmp_path):
         out = _runner.invoke(app, ["setup", "sandbox", "network", "none"]).stdout

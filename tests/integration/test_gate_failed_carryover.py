@@ -12,6 +12,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off
@@ -68,27 +69,25 @@ def _implementer_messages(driver: FakeDriver) -> list[str]:
     return [c[2] for c in driver.calls if c[0].endswith("-implementer")]
 
 
-def _run(tmp_path: Path, verify_cmd: str, yaml: str):
+@contextmanager
+def _run(tmp_path: Path, verify_cmd: str, yaml: str) -> Iterator[tuple[Any, FakeDriver]]:
     with _seed(tmp_path, verify_cmd):
         _dispatch.enqueue_task("demo", "Ship it", channel="cli")
         driver = FakeDriver()
         results = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(yaml))
-        return results[0], driver
+        yield results[0], driver
 
 
-def test_backward_route_carries_the_failed_gate_output_into_the_retry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backward_route_carries_the_failed_gate_output_into_the_retry(tmp_path: Path) -> None:
     flag = tmp_path / "flag"
     cmd = f"test -f {flag} || {{ touch {flag}; echo {MARKER}; exit 1; }}"
-    res, driver = _run(tmp_path, cmd, _UNTIL_YAML)
-
-    assert res.status == "done", res.reason
-    messages = _implementer_messages(driver)
-    assert len(messages) == 2
-    assert MARKER not in messages[0]
-    assert "--- GATE FAILED: build ---" in messages[1]
-    assert MARKER in messages[1].split("--- GATE FAILED: build ---", 1)[1]
+    with _run(tmp_path, cmd, _UNTIL_YAML) as (res, driver):
+        assert res.status == "done", res.reason
+        messages = _implementer_messages(driver)
+        assert len(messages) == 2
+        assert MARKER not in messages[0]
+        assert "--- GATE FAILED: build ---" in messages[1]
+        assert MARKER in messages[1].split("--- GATE FAILED: build ---", 1)[1]
 
 
 def test_gate_failed_section_is_recorded_in_the_composition() -> None:
@@ -112,15 +111,12 @@ def test_gate_failed_section_is_recorded_in_the_composition() -> None:
     assert message.count("--- GATE FAILED") == 1
 
 
-def test_no_gate_failed_section_without_a_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    res, driver = _run(tmp_path, "echo fine", _UNTIL_YAML)
-
-    assert res.status == "done"
-    messages = _implementer_messages(driver)
-    assert len(messages) == 1
-    assert "GATE FAILED" not in messages[0]
+def test_no_gate_failed_section_without_a_failure(tmp_path: Path) -> None:
+    with _run(tmp_path, "echo fine", _UNTIL_YAML) as (res, driver):
+        assert res.status == "done"
+        messages = _implementer_messages(driver)
+        assert len(messages) == 1
+        assert "GATE FAILED" not in messages[0]
 
 
 def test_hop_message_without_gate_failed_hop_is_unchanged() -> None:
@@ -136,9 +132,7 @@ def test_hop_message_without_gate_failed_hop_is_unchanged() -> None:
     )
 
 
-def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(tmp_path: Path) -> None:
     with _seed(tmp_path, "true"):
         steps, _ids, _instr = _dispatch._resolve_pipeline_steps("demo", _spec(_UNTIL_YAML))
         lead = _dispatch.HopResult(

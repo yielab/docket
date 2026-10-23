@@ -71,9 +71,7 @@ class TestParseSkillFile:
 
 
 class TestDiscoverSkills:
-    def test_nearest_scope_wins_by_name(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_nearest_scope_wins_by_name(self, tmp_path: Path) -> None:
         """The same skill name in all three scopes: codebase wins over pod, pod wins over
         global -- proven by a distinguishing description at each scope."""
         codebase = tmp_path / "repo"
@@ -90,9 +88,7 @@ class TestDiscoverSkills:
             assert found["shared"].description == "codebase version"
             assert found["shared"].scope == "codebase"
 
-    def test_pod_scope_wins_over_global(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_scope_wins_over_global(self, tmp_path: Path) -> None:
         project = "pod-wins-demo"
         _write_skill(current_home().pod_config_dir(project) / "skills", "shared", "pod version")
         with use_home(
@@ -105,9 +101,7 @@ class TestDiscoverSkills:
             assert found["shared"].description == "pod version"
             assert found["shared"].scope == "pod"
 
-    def test_an_invalid_skill_is_skipped_and_audited_once(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_invalid_skill_is_skipped_and_audited_once(self, tmp_path: Path) -> None:
         """The fail-closed negative: a name/directory mismatch never raises into discovery,
         the skill is simply absent, and exactly one `skills.invalid` audit line records why."""
         with use_home(
@@ -127,9 +121,7 @@ class TestDiscoverSkills:
             assert len(entries) == 1
             assert "on-disk-name" in entries[0]["detail"]
 
-    def test_no_skills_anywhere_is_empty(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_skills_anywhere_is_empty(self, tmp_path: Path) -> None:
         with use_home(
             dataclasses.replace(current_home(), skills_dir_override=tmp_path / "empty-global")
         ):

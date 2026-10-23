@@ -131,9 +131,7 @@ class TestRenderEvent:
         )
         assert line == "⏸ lead hop needs approval · token apr-1 · docket task approve apr-1"
 
-    def test_approval_requested_counts_down_from_the_configured_timeout(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_approval_requested_counts_down_from_the_configured_timeout(self) -> None:
         with use_home(dataclasses.replace(current_home(), tool_approval_timeout=120)):
             record = _record(
                 "approval_requested",
@@ -170,9 +168,7 @@ class TestParseAnswer:
 
 
 class TestHandleApprovalPrompt:
-    def test_a_grants_through_the_same_pair_docket_approve_uses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_grants_through_the_same_pair_docket_approve_uses(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
 
@@ -181,9 +177,7 @@ class TestHandleApprovalPrompt:
             assert outcome.action == "granted"
             assert _ap.approval_get(token)["state"] == "granted"
 
-    def test_d_denies_through_the_same_pair_docket_deny_uses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_d_denies_through_the_same_pair_docket_deny_uses(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
 
@@ -192,9 +186,7 @@ class TestHandleApprovalPrompt:
             assert outcome.action == "denied"
             assert _ap.approval_get(token)["state"] == "denied"
 
-    def test_an_empty_answer_keeps_waiting_and_touches_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_empty_answer_keeps_waiting_and_touches_nothing(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
 
@@ -204,7 +196,7 @@ class TestHandleApprovalPrompt:
             assert _ap.approval_get(token)["state"] == "pending"
 
     def test_a_token_already_resolved_elsewhere_is_reported_not_raised(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _home(tmp_path):
             token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
@@ -217,7 +209,7 @@ class TestHandleApprovalPrompt:
 
     @pytest.mark.parametrize(("first", "second"), [("d", "a"), ("a", "d")])
     def test_the_opposite_decision_having_won_is_reported_not_raised(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first: str, second: str
+        self, tmp_path: Path, first: str, second: str
     ) -> None:
         with _home(tmp_path):
             token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
@@ -230,9 +222,7 @@ class TestHandleApprovalPrompt:
             assert state in (outcome.message or "")
             assert _ap.approval_get(token)["state"] == state
 
-    def test_a_token_with_no_record_is_reported_not_raised(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_token_with_no_record_is_reported_not_raised(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             outcome = _progress.handle_approval_prompt("no-such-token", "a")
 

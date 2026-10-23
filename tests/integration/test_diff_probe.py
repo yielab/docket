@@ -223,9 +223,7 @@ class _PlainRunner:
 
 
 class TestDispatchPopulatesRealDiff:
-    def test_implementer_hop_reports_real_changed_files_and_branch(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_implementer_hop_reports_real_changed_files_and_branch(self, tmp_path: Path) -> None:
         repo_dir = tmp_path / "repo"
         _init_git_repo(repo_dir)
         with _seed_pod(tmp_path, "demo", codebase=str(repo_dir)):
@@ -267,9 +265,7 @@ class TestDispatchPopulatesRealDiff:
 
 
 class TestDegradePaths:
-    def test_workdir_pod_degrades_to_empty_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_workdir_pod_degrades_to_empty_artifact(self, tmp_path: Path) -> None:
         """A `workdir` pod's Implementer has no codebase or worktree -- its cwd resolves to
         its own plain docket workspace dir, never a git repo -- yet the hop must still
         complete and produce a valid empty artifact, not raise."""
@@ -294,9 +290,7 @@ class TestDegradePaths:
                 "diffStat": None,
             }
 
-    def test_non_repo_codebase_degrades_to_empty_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_non_repo_codebase_degrades_to_empty_artifact(self, tmp_path: Path) -> None:
         """A `codebase` that exists but was never `git init`-ed falls back to a flat
         workspace; the diff probe must degrade the same way the mechanical verify gate
         already does for this exact case."""

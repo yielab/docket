@@ -87,9 +87,7 @@ class TestInitInstallsTheBaselinePolicies:
     """security-gates spec: on the first run `docket init` installs the shipped policy
     templates, so the `pre_input`/`pre_tool_call` screens are not no-ops in a fresh home."""
 
-    def test_a_fresh_home_gets_the_shipped_policies(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_fresh_home_gets_the_shipped_policies(self, tmp_path: Path) -> None:
 
         home = tmp_path / "home"
         with use_home(Home(home)):

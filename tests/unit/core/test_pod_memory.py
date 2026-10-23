@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any
 
 from docket.core import pod_memory as pm
 from docket.kernel.home import current_home, use_home
@@ -58,7 +57,7 @@ class TestParse:
         assert all(p.refusal for p in parsed)
         assert "kind" in parsed[1].refusal
 
-    def test_only_the_first_entries_of_a_reply_are_read(self, monkeypatch: Any) -> None:
+    def test_only_the_first_entries_of_a_reply_are_read(self) -> None:
         with use_home(dataclasses.replace(current_home(), pod_memory_max_per_task=2)):
             parsed = pm.parse_memory_section(
                 _section(*[f"- generated: f{i} -- n." for i in range(5)])

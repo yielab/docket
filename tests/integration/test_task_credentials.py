@@ -73,9 +73,7 @@ def test_catalog_declared_credential_is_stripped(
     assert "control-canary" in out
 
 
-def test_reading_the_secret_store_does_not_create_home(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_reading_the_secret_store_does_not_create_home(tmp_path: Path) -> None:
     home = tmp_path / "absent-home"
     with use_home(Home(home)):
         assert "PATH" in _system.task_environment()

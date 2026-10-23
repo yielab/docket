@@ -364,9 +364,7 @@ class TestAuditFailureNeverBreaksApproval:
         assert len(entries) == 1
         assert entries[0]["detail"] == f"token={token} project=proj-no-audit channel=cli"
 
-    def test_audit_write_failure_does_not_raise(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_audit_write_failure_does_not_raise(self, home: Path) -> None:
         """A missing AUDIT_LOG parent dir is best-effort created rather than raising or losing
         the entry -- nothing external bootstraps DOCKET_HOME, so a missing parent just means
         "first write" (see `core/audit.py`'s `audit_log()` docstring)."""

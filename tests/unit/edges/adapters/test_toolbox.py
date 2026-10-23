@@ -334,7 +334,7 @@ class TestToolOutputBudget:
         assert path.read_text(encoding="utf-8").startswith("EDITED\nline 4\n")
 
     def test_glob_and_grep_output_is_bounded_by_the_announced_truncation(
-        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+        self, workspace: Path
     ) -> None:
         with use_home(dataclasses.replace(current_home(), tool_max_output_chars=120)):
             self._tree(workspace, count=50)

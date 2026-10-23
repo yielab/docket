@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import dataclasses
 
-import pytest
-
 import docket.config as _cfg
 from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import context as _ctx
 from docket.core.handoff import HandoffArtifact
-from docket.kernel.home import current_home, use_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.context"
 
@@ -107,19 +105,17 @@ class TestBudgetForRole:
         )
         assert budget > _ctx.DEFAULT_TOKEN_BUDGET
 
-    def test_pod_scoped_archetype_resolves_its_token_budget(
-        self, tmp_path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_scoped_archetype_resolves_its_token_budget(self, tmp_path) -> None:
         """A pod-scoped role with a declared tokenBudget is resolved when project= is passed."""
         home = tmp_path / "docket-home"
         home.mkdir()
-        monkeypatch.setenv("DOCKET_HOME", str(home))
 
         role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
         doc = _config_docs.load_document(role_file)
-        _arch.add_user_archetype(doc.doc, "mypod")
+        with use_home(Home(home)):
+            _arch.add_user_archetype(doc.doc, "mypod")
 
-        found_budget = _ctx.budget_for_role("security-vetter", project="mypod")
+            found_budget = _ctx.budget_for_role("security-vetter", project="mypod")
         assert found_budget > 0
 
     def test_pod_scoped_call_with_global_role_still_returns_builtin(self) -> None:

@@ -478,9 +478,7 @@ class _CrashOnSecondImplementerCallRunner:
 
 
 class TestReviewerReworkResume:
-    def test_resume_continues_into_rework_implementer_not_past_it(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_resume_continues_into_rework_implementer_not_past_it(self, tmp_path: Path) -> None:
         _seed_full_pod()
         _dispatch.enqueue_task("myapp", "Resume me mid-rework", channel="cli")
 
@@ -524,7 +522,7 @@ class TestReviewerReworkResume:
             assert final["claimId"] is None
 
     def test_resumed_rework_implementer_message_still_carries_review_text(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """The rework note must survive a crash+resume, not just a live run."""
         _seed_full_pod()

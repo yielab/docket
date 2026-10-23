@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-import pytest
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
 
@@ -100,9 +99,7 @@ def _meta(member_id: str) -> dict[str, Any]:
 
 
 class TestPodRemove:
-    def test_the_lead_is_refused_and_the_pod_is_unchanged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_lead_is_refused_and_the_pod_is_unchanged(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, out = _invoke("remove", "demo-lead", "--yes")
 
@@ -110,9 +107,7 @@ class TestPodRemove:
             assert "pod delete" in out
             assert set(_pod.pod_member_ids("demo")) == {"demo-lead", "demo-implementer"}
 
-    def test_off_a_tty_without_yes_refuses_and_names_the_flag(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_off_a_tty_without_yes_refuses_and_names_the_flag(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, out = _invoke("remove", "demo-implementer")
 
@@ -120,9 +115,7 @@ class TestPodRemove:
             assert "--yes" in out
             assert "demo-implementer" in _pod.pod_member_ids("demo")
 
-    def test_yes_removes_the_member_and_its_workspace(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_yes_removes_the_member_and_its_workspace(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as home:
             code, _out = _invoke("remove", "demo-implementer", "--yes")
 
@@ -130,9 +123,7 @@ class TestPodRemove:
             assert _pod.pod_member_ids("demo") == ["demo-lead"]
             assert not (home / "workspaces" / "projects" / "demo-implementer").exists()
 
-    def test_a_name_outside_the_pod_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_name_outside_the_pod_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, _out = _invoke("remove", "other-implementer", "--yes")
 
@@ -141,9 +132,7 @@ class TestPodRemove:
 
 
 class TestPodDelete:
-    def test_off_a_tty_without_confirm_refuses_and_names_the_flag(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_off_a_tty_without_confirm_refuses_and_names_the_flag(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, out = _invoke("delete")
 
@@ -151,18 +140,14 @@ class TestPodDelete:
             assert "--confirm demo" in out
             assert len(_pod.pod_member_ids("demo")) == 2
 
-    def test_a_wrong_confirm_name_deletes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_wrong_confirm_name_deletes_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, _out = _invoke("delete", "--confirm", "nope")
 
             assert code == 1
             assert len(_pod.pod_member_ids("demo")) == 2
 
-    def test_a_member_id_is_refused_as_a_pod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_member_id_is_refused_as_a_pod(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, out = _invoke("delete", "--confirm", "demo-lead", project="demo-lead")
 
@@ -170,9 +155,7 @@ class TestPodDelete:
             assert "member id" in out
             assert len(_pod.pod_member_ids("demo")) == 2
 
-    def test_confirm_with_the_name_removes_every_member_and_audits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_confirm_with_the_name_removes_every_member_and_audits(self, tmp_path: Path) -> None:
         from docket.core import audit as _audit
 
         with _seed_pod(tmp_path):
@@ -184,9 +167,7 @@ class TestPodDelete:
 
 
 class TestPodAdd:
-    def test_an_unknown_role_is_one_line_and_exit_1(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_unknown_role_is_one_line_and_exit_1(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, out = _invoke("add", "wizard")
 
@@ -195,17 +176,13 @@ class TestPodAdd:
             assert "Traceback" not in out
             assert len(_pod.pod_member_ids("demo")) == 2
 
-    def test_a_second_lead_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_second_lead_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, _out = _invoke("add", "lead")
 
             assert code == 1
 
-    def test_count_and_verify_add_indexed_implementers_with_the_gate(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_count_and_verify_add_indexed_implementers_with_the_gate(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, out = _invoke("add", "implementer", "--count", "2", "--verify", "make check")
 
@@ -215,9 +192,7 @@ class TestPodAdd:
 
 
 class TestPodSetUnset:
-    def test_unset_verify_removes_the_key_from_the_members_meta(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unset_verify_removes_the_key_from_the_members_meta(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             assert _invoke("set", "verify", "make check", "--member", "demo-implementer")[0] == 0
             assert _meta("demo-implementer")["verifyCmd"] == "make check"
@@ -227,35 +202,27 @@ class TestPodSetUnset:
             assert code == 0
             assert "verifyCmd" not in _meta("demo-implementer")
 
-    def test_verify_with_no_member_names_the_flag(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_verify_with_no_member_names_the_flag(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, out = _invoke("set", "verify", "make check")
 
             assert code == 1
             assert "--member" in out
 
-    def test_member_flag_on_another_key_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_member_flag_on_another_key_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, _out = _invoke("set", "budgetUsd", "5", "--member", "demo-implementer")
 
             assert code == 1
             assert "budgetUsd" not in _meta("demo-lead")
 
-    def test_a_flag_the_leaf_does_not_declare_is_a_usage_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_flag_the_leaf_does_not_declare_is_a_usage_error(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, _out = _invoke("set", "budgetUsd", "5", "--clear")
 
             assert code == 2
 
-    def test_set_and_unset_cover_every_pod_settings_key(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_set_and_unset_cover_every_pod_settings_key(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             assert _invoke("set", "maxReworkCycles", "3")[0] == 0
             assert _meta("demo-lead")["maxReworkCycles"] == 3

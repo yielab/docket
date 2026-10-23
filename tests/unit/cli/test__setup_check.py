@@ -666,9 +666,7 @@ class TestFullRun:
             assert "critical issue(s) found" in out
             assert rc == 1
 
-    def test_human_no_agents(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_human_no_agents(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": []}))
@@ -710,14 +708,12 @@ class TestScheduleConfig:
     """A bad spec is silently never due -- `_check_schedule_config` names the file,
     project key, and reason instead."""
 
-    def test_no_file_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_no_file_is_healthy(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         with _point_config_at(tmp_path / ".docket"):
             assert _setup_check._check_schedule_config() == 0
 
     def test_bad_spec_is_flagged_by_project_and_reason(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         home = tmp_path / ".docket"
         with _point_config_at(home):
@@ -732,7 +728,7 @@ class TestScheduleConfig:
             assert "3x" in out
 
     def test_valid_schedule_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         home = tmp_path / ".docket"
         with _point_config_at(home):
@@ -746,14 +742,12 @@ class TestScheduleConfig:
 class TestModelRegistryEntries:
     """A hand-broken `docket-models.json` entry is named, not silently ignored."""
 
-    def test_no_file_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_no_file_is_healthy(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         with _point_config_at(tmp_path / ".docket"):
             assert _setup_check._check_model_registry_entries() == 0
 
     def test_hand_broken_entry_is_named(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         home = tmp_path / ".docket"
         with _point_config_at(home):
@@ -770,14 +764,12 @@ class TestProviderCatalog:
     """A malformed global provider document (docket-providers.json) is named, not
     silently skipped -- model-profiles.spec.md, "Provider catalog" requirement 7."""
 
-    def test_no_file_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_no_file_is_healthy(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         with _point_config_at(tmp_path / ".docket"):
             assert _setup_check._check_provider_catalog() == 0
 
     def test_broken_auth_type_is_named(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         home = tmp_path / ".docket"
         with _point_config_at(home):
@@ -825,20 +817,18 @@ class TestPodConfigOverlays:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home
 
-    def test_no_pods_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_no_pods_is_healthy(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         with _point_config_at(tmp_path / ".docket"):
             assert _setup_check._check_pod_config_overlays() == 0
 
     def test_pod_with_no_overlay_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._build_pod(tmp_path):
             assert _setup_check._check_pod_config_overlays() == 0
 
     def test_broken_pod_role_overlay_is_named_by_pod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._build_pod(tmp_path):
             pod_roles = current_home().pod_config_dir("demo") / "roles.json"
@@ -851,7 +841,7 @@ class TestPodConfigOverlays:
             assert "broken-role" in out
 
     def test_broken_pod_policy_file_is_named_by_pod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._build_pod(tmp_path):
             pod_policies = current_home().pod_config_dir("demo") / "policies"
@@ -901,7 +891,7 @@ class TestPodSyncCheck:
             yield home
 
     def test_in_sync_pod_reports_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._build_pod(tmp_path):
             issues = _setup_check._check_pod_sync(["demo-lead", "demo-implementer"])
@@ -911,7 +901,7 @@ class TestPodSyncCheck:
             assert "in sync" in out
 
     def test_stale_pod_member_is_flagged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._build_pod(tmp_path) as home:
             (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text(

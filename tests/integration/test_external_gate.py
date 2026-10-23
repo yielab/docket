@@ -77,13 +77,14 @@ def _spec(script: Path, on: str = "", timeout: str = "") -> _pipeline.PipelineSp
     return loaded.spec
 
 
-def _run(tmp_path: Path, body: str, **kw: str):
+@contextmanager
+def _run(tmp_path: Path, body: str, **kw: str) -> Iterator[tuple[Any, FakeDriver]]:
     with _seed(tmp_path):
         script = _script(tmp_path, body)
         _dispatch.enqueue_task("demo", "Ship it", channel="cli")
         driver = FakeDriver()
         res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(script, **kw))[0]
-        return res, driver
+        yield res, driver
 
 
 def _build_hops(res: Any) -> list[Any]:
@@ -99,28 +100,22 @@ def _reasons_script(payload: str, code: int) -> str:
 
 
 class TestExitMapping:
-    def test_exit_zero_passes_and_runs_only_the_gate_command(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        res, _driver = _run(tmp_path, "echo fine\nexit 0\n")
+    def test_exit_zero_passes_and_runs_only_the_gate_command(self, tmp_path: Path) -> None:
+        with _run(tmp_path, "echo fine\nexit 0\n") as (res, _driver):
+            assert res.status == "done", res.reason
+            verify = _build_hops(res)[0].verify
+            assert verify["label"] == "pass"
+            assert verify["exitCode"] == 0
+            assert "fine" in verify["outputTail"]
+            assert not (tmp_path / "verifycmd-ran").exists()
 
-        assert res.status == "done", res.reason
-        verify = _build_hops(res)[0].verify
-        assert verify["label"] == "pass"
-        assert verify["exitCode"] == 0
-        assert "fine" in verify["outputTail"]
-        assert not (tmp_path / "verifycmd-ran").exists()
-
-    def test_the_verifier_sees_the_task_coordinates(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_verifier_sees_the_task_coordinates(self, tmp_path: Path) -> None:
         body = 'echo "task=$DOCKET_TASK_ID file=$DOCKET_GATE_REASONS_FILE"\nexit 0\n'
-        res, _driver = _run(tmp_path, body)
-
-        tail = _build_hops(res)[0].verify["outputTail"]
-        assert f"task={res.task_id}" in tail
-        path = _dispatch._gate_reasons_path("demo", res.task_id, "build")
-        assert f"file={path}" in tail
+        with _run(tmp_path, body) as (res, _driver):
+            tail = _build_hops(res)[0].verify["outputTail"]
+            assert f"task={res.task_id}" in tail
+            path = _dispatch._gate_reasons_path("demo", res.task_id, "build")
+            assert f"file={path}" in tail
 
     @pytest.mark.parametrize(
         ("code", "label", "kind"),
@@ -131,20 +126,17 @@ class TestExitMapping:
         ],
     )
     def test_an_unrouted_non_pass_fails_the_task_with_its_own_kind(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int, label: str, kind: str
+        self, tmp_path: Path, code: int, label: str, kind: str
     ) -> None:
-        res, _driver = _run(tmp_path, f"echo out\nexit {code}\n")
+        with _run(tmp_path, f"echo out\nexit {code}\n") as (res, _driver):
+            assert res.status == "failed"
+            assert res.failure_kind == kind
+            verify = _build_hops(res)[0].verify
+            assert verify["label"] == label
+            assert verify["exitCode"] == code
+            assert _dispatch.read_tasks("demo")[0]["failureKind"] == kind
 
-        assert res.status == "failed"
-        assert res.failure_kind == kind
-        verify = _build_hops(res)[0].verify
-        assert verify["label"] == label
-        assert verify["exitCode"] == code
-        assert _dispatch.read_tasks("demo")[0]["failureKind"] == kind
-
-    def test_the_exit_code_cannot_be_forged_from_inside_the_command(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_exit_code_cannot_be_forged_from_inside_the_command(self, tmp_path: Path) -> None:
         # The command (agent-written tests, in practice) plants a "0" anywhere docket might read
         # a code from and makes it unwritable, then fails: the label comes from the process.
         body = (
@@ -152,31 +144,23 @@ class TestExitMapping:
             '  [ -n "$f" ] && printf 0 > "$f" && chmod 400 "$f"\n'
             "done\nexit 1\n"
         )
-        res, _ = _run(tmp_path, body)
-        assert res.status == "failed"
-        assert _build_hops(res)[0].verify["label"] == "fail"
-        assert _build_hops(res)[0].verify["exitCode"] == 1
+        with _run(tmp_path, body) as (res, _):
+            assert res.status == "failed"
+            assert _build_hops(res)[0].verify["label"] == "fail"
+            assert _build_hops(res)[0].verify["exitCode"] == 1
 
-    def test_a_timeout_is_error_not_fail(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        res, _driver = _run(tmp_path, "sleep 30\n", timeout=", timeout: 1")
+    def test_a_timeout_is_error_not_fail(self, tmp_path: Path) -> None:
+        with _run(tmp_path, "sleep 30\n", timeout=", timeout: 1") as (res, _driver):
+            assert res.status == "failed"
+            assert res.failure_kind == "gate_error"
+            assert _build_hops(res)[0].verify["label"] == "error"
 
-        assert res.status == "failed"
-        assert res.failure_kind == "gate_error"
-        assert _build_hops(res)[0].verify["label"] == "error"
+    def test_a_routed_error_is_not_an_unrouted_failure(self, tmp_path: Path) -> None:
+        with _run(tmp_path, "exit 7\n", on="    on:\n      error: stop\n") as (res, _driver):
+            assert res.status == "done"
+            assert _build_hops(res)[0].verify["label"] == "error"
 
-    def test_a_routed_error_is_not_an_unrouted_failure(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        res, _driver = _run(tmp_path, "exit 7\n", on="    on:\n      error: stop\n")
-
-        assert res.status == "done"
-        assert _build_hops(res)[0].verify["label"] == "error"
-
-    def test_a_missing_command_is_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_missing_command_is_error(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             spec = _pipeline.load_pipeline(
                 "name: g\nsteps:\n  - id: build\n    role: implementer\n"
@@ -191,9 +175,7 @@ class TestExitMapping:
 
 
 class TestReasons:
-    def test_reasons_are_carried_into_the_retry_under_gate_failed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reasons_are_carried_into_the_retry_under_gate_failed(self, tmp_path: Path) -> None:
         payload = json.dumps(
             {
                 "reasons": [
@@ -204,59 +186,54 @@ class TestReasons:
         )
         flag = tmp_path / "flag"
         body = f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 1)
-        res, driver = _run(tmp_path, body, on=_ON_RETRY)
-
-        assert res.status == "done", res.reason
-        first, second = _build_hops(res)
-        assert first.verify["label"] == "fail"
-        assert first.verify["reasons"][0]["summary"] == REASON
-        assert "reasonsInvalid" not in first.verify or not first.verify["reasonsInvalid"]
-        messages = _implementer_messages(driver)
-        assert len(messages) == 2
-        assert REASON not in messages[0]
-        section = messages[1].split("--- GATE FAILED: build ---", 1)[1]
-        assert REASON in section
-        assert "src/a.py:12" in section
-        assert "high" in section
-        assert second.verify["label"] == "pass"
+        with _run(tmp_path, body, on=_ON_RETRY) as (res, driver):
+            assert res.status == "done", res.reason
+            first, second = _build_hops(res)
+            assert first.verify["label"] == "fail"
+            assert first.verify["reasons"][0]["summary"] == REASON
+            assert "reasonsInvalid" not in first.verify or not first.verify["reasonsInvalid"]
+            messages = _implementer_messages(driver)
+            assert len(messages) == 2
+            assert REASON not in messages[0]
+            section = messages[1].split("--- GATE FAILED: build ---", 1)[1]
+            assert REASON in section
+            assert "src/a.py:12" in section
+            assert "high" in section
+            assert second.verify["label"] == "pass"
 
     @pytest.mark.parametrize(
         "payload",
         ["not json at all", '{"reasons": "nope"}', '{"reasons": [{"no_summary": 1}]}', "[1]"],
     )
     def test_unusable_reasons_set_reasons_invalid_and_the_tail_stands_in(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str
+        self, tmp_path: Path, payload: str
     ) -> None:
         flag = tmp_path / "flag"
         body = f"test -f {flag} && exit 0\ntouch {flag}\necho {REASON}\n" + _reasons_script(
             payload, 1
         )
-        res, driver = _run(tmp_path, body, on=_ON_RETRY)
+        with _run(tmp_path, body, on=_ON_RETRY) as (res, driver):
+            first = _build_hops(res)[0]
+            assert first.verify["reasonsInvalid"] is True
+            assert "reasons" not in first.verify
+            assert (
+                REASON in _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
+            )
 
-        first = _build_hops(res)[0]
-        assert first.verify["reasonsInvalid"] is True
-        assert "reasons" not in first.verify
-        assert REASON in _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
-
-    def test_reasons_over_64_kib_are_invalid(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reasons_over_64_kib_are_invalid(self, tmp_path: Path) -> None:
         body = (
             'printf \'{"reasons": [{"summary": "\' > "$DOCKET_GATE_REASONS_FILE"\n'
             "head -c 70000 /dev/zero | tr '\\0' 'a' >> \"$DOCKET_GATE_REASONS_FILE\"\n"
             'printf \'"}]}\' >> "$DOCKET_GATE_REASONS_FILE"\n'
             "echo tailtext\nexit 1\n"
         )
-        res, _driver = _run(tmp_path, body)
+        with _run(tmp_path, body) as (res, _driver):
+            verify = _build_hops(res)[0].verify
+            assert verify["reasonsInvalid"] is True
+            assert "reasons" not in verify
+            assert "tailtext" in verify["outputTail"]
 
-        verify = _build_hops(res)[0].verify
-        assert verify["reasonsInvalid"] is True
-        assert "reasons" not in verify
-        assert "tailtext" in verify["outputTail"]
-
-    def test_a_pre_existing_reasons_file_is_deleted_and_never_read(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_pre_existing_reasons_file_is_deleted_and_never_read(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
             planted = _dispatch._gate_reasons_path("demo", task["id"], "build")
@@ -273,7 +250,7 @@ class TestReasons:
             assert "reasons" not in verify
             assert not verify.get("reasonsInvalid")
 
-    def test_reasons_are_redacted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_reasons_are_redacted(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             canary = "zzqx-unleakable-reason-canary-77"
             _secrets.save_secrets({"LEAKY_KEY": canary})
@@ -301,9 +278,8 @@ class TestReasons:
 
         monkeypatch.setattr(_tools, "screen_tool_result", spy)
         payload = json.dumps({"reasons": [{"summary": REASON}]})
-        _run(tmp_path, _reasons_script(payload, 1))
-
-        assert any(REASON in text for text in seen)
+        with _run(tmp_path, _reasons_script(payload, 1)):
+            assert any(REASON in text for text in seen)
 
 
 def _bind(project: str, text: str) -> None:
@@ -337,9 +313,7 @@ class TestNeedsHumanSeam:
     """Real code on both sides: the gate parks the task on an ``input`` step, the real
     ``answer_task`` reopens it, and the retry's message still carries the gate's reasons."""
 
-    def test_reasons_survive_the_input_steps_answer_and_resume(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reasons_survive_the_input_steps_answer_and_resume(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             flag = tmp_path / "flag"
             payload = json.dumps({"reasons": [{"summary": REASON, "path": "x.py", "line": 3}]})
@@ -367,7 +341,7 @@ class TestNeedsHumanSeam:
             assert "x.py:3" in section
 
     def test_the_question_shows_the_gate_reasons_and_the_answer_reaches_the_retry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed(tmp_path):
             flag = tmp_path / "flag"
@@ -391,9 +365,7 @@ class TestNeedsHumanSeam:
             retry = _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
             assert note in retry, "the answer must reach the hop it routes back to"
 
-    def test_a_declined_answer_fails_the_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_declined_answer_fails_the_task(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             script = _script(tmp_path, "exit 2\n")
             _bind("demo", _SEAM.format(script=script))
@@ -407,13 +379,11 @@ class TestNeedsHumanSeam:
             assert persisted["status"] == "failed"
 
 
-def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(tmp_path: Path) -> None:
     # Seam: dispatch writes hop.verify, evidence 1.1.0 reads it back; real code on both sides.
     from docket.core import evidence as _evidence
 
-    res, _ = _run(tmp_path, "echo broke\nexit 1\n")
-    doc = _evidence.task_evidence("demo", res.task_id, "1.1.0").model_dump(by_alias=True)
-    gates = [h["gate"] for h in doc["hops"] if "gate" in h]
-    assert gates == [{"label": "fail", "exitCode": 1, "reasonsInvalid": False}]
+    with _run(tmp_path, "echo broke\nexit 1\n") as (res, _):
+        doc = _evidence.task_evidence("demo", res.task_id, "1.1.0").model_dump(by_alias=True)
+        gates = [h["gate"] for h in doc["hops"] if "gate" in h]
+        assert gates == [{"label": "fail", "exitCode": 1, "reasonsInvalid": False}]

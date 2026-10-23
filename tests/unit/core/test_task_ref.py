@@ -103,7 +103,7 @@ class TestResolveTask:
 
 class TestRunIds:
     def test_a_run_id_resolves_to_its_task_and_task_lists_its_runs(
-        self, two_pods: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, two_pods: None, tmp_path: Path
     ) -> None:
         with use_home(
             dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
@@ -118,7 +118,7 @@ class TestRunIds:
             assert _task_ref.resolve_task("b", "task-04ff").run_ids == (run["id"],)
 
     def test_run_of_another_pod_or_unknown_run_is_refused(
-        self, two_pods: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, two_pods: None, tmp_path: Path
     ) -> None:
         with use_home(
             dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")

@@ -100,9 +100,7 @@ class TestRuntimeWorkspaceContextReporting:
         assert not I.memory_has_content(v3_seed)
         assert I.memory_has_content(v3_seed + "The billing service retries twice.\n")
 
-    def test_an_oversized_memory_is_truncated_visibly(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_oversized_memory_is_truncated_visibly(self, tmp_path: Path) -> None:
         with use_home(dataclasses.replace(current_home(), context_token_budget_override=130)):
             (tmp_path / "MEMORY.md").write_text("## Facts\n" + ("M" * 800) + "\n")
 
@@ -111,9 +109,7 @@ class TestRuntimeWorkspaceContextReporting:
             assert [s.status for s in sections] == ["truncated"]
             assert "[... MEMORY.md truncated:" in text
 
-    def test_an_omitted_memory_leaves_a_one_line_marker(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_omitted_memory_leaves_a_one_line_marker(self, tmp_path: Path) -> None:
         """Even when the whole framed block cannot fit, the section still gets a marker."""
         with use_home(dataclasses.replace(current_home(), context_token_budget_override=50)):
             (tmp_path / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
@@ -142,9 +138,7 @@ class TestResolveStaticContextBudget:
         assert source == "window"
         assert tokens > current_home().context_token_budget_default
 
-    def test_env_style_override_wins_even_with_a_large_window(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_env_style_override_wins_even_with_a_large_window(self) -> None:
         """A test-style override (module attribute, never the environment) must still be
         honoured as an explicit override -- the same path a real CONTEXT_TOKEN_BUDGET env
         var takes, since the module constant is what every reader actually sees."""
@@ -152,9 +146,7 @@ class TestResolveStaticContextBudget:
             tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
             assert (tokens, source) == (350, "env")
 
-    def test_real_env_var_wins_even_when_equal_to_the_default(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_real_env_var_wins_even_when_equal_to_the_default(self) -> None:
         with use_home(
             dataclasses.replace(
                 current_home(),
@@ -413,9 +405,7 @@ class TestPodMemoryIsTheLastFramedSection:
         assert after.text == before.text
         assert I.POD_MEMORY_LABEL not in [s.name for s in after.sections]
 
-    def test_a_tight_budget_drops_memory_before_it_overflows(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_tight_budget_drops_memory_before_it_overflows(self, tmp_path: Path) -> None:
         agent_id = self._lead("tight")
         self._accepted("tight", "a.js")
         (tmp_path / "a.js").write_text("x")

@@ -19,7 +19,6 @@ from pathlib import Path
 from threading import Thread
 from typing import Any
 
-import pytest
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
@@ -122,9 +121,7 @@ class TestVerifyEndpointClassification:
 # ── cli: a local http.server backs every network-shaped assertion ──────────────
 
 
-def test_add_registers_at_401_with_a_warning_naming_the_credential(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_add_registers_at_401_with_a_warning_naming_the_credential(tmp_path: Path) -> None:
     """RED on the base: `ping_endpoint`/`register_local_provider` treat any HTTPError
     (including a 401) as unreachable and refuse with "Provider was not registered"."""
     with _seed(tmp_path) as home:
@@ -150,9 +147,7 @@ def test_add_registers_at_401_with_a_warning_naming_the_credential(
         assert "HOSTED_API_KEY" in result.stdout
 
 
-def test_add_refuses_on_transport_failure_and_does_not_persist(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_add_refuses_on_transport_failure_and_does_not_persist(tmp_path: Path) -> None:
     """The kept negative case: a transport failure is the one outcome that still refuses and
     leaves the catalog untouched."""
     with _seed(tmp_path) as home:
@@ -167,9 +162,7 @@ def test_add_refuses_on_transport_failure_and_does_not_persist(
         assert "Nothing was registered" in result.stderr
 
 
-def test_add_at_200_reports_unadvertised_ids_as_a_suggestion_only(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_add_at_200_reports_unadvertised_ids_as_a_suggestion_only(tmp_path: Path) -> None:
     with _seed(tmp_path) as home:
         body = json.dumps({"data": [{"id": "known"}, {"id": "extra-model"}]}).encode()
         with _serve(200, body) as base_url:
@@ -182,9 +175,7 @@ def test_add_at_200_reports_unadvertised_ids_as_a_suggestion_only(
         assert stored_ids == {"known"}  # a suggestion is printed, never written
 
 
-def test_export_then_add_round_trips_through_show_json(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_export_then_add_round_trips_through_show_json(tmp_path: Path) -> None:
     with _seed(tmp_path / "a"):
         with _serve(200, b'{"data": []}') as base_url:
             added_a = _runner.invoke(
@@ -223,9 +214,7 @@ def test_export_then_add_round_trips_through_show_json(
         assert json.loads(show_a.stdout) == json.loads(show_b.stdout)
 
 
-def test_preset_anthropic_on_fresh_home_names_the_missing_credential(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_preset_anthropic_on_fresh_home_names_the_missing_credential(tmp_path: Path) -> None:
     """A built-in hosted preset needs only its credential -- the built-in document is the
     registration; no separate `provider add` is required for it to apply."""
     with _seed(tmp_path):
@@ -234,9 +223,7 @@ def test_preset_anthropic_on_fresh_home_names_the_missing_credential(
         assert "ANTHROPIC_API_KEY" in result.stdout
 
 
-def test_remove_refuses_for_a_built_in_with_no_global_override(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_remove_refuses_for_a_built_in_with_no_global_override(tmp_path: Path) -> None:
     with _seed(tmp_path):
         result = _runner.invoke(_app, ["setup", "provider", "remove", "anthropic"])
         assert result.exit_code == 1

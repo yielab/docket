@@ -83,7 +83,7 @@ def _security_review_pipeline() -> _pipeline.PipelineSpec:
 
 
 class TestCustomRoleEndingInRegisteredRoleName:
-    def test_dispatch_reaches_done(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dispatch_reaches_done(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             _register_security_reviewer()
             _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
@@ -117,9 +117,7 @@ class TestCustomRoleEndingInRegisteredRoleName:
             assert results[0].status == "done", results[0].reason
             assert [h.role for h in results[0].hops] == ["lead", "security-reviewer"]
 
-    def test_a_genuinely_cross_pod_member_id_is_still_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_genuinely_cross_pod_member_id_is_still_refused(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
             _pod.build_pod("other", pod.DEFAULT_POD_ROLES, codebase="/src/other")

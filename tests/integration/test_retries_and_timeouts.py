@@ -76,7 +76,7 @@ def _trace_events(project: str) -> list[dict[str, Any]]:
     return events
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+def _seed_pod(tmp_path: Path, project: str = "demo") -> Path:
     """Full pod via ``build_pod`` (a real persisted TASK_LIST.json queue) — used
     only by the ``dispatch_pod``-level integration tests (stale-claim + timeouts
     that read the Lead's meta), not the direct ``dispatch_task`` unit tests."""
@@ -346,9 +346,7 @@ class TestHopRetryLoop:
         retries = [e for e in events if e["event_type"] == "hop_retry"]
         assert retries[0]["payload"]["retry_after_s"] == 7.0
 
-    def test_retry_after_is_capped_at_the_max_wait_ceiling(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_retry_after_is_capped_at_the_max_wait_ceiling(self, tmp_path: Path) -> None:
         """A retry_after_s far past the ceiling (e.g. a 429 asking for an hour) never
         stalls a hop past DISPATCH_RETRY_MAX_WAIT_S."""
         with use_home(dataclasses.replace(current_home(), dispatch_retry_max_wait_s=60.0)):

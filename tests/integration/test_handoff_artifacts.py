@@ -257,9 +257,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestDispatchBuildsTypedArtifacts:
-    def test_two_hop_dispatch_produces_typed_artifacts_not_strings(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_two_hop_dispatch_produces_typed_artifacts_not_strings(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
             res = _dispatch.dispatch_task("demo", task, runner=FakeDriver())
@@ -273,9 +271,7 @@ class TestDispatchBuildsTypedArtifacts:
                 assert not isinstance(hop.artifact, str)
                 assert hop.artifact.summary == hop.output
 
-    def test_verdict_gated_hop_artifact_carries_the_parsed_verdict(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_verdict_gated_hop_artifact_carries_the_parsed_verdict(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, full=True):
 
             class _Runner:
@@ -314,9 +310,7 @@ class TestDispatchBuildsTypedArtifacts:
             assert lead_hop.artifact is not None
             assert lead_hop.artifact.verdict is None
 
-    def test_next_hop_message_is_built_from_rendered_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_next_hop_message_is_built_from_rendered_artifact(self, tmp_path: Path) -> None:
         """The tester's prompt must reflect the reviewer's artifact -- including a structural
         "Verdict: approve" line the raw reviewer text never contained -- proving the message
         is built from ``HandoffArtifact.render()``, not straight from ``HopResult.output``."""

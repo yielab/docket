@@ -454,9 +454,7 @@ class TestChainVerify:
         rc = audit_cli.show_log()
         assert rc == 0
 
-    def test_single_rotation_continues_the_chain_and_verifies_clean(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_single_rotation_continues_the_chain_and_verifies_clean(self, audit_home: Path) -> None:
         """A single rotation continues the chain rather than restarting it at seq=1."""
         # The new current file's first entry carries the rotated generation's final
         # seq+1 and its hash as prev_hash -- a continuation claim -- and verify_chain
@@ -500,9 +498,7 @@ class TestRotationErasureDetection:
             for i in range(200):
                 _audit.audit_log("noise.tick", f"n{i}")
 
-    def test_flooding_erases_the_entries_but_seq_no_longer_hides_it(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_flooding_erases_the_entries_but_seq_no_longer_hides_it(self, audit_home: Path) -> None:
         self._flood_past_two_rotations()
 
         # The bug's original symptom is still true: the secret-bearing lines
@@ -524,9 +520,7 @@ class TestRotationErasureDetection:
         assert result.break_at is None
         assert result.continued_from_seq is not None
 
-    def test_deleting_the_backup_after_flooding_is_now_detected(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deleting_the_backup_after_flooding_is_now_detected(self, audit_home: Path) -> None:
         """The concrete guard: erasing the one remaining link (audit.log.1) turns a
         verifiable continuation into an unverifiable one, which verify_chain() must
         report as a break rather than a clean chain."""
@@ -542,9 +536,7 @@ class TestRotationErasureDetection:
         assert result.rotated_backup is False
         assert result.continued_from_seq is None
 
-    def test_altering_the_backups_tail_after_rotation_is_detected(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_altering_the_backups_tail_after_rotation_is_detected(self, audit_home: Path) -> None:
         """Deleting the backup isn't the only way to hide history -- hand-
         editing its last line so it no longer matches the current file's
         continuation claim must be caught the same way."""
@@ -667,7 +659,7 @@ class TestAuditVerifyCommand:
         assert "line 2 of 3" in captured.err
 
     def test_verify_reports_a_verified_rotation_continuation(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, audit_home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1)):
             _audit.audit_log("keys.add", "FIRST")
@@ -680,7 +672,7 @@ class TestAuditVerifyCommand:
             assert "continues from a rotated generation" in out
 
     def test_verify_reports_erasure_of_the_rotated_backup_as_a_failure(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, audit_home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         # Deleting audit.log.1 after a rotation must not let `docket log verify`
         # report a clean chain (exit 0); it must fail loudly (exit 1).
@@ -738,18 +730,14 @@ class TestKeysAudit:
 
 
 class TestPodSettingsAudit:
-    def test_budget_set_writes_one_config_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_budget_set_writes_one_config_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _pod.set_setting("demo", "budgetUsd", "5")
             entries = _entries("pod.config")
             assert len(entries) == 1
             assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
 
-    def test_unset_writes_one_config_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unset_writes_one_config_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _pod.unset_setting("demo", "budgetUsd")
             entries = _entries("pod.config")
@@ -757,9 +745,7 @@ class TestPodSettingsAudit:
 
 
 class TestAgentAddDeleteAudit:
-    def test_agent_add_declarative_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_agent_add_declarative_writes_one_entry(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -779,9 +765,7 @@ class TestAgentAddDeleteAudit:
             assert entries[0]["detail"].startswith("declaredpod blueprint=software")
             assert entries[0]["detail"].endswith("source=declarative")
 
-    def test_pod_delete_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_delete_writes_one_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = CliRunner().invoke(
                 _pod.pod_app, ["delete", "--pod", "demo", "--confirm", "demo"]

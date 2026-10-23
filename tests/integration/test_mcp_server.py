@@ -117,25 +117,21 @@ def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
 
 
 class TestToolStatus:
-    def test_returns_the_serve_status_shape(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_the_serve_status_shape(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _mcp.tool_status()
             assert result["apiVersion"] == "6"
             assert isinstance(result["agents"], list)
             assert "totalCostUsd" in result
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _mcp.tool_status()
             assert len(_audit_actions("mcp.status")) == 1
 
 
 class TestToolPods:
-    def test_lists_the_seeded_pod_and_members(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_lists_the_seeded_pod_and_members(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             result = _mcp.tool_pods()
             assert result["pods"][0]["project"] == "demo"
@@ -144,23 +140,21 @@ class TestToolPods:
             assert [m["role"] for m in members] == ["lead", "implementer"]
             assert all(m["model"] for m in members)
 
-    def test_no_pods_returns_empty_list(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_pods_returns_empty_list(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             assert _mcp.tool_pods() == {"pods": []}
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _mcp.tool_pods()
             assert len(_audit_actions("mcp.pods")) == 1
 
 
 class TestToolCost:
-    def test_all_agents_shape(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_all_agents_shape(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _mcp.tool_cost()
             assert "agents" in result and "totalUsd" in result
@@ -181,19 +175,19 @@ class TestToolCost:
             assert _mcp.tool_cost() == {"agents": [row], "totalUsd": 0.0}
             assert _mcp.tool_cost("demo-lead") == row
 
-    def test_single_agent_lookup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_single_agent_lookup(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _mcp.tool_cost("demo-lead")
             assert result["id"] == "demo-lead"
 
-    def test_unknown_agent_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unknown_agent_raises(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path),
             pytest.raises(_mcp.McpToolError, match="not found"),
         ):
             _mcp.tool_cost("no-such-agent")
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _mcp.tool_cost()
             assert len(_audit_actions("mcp.cost")) == 1
@@ -203,55 +197,47 @@ class TestToolCost:
 
 
 class TestToolDelegate:
-    def test_queues_a_task(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_queues_a_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             task = _mcp.tool_delegate("demo", "fix the login bug")
             assert task["description"] == "fix the login bug"
             assert task["priority"] == "normal"
             assert task["status"] == "pending"
 
-    def test_priority_is_honored(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_priority_is_honored(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             task = _mcp.tool_delegate("demo", "urgent fix", priority="high")
             assert task["priority"] == "high"
 
-    def test_empty_description_rejected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_empty_description_rejected(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path, project="demo"),
             pytest.raises(_mcp.McpToolError, match="required"),
         ):
             _mcp.tool_delegate("demo", "")
 
-    def test_too_long_description_rejected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_too_long_description_rejected(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path, project="demo"),
             pytest.raises(_mcp.McpToolError, match="too long"),
         ):
             _mcp.tool_delegate("demo", "x" * 501)
 
-    def test_invalid_priority_rejected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_invalid_priority_rejected(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path, project="demo"),
             pytest.raises(_mcp.McpToolError, match="Invalid priority"),
         ):
             _mcp.tool_delegate("demo", "task", priority="urgent")
 
-    def test_unknown_project_rejected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unknown_project_rejected(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)), pytest.raises(_mcp.McpToolError, match="no pod"):
             _mcp.tool_delegate("ghost-project", "task")
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             _mcp.tool_delegate("demo", "task")
             assert len(_audit_actions("mcp.delegate")) == 1
@@ -278,7 +264,7 @@ class TestToolDelegate:
 
 
 class TestToolQueue:
-    def test_lists_queued_tasks(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_lists_queued_tasks(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             _dispatch.enqueue_task("demo", "task one", channel="cli")
             _dispatch.enqueue_task("demo", "task two", channel="cli")
@@ -286,9 +272,7 @@ class TestToolQueue:
             assert result["project"] == "demo"
             assert [t["description"] for t in result["tasks"]] == ["task one", "task two"]
 
-    def test_retry_unblocks_a_blocked_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_retry_unblocks_a_blocked_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             task = _dispatch.enqueue_task("demo", "blocked task", channel="cli")
             # Hand-flip to blocked (mirrors how a budget cap would leave it).
@@ -303,16 +287,14 @@ class TestToolQueue:
             statuses = {t["id"]: t["status"] for t in result["tasks"]}
             assert statuses[task["id"]] == "pending"
 
-    def test_retry_unknown_task_raises(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_retry_unknown_task_raises(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path, project="demo"),
             pytest.raises(_mcp.McpToolError, match="not a blocked task"),
         ):
             _mcp.tool_queue("demo", retry_task_id="task-does-not-exist")
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             _mcp.tool_queue("demo")
             assert len(_audit_actions("mcp.queue")) == 1
@@ -364,9 +346,7 @@ class TestToolDispatch:
             assert rec["state"] == "failed"
             assert "dispatch exploded" in rec["error"]
 
-    def test_invalid_timeout_rejected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_invalid_timeout_rejected(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path, project="demo"),
             pytest.raises(_mcp.McpToolError, match="positive integer"),
@@ -416,9 +396,7 @@ class TestToolDispatch:
 
 
 class TestToolRuns:
-    def test_lists_all_runs_newest_first(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_lists_all_runs_newest_first(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             first = _runs.create_run("cli", "alpha")
@@ -426,7 +404,7 @@ class TestToolRuns:
             result = _mcp.tool_runs()
             assert [r["id"] for r in result["runs"]] == [second["id"], first["id"]]
 
-    def test_filters_by_project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_filters_by_project(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             _runs.create_run("cli", "alpha")
@@ -435,9 +413,7 @@ class TestToolRuns:
             assert len(result["runs"]) == 1
             assert result["runs"][0]["project"] == "alpha"
 
-    def test_fetch_by_id_returns_bare_record(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fetch_by_id_returns_bare_record(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             rec = _runs.create_run("cli", "demo")
@@ -445,13 +421,13 @@ class TestToolRuns:
             assert result["id"] == rec["id"]
             assert "runs" not in result
 
-    def test_unknown_id_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unknown_id_raises(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             with pytest.raises(_mcp.McpToolError, match="Unknown run"):
                 _mcp.tool_runs(run_id="run-nope")
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             _mcp.tool_runs()
@@ -462,14 +438,14 @@ class TestToolRuns:
 
 
 class TestToolApprovalsList:
-    def test_lists_pending_approvals(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_lists_pending_approvals(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             token = _approval.approval_create("demo", "implementer", "deploy prod")
             result = _mcp.tool_approvals_list()
             assert [p["token"] for p in result["pending"]] == [token]
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             _mcp.tool_approvals_list()
@@ -477,9 +453,7 @@ class TestToolApprovalsList:
 
 
 class TestToolTaskAnswer:
-    def test_answers_and_resumes_the_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_answers_and_resumes_the_task(self, tmp_path: Path) -> None:
         with _seed_parked_task(tmp_path) as task:
             result = _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ship it"})
 
@@ -489,19 +463,17 @@ class TestToolTaskAnswer:
             assert after["answers"][0]["channel"] == "mcp"
             assert after["answers"][0]["actor"] == "mcp"
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_parked_task(tmp_path) as task:
             _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ship it"})
 
             assert len(_audit_actions("mcp.task_answer")) == 1
 
-    def test_unknown_task_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unknown_task_raises(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"), pytest.raises(_mcp.McpToolError):
             _mcp.tool_task_answer("demo", "no-such-task", "accept", {"answer": "x"})
 
-    def test_a_task_not_waiting_input_raises(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_task_not_waiting_input_raises(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             plain_task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
 
@@ -525,15 +497,13 @@ class TestToolTaskAnswer:
 
 
 class TestToolInbox:
-    def test_returns_the_same_shape_docket_inbox_json_prints(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_the_same_shape_docket_inbox_json_prints(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             _dispatch.enqueue_task("demo", "ship it", channel="cli")
             result = _mcp.tool_inbox()
             assert set(result.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
 
-    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_call_is_audited(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             _mcp.tool_inbox()
@@ -550,25 +520,19 @@ class TestToolApprovalsGrantDeny:
             (tmp_path / ".docket").mkdir(exist_ok=True)
             yield _approval.approval_create("demo", "implementer", "deploy prod")
 
-    def test_grant_transitions_to_granted(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_grant_transitions_to_granted(self, tmp_path: Path) -> None:
         with self._seed(tmp_path) as token:
             result = _mcp.tool_approvals_grant(token)
             assert result == {"ok": True, "token": token, "state": "granted"}
             assert _approval.approval_get(token)["state"] == "granted"
 
-    def test_deny_transitions_to_denied(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deny_transitions_to_denied(self, tmp_path: Path) -> None:
         with self._seed(tmp_path) as token:
             result = _mcp.tool_approvals_deny(token)
             assert result == {"ok": True, "token": token, "state": "denied"}
             assert _approval.approval_get(token)["state"] == "denied"
 
-    def test_grant_uses_the_real_approval_grant_tagged_channel_mcp(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_grant_uses_the_real_approval_grant_tagged_channel_mcp(self, tmp_path: Path) -> None:
         """The no-bypass guarantee: this tool calls `core.approval.approval_grant`
         (the exact function the CLI's `docket task approve` and the HTTP webhook call)
         with channel="mcp" — never a parallel/duplicated grant path."""
@@ -577,39 +541,31 @@ class TestToolApprovalsGrantDeny:
             entry = _audit_actions("approval.grant")[-1]
             assert entry["detail"] == f"token={token} project=demo channel=mcp"
 
-    def test_deny_uses_the_real_approval_deny_tagged_channel_mcp(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deny_uses_the_real_approval_deny_tagged_channel_mcp(self, tmp_path: Path) -> None:
         with self._seed(tmp_path) as token:
             _mcp.tool_approvals_deny(token)
             entry = _audit_actions("approval.deny")[-1]
             assert entry["detail"] == f"token={token} project=demo channel=mcp"
 
-    def test_double_grant_raises_instead_of_silently_reporting_ok(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_double_grant_raises_instead_of_silently_reporting_ok(self, tmp_path: Path) -> None:
         with self._seed(tmp_path) as token:
             _mcp.tool_approvals_grant(token)
             with pytest.raises(_mcp.McpToolError, match="Already granted"):
                 _mcp.tool_approvals_grant(token)
 
-    def test_grant_unknown_token_raises(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_grant_unknown_token_raises(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             with pytest.raises(_mcp.McpToolError, match="not found"):
                 _mcp.tool_approvals_grant("apr-does-not-exist")
 
-    def test_deny_after_grant_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_deny_after_grant_raises(self, tmp_path: Path) -> None:
         with self._seed(tmp_path) as token:
             _mcp.tool_approvals_grant(token)
             with pytest.raises(_mcp.McpToolError):
                 _mcp.tool_approvals_deny(token)
 
-    def test_grant_call_is_audited_under_its_own_mcp_action_too(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_grant_call_is_audited_under_its_own_mcp_action_too(self, tmp_path: Path) -> None:
         """Every MCP call gets a uniform `mcp.<tool>` entry in addition to
         whatever domain-specific entry the underlying core call already
         writes (here, `approval.grant`) — see module docstring."""
@@ -694,9 +650,7 @@ class TestApprovalsResumeDispatch:
     """A grant/deny decided over MCP resolves the dispatch task it gated, same as the
     CLI, HTTP and Telegram channels."""
 
-    def test_grant_flips_the_gated_task_back_to_pending_with_override(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_grant_flips_the_gated_task_back_to_pending_with_override(self, tmp_path: Path) -> None:
         with _gate_then_get_token(tmp_path) as token:
             _mcp.tool_approvals_grant(token)
 
@@ -705,9 +659,7 @@ class TestApprovalsResumeDispatch:
             assert task["approvalToken"] is None
             assert task["gateOverridePipelineIndex"] == 1
 
-    def test_deny_fails_the_gated_task_immediately(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deny_fails_the_gated_task_immediately(self, tmp_path: Path) -> None:
         with _gate_then_get_token(tmp_path) as token:
             _mcp.tool_approvals_deny(token)
 
@@ -716,9 +668,7 @@ class TestApprovalsResumeDispatch:
             assert task["failureKind"] == "approval_denied"
             assert task["approvalToken"] is None
 
-    def test_grant_noop_branch_still_resolves_a_stuck_waiting_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_grant_noop_branch_still_resolves_a_stuck_waiting_task(self, tmp_path: Path) -> None:
         """Mirrors the ``ApprovalNoop`` branch in cli/_approve.py: an already-granted
         token still raises to the MCP caller, but only after the stuck
         waiting_approval task is resolved (e.g. a crashed prior grant)."""
@@ -732,9 +682,7 @@ class TestApprovalsResumeDispatch:
             assert task["status"] == "pending"
             assert task["gateOverridePipelineIndex"] == 1
 
-    def test_deny_noop_branch_still_resolves_a_stuck_waiting_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deny_noop_branch_still_resolves_a_stuck_waiting_task(self, tmp_path: Path) -> None:
         with _gate_then_get_token(tmp_path) as token:
             _approval.approval_deny(token, channel="other")
 

@@ -34,7 +34,6 @@ _PIPELINE = (
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_TOOL_MAX_OUTPUT_CHARS", "2500")
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -88,7 +87,7 @@ def _run_pipeline(
 
 
 def test_critic_first_request_carries_the_researchers_note_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, llm_server: Any
+    tmp_path: Path, llm_server: Any
 ) -> None:
     """The next hop's first request holds the note the previous hop wrote, exactly once."""
     with _run_pipeline(tmp_path, llm_server, _NOTE) as (server, _hops):
@@ -97,9 +96,7 @@ def test_critic_first_request_carries_the_researchers_note_once(
         assert critic_first.count(_NOTE) == 1
 
 
-def test_a_note_past_the_cap_is_cut_with_a_marker(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, llm_server: Any
-) -> None:
+def test_a_note_past_the_cap_is_cut_with_a_marker(tmp_path: Path, llm_server: Any) -> None:
     """A 50k-character note reaches the critic cut at the cap, and the cut is announced."""
     note = "\n".join(f"line-{i:05d}" for i in range(5000))
     assert len(note) > 50_000
@@ -112,9 +109,7 @@ def test_a_note_past_the_cap_is_cut_with_a_marker(
         assert len(hops[0]["artifact"]["diff"]) < HANDOFF_DIFF_MAX_CHARS + 200
 
 
-def test_a_hop_that_changed_nothing_adds_no_diff(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, llm_server: Any
-) -> None:
+def test_a_hop_that_changed_nothing_adds_no_diff(tmp_path: Path, llm_server: Any) -> None:
     """The writing hop's artifact carries the diff; the read-only critic after it carries none."""
     with _run_pipeline(tmp_path, llm_server, _NOTE) as (_server, hops):
         assert _NOTE in hops[0]["artifact"]["diff"]

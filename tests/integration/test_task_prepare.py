@@ -129,7 +129,7 @@ def _prepare_events(task_id: str) -> list[dict[str, Any]]:
 
 
 def test_the_implementer_hop_finds_the_installed_tool_and_the_task_records_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, npm_log: Path
+    tmp_path: Path, npm_log: Path
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -155,9 +155,7 @@ def test_the_implementer_hop_finds_the_installed_tool_and_the_task_records_it(
         assert _git(wt, "status", "--porcelain") == ""
 
 
-def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, npm_log: Path
-) -> None:
+def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(tmp_path: Path, npm_log: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -177,9 +175,7 @@ def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(
         assert event["payload"]["cacheHit"] is True and event["payload"]["exit"] is None
 
 
-def test_a_broken_lockfile_fails_the_task_before_any_hop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_broken_lockfile_fails_the_task_before_any_hop(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo, lock="broken")
     with _seed_pod(tmp_path, repo):
@@ -199,9 +195,7 @@ def test_a_broken_lockfile_fails_the_task_before_any_hop(
         assert event["payload"]["exit"] == 1
 
 
-def test_a_blank_task_prepare_skips_the_install(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, npm_log: Path
-) -> None:
+def test_a_blank_task_prepare_skips_the_install(tmp_path: Path, npm_log: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -217,9 +211,7 @@ def test_a_blank_task_prepare_skips_the_install(
         assert "prepared" not in task and _prepare_events(task["id"]) == []
 
 
-def test_a_pods_prepare_setting_wins_over_the_lockfile(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, npm_log: Path
-) -> None:
+def test_a_pods_prepare_setting_wins_over_the_lockfile(tmp_path: Path, npm_log: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):

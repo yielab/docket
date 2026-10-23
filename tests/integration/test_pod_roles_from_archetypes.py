@@ -130,9 +130,7 @@ class TestModelClassFallback:
         assert _mp.resolve_role_model("lead", role_models) == "anthropic/claude-haiku-4-5"
         assert _mp.resolve_role_model("implementer", role_models) == "anthropic/claude-sonnet-4-6"
 
-    def test_unlisted_cheap_archetype_resolves_via_economy_anchor(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_unlisted_cheap_archetype_resolves_via_economy_anchor(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path)):
             _, tiers, _ = _mp.load_registry()
             # 'monitor' is a starter-library role with modelClass=cheap and no named
@@ -140,24 +138,18 @@ class TestModelClassFallback:
             # cfg.DEFAULT_MODEL unconditionally.
             assert _mp.resolve_role_model("monitor", {}) == tiers["economy"]
 
-    def test_unlisted_strong_archetype_resolves_via_standard_anchor(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_unlisted_strong_archetype_resolves_via_standard_anchor(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path)):
             _, tiers, _ = _mp.load_registry()
             assert _mp.resolve_role_model("researcher", {}) == tiers["standard"]
 
-    def test_totally_unknown_role_falls_back_to_default_model(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_totally_unknown_role_falls_back_to_default_model(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path)):
             assert _mp.resolve_role_model("totally-not-a-role", {}) == current_home().default_model
 
 
 class TestPodAddStarterRole:
-    def test_add_researcher_provisions_full_workspace(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_add_researcher_provisions_full_workspace(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             _pod.add_members("demo", "researcher")
@@ -178,7 +170,7 @@ class TestPodAddStarterRole:
             assert meta["model"] == current_home().default_model
 
     def test_pod_show_lists_the_added_researcher(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path):
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
@@ -190,9 +182,7 @@ class TestPodAddStarterRole:
             roles = [m["role"] for m in json.loads(result.stdout)["members"]]
             assert "researcher" in roles
 
-    def test_members_of_lists_researcher_after_legacy_roles(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_members_of_lists_researcher_after_legacy_roles(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
             _pod.add_members("demo", "researcher")

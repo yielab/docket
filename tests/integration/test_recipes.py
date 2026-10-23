@@ -152,9 +152,7 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
 
 
 @pytest.mark.parametrize("recipe_dir", _recipe_dirs(), ids=lambda p: p.name)
-def test_recipe_applies_cleanly_to_a_fixture_pod(
-    recipe_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_recipe_applies_cleanly_to_a_fixture_pod(recipe_dir: Path, tmp_path: Path) -> None:
     """``docket pod update <recipe_dir>`` leaves every pipeline step resolvable -- a policy
     pack has no pipeline to resolve, so applying it cleanly is the whole assertion."""
     project = "fixture"
@@ -178,9 +176,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(
         assert skipped == [], f"recipe {recipe_dir.name!r} leaves steps unresolvable: {skipped}"
 
 
-def test_pod_apply_resolves_a_shipped_recipe_by_name(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pod_apply_resolves_a_shipped_recipe_by_name(tmp_path: Path) -> None:
     """``docket pod update secure-build`` applies the shipped recipe, as ``init --recipe``
     does -- a README can print a command that needs no path into the installed package."""
     project = "byname"
@@ -190,9 +186,7 @@ def test_pod_apply_resolves_a_shipped_recipe_by_name(
         assert "security-vetter" in _dispatch.pod_full_roster(project)
 
 
-def test_apply_with_an_invalid_setting_writes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_apply_with_an_invalid_setting_writes_nothing(tmp_path: Path) -> None:
     """A bad ``pod.yaml`` setting refuses before any pod-scoped file is written."""
     project = "guarded"
     with _seed_fixture_pod(tmp_path, project):
@@ -208,9 +202,7 @@ def test_apply_with_an_invalid_setting_writes_nothing(
         assert not current_home().pod_config_dir(project).exists()
 
 
-def test_apply_with_an_invalid_policy_writes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_apply_with_an_invalid_policy_writes_nothing(tmp_path: Path) -> None:
     """A policy file that fails ``validate_policy`` (an uncompilable regex) refuses before any
     pod-scoped file is written, naming the offending file."""
     project = "badpolicy"
@@ -236,9 +228,7 @@ def test_apply_with_an_invalid_policy_writes_nothing(
         assert not current_home().pod_config_dir(project).exists()
 
 
-def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(tmp_path: Path) -> None:
     """``secure-build``'s policy pack lands in the pod's own directory, never the fleet-wide
     one; a second apply plans it ``skip`` and writes no second audit entry."""
     project = "policied"
@@ -268,9 +258,7 @@ def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
 # ── skills: the Agent Skills shape, applied/exported like any other pod scope ─────────────────
 
 
-def test_secure_build_plans_applies_and_round_trips_its_skill(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_secure_build_plans_applies_and_round_trips_its_skill(tmp_path: Path) -> None:
     """``secure-build``'s ``skills/security-review/`` plans ``add``, lands whole in the pod's
     own ``config/skills/``, exports back byte-for-byte, and re-applying the export plans
     ``skip`` -- the same additive/idempotent contract every other recipe part already has."""
@@ -312,9 +300,7 @@ def test_secure_build_plans_applies_and_round_trips_its_skill(
 # ── policy-pack recipes: structured predicates over the call, not text ───────────────────────
 
 
-def test_git_safety_recipe_plans_policy_items_only(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_git_safety_recipe_plans_policy_items_only(tmp_path: Path) -> None:
     """A policy pack has no role, member or pipeline to add -- applying it onto a lean fixture
     pod plans ``policy`` items only (ADR 0013 SS2, "Policy pack")."""
     project = "leangit"
@@ -327,9 +313,7 @@ def test_git_safety_recipe_plans_policy_items_only(
         assert all(item.kind == "policy" for item in plan.items), plan.items
 
 
-def test_git_safety_blocks_force_push_after_apply(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_git_safety_blocks_force_push_after_apply(tmp_path: Path) -> None:
     """After ``apply``, a force-push is blocked for the implementer regardless of the exec
     allowlist -- ``git`` is allowlisted, so only the recipe's structured ``tool``/``matches``
     predicate over the call catches this, never the command classifier alone."""
@@ -348,9 +332,7 @@ def test_git_safety_blocks_force_push_after_apply(
         assert action == "block"
 
 
-def test_secrets_guard_blocks_env_write_and_allows_a_plain_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_secrets_guard_blocks_env_write_and_allows_a_plain_write(tmp_path: Path) -> None:
     """The path-shaped ``anyOf`` fires on a ``.env`` write regardless of content, and never on
     an ordinary file -- the negative case a fail-closed pack must not also over-trigger on."""
     project = "leansecrets"
@@ -430,7 +412,7 @@ def _trace_events(project: str) -> list[dict[str, object]]:
 
 
 def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_in_trace(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     project = "webapp"
     with _seed_fixture_pod(tmp_path, project):
@@ -498,7 +480,7 @@ def _normalized(report: dict[str, object], project: str) -> dict[str, object]:
 
 
 def test_export_then_apply_round_trip_matches_pod_show(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Export -> apply into a fresh pod -> `pod show <member> --json` agrees once normalized;
     also covers the CLI's non-empty-directory refusal and its `--force` override."""
@@ -554,9 +536,7 @@ def test_export_then_apply_round_trip_matches_pod_show(
             )
 
 
-def test_export_writes_only_this_pods_own_scope_never_global(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_export_writes_only_this_pods_own_scope_never_global(tmp_path: Path) -> None:
     """A fleet-wide policy, installed alongside this pod's own pod-scoped role/policy, must
     never appear in an export."""
     project = "guardedexp"
@@ -618,7 +598,7 @@ def test_export_writes_only_this_pods_own_scope_never_global(
 
 
 def test_apply_records_config_source_and_digest_and_explain_reports_drift(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """`apply` records `configSource`/`configDigest`; editing the applied directory afterward
     makes `config explain --json` report `drift: yes` against the unchanged recorded digest."""
@@ -666,7 +646,7 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
 
 
 def test_apply_records_config_source_from_every_validated_apply_all_skip_included(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """A second, byte-identical directory at another path still moves the recorded
     `configSource`/`configDigest` even though every item plans `skip` -- the record must not
@@ -693,7 +673,7 @@ def test_apply_records_config_source_from_every_validated_apply_all_skip_include
 
 
 def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """`docket pod export` with no argument defaults to `<codebase>/.docket` (ADR 0012 §2
     rule 5); a non-empty one there still refuses without `--force`."""
@@ -722,7 +702,7 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
 
 
 def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """A recipe's own role, applied into the pod, gets the fleet's model, never the literal."""
     project = "fixture"
@@ -753,7 +733,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
 
 
 def test_operator_recipe_is_listed_and_applies_via_pod_apply(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A recipe under the operator's own ``recipes/`` directory is listed with scope
     ``operator`` alongside every shipped recipe, and resolves by name for
@@ -785,9 +765,7 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
         ]
 
 
-def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_recipes_show_unknown_name_exits_1_naming_both_scopes(tmp_path: Path) -> None:
     """``docket pod recipes <unknown>`` exits 1, with a message naming both ``operator:``
     and ``shipped:`` recipe lists -- the same fail-closed error ``docket pod update``/
     ``docket init --recipe`` raise."""
@@ -800,9 +778,7 @@ def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
         assert "shipped:" in result.output
 
 
-def test_a_recipe_step_env_survives_apply_and_export(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_recipe_step_env_survives_apply_and_export(tmp_path: Path) -> None:
     project = "envpod"
     with _seed_fixture_pod(tmp_path / "source", project):
         _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))

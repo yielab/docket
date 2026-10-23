@@ -1574,9 +1574,7 @@ class TestHopEvents:
                 },
             }
 
-    def test_by_model_sums_cache_reads_and_writes_per_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_by_model_sums_cache_reads_and_writes_per_model(self, tmp_path: Path) -> None:
         """The task's usage and each byModel entry sum input, cached, cacheWrite and output."""
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)

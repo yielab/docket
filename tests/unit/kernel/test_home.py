@@ -81,12 +81,18 @@ def test_a_thread_sees_the_home_only_through_a_copied_context(tmp_path: Path) ->
 def test_the_default_reads_the_environment_once_until_reset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DOCKET_HOME", str(tmp_path / "first"))
-    assert current_home().root == tmp_path / "first"
-    monkeypatch.setenv("DOCKET_HOME", str(tmp_path / "second"))
-    assert current_home().root == tmp_path / "first"
-    reset_default()
-    assert current_home().root == tmp_path / "second"
+    monkeypatch.setattr("docket.kernel.home._DEFAULT", None)
+
+    def check() -> None:
+        monkeypatch.setenv("DOCKET_HOME", str(tmp_path / "first"))
+        assert current_home().root == tmp_path / "first"
+        monkeypatch.setenv("DOCKET_HOME", str(tmp_path / "second"))
+        assert current_home().root == tmp_path / "first"
+        reset_default()
+        assert current_home().root == tmp_path / "second"
+
+    # A fresh context has no use_home() active, which is where the process default shows.
+    contextvars.Context().run(check)
 
 
 def test_the_secrets_files_follow_the_root(tmp_path: Path) -> None:

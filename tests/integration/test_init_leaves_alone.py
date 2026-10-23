@@ -138,7 +138,7 @@ class TestFromRefusesAnEntryWithoutABlueprint:
 
 class TestInitFromTheDirectoryHoldingTheHome:
     def test_defect_70_a_cwd_whose_dot_docket_is_the_home_applies_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         code = tmp_path / "code"
         home = code / ".docket"

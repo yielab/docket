@@ -4,6 +4,6 @@ text 3
 error-classes 0
 error-raises 0
 environ 86
-config-reads 369
-config-patches 192
-repointers 194
+config-reads 10
+config-patches 1
+repointers 0

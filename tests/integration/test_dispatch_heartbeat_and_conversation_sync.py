@@ -61,9 +61,7 @@ def _lead_ws(project: str = "demo") -> Path:
 
 
 class TestHeartbeatLedgerLifecycle:
-    def test_entry_written_before_first_hop_and_cleared_after_success(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_entry_written_before_first_hop_and_cleared_after_success(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task("demo", "Track me", channel="cli")
             ws = _lead_ws()
@@ -80,9 +78,7 @@ class TestHeartbeatLedgerLifecycle:
             assert seen_mid_flight[0] == [task["id"]]  # present before the very first hop
             assert _mem.read_dispatch_task_ids(ws) == []  # cleared once the task finished
 
-    def test_entry_cleared_after_failure_too(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_entry_cleared_after_failure_too(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
             _dispatch.enqueue_task("demo", "Will fail", channel="cli")
             ws = _lead_ws()
@@ -104,9 +100,7 @@ class TestHeartbeatLedgerLifecycle:
             # ledger should show nothing in flight.
             assert _mem.read_dispatch_task_ids(ws) == []
 
-    def test_hop_count_increments_between_hops(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_hop_count_increments_between_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
             _dispatch.enqueue_task("demo", "multi hop task", channel="cli")
             ws = _lead_ws()
@@ -132,9 +126,7 @@ class TestHeartbeatLedgerLifecycle:
             assert "3 hops run" in seen[3]
             assert _mem.read_dispatch_task_ids(ws) == []
 
-    def test_touch_claim_keeps_the_entry_and_refreshes_it(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_touch_claim_keeps_the_entry_and_refreshes_it(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "retry me", channel="cli")
             claim = _dispatch._claim_next_task("demo", resume=False)
@@ -149,7 +141,7 @@ class TestHeartbeatLedgerLifecycle:
             assert task["id"] in after
 
     def test_touch_claim_on_non_running_task_is_a_no_op_for_the_ledger(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "never claimed", channel="cli")
@@ -159,9 +151,7 @@ class TestHeartbeatLedgerLifecycle:
             _dispatch._touch_claim("demo", "task-does-not-exist")
             assert _mem.read_dispatch_task_ids(ws) == []
 
-    def test_two_concurrently_running_tasks_both_appear(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_two_concurrently_running_tasks_both_appear(self, tmp_path: Path) -> None:
         """Two different tasks can be claimed (by separate dispatch
         calls) at once; the ledger must show both, not just the most recently
         claimed one."""
@@ -175,9 +165,7 @@ class TestHeartbeatLedgerLifecycle:
             ws = _lead_ws()
             assert set(_mem.read_dispatch_task_ids(ws)) == ids
 
-    def test_co_authored_heartbeat_survives_dispatch(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_co_authored_heartbeat_survives_dispatch(self, tmp_path: Path) -> None:
         """An agent's own prose elsewhere in HEARTBEAT.md must never be
         clobbered by dispatch's mechanical writes."""
         with _seed_pod(tmp_path):
@@ -203,9 +191,7 @@ class TestConversationAutoPopulation:
     def _seed_conversation(self, agent_id: str, peer_id: str = "-100") -> None:
         _conv.record_durable(agent_id=agent_id, peer_id=peer_id, now="2026-01-01T00:00:00")
 
-    def test_hop_updates_last_message_and_task_ref(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_hop_updates_last_message_and_task_ref(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             self._seed_conversation("demo-lead")
             task = _dispatch.enqueue_task("demo", "Update my conversation", channel="cli")
@@ -219,9 +205,7 @@ class TestConversationAutoPopulation:
             assert "done by demo-lead" in conv.last_message
             assert conv.updated != "2026-01-01T00:00:00"
 
-    def test_conversation_for_a_different_member_reflects_its_own_hop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_conversation_for_a_different_member_reflects_its_own_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             self._seed_conversation("demo-lead")
             self._seed_conversation("demo-implementer", peer_id="-200")
@@ -277,9 +261,7 @@ class TestConversationAutoPopulation:
             assert lead.last_message == "lead preview"
             assert implementer.last_message == "impl preview"
 
-    def test_unwired_member_never_gets_a_fabricated_conversation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unwired_member_never_gets_a_fabricated_conversation(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             # No conversation seeded for anyone.
             _dispatch.enqueue_task("demo", "nobody is watching", channel="cli")
@@ -287,9 +269,7 @@ class TestConversationAutoPopulation:
             reg = _conv.load()
             assert reg.conversations == []
 
-    def test_only_the_wired_agent_is_touched_not_every_pod_member(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_only_the_wired_agent_is_touched_not_every_pod_member(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             self._seed_conversation("demo-lead")
             _dispatch.enqueue_task("demo", "only lead is wired", channel="cli")
@@ -297,9 +277,7 @@ class TestConversationAutoPopulation:
             reg = _conv.load()
             assert [c.agent_id for c in reg.conversations] == ["demo-lead"]
 
-    def test_topic_and_status_are_left_alone(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_topic_and_status_are_left_alone(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _conv.record_durable(
                 agent_id="demo-lead",

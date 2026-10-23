@@ -483,9 +483,7 @@ class TestNormalizePolicy:
     def test_short_form_normalizes_to_canonical(self) -> None:
         assert _policy.normalize_policy(self._SHORT) == self._CANONICAL
 
-    def test_both_forms_evaluate_identically(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_both_forms_evaluate_identically(self, tmp_path: Path) -> None:
         for label, doc in (("short", self._SHORT), ("canonical", self._CANONICAL)):
             d = tmp_path / label
             d.mkdir()
@@ -508,7 +506,7 @@ class TestNormalizePolicy:
 class TestStructuredPredicates:
     """A `when` predicate can test the tool call itself, not just its rendered text."""
 
-    def test_tool_and_path_predicate(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_tool_and_path_predicate(self, tmp_path: Path) -> None:
         d = tmp_path / "policies"
         d.mkdir()
         with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
@@ -549,9 +547,7 @@ class TestTaskPolicies:
             "then": "block",
         } | fields
 
-    def test_a_task_document_blocks_under_the_task_restriction_id(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_task_document_blocks_under_the_task_restriction_id(self, tmp_path: Path) -> None:
         with use_home(dataclasses.replace(current_home(), policies_dir_override=tmp_path)):
             call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
             doc = _policy.task_policy_document(self._doc())
@@ -563,9 +559,7 @@ class TestTaskPolicies:
             assert (hit.action, hit.policy_id) == ("block", "task-restriction")
             assert outside.action == "allow"
 
-    def test_a_task_document_never_loosens_a_file_policy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_task_document_never_loosens_a_file_policy(self, tmp_path: Path) -> None:
         with use_home(dataclasses.replace(current_home(), policies_dir_override=tmp_path)):
             _write_policy(
                 tmp_path,

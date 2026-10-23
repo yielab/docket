@@ -164,9 +164,7 @@ class TestPortAllocation:
 
 
 class TestPodResources:
-    def test_build_pod_allocates_resources_for_implementer(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_build_pod_allocates_resources_for_implementer(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             meta = _meta(home, "demo-implementer")
@@ -175,18 +173,14 @@ class TestPodResources:
             assert "scratchDir" in meta
             assert meta["scratchDir"]  # non-empty
 
-    def test_lead_does_not_get_port_resources(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_lead_does_not_get_port_resources(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             meta = _meta(home, "demo-lead")
             assert "portRangeStart" not in meta
             assert "scratchDir" not in meta
 
-    def test_implementer_tools_md_contains_port_range(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_implementer_tools_md_contains_port_range(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
@@ -196,15 +190,13 @@ class TestPodResources:
             assert "DOCKET_SCRATCH_DIR" in content
             assert str(_res.PORT_BASE) in content
 
-    def test_lead_has_no_tools_md(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_lead_has_no_tools_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             tools_path = home / "workspaces" / "projects" / "demo-lead" / "TOOLS.md"
             assert not tools_path.exists()
 
-    def test_two_pods_get_disjoint_port_ranges(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_two_pods_get_disjoint_port_ranges(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
             _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
@@ -218,16 +210,14 @@ class TestPodResources:
             range_b = set(range(start_b, start_b + count_b))
             assert not (range_a & range_b), "port ranges overlap between pods"
 
-    def test_scratch_dir_is_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_scratch_dir_is_created(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             meta = _meta(home, "demo-implementer")
             scratch = Path(meta["scratchDir"])
             assert scratch.is_dir(), "scratch dir must exist after provisioning"
 
-    def test_two_pods_get_distinct_scratch_dirs(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_two_pods_get_distinct_scratch_dirs(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
             _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
@@ -235,9 +225,7 @@ class TestPodResources:
             scratch_b = _meta(home, "beta-implementer")["scratchDir"]
             assert scratch_a != scratch_b
 
-    def test_pod_delete_frees_port_range(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_delete_frees_port_range(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             # Free the port range by simulating pod teardown.
@@ -247,9 +235,7 @@ class TestPodResources:
             meta = _meta(home, "demo2-implementer")
             assert meta["portRangeStart"] == _res.PORT_BASE
 
-    def test_pod_delete_removes_scratch_dir(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_delete_removes_scratch_dir(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             meta = _meta(home, "demo-implementer")
@@ -258,16 +244,12 @@ class TestPodResources:
             _pod.free_pod_resources("demo")
             assert not scratch.exists(), "scratch dir must be removed on pod teardown"
 
-    def test_free_pod_resources_idempotent(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_free_pod_resources_idempotent(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             # Calling free on a pod that never existed is safe.
             _pod.free_pod_resources("nonexistent")
 
-    def test_provision_lock_dir_is_owner_only(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_provision_lock_dir_is_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pp.provision_pod("demo", "software", location="/src/demo")
             lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
@@ -275,9 +257,7 @@ class TestPodResources:
             assert lock_dir.stat().st_mode & 0o777 == 0o700
             assert lock_dir.parent.stat().st_mode & 0o777 == 0o700
 
-    def test_pod_delete_removes_provision_lock_dir(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_delete_removes_provision_lock_dir(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pp.provision_pod("demo", "software", location="/src/demo")
             lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
@@ -285,9 +265,7 @@ class TestPodResources:
             _pod.free_pod_resources("demo")
             assert not lock_dir.exists(), "provision lock dir must be removed on pod teardown"
 
-    def test_pods_dir_and_project_dir_are_owner_only(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pods_dir_and_project_dir_are_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
             pods_dir = home / "workspaces" / "pods"

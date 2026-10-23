@@ -64,9 +64,7 @@ def _summary(**overrides: object) -> _pod_apply.RecipeSummary:
 
 
 class TestPodCheck:
-    def test_a_push_to_production_is_not_allowed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_push_to_production_is_not_allowed(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _pod_run(
                 "check", "git push origin production", "--role", "implementer", "--pod", "demo"
@@ -75,32 +73,26 @@ class TestPodCheck:
             assert "Result:" in result.output
             assert "Result: allow" not in result.output
 
-    def test_a_read_only_command_is_allowed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_read_only_command_is_allowed(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _pod_run("check", "git status", "--role", "implementer", "--pod", "demo")
             assert result.exit_code == 0
             assert "allow" in result.output
 
-    def test_an_unknown_hook_is_a_usage_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_unknown_hook_is_a_usage_error(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _pod_run(
                 "check", "x", "--role", "implementer", "--hook", "bogus", "--pod", "demo"
             )
             assert result.exit_code == 2
 
-    def test_the_role_is_required(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_the_role_is_required(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             assert _pod_run("check", "ls", "--pod", "demo").exit_code == 2
 
 
 class TestPodApply:
-    def test_a_role_file_lands_in_the_pods_roles_overlay(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_role_file_lands_in_the_pods_roles_overlay(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             role = tmp_path / "vetter.yaml"
             role.write_text(_ROLE, encoding="utf-8")
@@ -110,7 +102,7 @@ class TestPodApply:
             assert "vetter" in stored["roles"]
             assert _arch.load_registry("demo").get("vetter") is not None
 
-    def test_dry_run_writes_nothing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_writes_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             role = tmp_path / "vetter.yaml"
             role.write_text(_ROLE, encoding="utf-8")
@@ -118,26 +110,20 @@ class TestPodApply:
             assert json.loads(result.output)["items"][0]["action"] == "add"
             assert not (current_home().pod_config_dir("demo") / "roles.json").exists()
 
-    def test_a_document_that_is_not_a_role_or_policy_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_document_that_is_not_a_role_or_policy_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             pipeline = tmp_path / "pipeline.yaml"
             pipeline.write_text("kind: pipeline\nname: p\nsteps:\n  - id: a\n    role: lead\n")
             assert _pod_run("update", str(pipeline), "--pod", "demo").exit_code == 1
 
-    def test_a_policy_file_is_copied_into_the_pod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_policy_file_is_copied_into_the_pod(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             source = sorted(_cfg.policy_templates_dir().glob("*.yaml"))[0]
             result = _pod_run("update", str(source), "--pod", "demo")
             assert result.exit_code == 0
             assert (current_home().pod_config_dir("demo") / "policies" / source.name).is_file()
 
-    def test_a_directory_is_planned_and_json_names_the_items(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_directory_is_planned_and_json_names_the_items(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             directory = tmp_path / "recipe"
             (directory / "roles").mkdir(parents=True)
@@ -146,17 +132,13 @@ class TestPodApply:
             assert result.exit_code == 0
             assert [i["kind"] for i in json.loads(result.output)["items"]] == ["role"]
 
-    def test_no_argument_resyncs_and_an_in_sync_pod_is_a_no_op(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_argument_resyncs_and_an_in_sync_pod_is_a_no_op(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _pod_run("update", "--pod", "demo")
             assert result.exit_code == 0
             assert "in sync" in result.output
 
-    def test_json_needs_something_to_apply(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_json_needs_something_to_apply(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             assert _pod_run("update", "--pod", "demo", "--json").exit_code == 1
 
@@ -172,9 +154,7 @@ class TestPodUpdateRenameAndReview:
         )
         return code
 
-    def test_apply_is_an_unknown_verb(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_apply_is_an_unknown_verb(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _pod_run("apply", "--pod", "demo")
             assert result.exit_code == 2
@@ -233,7 +213,7 @@ class TestPodUpdateRenameAndReview:
 
 class TestPodExport:
     def test_export_writes_the_pods_scope_and_refuses_a_non_empty_directory(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             target = tmp_path / "out"
@@ -278,17 +258,13 @@ class TestPodValidate:
 
 
 class TestPodPlan:
-    def test_the_default_plan_lists_the_pods_hops(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_default_plan_lists_the_pods_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = _pod_run("plan", "--pod", "demo")
             assert result.exit_code == 0
             assert "implementer" in result.output
 
-    def test_an_invalid_pipeline_file_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_invalid_pipeline_file_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             bad = tmp_path / "p.yaml"
             bad.write_text("kind: pipeline\nname: p\nsteps: []\n")
@@ -322,9 +298,7 @@ class TestLibraries:
         assert shown["source"] and shown["name"] == "tester"
         assert _pod_run("roles", "nonexistent").exit_code == 1
 
-    def test_policies_list_show_and_plugins(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_policies_list_show_and_plugins(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _policy.install_policies()
             rows = json.loads(_pod_run("policies", "--json", "--pod", "demo").output)
@@ -353,9 +327,7 @@ class TestRecipeRows:
 
 
 class TestPodExportIntoTeams:
-    def test_export_writes_the_pods_team_dir_and_leaves_siblings(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_export_writes_the_pods_team_dir_and_leaves_siblings(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code = tmp_path / "code"
             sibling = code / ".docket" / "teams" / "b"
@@ -369,9 +341,7 @@ class TestPodExportIntoTeams:
             assert (sibling / "pod.yaml").read_bytes() == before
 
 
-def test_a_skipped_default_setting_says_why_on_its_plan_line(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_skipped_default_setting_says_why_on_its_plan_line(tmp_path: Path) -> None:
     with _seed_pod(tmp_path):
         recipe = tmp_path / "recipe"
         recipe.mkdir()

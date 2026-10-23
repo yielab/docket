@@ -31,13 +31,11 @@ def _point_at(
 
 
 class TestFindRegistryProblems:
-    def test_no_file_has_no_problems(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_file_has_no_problems(self, tmp_path: Path) -> None:
         with _point_at(tmp_path):
             assert _mp.find_registry_problems() == []
 
-    def test_well_formed_registry_has_no_problems(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_well_formed_registry_has_no_problems(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             home.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
@@ -51,9 +49,7 @@ class TestFindRegistryProblems:
             )
             assert _mp.find_registry_problems() == []
 
-    def test_unknown_rank_anchor_is_named(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unknown_rank_anchor_is_named(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             home.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
@@ -62,9 +58,7 @@ class TestFindRegistryProblems:
             problems = _mp.find_registry_problems()
             assert problems == [("rankAnchors.deluxe", "unknown rank anchor")]
 
-    def test_bad_model_id_in_default_is_named(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_bad_model_id_in_default_is_named(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             home.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
@@ -73,7 +67,7 @@ class TestFindRegistryProblems:
             assert problems[0][0] == "default"
             assert "not-a-model-id" in problems[0][1]
 
-    def test_unknown_role_is_named(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unknown_role_is_named(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             home.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
@@ -82,9 +76,7 @@ class TestFindRegistryProblems:
             problems = _mp.find_registry_problems()
             assert problems == [("roles.astrologer", "unknown role")]
 
-    def test_malformed_json_is_reported_by_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_json_is_reported_by_file(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             home.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text("{not json")
@@ -97,17 +89,13 @@ class TestResolveStepModel:
     """A pipeline step's own ``model`` (pipeline-format.spec.md Steps Req. 10) resolved for
     one hop -- model-profiles.spec.md's "Where a member's model comes from" requirement 3."""
 
-    def test_rank_word_resolves_to_the_live_anchor(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_rank_word_resolves_to_the_live_anchor(self, tmp_path: Path) -> None:
         with _point_at(tmp_path):
             _, tiers, _ = _mp.load_registry()
             assert _mp.resolve_step_model("cheap") == tiers["economy"]
             assert _mp.resolve_step_model("strong") == tiers["standard"]
 
-    def test_literal_with_unknown_provider_is_refused_by_name(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_literal_with_unknown_provider_is_refused_by_name(self, tmp_path: Path) -> None:
         with _point_at(tmp_path), pytest.raises(ValueError, match="nope"):
             _mp.resolve_step_model("nope/x")
 
@@ -133,9 +121,7 @@ class TestResolveRoleModelInPodScope:
             encoding="utf-8",
         )
 
-    def test_pod_scoped_archetype_resolves_against_the_live_anchors(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_scoped_archetype_resolves_against_the_live_anchors(self, tmp_path: Path) -> None:
         from docket.core import archetypes as _arch
         from docket.core import config_docs as _config_docs
 
@@ -146,9 +132,7 @@ class TestResolveRoleModelInPodScope:
 
             assert _mp.resolve_role_model("security-vetter", project="p") == "local/x"
 
-    def test_unknown_role_falls_back_to_the_registry_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unknown_role_falls_back_to_the_registry_default(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             self._registry_on_local(home)
 
@@ -165,9 +149,7 @@ class TestOneRoleVocabulary:
         assert set(_mp.ALL_ROLES) == names
         assert set(_mp.ROLE_CLASS) == names
 
-    def test_each_role_resolves_to_the_rank_its_archetype_declares(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_each_role_resolves_to_the_rank_its_archetype_declares(self, tmp_path: Path) -> None:
         """Analyst resolves on the economy rank and critic on the standard rank, and the
         archetype's own `modelClass` says the same: one class per role."""
         from docket.core import archetypes as _arch
@@ -182,9 +164,7 @@ class TestOneRoleVocabulary:
                 assert _mp.resolve_role_model(role) == tiers[rank], role
                 assert _mp.ROLE_CLASS[role] == declared[role].model_class, role
 
-    def test_implementer_reads_its_own_row(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_implementer_reads_its_own_row(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             home.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
@@ -192,9 +172,7 @@ class TestOneRoleVocabulary:
             )
             assert _mp.resolve_role_model("implementer") == "openai/gpt-4.1"
 
-    def test_a_retired_role_key_is_ignored_and_reported(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_retired_role_key_is_ignored_and_reported(self, tmp_path: Path) -> None:
         with _point_at(tmp_path) as home:
             home.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
@@ -213,9 +191,7 @@ class TestReapplyRolePolicy:
     """Re-resolution follows the same rule as a fresh resolution: the registry default, never
     the compiled-in model, for a pod-scoped archetype with no row."""
 
-    def test_pod_scoped_archetype_follows_the_registry_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_scoped_archetype_follows_the_registry_default(self, tmp_path: Path) -> None:
         from docket.core import fleet as _fleet
         from docket.edges import store as _store
 
@@ -266,7 +242,6 @@ class TestRankAnchorsFailLoudly:
     def test_load_registry_names_the_missing_anchor(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
         presets: list[dict[str, object]],
         missing: str,
     ) -> None:

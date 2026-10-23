@@ -107,9 +107,7 @@ class TestEnableWithoutCredentials:
 
 
 class TestEnableWithLocalServer:
-    def test_enable_writes_minimal_document_and_lists_enabled(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_enable_writes_minimal_document_and_lists_enabled(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _store_langfuse_keys()
 
@@ -147,9 +145,7 @@ class TestEnableWithLocalServer:
             assert _global_exporters(home)["langfuse"]["enabled"] is False
             assert _secrets.load_secrets()["LANGFUSE_SECRET_KEY"] == _SECRET_KEY
 
-    def test_enable_refuses_on_transport_failure_and_writes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_enable_refuses_on_transport_failure_and_writes_nothing(self, tmp_path: Path) -> None:
         """The kept negative case: a transport failure is the one outcome that still refuses
         and leaves the catalog untouched, even once the missing-credential gate is past."""
         with _seed(tmp_path) as home:
@@ -174,9 +170,7 @@ class TestEnableWithLocalServer:
 
 
 class TestRemoveBuiltin:
-    def test_remove_builtin_without_global_entry_exits_1_naming_it(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_remove_builtin_without_global_entry_exits_1_naming_it(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             result = _runner.invoke(_app, ["setup", "export", "remove", "jaeger"])
             assert result.exit_code == 1
@@ -186,7 +180,7 @@ class TestRemoveBuiltin:
 
 class TestPodShowExporters:
     def test_pod_show_json_reports_enabled_state(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         from docket.cli import _pod as _pod_cli
 
@@ -270,9 +264,7 @@ class TestPrivacyCommand:
             assert narrow.exit_code == 0, narrow.stdout + narrow.stderr
             assert _global_exporters(home)["langfuse"]["privacy"] == "minimal"
 
-    def test_no_argument_shows_leaves_this_host_and_writes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_argument_shows_leaves_this_host_and_writes_nothing(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse"])
 
@@ -284,7 +276,7 @@ class TestPrivacyCommand:
 
 class TestDoctorExporterHealth:
     def test_doctor_warns_naming_exporters_test_on_recorded_failures(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         from docket.cli._setup_check import run_check
 
@@ -373,9 +365,7 @@ class TestPreview:
     (ADR 0015 rule 10). RED on the base: `preview` is not a registered `exporters` action, so
     every call here fails with 'Unknown exporters action'."""
 
-    def test_minimal_hides_the_canary_and_writes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_minimal_hides_the_canary_and_writes_nothing(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             session_id = _seed_session(home)
             before = _snapshot(home)
@@ -389,9 +379,7 @@ class TestPreview:
             assert "toolArguments: 0" in result.stdout
             assert _snapshot(home) == before
 
-    def test_actions_level_shows_the_canary_under_tool_call_arguments(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_actions_level_shows_the_canary_under_tool_call_arguments(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             session_id = _seed_session(home)
             before = _snapshot(home)
@@ -417,7 +405,7 @@ class TestPreview:
             assert _snapshot(home) == before
 
     def test_json_output_equals_otlp_http_encode_of_the_same_projection(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         from docket.core import exporter as _exp
         from docket.core import privacy as _privacy
@@ -469,7 +457,7 @@ class TestPreview:
             assert result.stdout.strip().encode() == json.dumps(expected).encode()
 
     def test_footer_notes_when_the_level_grants_content_the_session_never_recorded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """`llm_call` above never carried `inputMessages`/`outputMessages`/`systemInstructions`
         (minimal was in effect when it was captured) -- previewing it at `conversation` must

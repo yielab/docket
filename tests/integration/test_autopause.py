@@ -227,7 +227,7 @@ class TestEstimateFallback:
             assert estimated is False
 
     def test_pod_gating_cost_falls_back_to_estimate_when_recorded_is_zero(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             lead_id = _podcore.member_id("demo", "lead")
@@ -239,7 +239,7 @@ class TestEstimateFallback:
             assert spent == pytest.approx(4.8)  # 1M*$0.80/M + 1M*$4.00/M
 
     def test_dispatch_pauses_pod_using_estimate_when_nothing_recorded_a_cost(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """The bug this closes: with real (unmocked) cost
         aggregation, a driver that never records usage.cost.total leaves
@@ -261,9 +261,7 @@ class TestEstimateFallback:
 
 
 class TestRecordedSpendNeverContaminated:
-    def test_aggregate_cost_stays_zero_when_nothing_was_recorded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_aggregate_cost_stays_zero_when_nothing_was_recorded(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             lead_id = _podcore.member_id("demo", "lead")
             _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
@@ -272,9 +270,7 @@ class TestRecordedSpendNeverContaminated:
             # though plenty of tokens (and a known price) exist to estimate from.
             assert _utils.aggregate_cost(lead_id).cost_usd == 0.0
 
-    def test_status_labels_the_dollar_figure_an_estimate(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_status_labels_the_dollar_figure_an_estimate(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             lead_id = _podcore.member_id("demo", "lead")
             _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
@@ -287,9 +283,7 @@ class TestRecordedSpendNeverContaminated:
             assert "~$4.80 est." in result.output
             assert "recorded" not in result.output
 
-    def test_status_all_json_inventory_cost_field_stays_zero(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_status_all_json_inventory_cost_field_stays_zero(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             lead_id = _podcore.member_id("demo", "lead")
             _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
@@ -319,17 +313,13 @@ class TestUnpricedModelSurfaces:
             assert result.exit_code == 0, result.output
             yield model
 
-    def test_the_pod_report_names_the_unpriced_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_pod_report_names_the_unpriced_model(self, tmp_path: Path) -> None:
         from docket.core import pod_report
 
         with self._budgeted_pod(tmp_path) as model:
             assert pod_report.pod_report("demo")["budgetUnpriced"] == [model]
 
-    def test_status_json_and_text_name_the_unpriced_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_status_json_and_text_name_the_unpriced_model(self, tmp_path: Path) -> None:
         with self._budgeted_pod(tmp_path) as model:
             as_json = CliRunner().invoke(_app, ["status", "--pod", "demo", "--json"])
             assert json.loads(as_json.output)["budgetUnpriced"] == [model]

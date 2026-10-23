@@ -80,7 +80,6 @@ class TestBuiltinBlueprintsProvision:
     def test_provisions_expected_members_and_files(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
         blueprint_name: str,
         expected_roles: tuple[str, ...],
     ) -> None:
@@ -141,7 +140,6 @@ class TestBuiltinBlueprintsProvision:
     def test_default_budget_applies_to_lead_only(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
         blueprint_name: str,
         expected_budget: float | None,
     ) -> None:
@@ -160,18 +158,14 @@ class TestBuiltinBlueprintsProvision:
                 if mid != "demo-lead":
                     assert "budgetUsd" not in _meta(oc_dir, mid)
 
-    def test_workdir_auto_provisioned_when_location_omitted(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_workdir_auto_provisioned_when_location_omitted(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             _pod.build_pod_from_blueprint("myops", "ops")
             work_dir = Path(_meta(oc_dir, "myops-lead")["workDir"])
             assert work_dir.is_dir()
             assert work_dir == current_home().pod_work_dir("myops")
 
-    def test_workdir_explicit_location_used_and_created(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_workdir_explicit_location_used_and_created(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             custom = tmp_path / "my-custom-work-dir"
             created = _pod.build_pod_from_blueprint(
@@ -212,9 +206,7 @@ class TestSoftwareParity:
     def _normalize_root(text: str, oc_dir: Path) -> str:
         return text.replace(str(oc_dir), "OC_ROOT")
 
-    def test_workspace_files_byte_identical(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_workspace_files_byte_identical(self, tmp_path: Path) -> None:
         with (
             self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
             self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
@@ -238,9 +230,7 @@ class TestSoftwareParity:
             )
             assert tools_a == tools_b
 
-    def test_meta_identical_except_additive_blueprint_stamp(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_meta_identical_except_additive_blueprint_stamp(self, tmp_path: Path) -> None:
         with (
             self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
             self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
@@ -262,16 +252,14 @@ class TestSoftwareParity:
                 assert "workspaceKind" not in meta_b
                 assert meta_a == meta_b
 
-    def test_same_member_ids_and_registration(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_same_member_ids_and_registration(self, tmp_path: Path) -> None:
         with (
             self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
             self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
         ):
             assert sorted(_ids(oc_a)) == sorted(_ids(oc_b)) == ["demo-implementer", "demo-lead"]
 
-    def test_no_default_budget_cap(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_default_budget_cap(self, tmp_path: Path) -> None:
         with self._provision(tmp_path / "b", via_blueprint=True) as oc_b:
             assert "budgetUsd" not in _meta(oc_b, "demo-lead")
 
@@ -281,9 +269,7 @@ class TestSoftwareParity:
 
 class TestDoctorAcceptsWorkdirBlueprint:
     @pytest.mark.parametrize("blueprint_name", ["research", "content", "ops"])
-    def test_pod_passes_doctor_clean(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, blueprint_name: str
-    ) -> None:
+    def test_pod_passes_doctor_clean(self, tmp_path: Path, blueprint_name: str) -> None:
         with _seed(tmp_path) as oc_dir:
             created = _pod.build_pod_from_blueprint(
                 "myproj", blueprint_name, stack="", description="objective"
@@ -292,16 +278,12 @@ class TestDoctorAcceptsWorkdirBlueprint:
             assert issues == 0
             del oc_dir  # only used to keep _seed's return value referenced
 
-    def test_software_pod_still_passes_doctor_clean(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_software_pod_still_passes_doctor_clean(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             created = _pod.build_pod_from_blueprint("demo", "software", location="/src/demo")
             assert _setup_check._check_project_agents(sorted(created)) == 0
 
-    def test_agentic_product_pod_passes_doctor_clean(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_agentic_product_pod_passes_doctor_clean(self, tmp_path: Path) -> None:
         # codebase-kind, full (lead/implementer/reviewer/tester) roster —
         # same doctor path software's full pod (`--pod full`) already
         # exercises, just reached via a blueprint name.
@@ -322,9 +304,7 @@ class TestDoctorAcceptsWorkdirBlueprint:
 
 
 class TestUnknownBlueprintFailsCleanly:
-    def test_build_pod_from_blueprint_raises_blueprint_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_build_pod_from_blueprint_raises_blueprint_error(self, tmp_path: Path) -> None:
         with _seed(tmp_path), pytest.raises(_bp.BlueprintError, match="unknown blueprint"):
             _pod.build_pod_from_blueprint("demo", "wizard-pod")
 
@@ -340,9 +320,7 @@ class TestUnknownBlueprintFailsCleanly:
         rc = _agents.run_init(_agents.InitRequest(name="myproj", blueprint="wizard-pod"))
         assert rc == 1
 
-    def test_from_spec_unknown_blueprint_is_skipped_not_aborted(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_from_spec_unknown_blueprint_is_skipped_not_aborted(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             good = tmp_path / "goodagent"
             good.mkdir()
@@ -365,9 +343,7 @@ class TestUnknownBlueprintFailsCleanly:
 
 
 class TestFromSpecBlueprint:
-    def test_from_spec_provisions_pod_via_blueprint(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_from_spec_provisions_pod_via_blueprint(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             spec = [
                 {
@@ -395,9 +371,7 @@ class TestFromSpecBlueprint:
             # Explicit spec budgetUsd overrides the blueprint's own default (20.0).
             assert float(meta["budgetUsd"]) == 5.0
 
-    def test_from_spec_software_blueprint_matches_codebase_field(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_from_spec_software_blueprint_matches_codebase_field(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             code = tmp_path / "demo"
             code.mkdir()
@@ -411,9 +385,7 @@ class TestFromSpecBlueprint:
             assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
             assert _meta(oc_dir, "demo-lead")["codebase"] == str(code)
 
-    def test_from_spec_existing_pod_is_skipped_not_recreated(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_from_spec_existing_pod_is_skipped_not_recreated(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             code = tmp_path / "demo"
             code.mkdir()
@@ -428,7 +400,7 @@ class TestFromSpecBlueprint:
             assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
 
     def test_from_spec_invalid_project_id_exits_one_and_provisions_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         # An `id` that fails validate_project_id (here: path-traversal
         # characters) must not reach provision_pod's workspace-path

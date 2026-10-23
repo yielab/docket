@@ -218,20 +218,16 @@ class TestFindOverlayProblems:
     """`find_overlay_problems`: what `docket setup` surfaces for a malformed
     pod `roles.json` entry that `load_registry` silently skips."""
 
-    def test_no_file_has_no_problems(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_file_has_no_problems(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             assert find_overlay_problems("acme") == []
 
-    def test_well_formed_overlay_has_no_problems(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_well_formed_overlay_has_no_problems(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             _write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json", [])
             assert find_overlay_problems("acme") == []
 
-    def test_malformed_entry_is_named_by_role(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_entry_is_named_by_role(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             path = current_home().pod_config_dir("acme") / "roles.json"
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -240,9 +236,7 @@ class TestFindOverlayProblems:
             assert len(problems) == 1
             assert problems[0][0] == "broken-role"
 
-    def test_malformed_json_is_reported_by_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_json_is_reported_by_file(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             path = current_home().pod_config_dir("acme") / "roles.json"
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -279,9 +273,7 @@ class TestPodRoleOverlay:
     """A pod's own role overlay (`pod_config_dir(project)/roles.json`) narrows that pod's
     roles, exercised via `registry_for_role`'s `project` parameter."""
 
-    def test_pod_overlay_narrows_the_role_it_defines(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_overlay_narrows_the_role_it_defines(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             _write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json", ["write"])
 
@@ -289,9 +281,7 @@ class TestPodRoleOverlay:
 
             assert "write" not in narrowed.names()
 
-    def test_no_project_does_not_see_the_pod_overlay(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_project_does_not_see_the_pod_overlay(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             _write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json", ["write"])
 
@@ -313,9 +303,7 @@ class TestPodDeniedTools:
     """A pod's own `deniedTools` setting unions with a role's own `denied_tools`,
     so a pod-level denial reaches every role in it."""
 
-    def test_pod_denial_removes_a_tool_the_role_itself_allows(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_denial_removes_a_tool_the_role_itself_allows(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             # "implementer" denies nothing by default -- a pod-level "fetch" denial
             # must still remove it, proving this is a union, not just the role's own list.
@@ -326,9 +314,7 @@ class TestPodDeniedTools:
             assert "fetch" not in narrowed.names()
             assert "write" in narrowed.names()  # nothing else the role allows is touched
 
-    def test_denying_one_builtin_removes_that_builtin_alone(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_denying_one_builtin_removes_that_builtin_alone(self, tmp_path: Path) -> None:
         with use_home(
             dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
         ):
@@ -358,9 +344,7 @@ class TestPodDeniedTools:
         assert "mcp__fake__lookup" not in narrowed.names()
         assert "read" in narrowed.names()
 
-    def test_no_project_ignores_the_pod_setting(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_project_ignores_the_pod_setting(self, tmp_path: Path) -> None:
         with (
             use_home(Home(tmp_path / ".docket")),
             use_home(

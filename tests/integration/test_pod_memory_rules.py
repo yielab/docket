@@ -367,7 +367,7 @@ class TestStore:
         assert [e.status for e in pm.list_entries(_PROJECT)] == ["accepted"]
 
     def test_the_oldest_accepted_entry_goes_first_and_pending_cannot_evict_it(
-        self, repo: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+        self, repo: tuple[Path, str]
     ) -> None:
         root, commit = repo
         with use_home(

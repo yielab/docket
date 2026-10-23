@@ -707,9 +707,7 @@ class TestApprovalReasonAndActor:
         # The detail should have the exact format without actor/reason
         assert last_line["detail"] == f"token={token} project=proj channel=cli"
 
-    def test_deny_with_blocked_reason_leaves_pending(
-        self, approvals_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deny_with_blocked_reason_leaves_pending(self, approvals_dir: Path) -> None:
         """A deny with a reason that trips a pre_input block leaves the approval pending."""
         token = _approval.approval_create("proj", "implementer", "action")
 

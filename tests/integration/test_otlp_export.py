@@ -399,9 +399,7 @@ class TestZeroExportersAndNoExport:
 
 
 class TestHungDestination:
-    def test_a_hanging_destination_does_not_lengthen_the_turn(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_hanging_destination_does_not_lengthen_the_turn(self) -> None:
         """The server accepts the connection and never answers; `run_turn` must still return
         promptly (bounded by `config.EXPORT_FLUSH_TIMEOUT_S`) and report the same result as a
         run with no exporter configured at all."""

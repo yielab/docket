@@ -118,9 +118,7 @@ async def _call(server: Any, name: str, arguments: dict[str, Any]) -> Any:
 
 
 class TestRealTransportRoundTrip:
-    def test_status_round_trips_a_bare_dict_as_structured_content(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_status_round_trips_a_bare_dict_as_structured_content(self, tmp_path: Path) -> None:
         pytest.importorskip("mcp")
         import asyncio
 
@@ -134,9 +132,7 @@ class TestRealTransportRoundTrip:
             # Round-trips through the SDK's own JSON serialization too.
             assert json.loads(json.dumps(result.structured_content)) == result.structured_content
 
-    def test_status_call_is_audited_exactly_once(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_status_call_is_audited_exactly_once(self, tmp_path: Path) -> None:
         pytest.importorskip("mcp")
         import asyncio
 
@@ -146,7 +142,7 @@ class TestRealTransportRoundTrip:
             assert len(_audit_actions("mcp.status")) == 1
 
     def test_a_raising_tool_becomes_an_iserror_result_not_a_protocol_crash(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """A raised `McpToolError` surfaces as `isError=True`, never a crash."""
         # tool_runs raises for an unknown run id; over the real SDK transport
@@ -164,9 +160,7 @@ class TestRealTransportRoundTrip:
             text = "".join(getattr(block, "text", "") for block in result.content)
             assert "Unknown run" in text
 
-    def test_audit_is_written_before_work_even_when_the_call_raises(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_audit_is_written_before_work_even_when_the_call_raises(self, tmp_path: Path) -> None:
         """A call that ends in `isError` still recorded exactly one audit entry."""
         # _audit() runs before the lookup that goes on to fail, so the
         # audit-before-work guarantee holds even over the real SDK transport.
@@ -182,7 +176,7 @@ class TestRealTransportRoundTrip:
             assert len(_audit_actions("mcp.runs")) == 1
 
     def test_unknown_approval_token_is_audited_then_surfaces_as_iserror(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         pytest.importorskip("mcp")
         import asyncio
@@ -205,7 +199,7 @@ class TestRealTransportRoundTrip:
 
 class TestNoBypassThroughRealTransport:
     def test_delegate_through_the_real_sdk_lands_in_the_same_queue_the_cli_uses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """A `delegate` call over the real transport lands in the CLI's own queue."""
         # Calls delegate through the real mcp.Client transport, not the Python
@@ -227,7 +221,7 @@ class TestNoBypassThroughRealTransport:
             assert [t["description"] for t in tasks] == ["ship the migration"]
 
     def test_approvals_grant_through_the_real_sdk_calls_the_same_core_function(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         pytest.importorskip("mcp")
         import asyncio

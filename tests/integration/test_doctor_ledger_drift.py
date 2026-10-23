@@ -58,7 +58,7 @@ def _claim_a_task(project: str = "demo") -> str:
 
 class TestNoPods:
     def test_no_dispatchable_pods_is_a_silent_no_op(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
@@ -70,7 +70,7 @@ class TestNoPods:
 
 class TestInSync:
     def test_in_sync_reports_zero_issues(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed_pod(tmp_path):
             _claim_a_task()
@@ -79,7 +79,7 @@ class TestInSync:
             assert "demo: in sync (1 running)" in out
 
     def test_no_tasks_at_all_is_in_sync(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed_pod(tmp_path):
             assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
@@ -95,9 +95,7 @@ class TestMissingFromLedger:
         # running in TASK_LIST.json.
         _mem.write_dispatch_tasks(_lead_ws(project), [])
 
-    def test_detected_without_fix(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_detected_without_fix(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         with _seed_pod(tmp_path):
             task_id = _claim_a_task()
             self._corrupt()
@@ -108,7 +106,7 @@ class TestMissingFromLedger:
             assert "Fix with: docket setup --fix" in out
 
     def test_fix_resyncs_and_clears_the_issue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed_pod(tmp_path):
             task_id = _claim_a_task()
@@ -123,9 +121,7 @@ class TestStaleInLedger:
     """HEARTBEAT.md's ledger names a task that TASK_LIST.json no longer shows
     as running (finished since, or never existed) -- the reverse divergence."""
 
-    def test_detected_without_fix(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_detected_without_fix(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         with _seed_pod(tmp_path):
             # No real running task -- inject a stale ledger entry directly.
             stale = _mem.DispatchHeartbeatTask(
@@ -139,7 +135,7 @@ class TestStaleInLedger:
             assert "stale in ledger: task-ghost" in out
 
     def test_fix_clears_the_stale_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed_pod(tmp_path):
             stale = _mem.DispatchHeartbeatTask(
@@ -151,9 +147,7 @@ class TestStaleInLedger:
             assert issues == 0
             assert _mem.read_dispatch_task_ids(_lead_ws()) == []
 
-    def test_fix_never_touches_agent_prose_elsewhere_in_the_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fix_never_touches_agent_prose_elsewhere_in_the_file(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             ws = _lead_ws()
             hb = ws / _mem.HEARTBEAT_FILE
@@ -174,7 +168,7 @@ class TestStaleInLedger:
 
 class TestDoctorJson:
     def test_dispatch_ledger_key_present_and_flags_divergence(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed_pod(tmp_path):
             task_id = _claim_a_task()
@@ -196,7 +190,7 @@ class TestDoctorJson:
             ]
 
     def test_in_sync_reports_ok_true(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed_pod(tmp_path):
             _claim_a_task()

@@ -229,9 +229,7 @@ def _fake_task_result() -> Any:
 
 
 class TestDryRun:
-    def test_leaves_runs_and_tasks_untouched(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_leaves_runs_and_tasks_untouched(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _dispatch.enqueue_task("demo", "a task", channel="cli")
             before_runs, before_tasks = _runs_file(), _dispatch.read_tasks("demo")
@@ -248,9 +246,7 @@ class TestDryRun:
             _endpoint(monkeypatch, ok=False)
             assert runner.invoke(_app, ["run", "--dry-run", "--pod", "demo"]).exit_code == 0
 
-    def test_a_two_member_pod_plans_two_runnable_hops(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_two_member_pod_plans_two_runnable_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer")):
             out = runner.invoke(_app, ["run", "--dry-run", "--pod", "demo"]).output
             assert "role=lead" in out and "role=implementer" in out
@@ -294,14 +290,12 @@ class TestUsage:
         assert result.exit_code == 2
         assert "--bogus" in result.output
 
-    def test_a_malformed_var_exits_2(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_a_malformed_var_exits_2(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = runner.invoke(_app, ["run", "--var", "novalue", "--pod", "demo", "--dry-run"])
             assert result.exit_code == 2
 
-    def test_a_missing_pipeline_file_exits_2(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_missing_pipeline_file_exits_2(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             result = runner.invoke(_app, ["run", "--pipeline", str(tmp_path / "nope.yaml")])
             assert result.exit_code == 2

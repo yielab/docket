@@ -1914,9 +1914,7 @@ class TestApprovalModeWiring:
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert "DOCKET_APPROVAL_MODE" not in tool_msg.content
 
-    def test_refuse_mode_denies_a_real_gated_call_immediately_through_the_driver(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_refuse_mode_denies_a_real_gated_call_immediately_through_the_driver(self) -> None:
         """The whole-path proof: a real policy-gated `bash` call, through the
         real driver, denies in well under the 120s `TOOL_APPROVAL_TIMEOUT`
         instead of waiting -- the defect this wire exists to close."""

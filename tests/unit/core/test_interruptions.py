@@ -60,9 +60,7 @@ def _bind_pipeline(project: str, text: str) -> None:
 
 
 class TestForecast:
-    def test_a_clean_pod_has_nothing_to_ask(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_clean_pod_has_nothing_to_ask(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             items = _interruptions.forecast("demo")
 
@@ -73,9 +71,7 @@ class TestForecast:
             assert "mode" in kinds
             assert "channel" in kinds  # console is enabled by default
 
-    def test_a_pod_scoped_require_approval_policy_is_forecast(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_pod_scoped_require_approval_policy_is_forecast(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             policies_dir = current_home().pod_config_dir("demo") / "policies"
             policies_dir.mkdir(parents=True)
@@ -100,9 +96,7 @@ class TestForecast:
                 "policy 'prod-approval-high-risk' asks on: tool bash, commands matching its pattern"
             )
 
-    def test_a_structured_policy_is_described_by_its_predicate_kinds(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_structured_policy_is_described_by_its_predicate_kinds(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             policies_dir = current_home().pod_config_dir("demo") / "policies"
             policies_dir.mkdir(parents=True)
@@ -122,9 +116,7 @@ class TestForecast:
                 policies[0].description == "policy 'src-edits' asks on: tool write on path src/**"
             )
 
-    def test_pipeline_approval_and_input_steps_are_forecast(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pipeline_approval_and_input_steps_are_forecast(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_pipeline("demo", _GATED_PIPELINE_YAML)
 
@@ -133,9 +125,7 @@ class TestForecast:
             gates = {i.detail for i in items if i.kind == "pipeline_gate"}
             assert gates == {"ask", "implementer"}
 
-    def test_mode_resolves_through_caller_default_when_unset(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_mode_resolves_through_caller_default_when_unset(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             waiting = next(
                 i
@@ -152,7 +142,7 @@ class TestForecast:
             assert parking.detail == "park"
 
     def test_an_explicit_pod_approval_mode_wins_over_the_caller_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
             _fleet.meta_set("demo-lead", "approvalMode", "refuse")
@@ -167,17 +157,13 @@ class TestForecast:
 
 
 class TestRecordPregrant:
-    def test_refuses_a_task_in_another_pod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_refuses_a_task_in_another_pod(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path), pytest.raises(_interruptions.InterruptionsError):
             _interruptions.record_pregrant(
                 "demo", "no-such-task", "git push origin main", channel="cli"
             )
 
-    def test_records_the_same_shape_a_live_park_grant_appends(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_records_the_same_shape_a_live_park_grant_appends(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
@@ -191,9 +177,7 @@ class TestRecordPregrant:
                 {"token": token, "tool": "bash", "argsDigest": expected_digest}
             ]
 
-    def test_collapses_whitespace_before_digesting(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_collapses_whitespace_before_digesting(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
@@ -205,9 +189,7 @@ class TestRecordPregrant:
             expected_digest = _oc.canonical_args_digest("bash", {"command": "git push origin main"})
             assert stored["pregrants"][0]["argsDigest"] == expected_digest
 
-    def test_custom_tool_changes_the_digest(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_custom_tool_changes_the_digest(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
@@ -224,21 +206,17 @@ class TestPregrantAtTheChokepoint:
     """The acceptance criterion: a pre-granted call passes the real chokepoint once; a
     rephrased one still asks (ADR 0016 SS10's exact-after-whitespace-collapse limit)."""
 
-    @pytest.fixture(autouse=True)
-    def _isolate_gates(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
-            yield
-
     def _pregrants_for(self, task: dict[str, Any]) -> tuple[core_tools.Pregrant, ...]:
         return tuple(
             core_tools.Pregrant(token=g["token"], tool=g["tool"], args_digest=g["argsDigest"])
             for g in task.get("pregrants", [])
         )
 
-    def test_the_named_command_passes_once_a_rephrased_one_still_asks(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with _seed_pod(tmp_path):
+    def test_the_named_command_passes_once_a_rephrased_one_still_asks(self, tmp_path: Path) -> None:
+        with (
+            _seed_pod(tmp_path),
+            use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
+        ):
             task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
             _interruptions.record_pregrant(
                 "demo", task["id"], "git push origin main", channel="cli"

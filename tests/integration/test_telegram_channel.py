@@ -456,9 +456,7 @@ class TestDelegate:
         blocked = [e for e in _read_audit() if e.get("action") == "telegram.delegate_blocked"]
         assert len(blocked) == 1
 
-    def test_require_approval_also_refuses_fail_closed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_require_approval_also_refuses_fail_closed(self) -> None:
         """No per-message human-approval channel exists for chat text (unlike a discrete tool
         call), so require_approval folds into the same fail-closed outcome as block."""
         _seed_pod("demo")
@@ -734,9 +732,7 @@ class TestOneEnqueueEntryPoint:
 
 
 class TestRequestTimeoutIsThreadedFromConfig:
-    def test_configured_request_timeout_reaches_the_adapter(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_configured_request_timeout_reaches_the_adapter(self) -> None:
         """A well-formed pair (request > poll) must reach `get_updates` unmodified, proving
         `TELEGRAM_REQUEST_TIMEOUT_S` is not a dead constant: breaking the wiring would surface
         the adapter's hardcoded default (35.0) instead of the configured 99.0."""
@@ -759,9 +755,7 @@ class TestRequestTimeoutIsThreadedFromConfig:
             assert calls[0]["request_timeout"] == 99.0
             assert calls[0]["timeout"] == 25
 
-    def test_a_different_configured_value_also_reaches_the_adapter(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_different_configured_value_also_reaches_the_adapter(self) -> None:
         """A second, distinct value to rule out a coincidental match with
         the adapter's own hardcoded default."""
         with use_home(
@@ -826,9 +820,7 @@ class TestWireDiscovery:
 
 
 class TestRequestTimeoutInvariantIsEnforced:
-    def test_request_timeout_not_exceeding_poll_timeout_is_clamped_with_a_warning(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_request_timeout_not_exceeding_poll_timeout_is_clamped_with_a_warning(self) -> None:
         """The invariant TELEGRAM_REQUEST_TIMEOUT_S > TELEGRAM_POLL_TIMEOUT_S is enforced, not
         merely stated: a misconfigured pair must not reach the adapter as-is, or every
         legitimately-empty long-poll would look like a local timeout."""
@@ -853,7 +845,7 @@ class TestRequestTimeoutInvariantIsEnforced:
             assert isinstance(request_timeout, float)
             assert request_timeout > 50
 
-    def test_equal_values_also_violate_the_invariant(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_equal_values_also_violate_the_invariant(self) -> None:
         """`>` not `>=`: equal values still leave zero margin for the round
         trip and must also be corrected."""
         with use_home(
@@ -874,9 +866,7 @@ class TestRequestTimeoutInvariantIsEnforced:
             assert isinstance(request_timeout, float)
             assert request_timeout > 30
 
-    def test_warning_is_carried_even_on_a_failed_poll(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_warning_is_carried_even_on_a_failed_poll(self) -> None:
         """The misconfiguration warning must not be lost just because the poll also failed for an
         unrelated reason -- `serve.py`'s loop must learn of a bad config on the first poll."""
         with use_home(
@@ -1084,9 +1074,7 @@ class TestUnauthorizedBatchIsCoalesced:
 
         return _fake
 
-    def test_ten_messages_from_one_unbound_chat_write_one_entry(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_ten_messages_from_one_unbound_chat_write_one_entry(self) -> None:
         """Ten refusals in one batch audit as one telegram.unauthorized line with count=10."""
         with use_home(dataclasses.replace(current_home(), telegram_poll_timeout_s=0)):
             _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
@@ -1102,9 +1090,7 @@ class TestUnauthorizedBatchIsCoalesced:
             assert "count=10" in str(entries[0]["detail"])
             assert "-999999" in str(entries[0]["detail"])
 
-    def test_two_unbound_chats_in_one_batch_write_one_entry_each(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_two_unbound_chats_in_one_batch_write_one_entry_each(self) -> None:
         """Coalescing is per chat id, so two chats in one batch keep two entries."""
         from docket.edges.adapters.telegram import GetUpdatesResult
 

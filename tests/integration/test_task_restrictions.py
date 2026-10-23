@@ -35,7 +35,6 @@ steps:
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-    monkeypatch.setenv("DOCKET_TOOL_MAX_OUTPUT_CHARS", "2500")
 
 
 @pytest.fixture()
@@ -101,9 +100,7 @@ def _run_one() -> _dispatch.TaskResult:
     return result
 
 
-def test_a_task_denied_tool_is_refused_in_a_hop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
-) -> None:
+def test_a_task_denied_tool_is_refused_in_a_hop(tmp_path: Path, stub: Any) -> None:
     """A task's deniedTools refuses the call under policy id task-restriction and the hop goes on."""
     server = stub(
         [
@@ -127,9 +124,7 @@ def test_a_task_denied_tool_is_refused_in_a_hop(
         assert "task-restriction" in tool_message["content"]
 
 
-def test_a_task_policy_document_blocks_a_matching_call(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
-) -> None:
+def test_a_task_policy_document_blocks_a_matching_call(tmp_path: Path, stub: Any) -> None:
     """A task policy document blocks a call by path and audits it as task-restriction."""
     server = stub(
         [
@@ -154,9 +149,7 @@ def test_a_task_policy_document_blocks_a_matching_call(
         assert "policy_id='task-restriction'" in denied["detail"]
 
 
-def test_a_task_without_restrictions_writes_normally(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
-) -> None:
+def test_a_task_without_restrictions_writes_normally(tmp_path: Path, stub: Any) -> None:
     """The same scripted write is not refused when the task carries no restrictions."""
     server = stub(
         [_tool_call_response("write", {"path": "out.txt", "content": "x"}), _final_response("ok")]
@@ -170,9 +163,7 @@ def test_a_task_without_restrictions_writes_normally(
         assert [e for e in _audit.read_audit() if e.get("action") == "tool.deny"] == []
 
 
-def test_a_task_policy_that_does_not_block_refuses_the_hop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
-) -> None:
+def test_a_task_policy_that_does_not_block_refuses_the_hop(tmp_path: Path, stub: Any) -> None:
     """A non-block task document is refused before the hop and no model call is made."""
     server = stub([_final_response("never reached")])
     with _seed_pod(tmp_path, server.base_url):
@@ -192,9 +183,7 @@ def test_a_task_policy_that_does_not_block_refuses_the_hop(
         assert server.requests == []
 
 
-def test_a_task_network_none_is_refused_when_nothing_can_cut_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
-) -> None:
+def test_a_task_network_none_is_refused_when_nothing_can_cut_it(tmp_path: Path, stub: Any) -> None:
     """Network none with isolation off fails closed before any model call, scope task."""
     server = stub([_final_response("never reached")])
     with _seed_pod(tmp_path, server.base_url):
@@ -209,7 +198,7 @@ def test_a_task_network_none_is_refused_when_nothing_can_cut_it(
 
 
 def test_the_jail_network_is_none_for_a_task_whatever_the_pod_records(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
+    tmp_path: Path, stub: Any
 ) -> None:
     """The computed hop network is cut by a task's none and open for the same pod without it."""
     from docket.core import fleet as fleet
@@ -224,7 +213,7 @@ def test_the_jail_network_is_none_for_a_task_whatever_the_pod_records(
 
 
 def test_a_task_max_tokens_stops_the_task_with_failure_kind_budget(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
+    tmp_path: Path, stub: Any
 ) -> None:
     """A maxTokens the first call overruns fails the task as budget after at most one call."""
     server = stub([_final_response("this answer costs 60 tokens")])
@@ -240,9 +229,7 @@ def test_a_task_max_tokens_stops_the_task_with_failure_kind_budget(
         assert task["failureKind"] == "budget"
 
 
-def test_a_spent_max_tokens_refuses_the_next_hop_without_a_call(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
-) -> None:
+def test_a_spent_max_tokens_refuses_the_next_hop_without_a_call(tmp_path: Path, stub: Any) -> None:
     """A task whose persisted hops used the whole cap starts no further hop."""
     server = stub([_final_response("never reached")])
     with _seed_pod(tmp_path, server.base_url):
@@ -262,9 +249,7 @@ def test_a_spent_max_tokens_refuses_the_next_hop_without_a_call(
         assert server.requests == []
 
 
-def test_each_hop_runs_with_what_the_cap_has_left(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub: Any
-) -> None:
+def test_each_hop_runs_with_what_the_cap_has_left(tmp_path: Path, stub: Any) -> None:
     """The turn's token budget handed to the driver is maxTokens less the persisted usage."""
     seen: list[str | None] = []
 

@@ -225,9 +225,7 @@ class TestChannelContentLevelEnforcedAtDelivery:
     and two real local HTTP servers -- proving `content: minimal` vs `actions` is enforced at
     the actual delivery point, which no unit test exercises together."""
 
-    def test_minimal_never_carries_the_command_line_actions_does(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_minimal_never_carries_the_command_line_actions_does(self, tmp_path: Path) -> None:
         """Two real `webhook` channels, one `content: minimal` and one `content: actions`,
         both subscribed to the same approval event: the canary command line must be absent
         from the wire at `minimal` and present at `actions`."""
@@ -374,7 +372,7 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
     reads the Lead's second prompt, proving the operator's typed answers round-trip."""
 
     def test_the_operators_exact_answer_text_appears_in_the_leads_reentry_message(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """The operator answers with `{"q1": "blue", "q2": "large"}`; the Lead's second call
         message must contain `## Operator answers` with both exact values."""

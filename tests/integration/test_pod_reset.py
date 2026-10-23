@@ -57,7 +57,7 @@ def _reset(*extra: str) -> tuple[int, str]:
 
 class TestPodReset:
     def test_resets_the_ledger_and_calls_no_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
+        self, tmp_path: Path, fake_driver: FakeDriver
     ) -> None:
         with _make_ws(tmp_path) as ws:
             code, out = _reset("--yes")
@@ -69,7 +69,7 @@ class TestPodReset:
             assert "_none yet_" in hb_text
 
     def test_leaves_memory_md_the_daily_logs_and_the_pod_memory_alone(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
+        self, tmp_path: Path, fake_driver: FakeDriver
     ) -> None:
         with _make_ws(tmp_path) as ws:
             (ws / "MEMORY.md").write_text("# MEMORY.md\n\n## Old\nkeep this\n", encoding="utf-8")
@@ -88,7 +88,7 @@ class TestPodReset:
             assert not (ws / "memory" / ".distilled").exists()
 
     def test_rebuilds_workspace_files_from_metadata(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
+        self, tmp_path: Path, fake_driver: FakeDriver
     ) -> None:
         with _make_ws(tmp_path) as ws:
             original = (ws / "SOUL.md").read_text(encoding="utf-8")
@@ -100,7 +100,7 @@ class TestPodReset:
             assert (ws / "SOUL.md").read_text(encoding="utf-8") == original
 
     def test_off_a_tty_without_yes_refuses_and_changes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
+        self, tmp_path: Path, fake_driver: FakeDriver
     ) -> None:
         with _make_ws(tmp_path) as ws:
             code, out = _reset()
@@ -110,7 +110,7 @@ class TestPodReset:
             assert "a real task" in (ws / "HEARTBEAT.md").read_text(encoding="utf-8")
 
     def test_a_name_outside_the_pod_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_driver: FakeDriver
+        self, tmp_path: Path, fake_driver: FakeDriver
     ) -> None:
         with _make_ws(tmp_path):
             result = _runner.invoke(_pod.pod_app, ["reset", "other-lead", "--pod", "demo", "--yes"])

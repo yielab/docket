@@ -557,9 +557,7 @@ class TestBuiltinHandlers:
         out = toolbox.read_file((workspace,), "big.txt")
         assert out.ok and "[truncated:" in out.content
 
-    def test_the_output_ceiling_is_a_live_setting(
-        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_output_ceiling_is_a_live_setting(self, workspace: Path) -> None:
         """A small-context endpoint must be able to lower it -- 30k chars is two results away from overflowing a 16k window, and the turn dies on an HTTP 400 with no partial progress."""
         body = "x" * 5_000
         (workspace / "mid.txt").write_text(body)

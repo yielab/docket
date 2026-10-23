@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from docket.edges.adapters import system as _sys
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.edges.adapters.system"
 
@@ -779,12 +780,12 @@ class TestPrivateJailTmp:
     def test_without_a_cache_dir_it_lives_under_docket_home_keyed_by_the_root(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_sys._cfg, "JAIL_TMP_DIR", tmp_path / "home" / "jail-tmp")
-        a = _sys.jail_tmp_dir((tmp_path / "a",), None)
-        b = _sys.jail_tmp_dir((tmp_path / "b",), None)
-        assert a != b and a.parent == tmp_path / "home" / "jail-tmp"
-        assert a.stat().st_mode & 0o777 == 0o700
-        assert _sys.jail_tmp_dir((tmp_path / "a",), None) == a
+        with use_home(Home(tmp_path / "home")):
+            a = _sys.jail_tmp_dir((tmp_path / "a",), None)
+            b = _sys.jail_tmp_dir((tmp_path / "b",), None)
+            assert a != b and a.parent == tmp_path / "home" / "jail-tmp"
+            assert a.stat().st_mode & 0o777 == 0o700
+            assert _sys.jail_tmp_dir((tmp_path / "a",), None) == a
 
     @pytest.mark.parametrize("backend", ["landlock", "seatbelt"])
     def test_launch_exports_and_grants_the_private_dir(

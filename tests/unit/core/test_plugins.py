@@ -6,8 +6,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from docket.core import audit as _audit
 from docket.core import plugins as _plugins
 from docket.core import policy as _policy
@@ -40,9 +38,7 @@ def _write_policy(policies_dir: Path, name: str, doc: object) -> None:
 
 
 class TestGlobalPluginDrivesAPolicy:
-    def test_a_global_plugin_returning_true_makes_ask_fire(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_global_plugin_returning_true_makes_ask_fire(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         with use_home(Home(home)):
             plugins_dir = home / "plugins"
@@ -69,7 +65,7 @@ class TestGlobalPluginDrivesAPolicy:
 
 class TestUnappliedPluginFailsClosed:
     def test_a_plugin_only_under_a_codebase_is_absent_and_the_policy_blocks(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         home = tmp_path / "home"
         with use_home(Home(home)):
@@ -100,9 +96,7 @@ class TestUnappliedPluginFailsClosed:
 
 
 class TestARaisingPluginFailsClosedAndAudits:
-    def test_a_raising_plugin_blocks_and_audits_one_deny(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_raising_plugin_blocks_and_audits_one_deny(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         with use_home(Home(home)):
             plugins_dir = home / "plugins"

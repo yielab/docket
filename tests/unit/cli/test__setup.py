@@ -94,9 +94,7 @@ class TestResolveVersion:
 
 
 class TestPipedReport:
-    def test_fresh_home_names_the_provider_command_and_writes_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fresh_home_names_the_provider_command_and_writes_nothing(self, tmp_path: Path) -> None:
         with _home(tmp_path) as home:
             before = _files(home)
 
@@ -107,9 +105,7 @@ class TestPipedReport:
             assert "missing" in result.stdout
             assert _files(home) == before
 
-    def test_json_carries_the_report_and_the_same_exit_code(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_json_carries_the_report_and_the_same_exit_code(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             result = _runner.invoke(app, ["setup", "--json"])
 
@@ -118,7 +114,7 @@ class TestPipedReport:
             assert payload["ready"] is False
             assert payload["pieces"][0]["command"].startswith("docket setup provider add")
 
-    def test_readiness_is_pure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_readiness_is_pure(self, tmp_path: Path) -> None:
         with _home(tmp_path) as home:
             before = _files(home)
 
@@ -241,9 +237,7 @@ class TestFix:
             assert calls == [True]
             assert (current_home().policies_dir).is_dir()
 
-    def test_fix_json_keeps_stdout_a_single_json_document(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fix_json_keeps_stdout_a_single_json_document(self, tmp_path: Path) -> None:
         """The install line goes to stderr, so a fresh home's stdout parses as JSON."""
         with _home(tmp_path):
             result = _runner.invoke(app, ["setup", "--fix", "--json"])
@@ -252,9 +246,7 @@ class TestFix:
             assert "Installed" in result.stderr
             assert "Installed" not in result.stdout
 
-    def test_fix_without_json_still_prints_the_install_line_on_stdout(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fix_without_json_still_prints_the_install_line_on_stdout(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             result = _runner.invoke(app, ["setup", "--fix"])
 

@@ -139,9 +139,7 @@ def test_restore_write_failure_keeps_recovery_inputs_and_cleans_temporary_file(
     assert not _quarantine(path).with_suffix(".corrupt.tmp").exists()
 
 
-def test_task_prune_cli_recovers_the_prior_complete_registry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_task_prune_cli_recovers_the_prior_complete_registry(tmp_path: Path) -> None:
     path = tmp_path / "docket-runs.json"
     prior = {
         "runs": [

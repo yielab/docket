@@ -100,9 +100,7 @@ def test_tdd_check_red_routes_pass_to_fail_and_fail_to_green() -> None:
 
 
 @pytest.mark.parametrize("name", RECIPE_NAMES)
-def test_recipe_applies_cleanly_to_a_fixture_pod(
-    name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> None:
     """``docket pod update <recipe>`` leaves every pipeline step resolvable on a lean pod
     (only the base ``lead``/``implementer`` roles)."""
     project = f"fixture-{name.replace('-', '_')}"
@@ -146,9 +144,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(
 # roster/settings input directly rather than through `plan_apply`.
 
 
-def test_dual_review_plan_has_one_planned_group(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_dual_review_plan_has_one_planned_group(tmp_path: Path) -> None:
     project = "dualcheck"
     with _seed_fixture_pod(tmp_path, project):
         _cli_pod.add_members(project, "reviewer")
@@ -168,9 +164,7 @@ def test_dual_review_plan_has_one_planned_group(
         assert not any(c.skipped for c in groups[0].children)
 
 
-def test_frugal_plan_carries_three_setting_items(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_frugal_plan_carries_three_setting_items(tmp_path: Path) -> None:
     import yaml
 
     project = "frugalcheck"
@@ -225,9 +219,7 @@ class _ReflexionRunner:
         return FakeDriver()(member_id, session_id, message, timeout, env)
 
 
-def test_reflexion_recipe_dispatches_to_done_with_rework_counted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_reflexion_recipe_dispatches_to_done_with_rework_counted(tmp_path: Path) -> None:
     project = "reflex"
     with _seed_fixture_pod(tmp_path, project):
         recipe_dir = _recipe_dir("reflexion")

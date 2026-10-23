@@ -182,9 +182,7 @@ def _worktree_paths(repo: Path) -> list[str]:
     return [line.split(" ", 1)[1] for line in lines if line.startswith("worktree ")]
 
 
-def test_provisioning_a_repo_pod_creates_no_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_provisioning_a_repo_pod_creates_no_worktree(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -192,9 +190,7 @@ def test_provisioning_a_repo_pod_creates_no_worktree(
         assert not (current_home().projects_dir / "demo-implementer" / "tasks").exists()
 
 
-def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -235,9 +231,7 @@ def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(
         assert "one.txt" not in _git(repo, "ls-tree", "--name-only", wt_two["branch"])
 
 
-def test_a_parked_then_answered_task_resumes_in_the_same_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_parked_then_answered_task_resumes_in_the_same_worktree(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -266,9 +260,7 @@ def test_a_parked_then_answered_task_resumes_in_the_same_worktree(
         assert len([p for p in _worktree_paths(repo) if "/tasks/" in p]) == 1
 
 
-def test_removing_the_member_leaves_no_task_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_removing_the_member_leaves_no_task_worktree(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -324,9 +316,7 @@ def _enqueue_with_base_ref(base_ref: str) -> None:
     _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": queue})
 
 
-def test_a_task_with_a_base_ref_starts_its_worktree_there(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_task_with_a_base_ref_starts_its_worktree_there(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     _git(repo, "checkout", "-b", "prev")
@@ -347,9 +337,7 @@ def test_a_task_with_a_base_ref_starts_its_worktree_there(
         assert (Path(record["dir"]) / "prev.txt").is_file()
 
 
-def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -385,9 +373,7 @@ def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
         assert "disk full" in _dispatch.read_tasks("demo")[0]["reason"]
 
 
-def test_a_command_step_gets_the_task_id_and_the_evidence_commits(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_command_step_gets_the_task_id_and_the_evidence_commits(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -407,9 +393,7 @@ def test_a_command_step_gets_the_task_id_and_the_evidence_commits(
         )
 
 
-def test_a_command_step_without_an_implementer_hop_gets_empty_commits(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_command_step_without_an_implementer_hop_gets_empty_commits(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -425,9 +409,7 @@ def test_a_command_step_without_an_implementer_hop_gets_empty_commits(
         assert command["output"].strip() == f"id={queued['id']} base= head="
 
 
-def test_uncommitted_work_is_committed_on_the_task_branch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_uncommitted_work_is_committed_on_the_task_branch(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -469,9 +451,7 @@ class _LeadWritesRunner:
         return TurnResult(True, "done", 0.0, {})
 
 
-def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(tmp_path: Path) -> None:
     """A research pipeline has no Implementer; its writer's file must still reach the branch."""
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -494,9 +474,7 @@ def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(
         assert hop["evidence"] is None
 
 
-def test_an_unmerged_pinned_task_survives_prune_without_force(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_unmerged_pinned_task_survives_prune_without_force(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -512,9 +490,7 @@ def test_an_unmerged_pinned_task_survives_prune_without_force(
         assert Path(_dispatch.read_tasks("demo")[0]["worktree"]["dir"], "only-new.txt").is_file()
 
 
-def test_a_hop_that_changed_nothing_adds_no_commit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_hop_that_changed_nothing_adds_no_commit(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
@@ -555,9 +531,7 @@ def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
         assert f"head={evidence['commit']}" in command["output"]
 
 
-def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
