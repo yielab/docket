@@ -9,6 +9,7 @@ for an operator's own receiver. See each class's own docstring for the seam it p
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.request
@@ -36,7 +37,7 @@ from docket.core.llm import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import channels as _channel_adapters
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -96,8 +97,10 @@ class TestHttpGrantConsumesThePregrant:
         finishes."""
         from docket.core.policy import install_policies
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        with _seed_pod(tmp_path) as home:
+        with (
+            use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)),
+            _seed_pod(tmp_path) as home,
+        ):
             install_policies()
             _fleet.meta_set("demo-lead", "approvalMode", "park")
 

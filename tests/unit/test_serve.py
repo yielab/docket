@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 
 import docket.serve as serve
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.serve"
@@ -229,7 +229,7 @@ class TestRenderHealth:
             "on": True,
             "inflight": ["demo"],
             "stopping": False,
-            "workers": serve.cfg.DISPATCH_SWEEP_WORKERS,
+            "workers": current_home().dispatch_sweep_workers,
         }
         stop.set()
         assert json.loads(serve.render_health())["dispatch"]["stopping"] is True

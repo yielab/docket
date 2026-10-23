@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.core import trace as trace_core
 from docket.kernel import clock as _clock
@@ -34,7 +33,6 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
             dataclasses.replace(current_home(), session_timeout=3600, trace_retention_days=30)
         ),
     ):
-        monkeypatch.setattr(_cfg, "TRACE_RETENTION_S", 30 * 86400, raising=True)
         monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
         yield d
 

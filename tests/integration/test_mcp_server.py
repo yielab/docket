@@ -187,9 +187,11 @@ class TestToolCost:
             assert result["id"] == "demo-lead"
 
     def test_unknown_agent_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        with _seed_pod(tmp_path):
-            with pytest.raises(_mcp.McpToolError, match="not found"):
-                _mcp.tool_cost("no-such-agent")
+        with (
+            _seed_pod(tmp_path),
+            pytest.raises(_mcp.McpToolError, match="not found"),
+        ):
+            _mcp.tool_cost("no-such-agent")
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         with _seed_pod(tmp_path):
@@ -216,23 +218,29 @@ class TestToolDelegate:
     def test_empty_description_rejected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed_pod(tmp_path, project="demo"):
-            with pytest.raises(_mcp.McpToolError, match="required"):
-                _mcp.tool_delegate("demo", "")
+        with (
+            _seed_pod(tmp_path, project="demo"),
+            pytest.raises(_mcp.McpToolError, match="required"),
+        ):
+            _mcp.tool_delegate("demo", "")
 
     def test_too_long_description_rejected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed_pod(tmp_path, project="demo"):
-            with pytest.raises(_mcp.McpToolError, match="too long"):
-                _mcp.tool_delegate("demo", "x" * 501)
+        with (
+            _seed_pod(tmp_path, project="demo"),
+            pytest.raises(_mcp.McpToolError, match="too long"),
+        ):
+            _mcp.tool_delegate("demo", "x" * 501)
 
     def test_invalid_priority_rejected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed_pod(tmp_path, project="demo"):
-            with pytest.raises(_mcp.McpToolError, match="Invalid priority"):
-                _mcp.tool_delegate("demo", "task", priority="urgent")
+        with (
+            _seed_pod(tmp_path, project="demo"),
+            pytest.raises(_mcp.McpToolError, match="Invalid priority"),
+        ):
+            _mcp.tool_delegate("demo", "task", priority="urgent")
 
     def test_unknown_project_rejected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -298,9 +306,11 @@ class TestToolQueue:
     def test_retry_unknown_task_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed_pod(tmp_path, project="demo"):
-            with pytest.raises(_mcp.McpToolError, match="not a blocked task"):
-                _mcp.tool_queue("demo", retry_task_id="task-does-not-exist")
+        with (
+            _seed_pod(tmp_path, project="demo"),
+            pytest.raises(_mcp.McpToolError, match="not a blocked task"),
+        ):
+            _mcp.tool_queue("demo", retry_task_id="task-does-not-exist")
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         with _seed_pod(tmp_path, project="demo"):
@@ -357,9 +367,11 @@ class TestToolDispatch:
     def test_invalid_timeout_rejected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed_pod(tmp_path, project="demo"):
-            with pytest.raises(_mcp.McpToolError, match="positive integer"):
-                _mcp.tool_dispatch("demo", timeout=0)
+        with (
+            _seed_pod(tmp_path, project="demo"),
+            pytest.raises(_mcp.McpToolError, match="positive integer"),
+        ):
+            _mcp.tool_dispatch("demo", timeout=0)
 
     def test_call_is_audited_immediately_even_though_dispatch_is_async(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -484,9 +496,8 @@ class TestToolTaskAnswer:
             assert len(_audit_actions("mcp.task_answer")) == 1
 
     def test_unknown_task_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        with _seed_pod(tmp_path, project="demo"):
-            with pytest.raises(_mcp.McpToolError):
-                _mcp.tool_task_answer("demo", "no-such-task", "accept", {"answer": "x"})
+        with _seed_pod(tmp_path, project="demo"), pytest.raises(_mcp.McpToolError):
+            _mcp.tool_task_answer("demo", "no-such-task", "accept", {"answer": "x"})
 
     def test_a_task_not_waiting_input_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

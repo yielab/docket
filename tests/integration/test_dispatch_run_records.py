@@ -27,7 +27,6 @@ from typing import Any
 import pytest
 import typer
 
-import docket.config as _cfg
 import docket.serve as _serve
 from docket.cli import _pod, _run
 from docket.core import dispatch as _dispatch
@@ -424,17 +423,17 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
         (tmp_path / ".docket").mkdir(exist_ok=True)
         d = tmp_path / "approvals"
         d.mkdir()
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", d, raising=True)
+        with use_home(dataclasses.replace(current_home(), approvals_dir_override=d)):
 
-        class _Handler(_DocketHandler):
-            serve_token = _TEST_TOKEN
+            class _Handler(_DocketHandler):
+                serve_token = _TEST_TOKEN
 
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = srv.server_address[1]
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-        srv.shutdown()
+            srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            port = srv.server_address[1]
+            t = threading.Thread(target=srv.serve_forever, daemon=True)
+            t.start()
+            yield f"http://127.0.0.1:{port}", _TEST_TOKEN
+            srv.shutdown()
 
 
 class TestWebhookDispatchPath:
@@ -696,11 +695,13 @@ class TestSweepWorkers:
     def _two_pods(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         with _seed_pod(tmp_path, project="pod-a"):
             _pod.build_pod("pod-b", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/pod-b")
-            monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
             monkeypatch.setattr(
                 "docket.core.dispatch.dispatchable_pods", lambda: ["pod-a", "pod-b"], raising=True
             )
-            yield
+            with use_home(
+                dataclasses.replace(current_home(), approvals_dir_override=tmp_path / "approvals")
+            ):
+                yield
 
     def test_a_blocked_pod_does_not_stall_the_others(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -754,8 +755,10 @@ class TestSweepWorkers:
             assert len(_runs.list_runs("pod-a")) == 1
 
     def test_one_worker_is_serial(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        with self._two_pods(tmp_path, monkeypatch):
-            monkeypatch.setattr(_cfg, "DISPATCH_SWEEP_WORKERS", 1, raising=True)
+        with (
+            self._two_pods(tmp_path, monkeypatch),
+            use_home(dataclasses.replace(current_home(), dispatch_sweep_workers=1)),
+        ):
             release = threading.Event()
             started: list[str] = []
             a_started = threading.Event()

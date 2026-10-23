@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.request
@@ -9,8 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -25,16 +25,16 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
         (tmp_path / ".docket").mkdir(exist_ok=True)
         approvals_dir = tmp_path / "approvals"
         approvals_dir.mkdir()
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals_dir, raising=True)
+        with use_home(dataclasses.replace(current_home(), approvals_dir_override=approvals_dir)):
 
-        class _Handler(_DocketHandler):
-            serve_token = _TOKEN
+            class _Handler(_DocketHandler):
+                serve_token = _TOKEN
 
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        yield f"http://127.0.0.1:{srv.server_address[1]}"
-        srv.shutdown()
+            srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            t = threading.Thread(target=srv.serve_forever, daemon=True)
+            t.start()
+            yield f"http://127.0.0.1:{srv.server_address[1]}"
+            srv.shutdown()
 
 
 def test_api_version_is_5(live_server: str) -> None:

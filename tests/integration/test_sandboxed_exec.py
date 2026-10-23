@@ -21,11 +21,11 @@ import sys
 import time
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import fleet as _fleet
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
@@ -474,109 +474,111 @@ class TestJailedCommit:
     def test_a_jailed_command_commits_in_a_linked_worktree_but_cannot_write_elsewhere(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        _use_docker(monkeypatch, docker_git_image)
-        main = tmp_path / "main"
-        wt = tmp_path / "wt"
-        _git(tmp_path, "init", "-q", str(main))
-        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
-        outside = tmp_path / "outside"
-        outside.mkdir()
-        ident = {
-            "GIT_AUTHOR_NAME": "t",
-            "GIT_AUTHOR_EMAIL": "t@t",
-            "GIT_COMMITTER_NAME": "t",
-            "GIT_COMMITTER_EMAIL": "t@t",
-        }
+        with _use_docker(monkeypatch, docker_git_image):
+            main = tmp_path / "main"
+            wt = tmp_path / "wt"
+            _git(tmp_path, "init", "-q", str(main))
+            _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+            _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
+            outside = tmp_path / "outside"
+            outside.mkdir()
+            ident = {
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+            }
 
-        outcome = toolbox.run_bash(
-            (wt,),
-            "echo x > f && git add f && git commit -q -m jailed",
-            env=ident,
-            sandbox="auto",
-        )
-        assert outcome.ok, outcome.error or outcome.content
-        assert "jailed" in _git(wt, "log", "--format=%s", "-1")
+            outcome = toolbox.run_bash(
+                (wt,),
+                "echo x > f && git add f && git commit -q -m jailed",
+                env=ident,
+                sandbox="auto",
+            )
+            assert outcome.ok, outcome.error or outcome.content
+            assert "jailed" in _git(wt, "log", "--format=%s", "-1")
 
-        denied = toolbox.run_bash((wt,), f"echo x > {outside}/leak", sandbox="auto")
-        assert not denied.ok
-        assert not (outside / "leak").exists()
+            denied = toolbox.run_bash((wt,), f"echo x > {outside}/leak", sandbox="auto")
+            assert not denied.ok
+            assert not (outside / "leak").exists()
 
     @needs_docker
     @pytest.mark.parametrize("source", ["environment", "global-config"])
     def test_a_jailed_commit_uses_the_operators_git_identity(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str, source: str
     ) -> None:
-        _use_docker(monkeypatch, docker_git_image)
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-        for var in ("AUTHOR", "COMMITTER"):
-            monkeypatch.delenv(f"GIT_{var}_NAME", raising=False)
-            monkeypatch.delenv(f"GIT_{var}_EMAIL", raising=False)
-        if source == "environment":
+        with _use_docker(monkeypatch, docker_git_image):
+            home = tmp_path / "home"
+            home.mkdir()
+            monkeypatch.setenv("HOME", str(home))
+            monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
             for var in ("AUTHOR", "COMMITTER"):
-                monkeypatch.setenv(f"GIT_{var}_NAME", "Op")
-                monkeypatch.setenv(f"GIT_{var}_EMAIL", "op@example.com")
-        else:
-            (home / ".gitconfig").write_text("[user]\n\tname = Op\n\temail = op@example.com\n")
-        main = tmp_path / "main"
-        wt = tmp_path / "wt"
-        _git(tmp_path, "init", "-q", str(main))
-        _git(
-            main,
-            "-c",
-            "user.name=i",
-            "-c",
-            "user.email=i@i",
-            "commit",
-            "-q",
-            "--allow-empty",
-            "-m",
-            "i",
-        )
-        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
+                monkeypatch.delenv(f"GIT_{var}_NAME", raising=False)
+                monkeypatch.delenv(f"GIT_{var}_EMAIL", raising=False)
+            if source == "environment":
+                for var in ("AUTHOR", "COMMITTER"):
+                    monkeypatch.setenv(f"GIT_{var}_NAME", "Op")
+                    monkeypatch.setenv(f"GIT_{var}_EMAIL", "op@example.com")
+            else:
+                (home / ".gitconfig").write_text("[user]\n\tname = Op\n\temail = op@example.com\n")
+            main = tmp_path / "main"
+            wt = tmp_path / "wt"
+            _git(tmp_path, "init", "-q", str(main))
+            _git(
+                main,
+                "-c",
+                "user.name=i",
+                "-c",
+                "user.email=i@i",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "i",
+            )
+            _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
 
-        outcome = toolbox.run_bash((wt,), "git commit -q --allow-empty -m jailed", sandbox="auto")
-        assert outcome.ok, outcome.error or outcome.content
-        assert _git(wt, "log", "--format=%an <%ae>", "-1").strip() == "Op <op@example.com>"
+            outcome = toolbox.run_bash(
+                (wt,), "git commit -q --allow-empty -m jailed", sandbox="auto"
+            )
+            assert outcome.ok, outcome.error or outcome.content
+            assert _git(wt, "log", "--format=%an <%ae>", "-1").strip() == "Op <op@example.com>"
 
     @needs_docker
     def test_the_jail_cannot_plant_a_hook_or_a_config_the_host_would_run(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        _use_docker(monkeypatch, docker_git_image)
-        main = tmp_path / "main"
-        wt = tmp_path / "wt"
-        _git(tmp_path, "init", "-q", str(main))
-        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
-        common = main / ".git"
-        ident = {
-            "GIT_AUTHOR_NAME": "t",
-            "GIT_AUTHOR_EMAIL": "t@t",
-            "GIT_COMMITTER_NAME": "t",
-            "GIT_COMMITTER_EMAIL": "t@t",
-        }
+        with _use_docker(monkeypatch, docker_git_image):
+            main = tmp_path / "main"
+            wt = tmp_path / "wt"
+            _git(tmp_path, "init", "-q", str(main))
+            _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+            _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
+            common = main / ".git"
+            ident = {
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+            }
 
-        commit = toolbox.run_bash(
-            (wt,), "echo x > f && git add f && git commit -q -m ok", env=ident, sandbox="auto"
-        )
-        assert commit.ok, commit.error or commit.content
+            commit = toolbox.run_bash(
+                (wt,), "echo x > f && git add f && git commit -q -m ok", env=ident, sandbox="auto"
+            )
+            assert commit.ok, commit.error or commit.content
 
-        hook = toolbox.run_bash((wt,), f"echo x > {common}/hooks/post-checkout", sandbox="auto")
-        assert not hook.ok
-        assert not (common / "hooks" / "post-checkout").exists()
+            hook = toolbox.run_bash((wt,), f"echo x > {common}/hooks/post-checkout", sandbox="auto")
+            assert not hook.ok
+            assert not (common / "hooks" / "post-checkout").exists()
 
-        cfg = toolbox.run_bash((wt,), "git config core.hooksPath /tmp/x", sandbox="auto")
-        assert not cfg.ok
-        host = subprocess.run(
-            ["git", "-C", str(main), "config", "--get", "core.hooksPath"],
-            capture_output=True,
-            text=True,
-        )
-        assert host.stdout.strip() == ""
+            cfg = toolbox.run_bash((wt,), "git config core.hooksPath /tmp/x", sandbox="auto")
+            assert not cfg.ok
+            host = subprocess.run(
+                ["git", "-C", str(main), "config", "--get", "core.hooksPath"],
+                capture_output=True,
+                text=True,
+            )
+            assert host.stdout.strip() == ""
 
 
 def _super_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
@@ -629,92 +631,99 @@ class TestGitMetadataTheHostLaterRuns:
     def test_an_absent_hooks_dir_cannot_be_created_from_the_jail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        _use_docker(monkeypatch, docker_git_image)
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _git(repo, "init", "-q")
-        shutil.rmtree(repo / ".git" / "hooks")
+        with _use_docker(monkeypatch, docker_git_image):
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            _git(repo, "init", "-q")
+            shutil.rmtree(repo / ".git" / "hooks")
 
-        plant = toolbox.run_bash(
-            (repo,),
-            "mkdir -p .git/hooks && printf '#!/bin/sh\\ntouch pwned' > .git/hooks/post-commit"
-            " && echo 'x' > .git/info/attributes",
-            sandbox="auto",
-        )
-        assert not plant.ok
-        assert not (repo / ".git" / "hooks" / "post-commit").exists()
-        assert (repo / ".git" / "info" / "attributes").read_text() == ""
+            plant = toolbox.run_bash(
+                (repo,),
+                "mkdir -p .git/hooks && printf '#!/bin/sh\\ntouch pwned' > .git/hooks/post-commit"
+                " && echo 'x' > .git/info/attributes",
+                sandbox="auto",
+            )
+            assert not plant.ok
+            assert not (repo / ".git" / "hooks" / "post-commit").exists()
+            assert (repo / ".git" / "info" / "attributes").read_text() == ""
 
     @needs_docker
     def test_the_jail_cannot_plant_a_submodule_hook_or_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        _use_docker(monkeypatch, docker_git_image)
-        sup, subgit = _super_with_submodule(tmp_path)
+        with _use_docker(monkeypatch, docker_git_image):
+            sup, subgit = _super_with_submodule(tmp_path)
 
-        hook = toolbox.run_bash((sup,), f"echo x > {subgit}/hooks/post-commit", sandbox="auto")
-        assert not hook.ok
-        assert not (subgit / "hooks" / "post-commit").exists()
+            hook = toolbox.run_bash((sup,), f"echo x > {subgit}/hooks/post-commit", sandbox="auto")
+            assert not hook.ok
+            assert not (subgit / "hooks" / "post-commit").exists()
 
-        cfg = toolbox.run_bash((sup,), "git -C sub config core.hooksPath /x", sandbox="auto")
-        assert not cfg.ok
-        host = subprocess.run(
-            ["git", "-C", str(sup / "sub"), "config", "--get", "core.hooksPath"],
-            capture_output=True,
-            text=True,
-        )
-        assert host.stdout.strip() == ""
+            cfg = toolbox.run_bash((sup,), "git -C sub config core.hooksPath /x", sandbox="auto")
+            assert not cfg.ok
+            host = subprocess.run(
+                ["git", "-C", str(sup / "sub"), "config", "--get", "core.hooksPath"],
+                capture_output=True,
+                text=True,
+            )
+            assert host.stdout.strip() == ""
 
-        before = (sup / "sub" / ".git").read_text()
-        redirect = toolbox.run_bash((sup,), "echo 'gitdir: /tmp/evil' > sub/.git", sandbox="auto")
-        assert not redirect.ok
-        assert (sup / "sub" / ".git").read_text() == before
+            before = (sup / "sub" / ".git").read_text()
+            redirect = toolbox.run_bash(
+                (sup,), "echo 'gitdir: /tmp/evil' > sub/.git", sandbox="auto"
+            )
+            assert not redirect.ok
+            assert (sup / "sub" / ".git").read_text() == before
 
     @needs_docker
     def test_the_jail_cannot_repoint_a_linked_worktrees_git_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        _use_docker(monkeypatch, docker_git_image)
-        main = tmp_path / "main"
-        wt = tmp_path / "wt"
-        _git(tmp_path, "init", "-q", str(main))
-        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
-        (main / ".git" / "info").mkdir(exist_ok=True)
-        (main / ".git" / "info" / "attributes").write_text("* -diff\n")
-        before = _git(wt, "rev-parse", "--absolute-git-dir")
-        admin = main / ".git" / "worktrees" / "wt"
-        admin_before = (admin / "gitdir").read_text()
+        with _use_docker(monkeypatch, docker_git_image):
+            main = tmp_path / "main"
+            wt = tmp_path / "wt"
+            _git(tmp_path, "init", "-q", str(main))
+            _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+            _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
+            (main / ".git" / "info").mkdir(exist_ok=True)
+            (main / ".git" / "info" / "attributes").write_text("* -diff\n")
+            before = _git(wt, "rev-parse", "--absolute-git-dir")
+            admin = main / ".git" / "worktrees" / "wt"
+            admin_before = (admin / "gitdir").read_text()
 
-        rewrite = toolbox.run_bash((wt,), f"echo 'gitdir: {wt}/evil' > .git", sandbox="auto")
-        assert not rewrite.ok
-        assert _git(wt, "rev-parse", "--absolute-git-dir") == before
+            rewrite = toolbox.run_bash((wt,), f"echo 'gitdir: {wt}/evil' > .git", sandbox="auto")
+            assert not rewrite.ok
+            assert _git(wt, "rev-parse", "--absolute-git-dir") == before
 
-        admin_write = toolbox.run_bash((wt,), f"echo /x > {admin}/gitdir", sandbox="auto")
-        assert not admin_write.ok
-        assert (admin / "gitdir").read_text() == admin_before
+            admin_write = toolbox.run_bash((wt,), f"echo /x > {admin}/gitdir", sandbox="auto")
+            assert not admin_write.ok
+            assert (admin / "gitdir").read_text() == admin_before
 
-        attrs = toolbox.run_bash(
-            (wt,), f"echo '* filter=evil' > {main}/.git/info/attributes", sandbox="auto"
-        )
-        assert not attrs.ok
-        assert (main / ".git" / "info" / "attributes").read_text() == "* -diff\n"
+            attrs = toolbox.run_bash(
+                (wt,), f"echo '* filter=evil' > {main}/.git/info/attributes", sandbox="auto"
+            )
+            assert not attrs.ok
+            assert (main / ".git" / "info" / "attributes").read_text() == "* -diff\n"
 
-        ident = {
-            "GIT_AUTHOR_NAME": "t",
-            "GIT_AUTHOR_EMAIL": "t@t",
-            "GIT_COMMITTER_NAME": "t",
-            "GIT_COMMITTER_EMAIL": "t@t",
-        }
-        commit = toolbox.run_bash(
-            (wt,), "echo x > f && git add f && git commit -q -m still", env=ident, sandbox="auto"
-        )
-        assert commit.ok, commit.error or commit.content
+            ident = {
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+            }
+            commit = toolbox.run_bash(
+                (wt,),
+                "echo x > f && git add f && git commit -q -m still",
+                env=ident,
+                sandbox="auto",
+            )
+            assert commit.ok, commit.error or commit.content
 
 
-def _use_docker(monkeypatch: pytest.MonkeyPatch, image: str) -> None:
+@contextmanager
+def _use_docker(monkeypatch: pytest.MonkeyPatch, image: str) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-    monkeypatch.setattr(_cfg, "SANDBOX_DOCKER_IMAGE", image)
+    with use_home(dataclasses.replace(current_home(), sandbox_docker_image=image)):
+        yield
 
 
 @pytest.fixture(scope="session")

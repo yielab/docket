@@ -59,9 +59,11 @@ AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "core" / "agent_loop.py"
 
 @pytest.fixture(autouse=True)
 def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    with use_home(Home(tmp_path)):
-        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
-            yield
+    with (
+        use_home(Home(tmp_path)),
+        use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
+    ):
+        yield
 
 
 @pytest.fixture

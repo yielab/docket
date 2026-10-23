@@ -19,7 +19,6 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 import docket.serve as serve
 from docket.kernel.home import Home, use_home
 
@@ -208,7 +207,6 @@ def inbox_live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type:
     home = tmp_path / ".docket"
     home.mkdir()
     with use_home(Home(home)):
-        monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
 
         class _Handler(_DocketHandler):
             serve_token = _INBOX_TEST_TOKEN

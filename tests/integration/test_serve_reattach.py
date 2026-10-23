@@ -29,7 +29,7 @@ from docket.core import pipeline as _pipeline
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -273,7 +273,7 @@ class TestExpiryStates:
         token = _task_list()[0]["approvalToken"]
         record = _ap.approval_get(token)
         record["expiresAt"] = "2000-01-01T00:00:00Z"
-        (_ap._cfg.APPROVALS_DIR / f"{token}.json").write_text(json.dumps(record))
+        (current_home().approvals_dir / f"{token}.json").write_text(json.dumps(record))
 
         with _server():
             pass

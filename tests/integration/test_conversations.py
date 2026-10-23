@@ -13,9 +13,9 @@ from threading import Barrier
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import conversations as C
 from docket.edges import store as _store
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.cli"
@@ -295,41 +295,41 @@ class TestPruneDurable:
     def test_prune_removes_old_done_conversations(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        p = tmp_path / "conversations.json"
-        monkeypatch.setattr(_cfg, "CONVERSATIONS_FILE", p, raising=True)
-        _write(
-            _reg(
-                C.Conversation(
-                    id="a",
-                    agent_id="x",
-                    status=C.ConversationStatus.done,
-                    updated="2020-01-01T00:00:00",
-                )
-            ),
-            p,
-        )
+        p = tmp_path / "docket-conversations.json"
+        with use_home(Home(tmp_path)):
+            _write(
+                _reg(
+                    C.Conversation(
+                        id="a",
+                        agent_id="x",
+                        status=C.ConversationStatus.done,
+                        updated="2020-01-01T00:00:00",
+                    )
+                ),
+                p,
+            )
 
-        assert C.prune_closed_durable(retention_s=0) == 1
+            assert C.prune_closed_durable(retention_s=0) == 1
 
-        assert C.load(p).conversations == []
+            assert C.load(p).conversations == []
 
     def test_prune_dry_run_does_not_delete(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        p = tmp_path / "conversations.json"
-        monkeypatch.setattr(_cfg, "CONVERSATIONS_FILE", p, raising=True)
-        _write(
-            _reg(
-                C.Conversation(
-                    id="a",
-                    agent_id="x",
-                    status=C.ConversationStatus.done,
-                    updated="2020-01-01T00:00:00",
-                )
-            ),
-            p,
-        )
+        p = tmp_path / "docket-conversations.json"
+        with use_home(Home(tmp_path)):
+            _write(
+                _reg(
+                    C.Conversation(
+                        id="a",
+                        agent_id="x",
+                        status=C.ConversationStatus.done,
+                        updated="2020-01-01T00:00:00",
+                    )
+                ),
+                p,
+            )
 
-        assert C.prune_closed_durable(retention_s=0, dry_run=True) == 1
+            assert C.prune_closed_durable(retention_s=0, dry_run=True) == 1
 
-        assert len(C.load(p).conversations) == 1
+            assert len(C.load(p).conversations) == 1

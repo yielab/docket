@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
@@ -75,11 +74,11 @@ class TestAudit:
         """A missing AUDIT_LOG parent means "first-ever docket write", not "docket isn't
         installed": nothing external bootstraps DOCKET_HOME, so audit_log must create its own
         parent directory, or the log would silently lose its first entry on a fresh ~/.docket."""
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "fresh" / "audit.log", raising=True)
-        audit_core.audit_log("keys.add", "X")  # must not raise
-        logf = tmp_path / "fresh" / "audit.log"
-        assert logf.is_file()
-        assert audit_core.read_audit()[0]["action"] == "keys.add"
+        with use_home(Home(tmp_path / "fresh")):
+            audit_core.audit_log("keys.add", "X")  # must not raise
+            logf = tmp_path / "fresh" / "audit.log"
+            assert logf.is_file()
+            assert audit_core.read_audit()[0]["action"] == "keys.add"
 
     def test_run_audit_no_log(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         rc = audit_cli.show_log()

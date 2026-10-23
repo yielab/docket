@@ -8,6 +8,8 @@ time before `summary`, which is truncated rather than dropped).
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 import docket.config as _cfg
@@ -15,7 +17,7 @@ from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import context as _ctx
 from docket.core.handoff import HandoffArtifact
-from docket.kernel.home import current_home
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.context"
 
@@ -37,11 +39,8 @@ class TestEstimateTokens:
         """The whole point of reusing `config.CONTEXT_BYTES_PER_TOKEN` (rather than inventing a second ratio) is that changing the one config value changes both `maintain check`'s and this module's estimate together."""
         text = "y" * 100
         before = _ctx.estimate_tokens(text)
-        try:
-            _cfg.CONTEXT_BYTES_PER_TOKEN = 10
+        with use_home(dataclasses.replace(current_home(), context_bytes_per_token=10)):
             after = _ctx.estimate_tokens(text)
-        finally:
-            _cfg.CONTEXT_BYTES_PER_TOKEN = 4
         assert before == 25
         assert after == 10
 

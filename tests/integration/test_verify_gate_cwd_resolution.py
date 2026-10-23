@@ -22,7 +22,6 @@ from typing import Any
 import pytest
 import typer
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
@@ -40,35 +39,35 @@ class TestResolveMemberCwd:
     def test_task_worktree_wins_when_present(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "projects", raising=True)
-        cwd = _pod_core.resolve_member_cwd(
-            "demo-implementer", task_worktree="/wt/demo", codebase="/src/demo"
-        )
-        assert cwd == "/wt/demo"
+        with use_home(Home(tmp_path)):
+            cwd = _pod_core.resolve_member_cwd(
+                "demo-implementer", task_worktree="/wt/demo", codebase="/src/demo"
+            )
+            assert cwd == "/wt/demo"
 
     def test_falls_back_to_codebase_when_no_worktree(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "projects", raising=True)
-        cwd = _pod_core.resolve_member_cwd(
-            "demo-implementer", task_worktree="", codebase="/src/demo"
-        )
-        assert cwd == "/src/demo"
+        with use_home(Home(tmp_path)):
+            cwd = _pod_core.resolve_member_cwd(
+                "demo-implementer", task_worktree="", codebase="/src/demo"
+            )
+            assert cwd == "/src/demo"
 
     def test_falls_back_to_workspace_dir_when_neither_set(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        projects_dir = tmp_path / "projects"
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects_dir, raising=True)
-        cwd = _pod_core.resolve_member_cwd("demo-implementer", task_worktree="", codebase="")
-        assert cwd == str(projects_dir / "demo-implementer")
+        projects_dir = Home(tmp_path).projects_dir
+        with use_home(Home(tmp_path)):
+            cwd = _pod_core.resolve_member_cwd("demo-implementer", task_worktree="", codebase="")
+            assert cwd == str(projects_dir / "demo-implementer")
 
     def test_defaults_are_falsy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Calling with no task_worktree/codebase args at all behaves like both unset.
-        projects_dir = tmp_path / "projects"
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects_dir, raising=True)
-        cwd = _pod_core.resolve_member_cwd("demo-implementer")
-        assert cwd == str(projects_dir / "demo-implementer")
+        projects_dir = Home(tmp_path).projects_dir
+        with use_home(Home(tmp_path)):
+            cwd = _pod_core.resolve_member_cwd("demo-implementer")
+            assert cwd == str(projects_dir / "demo-implementer")
 
 
 # ── TestDispatchVerifyCwd: the real verify subprocess runs where it should ──

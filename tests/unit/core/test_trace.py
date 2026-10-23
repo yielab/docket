@@ -357,7 +357,7 @@ class TestRedactionKeepsPayloadStructured:
     def _stored(tmp_path: object) -> dict[str, object]:
         import json
 
-        files = list(trace._cfg.TRACES_DIR.glob("*/*.jsonl"))
+        files = list(current_home().traces_dir.glob("*/*.jsonl"))
         assert len(files) == 1
         rec: dict[str, object] = json.loads(files[0].read_text().splitlines()[-1])
         return rec

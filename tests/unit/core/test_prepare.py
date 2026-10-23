@@ -4,23 +4,22 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import prepare as _prepare
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.prepare"
 
 
 @pytest.fixture(autouse=True)
-def _cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    cache = tmp_path / "cache" / "prepare"
-    monkeypatch.setattr(_cfg, "PREPARE_CACHE_DIR", cache)
+def _cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setattr(_prepare._sys, "git_info_exclude", lambda common, patterns: None)
-    return cache
+    with use_home(Home(tmp_path)) as home:
+        yield home.prepare_cache_dir
 
 
 def _tree(root: Path, lockfile: str = "package-lock.json", body: str = "{}") -> Path:

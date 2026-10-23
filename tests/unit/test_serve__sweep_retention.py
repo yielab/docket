@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket import serve
 from docket.core import approval as _ap
 from docket.core import trace as _trace
@@ -38,7 +37,6 @@ def swept_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
             dataclasses.replace(current_home(), session_timeout=3600, trace_retention_days=30)
         ),
     ):
-        monkeypatch.setattr(_cfg, "TRACE_RETENTION_S", 30 * 86400, raising=True)
         monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
         yield d
 

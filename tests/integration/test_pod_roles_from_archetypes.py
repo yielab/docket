@@ -20,7 +20,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import archetypes as _arch
 from docket.core import fleet as _fleet
@@ -134,25 +133,25 @@ class TestModelClassFallback:
     def test_unlisted_cheap_archetype_resolves_via_economy_anchor(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
-        _, tiers, _ = _mp.load_registry()
-        # 'monitor' is a starter-library role with modelClass=cheap and no named
-        # ALL_ROLES row — it must resolve through the economy anchor, not
-        # cfg.DEFAULT_MODEL unconditionally.
-        assert _mp.resolve_role_model("monitor", {}) == tiers["economy"]
+        with use_home(Home(tmp_path)):
+            _, tiers, _ = _mp.load_registry()
+            # 'monitor' is a starter-library role with modelClass=cheap and no named
+            # ALL_ROLES row — it must resolve through the economy anchor, not
+            # cfg.DEFAULT_MODEL unconditionally.
+            assert _mp.resolve_role_model("monitor", {}) == tiers["economy"]
 
     def test_unlisted_strong_archetype_resolves_via_standard_anchor(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
-        _, tiers, _ = _mp.load_registry()
-        assert _mp.resolve_role_model("researcher", {}) == tiers["standard"]
+        with use_home(Home(tmp_path)):
+            _, tiers, _ = _mp.load_registry()
+            assert _mp.resolve_role_model("researcher", {}) == tiers["standard"]
 
     def test_totally_unknown_role_falls_back_to_default_model(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
-        assert _mp.resolve_role_model("totally-not-a-role", {}) == current_home().default_model
+        with use_home(Home(tmp_path)):
+            assert _mp.resolve_role_model("totally-not-a-role", {}) == current_home().default_model
 
 
 class TestPodAddStarterRole:

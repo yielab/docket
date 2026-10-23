@@ -12,7 +12,6 @@ import jsonschema
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
@@ -55,7 +54,6 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
         _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
         task = {
             "id": "task-q",

@@ -12,6 +12,7 @@ required variable is rejected 400 before the run record exists.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.error
@@ -21,9 +22,9 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import pipeline as _pipeline
 from docket.core import runs as _runs
+from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -98,18 +99,22 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Real server on a random port. Yields (base_url, token)."""
     d = tmp_path / "approvals"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", d, raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
+    with (
+        use_home(dataclasses.replace(current_home(), approvals_dir_override=d)),
+        use_home(
+            dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
+        ),
+    ):
 
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _TEST_TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        port = srv.server_address[1]
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        yield f"http://127.0.0.1:{port}", _TEST_TOKEN
+        srv.shutdown()
 
 
 def _post_json(url: str, body: dict[str, Any], token: str) -> tuple[int, dict[str, Any]]:

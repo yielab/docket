@@ -20,7 +20,6 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
@@ -65,17 +64,17 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
         (tmp_path / ".docket").mkdir(exist_ok=True)
         approvals_dir = tmp_path / "approvals"
         approvals_dir.mkdir()
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals_dir, raising=True)
+        with use_home(dataclasses.replace(current_home(), approvals_dir_override=approvals_dir)):
 
-        class _Handler(_DocketHandler):
-            serve_token = _TEST_TOKEN
+            class _Handler(_DocketHandler):
+                serve_token = _TEST_TOKEN
 
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = srv.server_address[1]
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-        srv.shutdown()
+            srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            port = srv.server_address[1]
+            t = threading.Thread(target=srv.serve_forever, daemon=True)
+            t.start()
+            yield f"http://127.0.0.1:{port}", _TEST_TOKEN
+            srv.shutdown()
 
 
 class TestAuth:
@@ -142,29 +141,31 @@ class TestQueueShapeMatchesReadTasks:
 
             approvals_dir = tmp_path / "approvals"
             approvals_dir.mkdir(exist_ok=True)
-            monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals_dir, raising=True)
+            with use_home(
+                dataclasses.replace(current_home(), approvals_dir_override=approvals_dir)
+            ):
 
-            class _Handler(_DocketHandler):
-                serve_token = _TEST_TOKEN
+                class _Handler(_DocketHandler):
+                    serve_token = _TEST_TOKEN
 
-            srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-            port = srv.server_address[1]
-            t = threading.Thread(target=srv.serve_forever, daemon=True)
-            t.start()
-            try:
-                status, body = _get(f"http://127.0.0.1:{port}/tasks/demo", token=_TEST_TOKEN)
-            finally:
-                srv.shutdown()
+                srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+                port = srv.server_address[1]
+                t = threading.Thread(target=srv.serve_forever, daemon=True)
+                t.start()
+                try:
+                    status, body = _get(f"http://127.0.0.1:{port}/tasks/demo", token=_TEST_TOKEN)
+                finally:
+                    srv.shutdown()
 
-            assert status == 200
-            assert all("tokenBudget" in task for task in body["tasks"])
-            assert [
-                {k: v for k, v in t.items() if k != "tokenBudget"} for t in body["tasks"]
-            ] == expected
-            for task in body["tasks"]:
-                assert task["status"] == "pending"
-                assert task["priority"] == "normal"
-                assert "id" in task and "created" in task
+                assert status == 200
+                assert all("tokenBudget" in task for task in body["tasks"])
+                assert [
+                    {k: v for k, v in t.items() if k != "tokenBudget"} for t in body["tasks"]
+                ] == expected
+                for task in body["tasks"]:
+                    assert task["status"] == "pending"
+                    assert task["priority"] == "normal"
+                    assert "id" in task and "created" in task
 
 
 def _post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
@@ -391,15 +392,17 @@ class TestTokenBudget:
     def test_an_uncapped_task_reports_the_configured_turn_budget(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
     ) -> None:
-        with _seed_pod(tmp_path):
-            with use_home(dataclasses.replace(current_home(), agent_loop_token_budget=4321)):
-                url, token = live_server
-                _status, created = _post(f"{url}/tasks/demo", {"description": "x"}, token)
-                status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
-                assert status == 200
-                assert record["tokenBudget"] == 4321
-                _status, listed = _get(f"{url}/tasks/demo", token)
-                assert [t["tokenBudget"] for t in listed["tasks"]] == [4321]
+        with (
+            _seed_pod(tmp_path),
+            use_home(dataclasses.replace(current_home(), agent_loop_token_budget=4321)),
+        ):
+            url, token = live_server
+            _status, created = _post(f"{url}/tasks/demo", {"description": "x"}, token)
+            status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+            assert status == 200
+            assert record["tokenBudget"] == 4321
+            _status, listed = _get(f"{url}/tasks/demo", token)
+            assert [t["tokenBudget"] for t in listed["tasks"]] == [4321]
 
     def test_a_capped_task_reports_what_its_cap_has_left(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]

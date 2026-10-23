@@ -383,9 +383,11 @@ class TestProtects:
     def test_a_malformed_protects_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
     ) -> None:
-        with _seed_fixture_pod(tmp_path, "guard"):
-            with pytest.raises(_pod_apply.PodApplyError, match="protects"):
-                _pod_apply.plan_apply("guard", self._recipe(tmp_path, text))
+        with (
+            _seed_fixture_pod(tmp_path, "guard"),
+            pytest.raises(_pod_apply.PodApplyError, match="protects"),
+        ):
+            _pod_apply.plan_apply("guard", self._recipe(tmp_path, text))
 
     def test_protects_is_not_a_run_item(self, tmp_path: Path) -> None:
         review = _pod_apply.classify_directory(self._recipe(tmp_path, "protects: [a]\n"))

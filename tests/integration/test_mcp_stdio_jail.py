@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 import docket.core.mcp_tools as _mt
 from docket.cli import app
 from docket.core import audit as _audit
@@ -67,7 +66,6 @@ def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
     with use_home(
         dataclasses.replace(current_home(), mcp_servers_file_override=tmp_path / "mcp-servers.json")
     ):
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         yield
 

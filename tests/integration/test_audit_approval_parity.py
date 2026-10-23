@@ -24,7 +24,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.core import approval as _ap
 from docket.core import audit as _audit
@@ -371,8 +370,11 @@ class TestAuditFailureNeverBreaksApproval:
         """A missing AUDIT_LOG parent dir is best-effort created rather than raising or losing
         the entry -- nothing external bootstraps DOCKET_HOME, so a missing parent just means
         "first write" (see `core/audit.py`'s `audit_log()` docstring)."""
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "nope" / "audit.log", raising=True)
-        token = _ap.approval_create("proj-missing-dir", "implementer", "x")
-        _ap.approval_grant(token, channel="cli")  # must not raise
-        assert _ap.approval_get(token)["state"] == "granted"
-        assert (home / "nope" / "audit.log").is_file()
+        missing = dataclasses.replace(
+            current_home(), root=home / "nope", approvals_dir_override=home / "approvals"
+        )
+        with use_home(missing):
+            token = _ap.approval_create("proj-missing-dir", "implementer", "x")
+            _ap.approval_grant(token, channel="cli")  # must not raise
+            assert _ap.approval_get(token)["state"] == "granted"
+            assert (home / "nope" / "audit.log").is_file()

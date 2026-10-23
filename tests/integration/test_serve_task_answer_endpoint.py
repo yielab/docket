@@ -11,6 +11,7 @@ lacks (see `cli/_pod.py::_pod_delegate`'s identical contention note).
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import threading
@@ -23,12 +24,11 @@ from typing import Any
 import pytest
 from tests.fakes import FakeDriver
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -137,65 +137,67 @@ class TestHappyPath:
 
         approvals_dir = pod_home / "approvals"
         approvals_dir.mkdir(exist_ok=True)
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals_dir, raising=True)
+        with use_home(dataclasses.replace(current_home(), approvals_dir_override=approvals_dir)):
 
-        class _Handler(_DocketHandler):
-            serve_token = _TEST_TOKEN
+            class _Handler(_DocketHandler):
+                serve_token = _TEST_TOKEN
 
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = srv.server_address[1]
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        try:
-            status, body = _post(
-                f"http://127.0.0.1:{port}/tasks/{task['id']}/answer",
-                {"pod": "demo", "action": "accept", "content": {"answer": "ship it"}},
-                token=_TEST_TOKEN,
-            )
-        finally:
-            srv.shutdown()
+            srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            port = srv.server_address[1]
+            t = threading.Thread(target=srv.serve_forever, daemon=True)
+            t.start()
+            try:
+                status, body = _post(
+                    f"http://127.0.0.1:{port}/tasks/{task['id']}/answer",
+                    {"pod": "demo", "action": "accept", "content": {"answer": "ship it"}},
+                    token=_TEST_TOKEN,
+                )
+            finally:
+                srv.shutdown()
 
-        assert status == 200
-        assert body["id"] == task["id"]
-        assert body["pod"] == "demo"
+            assert status == 200
+            assert body["id"] == task["id"]
+            assert body["pod"] == "demo"
 
-        after = _dispatch.read_tasks("demo")[0]
-        assert after["answers"][0]["content"] == {"answer": "ship it"}
-        assert after["answers"][0]["channel"] == "http"
-        assert after["answers"][0]["actor"] == "http"
+            after = _dispatch.read_tasks("demo")[0]
+            assert after["answers"][0]["content"] == {"answer": "ship it"}
+            assert after["answers"][0]["channel"] == "http"
+            assert after["answers"][0]["actor"] == "http"
 
     def test_actor_field_labels_the_audit_entry(
         self, monkeypatch: pytest.MonkeyPatch, pod_home: Path
     ) -> None:
         task = _seed_parked_task("demo")
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", pod_home / "approvals", raising=True)
-        (pod_home / "approvals").mkdir(exist_ok=True)
+        with use_home(
+            dataclasses.replace(current_home(), approvals_dir_override=pod_home / "approvals")
+        ):
+            (pod_home / "approvals").mkdir(exist_ok=True)
 
-        class _Handler(_DocketHandler):
-            serve_token = _TEST_TOKEN
+            class _Handler(_DocketHandler):
+                serve_token = _TEST_TOKEN
 
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = srv.server_address[1]
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        try:
-            status, _body = _post(
-                f"http://127.0.0.1:{port}/tasks/{task['id']}/answer",
-                {
-                    "pod": "demo",
-                    "action": "accept",
-                    "content": {"answer": "ship it"},
-                    "actor": "tack",
-                },
-                token=_TEST_TOKEN,
-            )
-        finally:
-            srv.shutdown()
+            srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            port = srv.server_address[1]
+            t = threading.Thread(target=srv.serve_forever, daemon=True)
+            t.start()
+            try:
+                status, _body = _post(
+                    f"http://127.0.0.1:{port}/tasks/{task['id']}/answer",
+                    {
+                        "pod": "demo",
+                        "action": "accept",
+                        "content": {"answer": "ship it"},
+                        "actor": "tack",
+                    },
+                    token=_TEST_TOKEN,
+                )
+            finally:
+                srv.shutdown()
 
-        assert status == 200
-        record = next(r for r in _audit.read_audit() if r["action"] == "task.answer")
-        assert "channel=http" in record["detail"]
-        assert "actor=tack" in record["detail"]
+            assert status == 200
+            record = next(r for r in _audit.read_audit() if r["action"] == "task.answer")
+            assert "channel=http" in record["detail"]
+            assert "actor=tack" in record["detail"]
 
 
 class TestErrorMapping:

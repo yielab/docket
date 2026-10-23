@@ -5,6 +5,7 @@ in-place approval prompt. A real gated `bash` hop, through the real `DocketDrive
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 from collections.abc import Iterator
@@ -16,7 +17,6 @@ import pytest
 from tests.conftest import record_isolation_off
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod, _run, _setup
 from docket.cli import app as _app
 from docket.core import audit as _audit
@@ -111,9 +111,13 @@ def _gated_bash_backend(after_gate: str) -> _ScriptedBackend:
     )
 
 
-def _fast_approval_polling(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_POLL_INTERVAL_S", 0.02, raising=True)
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 5, raising=True)
+@contextmanager
+def _fast_approval_polling() -> Iterator[None]:
+    fast = dataclasses.replace(
+        current_home(), tool_approval_poll_interval_s=0.02, tool_approval_timeout=5
+    )
+    with use_home(fast):
+        yield
 
 
 def _fake_tty(monkeypatch: pytest.MonkeyPatch, answer_line: str) -> None:
@@ -129,21 +133,21 @@ class TestForegroundApprovalPrompt:
     ) -> None:
         with _seed_pod(tmp_path):
             install_policies()
-            _fast_approval_polling(monkeypatch)
-            _fake_tty(monkeypatch, "a\n")
+            with _fast_approval_polling():
+                _fake_tty(monkeypatch, "a\n")
 
-            backend = _gated_bash_backend("implementer done")
-            driver = DocketDriver(backend_factory=lambda model: backend)
-            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+                backend = _gated_bash_backend("implementer done")
+                driver = DocketDriver(backend_factory=lambda model: backend)
+                monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "push the release", channel="cli")
-            _run._pod_dispatch("demo")
+                _dispatch.enqueue_task("demo", "push the release", channel="cli")
+                _run._pod_dispatch("demo")
 
-            tasks = _dispatch.read_tasks("demo")
-            assert tasks[0]["status"] == "done"
-            audit_text = _audit.read_audit_text() or ""
-            assert "approval.grant" in audit_text
-            assert "channel=cli" in audit_text
+                tasks = _dispatch.read_tasks("demo")
+                assert tasks[0]["status"] == "done"
+                audit_text = _audit.read_audit_text() or ""
+                assert "approval.grant" in audit_text
+                assert "channel=cli" in audit_text
 
     def test_d_denies_the_gated_hop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """`d` denies through the same pair `docket task deny` uses: the tool result
@@ -151,27 +155,29 @@ class TestForegroundApprovalPrompt:
         `cli` channel, exactly as a second-terminal `docket task deny` would."""
         with _seed_pod(tmp_path) as home:
             install_policies()
-            _fast_approval_polling(monkeypatch)
-            _fake_tty(monkeypatch, "d\n")
+            with _fast_approval_polling():
+                _fake_tty(monkeypatch, "d\n")
 
-            backend = _gated_bash_backend("acknowledged, not pushing")
-            driver = DocketDriver(backend_factory=lambda model: backend)
-            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+                backend = _gated_bash_backend("acknowledged, not pushing")
+                driver = DocketDriver(backend_factory=lambda model: backend)
+                monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "push the release", channel="cli")
-            _run._pod_dispatch("demo")
+                _dispatch.enqueue_task("demo", "push the release", channel="cli")
+                _run._pod_dispatch("demo")
 
-            tasks = _dispatch.read_tasks("demo")
-            assert tasks[0]["status"] == "done"  # the model accepted the denial and finished
-            trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
-            events = [
-                json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
-            ]
-            tool_results = [e for e in events if e.get("event_type") == "tool_result"]
-            assert any(e["payload"].get("denialKind") == "approval_denied" for e in tool_results)
-            audit_text = _audit.read_audit_text() or ""
-            assert "approval.deny" in audit_text
-            assert "channel=cli" in audit_text
+                tasks = _dispatch.read_tasks("demo")
+                assert tasks[0]["status"] == "done"  # the model accepted the denial and finished
+                trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
+                events = [
+                    json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
+                ]
+                tool_results = [e for e in events if e.get("event_type") == "tool_result"]
+                assert any(
+                    e["payload"].get("denialKind") == "approval_denied" for e in tool_results
+                )
+                audit_text = _audit.read_audit_text() or ""
+                assert "approval.deny" in audit_text
+                assert "channel=cli" in audit_text
 
 
 class TestNoTtyNoChangePath:

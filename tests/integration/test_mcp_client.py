@@ -40,9 +40,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    with use_home(Home(tmp_path)):
-        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
-            yield
+    with (
+        use_home(Home(tmp_path)),
+        use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
+    ):
+        yield
 
 
 def _audit_actions() -> list[str]:

@@ -489,16 +489,16 @@ class TestNormalizePolicy:
         for label, doc in (("short", self._SHORT), ("canonical", self._CANONICAL)):
             d = tmp_path / label
             d.mkdir()
-            monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
-            (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
-            assert (
-                _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src").action
-                == "allow"
-            )
-            assert (
-                _policy.policy_eval_detail("implementer", "pre_tool_call", "rm -rf /tmp").action
-                == "require_approval"
-            )
+            with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
+                (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
+                assert (
+                    _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src").action
+                    == "allow"
+                )
+                assert (
+                    _policy.policy_eval_detail("implementer", "pre_tool_call", "rm -rf /tmp").action
+                    == "require_approval"
+                )
 
     def test_unknown_kind_is_refused(self) -> None:
         with pytest.raises(ValueError, match="policy"):

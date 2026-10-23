@@ -24,7 +24,6 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.cli import _pod
 from docket.cli import _setup_model as keys_cli
@@ -494,17 +493,17 @@ class TestRotationErasureDetection:
     # the one backup generation that would substantiate the continuation claim is itself
     # missing or altered, verify_chain() reports a break instead of "no break".
 
-    def _flood_past_two_rotations(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 300, raising=True)
-        _audit.audit_log("keys.add", "SECRET_ONE")
-        _audit.audit_log("keys.remove", "SECRET_TWO")
-        for i in range(200):
-            _audit.audit_log("noise.tick", f"n{i}")
+    def _flood_past_two_rotations(self) -> None:
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=300)):
+            _audit.audit_log("keys.add", "SECRET_ONE")
+            _audit.audit_log("keys.remove", "SECRET_TWO")
+            for i in range(200):
+                _audit.audit_log("noise.tick", f"n{i}")
 
     def test_flooding_erases_the_entries_but_seq_no_longer_hides_it(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        self._flood_past_two_rotations(monkeypatch)
+        self._flood_past_two_rotations()
 
         # The bug's original symptom is still true: the secret-bearing lines
         # are genuinely gone from disk. Nothing about this card recovers them.
@@ -531,7 +530,7 @@ class TestRotationErasureDetection:
         """The concrete guard: erasing the one remaining link (audit.log.1) turns a
         verifiable continuation into an unverifiable one, which verify_chain() must
         report as a break rather than a clean chain."""
-        self._flood_past_two_rotations(monkeypatch)
+        self._flood_past_two_rotations()
         assert _audit.verify_chain().break_at is None  # sanity: clean before erasure
 
         (audit_home / "audit.log.1").unlink()

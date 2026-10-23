@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.error
@@ -14,7 +15,6 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import evidence as _ev
@@ -36,10 +36,9 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        approvals = tmp_path / "approvals"
-        approvals.mkdir()
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals, raising=True)
+    approvals = tmp_path / "approvals"
+    approvals.mkdir()
+    with use_home(dataclasses.replace(Home(home), approvals_dir_override=approvals)):
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
         hop = _dispatch._hop_record(

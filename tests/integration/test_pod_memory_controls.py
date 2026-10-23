@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import audit as _audit
@@ -38,7 +37,6 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
         repo = tmp_path / "origin"
         (repo / "dist").mkdir(parents=True)
         (repo / "dist" / "bundle.js").write_text("x\n")

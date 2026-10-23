@@ -16,7 +16,7 @@ from tests.fakes import FakeDriver
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._pod"
 
@@ -96,7 +96,7 @@ def _invoke(*args: str, project: str = "demo") -> tuple[int, str]:
 def _meta(member_id: str) -> dict[str, Any]:
     from docket.edges import store as _store
 
-    return dict(_store.read_json(_pod._cfg.meta_path(member_id)))
+    return dict(_store.read_json(current_home().meta_path(member_id)))
 
 
 class TestPodRemove:

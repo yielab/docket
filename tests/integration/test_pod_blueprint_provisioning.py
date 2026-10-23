@@ -215,59 +215,61 @@ class TestSoftwareParity:
     def test_workspace_files_byte_identical(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with self._provision(tmp_path / "a", via_blueprint=False) as oc_a:
-            with self._provision(tmp_path / "b", via_blueprint=True) as oc_b:
-                for role in ("lead", "implementer"):
-                    ws_a, ws_b = _ws(oc_a, f"demo-{role}"), _ws(oc_b, f"demo-{role}")
-                    for fname in self._MEMBER_FILES:
-                        text_a = self._normalize_root((ws_a / fname).read_text(), oc_a)
-                        text_b = self._normalize_root((ws_b / fname).read_text(), oc_b)
-                        assert text_a == text_b, f"{role}/{fname} differs"
+        with (
+            self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
+            self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
+        ):
+            for role in ("lead", "implementer"):
+                ws_a, ws_b = _ws(oc_a, f"demo-{role}"), _ws(oc_b, f"demo-{role}")
+                for fname in self._MEMBER_FILES:
+                    text_a = self._normalize_root((ws_a / fname).read_text(), oc_a)
+                    text_b = self._normalize_root((ws_b / fname).read_text(), oc_b)
+                    assert text_a == text_b, f"{role}/{fname} differs"
 
-                # TOOLS.md exists only for the Implementer, in both — same port
-                # numbers (both start from an equally empty allocation table).
-                assert not (_ws(oc_a, "demo-lead") / "TOOLS.md").exists()
-                assert not (_ws(oc_b, "demo-lead") / "TOOLS.md").exists()
-                tools_a = self._normalize_root(
-                    (_ws(oc_a, "demo-implementer") / "TOOLS.md").read_text(), oc_a
-                )
-                tools_b = self._normalize_root(
-                    (_ws(oc_b, "demo-implementer") / "TOOLS.md").read_text(), oc_b
-                )
-                assert tools_a == tools_b
+            # TOOLS.md exists only for the Implementer, in both — same port
+            # numbers (both start from an equally empty allocation table).
+            assert not (_ws(oc_a, "demo-lead") / "TOOLS.md").exists()
+            assert not (_ws(oc_b, "demo-lead") / "TOOLS.md").exists()
+            tools_a = self._normalize_root(
+                (_ws(oc_a, "demo-implementer") / "TOOLS.md").read_text(), oc_a
+            )
+            tools_b = self._normalize_root(
+                (_ws(oc_b, "demo-implementer") / "TOOLS.md").read_text(), oc_b
+            )
+            assert tools_a == tools_b
 
     def test_meta_identical_except_additive_blueprint_stamp(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with self._provision(tmp_path / "a", via_blueprint=False) as oc_a:
-            with self._provision(tmp_path / "b", via_blueprint=True) as oc_b:
-                for mid in ("demo-lead", "demo-implementer"):
-                    meta_a = _meta(oc_a, mid)
-                    meta_b = _meta(oc_b, mid)
-                    # Two fields legitimately differ across two separate provisioning
-                    # calls / tmp-dir roots: the creation timestamp, and (implementer
-                    # only) the absolute scratch-dir path.
-                    meta_a.pop("created", None)
-                    meta_b.pop("created", None)
-                    if "scratchDir" in meta_a or "scratchDir" in meta_b:
-                        assert meta_a.pop("scratchDir", "").endswith(
-                            "/workspaces/pods/demo/.scratch"
-                        )
-                        assert meta_b.pop("scratchDir", "").endswith(
-                            "/workspaces/pods/demo/.scratch"
-                        )
-                    assert meta_b.pop("blueprint") == "software"
-                    assert "blueprint" not in meta_a
-                    assert "workspaceKind" not in meta_a
-                    assert "workspaceKind" not in meta_b
-                    assert meta_a == meta_b
+        with (
+            self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
+            self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
+        ):
+            for mid in ("demo-lead", "demo-implementer"):
+                meta_a = _meta(oc_a, mid)
+                meta_b = _meta(oc_b, mid)
+                # Two fields legitimately differ across two separate provisioning
+                # calls / tmp-dir roots: the creation timestamp, and (implementer
+                # only) the absolute scratch-dir path.
+                meta_a.pop("created", None)
+                meta_b.pop("created", None)
+                if "scratchDir" in meta_a or "scratchDir" in meta_b:
+                    assert meta_a.pop("scratchDir", "").endswith("/workspaces/pods/demo/.scratch")
+                    assert meta_b.pop("scratchDir", "").endswith("/workspaces/pods/demo/.scratch")
+                assert meta_b.pop("blueprint") == "software"
+                assert "blueprint" not in meta_a
+                assert "workspaceKind" not in meta_a
+                assert "workspaceKind" not in meta_b
+                assert meta_a == meta_b
 
     def test_same_member_ids_and_registration(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with self._provision(tmp_path / "a", via_blueprint=False) as oc_a:
-            with self._provision(tmp_path / "b", via_blueprint=True) as oc_b:
-                assert sorted(_ids(oc_a)) == sorted(_ids(oc_b)) == ["demo-implementer", "demo-lead"]
+        with (
+            self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
+            self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
+        ):
+            assert sorted(_ids(oc_a)) == sorted(_ids(oc_b)) == ["demo-implementer", "demo-lead"]
 
     def test_no_default_budget_cap(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         with self._provision(tmp_path / "b", via_blueprint=True) as oc_b:

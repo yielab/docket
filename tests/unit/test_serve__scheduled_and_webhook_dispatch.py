@@ -24,7 +24,6 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 import docket.serve as _serve
 from docket.core import runs as _runs
 from docket.core import schedule as _sched
@@ -59,18 +58,22 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Minimal APPROVALS_DIR to satisfy any sweep that might run.
     d = tmp_path / "approvals"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", d, raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
+    with (
+        use_home(dataclasses.replace(current_home(), approvals_dir_override=d)),
+        use_home(
+            dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
+        ),
+    ):
 
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _TEST_TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        port = srv.server_address[1]
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        yield f"http://127.0.0.1:{port}", _TEST_TOKEN
+        srv.shutdown()
 
 
 def _post(
