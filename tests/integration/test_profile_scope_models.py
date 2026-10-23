@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import register_local_provider, repoint_docket_home
+from tests.conftest import register_local_provider
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -49,8 +50,7 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, oc_dir)
+    with use_home(Home(oc_dir)):
         result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
 

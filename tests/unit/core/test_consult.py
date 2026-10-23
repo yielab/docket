@@ -3,27 +3,32 @@ the operator a decision question with options and a recommendation, bounded per 
 
 from __future__ import annotations
 
+import dataclasses
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import archetypes as _arch
 from docket.core import consult as _consult
 from docket.core import trace as _trace
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, ToolResult, builtin_registry, dispatch_tool
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.consult"
 
 
 @pytest.fixture(autouse=True)
-def _short_waits(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 1, raising=True)
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "_policies", raising=True)
+def _short_waits(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    with use_home(
+        dataclasses.replace(
+            current_home(), tool_approval_timeout=1, policies_dir_override=tmp_path / "_policies"
+        )
+    ):
+        yield
 
 
 def _args(**over: Any) -> dict[str, Any]:

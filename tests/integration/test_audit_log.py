@@ -11,23 +11,25 @@ fixture, since these tests inspect what got written.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import multiprocessing
 import os
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.cli import _pod
 from docket.cli import _setup_model as keys_cli
 from docket.cli._agents import InitRequest, run_init
 from docket.core import audit as _audit
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -38,16 +40,18 @@ def _entries(action: str) -> list[dict[str, Any]]:
     return [e for e in _audit.read_audit() if e["action"] == action]
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield home
 
 
-def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "demo") -> Path:
+@contextmanager
+def _seed_agent(tmp_path: Path, aid: str = "demo") -> Iterator[Path]:
     """A minimal, non-pod project agent: workspace + meta + fleet.json entry."""
     home = tmp_path / ".docket"
     ws = home / "workspaces" / "projects" / aid
@@ -72,8 +76,8 @@ def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "dem
         encoding="utf-8",
     )
 
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _concurrent_audit_writer(
@@ -103,12 +107,12 @@ def _hold_audit_lock(
 
 
 @pytest.fixture()
-def audit_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def audit_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A bare DOCKET_HOME for exercising core/audit.py directly."""
     d = tmp_path / ".docket"
     d.mkdir()
-    repoint_docket_home(monkeypatch, d)
-    return d
+    with use_home(Home(d)):
+        yield d
 
 
 # ── hash chain: core/audit.py ───────────────────────────────────────────────
@@ -183,15 +187,14 @@ class TestAtomicAuditTransition:
     def test_32_process_writers_below_rotation_are_one_contiguous_chain(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1_000_000, raising=True)
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1_000_000)):
+            received = self._write_concurrently(monkeypatch)
 
-        received = self._write_concurrently(monkeypatch)
-
-        assert {status for _, status in received} == {"written"}
-        entries = _audit.read_audit()
-        assert {entry["action"] for entry in entries} == {action for action, _ in received}
-        assert [entry["seq"] for entry in entries] == list(range(1, self._WRITERS + 1))
-        assert _audit.verify_chain().break_at is None
+            assert {status for _, status in received} == {"written"}
+            entries = _audit.read_audit()
+            assert {entry["action"] for entry in entries} == {action for action, _ in received}
+            assert [entry["seq"] for entry in entries] == list(range(1, self._WRITERS + 1))
+            assert _audit.verify_chain().break_at is None
 
     def test_32_process_writers_across_one_rotation_remain_contiguous(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -199,17 +202,17 @@ class TestAtomicAuditTransition:
         # The seed forces the first contender to rotate, while the new current
         # generation remains comfortably below the cap for every 32 events.
         limit = 20_000
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", limit, raising=True)
-        (audit_home / "audit.log").write_text("x" * limit, encoding="utf-8")
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=limit)):
+            (audit_home / "audit.log").write_text("x" * limit, encoding="utf-8")
 
-        received = self._write_concurrently(monkeypatch, "rotated")
+            received = self._write_concurrently(monkeypatch, "rotated")
 
-        assert {status for _, status in received} == {"written"}
-        entries = _audit.read_audit()
-        assert {entry["action"] for entry in entries} == {action for action, _ in received}
-        assert [entry["seq"] for entry in entries] == list(range(1, self._WRITERS + 1))
-        assert (audit_home / "audit.log.1").exists()
-        assert _audit.verify_chain().break_at is None
+            assert {status for _, status in received} == {"written"}
+            entries = _audit.read_audit()
+            assert {entry["action"] for entry in entries} == {action for action, _ in received}
+            assert [entry["seq"] for entry in entries] == list(range(1, self._WRITERS + 1))
+            assert (audit_home / "audit.log.1").exists()
+            assert _audit.verify_chain().break_at is None
 
     def test_lock_timeout_is_failed_without_recording_an_event(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -221,7 +224,7 @@ class TestAtomicAuditTransition:
         release = context.Event()
         holder = context.Process(
             target=_hold_audit_lock,
-            args=(ready, release, str(_audit._audit_lock_path(_cfg.AUDIT_LOG))),
+            args=(ready, release, str(_audit._audit_lock_path(current_home().audit_log))),
         )
         holder.start()
         assert ready.wait(timeout=15)
@@ -285,31 +288,31 @@ class TestAtomicAuditTransition:
     def test_append_failure_after_rotation_recovers_from_the_backup_head(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
-        assert _audit.audit_log("keys.add", "FIRST").status == "written"
-        real_open = Path.open
-        failed_once = False
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1)):
+            assert _audit.audit_log("keys.add", "FIRST").status == "written"
+            real_open = Path.open
+            failed_once = False
 
-        def fail_once(self: Path, mode: str = "r", *args: object, **kwargs: object) -> object:
-            nonlocal failed_once
-            if self == audit_home / "audit.log" and mode == "a+" and not failed_once:
-                failed_once = True
-                raise OSError("injected post-rotation append failure")
-            return real_open(self, mode, *args, **kwargs)
+            def fail_once(self: Path, mode: str = "r", *args: object, **kwargs: object) -> object:
+                nonlocal failed_once
+                if self == audit_home / "audit.log" and mode == "a+" and not failed_once:
+                    failed_once = True
+                    raise OSError("injected post-rotation append failure")
+                return real_open(self, mode, *args, **kwargs)
 
-        monkeypatch.setattr(Path, "open", fail_once, raising=True)
-        assert _audit.audit_log("keys.add", "FAILED").status == "failed"
-        assert not (audit_home / "audit.log").exists()
-        backup_entries = [
-            json.loads(line) for line in (audit_home / "audit.log.1").read_text().splitlines()
-        ]
-        assert [entry["detail"] for entry in backup_entries] == ["FIRST"]
+            monkeypatch.setattr(Path, "open", fail_once, raising=True)
+            assert _audit.audit_log("keys.add", "FAILED").status == "failed"
+            assert not (audit_home / "audit.log").exists()
+            backup_entries = [
+                json.loads(line) for line in (audit_home / "audit.log.1").read_text().splitlines()
+            ]
+            assert [entry["detail"] for entry in backup_entries] == ["FIRST"]
 
-        assert _audit.audit_log("keys.add", "RECOVERED").status == "written"
-        entries = _audit.read_audit()
-        assert [(entry["seq"], entry["detail"]) for entry in entries] == [(2, "RECOVERED")]
-        assert entries[0]["prev_hash"] == _audit._hash_entry(backup_entries[0])
-        assert _audit.verify_chain().break_at is None
+            assert _audit.audit_log("keys.add", "RECOVERED").status == "written"
+            entries = _audit.read_audit()
+            assert [(entry["seq"], entry["detail"]) for entry in entries] == [(2, "RECOVERED")]
+            assert entries[0]["prev_hash"] == _audit._hash_entry(backup_entries[0])
+            assert _audit.verify_chain().break_at is None
 
     def test_success_restores_owner_only_permissions(self, audit_home: Path) -> None:
         result = _audit.audit_log("keys.add", "PERMISSIONS")
@@ -352,17 +355,17 @@ class TestAuditLogNeverRaises:
     ) -> None:
         # _rotate_if_needed's os.replace can itself fail (e.g. a read-only
         # parent) -- must degrade to "no rotation happened" (None), not raise.
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
-        _audit.audit_log("keys.add", "FIRST")
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1)):
+            _audit.audit_log("keys.add", "FIRST")
 
-        def _boom(*a: object, **kw: object) -> None:
-            raise OSError("simulated: cannot rename during rotation")
+            def _boom(*a: object, **kw: object) -> None:
+                raise OSError("simulated: cannot rename during rotation")
 
-        monkeypatch.setattr("os.replace", _boom, raising=True)
-        _audit.audit_log("keys.add", "SECOND")  # must not raise despite rotation failing
-        # The write itself still succeeded (best-effort covers rotation only).
-        entries = _audit.read_audit()
-        assert entries[-1]["detail"] == "SECOND"
+            monkeypatch.setattr("os.replace", _boom, raising=True)
+            _audit.audit_log("keys.add", "SECOND")  # must not raise despite rotation failing
+            # The write itself still succeeded (best-effort covers rotation only).
+            entries = _audit.read_audit()
+            assert entries[-1]["detail"] == "SECOND"
 
 
 class TestChainVerify:
@@ -451,30 +454,28 @@ class TestChainVerify:
         rc = audit_cli.show_log()
         assert rc == 0
 
-    def test_single_rotation_continues_the_chain_and_verifies_clean(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_single_rotation_continues_the_chain_and_verifies_clean(self, audit_home: Path) -> None:
         """A single rotation continues the chain rather than restarting it at seq=1."""
         # The new current file's first entry carries the rotated generation's final
         # seq+1 and its hash as prev_hash -- a continuation claim -- and verify_chain
         # checks that claim against the backup it just wrote, reporting it clean with
         # continued_from_seq set rather than a fresh (indistinguishable-from-genesis)
         # restart.
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
-        _audit.audit_log("keys.add", "FIRST")
-        _audit.audit_log("keys.add", "SECOND")
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1)):
+            _audit.audit_log("keys.add", "FIRST")
+            _audit.audit_log("keys.add", "SECOND")
 
-        assert (audit_home / "audit.log.1").exists()
-        entries = _audit.read_audit()
-        assert entries[0]["seq"] == 2  # continues from the rotated "FIRST", not 1
-        assert entries[0]["prev_hash"] != _audit.GENESIS_HASH
+            assert (audit_home / "audit.log.1").exists()
+            entries = _audit.read_audit()
+            assert entries[0]["seq"] == 2  # continues from the rotated "FIRST", not 1
+            assert entries[0]["prev_hash"] != _audit.GENESIS_HASH
 
-        result = _audit.verify_chain()
-        assert result.rotated_backup is True
-        assert result.break_at is None
-        assert result.chained == 1  # only "SECOND" is in the current file
-        assert result.total_lines == 1  # rotated-away "FIRST" isn't in this count either
-        assert result.continued_from_seq == 1  # verified against audit.log.1's "FIRST"
+            result = _audit.verify_chain()
+            assert result.rotated_backup is True
+            assert result.break_at is None
+            assert result.chained == 1  # only "SECOND" is in the current file
+            assert result.total_lines == 1  # rotated-away "FIRST" isn't in this count either
+            assert result.continued_from_seq == 1  # verified against audit.log.1's "FIRST"
 
 
 class TestRotationErasureDetection:
@@ -490,17 +491,15 @@ class TestRotationErasureDetection:
     # the one backup generation that would substantiate the continuation claim is itself
     # missing or altered, verify_chain() reports a break instead of "no break".
 
-    def _flood_past_two_rotations(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 300, raising=True)
-        _audit.audit_log("keys.add", "SECRET_ONE")
-        _audit.audit_log("keys.remove", "SECRET_TWO")
-        for i in range(200):
-            _audit.audit_log("noise.tick", f"n{i}")
+    def _flood_past_two_rotations(self) -> None:
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=300)):
+            _audit.audit_log("keys.add", "SECRET_ONE")
+            _audit.audit_log("keys.remove", "SECRET_TWO")
+            for i in range(200):
+                _audit.audit_log("noise.tick", f"n{i}")
 
-    def test_flooding_erases_the_entries_but_seq_no_longer_hides_it(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._flood_past_two_rotations(monkeypatch)
+    def test_flooding_erases_the_entries_but_seq_no_longer_hides_it(self, audit_home: Path) -> None:
+        self._flood_past_two_rotations()
 
         # The bug's original symptom is still true: the secret-bearing lines
         # are genuinely gone from disk. Nothing about this card recovers them.
@@ -521,13 +520,11 @@ class TestRotationErasureDetection:
         assert result.break_at is None
         assert result.continued_from_seq is not None
 
-    def test_deleting_the_backup_after_flooding_is_now_detected(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deleting_the_backup_after_flooding_is_now_detected(self, audit_home: Path) -> None:
         """The concrete guard: erasing the one remaining link (audit.log.1) turns a
         verifiable continuation into an unverifiable one, which verify_chain() must
         report as a break rather than a clean chain."""
-        self._flood_past_two_rotations(monkeypatch)
+        self._flood_past_two_rotations()
         assert _audit.verify_chain().break_at is None  # sanity: clean before erasure
 
         (audit_home / "audit.log.1").unlink()
@@ -539,26 +536,24 @@ class TestRotationErasureDetection:
         assert result.rotated_backup is False
         assert result.continued_from_seq is None
 
-    def test_altering_the_backups_tail_after_rotation_is_detected(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_altering_the_backups_tail_after_rotation_is_detected(self, audit_home: Path) -> None:
         """Deleting the backup isn't the only way to hide history -- hand-
         editing its last line so it no longer matches the current file's
         continuation claim must be caught the same way."""
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
-        _audit.audit_log("keys.add", "FIRST")
-        _audit.audit_log("keys.add", "SECOND")
-        assert _audit.verify_chain().break_at is None  # sanity: clean before tamper
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1)):
+            _audit.audit_log("keys.add", "FIRST")
+            _audit.audit_log("keys.add", "SECOND")
+            assert _audit.verify_chain().break_at is None  # sanity: clean before tamper
 
-        backup = audit_home / "audit.log.1"
-        tampered = json.loads(backup.read_text(encoding="utf-8").strip())
-        tampered["detail"] = "TAMPERED"
-        backup.write_text(json.dumps(tampered) + "\n", encoding="utf-8")
+            backup = audit_home / "audit.log.1"
+            tampered = json.loads(backup.read_text(encoding="utf-8").strip())
+            tampered["detail"] = "TAMPERED"
+            backup.write_text(json.dumps(tampered) + "\n", encoding="utf-8")
 
-        result = _audit.verify_chain()
-        assert result.break_at is not None
-        assert result.break_at.line == 1
-        assert "does not match" in result.break_at.reason
+            result = _audit.verify_chain()
+            assert result.break_at is not None
+            assert result.break_at.line == 1
+            assert "does not match" in result.break_at.reason
 
 
 class TestPreexistingLogBackwardCompat:
@@ -664,32 +659,32 @@ class TestAuditVerifyCommand:
         assert "line 2 of 3" in captured.err
 
     def test_verify_reports_a_verified_rotation_continuation(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, audit_home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
-        _audit.audit_log("keys.add", "FIRST")
-        _audit.audit_log("keys.add", "SECOND")
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1)):
+            _audit.audit_log("keys.add", "FIRST")
+            _audit.audit_log("keys.add", "SECOND")
 
-        rc = audit_cli.verify_log()
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "verified clean" in out
-        assert "continues from a rotated generation" in out
+            rc = audit_cli.verify_log()
+            out = capsys.readouterr().out
+            assert rc == 0
+            assert "verified clean" in out
+            assert "continues from a rotated generation" in out
 
     def test_verify_reports_erasure_of_the_rotated_backup_as_a_failure(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, audit_home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         # Deleting audit.log.1 after a rotation must not let `docket log verify`
         # report a clean chain (exit 0); it must fail loudly (exit 1).
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
-        _audit.audit_log("keys.add", "FIRST")
-        _audit.audit_log("keys.add", "SECOND")
-        (audit_home / "audit.log.1").unlink()
+        with use_home(dataclasses.replace(current_home(), audit_log_max_bytes=1)):
+            _audit.audit_log("keys.add", "FIRST")
+            _audit.audit_log("keys.add", "SECOND")
+            (audit_home / "audit.log.1").unlink()
 
-        rc = audit_cli.verify_log()
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "audit.log.1 is missing" in captured.err
+            rc = audit_cli.verify_log()
+            captured = capsys.readouterr()
+            assert rc == 1
+            assert "audit.log.1 is missing" in captured.err
 
 
 # ── new call-site coverage ───────────────────────────────────────────────────
@@ -700,11 +695,11 @@ _KEY_VALUE = "sk-ant-testvalue00000000000000"
 
 class TestKeysAudit:
     @pytest.fixture()
-    def keys_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    def keys_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         d = tmp_path / ".docket"
         d.mkdir()
-        repoint_docket_home(monkeypatch, d)
-        return d
+        with use_home(Home(d)):
+            yield d
 
     def test_keys_add_writes_one_entry_no_secret_value(self, keys_home: Path) -> None:
         assert keys_cli._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
@@ -735,52 +730,48 @@ class TestKeysAudit:
 
 
 class TestPodSettingsAudit:
-    def test_budget_set_writes_one_config_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _pod.set_setting("demo", "budgetUsd", "5")
-        entries = _entries("pod.config")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
+    def test_budget_set_writes_one_config_entry(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            _pod.set_setting("demo", "budgetUsd", "5")
+            entries = _entries("pod.config")
+            assert len(entries) == 1
+            assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
 
-    def test_unset_writes_one_config_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _pod.unset_setting("demo", "budgetUsd")
-        entries = _entries("pod.config")
-        assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetUsd"]
+    def test_unset_writes_one_config_entry(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            _pod.unset_setting("demo", "budgetUsd")
+            entries = _entries("pod.config")
+            assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetUsd"]
 
 
 class TestAgentAddDeleteAudit:
-    def test_agent_add_declarative_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_agent_add_declarative_writes_one_entry(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        spec_file = tmp_path / "spec.json"
-        spec_file.write_text(
-            json.dumps({"id": "declaredpod", "blueprint": "software", "codebase": str(tmp_path)})
-        )
+        with use_home(Home(home)):
+            spec_file = tmp_path / "spec.json"
+            spec_file.write_text(
+                json.dumps(
+                    {"id": "declaredpod", "blueprint": "software", "codebase": str(tmp_path)}
+                )
+            )
 
-        rc = run_init(InitRequest(from_file=str(spec_file)))
-        assert rc == 0
+            rc = run_init(InitRequest(from_file=str(spec_file)))
+            assert rc == 0
 
-        entries = _entries("agent.add")
-        assert len(entries) == 1
-        assert entries[0]["detail"].startswith("declaredpod blueprint=software")
-        assert entries[0]["detail"].endswith("source=declarative")
+            entries = _entries("agent.add")
+            assert len(entries) == 1
+            assert entries[0]["detail"].startswith("declaredpod blueprint=software")
+            assert entries[0]["detail"].endswith("source=declarative")
 
-    def test_pod_delete_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        result = CliRunner().invoke(_pod.pod_app, ["delete", "--pod", "demo", "--confirm", "demo"])
-        assert result.exit_code == 0, result.output
+    def test_pod_delete_writes_one_entry(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            result = CliRunner().invoke(
+                _pod.pod_app, ["delete", "--pod", "demo", "--confirm", "demo"]
+            )
+            assert result.exit_code == 0, result.output
 
-        entries = _entries("pod.delete")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "demo pod (2 members)"
+            entries = _entries("pod.delete")
+            assert len(entries) == 1
+            assert entries[0]["detail"] == "demo pod (2 members)"

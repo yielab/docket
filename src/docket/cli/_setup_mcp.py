@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import typer
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.core import mcp_tools as _mcp_tools
 from docket.core.audit import audit_log
+from docket.kernel.home import current_home
 
 mcp_app = typer.Typer(
     name="mcp",
@@ -60,7 +60,7 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
             ]
         )
     ui.table(rows, ["NAME", "COMMAND", "KIND", "TOOLS", "TIMEOUT", "ENV"])
-    ui.dim(f"  Config file: {_cfg.MCP_SERVERS_FILE}")
+    ui.dim(f"  Config file: {current_home().mcp_servers_file}")
 
 
 @mcp_app.command("add")

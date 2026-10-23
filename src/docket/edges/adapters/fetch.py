@@ -35,9 +35,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-import docket.config as _cfg
 from docket.edges.adapters.toolbox import ToolOutcome, text_outcome
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 _USER_AGENT = "docket-fetch/1"
 # A caller's per-call timeout is clamped to this multiple of FETCH_TIMEOUT_S.
@@ -82,14 +82,14 @@ class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 def _allowed_domains() -> frozenset[str]:
-    return frozenset(_cfg.FETCH_ALLOWED_DOMAINS)
+    return frozenset(current_home().fetch_allowed_domains)
 
 
 def _effective_timeout(timeout: int) -> float:
     """The caller's timeout bounded by the clamp; non-positive falls back to the default."""
     if timeout > 0:
-        return min(timeout, FETCH_CLAMP_MULTIPLE * _cfg.FETCH_TIMEOUT_S)
-    return _cfg.FETCH_TIMEOUT_S
+        return min(timeout, FETCH_CLAMP_MULTIPLE * current_home().fetch_timeout_s)
+    return current_home().fetch_timeout_s
 
 
 def _read_until_deadline(resp: object, cap: int, deadline: float) -> bytes | None:
@@ -144,7 +144,7 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
         with opener.open(request, timeout=effective_timeout) as resp:
             status = resp.status
             content_type = resp.headers.get("Content-Type", "")
-            read = _read_until_deadline(resp, _cfg.FETCH_MAX_RESPONSE_BYTES, deadline)
+            read = _read_until_deadline(resp, current_home().fetch_max_response_bytes, deadline)
             if read is None:
                 return ToolOutcome(
                     False, error=f"timed out after {effective_timeout}s fetching {url}"
@@ -165,10 +165,12 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     except OSError as ex:
         return ToolOutcome(False, error=f"cannot reach {url}: {ex}")
 
-    truncated = len(raw) > _cfg.FETCH_MAX_RESPONSE_BYTES
-    body = raw[: _cfg.FETCH_MAX_RESPONSE_BYTES]
+    truncated = len(raw) > current_home().fetch_max_response_bytes
+    body = raw[: current_home().fetch_max_response_bytes]
     text = body.decode("utf-8", errors="replace")
     if truncated:
-        text += f"\n\n[truncated: response exceeded {_cfg.FETCH_MAX_RESPONSE_BYTES} bytes]"
+        text += (
+            f"\n\n[truncated: response exceeded {current_home().fetch_max_response_bytes} bytes]"
+        )
     header = f"HTTP {status} {content_type}".rstrip()
     return text_outcome(f"{header}\n\n{text}" if content_type else text)

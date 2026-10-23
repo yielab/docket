@@ -6,11 +6,11 @@ import json
 import re
 from typing import Any, NamedTuple
 
-import docket.config as cfg
 from docket.core import archetypes as _arch
 from docket.core import provider as _provider
 from docket.edges import store as _store
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 ALL_ROLES: tuple[str, ...] = (
     "lead",
@@ -147,9 +147,9 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     bad model id) are silently ignored, like ``default``/``roles`` below.
     """
     tiers = dict(rank_anchors())
-    default_model = cfg.DEFAULT_MODEL
+    default_model = current_home().default_model
 
-    path = cfg.MODEL_REGISTRY_FILE
+    path = current_home().model_registry_file
     if not path.exists():
         return _init_role_models(tiers), tiers, default_model
 
@@ -179,7 +179,7 @@ def find_registry_problems() -> list[tuple[str, str]]:
     """Return ``(key, reason)`` pairs for a malformed ``docket-models.json`` entry that
     ``load_registry`` silently ignores -- for ``docket setup --fix``. *key* is the file path
     itself for an unreadable file, else a dotted ``rankAnchors.<x>``/``roles.<x>``/``default``."""
-    path = cfg.MODEL_REGISTRY_FILE
+    path = current_home().model_registry_file
     if not path.exists():
         return []
     try:
@@ -303,7 +303,9 @@ def validate_model(model: str) -> tuple[str, list[str]]:
 
     # 2. Malformed.
     role_models, _, _ = load_registry()
-    lines = "\n".join(f"  {r:<12} {role_models.get(r, cfg.DEFAULT_MODEL)}" for r in ALL_ROLES)
+    lines = "\n".join(
+        f"  {r:<12} {role_models.get(r, current_home().default_model)}" for r in ALL_ROLES
+    )
     raise InvalidInput(
         f"Invalid model: '{model}'\n"
         "Use a full provider/model ID (e.g. anthropic/claude-sonnet-4-6).\n"
@@ -373,7 +375,7 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
     'rank.*' persists a registry-overridable anchor so a non-Anthropic
     preset also replaces displayed anchors, not just roles. reset=True
     clears all user overrides."""
-    path = cfg.MODEL_REGISTRY_FILE
+    path = current_home().model_registry_file
     try:
         reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception:

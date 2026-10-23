@@ -14,17 +14,18 @@ event emitted per hop by ``dispatch_task``, end to end through a real pod).
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import context as _context
 from docket.core import dispatch as _dispatch
 from docket.core import runtime_driver as _rd
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -37,13 +38,14 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield home
 
 
 def _hop(role: str, output: str, member_id: str = "") -> _dispatch.HopResult:
@@ -150,7 +152,7 @@ class TestHopMessageCap:
         prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
         message, comp = _dispatch._hop_message(task, "tester", prior)
 
-        cap_bytes = cap_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
+        cap_bytes = cap_tokens * current_home().context_bytes_per_token
         total_carryover = sum(s["sent_bytes"] for s in comp.sections)
         assert total_carryover < cap_bytes
         assert all(s["truncated"] for s in comp.sections)
@@ -202,56 +204,52 @@ class _BigOutputRunner:
 
 
 class TestContextComposedTrace:
-    def test_context_composed_emitted_per_hop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Trace the context", channel="cli")
-        _dispatch.dispatch_pod("demo", runner=_BigOutputRunner())
+    def test_context_composed_emitted_per_hop(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            _dispatch.enqueue_task("demo", "Trace the context", channel="cli")
+            _dispatch.dispatch_pod("demo", runner=_BigOutputRunner())
 
-        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
-        assert len(trace_files) == 1
-        events: list[dict[str, Any]] = [
-            json.loads(line) for line in trace_files[0].read_text().splitlines()
-        ]
-        composed = [e for e in events if e["event_type"] == "context_composed"]
-        assert len(composed) == 2  # one per hop: lead, implementer
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            assert len(trace_files) == 1
+            events: list[dict[str, Any]] = [
+                json.loads(line) for line in trace_files[0].read_text().splitlines()
+            ]
+            composed = [e for e in events if e["event_type"] == "context_composed"]
+            assert len(composed) == 2  # one per hop: lead, implementer
 
-        lead_payload = composed[0]["payload"]
-        assert lead_payload["hop"] == "lead"
-        assert lead_payload["sections"] == []
-        assert lead_payload["truncated"] is False
+            lead_payload = composed[0]["payload"]
+            assert lead_payload["hop"] == "lead"
+            assert lead_payload["sections"] == []
+            assert lead_payload["truncated"] is False
 
-        impl_payload = composed[1]["payload"]
-        assert impl_payload["hop"] == "implementer"
-        assert len(impl_payload["sections"]) == 1
-        section = impl_payload["sections"][0]
-        assert section["role"] == "lead"
-        assert section["original_bytes"] == 50_000
-        assert section["truncated"] is True
-        assert section["sent_bytes"] < 50_000
-        assert impl_payload["truncated"] is True
+            impl_payload = composed[1]["payload"]
+            assert impl_payload["hop"] == "implementer"
+            assert len(impl_payload["sections"]) == 1
+            section = impl_payload["sections"][0]
+            assert section["role"] == "lead"
+            assert section["original_bytes"] == 50_000
+            assert section["truncated"] is True
+            assert section["sent_bytes"] < 50_000
+            assert impl_payload["truncated"] is True
 
-    def test_context_composed_not_truncated_for_small_outputs(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Small trace", channel="cli")
+    def test_context_composed_not_truncated_for_small_outputs(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            _dispatch.enqueue_task("demo", "Small trace", channel="cli")
 
-        class _SmallRunner:
-            def __call__(
-                self,
-                agent_id: str,
-                session_key: str,
-                message: str,
-                timeout: int,
-                env: dict[str, str] | None = None,
-            ) -> _rd.TurnResult:
-                return _rd.TurnResult(True, "tiny output", 0.0, {})
+            class _SmallRunner:
+                def __call__(
+                    self,
+                    agent_id: str,
+                    session_key: str,
+                    message: str,
+                    timeout: int,
+                    env: dict[str, str] | None = None,
+                ) -> _rd.TurnResult:
+                    return _rd.TurnResult(True, "tiny output", 0.0, {})
 
-        _dispatch.dispatch_pod("demo", runner=_SmallRunner())
-        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
-        events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
-        composed = [e for e in events if e["event_type"] == "context_composed"]
-        assert len(composed) == 2
-        assert all(e["payload"]["truncated"] is False for e in composed)
+            _dispatch.dispatch_pod("demo", runner=_SmallRunner())
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
+            composed = [e for e in events if e["event_type"] == "context_composed"]
+            assert len(composed) == 2
+            assert all(e["payload"]["truncated"] is False for e in composed)

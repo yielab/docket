@@ -7,10 +7,11 @@ operator-loop.spec.md "Profile lines".
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, record_isolation_on, repoint_docket_home
+from tests.conftest import record_isolation_off, record_isolation_on
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
@@ -23,6 +24,7 @@ from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod_core
 from docket.core import secrets as _secrets
 from docket.edges.adapters import system as _system
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -57,15 +59,15 @@ def _spec(text: str) -> _pipeline.PipelineSpec:
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, root)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
-    return root
+    with use_home(Home(root)):
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
+        yield root
 
 
 def _meet_everything(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:

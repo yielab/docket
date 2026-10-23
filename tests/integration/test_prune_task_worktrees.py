@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import pod_provisioning as pp
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_provisioning"
 
@@ -31,24 +31,26 @@ def _branches(repo: Path) -> set[str]:
 
 
 @pytest.fixture()
-def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
-    repoint_docket_home(monkeypatch, home)
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True)
-    _git(repo, "config", "user.email", "t@t.com")
-    _git(repo, "config", "user.name", "T")
-    (repo / "a.txt").write_text("a\n")
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-m", "init")
-    ws = _cfg.PROJECTS_DIR / IMPL
-    ws.mkdir()
-    (ws / _cfg.META_FILE).write_text(json.dumps({"codebase": str(repo), "pod": PROJECT}))
-    lead = _cfg.PROJECTS_DIR / f"{PROJECT}-lead"
-    lead.mkdir()
-    return {"repo": repo, "tasks": lead / "TASK_LIST.json"}
+    with use_home(Home(home)):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True)
+        _git(repo, "config", "user.email", "t@t.com")
+        _git(repo, "config", "user.name", "T")
+        (repo / "a.txt").write_text("a\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "init")
+        ws = current_home().projects_dir / IMPL
+        ws.mkdir()
+        (ws / current_home().meta_file).write_text(
+            json.dumps({"codebase": str(repo), "pod": PROJECT})
+        )
+        lead = current_home().projects_dir / f"{PROJECT}-lead"
+        lead.mkdir()
+        yield {"repo": repo, "tasks": lead / "TASK_LIST.json"}
 
 
 def _add_task(
@@ -133,7 +135,7 @@ def test_force_removes_unmerged_and_audits(env: dict[str, Any]) -> None:
     assert not Path(rec["dir"]).exists()
     assert rec["branch"] in _branches(env["repo"])  # the commits stay reachable
     assert _task(env, "t-unmerged")["worktree"]["prunedAt"]
-    log = _cfg.AUDIT_LOG.read_text()
+    log = current_home().audit_log.read_text()
     assert "pod.worktrees.prune" in log and "t-unmerged" in log
 
 
@@ -150,7 +152,7 @@ def test_dir_outside_member_tasks_dir_is_never_removed(env: dict[str, Any], tmp_
                         "status": "done",
                         "worktree": {
                             "dir": str(
-                                _cfg.PROJECTS_DIR
+                                current_home().projects_dir
                                 / IMPL
                                 / "tasks"
                                 / ".."

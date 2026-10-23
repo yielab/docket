@@ -33,6 +33,7 @@ import docket.config as _cfg
 from docket.core.operator_contract import EVENT_KINDS
 from docket.edges import store as _store
 from docket.kernel.errors import DocumentError, InvalidInput
+from docket.kernel.home import current_home
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -301,7 +302,7 @@ def _merge_with_builtin_raw(name: str, raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_global_channels() -> dict[str, ChannelSpec]:
-    raw = _store.read_json(_cfg.CHANNELS_FILE)
+    raw = _store.read_json(current_home().channels_file)
     channels = raw.get("channels") if isinstance(raw, dict) else None
     entries: dict[str, ChannelSpec] = {}
     if not isinstance(channels, dict):
@@ -346,7 +347,7 @@ def save_channel(spec: ChannelSpec) -> None:
         current["channels"] = channels
         return current
 
-    _store.read_modify_write(_cfg.CHANNELS_FILE, _update)
+    _store.read_modify_write(current_home().channels_file, _update)
 
 
 def delete_channel(name: str) -> None:
@@ -364,18 +365,20 @@ def delete_channel(name: str) -> None:
         removed = True
         return current
 
-    _store.read_modify_write(_cfg.CHANNELS_FILE, _update)
+    _store.read_modify_write(current_home().channels_file, _update)
     if removed:
         return
 
     scope = load_catalog().source_of(name)
     if scope == "built-in":
         raise ChannelError(
-            _cfg.CHANNELS_FILE,
+            current_home().channels_file,
             "name",
             f"'{name}' is a built-in channel with no global override -- nothing to remove",
         )
-    raise ChannelError(_cfg.CHANNELS_FILE, "name", f"'{name}' is not in the channel catalog")
+    raise ChannelError(
+        current_home().channels_file, "name", f"'{name}' is not in the channel catalog"
+    )
 
 
 def _enable_refusal(spec: ChannelSpec) -> str:
@@ -395,13 +398,15 @@ def enable_channel(name: str, overrides: dict[str, Any] | None = None) -> Channe
     resulting document that fails `_enable_refusal`."""
     current = load_catalog().get(name)
     if current is None:
-        raise ChannelError(_cfg.CHANNELS_FILE, "name", f"'{name}' is not in the channel catalog")
+        raise ChannelError(
+            current_home().channels_file, "name", f"'{name}' is not in the channel catalog"
+        )
 
     clean = {k: v for k, v in (overrides or {}).items() if k not in ("kind", "name", "enabled")}
     prospective = current.model_copy(update=clean) if clean else current
     refusal = _enable_refusal(prospective)
     if refusal:
-        raise ChannelError(_cfg.CHANNELS_FILE, "enable", refusal)
+        raise ChannelError(current_home().channels_file, "enable", refusal)
 
     def _update(doc: dict[str, Any]) -> dict[str, Any]:
         channels = doc.get("channels")
@@ -416,7 +421,7 @@ def enable_channel(name: str, overrides: dict[str, Any] | None = None) -> Channe
         doc["channels"] = channels
         return doc
 
-    _store.read_modify_write(_cfg.CHANNELS_FILE, _update)
+    _store.read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -433,7 +438,9 @@ def disable_channel(name: str) -> ChannelSpec:
     stored overrides untouched. A stored `secret` name is never touched. Refuses a name absent
     from the catalog."""
     if load_catalog().get(name) is None:
-        raise ChannelError(_cfg.CHANNELS_FILE, "name", f"'{name}' is not in the channel catalog")
+        raise ChannelError(
+            current_home().channels_file, "name", f"'{name}' is not in the channel catalog"
+        )
 
     def _update(doc: dict[str, Any]) -> dict[str, Any]:
         channels = doc.get("channels")
@@ -447,7 +454,7 @@ def disable_channel(name: str) -> ChannelSpec:
         doc["channels"] = channels
         return doc
 
-    _store.read_modify_write(_cfg.CHANNELS_FILE, _update)
+    _store.read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -470,10 +477,12 @@ def set_content(name: str, level: str) -> ChannelSpec:
     itself."""
     current = load_catalog().get(name)
     if current is None:
-        raise ChannelError(_cfg.CHANNELS_FILE, "name", f"'{name}' is not in the channel catalog")
+        raise ChannelError(
+            current_home().channels_file, "name", f"'{name}' is not in the channel catalog"
+        )
     if level not in _CONTENT_RANK:
         raise ChannelError(
-            _cfg.CHANNELS_FILE,
+            current_home().channels_file,
             "content",
             f"'{level}' is not a known content level",
             valid=tuple(_CONTENT_RANK),
@@ -493,7 +502,7 @@ def set_content(name: str, level: str) -> ChannelSpec:
         doc["channels"] = channels
         return doc
 
-    _store.read_modify_write(_cfg.CHANNELS_FILE, _update)
+    _store.read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -509,13 +518,15 @@ def export_channel(name: str) -> str:
     stores a credential *name* in ``secret``."""
     spec = load_catalog().get(name)
     if spec is None:
-        raise ChannelError(_cfg.CHANNELS_FILE, "name", f"'{name}' is not in the channel catalog")
+        raise ChannelError(
+            current_home().channels_file, "name", f"'{name}' is not in the channel catalog"
+        )
 
     try:
         import yaml as _yaml
     except ImportError:
         raise ChannelError(
-            _cfg.CHANNELS_FILE, "file", "PyYAML not installed -- run: pip install pyyaml"
+            current_home().channels_file, "file", "PyYAML not installed -- run: pip install pyyaml"
         ) from None
 
     payload = {

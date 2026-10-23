@@ -12,20 +12,21 @@ specs/functional/pod-dispatch.spec.md Requirements 3-4.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -33,7 +34,7 @@ SUBJECT = "docket.core"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -41,11 +42,12 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
+        yield
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,
@@ -74,7 +76,7 @@ def _seed_full_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = N
 
 def _trace_events(project: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    traces_dir = _cfg.TRACES_DIR / project
+    traces_dir = current_home().traces_dir / project
     if not traces_dir.is_dir():
         return events
     for f in traces_dir.glob("*.jsonl"):
@@ -476,9 +478,7 @@ class _CrashOnSecondImplementerCallRunner:
 
 
 class TestReviewerReworkResume:
-    def test_resume_continues_into_rework_implementer_not_past_it(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_resume_continues_into_rework_implementer_not_past_it(self, tmp_path: Path) -> None:
         _seed_full_pod()
         _dispatch.enqueue_task("myapp", "Resume me mid-rework", channel="cli")
 
@@ -495,35 +495,34 @@ class TestReviewerReworkResume:
         assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer", "reviewer"]
 
         # Force the claim stale, exactly like test_dispatch.py's own crash-recovery tests.
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            resumer = _ReworkRunner(request_changes_count=0)  # approves whenever asked
+            results = _dispatch.dispatch_pod("myapp", runner=resumer, resume=True)
 
-        resumer = _ReworkRunner(request_changes_count=0)  # approves whenever asked
-        results = _dispatch.dispatch_pod("myapp", runner=resumer, resume=True)
+            assert len(results) == 1
+            assert results[0].status == "done"
+            # The critical assertion: resume re-enters at the REWORK IMPLEMENTER
+            # hop first — not a second Reviewer call, and not skipping straight to
+            # the Tester. A naive role-based "already done" resume would
+            # have seen "reviewer" already in the persisted hops and skipped
+            # straight past it to the Tester, silently dropping the rework.
+            roles_resumed = [c[0] for c in resumer.calls]
+            assert roles_resumed == ["implementer", "reviewer", "tester"]
 
-        assert len(results) == 1
-        assert results[0].status == "done"
-        # The critical assertion: resume re-enters at the REWORK IMPLEMENTER
-        # hop first — not a second Reviewer call, and not skipping straight to
-        # the Tester. A naive role-based "already done" resume would
-        # have seen "reviewer" already in the persisted hops and skipped
-        # straight past it to the Tester, silently dropping the rework.
-        roles_resumed = [c[0] for c in resumer.calls]
-        assert roles_resumed == ["implementer", "reviewer", "tester"]
-
-        final = _dispatch.read_tasks("myapp")[0]
-        assert final["status"] == "done"
-        assert [h["role"] for h in final["hops"]] == [
-            "lead",
-            "implementer",
-            "reviewer",
-            "implementer",
-            "reviewer",
-            "tester",
-        ]
-        assert final["claimId"] is None
+            final = _dispatch.read_tasks("myapp")[0]
+            assert final["status"] == "done"
+            assert [h["role"] for h in final["hops"]] == [
+                "lead",
+                "implementer",
+                "reviewer",
+                "implementer",
+                "reviewer",
+                "tester",
+            ]
+            assert final["claimId"] is None
 
     def test_resumed_rework_implementer_message_still_carries_review_text(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """The rework note must survive a crash+resume, not just a live run."""
         _seed_full_pod()
@@ -532,11 +531,10 @@ class TestReviewerReworkResume:
         crasher = _CrashOnSecondImplementerCallRunner()
         with pytest.raises(RuntimeError):
             _dispatch.dispatch_pod("myapp", runner=crasher)
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            resumer = _ReworkRunner(request_changes_count=0)
+            _dispatch.dispatch_pod("myapp", runner=resumer, resume=True)
 
-        resumer = _ReworkRunner(request_changes_count=0)
-        _dispatch.dispatch_pod("myapp", runner=resumer, resume=True)
-
-        rework_message = next(msg for role, msg in resumer.calls if role == "implementer")
-        assert "REWORK REQUIRED" in rework_message
-        assert "fix the widget" in rework_message
+            rework_message = next(msg for role, msg in resumer.calls if role == "implementer")
+            assert "REWORK REQUIRED" in rework_message
+            assert "fix the widget" in rework_message

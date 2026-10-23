@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.cli._target import TargetError, resolve_pod
 from docket.edges import store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._target"
 
@@ -19,7 +19,7 @@ SUBJECT = "docket.cli._target"
 def _register(pod: str, root: Path) -> None:
     aid = f"{pod}-lead"
     root.mkdir(parents=True, exist_ok=True)
-    meta = _cfg.meta_path(aid)
+    meta = current_home().meta_path(aid)
     meta.parent.mkdir(parents=True, exist_ok=True)
     store.write_json(meta, {"pod": pod, "codebase": str(root)})
 

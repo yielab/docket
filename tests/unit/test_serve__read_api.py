@@ -13,14 +13,14 @@ Acceptance criteria:
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 import docket.serve as serve
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.serve"
 
@@ -44,7 +44,7 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
     ws = home / "workspaces" / "projects" / "apitest"
@@ -55,8 +55,8 @@ def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     # repoint_docket_home points APPROVALS_DIR at home/"approvals" without
     # creating it, so list_pending() still returns [] gracefully.
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 # ── TestApiContract: machine-readable contract pins ───────────────────────────
@@ -206,18 +206,17 @@ def inbox_live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type:
 
     home = tmp_path / ".docket"
     home.mkdir()
-    repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
+    with use_home(Home(home)):
 
-    class _Handler(_DocketHandler):
-        serve_token = _INBOX_TEST_TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _INBOX_TEST_TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}"
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        port = srv.server_address[1]
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        yield f"http://127.0.0.1:{port}"
+        srv.shutdown()
 
 
 def _get_json(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:

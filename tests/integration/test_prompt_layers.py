@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import archetypes as _arch
 from docket.core import identity as _identity
 from docket.core import tools as _tools
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.identity"
 
@@ -35,13 +36,15 @@ def _checkout(path: Path) -> Path:
 
 
 @pytest.fixture
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(_checkout(tmp_path / "origin")))
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(
+            "demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(_checkout(tmp_path / "origin"))
+        )
+        yield home
 
 
 def test_two_worktrees_compose_a_byte_identical_system_prompt(

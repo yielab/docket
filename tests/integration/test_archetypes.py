@@ -17,10 +17,10 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import archetypes as arch
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.archetypes"
 
@@ -28,7 +28,7 @@ SUBJECT = "docket.core.archetypes"
 @pytest.fixture
 def registry_file() -> Path:
     """The role overlay of the pod ``seeded_pod`` names (the autouse fixture isolates the home)."""
-    return _cfg.pod_config_dir("demo") / "roles.json"
+    return current_home().pod_config_dir("demo") / "roles.json"
 
 
 @pytest.fixture
@@ -261,7 +261,7 @@ class TestRegistryOverlay:
             arch.add_user_archetype({"version": 1}, "demo")
 
     def test_a_global_roles_file_is_not_read(self, registry_file: Path) -> None:
-        stray = _cfg.DOCKET_HOME / "docket-roles.json"
+        stray = current_home().root / "docket-roles.json"
         stray.parent.mkdir(parents=True, exist_ok=True)
         stray.write_text(
             json.dumps({"roles": {"lead": {**arch.BUILTIN_ARCHETYPES["lead"].to_wire()}}}),

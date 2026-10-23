@@ -12,22 +12,24 @@ Acceptance criteria:
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
 import json
 import os as _os
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core.approval import _approval_path
 from docket.edges import store as _store
-from docket.kernel.threads import ContextHTTPServer
+from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.approval"
@@ -39,11 +41,11 @@ _TEST_TOKEN = "test-serve-token-cd4-abc123"
 
 
 @pytest.fixture()
-def approvals_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def approvals_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     d = tmp_path / "approvals"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", d, raising=True)
-    return d
+    with use_home(dataclasses.replace(current_home(), approvals_dir_override=d)):
+        yield d
 
 
 @pytest.fixture()
@@ -266,7 +268,7 @@ class TestGrantDenyViaEndpoint:
         def decide(action: str) -> None:
             replies.append(_post(f"{url}/approvals/{apr_token}", {"action": action}, token))
 
-        threads = [threading.Thread(target=decide, args=(action,)) for action in ("grant", "deny")]
+        threads = [new_thread(target=decide, args=(action,)) for action in ("grant", "deny")]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -313,8 +315,8 @@ class TestGrantDenyViaEndpoint:
                 outcomes["deny"] = "lost"
 
         first, second = (grant, deny) if start_grant_first else (deny, grant)
-        t1 = threading.Thread(target=first)
-        t2 = threading.Thread(target=second)
+        t1 = new_thread(target=first)
+        t2 = new_thread(target=second)
         t1.start()
         t2.start()
         t1.join(timeout=5)
@@ -480,7 +482,7 @@ class TestEveryApprovalRecordsItsDeadline:
         rec = _approval.approval_get(_approval.approval_create("projX", "implementer", "x"))
         created = _dt.datetime.strptime(rec["created"][:19], "%Y-%m-%dT%H:%M:%S")
         expires = _dt.datetime.strptime(rec["expiresAt"][:19], "%Y-%m-%dT%H:%M:%S")
-        assert expires - created == _dt.timedelta(seconds=_cfg.APPROVAL_TIMEOUT)
+        assert expires - created == _dt.timedelta(seconds=current_home().approval_timeout)
 
     def test_given_deadline_is_kept(self, approvals_dir: Path) -> None:
         """An explicit expires_at is stored verbatim."""
@@ -513,7 +515,7 @@ class TestExpiryStillFailCloses:
     def test_sweep_expires_old_pending(self, approvals_dir: Path) -> None:
         apr_token = _approval.approval_create("projS", "implementer", "x")
         rec = _approval.approval_get(apr_token)
-        old = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=_cfg.APPROVAL_TIMEOUT + 1)
+        old = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=current_home().approval_timeout + 1)
         rec["created"] = old.strftime("%Y-%m-%dT%H:%M:%SZ")
         rec["expiresAt"] = rec["created"]
         _store.write_json(_approval_path(apr_token), rec)
@@ -619,13 +621,13 @@ class TestPruneResolved:
     def test_prune_removes_old_resolved_keeps_recent_and_pending(self, approvals_dir: Path) -> None:
         old_granted = _approval.approval_create("proj", "implementer", "x")
         _approval.approval_grant(old_granted, channel="cli")
-        self._age_by(_approval_path(old_granted), _cfg.TRACE_RETENTION_S + 3600)
+        self._age_by(_approval_path(old_granted), current_home().trace_retention_s + 3600)
 
         recent_denied = _approval.approval_create("proj", "implementer", "x")
         _approval.approval_deny(recent_denied, channel="cli")
 
         still_pending = _approval.approval_create("proj", "implementer", "x")
-        self._age_by(_approval_path(still_pending), _cfg.TRACE_RETENTION_S + 3600)
+        self._age_by(_approval_path(still_pending), current_home().trace_retention_s + 3600)
 
         removed = _approval.prune_resolved()
 
@@ -637,7 +639,7 @@ class TestPruneResolved:
     def test_prune_dry_run_reports_without_deleting(self, approvals_dir: Path) -> None:
         token = _approval.approval_create("proj", "implementer", "x")
         _approval.approval_grant(token, channel="cli")
-        self._age_by(_approval_path(token), _cfg.TRACE_RETENTION_S + 3600)
+        self._age_by(_approval_path(token), current_home().trace_retention_s + 3600)
 
         removed = _approval.prune_resolved(dry_run=True)
 
@@ -705,14 +707,12 @@ class TestApprovalReasonAndActor:
         # The detail should have the exact format without actor/reason
         assert last_line["detail"] == f"token={token} project=proj channel=cli"
 
-    def test_deny_with_blocked_reason_leaves_pending(
-        self, approvals_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deny_with_blocked_reason_leaves_pending(self, approvals_dir: Path) -> None:
         """A deny with a reason that trips a pre_input block leaves the approval pending."""
         token = _approval.approval_create("proj", "implementer", "action")
 
         # Create a blocking policy
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy_doc = {
             "id": "block-test",
             "description": "Block test patterns",
@@ -722,7 +722,9 @@ class TestApprovalReasonAndActor:
             "action": "block",
             "message": "Blocked.",
         }
-        (_cfg.POLICIES_DIR / "block-test.json").write_text(json.dumps(policy_doc), encoding="utf-8")
+        (current_home().policies_dir / "block-test.json").write_text(
+            json.dumps(policy_doc), encoding="utf-8"
+        )
 
         # Try to deny with a blocked reason
         with pytest.raises(_approval.ApprovalError, match="Reason blocked by policy"):

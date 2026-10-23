@@ -13,13 +13,13 @@ trip even when the driver reports no USD cost -- always labelled, never contamin
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
@@ -29,6 +29,7 @@ from docket.core import pod as _podcore
 from docket.core import runtime_driver as _rd
 from docket.core import utils as _utils
 from docket.core.models import AgentMeta
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -40,18 +41,18 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
+@contextmanager
 def _seed_pod(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     project: str = "demo",
     roles: tuple[str, ...] = _podcore.DEFAULT_POD_ROLES,
-) -> Path:
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, roles, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        yield home
 
 
 class _RecordingRunner:
@@ -81,7 +82,7 @@ def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tok
     from urllib.parse import quote
 
     session_key = f"agent:{agent_id}:default"
-    sdir = _cfg.SESSIONS_DIR / quote(session_key, safe="")
+    sdir = current_home().sessions_dir / quote(session_key, safe="")
     sdir.mkdir(parents=True, exist_ok=True)
     record = {
         "sessionKey": session_key,
@@ -143,42 +144,44 @@ class TestAutoPauseDispatch:
     def test_cap_breach_pauses_lead_and_blocks_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
-        monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+        with _seed_pod(tmp_path):
+            _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
 
-        results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
-        assert results[0].status == "blocked"
+            results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+            assert results[0].status == "blocked"
 
-        lead_id = _podcore.member_id("demo", "lead")
-        meta = _fleet.meta_read(lead_id)
-        assert meta.is_paused() is True
-        assert meta.paused_reason == "budget"
+            lead_id = _podcore.member_id("demo", "lead")
+            meta = _fleet.meta_read(lead_id)
+            assert meta.is_paused() is True
+            assert meta.paused_reason == "budget"
 
     def test_paused_pod_refuses_claim_at_next_dispatch(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "One", channel="cli")
-        _dispatch.enqueue_task("demo", "Two", channel="cli")
-        monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        with _seed_pod(tmp_path) as oc_dir:
+            _dispatch.enqueue_task("demo", "One", channel="cli")
+            _dispatch.enqueue_task("demo", "Two", channel="cli")
+            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+            _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
 
-        # Second dispatch: the pod is now paused — nothing should even be
-        # claimed (task "Two" stays exactly "pending", untouched), and no
-        # further agent turn should run (no wasted cost).
-        runner = _RecordingRunner()
-        results = _dispatch.dispatch_pod("demo", runner=runner)
-        assert results == []
-        assert runner.calls == []
-        tasks = {t["description"]: t["status"] for t in _dispatch.read_tasks("demo")}
-        assert tasks["Two"] == "pending"
+            # Second dispatch: the pod is now paused — nothing should even be
+            # claimed (task "Two" stays exactly "pending", untouched), and no
+            # further agent turn should run (no wasted cost).
+            runner = _RecordingRunner()
+            results = _dispatch.dispatch_pod("demo", runner=runner)
+            assert results == []
+            assert runner.calls == []
+            tasks = {t["description"]: t["status"] for t in _dispatch.read_tasks("demo")}
+            assert tasks["Two"] == "pending"
 
-        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
-        events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
-        assert any(e["event_type"] == "paused_refused" for e in events)
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            events = [
+                json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
+            ]
+            assert any(e["event_type"] == "paused_refused" for e in events)
 
 
 # ── estimate fallback for gating ───────────────────────────────────────────────────
@@ -217,114 +220,108 @@ class TestEstimateFallback:
     def test_pod_gating_cost_prefers_recorded_when_nonzero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 3.5)
-        spent, estimated = _dispatch.pod_gating_cost("demo")
-        assert spent == 3.5
-        assert estimated is False
+        with _seed_pod(tmp_path):
+            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 3.5)
+            spent, estimated = _dispatch.pod_gating_cost("demo")
+            assert spent == 3.5
+            assert estimated is False
 
     def test_pod_gating_cost_falls_back_to_estimate_when_recorded_is_zero(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        lead_id = _podcore.member_id("demo", "lead")
-        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
-        _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
+        with _seed_pod(tmp_path) as oc_dir:
+            lead_id = _podcore.member_id("demo", "lead")
+            _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+            _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
-        spent, estimated = _dispatch.pod_gating_cost("demo")
-        assert estimated is True
-        assert spent == pytest.approx(4.8)  # 1M*$0.80/M + 1M*$4.00/M
+            spent, estimated = _dispatch.pod_gating_cost("demo")
+            assert estimated is True
+            assert spent == pytest.approx(4.8)  # 1M*$0.80/M + 1M*$4.00/M
 
     def test_dispatch_pauses_pod_using_estimate_when_nothing_recorded_a_cost(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """The bug this closes: with real (unmocked) cost
         aggregation, a driver that never records usage.cost.total leaves
         recorded spend at 0 forever — the cap must still trip, from tokens."""
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        lead_id = _podcore.member_id("demo", "lead")
-        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
-        _fleet.meta_set(lead_id, "budgetUsd", "1")
-        _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-        _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+        with _seed_pod(tmp_path) as oc_dir:
+            lead_id = _podcore.member_id("demo", "lead")
+            _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+            _fleet.meta_set(lead_id, "budgetUsd", "1")
+            _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
+            _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
 
-        results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
-        assert results[0].status == "blocked"
-        assert "estimated" in results[0].reason
-        assert _fleet.meta_read(lead_id).is_paused() is True
+            results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+            assert results[0].status == "blocked"
+            assert "estimated" in results[0].reason
+            assert _fleet.meta_read(lead_id).is_paused() is True
 
 
 # ── recorded spend is never contaminated by an estimate ───────────────────────────
 
 
 class TestRecordedSpendNeverContaminated:
-    def test_aggregate_cost_stays_zero_when_nothing_was_recorded(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        lead_id = _podcore.member_id("demo", "lead")
-        _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-        # aggregate_cost (what `docket status` reports) must stay exactly the
-        # driver's own recorded figure — 0.0 here — never the estimate, even
-        # though plenty of tokens (and a known price) exist to estimate from.
-        assert _utils.aggregate_cost(lead_id).cost_usd == 0.0
+    def test_aggregate_cost_stays_zero_when_nothing_was_recorded(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            lead_id = _podcore.member_id("demo", "lead")
+            _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
+            # aggregate_cost (what `docket status` reports) must stay exactly the
+            # driver's own recorded figure — 0.0 here — never the estimate, even
+            # though plenty of tokens (and a known price) exist to estimate from.
+            assert _utils.aggregate_cost(lead_id).cost_usd == 0.0
 
-    def test_status_labels_the_dollar_figure_an_estimate(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        lead_id = _podcore.member_id("demo", "lead")
-        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
-        _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
+    def test_status_labels_the_dollar_figure_an_estimate(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            lead_id = _podcore.member_id("demo", "lead")
+            _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+            _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
-        runner = CliRunner()
-        result = runner.invoke(_app, ["status", "--pod", "demo"])
-        assert result.exit_code == 0, result.output
-        # The estimate ($4.80 for these tokens/model) appears only labelled as one.
-        assert "~$4.80 est." in result.output
-        assert "recorded" not in result.output
+            runner = CliRunner()
+            result = runner.invoke(_app, ["status", "--pod", "demo"])
+            assert result.exit_code == 0, result.output
+            # The estimate ($4.80 for these tokens/model) appears only labelled as one.
+            assert "~$4.80 est." in result.output
+            assert "recorded" not in result.output
 
-    def test_status_all_json_inventory_cost_field_stays_zero(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        lead_id = _podcore.member_id("demo", "lead")
-        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
-        _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
+    def test_status_all_json_inventory_cost_field_stays_zero(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            lead_id = _podcore.member_id("demo", "lead")
+            _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+            _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
-        runner = CliRunner()
-        result = runner.invoke(_app, ["status", "--all", "--json"])
-        assert result.exit_code == 0, result.output
-        data = json.loads(result.stdout)
-        agent_row = next(a for a in data["agents"] if a["id"] == lead_id)
-        assert agent_row["costUsd"] == 0.0
-        assert data["totalCostUsd"] == 0.0
+            runner = CliRunner()
+            result = runner.invoke(_app, ["status", "--all", "--json"])
+            assert result.exit_code == 0, result.output
+            data = json.loads(result.stdout)
+            agent_row = next(a for a in data["agents"] if a["id"] == lead_id)
+            assert agent_row["costUsd"] == 0.0
+            assert data["totalCostUsd"] == 0.0
 
 
 class TestUnpricedModelSurfaces:
     """A budgeted pod running a model with no price says so where the operator looks."""
 
-    def _budgeted_pod(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-        _seed_pod(tmp_path, monkeypatch)
-        model = "ai-gateway/acme/model-x"
-        _fleet.set_model_both("demo-implementer", model)
-        result = CliRunner().invoke(_app, ["pod", "set", "budgetUsd", "3", "--pod", "demo"])
-        assert result.exit_code == 0, result.output
-        return model
+    @contextmanager
+    def _budgeted_pod(
+        self,
+        tmp_path: Path,
+    ) -> Iterator[str]:
+        with _seed_pod(tmp_path):
+            model = "ai-gateway/acme/model-x"
+            _fleet.set_model_both("demo-implementer", model)
+            result = CliRunner().invoke(_app, ["pod", "set", "budgetUsd", "3", "--pod", "demo"])
+            assert result.exit_code == 0, result.output
+            yield model
 
-    def test_the_pod_report_names_the_unpriced_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_pod_report_names_the_unpriced_model(self, tmp_path: Path) -> None:
         from docket.core import pod_report
 
-        model = self._budgeted_pod(tmp_path, monkeypatch)
-        assert pod_report.pod_report("demo")["budgetUnpriced"] == [model]
+        with self._budgeted_pod(tmp_path) as model:
+            assert pod_report.pod_report("demo")["budgetUnpriced"] == [model]
 
-    def test_status_json_and_text_name_the_unpriced_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        model = self._budgeted_pod(tmp_path, monkeypatch)
-        as_json = CliRunner().invoke(_app, ["status", "--pod", "demo", "--json"])
-        assert json.loads(as_json.output)["budgetUnpriced"] == [model]
-        as_text = CliRunner().invoke(_app, ["status", "--pod", "demo"], env={"COLUMNS": "200"})
-        assert f"cannot stop spend on {model}" in as_text.output
+    def test_status_json_and_text_name_the_unpriced_model(self, tmp_path: Path) -> None:
+        with self._budgeted_pod(tmp_path) as model:
+            as_json = CliRunner().invoke(_app, ["status", "--pod", "demo", "--json"])
+            assert json.loads(as_json.output)["budgetUnpriced"] == [model]
+            as_text = CliRunner().invoke(_app, ["status", "--pod", "demo"], env={"COLUMNS": "200"})
+            assert f"cannot stop spend on {model}" in as_text.output

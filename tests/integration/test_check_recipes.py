@@ -13,6 +13,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -81,14 +83,15 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
-def _repo_with_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _repo_with_module(tmp_path: Path) -> Iterator[Path]:
     repo = tmp_path / "repo"
     _init_repo(repo)
     (repo / "mod.py").write_text("def f():\n    return 1\n")
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "add mod")
-    _seed_pod(tmp_path, monkeypatch, repo)
-    return repo
+    with _seed_pod(tmp_path, repo):
+        yield repo
 
 
 @pytest.mark.parametrize("recipe", ["anti-tautology", "mutation"])
@@ -98,96 +101,88 @@ def test_the_recipe_command_classifies_allow_by_default(recipe: str) -> None:
     assert verdict.action == "allow", verdict.reason
 
 
-def test_a_test_that_already_passes_on_the_base_fails_the_task(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = _repo_with_module(tmp_path, monkeypatch)
-    _bind_pipeline(_anti_tautology_with_this_interpreter())
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    runner = _FilesRunner(
-        {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"}
-    )
+def test_a_test_that_already_passes_on_the_base_fails_the_task(tmp_path: Path) -> None:
+    with _repo_with_module(tmp_path) as repo:
+        _bind_pipeline(_anti_tautology_with_this_interpreter())
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        runner = _FilesRunner(
+            {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"}
+        )
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "failed"
-    hops = _dispatch.read_tasks("demo")[0]["hops"]
-    assert "do not test the change" in "".join(h.get("output", "") for h in hops)
-    assert not [p for p in _git(repo, "worktree", "list").splitlines() if "anti-tautology" in p]
+        assert res.status == "failed"
+        hops = _dispatch.read_tasks("demo")[0]["hops"]
+        assert "do not test the change" in "".join(h.get("output", "") for h in hops)
+        assert not [p for p in _git(repo, "worktree", "list").splitlines() if "anti-tautology" in p]
 
 
-def test_an_uncommitted_test_that_already_passes_on_the_base_fails_the_task(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _repo_with_module(tmp_path, monkeypatch)
-    _bind_pipeline(_anti_tautology_with_this_interpreter())
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    runner = _FilesRunner(
-        {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"},
-        commit=False,
-    )
+def test_an_uncommitted_test_that_already_passes_on_the_base_fails_the_task(tmp_path: Path) -> None:
+    with _repo_with_module(tmp_path):
+        _bind_pipeline(_anti_tautology_with_this_interpreter())
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        runner = _FilesRunner(
+            {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"},
+            commit=False,
+        )
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "failed"
-    hops = _dispatch.read_tasks("demo")[0]["hops"]
-    assert "do not test the change" in "".join(h.get("output", "") for h in hops)
+        assert res.status == "failed"
+        hops = _dispatch.read_tasks("demo")[0]["hops"]
+        assert "do not test the change" in "".join(h.get("output", "") for h in hops)
 
 
 @pytest.mark.parametrize("recipe", ["anti-tautology", "mutation"])
-def test_the_recipe_fails_without_a_head_commit(
-    recipe: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = _repo_with_module(tmp_path, monkeypatch)
-    base = _git(repo, "rev-parse", "HEAD")
-    env = {**os.environ, "DOCKET_BASE_COMMIT": base, "DOCKET_HEAD_COMMIT": ""}
+def test_the_recipe_fails_without_a_head_commit(recipe: str, tmp_path: Path) -> None:
+    with _repo_with_module(tmp_path) as repo:
+        base = _git(repo, "rev-parse", "HEAD")
+        env = {**os.environ, "DOCKET_BASE_COMMIT": base, "DOCKET_HEAD_COMMIT": ""}
 
-    done = subprocess.run(
-        _run_command(recipe), shell=True, cwd=repo, env=env, capture_output=True, text=True
-    )
+        done = subprocess.run(
+            _run_command(recipe), shell=True, cwd=repo, env=env, capture_output=True, text=True
+        )
 
-    assert done.returncode == 1
-    assert "no head commit" in done.stdout
+        assert done.returncode == 1
+        assert "no head commit" in done.stdout
 
 
 def test_a_test_that_fails_on_the_base_and_passes_after_the_change_finishes_done(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    repo = _repo_with_module(tmp_path, monkeypatch)
-    _bind_pipeline(_anti_tautology_with_this_interpreter())
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    runner = _FilesRunner(
-        {
-            "mod.py": "def f():\n    return 2\n",
-            "test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 2\n",
-        }
-    )
+    with _repo_with_module(tmp_path) as repo:
+        _bind_pipeline(_anti_tautology_with_this_interpreter())
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        runner = _FilesRunner(
+            {
+                "mod.py": "def f():\n    return 2\n",
+                "test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 2\n",
+            }
+        )
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    outputs = "".join(h.get("output", "") for h in _dispatch.read_tasks("demo")[0]["hops"])
-    assert "fail on the base, as they should" in outputs
-    assert not [p for p in _git(repo, "worktree", "list").splitlines() if "anti-tautology" in p]
-
-
-def test_no_changed_test_file_passes_the_step_trivially(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _repo_with_module(tmp_path, monkeypatch)
-    _bind_pipeline(_anti_tautology_with_this_interpreter())
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-
-    (res,) = _dispatch.dispatch_pod("demo", runner=_FilesRunner({"notes.txt": "x\n"}), max_tasks=1)
-
-    assert res.status == "done", res.reason
-    outputs = "".join(h.get("output", "") for h in _dispatch.read_tasks("demo")[0]["hops"])
-    assert "nothing to check" in outputs
+        assert res.status == "done", res.reason
+        outputs = "".join(h.get("output", "") for h in _dispatch.read_tasks("demo")[0]["hops"])
+        assert "fail on the base, as they should" in outputs
+        assert not [p for p in _git(repo, "worktree", "list").splitlines() if "anti-tautology" in p]
 
 
-def test_the_mutation_step_scores_only_the_changed_source_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_no_changed_test_file_passes_the_step_trivially(tmp_path: Path) -> None:
+    with _repo_with_module(tmp_path):
+        _bind_pipeline(_anti_tautology_with_this_interpreter())
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+
+        (res,) = _dispatch.dispatch_pod(
+            "demo", runner=_FilesRunner({"notes.txt": "x\n"}), max_tasks=1
+        )
+
+        assert res.status == "done", res.reason
+        outputs = "".join(h.get("output", "") for h in _dispatch.read_tasks("demo")[0]["hops"])
+        assert "nothing to check" in outputs
+
+
+def test_the_mutation_step_scores_only_the_changed_source_file(tmp_path: Path) -> None:
     tool = os.environ.get("MUTATION_CMD", "mutmut")
     if shutil.which(shlex.split(tool)[0]) is None:
         pytest.skip("mutmut is not installed (pip install mutmut); the recipe needs it")
@@ -203,14 +198,14 @@ def test_the_mutation_step_scores_only_the_changed_source_file(
     )
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "base")
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _bind_pipeline(_pipeline_text("mutation"))
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    runner = _FilesRunner({"src/pkg/calc.py": "def add(a, b):\n    return a + b\n"})
+    with _seed_pod(tmp_path, repo):
+        _bind_pipeline(_pipeline_text("mutation"))
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        runner = _FilesRunner({"src/pkg/calc.py": "def add(a, b):\n    return a + b\n"})
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    outputs = "".join(h.get("output", "") for h in _dispatch.read_tasks("demo")[0]["hops"])
-    assert "pkg.calc.*" in outputs
-    assert "pkg.other" not in outputs
+        assert res.status == "done", res.reason
+        outputs = "".join(h.get("output", "") for h in _dispatch.read_tasks("demo")[0]["hops"])
+        assert "pkg.calc.*" in outputs
+        assert "pkg.other" not in outputs

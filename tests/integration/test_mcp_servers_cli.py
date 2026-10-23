@@ -14,19 +14,21 @@ Requirements 21-24.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.core import audit as _audit
 from docket.core import mcp_tools as _mt
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -34,9 +36,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "MCP_SERVERS_FILE", tmp_path / "mcp-servers.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(
+        dataclasses.replace(current_home(), mcp_servers_file_override=tmp_path / "mcp-servers.json")
+    ):
+        yield
 
 
 _runner = CliRunner()

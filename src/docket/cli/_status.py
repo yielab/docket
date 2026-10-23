@@ -7,7 +7,6 @@ from typing import Any
 
 import typer
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.cli._setup_sandbox import _off_label, print_sandbox_block, sandbox_state
@@ -33,13 +32,14 @@ from docket.core.utils import (
 )
 from docket.edges import store
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 
 def pod_ids() -> list[str]:
     """Return registered pod ids once each, excluding flat legacy agents."""
     projects: set[str] = set()
     for agent in _fleet.list_agents():
-        raw = store.read_json(_cfg.meta_path(agent.id))
+        raw = store.read_json(current_home().meta_path(agent.id))
         project = str(raw.get("pod", "")) or (_pod.pod_of(agent.id) or "")
         if project:
             projects.add(project)
@@ -124,12 +124,12 @@ def _project_summary(project: str) -> dict[str, Any]:
     degraded = False
 
     for member_id, role, _index in members:
-        raw = store.read_json(_cfg.meta_path(member_id))
+        raw = store.read_json(current_home().meta_path(member_id))
         root = str(raw.get("workDir") or raw.get("codebase") or "")
         if root:
             roots.append(root)
-        workspace = _cfg.workspace_dir(member_id)
-        healthy = workspace.is_dir() and (workspace / _cfg.META_FILE).is_file()
+        workspace = current_home().workspace_dir(member_id)
+        healthy = workspace.is_dir() and (workspace / current_home().meta_file).is_file()
         degraded = degraded or not healthy
         member_rows.append(
             {"id": member_id, "role": role, "status": "ready" if healthy else "missing"}
@@ -148,7 +148,7 @@ def _project_summary(project: str) -> dict[str, Any]:
         state = "ready"
     lead = _pod.member_id(project, "lead")
 
-    outcomes = _trace.terminal_outcomes(project, window=_cfg.METRICS_WINDOW)
+    outcomes = _trace.terminal_outcomes(project, window=current_home().metrics_window)
     return {
         "id": project,
         "path": roots[0] if roots else "",
@@ -197,7 +197,7 @@ def _inventory() -> dict[str, Any]:
     agents: list[dict[str, Any]] = []
     total = 0.0
     for pid in project_ids():
-        raw = store.read_json(_cfg.meta_path(pid))
+        raw = store.read_json(current_home().meta_path(pid))
         cost = aggregate_cost(pid).cost_usd
         total += cost
         agents.append(
@@ -205,7 +205,7 @@ def _inventory() -> dict[str, Any]:
                 "id": pid,
                 "name": str(raw.get("name", pid)),
                 "kind": "project",
-                "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
+                "model": str(raw.get("model", current_home().default_model)),
                 "registered": pid in registered,
                 "bindings": [
                     {"channel": b.channel, "peerId": b.peer_id}
@@ -229,14 +229,14 @@ def cost_snapshot() -> dict[str, Any]:
     rows = []
     total = 0.0
     for pid in project_ids():
-        raw = store.read_json(_cfg.meta_path(pid))
+        raw = store.read_json(current_home().meta_path(pid))
         totals = aggregate_cost(pid)
         budget = raw.get("budgetUsd")
         total += totals.cost_usd
         rows.append(
             {
                 "id": pid,
-                "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
+                "model": str(raw.get("model", current_home().default_model)),
                 "input": totals.input_tokens,
                 "output": totals.output_tokens,
                 "costUsd": round(totals.cost_usd, 6),

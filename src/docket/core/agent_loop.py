@@ -152,7 +152,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import context as _context
 from docket.core import identity as _identity
@@ -576,7 +575,7 @@ def _trace_llm_call(
         payload["purpose"] = purpose
     if response.request_bytes:
         payload["request"] = {
-            part: {"bytes": size, "estTokens": size // _cfg.CONTEXT_BYTES_PER_TOKEN}
+            part: {"bytes": size, "estTokens": size // current_home().context_bytes_per_token}
             for part, size in response.request_bytes.items()
         }
     if messages is not None:
@@ -678,7 +677,9 @@ def _resolve_context_bounds(
     if request_max_tokens is None and isinstance(backend_output, int) and backend_output > 0:
         request_max_tokens = backend_output
     output_reserve = (
-        request_max_tokens if request_max_tokens is not None else _cfg.DEFAULT_MAX_OUTPUT_TOKENS
+        request_max_tokens
+        if request_max_tokens is not None
+        else current_home().default_max_output_tokens
     )
     return context_window, output_reserve, request_max_tokens
 

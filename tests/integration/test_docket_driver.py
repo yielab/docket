@@ -13,17 +13,17 @@ correctly to one agent's own sessions.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import time as _time
 import types
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import point_home_at, record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
-import docket.config as _cfg
 from docket.cli import _setup_model, _setup_sandbox
 from docket.core import approval as _approval
 from docket.core import fleet as _fleet
@@ -43,35 +43,39 @@ from docket.edges.adapters import system as _system
 from docket.edges.adapters.docket_runtime import DocketDriver
 from docket.edges.adapters.system import SandboxAvailability
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path / "docket")
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
-    # DOCKET_SANDBOX_BACKEND leaking in from the real dev/CI environment would
-    # make TestIsolationWiring's "no backend available" cases flaky -- start
-    # every test from the same clean slate and let individual tests opt in.
-    monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-    # These turns are about the driver, not the jail: record the explicit opt-out so they do
-    # not depend on the host having a sandbox backend (a stock macOS runner has neither).
-    # TestIsolationWiring records its own choice, or clears it to test the default.
-    record_isolation_off(tmp_path / "docket")
+def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with (
+        use_home(Home(tmp_path / "docket")),
+        use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
+    ):
+        # DOCKET_SANDBOX_BACKEND leaking in from the real dev/CI environment would
+        # make TestIsolationWiring's "no backend available" cases flaky -- start
+        # every test from the same clean slate and let individual tests opt in.
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        # These turns are about the driver, not the jail: record the explicit opt-out so they do
+        # not depend on the host having a sandbox backend (a stock macOS runner has neither).
+        # TestIsolationWiring records its own choice, or clears it to test the default.
+        record_isolation_off(tmp_path / "docket")
+        yield
 
 
 def _no_recorded_isolation_choice() -> None:
-    _cfg.FLEET_FILE.unlink(missing_ok=True)
+    current_home().fleet_file.unlink(missing_ok=True)
 
 
 def _write_meta(agent_id: str, **overrides: object) -> Path:
     """Write a real `.docket-meta.json` for *agent_id* and return its workspace dir."""
-    ws = _cfg.workspace_dir(agent_id)
+    ws = current_home().workspace_dir(agent_id)
     ws.mkdir(parents=True, exist_ok=True)
     data: dict[str, object] = {"kind": "project", "role": "implementer", "model": "test/model"}
     data.update(overrides)
-    _store.write_json(_cfg.meta_path(agent_id), data)
+    _store.write_json(current_home().meta_path(agent_id), data)
     return ws
 
 
@@ -162,111 +166,111 @@ class TestRunTurn:
 
         from docket.cli import app
 
-        repoint_docket_home(monkeypatch, tmp_path)
-        record_isolation_off(tmp_path)
-        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
-        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-        # Registration probes /models through edges/adapters/llm.py; answer "reachable, 200".
-        monkeypatch.setattr(
-            _llm_adapter, "probe_models", lambda *a, **k: _llm_adapter.ProbeResult(status=200)
-        )
+        with use_home(Home(tmp_path)):
+            record_isolation_off(tmp_path)
+            monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+            monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+            # Registration probes /models through edges/adapters/llm.py; answer "reachable, 200".
+            monkeypatch.setattr(
+                _llm_adapter, "probe_models", lambda *a, **k: _llm_adapter.ProbeResult(status=200)
+            )
 
-        runner = CliRunner()
-        registered = runner.invoke(
-            app,
-            [
-                "setup",
-                "provider",
-                "add",
-                "local",
-                "http://127.0.0.1:8081/v1",
-                "--model",
-                "qwen-live-id",
-                "--ctx",
-                "16384",
-                "--max-tokens",
-                "8192",
-            ],
-        )
-        assert registered.exit_code == 0, registered.output
-        selected = runner.invoke(app, ["setup", "model", "preset", "local"])
-        assert selected.exit_code == 0, selected.output
-
-        ws = _write_meta("local-agent", model="local/qwen-live-id")
-        (ws / "marker.txt").write_text("LOCAL_PROVIDER_MARKER\n", encoding="utf-8")
-
-        responses = [
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": "",
-                            "tool_calls": [
-                                {
-                                    "id": "local-read-1",
-                                    "type": "function",
-                                    "function": {
-                                        "name": "read",
-                                        "arguments": json.dumps({"path": "marker.txt"}),
-                                    },
-                                }
-                            ],
-                        },
-                        "finish_reason": "tool_calls",
-                    }
+            runner = CliRunner()
+            registered = runner.invoke(
+                app,
+                [
+                    "setup",
+                    "provider",
+                    "add",
+                    "local",
+                    "http://127.0.0.1:8081/v1",
+                    "--model",
+                    "qwen-live-id",
+                    "--ctx",
+                    "16384",
+                    "--max-tokens",
+                    "8192",
                 ],
-                "usage": {"prompt_tokens": 11, "completion_tokens": 3},
-            },
-            {
-                "choices": [
-                    {
-                        "message": {"role": "assistant", "content": "local tool turn complete"},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {"prompt_tokens": 17, "completion_tokens": 4},
-            },
-        ]
-        request_urls: list[str] = []
-        requests: list[dict[str, Any]] = []
+            )
+            assert registered.exit_code == 0, registered.output
+            selected = runner.invoke(app, ["setup", "model", "preset", "local"])
+            assert selected.exit_code == 0, selected.output
 
-        class _Response:
-            def __init__(self, payload: dict[str, Any]) -> None:
-                self.payload = payload
+            ws = _write_meta("local-agent", model="local/qwen-live-id")
+            (ws / "marker.txt").write_text("LOCAL_PROVIDER_MARKER\n", encoding="utf-8")
 
-            def read(self) -> bytes:
-                return json.dumps(self.payload).encode()
+            responses = [
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "local-read-1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "read",
+                                            "arguments": json.dumps({"path": "marker.txt"}),
+                                        },
+                                    }
+                                ],
+                            },
+                            "finish_reason": "tool_calls",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 11, "completion_tokens": 3},
+                },
+                {
+                    "choices": [
+                        {
+                            "message": {"role": "assistant", "content": "local tool turn complete"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 17, "completion_tokens": 4},
+                },
+            ]
+            request_urls: list[str] = []
+            requests: list[dict[str, Any]] = []
 
-            def __enter__(self) -> _Response:
-                return self
+            class _Response:
+                def __init__(self, payload: dict[str, Any]) -> None:
+                    self.payload = payload
 
-            def __exit__(self, *exc: object) -> None:
-                return None
+                def read(self) -> bytes:
+                    return json.dumps(self.payload).encode()
 
-        def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
-            request_urls.append(request.full_url)
-            requests.append(json.loads(request.data.decode()))
-            return _Response(responses.pop(0))
+                def __enter__(self) -> _Response:
+                    return self
 
-        monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
+                def __exit__(self, *exc: object) -> None:
+                    return None
 
-        result = DocketDriver().run_turn(
-            "local-agent", "agent:local-agent:default", "Read marker.txt with the tool.", 60
-        )
+            def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
+                request_urls.append(request.full_url)
+                requests.append(json.loads(request.data.decode()))
+                return _Response(responses.pop(0))
 
-        assert result.ok is True
-        assert result.output == "local tool turn complete"
-        assert len(requests) == 2
-        assert request_urls == [
-            "http://127.0.0.1:8081/v1/chat/completions",
-            "http://127.0.0.1:8081/v1/chat/completions",
-        ]
-        assert requests[0]["model"] == "qwen-live-id"
-        assert requests[0]["tools"]
-        assert any(message["role"] == "tool" for message in requests[1]["messages"])
-        assert "LOCAL_PROVIDER_MARKER" in json.dumps(requests[1])
-        assert _secrets.secrets_keys() == set()
+            monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
+
+            result = DocketDriver().run_turn(
+                "local-agent", "agent:local-agent:default", "Read marker.txt with the tool.", 60
+            )
+
+            assert result.ok is True
+            assert result.output == "local tool turn complete"
+            assert len(requests) == 2
+            assert request_urls == [
+                "http://127.0.0.1:8081/v1/chat/completions",
+                "http://127.0.0.1:8081/v1/chat/completions",
+            ]
+            assert requests[0]["model"] == "qwen-live-id"
+            assert requests[0]["tools"]
+            assert any(message["role"] == "tool" for message in requests[1]["messages"])
+            assert "LOCAL_PROVIDER_MARKER" in json.dumps(requests[1])
+            assert _secrets.secrets_keys() == set()
 
     @pytest.mark.parametrize(
         ("provider_key", "secret", "model", "expected_url", "wire_model"),
@@ -300,61 +304,63 @@ class TestRunTurn:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.delenv(provider_key, raising=False)
-        point_home_at(monkeypatch, tmp_path)
+        with use_home(Home(tmp_path)):
+            assert _setup_model._write_credential(provider_key, secret, "add")
+            _write_meta("gateway-agent", model=model)
 
-        assert _setup_model._write_credential(provider_key, secret, "add")
-        _write_meta("gateway-agent", model=model)
+            captured: dict[str, object] = {}
 
-        captured: dict[str, object] = {}
+            class _Response:
+                def read(self) -> bytes:
+                    return json.dumps(
+                        {
+                            "choices": [
+                                {
+                                    "message": {"role": "assistant", "content": "gateway ok"},
+                                    "finish_reason": "stop",
+                                }
+                            ],
+                            "usage": {"prompt_tokens": 9, "completion_tokens": 2},
+                        }
+                    ).encode()
 
-        class _Response:
-            def read(self) -> bytes:
-                return json.dumps(
-                    {
-                        "choices": [
-                            {
-                                "message": {"role": "assistant", "content": "gateway ok"},
-                                "finish_reason": "stop",
-                            }
-                        ],
-                        "usage": {"prompt_tokens": 9, "completion_tokens": 2},
-                    }
-                ).encode()
+                def __enter__(self) -> _Response:
+                    return self
 
-            def __enter__(self) -> _Response:
-                return self
+                def __exit__(self, *exc: object) -> None:
+                    return None
 
-            def __exit__(self, *exc: object) -> None:
-                return None
+            def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
+                captured["url"] = request.full_url
+                captured["auth"] = request.get_header("Authorization")
+                captured["payload"] = json.loads(request.data.decode())
+                return _Response()
 
-        def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
-            captured["url"] = request.full_url
-            captured["auth"] = request.get_header("Authorization")
-            captured["payload"] = json.loads(request.data.decode())
-            return _Response()
+            monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
 
-        monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
+            result = DocketDriver().run_turn(
+                "gateway-agent",
+                "agent:gateway-agent:default",
+                "Use the available tools if needed.",
+                60,
+            )
 
-        result = DocketDriver().run_turn(
-            "gateway-agent", "agent:gateway-agent:default", "Use the available tools if needed.", 60
-        )
-
-        assert result.ok is True
-        assert result.output == "gateway ok"
-        assert captured["url"] == expected_url
-        assert captured["auth"] == f"Bearer {secret}"
-        payload = captured["payload"]
-        assert isinstance(payload, dict)
-        assert payload["model"] == wire_model
-        assert payload["stream"] is False
-        assert payload["tools"]
-        assert secret not in json.dumps(payload)
-        trace_text = "".join(
-            path.read_text(encoding="utf-8")
-            for path in _cfg.TRACES_DIR.rglob("*")
-            if path.is_file()
-        )
-        assert secret not in trace_text
+            assert result.ok is True
+            assert result.output == "gateway ok"
+            assert captured["url"] == expected_url
+            assert captured["auth"] == f"Bearer {secret}"
+            payload = captured["payload"]
+            assert isinstance(payload, dict)
+            assert payload["model"] == wire_model
+            assert payload["stream"] is False
+            assert payload["tools"]
+            assert secret not in json.dumps(payload)
+            trace_text = "".join(
+                path.read_text(encoding="utf-8")
+                for path in current_home().traces_dir.rglob("*")
+                if path.is_file()
+            )
+            assert secret not in trace_text
 
     def test_registered_limits_reach_the_loop_and_transport(self) -> None:
         _write_meta("bounded-agent")
@@ -392,7 +398,7 @@ class TestRunTurn:
 
         assert result.ok
         assert seen_models == ["anthropic/claude-opus-4-6"]
-        meta = _store.read_json(_cfg.meta_path("model-override-agent"))
+        meta = _store.read_json(current_home().meta_path("model-override-agent"))
         assert meta["model"] == "test/meta-model"
         assert (ws / ".docket-meta.json").exists()
 
@@ -610,7 +616,7 @@ class TestRunTurn:
             message.content.startswith("[compacted summary of ") for message in record.messages
         )
         assert any("CURRENT_TOOL_UNIT" in message.content for message in record.messages)
-        trace_path = _cfg.TRACES_DIR / "window-budget-agent" / f"{session_key}.jsonl"
+        trace_path = current_home().traces_dir / "window-budget-agent" / f"{session_key}.jsonl"
         records = [json.loads(line) for line in trace_path.read_text().splitlines()]
         warnings = [record for record in records if record["event_type"] == "budget_warning"]
         assert len(warnings) == 1
@@ -738,7 +744,7 @@ class TestRunTurn:
             ("task", 890),
         ]
 
-        trace_path = _cfg.TRACES_DIR / "fit-agent" / f"{session_key}.jsonl"
+        trace_path = current_home().traces_dir / "fit-agent" / f"{session_key}.jsonl"
         records = [json.loads(line) for line in trace_path.read_text().splitlines()]
         fit_payloads = [
             record["payload"] for record in records if record["event_type"] == "request_fit"
@@ -948,7 +954,7 @@ class TestRunTurn:
         assert not _session.find_orphaned_tool_messages(stored.messages)
         assert not _session.find_unanswered_tool_calls(stored.messages)
 
-        trace_path = _cfg.TRACES_DIR / "fit-refresh-agent" / f"{session_key}.jsonl"
+        trace_path = current_home().traces_dir / "fit-refresh-agent" / f"{session_key}.jsonl"
         records = [json.loads(line) for line in trace_path.read_text().splitlines()]
         fit_payloads = [
             record["payload"] for record in records if record["event_type"] == "request_fit"
@@ -1081,7 +1087,7 @@ class TestRunTurn:
         ]
         records = [
             json.loads(line)
-            for line in (_cfg.TRACES_DIR / "two-segment-agent" / f"{session_key}.jsonl")
+            for line in (current_home().traces_dir / "two-segment-agent" / f"{session_key}.jsonl")
             .read_text()
             .splitlines()
         ]
@@ -1234,7 +1240,7 @@ class TestRunTurn:
     ) -> None:
         _write_meta("denial-agent")
         _store.write_json(
-            _cfg.POLICIES_DIR / "approve-validation.json",
+            current_home().policies_dir / "approve-validation.json",
             {
                 "id": "approve-validation",
                 "description": "require an operator for validation",
@@ -1245,103 +1251,105 @@ class TestRunTurn:
                 "message": "operator validation required",
             },
         )
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 10, raising=True)
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=10)):
 
-        def deny_pending(_seconds: float) -> None:
-            pending = _approval.list_pending()
-            assert len(pending) == 1
-            _approval.approval_deny(str(pending[0]["token"]))
+            def deny_pending(_seconds: float) -> None:
+                pending = _approval.list_pending()
+                assert len(pending) == 1
+                _approval.approval_deny(str(pending[0]["token"]))
 
-        monkeypatch.setattr(
-            _approval,
-            "_time",
-            types.SimpleNamespace(sleep=deny_pending, monotonic=_time.monotonic),
-            raising=True,
-        )
-        handler_calls: list[str] = []
-        registry = ToolRegistry()
-        registry.register(
-            Tool(
-                name="validate",
-                description="operator-gated validation",
-                parameters={"type": "object", "properties": {}},
-                handler=lambda args, ctx: (
-                    handler_calls.append("executed") or ToolOutcome(ok=True, content="ran")
-                ),
-                kind="read",
+            monkeypatch.setattr(
+                _approval,
+                "_time",
+                types.SimpleNamespace(sleep=deny_pending, monotonic=_time.monotonic),
+                raising=True,
             )
-        )
-        responses = [
-            ChatResponse(
-                ok=True,
-                message=assistant(
-                    "",
-                    tool_calls=[ToolCall(id=f"deny-{index}", name="validate", arguments="{}")],
-                ),
-                finish_reason="tool_calls",
-                usage=TokenUsage(10, 5),
+            handler_calls: list[str] = []
+            registry = ToolRegistry()
+            registry.register(
+                Tool(
+                    name="validate",
+                    description="operator-gated validation",
+                    parameters={"type": "object", "properties": {}},
+                    handler=lambda args, ctx: (
+                        handler_calls.append("executed") or ToolOutcome(ok=True, content="ran")
+                    ),
+                    kind="read",
+                )
             )
-            for index in range(1, 4)
-        ]
-        responses.append(_final_response("must not be requested"))
-        backend = _ScriptedBackend(responses)
-        driver = DocketDriver(
-            backend_factory=lambda model: backend,
-            registry_factory=lambda: registry,
-        )
-        session_key = "agent:denial-agent:default"
-
-        result = driver.run_turn(
-            "denial-agent",
-            session_key,
-            "validate without bypassing approval",
-            60,
-            trace_project="denial-project",
-        )
-
-        assert result.ok is False
-        assert result.failure_kind == "invalid_output"
-        assert "count=3" in result.error
-        assert "approval_denied,approval_denied,approval_denied" in result.error
-        assert len(backend.calls) == 3
-        assert handler_calls == []
-        record = load_session(session_key)
-        assert [message.role for message in record.messages] == [
-            "user",
-            "assistant",
-            "tool",
-            "assistant",
-            "tool",
-            "assistant",
-            "tool",
-        ]
-        assert record.usage.input_tokens + record.usage.output_tokens == 45
-        approval_states = [
-            json.loads(path.read_text(encoding="utf-8"))["state"]
-            for path in _cfg.APPROVALS_DIR.glob("*.json")
-        ]
-        assert approval_states == ["denied", "denied", "denied"]
-        trace_path = _cfg.TRACES_DIR / "denial-project" / f"{session_key}.jsonl"
-        denial_kinds = [
-            json.loads(line)["payload"].get("denialKind")
-            for line in trace_path.read_text(encoding="utf-8").splitlines()
-            if json.loads(line)["event_type"] == "tool_result"
-        ]
-        assert denial_kinds == ["approval_denied", "approval_denied", "approval_denied"]
-        # The approval record's own approval_requested/approval_denied trace events
-        # (core/approval.py's _emit_trace) must land under the pod (trace_project),
-        # not under the agent id -- a separate file from the tool_result trace above.
-        assert not (_cfg.TRACES_DIR / "denial-agent").exists()
-        approval_trace_files = list((_cfg.TRACES_DIR / "denial-project").glob("*-approval*.jsonl"))
-        assert approval_trace_files, "expected an approval trace file filed under the pod"
-        approval_event_types: list[str] = []
-        for f in approval_trace_files:
-            approval_event_types += [
-                json.loads(line)["event_type"]
-                for line in f.read_text(encoding="utf-8").splitlines()
+            responses = [
+                ChatResponse(
+                    ok=True,
+                    message=assistant(
+                        "",
+                        tool_calls=[ToolCall(id=f"deny-{index}", name="validate", arguments="{}")],
+                    ),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                )
+                for index in range(1, 4)
             ]
-        assert approval_event_types.count("approval_requested") == 3
-        assert approval_event_types.count("approval_denied") == 3
+            responses.append(_final_response("must not be requested"))
+            backend = _ScriptedBackend(responses)
+            driver = DocketDriver(
+                backend_factory=lambda model: backend,
+                registry_factory=lambda: registry,
+            )
+            session_key = "agent:denial-agent:default"
+
+            result = driver.run_turn(
+                "denial-agent",
+                session_key,
+                "validate without bypassing approval",
+                60,
+                trace_project="denial-project",
+            )
+
+            assert result.ok is False
+            assert result.failure_kind == "invalid_output"
+            assert "count=3" in result.error
+            assert "approval_denied,approval_denied,approval_denied" in result.error
+            assert len(backend.calls) == 3
+            assert handler_calls == []
+            record = load_session(session_key)
+            assert [message.role for message in record.messages] == [
+                "user",
+                "assistant",
+                "tool",
+                "assistant",
+                "tool",
+                "assistant",
+                "tool",
+            ]
+            assert record.usage.input_tokens + record.usage.output_tokens == 45
+            approval_states = [
+                json.loads(path.read_text(encoding="utf-8"))["state"]
+                for path in current_home().approvals_dir.glob("*.json")
+            ]
+            assert approval_states == ["denied", "denied", "denied"]
+            trace_path = current_home().traces_dir / "denial-project" / f"{session_key}.jsonl"
+            denial_kinds = [
+                json.loads(line)["payload"].get("denialKind")
+                for line in trace_path.read_text(encoding="utf-8").splitlines()
+                if json.loads(line)["event_type"] == "tool_result"
+            ]
+            assert denial_kinds == ["approval_denied", "approval_denied", "approval_denied"]
+            # The approval record's own approval_requested/approval_denied trace events
+            # (core/approval.py's _emit_trace) must land under the pod (trace_project),
+            # not under the agent id -- a separate file from the tool_result trace above.
+            assert not (current_home().traces_dir / "denial-agent").exists()
+            approval_trace_files = list(
+                (current_home().traces_dir / "denial-project").glob("*-approval*.jsonl")
+            )
+            assert approval_trace_files, "expected an approval trace file filed under the pod"
+            approval_event_types: list[str] = []
+            for f in approval_trace_files:
+                approval_event_types += [
+                    json.loads(line)["event_type"]
+                    for line in f.read_text(encoding="utf-8").splitlines()
+                ]
+            assert approval_event_types.count("approval_requested") == 3
+            assert approval_event_types.count("approval_denied") == 3
 
     def test_env_flows_into_the_tool_context(self) -> None:
         # "env" (not "echo") is on core.security.SAFE_BINS' curated allowlist,
@@ -1442,7 +1450,7 @@ class TestRootResolutionPrecedence:
         (origin / "marker.txt").write_text("origin")
         _write_meta("demo-implementer", role="implementer", codebase=str(origin))
         _fleet.add_agent("demo-implementer")
-        task_dir = _cfg.PROJECTS_DIR / "demo-implementer" / "tasks" / "t1"
+        task_dir = current_home().projects_dir / "demo-implementer" / "tasks" / "t1"
         task_dir.mkdir(parents=True)
         (task_dir / "marker.txt").write_text("task worktree")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
@@ -1465,7 +1473,7 @@ class TestRootResolutionPrecedence:
         _write_meta("demo-reviewer", role="reviewer", codebase=str(origin))
         _fleet.add_agent("demo-implementer")
         _fleet.add_agent("demo-reviewer")
-        task_dir = _cfg.PROJECTS_DIR / "demo-implementer" / "tasks" / "t1"
+        task_dir = current_home().projects_dir / "demo-implementer" / "tasks" / "t1"
         task_dir.mkdir(parents=True)
         (task_dir / "marker.txt").write_text("implementation")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
@@ -1906,46 +1914,49 @@ class TestApprovalModeWiring:
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert "DOCKET_APPROVAL_MODE" not in tool_msg.content
 
-    def test_refuse_mode_denies_a_real_gated_call_immediately_through_the_driver(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_refuse_mode_denies_a_real_gated_call_immediately_through_the_driver(self) -> None:
         """The whole-path proof: a real policy-gated `bash` call, through the
         real driver, denies in well under the 120s `TOOL_APPROVAL_TIMEOUT`
         instead of waiting -- the defect this wire exists to close."""
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 5, raising=True)
-        from docket.core.policy import install_policies
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=5)):
+            from docket.core.policy import install_policies
 
-        install_policies()
-        _write_meta("refuse-real-agent")
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        backend = _ScriptedBackend(
-            [
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: backend)
+            install_policies()
+            _write_meta("refuse-real-agent")
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            backend = _ScriptedBackend(
+                [
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
 
-        started = _time.monotonic()
-        result = driver.run_turn(
-            "refuse-real-agent",
-            "agent:refuse-real-agent:default",
-            "delete the build dir",
-            30,
-            {DOCKET_APPROVAL_MODE: "refuse"},
-        )
-        elapsed = _time.monotonic() - started
+            started = _time.monotonic()
+            result = driver.run_turn(
+                "refuse-real-agent",
+                "agent:refuse-real-agent:default",
+                "delete the build dir",
+                30,
+                {DOCKET_APPROVAL_MODE: "refuse"},
+            )
+            elapsed = _time.monotonic() - started
 
-        assert elapsed < 1.0, f"took {elapsed:.2f}s -- did this actually skip the approval wait?"
-        assert result.ok is False
-        assert result.failure_kind == "invalid_output"
-        assert "approval_unavailable" in result.error
-        assert "block-destructive" in result.error
-        assert not _cfg.APPROVALS_DIR.exists() or list(_cfg.APPROVALS_DIR.glob("*.json")) == []
+            assert elapsed < 1.0, (
+                f"took {elapsed:.2f}s -- did this actually skip the approval wait?"
+            )
+            assert result.ok is False
+            assert result.failure_kind == "invalid_output"
+            assert "approval_unavailable" in result.error
+            assert "block-destructive" in result.error
+            assert (
+                not current_home().approvals_dir.exists()
+                or list(current_home().approvals_dir.glob("*.json")) == []
+            )
 
 
 def _allow_commands_probe_registry() -> ToolRegistry:
@@ -2069,7 +2080,7 @@ class TestAllowCommandsWiring:
 
 
 def _pod_overlay_denying(project: str, role: str, denied: list[str]) -> None:
-    path = _cfg.pod_config_dir(project) / "roles.json"
+    path = current_home().pod_config_dir(project) / "roles.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -2128,7 +2139,7 @@ class TestPodScopeWiring:
     def test_a_pod_policy_blocks_a_standalone_member_turn(self) -> None:
         _write_meta("shop-implementer", pod="shop")
         _write_meta("shop-lead", role="lead", pod="shop")
-        pod_policies = _cfg.pod_config_dir("shop") / "policies"
+        pod_policies = current_home().pod_config_dir("shop") / "policies"
         pod_policies.mkdir(parents=True, exist_ok=True)
         (pod_policies / "no-uname.json").write_text(
             json.dumps(
@@ -2221,10 +2232,10 @@ class TestApprovalWaitWiring:
     def test_the_approval_wait_travels_in_the_env_and_leaves_the_global_alone(
         self, tmp_path: Path
     ) -> None:
-        before = _cfg.TOOL_APPROVAL_TIMEOUT
+        before = current_home().tool_approval_timeout
         out = self._run("solo-aaa111", tmp_path, {"DOCKET_APPROVAL_TIMEOUT": "7"})
         assert out == "timeout=7"
-        assert before == _cfg.TOOL_APPROVAL_TIMEOUT
+        assert before == current_home().tool_approval_timeout
 
     def test_an_absent_or_bad_wait_keeps_the_default(self, tmp_path: Path) -> None:
         assert self._run("solo-aaa222", tmp_path) == "timeout=None"

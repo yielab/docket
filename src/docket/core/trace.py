@@ -25,10 +25,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-import docket.config as _cfg
 from docket.edges import store
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 # A sink receives the exact record trace_event is about to append (after
 # redaction, before the write) -- see subscribe() below.
@@ -303,7 +303,7 @@ def trace_event(
     # Several step-scoped histories can intentionally emit into one task trace
     # (parallel pipeline children). Keep each in-process JSONL append whole.
     with _TRACE_APPEND_LOCK:
-        _append(_cfg.TRACES_DIR / project / f"{session_id}.jsonl", [record])
+        _append(current_home().traces_dir / project / f"{session_id}.jsonl", [record])
     return "written"
 
 
@@ -324,7 +324,7 @@ def sweep_all() -> None:
     No-ops under DOCKET_NO_TRACE=1."""
     if _system.no_trace():
         return
-    traces_root = _cfg.TRACES_DIR
+    traces_root = current_home().traces_dir
     if not traces_root.is_dir():
         return
     now = _clock.epoch()
@@ -346,7 +346,7 @@ def sweep_all() -> None:
         if has_end or last_ts_str is None:
             continue
         last_epoch = _epoch_from_iso(last_ts_str)
-        if last_epoch is None or (now - last_epoch) <= _cfg.SESSION_TIMEOUT:
+        if last_epoch is None or (now - last_epoch) <= current_home().session_timeout:
             continue
 
         try:
@@ -409,8 +409,8 @@ def expire_old_traces(
     sweep to one project. Never touches ``audit.log`` -- out of scope by
     design (see ``core/audit.py``); only ever globs ``TRACES_DIR``.
     """
-    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
-    traces_root = _cfg.TRACES_DIR
+    window = current_home().trace_retention_s if retention_s is None else retention_s
+    traces_root = current_home().traces_dir
     report = TraceExpiryReport(dry_run=dry_run, retention_s=window)
     if not traces_root.is_dir():
         return report
@@ -483,7 +483,7 @@ def expire_old_traces(
 
 def find_trace(session_id: str) -> Path | None:
     """Return the trace file for *session_id* across all projects, or None."""
-    for f in sorted(_cfg.TRACES_DIR.glob(f"*/{session_id}.jsonl")):
+    for f in sorted(current_home().traces_dir.glob(f"*/{session_id}.jsonl")):
         if f.is_file():
             return f
     return None
@@ -505,12 +505,12 @@ def read_trace(tracefile: Path) -> list[dict[str, Any]]:
 
 
 def project_trace_dir(project: str) -> Path:
-    return _cfg.TRACES_DIR / project
+    return current_home().traces_dir / project
 
 
 def latest_trace_file(project: str) -> Path | None:
     """Most-recently-modified *.jsonl for *project*, or None."""
-    files = list((_cfg.TRACES_DIR / project).glob("*.jsonl"))
+    files = list((current_home().traces_dir / project).glob("*.jsonl"))
     if not files:
         return None
     return max(files, key=lambda p: p.stat().st_mtime)
@@ -519,7 +519,7 @@ def latest_trace_file(project: str) -> Path | None:
 def export_lines(project: str, since: str = "") -> list[str]:
     """Raw JSONL lines of *project* in sorted filename order, filtered to ts >= *since* when
     given; a line with no parseable ts, or that is not a JSON object, is kept."""
-    pdir = _cfg.TRACES_DIR / project
+    pdir = current_home().traces_dir / project
     out: list[str] = []
     for tf in sorted(pdir.glob("*.jsonl")):
         try:

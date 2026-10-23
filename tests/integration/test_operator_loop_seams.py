@@ -9,15 +9,18 @@ for an operator's own receiver. See each class's own docstring for the seam it p
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.request
+from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -34,6 +37,7 @@ from docket.core.llm import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import channels as _channel_adapters
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -45,19 +49,19 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
+@contextmanager
 def _seed_pod(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     project: str = "demo",
     roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
-) -> Path:
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    _pod.build_pod(project, roles, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        yield home
 
 
 # ── seam a: POST /approvals/<token> (HTTP) -> pregrant -> a real re-dispatch consumes it ──
@@ -93,93 +97,95 @@ class TestHttpGrantConsumesThePregrant:
         finishes."""
         from docket.core.policy import install_policies
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        home = _seed_pod(tmp_path, monkeypatch)
-        install_policies()
-        _fleet.meta_set("demo-lead", "approvalMode", "park")
+        with (
+            _seed_pod(tmp_path) as home,
+            use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)),
+        ):
+            install_policies()
+            _fleet.meta_set("demo-lead", "approvalMode", "park")
 
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        park_backend = _ScriptedBackend(
-            [
-                _final_response("lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: park_backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-
-        _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
-        parked = _dispatch.dispatch_pod("demo")
-        token = parked[0].approval_token
-        assert token
-        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_approval"
-
-        # The real HTTP write route -- not `approval.approval_grant` called directly.
-        class _Handler(_DocketHandler):
-            serve_token = "seam-test-token"
-
-        server = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = server.server_address[1]
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            req = urllib.request.Request(
-                f"http://127.0.0.1:{port}/approvals/{token}",
-                data=json.dumps({"action": "grant"}).encode(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer seam-test-token",
-                },
-                method="POST",
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            park_backend = _ScriptedBackend(
+                [
+                    _final_response("lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                status = resp.status
-                body = json.loads(resp.read())
-        finally:
-            server.shutdown()
-            thread.join(timeout=5)
+            driver = DocketDriver(backend_factory=lambda model: park_backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        assert status == 200
-        assert body == {"ok": True, "token": token, "state": "granted"}
+            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            parked = _dispatch.dispatch_pod("demo")
+            token = parked[0].approval_token
+            assert token
+            assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_approval"
 
-        task = _dispatch.read_tasks("demo")[0]
-        assert task["status"] == "pending"
-        assert len(task["pregrants"]) == 1
-        assert task["pregrants"][0]["token"] == token
+            # The real HTTP write route -- not `approval.approval_grant` called directly.
+            class _Handler(_DocketHandler):
+                serve_token = "seam-test-token"
 
-        # A real re-dispatch: the implementer's identical call is re-issued by the model
-        # and this time is admitted via the single-use pre-grant `_handle_post_approvals`
-        # produced, then the hop finishes normally.
-        resume_backend = _ScriptedBackend(
-            [
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-                _final_response("implementer done"),
-            ]
-        )
-        driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
+            server = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            port = server.server_address[1]
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/approvals/{token}",
+                    data=json.dumps({"action": "grant"}).encode(),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer seam-test-token",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    status = resp.status
+                    body = json.loads(resp.read())
+            finally:
+                server.shutdown()
+                thread.join(timeout=5)
 
-        second = _dispatch.dispatch_pod("demo")
+            assert status == 200
+            assert body == {"ok": True, "token": token, "state": "granted"}
 
-        assert second[0].status == "done", second[0].reason
-        final = _dispatch.read_tasks("demo")[0]
-        assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
-        assert final["hops"][1]["parked"] is True
-        assert final["hops"][-1]["parked"] is False
-        assert final["hops"][-1]["ok"] is True
-        # The pre-grant is single-use -- a stray real audit.log under the real home was
-        # never touched by this test (only the throwaway `home` this fixture built).
-        assert home.is_dir()
+            task = _dispatch.read_tasks("demo")[0]
+            assert task["status"] == "pending"
+            assert len(task["pregrants"]) == 1
+            assert task["pregrants"][0]["token"] == token
+
+            # A real re-dispatch: the implementer's identical call is re-issued by the model
+            # and this time is admitted via the single-use pre-grant `_handle_post_approvals`
+            # produced, then the hop finishes normally.
+            resume_backend = _ScriptedBackend(
+                [
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                    _final_response("implementer done"),
+                ]
+            )
+            driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
+
+            second = _dispatch.dispatch_pod("demo")
+
+            assert second[0].status == "done", second[0].reason
+            final = _dispatch.read_tasks("demo")[0]
+            assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
+            assert final["hops"][1]["parked"] is True
+            assert final["hops"][-1]["parked"] is False
+            assert final["hops"][-1]["ok"] is True
+            # The pre-grant is single-use -- a stray real audit.log under the real home was
+            # never touched by this test (only the throwaway `home` this fixture built).
+            assert home.is_dir()
 
 
 # ── seam b: channel content level enforced at the real webhook delivery point ──
@@ -219,85 +225,83 @@ class TestChannelContentLevelEnforcedAtDelivery:
     and two real local HTTP servers -- proving `content: minimal` vs `actions` is enforced at
     the actual delivery point, which no unit test exercises together."""
 
-    def test_minimal_never_carries_the_command_line_actions_does(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_minimal_never_carries_the_command_line_actions_does(self, tmp_path: Path) -> None:
         """Two real `webhook` channels, one `content: minimal` and one `content: actions`,
         both subscribed to the same approval event: the canary command line must be absent
         from the wire at `minimal` and present at `actions`."""
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        record_isolation_off(tmp_path / ".docket")
-        canary = "git push origin CANARY_a1b2c3d4e5f6"
-        _secrets.save_secrets({"WEBHOOK_SECRET": "whsec_dGVzdHNlY3JldGtleQ=="})
+        with use_home(Home(tmp_path / ".docket")):
+            record_isolation_off(tmp_path / ".docket")
+            canary = "git push origin CANARY_a1b2c3d4e5f6"
+            _secrets.save_secrets({"WEBHOOK_SECRET": "whsec_dGVzdHNlY3JldGtleQ=="})
 
-        minimal_srv, minimal_url, minimal_handler = _capture_server()
-        actions_srv, actions_url, actions_handler = _capture_server()
-        try:
-            token = _approval.approval_create("alpha", "implementer", canary)
+            minimal_srv, minimal_url, minimal_handler = _capture_server()
+            actions_srv, actions_url, actions_handler = _capture_server()
+            try:
+                token = _approval.approval_create("alpha", "implementer", canary)
 
-            minimal_spec = _channel.ChannelSpec(
-                kind="channel",
-                name="minimal-hook",
-                dialect="webhook",
-                enabled=True,
-                capabilities=["notify"],
-                on=["approval.requested"],
-                content="minimal",
-                config={"url": minimal_url},
-                secret="WEBHOOK_SECRET",
-            )
-            actions_spec = _channel.ChannelSpec(
-                kind="channel",
-                name="actions-hook",
-                dialect="webhook",
-                enabled=True,
-                capabilities=["notify"],
-                on=["approval.requested"],
-                content="actions",
-                config={"url": actions_url},
-                secret="WEBHOOK_SECRET",
-            )
+                minimal_spec = _channel.ChannelSpec(
+                    kind="channel",
+                    name="minimal-hook",
+                    dialect="webhook",
+                    enabled=True,
+                    capabilities=["notify"],
+                    on=["approval.requested"],
+                    content="minimal",
+                    config={"url": minimal_url},
+                    secret="WEBHOOK_SECRET",
+                )
+                actions_spec = _channel.ChannelSpec(
+                    kind="channel",
+                    name="actions-hook",
+                    dialect="webhook",
+                    enabled=True,
+                    capabilities=["notify"],
+                    on=["approval.requested"],
+                    content="actions",
+                    config={"url": actions_url},
+                    secret="WEBHOOK_SECRET",
+                )
 
-            report = _notify.flush(
-                [minimal_spec, actions_spec],
-                _channel_adapters.sink_for,
-                now="2026-09-29T00:00:00Z",
-            )
+                report = _notify.flush(
+                    [minimal_spec, actions_spec],
+                    _channel_adapters.sink_for,
+                    now="2026-09-29T00:00:00Z",
+                )
 
-            assert report.delivered == 2, report
-            assert len(minimal_handler.requests) == 1
-            assert len(actions_handler.requests) == 1
+                assert report.delivered == 2, report
+                assert len(minimal_handler.requests) == 1
+                assert len(actions_handler.requests) == 1
 
-            minimal_body = minimal_handler.requests[0]["raw"]
-            actions_body = actions_handler.requests[0]["raw"]
-            assert canary.encode() not in minimal_body, (
-                "minimal content leaked the command line onto the wire"
-            )
-            assert canary.encode() in actions_body
+                minimal_body = minimal_handler.requests[0]["raw"]
+                actions_body = actions_handler.requests[0]["raw"]
+                assert canary.encode() not in minimal_body, (
+                    "minimal content leaked the command line onto the wire"
+                )
+                assert canary.encode() in actions_body
 
-            minimal_json = minimal_handler.requests[0]["json"]
-            actions_json = actions_handler.requests[0]["json"]
-            assert "action" not in minimal_json["data"]
-            assert actions_json["data"]["action"] == canary
-            # Both still carry the token -- content level narrows what is shared, never
-            # whether the item is identifiable at all.
-            assert minimal_json["data"]["token"] == token
-            assert actions_json["data"]["token"] == token
+                minimal_json = minimal_handler.requests[0]["json"]
+                actions_json = actions_handler.requests[0]["json"]
+                assert "action" not in minimal_json["data"]
+                assert actions_json["data"]["action"] == canary
+                # Both still carry the token -- content level narrows what is shared, never
+                # whether the item is identifiable at all.
+                assert minimal_json["data"]["token"] == token
+                assert actions_json["data"]["token"] == token
 
-            # The signature really verifies -- a genuine Standard Webhooks round trip,
-            # not just a header's presence.
-            from docket.edges.adapters.channels.webhook import _sign
+                # The signature really verifies -- a genuine Standard Webhooks round trip,
+                # not just a header's presence.
+                from docket.edges.adapters.channels.webhook import _sign
 
-            secret_value = _secrets.secret_value("WEBHOOK_SECRET")
-            assert secret_value is not None
-            req = minimal_handler.requests[0]
-            event_id = req["headers"]["webhook-id"]
-            ts = req["headers"]["webhook-timestamp"]
-            expected = _sign(secret_value, event_id, ts, req["raw"])
-            assert req["headers"]["webhook-signature"] == expected
-        finally:
-            minimal_srv.shutdown()
-            actions_srv.shutdown()
+                secret_value = _secrets.secret_value("WEBHOOK_SECRET")
+                assert secret_value is not None
+                req = minimal_handler.requests[0]
+                event_id = req["headers"]["webhook-id"]
+                ts = req["headers"]["webhook-timestamp"]
+                expected = _sign(secret_value, event_id, ts, req["raw"])
+                assert req["headers"]["webhook-signature"] == expected
+            finally:
+                minimal_srv.shutdown()
+                actions_srv.shutdown()
 
 
 # ── seam c: the Lead's brief question -> answer_task -> the Lead's own next hop message ──
@@ -368,38 +372,38 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
     reads the Lead's second prompt, proving the operator's typed answers round-trip."""
 
     def test_the_operators_exact_answer_text_appears_in_the_leads_reentry_message(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """The operator answers with `{"q1": "blue", "q2": "large"}`; the Lead's second call
         message must contain `## Operator answers` with both exact values."""
-        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
-        _bind_intake_pipeline("demo")
-        task = _dispatch.enqueue_task("demo", "build the widget", channel="cli")
-        runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            task = _dispatch.enqueue_task("demo", "build the widget", channel="cli")
+            runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
-        first = _dispatch.dispatch_pod("demo", runner=runner)
-        assert first[0].status == "waiting_input"
-        question = _dispatch.read_tasks("demo")[0]["question"]
-        assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
-        assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
+            first = _dispatch.dispatch_pod("demo", runner=runner)
+            assert first[0].status == "waiting_input"
+            question = _dispatch.read_tasks("demo")[0]["question"]
+            assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
+            assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
 
-        _answers.answer_task(
-            "demo",
-            task["id"],
-            "accept",
-            {"q1": "blue", "q2": "large"},
-            channel="cli",
-            actor="op",
-        )
+            _answers.answer_task(
+                "demo",
+                task["id"],
+                "accept",
+                {"q1": "blue", "q2": "large"},
+                channel="cli",
+                actor="op",
+            )
 
-        final = _dispatch.dispatch_pod("demo", runner=runner)
-        assert final[0].status == "done"
+            final = _dispatch.dispatch_pod("demo", runner=runner)
+            assert final[0].status == "done"
 
-        lead_messages = [msg for role, msg in runner.calls if role == "lead"]
-        assert len(lead_messages) == 2, "the Lead must run again after the answer"
-        second_lead_message = lead_messages[1]
+            lead_messages = [msg for role, msg in runner.calls if role == "lead"]
+            assert len(lead_messages) == 2, "the Lead must run again after the answer"
+            second_lead_message = lead_messages[1]
 
-        assert "## Operator answers" in second_lead_message
-        assert "Which color?" in second_lead_message or "add a widget" in question["message"]
-        assert '"q1": "blue"' in second_lead_message
-        assert '"q2": "large"' in second_lead_message
+            assert "## Operator answers" in second_lead_message
+            assert "Which color?" in second_lead_message or "add a widget" in question["message"]
+            assert '"q1": "blue"' in second_lead_message
+            assert '"q2": "large"' in second_lead_message

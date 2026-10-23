@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-import docket.config as _cfg
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
 from docket.core import policy as _policy
@@ -28,6 +27,7 @@ from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict
+from docket.kernel.home import current_home
 
 KINDS: tuple[str, ...] = ("generated", "command", "pitfall", "convention")
 MEMORY_HEADING = "## Memory"
@@ -197,7 +197,7 @@ def parse_memory_section(text: str) -> list[ParsedLine]:
             break
         if not line.startswith("- "):
             continue
-        if len(parsed) >= _cfg.POD_MEMORY_MAX_PER_TASK:
+        if len(parsed) >= current_home().pod_memory_max_per_task:
             break
         match = _BULLET.match(line)
         if match is None:
@@ -257,7 +257,11 @@ class _TaskFacts:
 def _safe_path(subject: str) -> str:
     """*subject* as a normalised repository-relative path, or ``""`` when it is not one."""
     path = subject[:-1] if subject.endswith("/") and len(subject) > 1 else subject
-    if not path or len(path) > _cfg.POD_MEMORY_NOTE_MAX_CHARS or any(ord(c) < 32 for c in path):
+    if (
+        not path
+        or len(path) > current_home().pod_memory_note_max_chars
+        or any(ord(c) < 32 for c in path)
+    ):
         return ""
     if path == ".":
         return path
@@ -283,7 +287,7 @@ def _session_events(link: dict[str, str] | None) -> list[dict[str, Any]] | None:
     project, session = link.get("project", ""), link.get("session", "")
     if not project or not session or Path(project).name != project or Path(session).name != session:
         return None
-    path = _cfg.TRACES_DIR / project / f"{session}.jsonl"
+    path = current_home().traces_dir / project / f"{session}.jsonl"
     return _trace.read_trace(path) if path.is_file() else None
 
 
@@ -392,10 +396,10 @@ def _vet(line: ParsedLine) -> tuple[str, str]:
         subject = _safe_path(subject)
         if not subject:
             return line.subject[:200], "not a repository-relative path"
-    elif not subject or len(subject) > _cfg.POD_MEMORY_NOTE_MAX_CHARS:
+    elif not subject or len(subject) > current_home().pod_memory_note_max_chars:
         return subject[:200], "not a command of a reasonable length"
-    if len(line.note) > _cfg.POD_MEMORY_NOTE_MAX_CHARS:
-        return subject, f"note over {_cfg.POD_MEMORY_NOTE_MAX_CHARS} characters"
+    if len(line.note) > current_home().pod_memory_note_max_chars:
+        return subject, f"note over {current_home().pod_memory_note_max_chars} characters"
     if line.kind == "command" and _URL.search(subject):
         return subject, "contains a link"
     return subject, _reads_as_instruction(line.note)
@@ -453,8 +457,12 @@ def _trim(entries: list[MemoryEntry]) -> list[MemoryEntry]:
     """Apply the two caps, oldest first: accepted apart from pending and refused."""
     accepted = [e for e in entries if e.status == "accepted"]
     undecided = [e for e in entries if e.status != "accepted"]
-    drop = {e.id for e in accepted[: max(0, len(accepted) - _cfg.POD_MEMORY_MAX_ACCEPTED)]}
-    drop |= {e.id for e in undecided[: max(0, len(undecided) - _cfg.POD_MEMORY_MAX_UNDECIDED)]}
+    drop = {
+        e.id for e in accepted[: max(0, len(accepted) - current_home().pod_memory_max_accepted)]
+    }
+    drop |= {
+        e.id for e in undecided[: max(0, len(undecided) - current_home().pod_memory_max_undecided)]
+    }
     return [e for e in entries if e.id not in drop]
 
 
@@ -464,7 +472,7 @@ def _write(entries: list[MemoryEntry]) -> dict[str, Any]:
 
 def list_entries(project: str, status: str | None = None) -> list[MemoryEntry]:
     """The pod's entries, oldest first, optionally only those with *status*."""
-    entries = _load(_store.read_json(_cfg.pod_memory_path(project)))
+    entries = _load(_store.read_json(current_home().pod_memory_path(project)))
     return [e for e in entries if status is None or e.status == status]
 
 
@@ -530,7 +538,7 @@ def _record_task_memory(
                 id=entry_id(line.kind, subject),
                 kind=line.kind,
                 subject=subject,
-                note=line.note[: _cfg.POD_MEMORY_NOTE_MAX_CHARS],
+                note=line.note[: current_home().pod_memory_note_max_chars],
                 status=status,
                 reason=reason,
                 provenance={"task": task_id, "date": today, "commit": facts.commit},
@@ -550,7 +558,7 @@ def _record_task_memory(
             applied.append(new)
         return _write(entries) if applied else None
 
-    _store.read_modify_write(_cfg.pod_memory_path(project), _merge)
+    _store.read_modify_write(current_home().pod_memory_path(project), _merge)
     for entry in applied:
         _announce(project, entry.status, entry, task_id, "docket")
     return applied
@@ -577,7 +585,7 @@ def _decide_entry(
         decided.append(new)
         return _write([new if e.id == entry_id_ else e for e in entries])
 
-    _store.read_modify_write(_cfg.pod_memory_path(project), _fn)
+    _store.read_modify_write(current_home().pod_memory_path(project), _fn)
     _announce(project, action, decided[0], decided[0].provenance.get("task", ""), actor)
     return decided[0]
 
@@ -635,7 +643,7 @@ def reset(project: str, *, actor: str = "operator") -> int:
         removed.extend(_load(doc))
         return {"entries": []} if removed else None
 
-    _store.read_modify_write(_cfg.pod_memory_path(project), _fn)
+    _store.read_modify_write(current_home().pod_memory_path(project), _fn)
     if removed:
         audit_log("pod.memory.reset", f"{project} entries={len(removed)} actor={actor}")
         _trace.trace_event(

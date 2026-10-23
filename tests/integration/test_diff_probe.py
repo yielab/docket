@@ -14,16 +14,18 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.edges.adapters import system as _sys
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -146,20 +148,20 @@ def _init_git_repo(path: Path) -> None:
     )
 
 
+@contextmanager
 def _seed_pod(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     project: str,
     *,
     codebase: str = "",
     work_dir: str = "",
-) -> Path:
+) -> Iterator[Path]:
     home = tmp_path / f"{project}-oc"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
+        yield home
 
 
 @pytest.fixture(autouse=True)
@@ -221,106 +223,99 @@ class _PlainRunner:
 
 
 class TestDispatchPopulatesRealDiff:
-    def test_implementer_hop_reports_real_changed_files_and_branch(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_implementer_hop_reports_real_changed_files_and_branch(self, tmp_path: Path) -> None:
         repo_dir = tmp_path / "repo"
         _init_git_repo(repo_dir)
-        _seed_pod(tmp_path, monkeypatch, "demo", codebase=str(repo_dir))
+        with _seed_pod(tmp_path, "demo", codebase=str(repo_dir)):
+            _dispatch.enqueue_task("demo", "add a feature", channel="cli")
+            runner = _ImplementerWritesFile()
+            (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+            recorded = _dispatch.read_tasks("demo")[0]["worktree"]
+            expected_branch = recorded["branch"]
+            assert recorded["dir"] and expected_branch
+            assert runner.roots == [recorded["dir"]]
 
-        _dispatch.enqueue_task("demo", "add a feature", channel="cli")
-        runner = _ImplementerWritesFile()
-        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
-        recorded = _dispatch.read_tasks("demo")[0]["worktree"]
-        expected_branch = recorded["branch"]
-        assert recorded["dir"] and expected_branch
-        assert runner.roots == [recorded["dir"]]
+            assert res.status == "done"
+            implementer_hop = next(h for h in res.hops if h.role == "implementer")
+            assert implementer_hop.artifact is not None
+            assert implementer_hop.artifact.files_changed == ["feature.py"]
+            assert implementer_hop.artifact.diff_ref == expected_branch
 
-        assert res.status == "done"
-        implementer_hop = next(h for h in res.hops if h.role == "implementer")
-        assert implementer_hop.artifact is not None
-        assert implementer_hop.artifact.files_changed == ["feature.py"]
-        assert implementer_hop.artifact.diff_ref == expected_branch
+            # Real git evidence: a 40-hex commit sha and a resolved base against the
+            # codebase's own branch, not just the artifact's file list/branch name.
+            assert implementer_hop.evidence is not None
+            commit = implementer_hop.evidence["commit"]
+            base_commit = implementer_hop.evidence["baseCommit"]
+            assert commit is not None and len(commit) == 40
+            assert all(c in "0123456789abcdef" for c in commit)
+            assert base_commit == recorded["baseCommit"]
+            assert isinstance(implementer_hop.evidence["diffStat"], dict)
+            assert set(implementer_hop.evidence["diffStat"]) == {"files", "insertions", "deletions"}
 
-        # Real git evidence: a 40-hex commit sha and a resolved base against the
-        # codebase's own branch, not just the artifact's file list/branch name.
-        assert implementer_hop.evidence is not None
-        commit = implementer_hop.evidence["commit"]
-        base_commit = implementer_hop.evidence["baseCommit"]
-        assert commit is not None and len(commit) == 40
-        assert all(c in "0123456789abcdef" for c in commit)
-        assert base_commit == recorded["baseCommit"]
-        assert isinstance(implementer_hop.evidence["diffStat"], dict)
-        assert set(implementer_hop.evidence["diffStat"]) == {"files", "insertions", "deletions"}
-
-        # The lead hop is not an implementer -- it must carry no diff at all,
-        # even though it ran in the same task.
-        lead_hop = next(h for h in res.hops if h.role == "lead")
-        assert lead_hop.artifact is not None
-        assert lead_hop.artifact.files_changed == []
-        assert lead_hop.artifact.diff_ref is None
-        assert lead_hop.evidence is None
+            # The lead hop is not an implementer -- it must carry no diff at all,
+            # even though it ran in the same task.
+            lead_hop = next(h for h in res.hops if h.role == "lead")
+            assert lead_hop.artifact is not None
+            assert lead_hop.artifact.files_changed == []
+            assert lead_hop.artifact.diff_ref is None
+            assert lead_hop.evidence is None
 
 
 # ── TestDegradePaths: workdir pod, non-repo workspace, no git binary ────────
 
 
 class TestDegradePaths:
-    def test_workdir_pod_degrades_to_empty_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_workdir_pod_degrades_to_empty_artifact(self, tmp_path: Path) -> None:
         """A `workdir` pod's Implementer has no codebase or worktree -- its cwd resolves to
         its own plain docket workspace dir, never a git repo -- yet the hop must still
         complete and produce a valid empty artifact, not raise."""
         work_dir = tmp_path / "workdir-target"
         work_dir.mkdir()
-        _seed_pod(tmp_path, monkeypatch, "taskpod", work_dir=str(work_dir))
+        with _seed_pod(tmp_path, "taskpod", work_dir=str(work_dir)):
+            task: dict[str, Any] = {
+                "id": "t2",
+                "description": "research something",
+                "status": "pending",
+            }
+            res = _dispatch.dispatch_task("taskpod", task, runner=_PlainRunner())
 
-        task: dict[str, Any] = {
-            "id": "t2",
-            "description": "research something",
-            "status": "pending",
-        }
-        res = _dispatch.dispatch_task("taskpod", task, runner=_PlainRunner())
+            assert res.status == "done"
+            implementer_hop = next(h for h in res.hops if h.role == "implementer")
+            assert implementer_hop.artifact is not None
+            assert implementer_hop.artifact.files_changed == []
+            assert implementer_hop.artifact.diff_ref is None
+            assert implementer_hop.evidence == {
+                "commit": None,
+                "baseCommit": None,
+                "diffStat": None,
+            }
 
-        assert res.status == "done"
-        implementer_hop = next(h for h in res.hops if h.role == "implementer")
-        assert implementer_hop.artifact is not None
-        assert implementer_hop.artifact.files_changed == []
-        assert implementer_hop.artifact.diff_ref is None
-        assert implementer_hop.evidence == {
-            "commit": None,
-            "baseCommit": None,
-            "diffStat": None,
-        }
-
-    def test_non_repo_codebase_degrades_to_empty_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_non_repo_codebase_degrades_to_empty_artifact(self, tmp_path: Path) -> None:
         """A `codebase` that exists but was never `git init`-ed falls back to a flat
         workspace; the diff probe must degrade the same way the mechanical verify gate
         already does for this exact case."""
         plain_dir = tmp_path / "plain-codebase"
         plain_dir.mkdir()
-        _seed_pod(tmp_path, monkeypatch, "flatpod", codebase=str(plain_dir))
+        with _seed_pod(tmp_path, "flatpod", codebase=str(plain_dir)):
+            implementer_id = "flatpod-implementer"
+            assert _fleet.meta_get(implementer_id, "worktreeDir", "") == ""
 
-        implementer_id = "flatpod-implementer"
-        assert _fleet.meta_get(implementer_id, "worktreeDir", "") == ""
+            _dispatch.enqueue_task("flatpod", "work", channel="cli")
+            (res,) = _dispatch.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
+            assert (
+                "not a git repo" in _dispatch.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
+            )
 
-        _dispatch.enqueue_task("flatpod", "work", channel="cli")
-        (res,) = _dispatch.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
-        assert "not a git repo" in _dispatch.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
-
-        assert res.status == "done"
-        implementer_hop = next(h for h in res.hops if h.role == "implementer")
-        assert implementer_hop.artifact is not None
-        assert implementer_hop.artifact.files_changed == []
-        assert implementer_hop.artifact.diff_ref is None
-        assert implementer_hop.evidence == {
-            "commit": None,
-            "baseCommit": None,
-            "diffStat": None,
-        }
+            assert res.status == "done"
+            implementer_hop = next(h for h in res.hops if h.role == "implementer")
+            assert implementer_hop.artifact is not None
+            assert implementer_hop.artifact.files_changed == []
+            assert implementer_hop.artifact.diff_ref is None
+            assert implementer_hop.evidence == {
+                "commit": None,
+                "baseCommit": None,
+                "diffStat": None,
+            }
 
     def test_missing_git_binary_degrades_to_empty_artifact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -330,23 +325,22 @@ class TestDegradePaths:
         never crash mid-dispatch just because the probe couldn't run."""
         repo_dir = tmp_path / "repo2"
         _init_git_repo(repo_dir)
-        _seed_pod(tmp_path, monkeypatch, "gitless", codebase=str(repo_dir))
+        with _seed_pod(tmp_path, "gitless", codebase=str(repo_dir)):
+            # Simulate "no git binary" only for the dispatch call itself -- the
+            # pod was already provisioned (with real git) above.
+            monkeypatch.setattr(_sys, "git_available", lambda: False)
 
-        # Simulate "no git binary" only for the dispatch call itself -- the
-        # pod was already provisioned (with real git) above.
-        monkeypatch.setattr(_sys, "git_available", lambda: False)
+            _dispatch.enqueue_task("gitless", "work", channel="cli")
+            (res,) = _dispatch.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
+            assert _dispatch.read_tasks("gitless")[0]["worktree"]["dir"] == ""
 
-        _dispatch.enqueue_task("gitless", "work", channel="cli")
-        (res,) = _dispatch.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
-        assert _dispatch.read_tasks("gitless")[0]["worktree"]["dir"] == ""
-
-        assert res.status == "done"
-        implementer_hop = next(h for h in res.hops if h.role == "implementer")
-        assert implementer_hop.artifact is not None
-        assert implementer_hop.artifact.files_changed == []
-        assert implementer_hop.artifact.diff_ref is None
-        assert implementer_hop.evidence == {
-            "commit": None,
-            "baseCommit": None,
-            "diffStat": None,
-        }
+            assert res.status == "done"
+            implementer_hop = next(h for h in res.hops if h.role == "implementer")
+            assert implementer_hop.artifact is not None
+            assert implementer_hop.artifact.files_changed == []
+            assert implementer_hop.artifact.diff_ref is None
+            assert implementer_hop.evidence == {
+                "commit": None,
+                "baseCommit": None,
+                "diffStat": None,
+            }

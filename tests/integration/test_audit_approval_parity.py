@@ -12,23 +12,24 @@ unchanged) and the new audit-log line with the correct channel tag.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import stat
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.core import approval as _ap
 from docket.core import audit as _audit
 from docket.core import trace as _trace
-from docket.kernel.threads import ContextHTTPServer
+from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -37,17 +38,16 @@ _TEST_TOKEN = "test-serve-token-fd4-xyz789"
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with all docket-owned store paths repointed."""
     d = tmp_path / ".docket"
     d.mkdir()
     (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, d)
-    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-    monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-    monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
-    return d
+    with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
+        monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
+        yield d
 
 
 @pytest.fixture()
@@ -115,7 +115,7 @@ def _race_pending_transitions(
         except BaseException as exc:  # the public error/no-op is the oracle
             errors[index] = exc
 
-    threads = [threading.Thread(target=run, args=(index, call)) for index, call in enumerate(calls)]
+    threads = [new_thread(target=run, args=(index, call)) for index, call in enumerate(calls)]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -364,14 +364,15 @@ class TestAuditFailureNeverBreaksApproval:
         assert len(entries) == 1
         assert entries[0]["detail"] == f"token={token} project=proj-no-audit channel=cli"
 
-    def test_audit_write_failure_does_not_raise(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_audit_write_failure_does_not_raise(self, home: Path) -> None:
         """A missing AUDIT_LOG parent dir is best-effort created rather than raising or losing
         the entry -- nothing external bootstraps DOCKET_HOME, so a missing parent just means
         "first write" (see `core/audit.py`'s `audit_log()` docstring)."""
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "nope" / "audit.log", raising=True)
-        token = _ap.approval_create("proj-missing-dir", "implementer", "x")
-        _ap.approval_grant(token, channel="cli")  # must not raise
-        assert _ap.approval_get(token)["state"] == "granted"
-        assert (home / "nope" / "audit.log").is_file()
+        missing = dataclasses.replace(
+            current_home(), root=home / "nope", approvals_dir_override=home / "approvals"
+        )
+        with use_home(missing):
+            token = _ap.approval_create("proj-missing-dir", "implementer", "x")
+            _ap.approval_grant(token, channel="cli")  # must not raise
+            assert _ap.approval_get(token)["state"] == "granted"
+            assert (home / "nope" / "audit.log").is_file()

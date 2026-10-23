@@ -8,8 +8,10 @@ pattern as test_gates_policies_approve_deny.py.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import ClassVar
 
@@ -19,6 +21,7 @@ import docket.config as _cfg
 from docket.core import policy as _policy
 from docket.core import security as _sec
 from docket.core.tools import render_tool_call
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.policy"
 
@@ -26,20 +29,19 @@ SUBJECT = "docket.core.policy"
 
 
 @pytest.fixture()
-def policies_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def policies_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp POLICIES_DIR containing all shipped templates (including high-risk)."""
     d = tmp_path / "policies"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
+    with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
+        # Copy every shipped template so we get the full baseline set -- JSON or YAML, since
+        # the baseline templates ship as short-form YAML.
+        template_dir = _cfg.policy_templates_dir()
+        for pattern in ("*.json", "*.yaml", "*.yml"):
+            for f in template_dir.glob(pattern):
+                shutil.copy(f, d / f.name)
 
-    # Copy every shipped template so we get the full baseline set -- JSON or YAML, since
-    # the baseline templates ship as short-form YAML.
-    template_dir = _cfg.policy_templates_dir()
-    for pattern in ("*.json", "*.yaml", "*.yml"):
-        for f in template_dir.glob(pattern):
-            shutil.copy(f, d / f.name)
-
-    return d
+        yield d
 
 
 # ── high-risk-payment ─────────────────────────────────────────────────────────
@@ -392,7 +394,7 @@ class TestPodPolicies:
     """A pod's own policy directory joins the global set and can only add."""
 
     def test_pod_only_block_denies_only_that_pod(self, policies_dir: Path) -> None:
-        pod_dir = _cfg.PODS_DIR / "p" / "config" / "policies"
+        pod_dir = current_home().pods_dir / "p" / "config" / "policies"
         pod_dir.mkdir(parents=True)
         _write_policy(
             pod_dir,
@@ -431,7 +433,7 @@ class TestPodPolicies:
                 "action": "block",
             },
         )
-        pod_dir = _cfg.PODS_DIR / "p" / "config" / "policies"
+        pod_dir = current_home().pods_dir / "p" / "config" / "policies"
         pod_dir.mkdir(parents=True)
         _write_policy(
             pod_dir,
@@ -481,22 +483,20 @@ class TestNormalizePolicy:
     def test_short_form_normalizes_to_canonical(self) -> None:
         assert _policy.normalize_policy(self._SHORT) == self._CANONICAL
 
-    def test_both_forms_evaluate_identically(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_both_forms_evaluate_identically(self, tmp_path: Path) -> None:
         for label, doc in (("short", self._SHORT), ("canonical", self._CANONICAL)):
             d = tmp_path / label
             d.mkdir()
-            monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
-            (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
-            assert (
-                _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src").action
-                == "allow"
-            )
-            assert (
-                _policy.policy_eval_detail("implementer", "pre_tool_call", "rm -rf /tmp").action
-                == "require_approval"
-            )
+            with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
+                (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
+                assert (
+                    _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src").action
+                    == "allow"
+                )
+                assert (
+                    _policy.policy_eval_detail("implementer", "pre_tool_call", "rm -rf /tmp").action
+                    == "require_approval"
+                )
 
     def test_unknown_kind_is_refused(self) -> None:
         with pytest.raises(ValueError, match="policy"):
@@ -506,31 +506,33 @@ class TestNormalizePolicy:
 class TestStructuredPredicates:
     """A `when` predicate can test the tool call itself, not just its rendered text."""
 
-    def test_tool_and_path_predicate(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_tool_and_path_predicate(self, tmp_path: Path) -> None:
         d = tmp_path / "policies"
         d.mkdir()
-        monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
-        _write_policy(
-            d,
-            "gh-workflow-write.json",
-            {
-                "id": "gh-workflow-write",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "when": {"tool": "write", "path": ".github/**"},
-                "action": "require_approval",
-            },
-        )
-        allow_call = _policy.ToolCallFacts("write", {"path": "src/x.py"}, lambda: "")
-        assert (
-            _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=allow_call).action
-            == "allow"
-        )
-        ask_call = _policy.ToolCallFacts("write", {"path": ".github/x.yml"}, lambda: "")
-        assert (
-            _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=ask_call).action
-            == "require_approval"
-        )
+        with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
+            _write_policy(
+                d,
+                "gh-workflow-write.json",
+                {
+                    "id": "gh-workflow-write",
+                    "applies_to": ["*"],
+                    "hook": "pre_tool_call",
+                    "when": {"tool": "write", "path": ".github/**"},
+                    "action": "require_approval",
+                },
+            )
+            allow_call = _policy.ToolCallFacts("write", {"path": "src/x.py"}, lambda: "")
+            assert (
+                _policy.policy_eval_detail(
+                    "implementer", "pre_tool_call", "", call=allow_call
+                ).action
+                == "allow"
+            )
+            ask_call = _policy.ToolCallFacts("write", {"path": ".github/x.yml"}, lambda: "")
+            assert (
+                _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=ask_call).action
+                == "require_approval"
+            )
 
 
 class TestTaskPolicies:
@@ -545,40 +547,36 @@ class TestTaskPolicies:
             "then": "block",
         } | fields
 
-    def test_a_task_document_blocks_under_the_task_restriction_id(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path, raising=True)
-        call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
-        doc = _policy.task_policy_document(self._doc())
+    def test_a_task_document_blocks_under_the_task_restriction_id(self, tmp_path: Path) -> None:
+        with use_home(dataclasses.replace(current_home(), policies_dir_override=tmp_path)):
+            call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
+            doc = _policy.task_policy_document(self._doc())
 
-        with _policy.task_policies([doc]):
-            hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
-        outside = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
+            with _policy.task_policies([doc]):
+                hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
+            outside = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
 
-        assert (hit.action, hit.policy_id) == ("block", "task-restriction")
-        assert outside.action == "allow"
+            assert (hit.action, hit.policy_id) == ("block", "task-restriction")
+            assert outside.action == "allow"
 
-    def test_a_task_document_never_loosens_a_file_policy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path, raising=True)
-        _write_policy(
-            tmp_path,
-            "global.json",
-            {
-                "id": "global-block",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "when": {"tool": "write"},
-                "action": "block",
-            },
-        )
-        call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
-        with _policy.task_policies([_policy.task_policy_document(self._doc(then="block"))]):
-            hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
+    def test_a_task_document_never_loosens_a_file_policy(self, tmp_path: Path) -> None:
+        with use_home(dataclasses.replace(current_home(), policies_dir_override=tmp_path)):
+            _write_policy(
+                tmp_path,
+                "global.json",
+                {
+                    "id": "global-block",
+                    "applies_to": ["*"],
+                    "hook": "pre_tool_call",
+                    "when": {"tool": "write"},
+                    "action": "block",
+                },
+            )
+            call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
+            with _policy.task_policies([_policy.task_policy_document(self._doc(then="block"))]):
+                hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=call)
 
-        assert hit.policy_id == "global-block"
+            assert hit.policy_id == "global-block"
 
     def test_only_a_valid_block_document_is_accepted(self) -> None:
         with pytest.raises(ValueError, match="only block"):

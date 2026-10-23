@@ -2,34 +2,35 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import runs as _runs
 from docket.core import task_ref as _task_ref
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.task_ref"
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     h = tmp_path / ".docket"
     (h / "workspaces" / "projects").mkdir(parents=True)
     (h / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, h)
-    return h
+    with use_home(Home(h)):
+        yield h
 
 
 def _lead(project: str) -> None:
     member = f"{project}-lead"
-    ws = _cfg.PROJECTS_DIR / member
+    ws = current_home().projects_dir / member
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,
@@ -48,7 +49,7 @@ def _lead(project: str) -> None:
 
 
 def _task(project: str, task_id: str) -> None:
-    if not (_cfg.PROJECTS_DIR / f"{project}-lead").exists():
+    if not (current_home().projects_dir / f"{project}-lead").exists():
         _lead(project)
     _dispatch.enqueue_task(project, f"work {task_id}", channel="cli")
     path = _dispatch.pod_task_list_path(project)
@@ -102,26 +103,30 @@ class TestResolveTask:
 
 class TestRunIds:
     def test_a_run_id_resolves_to_its_task_and_task_lists_its_runs(
-        self, two_pods: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, two_pods: None, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
-        task_id = _dispatch.read_tasks("b")[0]["id"]
-        run = _runs.create_run("cli", "b")
-        _runs.finish_run(run["id"], state="succeeded", task_ids=[task_id])
-        via_run = _task_ref.resolve_task(None, run["id"])
-        assert via_run.task_id == task_id
-        assert via_run.project == "b"
-        assert via_run.run_ids == (run["id"],)
-        assert _task_ref.resolve_task("b", "task-04ff").run_ids == (run["id"],)
+        with use_home(
+            dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
+        ):
+            task_id = _dispatch.read_tasks("b")[0]["id"]
+            run = _runs.create_run("cli", "b")
+            _runs.finish_run(run["id"], state="succeeded", task_ids=[task_id])
+            via_run = _task_ref.resolve_task(None, run["id"])
+            assert via_run.task_id == task_id
+            assert via_run.project == "b"
+            assert via_run.run_ids == (run["id"],)
+            assert _task_ref.resolve_task("b", "task-04ff").run_ids == (run["id"],)
 
     def test_run_of_another_pod_or_unknown_run_is_refused(
-        self, two_pods: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, two_pods: None, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
-        task_id = _dispatch.read_tasks("b")[0]["id"]
-        run = _runs.create_run("cli", "b")
-        _runs.finish_run(run["id"], state="succeeded", task_ids=[task_id])
-        with pytest.raises(_task_ref.TaskRefError, match="pod b"):
-            _task_ref.resolve_task("a", run["id"])
-        with pytest.raises(_task_ref.TaskRefError):
-            _task_ref.resolve_task(None, "run-nope")
+        with use_home(
+            dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
+        ):
+            task_id = _dispatch.read_tasks("b")[0]["id"]
+            run = _runs.create_run("cli", "b")
+            _runs.finish_run(run["id"], state="succeeded", task_ids=[task_id])
+            with pytest.raises(_task_ref.TaskRefError, match="pod b"):
+                _task_ref.resolve_task("a", run["id"])
+            with pytest.raises(_task_ref.TaskRefError):
+                _task_ref.resolve_task(None, "run-nope")

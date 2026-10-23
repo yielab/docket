@@ -13,11 +13,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import _contract
 from docket.cli import app as _app
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.config"
 
@@ -77,8 +77,7 @@ def _run(
     home: Path,
     stdin_text: str = "",
 ) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, home)
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
         mp.setattr(_contract, "_is_tty", lambda: True)
         result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
@@ -147,29 +146,29 @@ class TestCmdBind:
         from docket.core import telegram
 
         home = _setup_agent(tmp_path)
-        repoint_docket_home(monkeypatch, home)
-        monkeypatch.setattr(_contract, "_is_tty", lambda: True)
-        monkeypatch.setattr(telegram, "wire_discovery_configured", lambda: True, raising=False)
-        monkeypatch.setattr(
-            telegram,
-            "discover_wire_groups",
-            lambda challenge: SimpleNamespace(
-                ok=True,
-                configured=True,
-                groups=(SimpleNamespace(chat_id="-100456", title="My Shop Team"),),
-                error="",
-            ),
-            raising=False,
-        )
-        monkeypatch.setattr("secrets.token_hex", lambda size: "a1b2c3")
+        with use_home(Home(home)):
+            monkeypatch.setattr(_contract, "_is_tty", lambda: True)
+            monkeypatch.setattr(telegram, "wire_discovery_configured", lambda: True, raising=False)
+            monkeypatch.setattr(
+                telegram,
+                "discover_wire_groups",
+                lambda challenge: SimpleNamespace(
+                    ok=True,
+                    configured=True,
+                    groups=(SimpleNamespace(chat_id="-100456", title="My Shop Team"),),
+                    error="",
+                ),
+                raising=False,
+            )
+            monkeypatch.setattr("secrets.token_hex", lambda size: "a1b2c3")
 
-        result = CliRunner().invoke(app, ["setup", "notify", "bind", "myshop"], input="\n")
+            result = CliRunner().invoke(app, ["setup", "notify", "bind", "myshop"], input="\n")
 
-        assert result.exit_code == 0, result.output
-        assert "/wire A1B2C3" in result.output
-        assert "My Shop Team" in result.output
-        fleet = json.loads((home / "fleet.json").read_text())
-        assert fleet["bindings"][0]["peerId"] == "-100456"
+            assert result.exit_code == 0, result.output
+            assert "/wire A1B2C3" in result.output
+            assert "My Shop Team" in result.output
+            fleet = json.loads((home / "fleet.json").read_text())
+            assert fleet["bindings"][0]["peerId"] == "-100456"
 
     def test_bind_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)

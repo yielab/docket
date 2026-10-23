@@ -11,15 +11,16 @@ prose in the same file.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod, _setup_check
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -31,17 +32,18 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield home
 
 
 def _lead_ws(project: str = "demo") -> Path:
-    return _cfg.workspace_dir(f"{project}-lead")
+    return current_home().workspace_dir(f"{project}-lead")
 
 
 def _claim_a_task(project: str = "demo") -> str:
@@ -56,32 +58,32 @@ def _claim_a_task(project: str = "demo") -> str:
 
 class TestNoPods:
     def test_no_dispatchable_pods_is_a_silent_no_op(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
         (home / "fleet.json").write_text(json.dumps({"agents": []}))
-        repoint_docket_home(monkeypatch, home)
-        assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
-        assert "Dispatch task ledger" not in capsys.readouterr().out
+        with use_home(Home(home)):
+            assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
+            assert "Dispatch task ledger" not in capsys.readouterr().out
 
 
 class TestInSync:
     def test_in_sync_reports_zero_issues(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _claim_a_task()
-        assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
-        out = capsys.readouterr().out
-        assert "demo: in sync (1 running)" in out
+        with _seed_pod(tmp_path):
+            _claim_a_task()
+            assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
+            out = capsys.readouterr().out
+            assert "demo: in sync (1 running)" in out
 
     def test_no_tasks_at_all_is_in_sync(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
-        assert "demo: in sync (0 running)" in capsys.readouterr().out
+        with _seed_pod(tmp_path):
+            assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
+            assert "demo: in sync (0 running)" in capsys.readouterr().out
 
 
 class TestMissingFromLedger:
@@ -93,114 +95,110 @@ class TestMissingFromLedger:
         # running in TASK_LIST.json.
         _mem.write_dispatch_tasks(_lead_ws(project), [])
 
-    def test_detected_without_fix(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        task_id = _claim_a_task()
-        self._corrupt()
-        issues = _setup_check._check_dispatch_ledger(do_fix=False)
-        out = capsys.readouterr().out
-        assert issues == 1
-        assert f"missing from ledger: {task_id}" in out
-        assert "Fix with: docket setup --fix" in out
+    def test_detected_without_fix(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        with _seed_pod(tmp_path):
+            task_id = _claim_a_task()
+            self._corrupt()
+            issues = _setup_check._check_dispatch_ledger(do_fix=False)
+            out = capsys.readouterr().out
+            assert issues == 1
+            assert f"missing from ledger: {task_id}" in out
+            assert "Fix with: docket setup --fix" in out
 
     def test_fix_resyncs_and_clears_the_issue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        task_id = _claim_a_task()
-        self._corrupt()
-        issues = _setup_check._check_dispatch_ledger(do_fix=True)
-        assert issues == 0
-        assert "ledger re-synced" in capsys.readouterr().out
-        assert _mem.read_dispatch_task_ids(_lead_ws()) == [task_id]
+        with _seed_pod(tmp_path):
+            task_id = _claim_a_task()
+            self._corrupt()
+            issues = _setup_check._check_dispatch_ledger(do_fix=True)
+            assert issues == 0
+            assert "ledger re-synced" in capsys.readouterr().out
+            assert _mem.read_dispatch_task_ids(_lead_ws()) == [task_id]
 
 
 class TestStaleInLedger:
     """HEARTBEAT.md's ledger names a task that TASK_LIST.json no longer shows
     as running (finished since, or never existed) -- the reverse divergence."""
 
-    def test_detected_without_fix(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        # No real running task -- inject a stale ledger entry directly.
-        stale = _mem.DispatchHeartbeatTask(
-            task_id="task-ghost", description="long finished", claimed_at="t"
-        )
-        _mem.write_dispatch_tasks(_lead_ws(), [stale])
+    def test_detected_without_fix(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        with _seed_pod(tmp_path):
+            # No real running task -- inject a stale ledger entry directly.
+            stale = _mem.DispatchHeartbeatTask(
+                task_id="task-ghost", description="long finished", claimed_at="t"
+            )
+            _mem.write_dispatch_tasks(_lead_ws(), [stale])
 
-        issues = _setup_check._check_dispatch_ledger(do_fix=False)
-        out = capsys.readouterr().out
-        assert issues == 1
-        assert "stale in ledger: task-ghost" in out
+            issues = _setup_check._check_dispatch_ledger(do_fix=False)
+            out = capsys.readouterr().out
+            assert issues == 1
+            assert "stale in ledger: task-ghost" in out
 
     def test_fix_clears_the_stale_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        stale = _mem.DispatchHeartbeatTask(
-            task_id="task-ghost", description="long finished", claimed_at="t"
-        )
-        _mem.write_dispatch_tasks(_lead_ws(), [stale])
+        with _seed_pod(tmp_path):
+            stale = _mem.DispatchHeartbeatTask(
+                task_id="task-ghost", description="long finished", claimed_at="t"
+            )
+            _mem.write_dispatch_tasks(_lead_ws(), [stale])
 
-        issues = _setup_check._check_dispatch_ledger(do_fix=True)
-        assert issues == 0
-        assert _mem.read_dispatch_task_ids(_lead_ws()) == []
+            issues = _setup_check._check_dispatch_ledger(do_fix=True)
+            assert issues == 0
+            assert _mem.read_dispatch_task_ids(_lead_ws()) == []
 
-    def test_fix_never_touches_agent_prose_elsewhere_in_the_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        ws = _lead_ws()
-        hb = ws / _mem.HEARTBEAT_FILE
-        text = hb.read_text(encoding="utf-8")
-        text = text.replace("## Notes\n_none_\n", "## Notes\n- Don't touch prod on Fridays.\n")
-        hb.write_text(text, encoding="utf-8")
-        stale = _mem.DispatchHeartbeatTask(task_id="task-ghost", description="x", claimed_at="t")
-        _mem.write_dispatch_tasks(ws, [stale])
+    def test_fix_never_touches_agent_prose_elsewhere_in_the_file(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            ws = _lead_ws()
+            hb = ws / _mem.HEARTBEAT_FILE
+            text = hb.read_text(encoding="utf-8")
+            text = text.replace("## Notes\n_none_\n", "## Notes\n- Don't touch prod on Fridays.\n")
+            hb.write_text(text, encoding="utf-8")
+            stale = _mem.DispatchHeartbeatTask(
+                task_id="task-ghost", description="x", claimed_at="t"
+            )
+            _mem.write_dispatch_tasks(ws, [stale])
 
-        _setup_check._check_dispatch_ledger(do_fix=True)
+            _setup_check._check_dispatch_ledger(do_fix=True)
 
-        final = hb.read_text(encoding="utf-8")
-        assert "Don't touch prod on Fridays." in final
-        assert "task-ghost" not in final
+            final = hb.read_text(encoding="utf-8")
+            assert "Don't touch prod on Fridays." in final
+            assert "task-ghost" not in final
 
 
 class TestDoctorJson:
     def test_dispatch_ledger_key_present_and_flags_divergence(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        task_id = _claim_a_task()
-        _mem.write_dispatch_tasks(_lead_ws(), [])  # corrupt: drop the ledger entry
+        with _seed_pod(tmp_path):
+            task_id = _claim_a_task()
+            _mem.write_dispatch_tasks(_lead_ws(), [])  # corrupt: drop the ledger entry
 
-        capsys.readouterr()  # discard pod-provisioning output from setup above
-        rc = _setup_check.run_check(json_out=True)
-        data = json.loads(capsys.readouterr().out)
-        assert rc == 1
-        assert data["healthy"] is False
-        ledger = data["checks"]["dispatchLedger"]
-        assert ledger == [
-            {
-                "project": "demo",
-                "ok": False,
-                "missingFromLedger": [task_id],
-                "staleInLedger": [],
-            }
-        ]
+            capsys.readouterr()  # discard pod-provisioning output from setup above
+            rc = _setup_check.run_check(json_out=True)
+            data = json.loads(capsys.readouterr().out)
+            assert rc == 1
+            assert data["healthy"] is False
+            ledger = data["checks"]["dispatchLedger"]
+            assert ledger == [
+                {
+                    "project": "demo",
+                    "ok": False,
+                    "missingFromLedger": [task_id],
+                    "staleInLedger": [],
+                }
+            ]
 
     def test_in_sync_reports_ok_true(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _claim_a_task()
+        with _seed_pod(tmp_path):
+            _claim_a_task()
 
-        capsys.readouterr()  # discard pod-provisioning output from setup above
-        _setup_check.run_check(json_out=True)
-        data = json.loads(capsys.readouterr().out)
-        ledger = data["checks"]["dispatchLedger"]
-        assert ledger == [
-            {"project": "demo", "ok": True, "missingFromLedger": [], "staleInLedger": []}
-        ]
+            capsys.readouterr()  # discard pod-provisioning output from setup above
+            _setup_check.run_check(json_out=True)
+            data = json.loads(capsys.readouterr().out)
+            ledger = data["checks"]["dispatchLedger"]
+            assert ledger == [
+                {"project": "demo", "ok": True, "missingFromLedger": [], "staleInLedger": []}
+            ]

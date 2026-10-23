@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import identity as _identity
 from docket.core import pod_memory as _pm
 from docket.core import trace as _trace
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.pod_memory"
 
@@ -37,19 +38,19 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
+def pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Path, str]]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    root = tmp_path / "origin"
-    (root / "dist").mkdir(parents=True)
-    (root / "dist" / "bundle.js").write_text("x\n")
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    _git(root, "add", ".")
-    _git(root, "commit", "-q", "-m", "init")
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(root))
-    return root, _git(root, "rev-parse", "HEAD")
+    with use_home(Home(home)):
+        root = tmp_path / "origin"
+        (root / "dist").mkdir(parents=True)
+        (root / "dist" / "bundle.js").write_text("x\n")
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        _git(root, "add", ".")
+        _git(root, "commit", "-q", "-m", "init")
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(root))
+        yield root, _git(root, "rev-parse", "HEAD")
 
 
 def _finish(

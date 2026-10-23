@@ -7,31 +7,31 @@ at a temp seed and drive the public surfaces in-process.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
 from docket.kernel import clock as _clock
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
 
 @pytest.fixture()
-def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with config paths repointed for trace + audit."""
     d = tmp_path / ".docket"
     d.mkdir()
-    repoint_docket_home(monkeypatch, d)
-    monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 3600, raising=True)
-    monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-    monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-    return d
+    with use_home(Home(d)), use_home(dataclasses.replace(current_home(), session_timeout=3600)):
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
+        yield d
 
 
 # ── audit ────────────────────────────────────────────────────────────────────────
@@ -70,15 +70,15 @@ class TestAudit:
         assert len(entries) == 1
         assert entries[0]["action"] == "keys.add"
 
-    def test_missing_dir_is_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_dir_is_created(self, tmp_path: Path) -> None:
         """A missing AUDIT_LOG parent means "first-ever docket write", not "docket isn't
         installed": nothing external bootstraps DOCKET_HOME, so audit_log must create its own
         parent directory, or the log would silently lose its first entry on a fresh ~/.docket."""
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "fresh" / "audit.log", raising=True)
-        audit_core.audit_log("keys.add", "X")  # must not raise
-        logf = tmp_path / "fresh" / "audit.log"
-        assert logf.is_file()
-        assert audit_core.read_audit()[0]["action"] == "keys.add"
+        with use_home(Home(tmp_path / "fresh")):
+            audit_core.audit_log("keys.add", "X")  # must not raise
+            logf = tmp_path / "fresh" / "audit.log"
+            assert logf.is_file()
+            assert audit_core.read_audit()[0]["action"] == "keys.add"
 
     def test_run_audit_no_log(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         rc = audit_cli.show_log()
@@ -165,32 +165,30 @@ class TestTraceRecord:
 
 
 class TestTraceSweep:
-    def test_sweep_closes_stale_open_trace(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 1, raising=True)
-        pdir = oc_dir / "traces" / "myshop"
-        pdir.mkdir(parents=True)
-        (pdir / "stale.jsonl").write_text(
-            json.dumps(
-                {"ts": "2000-01-01T00:00:00Z", "event_type": "tool_call", "project": "myshop"}
+    def test_sweep_closes_stale_open_trace(self, oc_dir: Path) -> None:
+        with use_home(dataclasses.replace(current_home(), session_timeout=1)):
+            pdir = oc_dir / "traces" / "myshop"
+            pdir.mkdir(parents=True)
+            (pdir / "stale.jsonl").write_text(
+                json.dumps(
+                    {"ts": "2000-01-01T00:00:00Z", "event_type": "tool_call", "project": "myshop"}
+                )
+                + "\n"
             )
-            + "\n"
-        )
-        trace_core.sweep_all()
-        types = [r["event_type"] for r in trace_core.read_trace(pdir / "stale.jsonl")]
-        assert types[-1] == "session_end"
+            trace_core.sweep_all()
+            types = [r["event_type"] for r in trace_core.read_trace(pdir / "stale.jsonl")]
+            assert types[-1] == "session_end"
 
-    def test_sweep_leaves_closed_trace(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 1, raising=True)
-        pdir = oc_dir / "traces" / "myshop"
-        pdir.mkdir(parents=True)
-        (pdir / "done.jsonl").write_text(
-            json.dumps({"ts": "2000-01-01T00:00:00Z", "event_type": "session_end"}) + "\n"
-        )
-        trace_core.sweep_all()
-        types = [r["event_type"] for r in trace_core.read_trace(pdir / "done.jsonl")]
-        assert types == ["session_end"]
+    def test_sweep_leaves_closed_trace(self, oc_dir: Path) -> None:
+        with use_home(dataclasses.replace(current_home(), session_timeout=1)):
+            pdir = oc_dir / "traces" / "myshop"
+            pdir.mkdir(parents=True)
+            (pdir / "done.jsonl").write_text(
+                json.dumps({"ts": "2000-01-01T00:00:00Z", "event_type": "session_end"}) + "\n"
+            )
+            trace_core.sweep_all()
+            types = [r["event_type"] for r in trace_core.read_trace(pdir / "done.jsonl")]
+            assert types == ["session_end"]
 
     def test_sweep_leaves_fresh_trace(self, oc_dir: Path) -> None:
         pdir = oc_dir / "traces" / "myshop"

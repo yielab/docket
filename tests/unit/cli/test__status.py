@@ -3,31 +3,33 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod, _status
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._status"
 
 runner = CliRunner()
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+@contextmanager
+def _seed(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
+        yield home
 
 
 def _tasks(project: str, *statuses: str) -> None:
@@ -39,7 +41,7 @@ def _tasks(project: str, *statuses: str) -> None:
 
 
 def _trace(project: str, name: str, status: str) -> None:
-    d = _cfg.TRACES_DIR / project
+    d = current_home().traces_dir / project
     d.mkdir(parents=True, exist_ok=True)
     events = [
         {"event_type": "session_start", "ts": "2026-10-01T10:00:00Z", "agent_role": "lead"},
@@ -63,166 +65,145 @@ class TestTheSandboxOpensTheOutput:
     def test_the_first_line_is_the_sandbox_posture(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        with _seed(tmp_path):
+            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
 
-        lines = runner.invoke(_app, ["status", "--pod", "demo"]).output.splitlines()
-        first = next(ln for ln in lines if ln.strip())
+            lines = runner.invoke(_app, ["status", "--pod", "demo"]).output.splitlines()
+            first = next(ln for ln in lines if ln.strip())
 
-        assert first.startswith("Sandbox   off. The agent's commands run with your user's")
-        assert "Isolation" not in "\n".join(lines)
+            assert first.startswith("Sandbox   off. The agent's commands run with your user's")
+            assert "Isolation" not in "\n".join(lines)
 
     def test_all_opens_with_it_too(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _seed(tmp_path, monkeypatch)
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        with _seed(tmp_path):
+            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
 
-        out = runner.invoke(_app, ["status", "--all"]).output
+            out = runner.invoke(_app, ["status", "--all"]).output
 
-        assert out.lstrip().startswith("Sandbox   off.")
+            assert out.lstrip().startswith("Sandbox   off.")
 
 
 class TestCurrentPod:
-    def test_a_scripted_trace_of_one_done_and_two_failed_reads_1_2_0(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        _trace("demo", "a", "done")
-        _trace("demo", "b", "failed")
-        _trace("demo", "c", "failed")
+    def test_a_scripted_trace_of_one_done_and_two_failed_reads_1_2_0(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            _trace("demo", "a", "done")
+            _trace("demo", "b", "failed")
+            _trace("demo", "c", "failed")
 
-        out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+            out = runner.invoke(_app, ["status", "--pod", "demo"]).output
 
-        assert "1 / 2 / 0" in out
-        body = _json("--pod", "demo")
-        assert body["outcomes"]["failure"] == 2
+            assert "1 / 2 / 0" in out
+            body = _json("--pod", "demo")
+            assert body["outcomes"]["failure"] == 2
 
-    def test_json_carries_tasks_usage_last_run_and_the_start_flag(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        _tasks("demo", "pending", "failed", "done")
+    def test_json_carries_tasks_usage_last_run_and_the_start_flag(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            _tasks("demo", "pending", "failed", "done")
 
-        body = _json("--pod", "demo")
+            body = _json("--pod", "demo")
 
-        assert body["tasks"]["pending"] == 1 and body["tasks"]["failed"] == 1
-        assert set(body["usage"]) == {"input", "output", "estimateUsd"}
-        assert body["lastRun"] is None
-        assert body["running"] is False
+            assert body["tasks"]["pending"] == 1 and body["tasks"]["failed"] == 1
+            assert set(body["usage"]) == {"input", "output", "estimateUsd"}
+            assert body["lastRun"] is None
+            assert body["running"] is False
 
-    def test_approved_ready_counts_a_granted_pending_task(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        _store.write_json(
-            _dispatch.pod_task_list_path("demo"),
-            {"tasks": [{"id": "t", "status": "pending", "gateOverridePipelineIndex": 1}]},
-        )
-        assert _json("--pod", "demo")["tasks"]["approvedReady"] == 1
+    def test_approved_ready_counts_a_granted_pending_task(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            _store.write_json(
+                _dispatch.pod_task_list_path("demo"),
+                {"tasks": [{"id": "t", "status": "pending", "gateOverridePipelineIndex": 1}]},
+            )
+            assert _json("--pod", "demo")["tasks"]["approvedReady"] == 1
 
-    def test_start_is_running_when_the_pid_file_names_a_live_process(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_start_is_running_when_the_pid_file_names_a_live_process(self, tmp_path: Path) -> None:
         import os
 
-        home = _seed(tmp_path, monkeypatch)
-        (home / "serve.pid").write_text(str(os.getpid()))
-        assert _json("--pod", "demo")["running"] is True
+        with _seed(tmp_path) as home:
+            (home / "serve.pid").write_text(str(os.getpid()))
+            assert _json("--pod", "demo")["running"] is True
 
     def test_no_pod_for_the_directory_exits_1(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        monkeypatch.chdir(tmp_path)
-        assert runner.invoke(_app, ["status"]).exit_code == 1
+        with _seed(tmp_path):
+            monkeypatch.chdir(tmp_path)
+            assert runner.invoke(_app, ["status"]).exit_code == 1
 
 
 class TestPaused:
-    def test_a_budget_paused_pod_says_so_in_json_and_text(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_budget_paused_pod_says_so_in_json_and_text(self, tmp_path: Path) -> None:
         from docket.core import fleet as _fleet
 
-        _seed(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-lead", "paused", True)
-        _fleet.meta_set("demo-lead", "pausedReason", "budget")
+        with _seed(tmp_path):
+            _fleet.meta_set("demo-lead", "paused", True)
+            _fleet.meta_set("demo-lead", "pausedReason", "budget")
 
-        body = _json("--pod", "demo")
-        out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+            body = _json("--pod", "demo")
+            out = runner.invoke(_app, ["status", "--pod", "demo"]).output
 
-        assert body["paused"] is True and body["pausedReason"] == "budget"
-        line = next(ln for ln in out.splitlines() if ln.strip().startswith("Paused:"))
-        assert "budget" in line and "docket run --resume" in line
+            assert body["paused"] is True and body["pausedReason"] == "budget"
+            line = next(ln for ln in out.splitlines() if ln.strip().startswith("Paused:"))
+            assert "budget" in line and "docket run --resume" in line
 
-    def test_a_pod_that_is_not_paused_has_no_paused_row(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
+    def test_a_pod_that_is_not_paused_has_no_paused_row(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            body = _json("--pod", "demo")
+            out = runner.invoke(_app, ["status", "--pod", "demo"]).output
 
-        body = _json("--pod", "demo")
-        out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+            assert body["paused"] is False and body["pausedReason"] == ""
+            assert "Paused:" not in out
 
-        assert body["paused"] is False and body["pausedReason"] == ""
-        assert "Paused:" not in out
-
-    def test_all_json_carries_it_per_pod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_all_json_carries_it_per_pod(self, tmp_path: Path) -> None:
         from docket.core import fleet as _fleet
 
-        _seed(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-lead", "paused", True)
-        _fleet.meta_set("demo-lead", "pausedReason", "budget")
+        with _seed(tmp_path):
+            _fleet.meta_set("demo-lead", "paused", True)
+            _fleet.meta_set("demo-lead", "pausedReason", "budget")
 
-        assert _json("--all")["projects"][0]["paused"] is True
+            assert _json("--all")["projects"][0]["paused"] is True
 
 
 class TestQueueCounts:
     def test_the_task_block_is_the_pod_reports_queue_counts_plus_approved_ready(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         from docket.core import pod_report as _pod_report
 
-        _seed(tmp_path, monkeypatch)
-        _tasks("demo", "pending", "pending", "running", "waiting_approval", "failed", "done")
+        with _seed(tmp_path):
+            _tasks("demo", "pending", "pending", "running", "waiting_approval", "failed", "done")
 
-        tasks = _json("--pod", "demo")["tasks"]
+            tasks = _json("--pod", "demo")["tasks"]
 
-        assert tasks == {**_pod_report.task_counts("demo"), "approvedReady": 0}
-        assert tasks["completed"] == 1 and tasks["pending"] == 2
+            assert tasks == {**_pod_report.task_counts("demo"), "approvedReady": 0}
+            assert tasks["completed"] == 1 and tasks["pending"] == 2
 
 
 class TestAllPods:
-    def test_all_shows_failed_counts(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _seed(tmp_path, monkeypatch)
-        _tasks("demo", "failed", "failed")
-        assert "2 failed" in runner.invoke(_app, ["status", "--all"]).output
+    def test_all_shows_failed_counts(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            _tasks("demo", "failed", "failed")
+            assert "2 failed" in runner.invoke(_app, ["status", "--all"]).output
 
-    def test_all_json_carries_the_inventory(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        body = _json("--all")
-        assert [p["id"] for p in body["projects"]] == ["demo"]
-        assert {"timestamp", "channels", "agents", "totalCostUsd"} <= set(body)
-        assert {a["id"] for a in body["agents"]} == {"demo-lead", "demo-implementer"}
+    def test_all_json_carries_the_inventory(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            body = _json("--all")
+            assert [p["id"] for p in body["projects"]] == ["demo"]
+            assert {"timestamp", "channels", "agents", "totalCostUsd"} <= set(body)
+            assert {a["id"] for a in body["agents"]} == {"demo-lead", "demo-implementer"}
 
 
 class TestHistory:
-    def test_history_with_no_dated_data_is_an_empty_list(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        assert _json("--pod", "demo", "--history", "--days", "2") == {"history": []}
+    def test_history_with_no_dated_data_is_an_empty_list(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            assert _json("--pod", "demo", "--history", "--days", "2") == {"history": []}
 
 
 class TestCostSnapshot:
-    def test_lists_every_agent_with_a_total(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        snap = _status.cost_snapshot()
-        assert {a["id"] for a in snap["agents"]} == {"demo-lead", "demo-implementer"}
-        assert snap["totalUsd"] == 0.0
+    def test_lists_every_agent_with_a_total(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            snap = _status.cost_snapshot()
+            assert {a["id"] for a in snap["agents"]} == {"demo-lead", "demo-implementer"}
+            assert snap["totalUsd"] == 0.0
 
 
 class TestRemovedCommands:
@@ -232,52 +213,50 @@ class TestRemovedCommands:
 
 
 class TestParkedQuestionAndSandbox:
-    def test_a_waiting_input_task_is_counted_and_the_pod_is_waiting(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_waiting_input_task_is_counted_and_the_pod_is_waiting(self, tmp_path: Path) -> None:
         """A parked question shows in the JSON count, the pod state and the human Tasks line."""
-        _seed(tmp_path, monkeypatch)
-        _tasks("demo", "waiting_input", "pending")
+        with _seed(tmp_path):
+            _tasks("demo", "waiting_input", "pending")
 
-        body = _json("--pod", "demo")
-        out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+            body = _json("--pod", "demo")
+            out = runner.invoke(_app, ["status", "--pod", "demo"]).output
 
-        assert body["tasks"]["waitingInput"] == 1
-        assert body["status"] == "waiting"
-        assert "1 waiting input" in out
+            assert body["tasks"]["waitingInput"] == 1
+            assert body["status"] == "waiting"
+            assert "1 waiting input" in out
 
     def test_isolation_reports_the_sandbox_state_in_json_and_on_the_line(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """JSON carries the phrase built from sandbox_state; the text opens with the Sandbox line."""
-        _seed(tmp_path, monkeypatch)
-        monkeypatch.setattr(
-            _status,
-            "sandbox_state",
-            lambda: {"isolation": "off (default)", "network": "open", "backend": "landlock"},
-        )
-        phrase = "off (default); landlock found, network open"
+        with _seed(tmp_path):
+            monkeypatch.setattr(
+                _status,
+                "sandbox_state",
+                lambda: {"isolation": "off (default)", "network": "open", "backend": "landlock"},
+            )
+            phrase = "off (default); landlock found, network open"
 
-        assert _json("--pod", "demo")["isolation"] == phrase
-        assert "Sandbox   " in runner.invoke(_app, ["status", "--pod", "demo"]).output
+            assert _json("--pod", "demo")["isolation"] == phrase
+            assert "Sandbox   " in runner.invoke(_app, ["status", "--pod", "demo"]).output
 
-        monkeypatch.setattr(
-            _status,
-            "sandbox_state",
-            lambda: {"isolation": "on", "network": "none", "backend": "docker"},
-        )
-        assert _json("--pod", "demo")["isolation"] == "on (docker, network none)"
+            monkeypatch.setattr(
+                _status,
+                "sandbox_state",
+                lambda: {"isolation": "on", "network": "none", "backend": "docker"},
+            )
+            assert _json("--pod", "demo")["isolation"] == "on (docker, network none)"
 
     def test_isolation_off_says_the_network_is_not_enforced(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A fresh home has isolation off, so `network none` would read as a cut it is not."""
-        _seed(tmp_path, monkeypatch)
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        with _seed(tmp_path):
+            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
 
-        phrase = _json("--pod", "demo")["isolation"]
+            phrase = _json("--pod", "demo")["isolation"]
 
-        assert phrase.endswith("network none (not enforced: isolation off)")
+            assert phrase.endswith("network none (not enforced: isolation off)")
 
 
 class TestCommandsRows:
@@ -295,36 +274,35 @@ class TestCommandsRows:
         _rr.remember(code, "demo", (RunItem("pipeline-step", "migrate", "make migrate"),))
         return code
 
-    def test_allowed_and_changed_rows(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_allowed_and_changed_rows(self, tmp_path: Path) -> None:
         from docket.core import fleet as _fleet
         from docket.core import pod as _pod_core
 
-        _seed(tmp_path, monkeypatch)
-        code = self._reviewed(tmp_path, "make evil")
-        _fleet.meta_set(_pod_core.member_id("demo", "lead"), "codebase", str(code))
-        result = runner.invoke(_app, ["status", "--pod", "demo"])
-        assert result.exit_code == 0
-        assert "Commands:" in result.output
-        assert "1 allowed on " in result.output and "(code " in result.output
-        assert "1 changed in the repository, waiting for your OK: docket run asks" in (
-            result.output
-        )
+        with _seed(tmp_path):
+            code = self._reviewed(tmp_path, "make evil")
+            _fleet.meta_set(_pod_core.member_id("demo", "lead"), "codebase", str(code))
+            result = runner.invoke(_app, ["status", "--pod", "demo"])
+            assert result.exit_code == 0
+            assert "Commands:" in result.output
+            assert "1 allowed on " in result.output and "(code " in result.output
+            assert "1 changed in the repository, waiting for your OK: docket run asks" in (
+                result.output
+            )
 
-    def test_no_review_no_rows(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _seed(tmp_path, monkeypatch)
-        result = runner.invoke(_app, ["status", "--pod", "demo"])
-        assert "Commands" not in result.output
+    def test_no_review_no_rows(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            result = runner.invoke(_app, ["status", "--pod", "demo"])
+            assert "Commands" not in result.output
 
-    def test_unchanged_has_no_changed_row(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unchanged_has_no_changed_row(self, tmp_path: Path) -> None:
         from docket.core import fleet as _fleet
         from docket.core import pod as _pod_core
 
-        _seed(tmp_path, monkeypatch)
-        code = self._reviewed(tmp_path, "make migrate")
-        _fleet.meta_set(_pod_core.member_id("demo", "lead"), "codebase", str(code))
-        result = runner.invoke(_app, ["status", "--pod", "demo"])
-        assert "1 allowed on " in result.output and "changed in the repository" not in result.output
+        with _seed(tmp_path):
+            code = self._reviewed(tmp_path, "make migrate")
+            _fleet.meta_set(_pod_core.member_id("demo", "lead"), "codebase", str(code))
+            result = runner.invoke(_app, ["status", "--pod", "demo"])
+            assert (
+                "1 allowed on " in result.output
+                and "changed in the repository" not in result.output
+            )

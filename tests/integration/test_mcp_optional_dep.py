@@ -22,6 +22,7 @@ import pytest
 from packaging.version import Version
 
 from docket.cli import _mcp
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -106,14 +107,10 @@ class TestRealSdkIntegration:
         names = {t.name for t in tools}
         assert names == set(_mcp._TOOL_NAMES)
 
-    def test_a_real_call_through_the_sdk_round_trips_a_dict_result(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_real_call_through_the_sdk_round_trips_a_dict_result(self, tmp_path: Path) -> None:
         pytest.importorskip("mcp")
         import asyncio
         import json as _json
-
-        from tests.conftest import repoint_docket_home
 
         # Isolate from the real ~/.docket — this exercises a real tool call
         # (status → core.fleet → fleet.json), so it must not touch the
@@ -121,20 +118,19 @@ class TestRealSdkIntegration:
         home = tmp_path / ".docket"
         home.mkdir()
         (home / "fleet.json").write_text(_json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
+        with use_home(Home(home)):
+            server = _mcp._build_server()
 
-        server = _mcp._build_server()
+            # mcp>=2.0's `MCPServer.call_tool` returns a `CallToolResult` object
+            # (`.structured_content`/`.is_error`), not the 1.x line's
+            # `(content, structured_dict)` tuple — see test_mcp_transport_contract.py
+            # for the real-transport round-trip coverage.
+            async def _call() -> Any:
+                return await server.call_tool("status", {})
 
-        # mcp>=2.0's `MCPServer.call_tool` returns a `CallToolResult` object
-        # (`.structured_content`/`.is_error`), not the 1.x line's
-        # `(content, structured_dict)` tuple — see test_mcp_transport_contract.py
-        # for the real-transport round-trip coverage.
-        async def _call() -> Any:
-            return await server.call_tool("status", {})
-
-        result = asyncio.run(_call())
-        structured = result.structured_content
-        assert isinstance(structured, dict)
-        assert structured["apiVersion"] == "6"
-        # Round-trips through the SDK's own JSON serialization too.
-        assert _json.loads(_json.dumps(structured)) == structured
+            result = asyncio.run(_call())
+            structured = result.structured_content
+            assert isinstance(structured, dict)
+            assert structured["apiVersion"] == "6"
+            # Round-trips through the SDK's own JSON serialization too.
+            assert _json.loads(_json.dumps(structured)) == structured

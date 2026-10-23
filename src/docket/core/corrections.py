@@ -8,10 +8,10 @@ import logging as _logging
 import os
 from typing import Any
 
-import docket.config as _cfg
 from docket.core import trace as _trace
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 __all__ = ["read", "record", "utc_cursor", "utc_z"]
 
@@ -51,7 +51,7 @@ def record(
 
     # Append to JSONL file (direct, no atomic wrapper)
     try:
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         is_new = not path.exists()
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -84,7 +84,7 @@ def utc_z(ts: str) -> str:
 def read(project: str, since: str = "") -> list[dict[str, Any]]:
     """Correction records in append order, keeping `ts > since`; both sides must be in the
     ledger's UTC `isoformat()` form (see `utc_cursor`), or the string compare is wrong."""
-    path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+    path = current_home().corrections_dir / f"{project}.jsonl"
     if not path.exists():
         return []
 

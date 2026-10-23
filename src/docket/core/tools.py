@@ -34,6 +34,7 @@ from docket.edges.adapters import system as _sys
 # handler module, which only this module may import.
 from docket.edges.adapters.toolbox import SandboxMode
 from docket.edges.adapters.toolbox import ToolOutcome as ToolOutcome
+from docket.kernel.home import current_home
 
 ToolKind = Literal["read", "write", "exec"]
 Decision = Literal["allow", "ask", "deny"]
@@ -874,10 +875,9 @@ _GREP_DESCRIPTION = (
 
 def _offered_fetch() -> list[Tool]:
     """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
-    from docket import config as _cfg
     from docket.edges.adapters import fetch as _fetch
 
-    return [_fetch_tool(_fetch.fetch_url)] if _cfg.FETCH_ALLOWED_DOMAINS else []
+    return [_fetch_tool(_fetch.fetch_url)] if current_home().fetch_allowed_domains else []
 
 
 def builtin_registry() -> ToolRegistry:

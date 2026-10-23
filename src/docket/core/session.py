@@ -25,13 +25,13 @@ from urllib.parse import quote as _urlquote
 
 from pydantic import BaseModel, ConfigDict, Field
 
-import docket.config as _cfg
 from docket.core import context as _context
 from docket.core.llm import ChatMessage, Role, TokenUsage, ToolCall
 from docket.core.runtime_driver import FailureKind, TurnResult
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel.home import current_home
 
 __all__ = [
     "HISTORY_FULL_RESULTS_CHARS",
@@ -163,7 +163,7 @@ def _decode(sm: StoredMessage) -> ChatMessage:
 
 
 def _session_dir(session_key: str, sessions_dir: Path | None = None) -> Path:
-    root = sessions_dir if sessions_dir is not None else _cfg.SESSIONS_DIR
+    root = sessions_dir if sessions_dir is not None else current_home().sessions_dir
     return root / _urlquote(session_key, safe="")
 
 
@@ -912,7 +912,7 @@ def compact_session(
     summary_input_budget = (
         summary_input_budget_tokens if summary_input_budget_tokens is not None else role_budget
     )
-    turn_timeout = timeout if timeout is not None else _cfg.DISTILL_TIMEOUT_S
+    turn_timeout = timeout if timeout is not None else current_home().distill_timeout_s
     stamp = now or _clock.stamp()
     display_label = label or session_key
     path = _session_path(session_key, sessions_dir)

@@ -26,6 +26,7 @@ from docket.core.trace import EVENT_TYPES
 from docket.edges import store as _store
 from docket.edges.adapters import system as _system
 from docket.kernel.errors import DocumentError, InvalidInput
+from docket.kernel.home import current_home
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -274,7 +275,7 @@ def _merge_with_builtin_raw(name: str, raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_global_exporters() -> dict[str, ExporterSpec]:
-    raw = _store.read_json(_cfg.EXPORTERS_FILE)
+    raw = _store.read_json(current_home().exporters_file)
     exporters = raw.get("exporters") if isinstance(raw, dict) else None
     entries: dict[str, ExporterSpec] = {}
     if not isinstance(exporters, dict):
@@ -334,7 +335,7 @@ def save_exporter(spec: ExporterSpec) -> None:
         current["exporters"] = exporters
         return current
 
-    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    _store.read_modify_write(current_home().exporters_file, _update)
 
 
 def delete_exporter(name: str) -> None:
@@ -352,18 +353,20 @@ def delete_exporter(name: str) -> None:
         removed = True
         return current
 
-    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    _store.read_modify_write(current_home().exporters_file, _update)
     if removed:
         return
 
     scope = load_catalog().source_of(name)
     if scope == "built-in":
         raise ExporterError(
-            _cfg.EXPORTERS_FILE,
+            current_home().exporters_file,
             "name",
             f"'{name}' is a built-in exporter with no global override -- nothing to remove",
         )
-    raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+    raise ExporterError(
+        current_home().exporters_file, "name", f"'{name}' is not in the exporter catalog"
+    )
 
 
 def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> ExporterSpec:
@@ -371,7 +374,9 @@ def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> Expor
     <overrides>}``, the minimal patch a nearest-wins read fills in from the built-in of the
     same name at load time. Refuses a name absent from the catalog."""
     if load_catalog().get(name) is None:
-        raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+        raise ExporterError(
+            current_home().exporters_file, "name", f"'{name}' is not in the exporter catalog"
+        )
 
     clean = {k: v for k, v in (overrides or {}).items() if k not in ("kind", "name", "enabled")}
     if "privacy" in clean and "share" not in clean:
@@ -393,7 +398,7 @@ def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> Expor
         current["exporters"] = exporters
         return current
 
-    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    _store.read_modify_write(current_home().exporters_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -411,7 +416,9 @@ def disable_exporter(name: str) -> ExporterSpec:
     stored overrides untouched. Credentials in the secret store are never touched. Refuses a
     name absent from the catalog."""
     if load_catalog().get(name) is None:
-        raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+        raise ExporterError(
+            current_home().exporters_file, "name", f"'{name}' is not in the exporter catalog"
+        )
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:
         exporters = current.get("exporters")
@@ -425,7 +432,7 @@ def disable_exporter(name: str) -> ExporterSpec:
         current["exporters"] = exporters
         return current
 
-    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    _store.read_modify_write(current_home().exporters_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -456,7 +463,9 @@ def set_privacy(
     ``exporter.privacy`` with the old/new label and the endpoint's host, never content."""
     current = load_catalog().get(name)
     if current is None:
-        raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+        raise ExporterError(
+            current_home().exporters_file, "name", f"'{name}' is not in the exporter catalog"
+        )
 
     old_label = current.privacy_label
     if privacy is None and share is None and content_max_chars is None:
@@ -466,7 +475,7 @@ def set_privacy(
         try:
             new_label, _new_classes = _privacy.resolve(privacy, share)
         except ValueError as exc:
-            raise ExporterError(_cfg.EXPORTERS_FILE, "privacy", str(exc)) from exc
+            raise ExporterError(current_home().exporters_file, "privacy", str(exc)) from exc
     else:
         new_label = old_label
 
@@ -493,7 +502,7 @@ def set_privacy(
         current_doc["exporters"] = exporters
         return current_doc
 
-    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    _store.read_modify_write(current_home().exporters_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -565,7 +574,7 @@ def activation_state(
 def read_health() -> dict[str, dict[str, Any]]:
     """Every exporter's health record (``config.EXPORTERS_HEALTH_FILE``), keyed by name -- a
     read-only view, through ``edges/store.py`` like every other docket-owned JSON read."""
-    raw = _store.read_json(_cfg.EXPORTERS_HEALTH_FILE)
+    raw = _store.read_json(current_home().exporters_health_file)
     if not isinstance(raw, dict):
         return {}
     return {str(name): block for name, block in raw.items() if isinstance(block, dict)}
@@ -637,13 +646,15 @@ def export_exporter(name: str) -> str:
     credential *names*."""
     spec = load_catalog().get(name)
     if spec is None:
-        raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+        raise ExporterError(
+            current_home().exporters_file, "name", f"'{name}' is not in the exporter catalog"
+        )
 
     try:
         import yaml as _yaml
     except ImportError:
         raise ExporterError(
-            _cfg.EXPORTERS_FILE, "file", "PyYAML not installed -- run: pip install pyyaml"
+            current_home().exporters_file, "file", "PyYAML not installed -- run: pip install pyyaml"
         ) from None
 
     payload = {

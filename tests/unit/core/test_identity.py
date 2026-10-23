@@ -7,18 +7,17 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import patch_home
 
-import docket.config as _cfg
 from docket.core import identity as I
 from docket.core import memory as _mem
 from docket.core import pod as _pod
 from docket.core.models import AgentMeta
 from docket.edges import store as _store
-from docket.kernel.home import current_home, use_home
+from docket.kernel.home import Home, current_home, use_home
 
 _LOCAL_WINDOW = 16_384
 _LOCAL_MAX_OUTPUT = 8_192
@@ -54,11 +53,11 @@ class TestDisplayName:
 
 class TestSoulHasNoPersonaBlock:
     def test_a_meta_written_with_a_persona_composes_without_it(self) -> None:
-        ws = _cfg.workspace_dir("persona-free")
+        ws = current_home().workspace_dir("persona-free")
         ws.mkdir(parents=True, exist_ok=True)
         (ws / "SOUL.md").write_text("# SOUL\nbody\n")
         _store.write_json(
-            _cfg.meta_path("persona-free"),
+            current_home().meta_path("persona-free"),
             {"kind": "project", "role": "lead", "persona": {"name": "Orion", "emoji": "x"}},
         )
         text = I.compose_agent_prompt("persona-free").text
@@ -101,28 +100,24 @@ class TestRuntimeWorkspaceContextReporting:
         assert not I.memory_has_content(v3_seed)
         assert I.memory_has_content(v3_seed + "The billing service retries twice.\n")
 
-    def test_an_oversized_memory_is_truncated_visibly(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        patch_home(monkeypatch, context_token_budget_override=130)
-        (tmp_path / "MEMORY.md").write_text("## Facts\n" + ("M" * 800) + "\n")
+    def test_an_oversized_memory_is_truncated_visibly(self, tmp_path: Path) -> None:
+        with use_home(dataclasses.replace(current_home(), context_token_budget_override=130)):
+            (tmp_path / "MEMORY.md").write_text("## Facts\n" + ("M" * 800) + "\n")
 
-        text, sections = I._runtime_workspace_context(tmp_path, "")
+            text, sections = I._runtime_workspace_context(tmp_path, "")
 
-        assert [s.status for s in sections] == ["truncated"]
-        assert "[... MEMORY.md truncated:" in text
+            assert [s.status for s in sections] == ["truncated"]
+            assert "[... MEMORY.md truncated:" in text
 
-    def test_an_omitted_memory_leaves_a_one_line_marker(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_omitted_memory_leaves_a_one_line_marker(self, tmp_path: Path) -> None:
         """Even when the whole framed block cannot fit, the section still gets a marker."""
-        patch_home(monkeypatch, context_token_budget_override=50)
-        (tmp_path / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
+        with use_home(dataclasses.replace(current_home(), context_token_budget_override=50)):
+            (tmp_path / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
 
-        text, sections = I._runtime_workspace_context(tmp_path, "")
+            text, sections = I._runtime_workspace_context(tmp_path, "")
 
-        assert all(s.status == "omitted" for s in sections)
-        assert "[... MEMORY.md omitted:" in text
+            assert all(s.status == "omitted" for s in sections)
+            assert "[... MEMORY.md omitted:" in text
 
 
 class TestResolveStaticContextBudget:
@@ -143,24 +138,23 @@ class TestResolveStaticContextBudget:
         assert source == "window"
         assert tokens > current_home().context_token_budget_default
 
-    def test_env_style_override_wins_even_with_a_large_window(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_env_style_override_wins_even_with_a_large_window(self) -> None:
         """A test-style override (module attribute, never the environment) must still be
         honoured as an explicit override -- the same path a real CONTEXT_TOKEN_BUDGET env
         var takes, since the module constant is what every reader actually sees."""
-        patch_home(monkeypatch, context_token_budget_override=350)
-        tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
-        assert (tokens, source) == (350, "env")
+        with use_home(dataclasses.replace(current_home(), context_token_budget_override=350)):
+            tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
+            assert (tokens, source) == (350, "env")
 
-    def test_real_env_var_wins_even_when_equal_to_the_default(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        patch_home(
-            monkeypatch, context_token_budget_override=current_home().context_token_budget_default
-        )
-        tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
-        assert (tokens, source) == (current_home().context_token_budget_default, "env")
+    def test_real_env_var_wins_even_when_equal_to_the_default(self) -> None:
+        with use_home(
+            dataclasses.replace(
+                current_home(),
+                context_token_budget_override=current_home().context_token_budget_default,
+            )
+        ):
+            tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
+            assert (tokens, source) == (current_home().context_token_budget_default, "env")
 
 
 class TestComposeAgentPromptIsWindowAware:
@@ -171,7 +165,7 @@ class TestComposeAgentPromptIsWindowAware:
         """No ``.docket-meta.json`` needed: ``compose_agent_prompt`` degrades a missing
         meta file to no prompt material rather than raising, and DOCKET_HOME isolation is the
         autouse ``tests/conftest.py`` fixture, not something this test manages."""
-        ws = _cfg.workspace_dir(agent_id)
+        ws = current_home().workspace_dir(agent_id)
         ws.mkdir(parents=True, exist_ok=True)
         (ws / "SOUL.md").write_text("SOUL-HEAD-MARKER\n" + ("s" * 30_000) + "\nSOUL-TAIL-MARKER\n")
         (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
@@ -219,11 +213,11 @@ class TestProjectInstructionsDefault:
     AGENTS.md by default; an explicit setting replaces the default entirely."""
 
     def _lead_workspace(self, agent_id: str, project: str, **overrides: object) -> Path:
-        ws = _cfg.workspace_dir(agent_id)
+        ws = current_home().workspace_dir(agent_id)
         ws.mkdir(parents=True, exist_ok=True)
         data: dict[str, object] = {"kind": "project", "role": "lead", "pod": project}
         data.update(overrides)
-        _store.write_json(_cfg.meta_path(agent_id), data)
+        _store.write_json(current_home().meta_path(agent_id), data)
         return ws
 
     def test_unset_composes_the_root_agents_md_by_default(self, tmp_path: Path) -> None:
@@ -272,10 +266,10 @@ class TestSkillsSection:
     still ahead of the runtime contract (ADR 0013 §3 rule 8); no skill, no section."""
 
     def _lead_workspace(self, agent_id: str, project: str) -> Path:
-        ws = _cfg.workspace_dir(agent_id)
+        ws = current_home().workspace_dir(agent_id)
         ws.mkdir(parents=True, exist_ok=True)
         _store.write_json(
-            _cfg.meta_path(agent_id), {"kind": "project", "role": "lead", "pod": project}
+            current_home().meta_path(agent_id), {"kind": "project", "role": "lead", "pod": project}
         )
         return ws
 
@@ -285,7 +279,7 @@ class TestSkillsSection:
         project = "skilled-demo"
         ws = self._lead_workspace("skilled-demo-lead", project)
         (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
-        skill_dir = _cfg.pod_config_dir(project) / "skills" / "security-review"
+        skill_dir = current_home().pod_config_dir(project) / "skills" / "security-review"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
             "---\nname: security-review\ndescription: Reviews a diff for security bugs.\n"
@@ -321,14 +315,14 @@ class TestRepositoryTextIsFramed:
         if agents:
             (codebase / "AGENTS.md").write_text("REPO-AGENTS-SENTINEL\n")
         agent_id = f"{name}-lead"
-        ws = _cfg.workspace_dir(agent_id)
+        ws = current_home().workspace_dir(agent_id)
         ws.mkdir(parents=True, exist_ok=True)
         _store.write_json(
-            _cfg.meta_path(agent_id), {"kind": "project", "role": "lead", "pod": name}
+            current_home().meta_path(agent_id), {"kind": "project", "role": "lead", "pod": name}
         )
         (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
         if skill:
-            skill_dir = _cfg.pod_config_dir(name) / "skills" / "reviewer"
+            skill_dir = current_home().pod_config_dir(name) / "skills" / "reviewer"
             skill_dir.mkdir(parents=True)
             (skill_dir / "SKILL.md").write_text(
                 "---\nname: reviewer\ndescription: Reviews diffs.\n---\n\nBody.\n"
@@ -353,7 +347,7 @@ class TestRepositoryTextIsFramed:
 
     def test_a_small_window_still_keeps_the_frame_inside_the_budget(self, tmp_path: Path) -> None:
         composition = self._pod(tmp_path, "tight", agents=True, skill=False)
-        max_bytes = composition.budget_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
+        max_bytes = composition.budget_tokens * current_home().context_bytes_per_token
         assert len(composition.text.encode("utf-8")) <= max_bytes
 
 
@@ -373,16 +367,16 @@ class TestPodMemoryIsTheLastFramedSection:
             }
             for i, name in enumerate(names)
         ]
-        path = _cfg.pod_memory_path(project)
+        path = current_home().pod_memory_path(project)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"entries": entries}))
 
     def _lead(self, name: str) -> str:
         agent_id = f"{name}-lead"
-        ws = _cfg.workspace_dir(agent_id)
+        ws = current_home().workspace_dir(agent_id)
         ws.mkdir(parents=True, exist_ok=True)
         _store.write_json(
-            _cfg.meta_path(agent_id), {"kind": "project", "role": "lead", "pod": name}
+            current_home().meta_path(agent_id), {"kind": "project", "role": "lead", "pod": name}
         )
         (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
         (ws / "MEMORY.md").write_text("## Facts\nOPERATOR-NOTE\n")
@@ -411,24 +405,24 @@ class TestPodMemoryIsTheLastFramedSection:
         assert after.text == before.text
         assert I.POD_MEMORY_LABEL not in [s.name for s in after.sections]
 
-    def test_a_tight_budget_drops_memory_before_it_overflows(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_tight_budget_drops_memory_before_it_overflows(self, tmp_path: Path) -> None:
         agent_id = self._lead("tight")
         self._accepted("tight", "a.js")
         (tmp_path / "a.js").write_text("x")
         base = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
-        patch_home(
-            monkeypatch,
-            context_token_budget_override=len(base.text.encode()) // _cfg.CONTEXT_BYTES_PER_TOKEN
-            - 40,
-        )
+        with use_home(
+            dataclasses.replace(
+                current_home(),
+                context_token_budget_override=len(base.text.encode())
+                // current_home().context_bytes_per_token
+                - 40,
+            )
+        ):
+            composition = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
 
-        composition = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
-
-        assert I.POD_MEMORY_FRAME not in composition.text
-        sections = {s.name: s.status for s in composition.sections}
-        assert sections.get(I.POD_MEMORY_LABEL) == "omitted"
+            assert I.POD_MEMORY_FRAME not in composition.text
+            sections = {s.name: s.status for s in composition.sections}
+            assert sections.get(I.POD_MEMORY_LABEL) == "omitted"
 
 
 _POD_INPUT_BLOCK = """kind: policy
@@ -443,17 +437,16 @@ message: canary
 
 
 @pytest.fixture()
-def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
-    from tests.conftest import repoint_docket_home
 
     home = tmp_path / "home"
-    repoint_docket_home(monkeypatch, home)
-    policies = _cfg.pod_config_dir("mypod") / "policies"
-    policies.mkdir(parents=True)
-    (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-    return home
+    with use_home(Home(home)):
+        policies = current_home().pod_config_dir("mypod") / "policies"
+        policies.mkdir(parents=True)
+        (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+        yield home
 
 
 class TestScreensSeeThePodPolicy:

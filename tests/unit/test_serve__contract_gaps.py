@@ -12,6 +12,7 @@ specs/data/serve-read-api.spec.md:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.error
@@ -20,10 +21,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 import docket.serve as serve
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -36,20 +36,20 @@ _TEST_TOKEN = "test-serve-token-contract-gaps"
 def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
-    repoint_docket_home(monkeypatch, home)
-    approvals_dir = tmp_path / "approvals"
-    approvals_dir.mkdir()
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals_dir, raising=True)
+    with use_home(Home(home)):
+        approvals_dir = tmp_path / "approvals"
+        approvals_dir.mkdir()
+        with use_home(dataclasses.replace(current_home(), approvals_dir_override=approvals_dir)):
 
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
+            class _Handler(_DocketHandler):
+                serve_token = _TEST_TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
+            srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            port = srv.server_address[1]
+            t = threading.Thread(target=srv.serve_forever, daemon=True)
+            t.start()
+            yield f"http://127.0.0.1:{port}", _TEST_TOKEN
+            srv.shutdown()
 
 
 def _get(url: str, token: str | None = None) -> tuple[int, dict[str, Any], Any]:

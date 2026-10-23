@@ -10,12 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.core import provider as _provider
 from docket.core import secrets as _secrets
 from docket.edges.adapters import system as _system
 from docket.edges.adapters import toolbox as _toolbox
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.edges.adapters.system"
 
@@ -73,10 +73,8 @@ def test_catalog_declared_credential_is_stripped(
     assert "control-canary" in out
 
 
-def test_reading_the_secret_store_does_not_create_home(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_reading_the_secret_store_does_not_create_home(tmp_path: Path) -> None:
     home = tmp_path / "absent-home"
-    repoint_docket_home(monkeypatch, home)
-    assert "PATH" in _system.task_environment()
-    assert not home.exists()
+    with use_home(Home(home)):
+        assert "PATH" in _system.task_environment()
+        assert not home.exists()

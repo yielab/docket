@@ -27,11 +27,11 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import Literal
 
-import docket.config as _cfg
 from docket.core import security as _sec
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 # Kept short so a hung subprocess never blocks a CLI command.
 _QUERY_TIMEOUT = 5
@@ -130,9 +130,8 @@ def keyring_secret(name: str) -> str | None:
     is missing or the lookup fails (no D-Bus session, no entry)."""
     if not secret_tool_available():
         return None
-    from docket import config as _cfg
 
-    value = secret_tool_lookup(_cfg.KEYRING_SERVICE, name)
+    value = secret_tool_lookup(current_home().keyring_service, name)
     return value.strip() if value else None
 
 
@@ -794,7 +793,7 @@ def _docker_prefix(
     argv += ["-w", str(roots[0].resolve())]
     for key, value in (env or {}).items():
         argv += ["-e", f"{key}={value}"]
-    argv.append(_cfg.SANDBOX_DOCKER_IMAGE)
+    argv.append(current_home().sandbox_docker_image)
     return argv
 
 
@@ -805,7 +804,7 @@ def docker_image_has_git(image: str | None = None) -> bool | None:
         result = subprocess.run(
             [
                 *["docker", "run", "--rm", "--pull", "never"],
-                image or _cfg.SANDBOX_DOCKER_IMAGE,
+                image or current_home().sandbox_docker_image,
                 *["sh", "-c", "command -v git"],
             ],
             capture_output=True,
@@ -907,8 +906,8 @@ def jail_tmp_dir(roots: tuple[Path, ...], cache_dir: Path | None) -> Path:
         path = cache_dir / "tmp"
     else:
         key = hashlib.sha256(str(roots[0].resolve()).encode()).hexdigest()[:12]
-        _cfg.JAIL_TMP_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-        path = _cfg.JAIL_TMP_DIR / key
+        current_home().jail_tmp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path = current_home().jail_tmp_dir / key
     path.mkdir(parents=True, exist_ok=True)
     path.chmod(0o700)
     return path.resolve()

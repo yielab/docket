@@ -5,27 +5,32 @@ Behind a real TTY on a real dispatch, see `tests/unit/cli/test_pod.py`.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import queue
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _progress
 from docket.core import approval as _ap
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._progress"
 
 
-def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _home(
+    tmp_path: Path,
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 _TASK_ID = "task-04ff1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
@@ -126,20 +131,18 @@ class TestRenderEvent:
         )
         assert line == "⏸ lead hop needs approval · token apr-1 · docket task approve apr-1"
 
-    def test_approval_requested_counts_down_from_the_configured_timeout(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 120, raising=True)
-        record = _record(
-            "approval_requested",
-            {"token": "apr-2", "action": "bash('rm -rf x')"},
-        )
-        now = _progress._epoch(record["ts"]) + 20  # 20s have elapsed since the event
-        line = _progress.render_event(record, now=now)
-        assert line == (
-            "⏸ implementer wants: bash('rm -rf x') · token apr-2 · denies in 100s · "
-            "docket task approve apr-2"
-        )
+    def test_approval_requested_counts_down_from_the_configured_timeout(self) -> None:
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=120)):
+            record = _record(
+                "approval_requested",
+                {"token": "apr-2", "action": "bash('rm -rf x')"},
+            )
+            now = _progress._epoch(record["ts"]) + 20  # 20s have elapsed since the event
+            line = _progress.render_event(record, now=now)
+            assert line == (
+                "⏸ implementer wants: bash('rm -rf x') · token apr-2 · denies in 100s · "
+                "docket task approve apr-2"
+            )
 
     def test_an_unrenderable_event_type_returns_none(self) -> None:
         assert _progress.render_event(_record("llm_call", {})) is None
@@ -165,75 +168,66 @@ class TestParseAnswer:
 
 
 class TestHandleApprovalPrompt:
-    def test_a_grants_through_the_same_pair_docket_approve_uses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _home(tmp_path, monkeypatch)
-        token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+    def test_a_grants_through_the_same_pair_docket_approve_uses(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
 
-        outcome = _progress.handle_approval_prompt(token, "a")
+            outcome = _progress.handle_approval_prompt(token, "a")
 
-        assert outcome.action == "granted"
-        assert _ap.approval_get(token)["state"] == "granted"
+            assert outcome.action == "granted"
+            assert _ap.approval_get(token)["state"] == "granted"
 
-    def test_d_denies_through_the_same_pair_docket_deny_uses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _home(tmp_path, monkeypatch)
-        token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+    def test_d_denies_through_the_same_pair_docket_deny_uses(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
 
-        outcome = _progress.handle_approval_prompt(token, "d")
+            outcome = _progress.handle_approval_prompt(token, "d")
 
-        assert outcome.action == "denied"
-        assert _ap.approval_get(token)["state"] == "denied"
+            assert outcome.action == "denied"
+            assert _ap.approval_get(token)["state"] == "denied"
 
-    def test_an_empty_answer_keeps_waiting_and_touches_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _home(tmp_path, monkeypatch)
-        token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+    def test_an_empty_answer_keeps_waiting_and_touches_nothing(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
 
-        outcome = _progress.handle_approval_prompt(token, "")
+            outcome = _progress.handle_approval_prompt(token, "")
 
-        assert outcome.action == "waiting"
-        assert _ap.approval_get(token)["state"] == "pending"
+            assert outcome.action == "waiting"
+            assert _ap.approval_get(token)["state"] == "pending"
 
     def test_a_token_already_resolved_elsewhere_is_reported_not_raised(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
-        _home(tmp_path, monkeypatch)
-        token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-        _ap.approval_grant(token, channel="mcp")
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+            _ap.approval_grant(token, channel="mcp")
 
-        outcome = _progress.handle_approval_prompt(token, "a")
+            outcome = _progress.handle_approval_prompt(token, "a")
 
-        assert outcome.action == "noop"
-        assert outcome.message
+            assert outcome.action == "noop"
+            assert outcome.message
 
     @pytest.mark.parametrize(("first", "second"), [("d", "a"), ("a", "d")])
     def test_the_opposite_decision_having_won_is_reported_not_raised(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first: str, second: str
+        self, tmp_path: Path, first: str, second: str
     ) -> None:
-        _home(tmp_path, monkeypatch)
-        token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-        _progress.handle_approval_prompt(token, first)
-        state = _ap.approval_get(token)["state"]
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+            _progress.handle_approval_prompt(token, first)
+            state = _ap.approval_get(token)["state"]
 
-        outcome = _progress.handle_approval_prompt(token, second)
+            outcome = _progress.handle_approval_prompt(token, second)
 
-        assert outcome.action == "noop"
-        assert state in (outcome.message or "")
-        assert _ap.approval_get(token)["state"] == state
+            assert outcome.action == "noop"
+            assert state in (outcome.message or "")
+            assert _ap.approval_get(token)["state"] == state
 
-    def test_a_token_with_no_record_is_reported_not_raised(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _home(tmp_path, monkeypatch)
+    def test_a_token_with_no_record_is_reported_not_raised(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            outcome = _progress.handle_approval_prompt("no-such-token", "a")
 
-        outcome = _progress.handle_approval_prompt("no-such-token", "a")
-
-        assert outcome.action == "noop"
-        assert outcome.message
+            assert outcome.action == "noop"
+            assert outcome.message
 
 
 # ── stdin_reader_loop ─────────────────────────────────────────────────────────
@@ -263,61 +257,65 @@ class TestDispatchWithProgress:
         """No real dispatch_pod/DocketDriver here -- this proves the thread wiring
         (render loop + stdin-answer loop + the trace subscription) alone, with a
         fake `_runs.execute` standing in for a hop that blocks on a real approval."""
-        _home(tmp_path, monkeypatch)
-        from docket.core import trace as _trace
+        with _home(tmp_path):
+            from docket.core import trace as _trace
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_POLL_INTERVAL_S", 0.02, raising=True)
-        granted_token: dict[str, str] = {}
+            with use_home(dataclasses.replace(current_home(), tool_approval_poll_interval_s=0.02)):
+                granted_token: dict[str, str] = {}
 
-        def fake_execute(run_id: str, fn: Any) -> list[Any]:
-            _trace.trace_event("demo", _TASK_SESSION, "lead", "session_start", json.dumps({}))
-            hop = json.dumps({"hop": "implementer", "agent": "demo-implementer"})
-            _trace.trace_event("demo", _TASK_SESSION, "implementer", "tool_call", hop)
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-            granted_token["token"] = token
-            deadline = time.monotonic() + 1.5
-            while time.monotonic() < deadline:
-                if _ap.approval_get(token)["state"] != "pending":
-                    break
-                time.sleep(0.02)
-            end = json.dumps({"status": "done"})
-            _trace.trace_event("demo", _TASK_SESSION, "lead", "session_end", end)
-            return []
+                def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                    _trace.trace_event(
+                        "demo", _TASK_SESSION, "lead", "session_start", json.dumps({})
+                    )
+                    hop = json.dumps({"hop": "implementer", "agent": "demo-implementer"})
+                    _trace.trace_event("demo", _TASK_SESSION, "implementer", "tool_call", hop)
+                    token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+                    granted_token["token"] = token
+                    deadline = time.monotonic() + 1.5
+                    while time.monotonic() < deadline:
+                        if _ap.approval_get(token)["state"] != "pending":
+                            break
+                        time.sleep(0.02)
+                    end = json.dumps({"status": "done"})
+                    _trace.trace_event("demo", _TASK_SESSION, "lead", "session_end", end)
+                    return []
 
-        monkeypatch.setattr(_progress._runs, "execute", fake_execute)
-        lines: list[str] = []
+                monkeypatch.setattr(_progress._runs, "execute", fake_execute)
+                lines: list[str] = []
 
-        result = _progress.dispatch_with_progress(
-            "run-1", lambda: [], prompt=True, stdin=io.StringIO("a\n"), println=lines.append
-        )
+                result = _progress.dispatch_with_progress(
+                    "run-1", lambda: [], prompt=True, stdin=io.StringIO("a\n"), println=lines.append
+                )
 
-        assert result == []
-        assert _ap.approval_get(granted_token["token"])["state"] == "granted"
-        task_line = lines.index(f"▶ {_TASK_SHORT} …")
-        hop_line = lines.index("  ▶ implementer …")
-        approval_line = next(
-            i for i, line in enumerate(lines) if "wants: bash: git push origin main" in line
-        )
-        assert task_line < hop_line < approval_line
-        assert lines[-1] == f"■ {_TASK_SHORT} finished — status=done"
+                assert result == []
+                assert _ap.approval_get(granted_token["token"])["state"] == "granted"
+                task_line = lines.index(f"▶ {_TASK_SHORT} …")
+                hop_line = lines.index("  ▶ implementer …")
+                approval_line = next(
+                    i for i, line in enumerate(lines) if "wants: bash: git push origin main" in line
+                )
+                assert task_line < hop_line < approval_line
+                assert lines[-1] == f"■ {_TASK_SHORT} finished — status=done"
 
     def test_without_prompt_it_only_renders(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _home(tmp_path, monkeypatch)
-        from docket.core import trace as _trace
+        with _home(tmp_path):
+            from docket.core import trace as _trace
 
-        def fake_execute(run_id: str, fn: Any) -> list[Any]:
-            _trace.trace_event("demo", "s1", "lead", "session_start", json.dumps({}))
-            _trace.trace_event("demo", "s1", "lead", "session_end", json.dumps({"status": "done"}))
-            return []
+            def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                _trace.trace_event("demo", "s1", "lead", "session_start", json.dumps({}))
+                _trace.trace_event(
+                    "demo", "s1", "lead", "session_end", json.dumps({"status": "done"})
+                )
+                return []
 
-        monkeypatch.setattr(_progress._runs, "execute", fake_execute)
-        lines: list[str] = []
+            monkeypatch.setattr(_progress._runs, "execute", fake_execute)
+            lines: list[str] = []
 
-        result = _progress.dispatch_with_progress(
-            "run-2", lambda: [], prompt=False, stdin=io.StringIO(""), println=lines.append
-        )
+            result = _progress.dispatch_with_progress(
+                "run-2", lambda: [], prompt=False, stdin=io.StringIO(""), println=lines.append
+            )
 
-        assert result == []
-        assert lines == ["▶ lead …", "■ lead finished — status=done"]
+            assert result == []
+            assert lines == ["▶ lead …", "■ lead finished — status=done"]

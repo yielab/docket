@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-import docket.config as _cfg
 from docket.core import trace as _trace
 from docket.core.operator_contract import (
     AnswerResultV11,
@@ -32,6 +31,7 @@ from docket.core.operator_contract import (
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
+from docket.kernel.home import current_home
 
 if TYPE_CHECKING:
     from docket.core.tools import ToolContext
@@ -67,7 +67,7 @@ _QUESTION_ID = re.compile(r"q-[0-9a-f]{1,32}")
 
 
 def _parked_file(question_id: str) -> Path:
-    return _cfg.CONSULT_PARKED_DIR / f"{question_id}.json"
+    return current_home().consult_parked_dir / f"{question_id}.json"
 
 
 def park_token(question: QuestionV11) -> str:

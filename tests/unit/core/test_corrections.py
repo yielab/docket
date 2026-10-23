@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import corrections as _corrections
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.corrections"
 
@@ -35,7 +35,7 @@ class TestRecord:
             _now=iso_now,
         )
 
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         assert path.exists()
         lines = path.read_text(encoding="utf-8").strip().split("\n")
         assert len(lines) == 1
@@ -61,7 +61,7 @@ class TestRecord:
             _now=iso_now,
         )
 
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         lines = path.read_text(encoding="utf-8").strip().split("\n")
         record = _json.loads(lines[0])
         assert record["kind"] == "request_changes"
@@ -80,7 +80,7 @@ class TestRecord:
             _now=iso_now,
         )
 
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         lines = path.read_text(encoding="utf-8").strip().split("\n")
         record = _json.loads(lines[0])
         assert record["kind"] == "declined_answer"
@@ -98,7 +98,7 @@ class TestRecord:
             _now=iso_now,
         )
 
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         mode = path.stat().st_mode & 0o777
         assert mode == 0o600
 
@@ -115,7 +115,7 @@ class TestRecord:
             _now=iso_now,
         )
 
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         record = _json.loads(path.read_text(encoding="utf-8").strip().split("\n")[0])
         assert "[REDACTED]" in record["text"]
         assert "sk-ant-" not in record["text"]
@@ -134,7 +134,7 @@ class TestRecord:
             _now=iso_now,
         )
 
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         record = _json.loads(path.read_text(encoding="utf-8").strip().split("\n")[0])
         assert len(record["text"]) <= 4000
 
@@ -172,7 +172,7 @@ class TestRecord:
                 _now=iso_now,
             )
 
-        path = _cfg.CORRECTIONS_DIR / f"{project}.jsonl"
+        path = current_home().corrections_dir / f"{project}.jsonl"
         lines = path.read_text(encoding="utf-8").strip().split("\n")
         assert len(lines) == 3
 

@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote as _url_unquote
 
-import docket.config as _cfg
 from docket.core import archetypes as _arch
 from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
@@ -35,6 +34,7 @@ from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, InvalidInput, Unavailable
+from docket.kernel.home import current_home
 
 # Bump when the pod-member templates change (doctor flags older members).
 # v3: built-in/starter AGENTS.md templates no longer instruct a private
@@ -143,7 +143,7 @@ def worktree_branch(project: str, task_id: str) -> str:
 
 def task_worktrees_dir(member_id: str) -> Path:
     """Where an Implementer's per-task worktrees live: ``<member workspace>/tasks``."""
-    return _cfg.PROJECTS_DIR / member_id / TASK_WORKTREES_DIRNAME
+    return current_home().projects_dir / member_id / TASK_WORKTREES_DIRNAME
 
 
 def provision_task_worktree(
@@ -194,7 +194,7 @@ def _render_context(
         "codebaseOrConfigured": codebase or "(no codebase configured)",
         "codebaseOrIt": codebase or "it",
         "stack": stack,
-        "workDir": work_dir or codebase or str(_cfg.workspace_dir(member.member_id)),
+        "workDir": work_dir or codebase or str(current_home().workspace_dir(member.member_id)),
         "requiredStartupFile": _mem.REQUIRED_STARTUP_FILE,
     }
 
@@ -293,7 +293,7 @@ def _write_member_workspace(
     blueprint_name: str = "",
     budget_usd: float | None = None,
 ) -> None:
-    ws = _cfg.PROJECTS_DIR / member.member_id
+    ws = current_home().projects_dir / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "memory").mkdir(exist_ok=True)
     told_root = codebase
@@ -357,7 +357,7 @@ def _write_member_workspace(
         meta["workDir"] = work_dir
     if budget_usd is not None and member.role == "lead":
         meta["budgetUsd"] = str(budget_usd)
-    meta_file = ws / _cfg.META_FILE
+    meta_file = ws / current_home().meta_file
     _store.write_json(meta_file, meta)
 
     # Text files inherit the operator's umask when written above. Docket's
@@ -424,7 +424,7 @@ def provision_member(
 
 
 def _provision_lock_dir(project: str) -> Path:
-    return _cfg.WORKSPACES_DIR / ".pod-provision-locks" / project.encode().hex()
+    return current_home().workspaces_dir / ".pod-provision-locks" / project.encode().hex()
 
 
 @contextlib.contextmanager
@@ -453,17 +453,17 @@ def _allocate_pod_resources(project: str) -> tuple[int, int, str, bool, bool]:
         created = updated is not table
         return updated if created else None
 
-    _store.read_modify_write(_cfg.PORT_ALLOC_FILE, allocate)
-    scratch = _cfg.pod_scratch_dir(project)
+    _store.read_modify_write(current_home().port_alloc_file, allocate)
+    scratch = current_home().pod_scratch_dir(project)
     scratch_created = not scratch.exists()
     scratch.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         # scratch's own parents (PODS_DIR, PODS_DIR/project) are created by the same
         # mkdir(parents=True) call above and inherit umask -- harden them too.
-        _cfg.PODS_DIR.chmod(0o700)
+        current_home().pods_dir.chmod(0o700)
         scratch.parent.chmod(0o700)
         scratch.chmod(0o700)
-    cache = _cfg.pod_cache_dir(project)
+    cache = current_home().pod_cache_dir(project)
     cache.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         cache.chmod(0o700)
@@ -487,20 +487,20 @@ def _free_pod_allocation(project: str) -> None:
             return None
         return _res.free_pod_ports(project, table)
 
-    _store.read_modify_write(_cfg.PORT_ALLOC_FILE, free)
+    _store.read_modify_write(current_home().port_alloc_file, free)
 
 
 def _remove_attempt_runtime(project: str, *, scratch_created: bool, work_dir_created: bool) -> None:
     """Remove only Docket runtime paths this failed attempt created."""
     if scratch_created:
-        shutil.rmtree(_cfg.pod_scratch_dir(project), ignore_errors=True)
-        shutil.rmtree(_cfg.pod_cache_dir(project), ignore_errors=True)
+        shutil.rmtree(current_home().pod_scratch_dir(project), ignore_errors=True)
+        shutil.rmtree(current_home().pod_cache_dir(project), ignore_errors=True)
     if work_dir_created:
-        shutil.rmtree(_cfg.pod_work_dir(project), ignore_errors=True)
+        shutil.rmtree(current_home().pod_work_dir(project), ignore_errors=True)
     # Drop an otherwise empty directory created only as a parent above, but
     # preserve any pre-existing or independently-created runtime content.
     with contextlib.suppress(OSError):
-        (_cfg.PODS_DIR / project).rmdir()
+        (current_home().pods_dir / project).rmdir()
 
 
 def _free_pod_resources(project: str) -> None:
@@ -508,7 +508,7 @@ def _free_pod_resources(project: str) -> None:
     _free_pod_allocation(project)
     # The whole directory is Docket-owned. Removing only ``.scratch`` left
     # empty pod ids behind forever and leaked an auto-provisioned ``workdir``.
-    pod_runtime = _cfg.PODS_DIR / project
+    pod_runtime = current_home().pods_dir / project
     if pod_runtime.is_dir():
         shutil.rmtree(pod_runtime, ignore_errors=True)
 
@@ -527,8 +527,8 @@ def release_implementer_resources(project: str) -> None:
     no implementer left; the pod's memory, configuration and working directory stay."""
     with _project_provision_lock(project):
         _free_pod_allocation(project)
-        shutil.rmtree(_cfg.pod_scratch_dir(project), ignore_errors=True)
-        shutil.rmtree(_cfg.pod_cache_dir(project), ignore_errors=True)
+        shutil.rmtree(current_home().pod_scratch_dir(project), ignore_errors=True)
+        shutil.rmtree(current_home().pod_cache_dir(project), ignore_errors=True)
 
 
 def purge_pod_history(project: str, member_ids: list[str]) -> None:
@@ -536,14 +536,14 @@ def purge_pod_history(project: str, member_ids: list[str]) -> None:
 
     Removes project-wide and member-scoped key prefixes; audit log stays untouched (evidence)."""
     prefixes = (f"agent:{project}:", *(f"agent:{member_id}:" for member_id in member_ids))
-    if _cfg.SESSIONS_DIR.is_dir():
-        for entry in _cfg.SESSIONS_DIR.iterdir():
+    if current_home().sessions_dir.is_dir():
+        for entry in current_home().sessions_dir.iterdir():
             if not entry.is_dir() or not _url_unquote(entry.name).startswith(prefixes):
                 continue
             shutil.rmtree(entry, ignore_errors=True)
 
     for trace_owner in (project, *member_ids):
-        trace_dir = _cfg.TRACES_DIR / trace_owner
+        trace_dir = current_home().traces_dir / trace_owner
         if trace_dir.is_dir():
             shutil.rmtree(trace_dir, ignore_errors=True)
 
@@ -577,21 +577,23 @@ class WorktreePruneEntry:
 
 
 def _task_list_file(project: str) -> Path:
-    return _cfg.workspace_dir(pod.member_id(project, "lead")) / "TASK_LIST.json"
+    return current_home().workspace_dir(pod.member_id(project, "lead")) / "TASK_LIST.json"
 
 
 def _worktree_owner(project: str, wt_dir: str) -> tuple[str, str] | None:
     """``(member id, codebase)`` of the pod member whose task-worktrees dir directly holds
     *wt_dir* once resolved; ``None`` for any path outside every member's ``tasks/`` dir."""
     resolved = Path(wt_dir).resolve()
-    if not _cfg.PROJECTS_DIR.is_dir():
+    if not current_home().projects_dir.is_dir():
         return None
-    names = [p.name for p in _cfg.PROJECTS_DIR.iterdir() if p.is_dir()]
+    names = [p.name for p in current_home().projects_dir.iterdir() if p.is_dir()]
     for member_id, _role, _idx in pod.members_of(names, project):
         if resolved.parent != task_worktrees_dir(member_id).resolve():
             continue
         try:
-            raw = _store.read_json(_cfg.PROJECTS_DIR / member_id / _cfg.META_FILE)
+            raw = _store.read_json(
+                current_home().projects_dir / member_id / current_home().meta_file
+            )
         except Exception:
             return None
         return member_id, str(raw.get("codebase", ""))
@@ -699,9 +701,9 @@ def teardown_member(member_id: str) -> tuple[bool, str]:
     Does not free pod resources (caller's job). ``note`` reports task branches left
     behind unmerged (see ``_teardown_worktree_branch``); empty otherwise."""
     # Remove the git worktrees first (before the workspace dir disappears).
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     try:
-        raw = _store.read_json(ws / _cfg.META_FILE)
+        raw = _store.read_json(ws / current_home().meta_file)
         codebase = str(raw.get("codebase", ""))
         project = str(raw.get("pod", ""))
     except Exception:
@@ -855,7 +857,7 @@ def provision_pod(
         if blueprint.workspace_kind == "codebase":
             codebase = location
         else:
-            work_dir = location or str(_cfg.pod_work_dir(project))
+            work_dir = location or str(current_home().pod_work_dir(project))
             work_dir_new = not Path(work_dir).exists()
             work_dir_created = not location and work_dir_new
             Path(work_dir).mkdir(parents=True, exist_ok=True)
@@ -912,7 +914,7 @@ def rendered_member_files(member_id: str) -> dict[str, str]:
     """The SOUL.md/AGENTS.md/(TOOLS.md, when applicable) text the current archetype
     and *member_id*'s stored metadata would produce -- read-only, writes nothing.
     Empty when the id has no pod metadata."""
-    meta = _store.read_json(_cfg.meta_path(member_id))
+    meta = _store.read_json(current_home().meta_path(member_id))
     project = str(meta.get("pod", ""))
     role = str(meta.get("role", ""))
     if not meta or not project or not role:
@@ -960,8 +962,8 @@ def member_sync_status(member_id: str) -> MemberSyncStatus | None:
     rendered = rendered_member_files(member_id)
     if not rendered:
         return None
-    meta = _store.read_json(_cfg.meta_path(member_id))
-    ws = _cfg.PROJECTS_DIR / member_id
+    meta = _store.read_json(current_home().meta_path(member_id))
+    ws = current_home().projects_dir / member_id
     diffs: dict[str, str] = {}
     for name, new_text in rendered.items():
         path = ws / name
@@ -989,7 +991,7 @@ def resync_member(member_id: str) -> list[str]:
     if status is None or not status.stale:
         return []
     rendered = rendered_member_files(member_id)
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     written: list[str] = []
     for name in status.diffs:
         path = ws / name

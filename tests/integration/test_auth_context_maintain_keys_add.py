@@ -13,11 +13,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import _pod
 from docket.cli import app as _app
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -51,8 +51,7 @@ def _run(
     env: dict[str, str] | None = None,
     target: Any = None,
 ) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, home)
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
         for key, value in (env or {}).items():
             mp.setenv(key, value)
         if cwd is not None:

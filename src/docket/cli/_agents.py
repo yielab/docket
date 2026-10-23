@@ -16,7 +16,6 @@ from typing import Any
 import typer
 from rich.markup import escape
 
-import docket.config as _cfg
 from docket import ui
 from docket.core import blueprints as _bp
 from docket.core import config_docs as _config_docs
@@ -27,6 +26,7 @@ from docket.core import policy as _policy
 from docket.core import provisioning as _prov
 from docket.edges import store
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 
 @dataclass(frozen=True)
@@ -284,7 +284,7 @@ def run_init(req: InitRequest) -> int:
     """Provision a project pod from the request, deriving ordinary defaults from the cwd
     (non-interactive: cwd is the location, its basename the pod id). ``from_file`` takes
     the declarative path instead."""
-    store.mkdir_private(_cfg.PROJECTS_DIR)
+    store.mkdir_private(current_home().projects_dir)
 
     if req.from_file is not None:
         return _cmd_add_declarative(req.from_file)
@@ -316,7 +316,9 @@ def run_init(req: InitRequest) -> int:
     except _prov.ProjectIdError as exc:
         return _invalid(req, f"'{name[:40]}' is not a usable pod name: {exc}")
 
-    if (_cfg.PROJECTS_DIR / aid).is_dir() or (_cfg.PROJECTS_DIR / f"{aid}-lead").is_dir():
+    if (current_home().projects_dir / aid).is_dir() or (
+        current_home().projects_dir / f"{aid}-lead"
+    ).is_dir():
         ui.error(f"A project or pod '{aid}' already exists.")
         return 1
 

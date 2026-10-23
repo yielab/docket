@@ -14,7 +14,6 @@ import typer
 from pydantic import ValidationError
 from rich.markup import escape
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.core import models_policy as _mp
@@ -23,6 +22,7 @@ from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
 from docket.edges.adapters import system as _system
 from docket.kernel.errors import DocumentError, Unavailable
+from docket.kernel.home import current_home
 
 provider_app = typer.Typer(
     name="provider",
@@ -68,7 +68,7 @@ def _write_credential(name: str, value: str, event: str) -> bool:
         return False
     secrets = _secrets.load_secrets()
     if backend == "keyring":
-        if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
+        if not _system.secret_tool_store(current_home().keyring_service, name, value):
             ui.error(
                 f"Could not store {name} in the OS keyring",
                 "It is not stored in plaintext under DOCKET_SECRETS_BACKEND=keyring",
@@ -115,7 +115,7 @@ def credential_remove(name: str) -> int:
         ui.error(f"Credential {name} is not stored")
         return 1
     if _keyring_active():
-        _system.secret_tool_clear(_cfg.KEYRING_SERVICE, name)
+        _system.secret_tool_clear(current_home().keyring_service, name)
     del secrets[name]
     _secrets.save_secrets(secrets)
     _secrets.touch_meta(name, "removed")
@@ -581,12 +581,14 @@ def provider_rotate(
 
 
 def _registry_roles() -> dict[str, str]:
-    if not _cfg.MODEL_REGISTRY_FILE.exists():
+    if not current_home().model_registry_file.exists():
         return {}
     import json as _j
 
     try:
-        data = _j.loads(_cfg.MODEL_REGISTRY_FILE.read_text(encoding="utf-8")).get("roles", {})
+        data = _j.loads(current_home().model_registry_file.read_text(encoding="utf-8")).get(
+            "roles", {}
+        )
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
@@ -614,7 +616,7 @@ def model_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON"))
     overrides = _registry_roles()
     rows = []
     for role in _mp.ALL_ROLES:
-        m = role_models.get(role, _cfg.DEFAULT_MODEL)
+        m = role_models.get(role, current_home().default_model)
         source = "user" if overrides.get(role) == m else "builtin"
         rows.append(
             {
@@ -662,7 +664,10 @@ def model_set(
     if key == "default":
         before, updates = default_model, {"default": validated}
     elif _mp.is_role(key):
-        before, updates = role_models.get(key, _cfg.DEFAULT_MODEL), {f"role.{key}": validated}
+        before, updates = (
+            role_models.get(key, current_home().default_model),
+            {f"role.{key}": validated},
+        )
     else:
         ui.error(f"Unknown role {key}", "Use one of: " + " ".join(_mp.ALL_ROLES) + " default")
         raise typer.Exit(1)
@@ -703,7 +708,8 @@ def apply_preset(preset: str, *, quiet: bool = False, provider: str = "") -> Non
     after = dict.fromkeys(cheap, econ)
     after.update(dict.fromkeys(strong, std))
     changes = ",".join(
-        f"{r}:{before_roles.get(r, _cfg.DEFAULT_MODEL)}->{after[r]}" for r in _mp.ALL_ROLES
+        f"{r}:{before_roles.get(r, current_home().default_model)}->{after[r]}"
+        for r in _mp.ALL_ROLES
     )
     audit_log("models.preset", f"preset={preset} default:{before_default}->{std} roles:{changes}")
     report_repoints(_mp.reapply_role_policy(), provider=provider)
@@ -746,7 +752,7 @@ def model_reset(yes: bool = typer.Option(False, "--yes", help="Do not ask")) -> 
     """Remove every override and restore the built-in role policy.
 
     Example: docket setup model reset --yes"""
-    if not _cfg.MODEL_REGISTRY_FILE.exists():
+    if not current_home().model_registry_file.exists():
         ui.success("No overrides: already on the built-in policy")
         return
     if not _contract.confirm("Remove all model overrides", yes=yes):
@@ -755,10 +761,10 @@ def model_reset(yes: bool = typer.Option(False, "--yes", help="Do not ask")) -> 
     before_roles, _t, before_default = _mp.load_registry()
     _mp.write_registry({}, reset=True)
     with contextlib.suppress(FileNotFoundError):
-        _cfg.MODEL_REGISTRY_FILE.unlink()
+        current_home().model_registry_file.unlink()
     after_roles, _t2, after_default = _mp.load_registry()
     changes = ",".join(
-        f"{r}:{before_roles.get(r, _cfg.DEFAULT_MODEL)}->{after_roles.get(r, _cfg.DEFAULT_MODEL)}"
+        f"{r}:{before_roles.get(r, current_home().default_model)}->{after_roles.get(r, current_home().default_model)}"
         for r in _mp.ALL_ROLES
     )
     audit_log("models.reset", f"default:{before_default}->{after_default} roles:{changes}")

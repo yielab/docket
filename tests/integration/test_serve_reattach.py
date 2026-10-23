@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
 
 from docket.cli import _pod
@@ -29,6 +29,7 @@ from docket.core import pipeline as _pipeline
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -47,14 +48,15 @@ _CONSULT = {
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     (home / "approvals").mkdir()
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        yield
 
 
 @contextlib.contextmanager
@@ -271,7 +273,7 @@ class TestExpiryStates:
         token = _task_list()[0]["approvalToken"]
         record = _ap.approval_get(token)
         record["expiresAt"] = "2000-01-01T00:00:00Z"
-        (_ap._cfg.APPROVALS_DIR / f"{token}.json").write_text(json.dumps(record))
+        (current_home().approvals_dir / f"{token}.json").write_text(json.dumps(record))
 
         with _server():
             pass

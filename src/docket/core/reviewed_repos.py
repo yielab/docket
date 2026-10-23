@@ -8,13 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import docket.config as _cfg
 from docket.core import protected_paths as _protected
 from docket.core.audit import audit_log
 from docket.core.pod_apply import RunItem
 from docket.edges import store
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 CODE_LENGTH = 16
 _NAMES_NO_FILE = frozenset({"allow-commands", "network", "role-loosens"})
@@ -73,7 +73,7 @@ def _is_one_entry_shape(by_pod: Any) -> bool:
 
 def approvals(repo_root: Path, project: str) -> list[ReviewedRepo]:
     """Every item set *project* approved for *repo_root*, oldest first."""
-    repos = store.read_json(_cfg.REVIEWED_REPOS_FILE).get("repos", {})
+    repos = store.read_json(current_home().reviewed_repos_file).get("repos", {})
     by_pod = repos.get(_key(repo_root))
     if _is_one_entry_shape(by_pod):
         return []
@@ -124,7 +124,7 @@ def remember(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> str:
         repos[key] = kept
         return {"repos": repos}
 
-    store.read_modify_write(_cfg.REVIEWED_REPOS_FILE, _write)
+    store.read_modify_write(current_home().reviewed_repos_file, _write)
     audit_log(
         "repo.allow",
         f"repo={_key(repo_root)} pod={project} code={code} items={len(items)}",

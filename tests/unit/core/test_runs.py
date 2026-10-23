@@ -11,24 +11,27 @@ calls never clobbering each other (locked read-modify-write).
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
 import json
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import runs as _runs
+from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core.runs"
 
 
 @pytest.fixture()
-def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     f = tmp_path / "docket-runs.json"
-    monkeypatch.setattr(_cfg, "RUNS_FILE", f, raising=True)
-    return f
+    with use_home(dataclasses.replace(current_home(), runs_file_override=f)):
+        yield f
 
 
 class _FakeTaskResult:
@@ -214,7 +217,7 @@ class TestConcurrentCreate:
             barrier.wait(timeout=5)
             _runs.create_run("sweep", f"proj-{i}")
 
-        threads = [threading.Thread(target=_create, args=(i,)) for i in range(n)]
+        threads = [new_thread(target=_create, args=(i,)) for i in range(n)]
         for t in threads:
             t.start()
         for t in threads:

@@ -15,6 +15,7 @@ import pytest
 import docket.config as _cfg
 from docket.core import channel as _channel
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.channel"
 
@@ -218,7 +219,7 @@ class TestSecretField:
 class TestGlobalOverrideInheritance:
     def test_partial_global_override_inherits_unset_fields(self) -> None:
         _store.write_json(
-            _cfg.CHANNELS_FILE,
+            current_home().channels_file,
             {
                 "channels": {
                     "ntfy": {

@@ -10,6 +10,7 @@ grant. See specs/functional/security-gates.spec.md, Validation.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import json
 import os
 import shutil
@@ -25,11 +26,11 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import dispatch as _dispatch
 from docket.core import pod_provisioning as _pp
 from docket.core import prepare as _prepare
 from docket.edges.adapters import system
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.jail"
 
@@ -75,12 +76,14 @@ def _git_image_or_skip() -> str:
         ),
     ]
 )
-def backend(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
+def backend(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     name: str = request.param
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", name)
+    home = current_home()
     if name == "docker":
-        monkeypatch.setattr(_cfg, "SANDBOX_DOCKER_IMAGE", _git_image_or_skip())
-    return name
+        home = dataclasses.replace(home, sandbox_docker_image=_git_image_or_skip())
+    with use_home(home):
+        yield name
 
 
 @pytest.fixture
@@ -93,12 +96,12 @@ def arena(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     if any(real == t or real.startswith(t + os.sep) for t in temps):
         shutil.rmtree(base)
         pytest.fail(f"the arena {real} is under a granted temp dir; rows would prove nothing")
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", base / "projects")
     # A commit inside the jail needs an identity; a CI runner has no user.name.
     for var in system._GIT_IDENTITY_VARS:
         monkeypatch.setenv(var, "t" if var.endswith("NAME") else "t@t")
     try:
-        yield base.resolve()
+        with use_home(dataclasses.replace(current_home(), root=base)):
+            yield base.resolve()
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -559,7 +562,6 @@ def _install_into(wt: Path, codebase: Path) -> Path:
 def test_a_prepared_cache_entry_is_readable_but_not_writable_to_a_jailed_gate(
     backend: str, task_tree: TaskTree, arena: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(_cfg, "PREPARE_CACHE_DIR", arena / "cache" / "prepare")
     entry = _install_into(task_tree.wt, task_tree.main)
     cmd = "cat node_modules/tool > read.txt; echo planted > node_modules/planted"
     jail = system.JailPolicy(network=True)

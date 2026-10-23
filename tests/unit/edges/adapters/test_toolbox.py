@@ -12,14 +12,14 @@ specs/functional/trace-store.spec.md "Process lifecycle events".
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from pathlib import Path
 
 import pytest
-from tests.conftest import patch_home
 
 from docket.edges.adapters import toolbox
-from docket.kernel.home import current_home
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.edges.adapters.toolbox"
 
@@ -334,10 +334,10 @@ class TestToolOutputBudget:
         assert path.read_text(encoding="utf-8").startswith("EDITED\nline 4\n")
 
     def test_glob_and_grep_output_is_bounded_by_the_announced_truncation(
-        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+        self, workspace: Path
     ) -> None:
-        patch_home(monkeypatch, tool_max_output_chars=120)
-        self._tree(workspace, count=50)
-        out = toolbox.grep_files((workspace,), "needle")
-        assert out.ok and out.content.endswith("more characters]")
-        assert len(out.content) <= 120 + 60
+        with use_home(dataclasses.replace(current_home(), tool_max_output_chars=120)):
+            self._tree(workspace, count=50)
+            out = toolbox.grep_files((workspace,), "needle")
+            assert out.ok and out.content.endswith("more characters]")
+            assert len(out.content) <= 120 + 60

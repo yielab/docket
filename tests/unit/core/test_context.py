@@ -8,13 +8,14 @@ time before `summary`, which is truncated rather than dropped).
 
 from __future__ import annotations
 
-import pytest
+import dataclasses
 
 import docket.config as _cfg
 from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import context as _ctx
 from docket.core.handoff import HandoffArtifact
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.context"
 
@@ -28,18 +29,16 @@ class TestEstimateTokens:
     def test_uses_the_documented_bytes_per_token_ratio(self) -> None:
         text = "x" * 40
         assert (
-            _ctx.estimate_tokens(text) == len(text.encode("utf-8")) // _cfg.CONTEXT_BYTES_PER_TOKEN
+            _ctx.estimate_tokens(text)
+            == len(text.encode("utf-8")) // current_home().context_bytes_per_token
         )
 
     def test_reuses_the_existing_config_ratio_not_a_second_one(self) -> None:
         """The whole point of reusing `config.CONTEXT_BYTES_PER_TOKEN` (rather than inventing a second ratio) is that changing the one config value changes both `maintain check`'s and this module's estimate together."""
         text = "y" * 100
         before = _ctx.estimate_tokens(text)
-        try:
-            _cfg.CONTEXT_BYTES_PER_TOKEN = 10
+        with use_home(dataclasses.replace(current_home(), context_bytes_per_token=10)):
             after = _ctx.estimate_tokens(text)
-        finally:
-            _cfg.CONTEXT_BYTES_PER_TOKEN = 4
         assert before == 25
         assert after == 10
 
@@ -47,7 +46,7 @@ class TestEstimateTokens:
         # "é" is 2 bytes in UTF-8 -- the estimate must reflect that, not the
         # 1-character length Python's `len()` would report.
         text = "é" * 8  # 16 bytes
-        assert _ctx.estimate_tokens(text) == 16 // _cfg.CONTEXT_BYTES_PER_TOKEN
+        assert _ctx.estimate_tokens(text) == 16 // current_home().context_bytes_per_token
 
 
 # ── budget_for_role ──────────────────────────────────────────────────────────
@@ -106,19 +105,17 @@ class TestBudgetForRole:
         )
         assert budget > _ctx.DEFAULT_TOKEN_BUDGET
 
-    def test_pod_scoped_archetype_resolves_its_token_budget(
-        self, tmp_path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pod_scoped_archetype_resolves_its_token_budget(self, tmp_path) -> None:
         """A pod-scoped role with a declared tokenBudget is resolved when project= is passed."""
         home = tmp_path / "docket-home"
         home.mkdir()
-        monkeypatch.setenv("DOCKET_HOME", str(home))
 
         role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
         doc = _config_docs.load_document(role_file)
-        _arch.add_user_archetype(doc.doc, "mypod")
+        with use_home(Home(home)):
+            _arch.add_user_archetype(doc.doc, "mypod")
 
-        found_budget = _ctx.budget_for_role("security-vetter", project="mypod")
+            found_budget = _ctx.budget_for_role("security-vetter", project="mypod")
         assert found_budget > 0
 
     def test_pod_scoped_call_with_global_role_still_returns_builtin(self) -> None:

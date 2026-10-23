@@ -11,11 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-import docket.config as _cfg
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import pod as _pod
 from docket.core import trace as _trace
+from docket.kernel.home import current_home
 
 __all__ = ["EscalationMetrics", "count_escalation_metrics"]
 
@@ -124,7 +124,7 @@ def _count_tasks_started() -> int:
 
     count = 0
     for project in _all_projects():
-        traces_dir = _cfg.TRACES_DIR / project
+        traces_dir = current_home().traces_dir / project
         if not traces_dir.exists():
             continue
         for trace_file in traces_dir.glob("*.jsonl"):

@@ -8,30 +8,30 @@ and drive core.approval/core.trace directly, in-process.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import trace as _trace
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.serve"
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with all docket-owned store paths repointed."""
     d = tmp_path / ".docket"
     d.mkdir()
     (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, d)
-    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-    monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
-    return d
+    with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
+        yield d
 
 
 # ── approval lifecycle emits trace events, action text redacted ────────────────

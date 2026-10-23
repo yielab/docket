@@ -30,7 +30,6 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-import docket.config as cfg
 from docket.core import audit as _audit
 from docket.core import fleet, utils
 from docket.core import operator_contract as _oc
@@ -39,6 +38,7 @@ from docket.core import task_options as _task_options
 from docket.core import trace as _trace
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
+from docket.kernel.home import current_home
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
@@ -62,7 +62,10 @@ def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
     from docket.core import dispatch as _dispatch
 
     left = _dispatch._task_token_budget(task)
-    return {**task, "tokenBudget": cfg.AGENT_LOOP_TOKEN_BUDGET if left is None else max(0, left)}
+    return {
+        **task,
+        "tokenBudget": current_home().agent_loop_token_budget if left is None else max(0, left),
+    }
 
 
 def _last_activity_or_never(agent_id: str) -> str:
@@ -74,7 +77,7 @@ def _last_activity_or_never(agent_id: str) -> str:
 def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
     from docket.edges import store
 
-    meta_path = cfg.meta_path(agent_id)
+    meta_path = current_home().meta_path(agent_id)
     meta: dict[str, Any] = store.read_json(meta_path) if meta_path.exists() else {}
     cost = round(utils.aggregate_cost(agent_id).cost_usd, 6)
     budget_raw = meta.get("budgetUsd")
@@ -126,8 +129,8 @@ def _cost_json() -> dict[str, Any]:
     agents: list[dict[str, Any]] = []
     total = 0.0
     for pid in utils.project_ids():
-        raw = store.read_json(cfg.meta_path(pid))
-        model = str(raw.get("model", cfg.DEFAULT_MODEL))
+        raw = store.read_json(current_home().meta_path(pid))
+        model = str(raw.get("model", current_home().default_model))
         totals = utils.aggregate_cost(pid)
         cost = totals.cost_usd
         total += cost
@@ -221,7 +224,7 @@ def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
     """Fold every project's trace JSONL into *m*. Mirrors
     ``core.trace.sweep_all``'s ``*/*.jsonl`` glob -- every project, not one.
     """
-    traces_dir = cfg.TRACES_DIR
+    traces_dir = current_home().traces_dir
     if not traces_dir.is_dir():
         return
     for tf in sorted(traces_dir.glob("*/*.jsonl")):
@@ -463,7 +466,7 @@ def render_health(dispatch_on: bool = False) -> str:
             "on": dispatch_on,
             "inflight": inflight,
             "stopping": _sweep_stop.is_set(),
-            "workers": cfg.DISPATCH_SWEEP_WORKERS,
+            "workers": current_home().dispatch_sweep_workers,
         },
     }
     return json.dumps(body, separators=(",", ":")) + "\n"
@@ -485,8 +488,8 @@ def _check_schedules(now_ts: float) -> None:
     from docket.core import runs as _runs
     from docket.core import schedule as _sched
 
-    schedules = _sched.load_schedules(cfg.SCHEDULE_FILE)
-    last_run_map = _sched.load_last_run(cfg.SCHEDULE_FILE)
+    schedules = _sched.load_schedules(current_home().schedule_file)
+    last_run_map = _sched.load_last_run(current_home().schedule_file)
     for project, spec in schedules.items():
         reason = _sched.describe_spec_error(spec)
         if reason:
@@ -499,7 +502,7 @@ def _check_schedules(now_ts: float) -> None:
         last_run = last_run_map.get(project, 0.0)
         if not _sched.is_schedule_due(spec, last_run, now_ts):
             continue
-        _sched.record_last_run(cfg.SCHEDULE_FILE, project, now_ts)
+        _sched.record_last_run(current_home().schedule_file, project, now_ts)
 
         record = _runs.create_run("schedule", project)
 
@@ -511,8 +514,8 @@ def _check_schedules(now_ts: float) -> None:
                 run_id,
                 lambda: _dispatch.dispatch_pod(
                     proj,
-                    turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
-                    verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                    turn_timeout=current_home().dispatch_turn_timeout_s,
+                    verify_timeout=current_home().dispatch_verify_timeout_s,
                 ),
             )
 
@@ -556,8 +559,8 @@ def _sweep_one_pod(project: str) -> None:
             record["id"],
             lambda: _dispatch.dispatch_pod(
                 project,
-                turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
-                verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                turn_timeout=current_home().dispatch_turn_timeout_s,
+                verify_timeout=current_home().dispatch_verify_timeout_s,
                 approval_default="park",
                 resume=True,
                 stop=_sweep_stop.is_set,
@@ -577,7 +580,7 @@ def _submit_pod_sweep(project: str) -> bool:
     The pool holds ``DISPATCH_SWEEP_WORKERS`` threads; a pod past that limit is claimed but
     waits for a free worker. Returns whether a sweep was started."""
     global _sweep_pool
-    workers = max(1, cfg.DISPATCH_SWEEP_WORKERS)
+    workers = max(1, current_home().dispatch_sweep_workers)
     stale = None
     with _SWEEP_LOCK:
         if project in _sweep_inflight:
@@ -1674,8 +1677,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 run_id,
                 lambda: _dispatch.dispatch_pod(
                     proj,
-                    turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
-                    verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                    turn_timeout=current_home().dispatch_turn_timeout_s,
+                    verify_timeout=current_home().dispatch_verify_timeout_s,
                     variables=variables,
                 ),
             )

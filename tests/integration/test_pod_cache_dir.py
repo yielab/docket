@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import pod_provisioning as _prov
 from docket.edges.adapters import system, toolbox
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.edges.adapters.toolbox"
 
@@ -18,7 +18,7 @@ SUBJECT = "docket.edges.adapters.toolbox"
 def test_provisioning_creates_the_cache_dir_0700() -> None:
     _prov.allocate_pod_resources("cachepod")
 
-    cache = _cfg.pod_cache_dir("cachepod")
+    cache = current_home().pod_cache_dir("cachepod")
     assert cache.is_dir()
     assert oct(cache.stat().st_mode & 0o777) == "0o700"
 
@@ -61,6 +61,6 @@ def test_the_driver_resolves_and_creates_a_members_pod_cache() -> None:
 
     cache = _rt._pod_cache_dir("cachepod-implementer")
 
-    assert cache == _cfg.pod_cache_dir("cachepod")
+    assert cache == current_home().pod_cache_dir("cachepod")
     assert oct(cache.stat().st_mode & 0o777) == "0o700"
     assert _rt._pod_cache_dir("not-a-pod-member") is None

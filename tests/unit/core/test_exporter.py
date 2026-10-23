@@ -18,6 +18,7 @@ from docket.core import exporter as _exporter
 from docket.core import secrets as _secrets
 from docket.edges import store as _store
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.exporter"
 
@@ -229,7 +230,7 @@ class TestGlobalOverrideInheritance:
 
     def test_partial_global_override_inherits_unset_fields(self) -> None:
         _store.write_json(
-            _cfg.EXPORTERS_FILE,
+            current_home().exporters_file,
             {
                 "exporters": {
                     "langfuse": {
@@ -257,7 +258,7 @@ class TestGlobalOverrideInheritance:
     def test_needs_credential_when_only_one_of_two_is_stored(self) -> None:
         _secrets.save_secrets({"LANGFUSE_PUBLIC_KEY": "pk-lf-abcdefghijklmnopqrstuvwx"})
         _store.write_json(
-            _cfg.EXPORTERS_FILE,
+            current_home().exporters_file,
             {"exporters": {"langfuse": {"kind": "exporter", "name": "langfuse", "enabled": True}}},
         )
 
@@ -275,7 +276,7 @@ class TestGlobalOverrideInheritance:
             }
         )
         _store.write_json(
-            _cfg.EXPORTERS_FILE,
+            current_home().exporters_file,
             {"exporters": {"langfuse": {"kind": "exporter", "name": "langfuse", "enabled": True}}},
         )
 
@@ -411,19 +412,19 @@ class TestWritersValidateBeforeWriting:
         assert spec.share is None
 
     def test_enable_refuses_both_a_level_and_a_share_and_writes_nothing(self) -> None:
-        before = _store.read_json(_cfg.EXPORTERS_FILE)
+        before = _store.read_json(current_home().exporters_file)
         with pytest.raises(InvalidInput, match="mutually exclusive"):
             _exporter.enable_exporter("langfuse", {"privacy": "actions", "share": ["errors"]})
 
-        assert _store.read_json(_cfg.EXPORTERS_FILE) == before
+        assert _store.read_json(current_home().exporters_file) == before
         assert _exporter_audit_actions() == []
 
     def test_set_privacy_refuses_a_zero_content_bound_and_writes_nothing(self) -> None:
-        before = _store.read_json(_cfg.EXPORTERS_FILE)
+        before = _store.read_json(current_home().exporters_file)
         with pytest.raises(InvalidInput, match="contentMaxChars"):
             _exporter.set_privacy("langfuse", content_max_chars=0)
 
-        assert _store.read_json(_cfg.EXPORTERS_FILE) == before
+        assert _store.read_json(current_home().exporters_file) == before
         assert _exporter_audit_actions() == []
 
     def test_set_privacy_that_succeeds_is_audited_once(self) -> None:

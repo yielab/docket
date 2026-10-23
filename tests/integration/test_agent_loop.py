@@ -14,18 +14,17 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import dataclasses
 import json
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from tests.integration import llm_stub as _stub
 
-import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core import approval as _approval
 from docket.core import session as _session
@@ -46,6 +45,8 @@ from docket.core.tools import Tool as _Tool
 from docket.core.tools import ToolContext, ToolRegistry
 from docket.edges.adapters import llm as _llm_adapter
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core.agent_loop"
 
@@ -57,9 +58,12 @@ AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "core" / "agent_loop.py"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path)
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with (
+        use_home(Home(tmp_path)),
+        use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
+    ):
+        yield
 
 
 @pytest.fixture
@@ -233,7 +237,7 @@ def _threaded_turn(
         except BaseException as exc:  # surfaced in the owning test thread
             errors.append(exc)
 
-    worker = threading.Thread(target=_run, name=f"turn:{session_key}")
+    worker = new_thread(target=_run, name=f"turn:{session_key}")
     worker.start()
     return worker, results, errors
 
@@ -276,7 +280,7 @@ def _write_gate_policy(policy_id: str, pattern: str, action: str) -> None:
     """Install one minimal `pre_tool_call` policy for a single RED scenario --
     a hand-written stand-in for the shipped templates, scoped to exactly the
     tool name this test drives rather than a real destructive-command list."""
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
         "id": policy_id,
         "description": "test-only policy",
@@ -286,7 +290,9 @@ def _write_gate_policy(policy_id: str, pattern: str, action: str) -> None:
         "action": action,
         "message": "test gate",
     }
-    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+    (current_home().policies_dir / f"{policy_id}.json").write_text(
+        json.dumps(doc), encoding="utf-8"
+    )
 
 
 # ── cooperative persisted-run cancellation (W26-C10b RED) ───────────────────
@@ -431,44 +437,47 @@ class TestCooperativeRunCancellation:
             "evaluate_tool_call",
             lambda _tool, _args, _ctx: _tools.ToolVerdict("ask", "operator approval required"),
         )
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 5, raising=True)
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_POLL_INTERVAL_S", 0.005, raising=True)
-        backend = ScriptedBackend(
-            [
-                _tool_call_response("guarded-call", "guarded", "{}"),
-                _final("must not continue after cancellation"),
-            ]
-        )
-        session_key = "agent:cancel-approval:demo"
-        worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
-        deadline = time.monotonic() + 5
-        approval_files: list[Path] = []
-        while time.monotonic() < deadline:
-            approval_files = list(_cfg.APPROVALS_DIR.glob("apr-*.json"))
-            if approval_files:
-                break
-            time.sleep(0.005)
-        assert len(approval_files) == 1
-        token = approval_files[0].stem
-        assert _approval.approval_get(token)["state"] == "pending"
+        with use_home(
+            dataclasses.replace(
+                current_home(), tool_approval_timeout=5, tool_approval_poll_interval_s=0.005
+            )
+        ):
+            backend = ScriptedBackend(
+                [
+                    _tool_call_response("guarded-call", "guarded", "{}"),
+                    _final("must not continue after cancellation"),
+                ]
+            )
+            session_key = "agent:cancel-approval:demo"
+            worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
+            deadline = time.monotonic() + 5
+            approval_files: list[Path] = []
+            while time.monotonic() < deadline:
+                approval_files = list(current_home().approvals_dir.glob("apr-*.json"))
+                if approval_files:
+                    break
+                time.sleep(0.005)
+            assert len(approval_files) == 1
+            token = approval_files[0].stem
+            assert _approval.approval_get(token)["state"] == "pending"
 
-        probe.request()
-        # The in-turn cancellation self-deny (`wait_for_approval`'s
-        # `channel="cancellation"` path) may win this race instead, a real named
-        # conflict; either winner must still uphold the invariant below: the
-        # handler never runs.
-        with contextlib.suppress(_approval.ApprovalConflict):
-            _approval.approval_grant(token, channel="cli")
-        worker.join(timeout=5)
+            probe.request()
+            # The in-turn cancellation self-deny (`wait_for_approval`'s
+            # `channel="cancellation"` path) may win this race instead, a real named
+            # conflict; either winner must still uphold the invariant below: the
+            # handler never runs.
+            with contextlib.suppress(_approval.ApprovalConflict):
+                _approval.approval_grant(token, channel="cli")
+            worker.join(timeout=5)
 
-        assert not worker.is_alive()
-        assert errors == []
-        assert _approval.approval_get(token)["state"] in {"granted", "denied"}
-        assert handler_calls == []
-        assert len(results) == 1
-        assert results[0].stop_reason == "run_cancelled"
-        assert results[0].failure_kind == "run_cancelled"
-        assert len(backend.calls) == 1
+            assert not worker.is_alive()
+            assert errors == []
+            assert _approval.approval_get(token)["state"] in {"granted", "denied"}
+            assert handler_calls == []
+            assert len(results) == 1
+            assert results[0].stop_reason == "run_cancelled"
+            assert results[0].failure_kind == "run_cancelled"
+            assert len(backend.calls) == 1
 
     def test_running_handler_finishes_then_remainder_is_cancelled_as_one_unit(
         self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
@@ -1030,7 +1039,9 @@ class TestLiveSessionCompaction:
         assert backend.summary_calls == 4
         assert len(ranged_calls) == 4
         assert [bool(tools) for tools in backend.tools_seen] == [True, False, False, False, False]
-        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
         fits = [
             json.loads(line)
             for line in tracefile.read_text().splitlines()
@@ -1325,7 +1336,9 @@ class TestLiveSessionCompaction:
         ] == original_messages
         assert stored.usage.input_tokens == 50
         assert stored.usage.output_tokens == 10
-        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         compaction_fits = [
             record
@@ -2081,7 +2094,7 @@ class TestTerminalResponseReservation:
             "tool",
             "assistant",
         ]
-        tracefile = _cfg.TRACES_DIR / "budget-audit" / "task-budget-finalize.jsonl"
+        tracefile = current_home().traces_dir / "budget-audit" / "task-budget-finalize.jsonl"
         warning = next(
             json.loads(line)["payload"]
             for line in tracefile.read_text().splitlines()
@@ -2272,7 +2285,9 @@ class TestTerminalResponseReservation:
         assert result.failure_kind == "invalid_output"
         assert "registered context window 100" in result.error
         assert len(backend.calls) == 1
-        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
         warning = next(
             json.loads(line)["payload"]
             for line in tracefile.read_text().splitlines()
@@ -2496,8 +2511,8 @@ class TestTracing:
             "assistant",
         ]
         assert _session.load_messages(trace_key) == []
-        assert not (_cfg.TRACES_DIR / "demo" / f"{history_key}.jsonl").exists()
-        tracefile = _cfg.TRACES_DIR / "demo" / f"{trace_key}.jsonl"
+        assert not (current_home().traces_dir / "demo" / f"{history_key}.jsonl").exists()
+        tracefile = current_home().traces_dir / "demo" / f"{trace_key}.jsonl"
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         assert all(record["session_id"] == trace_key for record in records)
         assert {record["event_type"] for record in records} >= {
@@ -2515,7 +2530,9 @@ class TestTracing:
         )
         _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 
-        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
         assert tracefile.exists()
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         event_types = [r["event_type"] for r in records]
@@ -2543,7 +2560,9 @@ class TestTracing:
 
         _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 
-        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         tool_result_record = next(r for r in records if r["event_type"] == "tool_result")
         assert tool_result_record["payload"]["denialKind"] == "approval_unavailable"
@@ -2557,7 +2576,9 @@ class TestTracing:
         backend = ScriptedBackend([_final("no tools needed")])
         _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 
-        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         assert not [
             record for record in records if record["event_type"] in {"tool_call", "tool_result"}
@@ -2571,7 +2592,9 @@ class TestTracing:
 
         _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 
-        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        tracefile = (
+            current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        )
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         fit = next(record["payload"] for record in records if record["event_type"] == "request_fit")
         assert fit["status"] == "unknown_window"
@@ -2589,7 +2612,7 @@ class TestTracing:
         )
         _loop.run_agent_turn(backend, registry, bare_ctx, session_key, "go")
 
-        tracefile = _cfg.TRACES_DIR / "bare-agent" / f"{session_key}.jsonl"
+        tracefile = current_home().traces_dir / "bare-agent" / f"{session_key}.jsonl"
         assert tracefile.exists()
 
 
@@ -2640,7 +2663,7 @@ class TestLlmCallRequestBreakdown:
             sent = _wire_parts(body)
             assert {part: request[part]["bytes"] for part in request} == sent
             for part in request.values():
-                assert part["estTokens"] == part["bytes"] // _cfg.CONTEXT_BYTES_PER_TOKEN
+                assert part["estTokens"] == part["bytes"] // current_home().context_bytes_per_token
         assert payloads[0]["request"]["tools"]["bytes"] > 0
         assert payloads[1]["request"]["toolResults"]["bytes"] > 0
         assert payloads[1]["request"]["assistant"]["bytes"] > 0
@@ -2886,7 +2909,7 @@ class _SizedBackend(ScriptedBackend):
 
 
 def _request_fits(ctx: ToolContext, session_key: str) -> list[dict[str, Any]]:
-    tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+    tracefile = current_home().traces_dir / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
     records = [json.loads(line) for line in tracefile.read_text().splitlines()]
     return [r["payload"] for r in records if r["event_type"] == "request_fit"]
 
@@ -2985,7 +3008,7 @@ class TestCountedTokenBudget:
             ctx,
             session_key,
             "work",
-            config=_loop.LoopConfig(token_budget=_cfg.DEFAULT_MAX_OUTPUT_TOKENS - 1),
+            config=_loop.LoopConfig(token_budget=current_home().default_max_output_tokens - 1),
         )
 
         assert not result.ok
@@ -2994,7 +3017,9 @@ class TestCountedTokenBudget:
         assert not backend.calls
         fits = _request_fits(ctx, session_key)
         assert fits
-        assert {fit["outputReserveTokens"] for fit in fits} == {_cfg.DEFAULT_MAX_OUTPUT_TOKENS}
+        assert {fit["outputReserveTokens"] for fit in fits} == {
+            current_home().default_max_output_tokens
+        }
 
     def test_the_estimate_is_scaled_by_the_first_measured_call(
         self, ctx: ToolContext, registry: ToolRegistry

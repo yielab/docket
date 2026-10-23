@@ -14,12 +14,13 @@ artifact, and the token-budget compiler checks that rendered text, not the summa
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
 from docket.cli import _pod
@@ -27,6 +28,7 @@ from docket.core import context as _context
 from docket.core import dispatch as _dispatch
 from docket.core import handoff as _handoff
 from docket.core import pipeline as _pipeline
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -237,16 +239,15 @@ class TestHopRecordRoundTrip:
 # ── End to end: dispatch_task builds and threads real artifacts ─────────────
 
 
-def _seed_pod(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo", *, full: bool = False
-) -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, project: str = "demo", *, full: bool = False) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    roles = _pod.pod.FULL_POD_ROLES if full else _pod.pod.DEFAULT_POD_ROLES
-    _pod.build_pod(project, roles, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        roles = _pod.pod.FULL_POD_ROLES if full else _pod.pod.DEFAULT_POD_ROLES
+        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        yield home
 
 
 @pytest.fixture(autouse=True)
@@ -256,101 +257,94 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestDispatchBuildsTypedArtifacts:
-    def test_two_hop_dispatch_produces_typed_artifacts_not_strings(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("demo", task, runner=FakeDriver())
+    def test_two_hop_dispatch_produces_typed_artifacts_not_strings(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
+            res = _dispatch.dispatch_task("demo", task, runner=FakeDriver())
 
-        assert res.status == "done"
-        assert [h.role for h in res.hops] == ["lead", "implementer"]
-        for hop in res.hops:
-            assert isinstance(hop.artifact, _handoff.HandoffArtifact)
-            # The artifact is a real structured object, not a bare string --
-            # the card's own "not a string" acceptance criterion.
-            assert not isinstance(hop.artifact, str)
-            assert hop.artifact.summary == hop.output
+            assert res.status == "done"
+            assert [h.role for h in res.hops] == ["lead", "implementer"]
+            for hop in res.hops:
+                assert isinstance(hop.artifact, _handoff.HandoffArtifact)
+                # The artifact is a real structured object, not a bare string --
+                # the card's own "not a string" acceptance criterion.
+                assert not isinstance(hop.artifact, str)
+                assert hop.artifact.summary == hop.output
 
-    def test_verdict_gated_hop_artifact_carries_the_parsed_verdict(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch, full=True)
+    def test_verdict_gated_hop_artifact_carries_the_parsed_verdict(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, full=True):
 
-        class _Runner:
-            def __call__(
-                self,
-                agent_id: str,
-                session_key: str,
-                message: str,
-                timeout: int,
-                env: dict[str, str] | None = None,
-            ) -> Any:
-                from docket.core.runtime_driver import TurnResult
+            class _Runner:
+                def __call__(
+                    self,
+                    agent_id: str,
+                    session_key: str,
+                    message: str,
+                    timeout: int,
+                    env: dict[str, str] | None = None,
+                ) -> Any:
+                    from docket.core.runtime_driver import TurnResult
 
-                role = agent_id.rsplit("-", 1)[-1]
-                text = {
-                    "lead": "plan",
-                    "implementer": "did it",
-                    "reviewer": "APPROVE - looks solid",
-                    "tester": "PASS - works",
-                }[role]
-                return TurnResult(True, text, 0.01, {})
+                    role = agent_id.rsplit("-", 1)[-1]
+                    text = {
+                        "lead": "plan",
+                        "implementer": "did it",
+                        "reviewer": "APPROVE - looks solid",
+                        "tester": "PASS - works",
+                    }[role]
+                    return TurnResult(True, text, 0.01, {})
 
-        task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("demo", task, runner=_Runner())
-        assert res.status == "done"
+            task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
+            res = _dispatch.dispatch_task("demo", task, runner=_Runner())
+            assert res.status == "done"
 
-        reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
-        tester_hop = next(h for h in res.hops if h.role == "tester")
-        assert reviewer_hop.artifact is not None
-        assert reviewer_hop.artifact.verdict == "approve"
-        assert tester_hop.artifact is not None
-        assert tester_hop.artifact.verdict == "pass"
+            reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
+            tester_hop = next(h for h in res.hops if h.role == "tester")
+            assert reviewer_hop.artifact is not None
+            assert reviewer_hop.artifact.verdict == "approve"
+            assert tester_hop.artifact is not None
+            assert tester_hop.artifact.verdict == "pass"
 
-        # Non-verdict-gated hops carry no verdict at all.
-        lead_hop = next(h for h in res.hops if h.role == "lead")
-        assert lead_hop.artifact is not None
-        assert lead_hop.artifact.verdict is None
+            # Non-verdict-gated hops carry no verdict at all.
+            lead_hop = next(h for h in res.hops if h.role == "lead")
+            assert lead_hop.artifact is not None
+            assert lead_hop.artifact.verdict is None
 
-    def test_next_hop_message_is_built_from_rendered_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_next_hop_message_is_built_from_rendered_artifact(self, tmp_path: Path) -> None:
         """The tester's prompt must reflect the reviewer's artifact -- including a structural
         "Verdict: approve" line the raw reviewer text never contained -- proving the message
         is built from ``HandoffArtifact.render()``, not straight from ``HopResult.output``."""
-        _seed_pod(tmp_path, monkeypatch, full=True)
+        with _seed_pod(tmp_path, full=True):
+            from docket.core.runtime_driver import TurnResult
 
-        from docket.core.runtime_driver import TurnResult
+            calls: list[tuple[str, str]] = []
 
-        calls: list[tuple[str, str]] = []
+            class _Runner:
+                def __call__(
+                    self,
+                    agent_id: str,
+                    session_key: str,
+                    message: str,
+                    timeout: int,
+                    env: dict[str, str] | None = None,
+                ) -> Any:
+                    role = agent_id.rsplit("-", 1)[-1]
+                    calls.append((role, message))
+                    text = {
+                        "lead": "plan",
+                        "implementer": "did it",
+                        "reviewer": "APPROVE - looks solid",
+                        "tester": "PASS - works",
+                    }[role]
+                    return TurnResult(True, text, 0.01, {})
 
-        class _Runner:
-            def __call__(
-                self,
-                agent_id: str,
-                session_key: str,
-                message: str,
-                timeout: int,
-                env: dict[str, str] | None = None,
-            ) -> Any:
-                role = agent_id.rsplit("-", 1)[-1]
-                calls.append((role, message))
-                text = {
-                    "lead": "plan",
-                    "implementer": "did it",
-                    "reviewer": "APPROVE - looks solid",
-                    "tester": "PASS - works",
-                }[role]
-                return TurnResult(True, text, 0.01, {})
+            task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
+            res = _dispatch.dispatch_task("demo", task, runner=_Runner())
+            assert res.status == "done"
 
-        task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("demo", task, runner=_Runner())
-        assert res.status == "done"
-
-        tester_message = next(msg for role, msg in calls if role == "tester")
-        assert "APPROVE - looks solid" in tester_message
-        assert "Verdict: approve" in tester_message
+            tester_message = next(msg for role, msg in calls if role == "tester")
+            assert "APPROVE - looks solid" in tester_message
+            assert "Verdict: approve" in tester_message
 
     def test_budget_checks_the_rendered_artifact_and_sheds_verdict_before_summary(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -358,50 +352,50 @@ class TestDispatchBuildsTypedArtifacts:
         """A verdict-bearing artifact's rendered text (summary + ``Verdict:`` line) is what
         the token-budget compiler checks against budget, not the summary alone; it sheds the
         less-valuable ``verdict`` field first (``DROP_ORDER``) rather than truncating ``summary``."""
-        _seed_pod(tmp_path, monkeypatch, full=True)
-        # Force every prior hop's carryover share down to just enough room
-        # for the reviewer's raw summary (208 bytes -> 52 tokens) but not its
-        # full rendered artifact (summary + "\nVerdict: approve" -> 225 bytes
-        # -> 56 tokens).
-        monkeypatch.setattr(_context, "hop_share", lambda rank, total: 53)
+        with _seed_pod(tmp_path, full=True):
+            # Force every prior hop's carryover share down to just enough room
+            # for the reviewer's raw summary (208 bytes -> 52 tokens) but not its
+            # full rendered artifact (summary + "\nVerdict: approve" -> 225 bytes
+            # -> 56 tokens).
+            monkeypatch.setattr(_context, "hop_share", lambda rank, total: 53)
 
-        from docket.core.runtime_driver import TurnResult
+            from docket.core.runtime_driver import TurnResult
 
-        calls: list[tuple[str, str]] = []
+            calls: list[tuple[str, str]] = []
 
-        class _Runner:
-            def __call__(
-                self,
-                agent_id: str,
-                session_key: str,
-                message: str,
-                timeout: int,
-                env: dict[str, str] | None = None,
-            ) -> Any:
-                role = agent_id.rsplit("-", 1)[-1]
-                calls.append((role, message))
-                text = {
-                    "lead": "plan",
-                    "implementer": "did it",
-                    "reviewer": "APPROVE " + ("x" * 200),
-                    "tester": "PASS - works",
-                }[role]
-                return TurnResult(True, text, 0.01, {})
+            class _Runner:
+                def __call__(
+                    self,
+                    agent_id: str,
+                    session_key: str,
+                    message: str,
+                    timeout: int,
+                    env: dict[str, str] | None = None,
+                ) -> Any:
+                    role = agent_id.rsplit("-", 1)[-1]
+                    calls.append((role, message))
+                    text = {
+                        "lead": "plan",
+                        "implementer": "did it",
+                        "reviewer": "APPROVE " + ("x" * 200),
+                        "tester": "PASS - works",
+                    }[role]
+                    return TurnResult(True, text, 0.01, {})
 
-        task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("demo", task, runner=_Runner())
-        assert res.status == "done"
-        reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
-        assert reviewer_hop.artifact is not None
-        assert reviewer_hop.artifact.verdict == "approve"
-        # The full rendered text (summary + "\nVerdict: approve") is longer
-        # than the raw summary alone -- the budget check must see *that*.
-        rendered_len = len(reviewer_hop.rendered_artifact().encode("utf-8"))
-        assert rendered_len > len(reviewer_hop.artifact.summary.encode("utf-8"))
+            task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
+            res = _dispatch.dispatch_task("demo", task, runner=_Runner())
+            assert res.status == "done"
+            reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
+            assert reviewer_hop.artifact is not None
+            assert reviewer_hop.artifact.verdict == "approve"
+            # The full rendered text (summary + "\nVerdict: approve") is longer
+            # than the raw summary alone -- the budget check must see *that*.
+            rendered_len = len(reviewer_hop.rendered_artifact().encode("utf-8"))
+            assert rendered_len > len(reviewer_hop.artifact.summary.encode("utf-8"))
 
-        tester_message = next(msg for role, msg in calls if role == "tester")
-        assert "APPROVE " + ("x" * 200) in tester_message
-        assert "Verdict: approve" not in tester_message
+            tester_message = next(msg for role, msg in calls if role == "tester")
+            assert "APPROVE " + ("x" * 200) in tester_message
+            assert "Verdict: approve" not in tester_message
 
     def test_resume_recovers_persisted_artifact_after_a_crash(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -409,89 +403,89 @@ class TestDispatchBuildsTypedArtifacts:
         """A task resumed from a persisted (post-crash) hop history must
         thread the *persisted artifact* into later hops' prompts, not just
         raw text -- proving --resume recovers the structured record."""
-        _seed_pod(tmp_path, monkeypatch, full=True)
-        task = _dispatch.enqueue_task("demo", "work", channel="cli")
+        with _seed_pod(tmp_path, full=True):
+            task = _dispatch.enqueue_task("demo", "work", channel="cli")
 
-        from docket.core.runtime_driver import TurnResult
+            from docket.core.runtime_driver import TurnResult
 
-        class _ReviewerOnlyRunner:
-            def __call__(
-                self,
-                agent_id: str,
-                session_key: str,
-                message: str,
-                timeout: int,
-                env: dict[str, str] | None = None,
-            ) -> Any:
-                role = agent_id.rsplit("-", 1)[-1]
-                text = {"lead": "plan", "implementer": "did it", "reviewer": "APPROVE - solid"}[
-                    role
-                ]
-                return TurnResult(True, text, 0.01, {})
+            class _ReviewerOnlyRunner:
+                def __call__(
+                    self,
+                    agent_id: str,
+                    session_key: str,
+                    message: str,
+                    timeout: int,
+                    env: dict[str, str] | None = None,
+                ) -> Any:
+                    role = agent_id.rsplit("-", 1)[-1]
+                    text = {"lead": "plan", "implementer": "did it", "reviewer": "APPROVE - solid"}[
+                        role
+                    ]
+                    return TurnResult(True, text, 0.01, {})
 
-        # Drive the pipeline through the Reviewer only (simulating a crash
-        # right before the Tester hop) by dispatching with a spec-free run
-        # but a runner that would raise for "tester" -- simpler: reuse the
-        # real dispatch_pod/_persist_hop path via three completed hops, then
-        # hand-build the resume_from list the way a real crash-and-restart
-        # would load it (through the persisted-record round trip).
-        prior_hops = [
-            _dispatch.HopResult(
-                role="lead", member_id="demo-lead", ok=True, output="plan", cost_usd=0.0
-            ),
-            _dispatch.HopResult(
-                role="implementer",
-                member_id="demo-implementer",
-                ok=True,
-                output="did it",
-                cost_usd=0.0,
-            ),
-            _dispatch.HopResult(
-                role="reviewer",
-                member_id="demo-reviewer",
-                ok=True,
-                output="APPROVE - solid",
-                cost_usd=0.0,
-                artifact=_handoff.HandoffArtifact(summary="APPROVE - solid", verdict="approve"),
-            ),
-        ]
-        # Round-trip through the persisted-record shape, exactly like a real
-        # crash-and-`--resume` would load them from TASK_LIST.json.
-        records = [_dispatch._hop_record(h) for h in prior_hops]
-        resumed_hops = [_dispatch._hop_from_record(r) for r in records]
+            # Drive the pipeline through the Reviewer only (simulating a crash
+            # right before the Tester hop) by dispatching with a spec-free run
+            # but a runner that would raise for "tester" -- simpler: reuse the
+            # real dispatch_pod/_persist_hop path via three completed hops, then
+            # hand-build the resume_from list the way a real crash-and-restart
+            # would load it (through the persisted-record round trip).
+            prior_hops = [
+                _dispatch.HopResult(
+                    role="lead", member_id="demo-lead", ok=True, output="plan", cost_usd=0.0
+                ),
+                _dispatch.HopResult(
+                    role="implementer",
+                    member_id="demo-implementer",
+                    ok=True,
+                    output="did it",
+                    cost_usd=0.0,
+                ),
+                _dispatch.HopResult(
+                    role="reviewer",
+                    member_id="demo-reviewer",
+                    ok=True,
+                    output="APPROVE - solid",
+                    cost_usd=0.0,
+                    artifact=_handoff.HandoffArtifact(summary="APPROVE - solid", verdict="approve"),
+                ),
+            ]
+            # Round-trip through the persisted-record shape, exactly like a real
+            # crash-and-`--resume` would load them from TASK_LIST.json.
+            records = [_dispatch._hop_record(h) for h in prior_hops]
+            resumed_hops = [_dispatch._hop_from_record(r) for r in records]
 
-        real_parse_verdict = _dispatch._orch.parse_verdict
+            real_parse_verdict = _dispatch._orch.parse_verdict
 
-        def _reject_reparse(gate: _pipeline.VerdictGate, output: str) -> str | None:
-            if output == "APPROVE - solid":
-                raise AssertionError("resume reparsed persisted reviewer prose")
-            return real_parse_verdict(gate, output)
+            def _reject_reparse(gate: _pipeline.VerdictGate, output: str) -> str | None:
+                if output == "APPROVE - solid":
+                    raise AssertionError("resume reparsed persisted reviewer prose")
+                return real_parse_verdict(gate, output)
 
-        monkeypatch.setattr(_dispatch._orch, "parse_verdict", _reject_reparse)
+            monkeypatch.setattr(_dispatch._orch, "parse_verdict", _reject_reparse)
 
-        calls: list[tuple[str, str]] = []
+            calls: list[tuple[str, str]] = []
 
-        class _TesterRunner:
-            def __call__(
-                self,
-                agent_id: str,
-                session_key: str,
-                message: str,
-                timeout: int,
-                env: dict[str, str] | None = None,
-            ) -> Any:
-                role = agent_id.rsplit("-", 1)[-1]
-                calls.append((role, message))
-                return TurnResult(True, "PASS - works", 0.01, {})
+            class _TesterRunner:
+                def __call__(
+                    self,
+                    agent_id: str,
+                    session_key: str,
+                    message: str,
+                    timeout: int,
+                    env: dict[str, str] | None = None,
+                ) -> Any:
+                    role = agent_id.rsplit("-", 1)[-1]
+                    calls.append((role, message))
+                    return TurnResult(True, "PASS - works", 0.01, {})
 
-        res = _dispatch.dispatch_task(
-            "demo", task, runner=_TesterRunner(), resume_from=resumed_hops
-        )
-        assert res.status == "done"
-        assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer", "tester"]
+            res = _dispatch.dispatch_task(
+                "demo", task, runner=_TesterRunner(), resume_from=resumed_hops
+            )
+            assert res.status == "done"
+            assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer", "tester"]
 
-        tester_message = next(msg for role, msg in calls if role == "tester")
-        # The resumed reviewer hop's *persisted artifact* (not a fresh parse
-        # of raw text) is what reached the tester's prompt.
-        assert "APPROVE - solid" in tester_message
-        assert "Verdict: approve" in tester_message
+            tester_message = next(msg for role, msg in calls if role == "tester")
+            # The resumed reviewer hop's *persisted artifact* (not a fresh parse
+            # of raw text) is what reached the tester's prompt.
+            assert "APPROVE - solid" in tester_message
+            assert "Verdict: approve" in tester_message

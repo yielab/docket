@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import stat
 import threading
@@ -13,9 +14,10 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.edges import store
+from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.config"
 
@@ -137,9 +139,7 @@ def test_restore_write_failure_keeps_recovery_inputs_and_cleans_temporary_file(
     assert not _quarantine(path).with_suffix(".corrupt.tmp").exists()
 
 
-def test_task_prune_cli_recovers_the_prior_complete_registry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_task_prune_cli_recovers_the_prior_complete_registry(tmp_path: Path) -> None:
     path = tmp_path / "docket-runs.json"
     prior = {
         "runs": [
@@ -157,13 +157,14 @@ def test_task_prune_cli_recovers_the_prior_complete_registry(
     newer = {"runs": [*prior["runs"], {"id": "run-newer", "created": "2026-09-02T11:00:00Z"}]}
     _seed_two_generations(path, prior, newer)
     path.write_bytes(_CORRUPT_PRIMARY)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", path, raising=True)
+    with use_home(dataclasses.replace(current_home(), runs_file_override=path)):
+        result = CliRunner().invoke(
+            app, ["task", "prune", "--traces", "--dry-run", "--pod", "demo"]
+        )
 
-    result = CliRunner().invoke(app, ["task", "prune", "--traces", "--dry-run", "--pod", "demo"])
-
-    assert result.exit_code == 0, result.output
-    assert json.loads(path.read_bytes()) == prior
-    assert _quarantine(path).read_bytes() == _CORRUPT_PRIMARY
+        assert result.exit_code == 0, result.output
+        assert json.loads(path.read_bytes()) == prior
+        assert _quarantine(path).read_bytes() == _CORRUPT_PRIMARY
 
 
 @pytest.mark.parametrize("backup_state", ["missing", "malformed"])
@@ -214,7 +215,7 @@ def _run_at_barrier(actions: list[Callable[[], None]], timeout: float = 3.0) -> 
         except BaseException as exc:  # retain thread failures for the parent assertion
             errors.append(exc)
 
-    threads = [threading.Thread(target=_wrapped, args=(action,), daemon=True) for action in actions]
+    threads = [new_thread(target=_wrapped, args=(action,), daemon=True) for action in actions]
     for thread in threads:
         thread.start()
     for thread in threads:

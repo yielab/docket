@@ -61,9 +61,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-import docket.config as cfg
 from docket.core import archetypes as _arch
 from docket.core.handoff import HandoffArtifact, render_brief
+from docket.kernel.home import current_home
 
 #: Fallback token budget for a role with no archetype in the live registry,
 #: or whose archetype resolves a non-positive ``token_budget`` (defensive —
@@ -132,7 +132,7 @@ def estimate_tokens(text: str) -> int:
     from the model's own tokenizer — good enough to bound a prompt
     deterministically, never a basis for billing.
     """
-    return len(text.encode("utf-8")) // cfg.CONTEXT_BYTES_PER_TOKEN
+    return len(text.encode("utf-8")) // current_home().context_bytes_per_token
 
 
 def budget_for_role(
@@ -192,7 +192,7 @@ def _truncate_summary(summary: str, budget_tokens: int) -> tuple[str, bool]:
     the entire input as omitted) rather than silently returning nothing —
     bounded and deterministic, not "no truncation happened."
     """
-    max_bytes = max(budget_tokens, 0) * cfg.CONTEXT_BYTES_PER_TOKEN
+    max_bytes = max(budget_tokens, 0) * current_home().context_bytes_per_token
     encoded = summary.encode("utf-8")
     if len(encoded) <= max_bytes:
         return summary, False

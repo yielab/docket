@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-from tests.conftest import repoint_docket_home
-
 from docket.core import fleet as _fleet
 from docket.core import network_posture as _np
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.network_posture"
 
@@ -36,15 +34,13 @@ def test_open_is_never_enforced() -> None:
         assert posture.short == "open"
 
 
-def test_global_posture_reads_the_fleet_record(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_global_posture_reads_the_fleet_record(tmp_path: Path) -> None:
     home = tmp_path / ".docket"
     home.mkdir()
-    repoint_docket_home(monkeypatch, home)
-    fresh = _np.global_posture()
-    assert (fresh.mode, fresh.scope, fresh.enforced) == ("none", "default", False)
-    _fleet.set_network_mode("none")
-    _fleet.set_sandbox_isolation()
-    recorded = _np.global_posture()
-    assert (recorded.scope, recorded.enforced) == ("global", True)
+    with use_home(Home(home)):
+        fresh = _np.global_posture()
+        assert (fresh.mode, fresh.scope, fresh.enforced) == ("none", "default", False)
+        _fleet.set_network_mode("none")
+        _fleet.set_sandbox_isolation()
+        recorded = _np.global_posture()
+        assert (recorded.scope, recorded.enforced) == ("global", True)

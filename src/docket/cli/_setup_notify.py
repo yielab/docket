@@ -11,7 +11,6 @@ from typing import Any
 
 import typer
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.core import channel as _chan
@@ -113,7 +112,7 @@ def store_secret(name: str, value: str) -> None:
     secrets = _secrets.load_secrets()
     keyring = backend == "keyring"
     if keyring:
-        if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
+        if not _system.secret_tool_store(current_home().keyring_service, name, value):
             raise NotifySetupError(f"the OS keyring refused {name}; nothing was written")
         secrets[name] = ""
     else:
@@ -489,7 +488,7 @@ def cmd_bind(
     The binding is the whole authorization boundary: anyone who can post in that chat can
     approve, deny and delegate as this member once docket is serving Telegram.
     Example: docket setup notify bind demo-lead --chat -100123"""
-    if not _cfg.workspace_dir(member).is_dir():
+    if not current_home().workspace_dir(member).is_dir():
         ui.error(f"Agent '{member}' not found", "Run: docket status --all")
         raise typer.Exit(1)
     peer = (chat or "").strip()
@@ -519,7 +518,7 @@ def cmd_unbind(
     """Remove a member's chat binding.
 
     Example: docket setup notify unbind demo-lead --yes"""
-    if not _cfg.workspace_dir(member).is_dir():
+    if not current_home().workspace_dir(member).is_dir():
         ui.error(f"Agent '{member}' not found", "Run: docket status --all")
         raise typer.Exit(1)
     peer = _fleet.get_binding(member, channel)

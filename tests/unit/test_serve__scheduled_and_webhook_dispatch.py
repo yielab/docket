@@ -13,19 +13,21 @@ coverage lives in ``test_dispatch_run_records.py``.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 import docket.serve as _serve
 from docket.core import runs as _runs
 from docket.core import schedule as _sched
+from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -38,11 +40,16 @@ _TEST_TOKEN = "test-serve-token-cd6-xyz987"
 
 
 @pytest.fixture()
-def schedule_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def schedule_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     f = tmp_path / "docket-schedules.json"
-    monkeypatch.setattr(_cfg, "SCHEDULE_FILE", f, raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
-    return f
+    with use_home(
+        dataclasses.replace(
+            current_home(),
+            schedule_file_override=f,
+            runs_file_override=tmp_path / "docket-runs.json",
+        )
+    ):
+        yield f
 
 
 @pytest.fixture()
@@ -51,18 +58,22 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Minimal APPROVALS_DIR to satisfy any sweep that might run.
     d = tmp_path / "approvals"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", d, raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
+    with (
+        use_home(dataclasses.replace(current_home(), approvals_dir_override=d)),
+        use_home(
+            dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
+        ),
+    ):
 
-    class _Handler(_DocketHandler):
-        serve_token = _TEST_TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _TEST_TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}", _TEST_TOKEN
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        port = srv.server_address[1]
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        yield f"http://127.0.0.1:{port}", _TEST_TOKEN
+        srv.shutdown()
 
 
 def _post(
@@ -248,7 +259,7 @@ class TestCheckSchedules:
 
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _record_and_return)
         # last run was just now — not due
-        _sched.record_last_run(_cfg.SCHEDULE_FILE, "projB", time.time())
+        _sched.record_last_run(current_home().schedule_file, "projB", time.time())
         _serve._check_schedules(time.time())
         time.sleep(0.1)
         assert dispatched == []
@@ -297,7 +308,7 @@ class TestCheckSchedules:
         )
         before = time.time()
         _serve._check_schedules(before)
-        last_run = _sched.load_last_run(_cfg.SCHEDULE_FILE)
+        last_run = _sched.load_last_run(current_home().schedule_file)
         assert last_run.get("projC", 0.0) >= before
 
         # Drain the daemon thread this spawned before the test ends and
@@ -331,7 +342,7 @@ class TestCheckSchedules:
 
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _record_and_return)
         now = time.time()
-        _sched.record_last_run(_cfg.SCHEDULE_FILE, "projD", now)
+        _sched.record_last_run(current_home().schedule_file, "projD", now)
 
         # "Restart": nothing in memory survives — load_last_run must read the
         # persisted value straight back off disk.

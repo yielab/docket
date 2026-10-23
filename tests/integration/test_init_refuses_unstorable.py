@@ -4,15 +4,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _agents, app
 from docket.core import fleet as _fleet
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._agents"
 
@@ -20,18 +20,18 @@ runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
     home = tmp_path / "home"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _members() -> list[str]:
-    return sorted(p.name for p in _cfg.PROJECTS_DIR.iterdir())
+    return sorted(p.name for p in current_home().projects_dir.iterdir())
 
 
 class TestInitRefusesWhatItCannotStore:

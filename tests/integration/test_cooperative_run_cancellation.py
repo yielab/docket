@@ -8,14 +8,14 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import agent_loop as _agent_loop
 from docket.core import audit as _audit
@@ -27,18 +27,23 @@ from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, Too
 from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core.runs"
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _seed_pod(
+    tmp_path: Path,
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    return home
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        yield home
 
 
 class _BarrierBackend:
@@ -79,93 +84,93 @@ def _events(home: Path) -> list[dict[str, Any]]:
 def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    home = _seed_pod(tmp_path, monkeypatch)
-    backend = _BarrierBackend()
-    driver = DocketDriver(backend_factory=lambda _model: backend)
-    monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    dispatched_tools = 0
+    with _seed_pod(tmp_path) as home:
+        backend = _BarrierBackend()
+        driver = DocketDriver(backend_factory=lambda _model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+        dispatched_tools = 0
 
-    def _unexpected_dispatch(*args: object, **kwargs: object) -> object:
-        nonlocal dispatched_tools
-        del args, kwargs
-        dispatched_tools += 1
-        raise AssertionError("a cancellation race loser dispatched a tool")
+        def _unexpected_dispatch(*args: object, **kwargs: object) -> object:
+            nonlocal dispatched_tools
+            del args, kwargs
+            dispatched_tools += 1
+            raise AssertionError("a cancellation race loser dispatched a tool")
 
-    monkeypatch.setattr(_agent_loop, "dispatch_tool", _unexpected_dispatch)
-    task = _dispatch.enqueue_task("demo", "cancel this live turn", channel="cli")
-    run = _runs.create_run("cli", "demo")
-    returned: list[object] = []
+        monkeypatch.setattr(_agent_loop, "dispatch_tool", _unexpected_dispatch)
+        task = _dispatch.enqueue_task("demo", "cancel this live turn", channel="cli")
+        run = _runs.create_run("cli", "demo")
+        returned: list[object] = []
 
-    thread = threading.Thread(
-        target=lambda: returned.append(
-            _runs.execute(run["id"], lambda: _dispatch.dispatch_pod("demo", max_tasks=1))
+        thread = new_thread(
+            target=lambda: returned.append(
+                _runs.execute(run["id"], lambda: _dispatch.dispatch_pod("demo", max_tasks=1))
+            )
         )
-    )
-    thread.start()
-    assert backend.entered.wait(timeout=5)
+        thread.start()
+        assert backend.entered.wait(timeout=5)
 
-    env = os.environ.copy()
-    env["DOCKET_HOME"] = str(home)
-    cancelled = subprocess.run(
-        [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
-        cwd=Path(__file__).parents[2],
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=10,
-        check=False,
-    )
+        env = os.environ.copy()
+        env["DOCKET_HOME"] = str(home)
+        cancelled = subprocess.run(
+            [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
+            cwd=Path(__file__).parents[2],
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
 
-    assert cancelled.returncode == 0, cancelled.stderr
-    assert "requested cancellation" in cancelled.stdout
-    requested = _runs.get_run(run["id"])
-    assert requested is not None
-    assert requested["state"] == "running"
-    assert requested["cancellation"]["requestedAt"] is not None
-    assert requested["cancellation"]["stoppedAt"] is None
+        assert cancelled.returncode == 0, cancelled.stderr
+        assert "requested cancellation" in cancelled.stdout
+        requested = _runs.get_run(run["id"])
+        assert requested is not None
+        assert requested["state"] == "running"
+        assert requested["cancellation"]["requestedAt"] is not None
+        assert requested["cancellation"]["stoppedAt"] is None
 
-    backend.release.set()
-    thread.join(timeout=10)
-    assert not thread.is_alive()
-    assert dispatched_tools == 0
+        backend.release.set()
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+        assert dispatched_tools == 0
 
-    results = returned[0]
-    assert isinstance(results, list)
-    assert results[0].task_id == task["id"]
-    assert results[0].status == "cancelled"
-    persisted_task = _dispatch.read_tasks("demo")[0]
-    assert persisted_task["status"] == "cancelled"
-    assert persisted_task["completedAt"]
+        results = returned[0]
+        assert isinstance(results, list)
+        assert results[0].task_id == task["id"]
+        assert results[0].status == "cancelled"
+        persisted_task = _dispatch.read_tasks("demo")[0]
+        assert persisted_task["status"] == "cancelled"
+        assert persisted_task["completedAt"]
 
-    stopped = _runs.get_run(run["id"])
-    assert stopped is not None
-    assert stopped["state"] == "cancelled"
-    assert stopped["taskIds"] == [task["id"]]
-    assert stopped["cancellation"]["observedAt"] is not None
-    assert stopped["cancellation"]["stoppedAt"] is not None
-    assert len([entry for entry in _audit.read_audit() if entry["action"] == "runs.cancel"]) == 1
+        stopped = _runs.get_run(run["id"])
+        assert stopped is not None
+        assert stopped["state"] == "cancelled"
+        assert stopped["taskIds"] == [task["id"]]
+        assert stopped["cancellation"]["observedAt"] is not None
+        assert stopped["cancellation"]["stoppedAt"] is not None
+        assert (
+            len([entry for entry in _audit.read_audit() if entry["action"] == "runs.cancel"]) == 1
+        )
 
-    event_types = [event["event_type"] for event in _events(home)]
-    assert event_types.count("run_cancellation_observed") == 1
-    assert event_types.count("run_cancelled") == 1
+        event_types = [event["event_type"] for event in _events(home)]
+        assert event_types.count("run_cancellation_observed") == 1
+        assert event_types.count("run_cancelled") == 1
 
 
-def test_returned_cancelled_task_terminalizes_the_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_returned_cancelled_task_terminalizes_the_run(tmp_path: Path) -> None:
     home = tmp_path / ".docket"
     home.mkdir()
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    run = _runs.create_run("cli", "demo")
-    result = _dispatch.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        run = _runs.create_run("cli", "demo")
+        result = _dispatch.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
 
-    assert _runs.execute(run["id"], lambda: [result]) == [result]
+        assert _runs.execute(run["id"], lambda: [result]) == [result]
 
-    persisted = _runs.get_run(run["id"])
-    assert persisted is not None
-    assert persisted["state"] == "cancelled"
-    assert persisted["taskIds"] == ["task-cancelled"]
+        persisted = _runs.get_run(run["id"])
+        assert persisted is not None
+        assert persisted["state"] == "cancelled"
+        assert persisted["taskIds"] == ["task-cancelled"]
 
 
 class _OneShotBashBackend:
@@ -210,7 +215,7 @@ def _mark_running(project: str, task_id: str) -> None:
 
 
 def _write_agent_meta(agent_id: str, codebase: Path) -> None:
-    workspace = _cfg.PROJECTS_DIR / agent_id
+    workspace = current_home().projects_dir / agent_id
     workspace.mkdir(parents=True, exist_ok=True)
     meta = {
         "schemaVersion": 1,
@@ -228,68 +233,66 @@ def _write_agent_meta(agent_id: str, codebase: Path) -> None:
     _fleet.add_agent(agent_id)
 
 
-def test_docket_task_cancel_reaches_a_real_bash_sleep(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
     """The whole-path proof: `docket task cancel`, through the production
     driver, terminalizes a run whose hop is sitting inside a real `bash
     sleep`-shaped command."""
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
+    with use_home(Home(home)):
+        record_isolation_off(home)
 
-    codebase = tmp_path / "codebase"
-    codebase.mkdir()
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
-    agent_id = _pod.pod.member_id("demo", "implementer")
-    task = _dispatch.enqueue_task("demo", "sleep in bash", channel="cli")
-    _mark_running("demo", task["id"])
+        codebase = tmp_path / "codebase"
+        codebase.mkdir()
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        agent_id = _pod.pod.member_id("demo", "implementer")
+        task = _dispatch.enqueue_task("demo", "sleep in bash", channel="cli")
+        _mark_running("demo", task["id"])
 
-    # `python3` is on the command classifier's curated allowlist, so this
-    # reaches `run_bash` on a bare "allow" verdict -- the subject here is
-    # cancellation reaching an in-flight process, not the gate itself.
-    backend = _OneShotBashBackend('python3 -c "import time; time.sleep(30)"')
-    driver = DocketDriver(backend_factory=lambda _model: backend)
+        # `python3` is on the command classifier's curated allowlist, so this
+        # reaches `run_bash` on a bare "allow" verdict -- the subject here is
+        # cancellation reaching an in-flight process, not the gate itself.
+        backend = _OneShotBashBackend('python3 -c "import time; time.sleep(30)"')
+        driver = DocketDriver(backend_factory=lambda _model: backend)
 
-    run = _runs.create_run("cli", "demo")
-    results: list[object] = []
+        run = _runs.create_run("cli", "demo")
+        results: list[object] = []
 
-    def _fn() -> list[Any]:
-        turn = driver.run_turn(agent_id, f"agent:{agent_id}:demo", "run the long command", 60)
-        status = "cancelled" if turn.failure_kind == "run_cancelled" else "failed"
-        return [_dispatch.TaskResult("task-1", status, turn.error)]
+        def _fn() -> list[Any]:
+            turn = driver.run_turn(agent_id, f"agent:{agent_id}:demo", "run the long command", 60)
+            status = "cancelled" if turn.failure_kind == "run_cancelled" else "failed"
+            return [_dispatch.TaskResult("task-1", status, turn.error)]
 
-    thread = threading.Thread(target=lambda: results.append(_runs.execute(run["id"], _fn)))
-    thread.start()
-    # No barrier to synchronize on here (the tool call itself is the long
-    # pole) -- a short, generous sleep lets the hop reach the running `bash`
-    # call before cancellation is requested.
-    time.sleep(1)
+        thread = new_thread(target=lambda: results.append(_runs.execute(run["id"], _fn)))
+        thread.start()
+        # No barrier to synchronize on here (the tool call itself is the long
+        # pole) -- a short, generous sleep lets the hop reach the running `bash`
+        # call before cancellation is requested.
+        time.sleep(1)
 
-    env = os.environ.copy()
-    env["DOCKET_HOME"] = str(home)
-    requested_at = time.monotonic()
-    cancelled = subprocess.run(
-        [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
-        cwd=Path(__file__).parents[2],
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=10,
-        check=False,
-    )
-    assert cancelled.returncode == 0, cancelled.stderr
-    assert "requested cancellation" in cancelled.stdout
+        env = os.environ.copy()
+        env["DOCKET_HOME"] = str(home)
+        requested_at = time.monotonic()
+        cancelled = subprocess.run(
+            [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
+            cwd=Path(__file__).parents[2],
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        assert cancelled.returncode == 0, cancelled.stderr
+        assert "requested cancellation" in cancelled.stdout
 
-    thread.join(timeout=10)
-    assert not thread.is_alive()
-    elapsed = time.monotonic() - requested_at
-    assert elapsed < 3, f"the run took {elapsed:.2f}s to terminalize, not within 3s"
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+        elapsed = time.monotonic() - requested_at
+        assert elapsed < 3, f"the run took {elapsed:.2f}s to terminalize, not within 3s"
 
-    stopped = _runs.get_run(run["id"])
-    assert stopped is not None
-    assert stopped["state"] == "cancelled"
-    assert stopped["cancellation"]["observedAt"] is not None
-    assert stopped["cancellation"]["stoppedAt"] is not None
+        stopped = _runs.get_run(run["id"])
+        assert stopped is not None
+        assert stopped["state"] == "cancelled"
+        assert stopped["cancellation"]["observedAt"] is not None
+        assert stopped["cancellation"]["stoppedAt"] is not None

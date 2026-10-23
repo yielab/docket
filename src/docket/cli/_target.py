@@ -8,10 +8,10 @@ from typing import Any
 
 import typer
 
-import docket.config as _cfg
 from docket.core.utils import project_ids
 from docket.edges import store
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 POD_OPTION_HELP = (
     "Pod name; default: DOCKET_POD, then the pod whose codebase contains the current directory"
@@ -37,7 +37,7 @@ def _pod_for_directory(directory: Path) -> tuple[str | None, list[str]]:
 
     matches: dict[str, int] = {}
     for aid in project_ids():
-        raw = store.read_json(_cfg.meta_path(aid))
+        raw = store.read_json(current_home().meta_path(aid))
         pod_id = str(raw.get("pod", ""))
         if not pod_id:
             continue

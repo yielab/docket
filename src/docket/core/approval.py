@@ -24,12 +24,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-import docket.config as _cfg
 from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import NotFound
+from docket.kernel.home import current_home
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
 # (see the module docstring). ``timeout`` is the fail-closed expiry path
@@ -148,7 +148,7 @@ APPROVAL_TOKEN_RE = re.compile(r"apr-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 def _approval_path(token: str) -> Path:
     if not APPROVAL_TOKEN_RE.fullmatch(token):
         raise ApprovalError("Approval not found")
-    return _cfg.APPROVALS_DIR / f"{token}.json"
+    return current_home().approvals_dir / f"{token}.json"
 
 
 def _read(token: str) -> dict[str, Any]:
@@ -224,8 +224,8 @@ def approval_create(
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
-    _cfg.APPROVALS_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(_cfg.APPROVALS_DIR, 0o700)
+    current_home().approvals_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(current_home().approvals_dir, 0o700)
 
     token = _ids.new_id("apr")
     created = _clock.stamp()
@@ -240,7 +240,7 @@ def approval_create(
         "created": created,
         "context": context or {},
     }
-    data["expiresAt"] = expires_at or _iso_after(created, _cfg.APPROVAL_TIMEOUT)
+    data["expiresAt"] = expires_at or _iso_after(created, current_home().approval_timeout)
     if rationale is not None:
         data["rationale"] = rationale
         data["options"] = approval_options()
@@ -305,8 +305,8 @@ def create_pregrant(
     if channel not in APPROVAL_CHANNELS:
         raise ApprovalError(f"create_pregrant: unknown channel {channel!r}")
 
-    _cfg.APPROVALS_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(_cfg.APPROVALS_DIR, 0o700)
+    current_home().approvals_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(current_home().approvals_dir, 0o700)
 
     token = _ids.new_id("apr")
     created = _clock.stamp()
@@ -469,10 +469,10 @@ def approval_deny(
 def list_pending() -> list[dict[str, Any]]:
     """Return every pending approval record in filename order; records that fail to
     parse are skipped."""
-    if not _cfg.APPROVALS_DIR.is_dir():
+    if not current_home().approvals_dir.is_dir():
         return []
     out: list[dict[str, Any]] = []
-    for path in sorted(_cfg.APPROVALS_DIR.glob("*.json")):
+    for path in sorted(current_home().approvals_dir.glob("*.json")):
         try:
             with path.open(encoding="utf-8") as f:
                 data: dict[str, Any] = json.load(f)
@@ -497,12 +497,12 @@ def prune_resolved(
     # touched regardless of age -- see approval_sweep_expired for that separate,
     # timeout-driven path. Each candidate is deleted under its own file lock so a
     # concurrent grant/deny can never race the removal.
-    if not _cfg.APPROVALS_DIR.is_dir():
+    if not current_home().approvals_dir.is_dir():
         return 0
-    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
+    window = current_home().trace_retention_s if retention_s is None else retention_s
     cutoff = (now if now is not None else _clock.epoch()) - window
     removed = 0
-    for path in sorted(_cfg.APPROVALS_DIR.glob("*.json")):
+    for path in sorted(current_home().approvals_dir.glob("*.json")):
         with _store.with_lock(path):
             try:
                 with path.open(encoding="utf-8") as f:
@@ -600,11 +600,11 @@ def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
 def approval_sweep_expired() -> int:
     """Expire pending approvals past their deadline (their ``expiresAt``) via ``_resolve_timeout_as_denied``, and separately prune
     unconsumed pre-grants past theirs -- both resolved to **denied** (fail-closed)."""
-    if not _cfg.APPROVALS_DIR.is_dir():
+    if not current_home().approvals_dir.is_dir():
         return 0
     now = _clock.epoch()
     swept = 0
-    for path in _cfg.APPROVALS_DIR.glob("*.json"):
+    for path in current_home().approvals_dir.glob("*.json"):
         try:
             with path.open(encoding="utf-8") as f:
                 data: dict[str, Any] = json.load(f)
@@ -678,8 +678,10 @@ def wait_for_approval(
     value because a default bound at definition time would capture the real ``time.sleep``
     once and never see a later monkeypatch of the module attribute.
     """
-    effective_timeout = _cfg.TOOL_APPROVAL_TIMEOUT if timeout is None else timeout
-    effective_poll = _cfg.TOOL_APPROVAL_POLL_INTERVAL_S if poll_interval is None else poll_interval
+    effective_timeout = current_home().tool_approval_timeout if timeout is None else timeout
+    effective_poll = (
+        current_home().tool_approval_poll_interval_s if poll_interval is None else poll_interval
+    )
     do_sleep = sleep if sleep is not None else _time.sleep
     do_clock = clock if clock is not None else _clock.monotonic
     deadline = do_clock() + effective_timeout

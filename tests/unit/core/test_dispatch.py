@@ -19,13 +19,13 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
-import docket.config as _cfg
 from docket.cli import _pod as _cli_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -37,6 +37,7 @@ from docket.core import trace as _trace
 from docket.core.llm import ChatResponse, TokenUsage, assistant
 from docket.edges.adapters import docket_runtime as _drt
 from docket.kernel import clock as _clock
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -49,18 +50,18 @@ _TEST_TOKEN = "test-serve-token-tasks-post-9f2c"
 
 
 @pytest.fixture()
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A hermetic DOCKET_HOME with the directories enqueue_task touches."""
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,
@@ -92,7 +93,7 @@ def _write_policy(
     *,
     message: str = "",
 ) -> None:
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
         "id": policy_id,
         "description": f"test policy {policy_id}",
@@ -102,7 +103,9 @@ def _write_policy(
         "action": action,
         "message": message,
     }
-    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+    (current_home().policies_dir / f"{policy_id}.json").write_text(
+        json.dumps(doc), encoding="utf-8"
+    )
 
 
 @pytest.fixture()
@@ -440,7 +443,7 @@ class TestExecuteUnitDirectly:
         assert outcome is not None
         assert outcome.kind == "blocked"
         assert "$10.00" in outcome.reason and "$5.00" in outcome.reason
-        tf = _cfg.TRACES_DIR / "myapp" / "agent:myapp:task-1.jsonl"
+        tf = current_home().traces_dir / "myapp" / "agent:myapp:task-1.jsonl"
         events = _trace.read_trace(tf)
         assert events[-1]["event_type"] == "budget_exceeded"
         assert events[-1]["agent_role"] == "implementer"
@@ -536,7 +539,7 @@ _UNPRICED = "ai-gateway/acme/model-x"
 
 
 def _budget_warnings() -> list[dict[str, Any]]:
-    tf = _cfg.TRACES_DIR / "myapp" / "agent:myapp:task-1.jsonl"
+    tf = current_home().traces_dir / "myapp" / "agent:myapp:task-1.jsonl"
     events = _trace.read_trace(tf) if tf.exists() else []
     return [e["payload"] for e in events if e["event_type"] == "budget_warning"]
 
@@ -1248,7 +1251,7 @@ def _bind_one_step_pipeline(project: str) -> None:
 
 
 def _write_pod_pipeline(project: str, name: str, text: str) -> None:
-    target = _cfg.pod_config_dir(project) / "pipelines"
+    target = current_home().pod_config_dir(project) / "pipelines"
     target.mkdir(parents=True, exist_ok=True)
     (target / f"{name}.yaml").write_text(text, encoding="utf-8")
 
@@ -1331,7 +1334,7 @@ class TestTaskPipeline:
         assert "nope" in stored["reason"]
         assert stored["hops"] == []
         assert stored["claimId"] is None
-        tf = _cfg.TRACES_DIR / "myapp" / "agent:myapp:task-1.jsonl"
+        tf = current_home().traces_dir / "myapp" / "agent:myapp:task-1.jsonl"
         refused = [e for e in _trace.read_trace(tf) if e["event_type"] == "dispatch_refused"]
         assert len(refused) == 1
         assert "nope" in refused[0]["payload"]["reason"]
@@ -1521,92 +1524,96 @@ class TestHopEvents:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        record_isolation_off(home)
-        _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
-        monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-        backend = _ScriptedBackend(["lead plan", "implementer done"])
-        driver = _drt.DocketDriver(backend_factory=lambda model: backend)
-        monkeypatch.setattr(_drt, "default_driver", lambda: driver)
-        task = _dispatch.enqueue_task("demo", "two hops", channel="cli")
-        assert _dispatch.dispatch_pod("demo")[0].status == "done"
+        with use_home(Home(home)):
+            record_isolation_off(home)
+            _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            monkeypatch.setenv("DOCKET_NO_TRACE", "0")
+            backend = _ScriptedBackend(["lead plan", "implementer done"])
+            driver = _drt.DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_drt, "default_driver", lambda: driver)
+            task = _dispatch.enqueue_task("demo", "two hops", channel="cli")
+            assert _dispatch.dispatch_pod("demo")[0].status == "done"
 
-        events = [e for e in _trace_events("demo") if e["event_type"].startswith("hop_")]
-        assert [e["event_type"] for e in events] == [
-            "hop_started",
-            "hop_finished",
-            "hop_started",
-            "hop_finished",
-        ]
-        for event in events:
-            keys = _HOP_STARTED_KEYS if event["event_type"] == "hop_started" else _HOP_FINISHED_KEYS
-            assert set(event["payload"]) == keys
-        started = [e["payload"] for e in events if e["event_type"] == "hop_started"]
-        assert [p["model"] for p in started] == [
-            "anthropic/claude-haiku-4-5",
-            "anthropic/claude-sonnet-4-6",
-        ]
-        assert [p["provider"] for p in started] == ["anthropic", "anthropic"]
-        finished = [e["payload"] for e in events if e["event_type"] == "hop_finished"]
-        assert {(p["model"], p["provider"]) for p in finished} == {("local/served-model", "local")}
-        raw = json.loads(_dispatch.pod_task_list_path("demo").read_text())
-        (stored,) = [t for t in raw["tasks"] if t["id"] == str(task["id"])]
-        assert [(h["model"], h["provider"]) for h in stored["hops"]] == [
-            ("local/served-model", "local"),
-            ("local/served-model", "local"),
-        ]
-        assert stored["usage"] == {
-            "input": 14,
-            "cached": 0,
-            "cacheWrite": 0,
-            "output": 6,
-            "byModel": {
-                "local/served-model": {"input": 14, "cached": 0, "cacheWrite": 0, "output": 6}
-            },
-        }
+            events = [e for e in _trace_events("demo") if e["event_type"].startswith("hop_")]
+            assert [e["event_type"] for e in events] == [
+                "hop_started",
+                "hop_finished",
+                "hop_started",
+                "hop_finished",
+            ]
+            for event in events:
+                keys = (
+                    _HOP_STARTED_KEYS
+                    if event["event_type"] == "hop_started"
+                    else _HOP_FINISHED_KEYS
+                )
+                assert set(event["payload"]) == keys
+            started = [e["payload"] for e in events if e["event_type"] == "hop_started"]
+            assert [p["model"] for p in started] == [
+                "anthropic/claude-haiku-4-5",
+                "anthropic/claude-sonnet-4-6",
+            ]
+            assert [p["provider"] for p in started] == ["anthropic", "anthropic"]
+            finished = [e["payload"] for e in events if e["event_type"] == "hop_finished"]
+            assert {(p["model"], p["provider"]) for p in finished} == {
+                ("local/served-model", "local")
+            }
+            raw = json.loads(_dispatch.pod_task_list_path("demo").read_text())
+            (stored,) = [t for t in raw["tasks"] if t["id"] == str(task["id"])]
+            assert [(h["model"], h["provider"]) for h in stored["hops"]] == [
+                ("local/served-model", "local"),
+                ("local/served-model", "local"),
+            ]
+            assert stored["usage"] == {
+                "input": 14,
+                "cached": 0,
+                "cacheWrite": 0,
+                "output": 6,
+                "byModel": {
+                    "local/served-model": {"input": 14, "cached": 0, "cacheWrite": 0, "output": 6}
+                },
+            }
 
-    def test_by_model_sums_cache_reads_and_writes_per_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_by_model_sums_cache_reads_and_writes_per_model(self, tmp_path: Path) -> None:
         """The task's usage and each byModel entry sum input, cached, cacheWrite and output."""
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        record_isolation_off(home)
-        _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "usage", channel="cli")
-        task_id = str(task["id"])
-        hops = [
-            _dispatch.HopResult(
-                role="lead",
-                member_id="m",
-                ok=True,
-                model="local/x",
-                provider="local",
-                usage={"input": 100, "cached": 60, "cacheWrite": 5, "output": 7},
-            ),
-            _dispatch.HopResult(
-                role="implementer",
-                member_id="m",
-                ok=True,
-                model="local/x",
-                provider="local",
-                usage={"input": 50, "cached": 10, "cacheWrite": 0, "output": 3},
-            ),
-        ]
-        _dispatch._finalize_task(
-            "demo", task_id, _dispatch.TaskResult(task_id=task_id, status="done", hops=hops)
-        )
-        raw = json.loads(_dispatch.pod_task_list_path("demo").read_text())
-        (stored,) = [t for t in raw["tasks"] if t["id"] == task_id]
-        assert stored["usage"] == {
-            "input": 150,
-            "cached": 70,
-            "cacheWrite": 5,
-            "output": 10,
-            "byModel": {"local/x": {"input": 150, "cached": 70, "cacheWrite": 5, "output": 10}},
-        }
+        with use_home(Home(home)):
+            record_isolation_off(home)
+            _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            task = _dispatch.enqueue_task("demo", "usage", channel="cli")
+            task_id = str(task["id"])
+            hops = [
+                _dispatch.HopResult(
+                    role="lead",
+                    member_id="m",
+                    ok=True,
+                    model="local/x",
+                    provider="local",
+                    usage={"input": 100, "cached": 60, "cacheWrite": 5, "output": 7},
+                ),
+                _dispatch.HopResult(
+                    role="implementer",
+                    member_id="m",
+                    ok=True,
+                    model="local/x",
+                    provider="local",
+                    usage={"input": 50, "cached": 10, "cacheWrite": 0, "output": 3},
+                ),
+            ]
+            _dispatch._finalize_task(
+                "demo", task_id, _dispatch.TaskResult(task_id=task_id, status="done", hops=hops)
+            )
+            raw = json.loads(_dispatch.pod_task_list_path("demo").read_text())
+            (stored,) = [t for t in raw["tasks"] if t["id"] == task_id]
+            assert stored["usage"] == {
+                "input": 150,
+                "cached": 70,
+                "cacheWrite": 5,
+                "output": 10,
+                "byModel": {"local/x": {"input": 150, "cached": 70, "cacheWrite": 5, "output": 10}},
+            }
 
 
 class _ScriptedBackend:
@@ -1626,7 +1633,7 @@ class _ScriptedBackend:
 
 def _trace_events(project: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    traces_dir = _cfg.TRACES_DIR / project
+    traces_dir = current_home().traces_dir / project
     if traces_dir.is_dir():
         for f in traces_dir.glob("*.jsonl"):
             events.extend(_trace.read_trace(f))

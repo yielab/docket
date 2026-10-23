@@ -10,14 +10,13 @@ from typing import Any
 
 import jsonschema
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -54,25 +53,24 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
-    _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
-    task = {
-        "id": "task-q",
-        "status": "waiting_input",
-        "description": "ship it",
-        "created": "2026-10-19T00:00:00+00:00",
-        "question": _QUESTION,
-    }
-    _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": [task]})
+    with use_home(Home(home)):
+        _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        task = {
+            "id": "task-q",
+            "status": "waiting_input",
+            "description": "ship it",
+            "created": "2026-10-19T00:00:00+00:00",
+            "question": _QUESTION,
+        }
+        _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": [task]})
 
-    class _Handler(_DocketHandler):
-        serve_token = _TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_address[1]}"
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        yield f"http://127.0.0.1:{srv.server_address[1]}"
+        srv.shutdown()
 
 
 def _http_item(base: str) -> dict[str, Any]:

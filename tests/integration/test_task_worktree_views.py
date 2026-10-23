@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 from typer.testing import CliRunner
 
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli._task"
 
@@ -31,7 +33,7 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 @pytest.fixture()
-def seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
     """A done task whose worktree holds an uncommitted change."""
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -43,20 +45,20 @@ def seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
-    wt = tmp_path / "wt"
-    _git(repo, "worktree", "add", "-q", "-b", "docket/demo/t1", str(wt), base)
-    (wt / "calc.py").write_text("x = 2\n")
-    task = _dispatch.enqueue_task("demo", "bump x", channel="cli")
-    path = _dispatch.pod_task_list_path("demo")
-    doc = _store.read_json(path)
-    for t in doc["tasks"]:
-        t["status"] = "done"
-        t["worktree"] = {"dir": str(wt), "branch": "docket/demo/t1", "baseCommit": base}
-    _store.write_json(path, doc)
-    return {"id": task["id"], "wt": wt, "base": base}
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
+        wt = tmp_path / "wt"
+        _git(repo, "worktree", "add", "-q", "-b", "docket/demo/t1", str(wt), base)
+        (wt / "calc.py").write_text("x = 2\n")
+        task = _dispatch.enqueue_task("demo", "bump x", channel="cli")
+        path = _dispatch.pod_task_list_path("demo")
+        doc = _store.read_json(path)
+        for t in doc["tasks"]:
+            t["status"] = "done"
+            t["worktree"] = {"dir": str(wt), "branch": "docket/demo/t1", "baseCommit": base}
+        _store.write_json(path, doc)
+        yield {"id": task["id"], "wt": wt, "base": base}
 
 
 def test_task_diff_prints_the_branch_change_against_the_base(seeded: dict[str, Any]) -> None:

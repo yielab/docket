@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import audit
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.audit"
 
@@ -21,10 +21,8 @@ def permissive_umask() -> Iterator[None]:
     os.umask(old)
 
 
-def test_a_fresh_home_directory_is_created_0700(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, permissive_umask: None
-) -> None:
+def test_a_fresh_home_directory_is_created_0700(tmp_path: Path, permissive_umask: None) -> None:
     home = tmp_path / "fresh-home"
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log")
-    assert audit.audit_log("pod.init").status == "written"
+    with use_home(Home(home)):
+        assert audit.audit_log("pod.init").status == "written"
     assert oct(os.stat(home).st_mode & 0o777) == "0o700"

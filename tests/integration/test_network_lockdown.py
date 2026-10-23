@@ -14,9 +14,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
-import docket.config as _cfg
 from docket.cli import _setup_sandbox
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
@@ -25,6 +24,7 @@ from docket.core.dispatch import DispatchError
 from docket.edges import store as _store
 from docket.edges.adapters import system, toolbox
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.edges.adapters.system"
 
@@ -44,9 +44,10 @@ _PROBE = (
 
 
 @pytest.fixture(autouse=True)
-def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path / "docket")
-    monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(Home(tmp_path / "docket")):
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        yield
 
 
 class TestArgv:
@@ -92,7 +93,7 @@ class TestRealLandlock:
 class TestResolution:
     def _lead(self, project: str, **meta: str) -> None:
         lead = _pod.member_id(project, "lead")
-        path = _cfg.meta_path(lead)
+        path = current_home().meta_path(lead)
         path.parent.mkdir(parents=True, exist_ok=True)
         _store.write_json(
             path, {"schemaVersion": 1, "kind": "project", "role": "lead", "pod": project, **meta}
@@ -166,12 +167,13 @@ class TestRefusal:
         assert _resolve_network("solo-agent", "implementer", True) == (False, None)
 
     def test_none_with_isolation_off_refuses_before_any_model_call(self) -> None:
-        ws = _cfg.workspace_dir("solo-agent")
+        ws = current_home().workspace_dir("solo-agent")
         ws.mkdir(parents=True, exist_ok=True)
         _store.write_json(
-            _cfg.meta_path("solo-agent"), {"kind": "project", "role": "implementer", "model": "t/m"}
+            current_home().meta_path("solo-agent"),
+            {"kind": "project", "role": "implementer", "model": "t/m"},
         )
-        record_isolation_off(_cfg.DOCKET_HOME)
+        record_isolation_off(current_home().root)
         _fleet.set_network_mode("none")
 
         def _never(model: str) -> object:
@@ -217,11 +219,13 @@ def host_listener() -> Iterator[tuple[str, int]]:
         pytest.skip("docker bridge gateway address not found")
     if (
         subprocess.run(
-            ["docker", "image", "inspect", _cfg.SANDBOX_DOCKER_IMAGE], capture_output=True
+            ["docker", "image", "inspect", current_home().sandbox_docker_image], capture_output=True
         ).returncode
         != 0
     ):
-        pytest.skip(f"{_cfg.SANDBOX_DOCKER_IMAGE} is not present locally (tests never pull)")
+        pytest.skip(
+            f"{current_home().sandbox_docker_image} is not present locally (tests never pull)"
+        )
     srv = socket.socket()
     try:
         srv.bind((ip, 0))

@@ -8,11 +8,11 @@ selectable by another pod, and round-tripped by ``pod export``. See mcp-client.s
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _pod as _cli_pod
@@ -24,6 +24,7 @@ from docket.core import pod_apply as _pod_apply
 from docket.core.tools import ToolRegistry
 from docket.edges.adapters.docket_runtime import _load_mcp_tools
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_apply"
 
@@ -40,13 +41,14 @@ tools: [lookup]
 
 
 @pytest.fixture(autouse=True)
-def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    for project in ("shop", "other"):
-        _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    with use_home(Home(home)):
+        for project in ("shop", "other"):
+            _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield
 
 
 def _recipe(tmp_path: Path, *, select: bool = False, doc: str = _SERVER_DOC) -> Path:
@@ -127,7 +129,7 @@ def test_dry_run_lists_it_and_installs_nothing(tmp_path: Path) -> None:
     plan = _pod_apply.plan_apply("shop", _recipe(tmp_path))
 
     assert [(i.kind, i.name, i.action) for i in plan.items] == [("mcp-server", "fakesrv", "add")]
-    assert not (_cfg.pod_config_dir("shop") / "mcp-servers.json").exists()
+    assert not (current_home().pod_config_dir("shop") / "mcp-servers.json").exists()
     assert _mt.load_mcp_servers("shop") == []
 
 

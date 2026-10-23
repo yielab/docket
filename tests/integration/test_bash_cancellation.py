@@ -32,6 +32,7 @@ from docket.core.session import load_messages
 from docket.core.tools import ToolContext, builtin_registry
 from docket.edges.adapters import system as _system
 from docket.edges.adapters import toolbox
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.edges.adapters.toolbox"
 
@@ -255,7 +256,7 @@ class TestAgentTurnBashCancellation:
             _loop.run_agent_turn(backend, builtin_registry(), ctx, session_key, "run it")
             return []
 
-        thread = threading.Thread(target=lambda: _runs.execute(record["id"], _fn))
+        thread = new_thread(target=lambda: _runs.execute(record["id"], _fn))
         thread.start()
 
         deadline = time.monotonic() + 5

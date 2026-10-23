@@ -18,12 +18,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import register_local_provider, repoint_docket_home
+from tests.conftest import register_local_provider
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app as _app
 from docket.core import models_policy as _mp
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -35,79 +35,69 @@ _runner = CliRunner()
 
 
 class TestRankAnchorsOverride:
-    def test_registry_overrides_anchors_and_reseeds_roles(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_registry_overrides_anchors_and_reseeds_roles(self, tmp_path: Path) -> None:
         registry_path = tmp_path / "docket-models.json"
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", registry_path)
-        registry_path.write_text(
-            json.dumps(
-                {
-                    "rankAnchors": {
-                        "economy": "openai/gpt-4.1-nano",
-                        "standard": "openai/gpt-4.1-mini",
-                        "premium": "openai/gpt-4.1",
+        with use_home(Home(tmp_path)):
+            registry_path.write_text(
+                json.dumps(
+                    {
+                        "rankAnchors": {
+                            "economy": "openai/gpt-4.1-nano",
+                            "standard": "openai/gpt-4.1-mini",
+                            "premium": "openai/gpt-4.1",
+                        }
                     }
+                )
+            )
+            role_models, tiers, _default = _mp.load_registry()
+            assert tiers == {
+                "economy": "openai/gpt-4.1-nano",
+                "standard": "openai/gpt-4.1-mini",
+                "premium": "openai/gpt-4.1",
+            }
+            # Role defaults re-derive from the overridden anchors (cheap -> economy,
+            # strong -> standard) — no Claude id survives anywhere in the result.
+            assert role_models["lead"] == "openai/gpt-4.1-nano"
+            assert role_models["implementer"] == "openai/gpt-4.1-mini"
+            assert not any("claude" in m.lower() for m in role_models.values())
+
+    def test_malformed_anchor_entries_are_ignored(self, tmp_path: Path) -> None:
+        registry_path = tmp_path / "docket-models.json"
+        with use_home(Home(tmp_path)):
+            registry_path.write_text(
+                json.dumps({"rankAnchors": {"economy": "not-well-formed", "made-up": "openai/x"}})
+            )
+            _role_models, tiers, _default = _mp.load_registry()
+            assert tiers == dict(_mp.rank_anchors())  # untouched — built-ins survive
+
+    def test_no_registry_file_uses_builtin_anchors(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path)):
+            _role_models, tiers, _default = _mp.load_registry()
+            assert tiers == dict(_mp.rank_anchors())
+
+    def test_write_registry_persists_rank_keys(self, tmp_path: Path) -> None:
+        registry_path = tmp_path / "docket-models.json"
+        with use_home(Home(tmp_path)):
+            _mp.write_registry(
+                {
+                    "rank.economy": "openai/gpt-4.1-nano",
+                    "rank.standard": "openai/gpt-4.1-mini",
+                    "rank.premium": "openai/gpt-4.1",
                 }
             )
-        )
-        role_models, tiers, _default = _mp.load_registry()
-        assert tiers == {
-            "economy": "openai/gpt-4.1-nano",
-            "standard": "openai/gpt-4.1-mini",
-            "premium": "openai/gpt-4.1",
-        }
-        # Role defaults re-derive from the overridden anchors (cheap -> economy,
-        # strong -> standard) — no Claude id survives anywhere in the result.
-        assert role_models["lead"] == "openai/gpt-4.1-nano"
-        assert role_models["implementer"] == "openai/gpt-4.1-mini"
-        assert not any("claude" in m.lower() for m in role_models.values())
-
-    def test_malformed_anchor_entries_are_ignored(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        registry_path = tmp_path / "docket-models.json"
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", registry_path)
-        registry_path.write_text(
-            json.dumps({"rankAnchors": {"economy": "not-well-formed", "made-up": "openai/x"}})
-        )
-        _role_models, tiers, _default = _mp.load_registry()
-        assert tiers == dict(_mp.rank_anchors())  # untouched — built-ins survive
-
-    def test_no_registry_file_uses_builtin_anchors(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "does-not-exist.json")
-        _role_models, tiers, _default = _mp.load_registry()
-        assert tiers == dict(_mp.rank_anchors())
-
-    def test_write_registry_persists_rank_keys(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        registry_path = tmp_path / "docket-models.json"
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", registry_path)
-        _mp.write_registry(
-            {
-                "rank.economy": "openai/gpt-4.1-nano",
-                "rank.standard": "openai/gpt-4.1-mini",
-                "rank.premium": "openai/gpt-4.1",
+            reg = json.loads(registry_path.read_text())
+            assert reg["rankAnchors"] == {
+                "economy": "openai/gpt-4.1-nano",
+                "standard": "openai/gpt-4.1-mini",
+                "premium": "openai/gpt-4.1",
             }
-        )
-        reg = json.loads(registry_path.read_text())
-        assert reg["rankAnchors"] == {
-            "economy": "openai/gpt-4.1-nano",
-            "standard": "openai/gpt-4.1-mini",
-            "premium": "openai/gpt-4.1",
-        }
 
-    def test_write_registry_ignores_unknown_anchor_name(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_write_registry_ignores_unknown_anchor_name(self, tmp_path: Path) -> None:
         registry_path = tmp_path / "docket-models.json"
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", registry_path)
-        _mp.write_registry({"rank.bogus": "openai/gpt-4.1-nano"})
-        reg = json.loads(registry_path.read_text())
-        assert "rankAnchors" not in reg
+        with use_home(Home(tmp_path)):
+            _mp.write_registry({"rank.bogus": "openai/gpt-4.1-nano"})
+            reg = json.loads(registry_path.read_text())
+            assert "rankAnchors" not in reg
 
 
 class TestPricingHonesty:
@@ -225,8 +215,7 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, home)
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
         if extra_path is not None:
             mp.setenv("PATH", f"{extra_path}{os.pathsep}{os.environ['PATH']}")
         result = _runner.invoke(_app, args)

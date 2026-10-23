@@ -10,10 +10,10 @@ from pathlib import Path
 
 import typer
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 _GRACE_S = 15
 _ABANDON_S = 5
@@ -38,7 +38,7 @@ def _alive(pid: int) -> bool:
 
 def running_pid() -> int | None:
     """The pid recorded for a live `docket start`, or None."""
-    pid = _read_pid(_cfg.SERVE_PID_FILE)
+    pid = _read_pid(current_home().serve_pid_file)
     return pid if pid is not None and _alive(pid) else None
 
 
@@ -112,7 +112,7 @@ def cmd_start(
 
     from docket.serve import run_serve
 
-    pid_file = _cfg.SERVE_PID_FILE
+    pid_file = current_home().serve_pid_file
     pid_file.parent.mkdir(parents=True, exist_ok=True)
     pid_file.write_text(f"{os.getpid()}\n", encoding="utf-8")
     try:
@@ -145,7 +145,7 @@ def cmd_stop(
     pid = running_pid()
     if pid is None:
         with contextlib.suppress(OSError):
-            _cfg.SERVE_PID_FILE.unlink()
+            current_home().serve_pid_file.unlink()
         ui.info("docket is not running.")
         return
 
@@ -158,6 +158,6 @@ def cmd_stop(
             ui.error(f"docket (pid {pid}) did not exit", f"Run `kill -9 {pid}`")
             raise typer.Exit(1)
     with contextlib.suppress(OSError):
-        _cfg.SERVE_PID_FILE.unlink()
+        current_home().serve_pid_file.unlink()
     ui.success("docket stopped.")
     _contract.next_step("docket start")

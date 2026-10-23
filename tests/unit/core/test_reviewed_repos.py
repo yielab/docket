@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import docket.config as _cfg
 from docket.core import reviewed_repos as _reviewed
 from docket.core.audit import read_audit
 from docket.core.pod_apply import RunItem
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.reviewed_repos"
 
@@ -76,7 +76,7 @@ def test_the_file_is_keyed_by_codebase_then_pod(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _reviewed.remember(repo, "a", (A,))
-    data = json.loads(_cfg.REVIEWED_REPOS_FILE.read_text())
+    data = json.loads(current_home().reviewed_repos_file.read_text())
     (root,) = data["repos"].values()
     assert list(root) == ["a"] and len(root["a"]) == 1
     assert set(root["a"][0]) == {"digest", "code", "date", "items"}
@@ -96,8 +96,8 @@ def test_the_older_one_entry_shape_is_not_read(tmp_path: Path) -> None:
             }
         }
     }
-    _cfg.REVIEWED_REPOS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _cfg.REVIEWED_REPOS_FILE.write_text(json.dumps(old))
+    current_home().reviewed_repos_file.parent.mkdir(parents=True, exist_ok=True)
+    current_home().reviewed_repos_file.write_text(json.dumps(old))
     assert _reviewed.lookup(repo, "a") is None
     assert not _reviewed.is_reviewed(repo, "a", (A,))
     assert not _reviewed.is_reviewed(repo, "items", (A,))
@@ -108,8 +108,8 @@ def test_remember_writes_a_private_file_and_audits_without_content(tmp_path: Pat
     repo = tmp_path / "repo"
     repo.mkdir()
     code = _reviewed.remember(repo, "a", (A,))
-    assert oct(_cfg.REVIEWED_REPOS_FILE.stat().st_mode & 0o777) == "0o600"
-    assert json.loads(_cfg.REVIEWED_REPOS_FILE.read_text())["repos"]
+    assert oct(current_home().reviewed_repos_file.stat().st_mode & 0o777) == "0o600"
+    assert json.loads(current_home().reviewed_repos_file.read_text())["repos"]
     entry = [e for e in read_audit() if e.get("action") == "repo.allow"][-1]
     assert f"code={code}" in entry["detail"] and "items=1" in entry["detail"]
     assert "pod=a" in entry["detail"]

@@ -15,18 +15,18 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.edges.adapters import system as _sys
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -81,18 +81,19 @@ class TestRunVerifyCmdHighRisk:
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
+        yield
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,
@@ -126,7 +127,7 @@ def _write_policy(
     applies_to: list[str] | None = None,
     message: str = "",
 ) -> None:
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
         "id": policy_id,
         "description": f"test policy {policy_id}",
@@ -136,12 +137,14 @@ def _write_policy(
         "action": action,
         "message": message,
     }
-    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+    (current_home().policies_dir / f"{policy_id}.json").write_text(
+        json.dumps(doc), encoding="utf-8"
+    )
 
 
 def _trace_events(project: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    traces_dir = _cfg.TRACES_DIR / project
+    traces_dir = current_home().traces_dir / project
     if not traces_dir.is_dir():
         return events
     for f in traces_dir.glob("*.jsonl"):

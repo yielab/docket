@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 from dataclasses import dataclass, field
@@ -10,10 +11,10 @@ from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import pod_memory as pm
 from docket.core import policy as _policy
 from docket.core import trace as _trace
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.pod_memory"
 
@@ -168,7 +169,7 @@ class TestDecide:
 
     def test_a_note_over_the_limit_is_refused(self, repo: tuple[Path, str]) -> None:
         root, commit = repo
-        note = "Built output " + "x" * _cfg.POD_MEMORY_NOTE_MAX_CHARS
+        note = "Built output " + "x" * current_home().pod_memory_note_max_chars
 
         (entry,) = _record(root, commit, _section(f"- generated: dist/bundle.js -- {note}"))
 
@@ -324,10 +325,10 @@ class TestStore:
             root, commit, _section("- pitfall: api/schema.proto -- Needs a regenerated client.")
         )
 
-        path = _cfg.pod_memory_path(_PROJECT)
+        path = current_home().pod_memory_path(_PROJECT)
         doc = json.loads(path.read_text())
 
-        assert path.parent == _cfg.PODS_DIR / _PROJECT
+        assert path.parent == current_home().pods_dir / _PROJECT
         assert oct(path.stat().st_mode & 0o777) == "0o600"
         (entry,) = doc["entries"]
         assert entry["path"] == "api/schema.proto" and "command" not in entry
@@ -366,32 +367,38 @@ class TestStore:
         assert [e.status for e in pm.list_entries(_PROJECT)] == ["accepted"]
 
     def test_the_oldest_accepted_entry_goes_first_and_pending_cannot_evict_it(
-        self, repo: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+        self, repo: tuple[Path, str]
     ) -> None:
         root, commit = repo
-        monkeypatch.setattr(_cfg, "POD_MEMORY_MAX_ACCEPTED", 2)
-        monkeypatch.setattr(_cfg, "POD_MEMORY_MAX_UNDECIDED", 2)
-        for name in ("dist/bundle.js", "api/schema.proto"):
-            _record(root, commit, _section(f"- generated: {name} -- A file."))
-        for i in range(5):
-            _record(root, commit, _section(f"- pitfall: p{i} -- A thing."))
+        with use_home(
+            dataclasses.replace(
+                current_home(), pod_memory_max_accepted=2, pod_memory_max_undecided=2
+            )
+        ):
+            for name in ("dist/bundle.js", "api/schema.proto"):
+                _record(root, commit, _section(f"- generated: {name} -- A file."))
+            for i in range(5):
+                _record(root, commit, _section(f"- pitfall: p{i} -- A thing."))
 
-        by_status = {
-            s: [e.subject for e in pm.list_entries(_PROJECT, s)] for s in ("accepted", "pending")
-        }
-        assert by_status["accepted"] == ["dist/bundle.js", "api/schema.proto"]
-        assert by_status["pending"] == ["p3", "p4"]
+            by_status = {
+                s: [e.subject for e in pm.list_entries(_PROJECT, s)]
+                for s in ("accepted", "pending")
+            }
+            assert by_status["accepted"] == ["dist/bundle.js", "api/schema.proto"]
+            assert by_status["pending"] == ["p3", "p4"]
 
-        (root / "dist" / "more.js").write_text("y\n")
-        _git(root, "add", ".")
-        _git(root, "commit", "-q", "-m", "more")
-        _record(
-            root, _git(root, "rev-parse", "HEAD"), _section("- generated: dist/more.js -- A file.")
-        )
-        assert [e.subject for e in pm.list_entries(_PROJECT, "accepted")] == [
-            "api/schema.proto",
-            "dist/more.js",
-        ]
+            (root / "dist" / "more.js").write_text("y\n")
+            _git(root, "add", ".")
+            _git(root, "commit", "-q", "-m", "more")
+            _record(
+                root,
+                _git(root, "rev-parse", "HEAD"),
+                _section("- generated: dist/more.js -- A file."),
+            )
+            assert [e.subject for e in pm.list_entries(_PROJECT, "accepted")] == [
+                "api/schema.proto",
+                "dist/more.js",
+            ]
 
     def test_every_change_leaves_a_trace_event_and_an_audit_entry(
         self, repo: tuple[Path, str]
@@ -408,10 +415,10 @@ class TestStore:
 
         events = [
             r
-            for r in _trace.read_trace(_cfg.TRACES_DIR / _PROJECT / f"{_SESSION}.jsonl")
+            for r in _trace.read_trace(current_home().traces_dir / _PROJECT / f"{_SESSION}.jsonl")
             if r["event_type"] == "memory_update"
         ]
-        audit_text = _cfg.AUDIT_LOG.read_text()
+        audit_text = current_home().audit_log.read_text()
 
         assert sorted(e["payload"]["status"] for e in events) == ["accepted", "refused"]
         assert all(e["payload"]["task"] == _TASK for e in events)
@@ -474,7 +481,7 @@ class TestOperatorApi:
 
         pm.approve(_PROJECT, entry.id, actor="operator")
 
-        text = _cfg.AUDIT_LOG.read_text()
+        text = current_home().audit_log.read_text()
         assert "pod.memory.approved" in text and entry.id in text
 
 
@@ -545,7 +552,7 @@ class TestRender:
         self, repo: tuple[Path, str]
     ) -> None:
         root, _commit = repo
-        path = _cfg.pod_memory_path(_PROJECT)
+        path = current_home().pod_memory_path(_PROJECT)
         path.parent.mkdir(parents=True)
         path.write_text(
             json.dumps(

@@ -63,7 +63,7 @@ Layout on disk today (the target is rules 11-15 of "Lanes and placement"):
 
 ```text
 tests/
-├── conftest.py             autouse isolation fixtures, repoint_docket_home, shared helpers, duration guard
+├── conftest.py             autouse home fixture, shared helpers, duration guard
 ├── fakes.py                FakeDriver: the shared RuntimeDriver double
 ├── fixtures/               recorded data and adapter-scenario fixtures shared by several lanes
 ├── unit/                   mirrors src/docket/: unit/core/test_dispatch.py ↔ src/docket/core/dispatch.py
@@ -144,8 +144,7 @@ Requirements:
 10. **Guards** each assert one invariant, with a shrink-only committed baseline where the invariant
     is not yet fully true:
     - *Home isolation.* No home-derived path resolves into the real `~/.docket` under the autouse
-      fixtures; the fixtures' shared list covers every constant the config module derives from
-      `DOCKET_HOME`; no test function sets the config's `DOCKET_HOME` without calling
+      fixtures; the guard walks every path the current `Home` holds or derives; no test function sets the config's `DOCKET_HOME` without calling
       `repoint_docket_home` (the allowlist is empty); the number of test functions that hand-roll
       two or more home-derived constants without claiming a home may only fall.
     - *Single owners.* A config constant is declared in one place; `fleet.json` has one writer and
@@ -331,19 +330,22 @@ filenames.
 
 ### Pointing Docket at a temporary world
 
-Every test already runs under the autouse isolation fixtures in `tests/conftest.py` (home-derived
-paths, audit log, fleet file, secrets files), which point at `tmp_path`. A test that needs a home of
-its own choosing calls the shared `repoint_docket_home` helper rather than patching a subset of
-`docket.config` paths by hand; a hand-rolled partial copy silently stops tracking the shared list of
-home-derived constants when one is added, and the guards in rule 10 fail or ratchet the test
-functions that still do it.
+Every test already runs inside the autouse `use_home` block in `tests/conftest.py`: a `Home` under
+`tmp_path` that holds every home-derived path, the audit log, the fleet file and the secrets files.
+A test that needs a home of its own choosing wraps its body in `use_home(Home(path))`; a field on
+top of the current home is set with `use_home(dataclasses.replace(current_home(), field=value))`.
+The block ends with the test, so nothing is restored by hand. A helper that seeds a home is a
+context manager the test enters, or a yield fixture; a server serves the home it was built in, so a
+fixture builds its server after the home it serves is current, and a thread a test starts goes
+through `docket.kernel.threads` so it runs in the home of the code that started it.
 
 ```python
-from tests.conftest import repoint_docket_home
+from docket.kernel.home import Home, use_home
 
 
-def test_example(tmp_path, monkeypatch):
-    repoint_docket_home(monkeypatch, tmp_path / ".docket")
+def test_example(tmp_path):
+    with use_home(Home(tmp_path / ".docket")):
+        ...
 ```
 
 `tests/conftest.py` also provides `register_local_provider` (a keyless loopback provider document in
@@ -530,12 +532,12 @@ Where the names used above live today.
 
 - `src/docket/cli/__init__.py`: the CLI registry (rule 9); `src/docket/cli/_task.py`: the
   500-character task description ceiling.
-- `src/docket/config.py`: the constants derived from `DOCKET_HOME`; `src/docket/core/secrets.py`: the
-  secrets-file constants the isolation fixtures patch.
+- `src/docket/config.py`: the constants derived from `DOCKET_HOME`; `src/docket/kernel/home.py`:
+  `Home`, `current_home`, `use_home`, which the autouse fixture and every test home go through.
 - `src/docket/core/llm.py`: `ChatBackend`; `src/docket/core/runtime_driver.py`: `RuntimeDriver`;
   `src/docket/core/tools.py`: `dispatch_tool`.
 - `src/docket/edges/adapters/system.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.
-- `tests/conftest.py`: the autouse isolation fixtures, `repoint_docket_home`,
+- `tests/conftest.py`: the autouse home fixture,
   `register_local_provider`, `record_isolation_off`, `record_isolation_on`, the lane duration guard.
 - `tests/fakes.py`: `FakeDriver`; `tests/integration/llm_stub.py`: `llm_server`.
 - `tests/guards/`: `test_layout.py` (unit and integration `SUBJECT`, large-module baseline

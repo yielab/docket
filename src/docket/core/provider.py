@@ -32,6 +32,7 @@ from docket.edges import store as _store
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DocumentError, InvalidInput
+from docket.kernel.home import current_home
 
 if TYPE_CHECKING:
     from docket.edges.adapters.llm import ProbeResult
@@ -293,7 +294,7 @@ def _load_builtin_providers() -> dict[str, ProviderSpec]:
 
 
 def _load_global_providers() -> dict[str, ProviderSpec]:
-    return _global_providers_from(_store.read_json(_cfg.PROVIDERS_FILE))
+    return _global_providers_from(_store.read_json(current_home().providers_file))
 
 
 def _global_providers_from(raw: object) -> dict[str, ProviderSpec]:
@@ -363,7 +364,7 @@ def _anchors_of(spec: ProviderSpec | None) -> dict[str, str]:
     for rank in _REQUIRED_RANKS:
         if preset is None or not preset.ranks.get(rank):
             raise DocumentError(
-                _cfg.PROVIDERS_FILE,
+                current_home().providers_file,
                 f"providers.{_RANK_SOURCE}.presets",
                 f"rank anchor '{rank}' is missing: the {_RANK_SOURCE} provider needs a preset "
                 f"named '{_RANK_SOURCE}' that ranks {' and '.join(_REQUIRED_RANKS)}",
@@ -397,7 +398,7 @@ def save_provider(spec: ProviderSpec) -> None:
         current["providers"] = providers
         return current
 
-    _store.read_modify_write(_cfg.PROVIDERS_FILE, _update)
+    _store.read_modify_write(current_home().providers_file, _update)
 
 
 def delete_provider(name: str) -> bool:
@@ -415,7 +416,7 @@ def delete_provider(name: str) -> bool:
         removed = True
         return current
 
-    _store.read_modify_write(_cfg.PROVIDERS_FILE, _update)
+    _store.read_modify_write(current_home().providers_file, _update)
     return removed
 
 
@@ -466,7 +467,7 @@ class ResolvedLimits:
 
 
 def _observed_entry(provider: str) -> dict[str, Any]:
-    providers = _store.read_json(_cfg.PROVIDER_MODELS_FILE).get("providers")
+    providers = _store.read_json(current_home().provider_models_file).get("providers")
     entry = providers.get(provider) if isinstance(providers, dict) else None
     return entry if isinstance(entry, dict) else {}
 
@@ -537,7 +538,7 @@ def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
         providers[spec.name] = entry
         return {"providers": providers}
 
-    _store.read_modify_write(_cfg.PROVIDER_MODELS_FILE, _update)
+    _store.read_modify_write(current_home().provider_models_file, _update)
 
 
 def refresh_observed_models_due() -> list[str]:
@@ -684,11 +685,13 @@ def remove_provider(name: str) -> None:
         scope = load_catalog().source_of(name)
         if scope == "built-in":
             raise ProviderError(
-                _cfg.PROVIDERS_FILE,
+                current_home().providers_file,
                 "name",
                 f"'{name}' is a built-in provider with no global override -- nothing to remove",
             )
-        raise ProviderError(_cfg.PROVIDERS_FILE, "name", f"'{name}' is not in the provider catalog")
+        raise ProviderError(
+            current_home().providers_file, "name", f"'{name}' is not in the provider catalog"
+        )
 
     from docket.core import audit as _audit
 
@@ -701,13 +704,15 @@ def export_provider(name: str) -> str:
     identical ``show --json``)."""
     spec = load_catalog().get(name)
     if spec is None:
-        raise ProviderError(_cfg.PROVIDERS_FILE, "name", f"'{name}' is not in the provider catalog")
+        raise ProviderError(
+            current_home().providers_file, "name", f"'{name}' is not in the provider catalog"
+        )
 
     try:
         import yaml as _yaml
     except ImportError:
         raise ProviderError(
-            _cfg.PROVIDERS_FILE, "file", "PyYAML not installed -- run: pip install pyyaml"
+            current_home().providers_file, "file", "PyYAML not installed -- run: pip install pyyaml"
         ) from None
 
     payload = {

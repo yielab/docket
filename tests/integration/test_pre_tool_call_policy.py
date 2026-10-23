@@ -13,16 +13,16 @@ every decision is audited. No test sleeps for real: the clock is injected or mon
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import time as _real_time
 import types
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core.llm import ToolCall
@@ -37,17 +37,21 @@ from docket.core.tools import (
     render_tool_call,
 )
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.tools"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Isolate every docket-owned store, and default the in-turn approval timeout to 0 so an
     unresolved `ask` fails closed immediately (no real sleep) unless a test overrides it to
     exercise the waiting/granting path."""
-    repoint_docket_home(monkeypatch, tmp_path)
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    with (
+        use_home(Home(tmp_path)),
+        use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
+    ):
+        yield
 
 
 def _write_policy(
@@ -58,7 +62,7 @@ def _write_policy(
     applies_to: list[str] | None = None,
     message: str = "",
 ) -> None:
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
         "id": policy_id,
         "description": f"test policy {policy_id}",
@@ -68,7 +72,9 @@ def _write_policy(
         "action": action,
         "message": message,
     }
-    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+    (current_home().policies_dir / f"{policy_id}.json").write_text(
+        json.dumps(doc), encoding="utf-8"
+    )
 
 
 @pytest.fixture
@@ -388,57 +394,59 @@ class TestDispatchToolApprovalRouting:
     def test_require_approval_call_executes_once_granted(
         self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 10, raising=True)
-        _write_policy("custom-approve-write", r"launch-codes", "require_approval")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=10)):
+            _write_policy("custom-approve-write", r"launch-codes", "require_approval")
 
-        def _grant_the_pending_call(_seconds: float) -> None:
-            pending = _approval.list_pending()
-            assert pending, "dispatch_tool should have created a pending approval by now"
-            assert 'custom x="launch-codes"' in pending[0]["action"]
-            _approval.approval_grant(pending[0]["token"])
+            def _grant_the_pending_call(_seconds: float) -> None:
+                pending = _approval.list_pending()
+                assert pending, "dispatch_tool should have created a pending approval by now"
+                assert 'custom x="launch-codes"' in pending[0]["action"]
+                _approval.approval_grant(pending[0]["token"])
 
-        monkeypatch.setattr(
-            _approval,
-            "_time",
-            types.SimpleNamespace(sleep=_grant_the_pending_call, monotonic=_real_time.monotonic),
-            raising=True,
-        )
+            monkeypatch.setattr(
+                _approval,
+                "_time",
+                types.SimpleNamespace(
+                    sleep=_grant_the_pending_call, monotonic=_real_time.monotonic
+                ),
+                raising=True,
+            )
 
-        ran = {"handler": False}
-        registry = ToolRegistry()
-        registry.register(_recording_tool("custom", "write", ran))
+            ran = {"handler": False}
+            registry = ToolRegistry()
+            registry.register(_recording_tool("custom", "write", ran))
 
-        res = dispatch_tool(_call("custom", json.dumps({"x": "launch-codes"})), ctx, registry)
+            res = dispatch_tool(_call("custom", json.dumps({"x": "launch-codes"})), ctx, registry)
 
-        assert ran["handler"] is True
-        assert res.executed and res.ok and res.decision == "allow"
+            assert ran["handler"] is True
+            assert res.executed and res.ok and res.decision == "allow"
 
     def test_require_approval_call_stays_refused_when_denied(
         self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 10, raising=True)
-        _write_policy("custom-approve-write-2", r"launch-codes", "require_approval")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=10)):
+            _write_policy("custom-approve-write-2", r"launch-codes", "require_approval")
 
-        def _deny_the_pending_call(_seconds: float) -> None:
-            pending = _approval.list_pending()
-            _approval.approval_deny(pending[0]["token"])
+            def _deny_the_pending_call(_seconds: float) -> None:
+                pending = _approval.list_pending()
+                _approval.approval_deny(pending[0]["token"])
 
-        monkeypatch.setattr(
-            _approval,
-            "_time",
-            types.SimpleNamespace(sleep=_deny_the_pending_call, monotonic=_real_time.monotonic),
-            raising=True,
-        )
+            monkeypatch.setattr(
+                _approval,
+                "_time",
+                types.SimpleNamespace(sleep=_deny_the_pending_call, monotonic=_real_time.monotonic),
+                raising=True,
+            )
 
-        ran = {"handler": False}
-        registry = ToolRegistry()
-        registry.register(_recording_tool("custom", "write", ran))
+            ran = {"handler": False}
+            registry = ToolRegistry()
+            registry.register(_recording_tool("custom", "write", ran))
 
-        res = dispatch_tool(_call("custom", json.dumps({"x": "launch-codes"})), ctx, registry)
+            res = dispatch_tool(_call("custom", json.dumps({"x": "launch-codes"})), ctx, registry)
 
-        assert ran["handler"] is False
-        assert res.denied and not res.executed
-        assert res.denial_kind == "approval_denied"
+            assert ran["handler"] is False
+            assert res.denied and not res.executed
+            assert res.denial_kind == "approval_denied"
 
     def test_an_unanswered_approval_times_out_to_denied_and_does_not_execute(
         self, ctx: ToolContext

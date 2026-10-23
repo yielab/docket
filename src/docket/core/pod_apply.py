@@ -38,6 +38,7 @@ from docket.core import protected_paths as _protected
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 _MANIFEST_KEYS = frozenset(
     {
@@ -224,7 +225,7 @@ def resolve_recipe(name_or_dir: str) -> Path:
     candidate = Path(name_or_dir)
     if candidate.is_dir():
         return candidate
-    operator_dir = _cfg.user_recipes_dir()
+    operator_dir = current_home().user_recipes_dir
     operator_candidate = operator_dir / name_or_dir
     if operator_candidate.is_dir():
         return operator_candidate
@@ -415,7 +416,7 @@ def list_recipes() -> list[RecipeInfo]:
                     directory=entry,
                     summary=summarize_recipe(entry),
                 )
-    operator_dir = _cfg.user_recipes_dir()
+    operator_dir = current_home().user_recipes_dir
     if operator_dir.is_dir():
         for entry in sorted(operator_dir.iterdir()):
             if entry.is_dir():
@@ -475,7 +476,7 @@ def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list
     policies_dir = directory / "policies"
     if not policies_dir.is_dir():
         return items, writes
-    dest_dir = _cfg.pod_config_dir(project) / "policies"
+    dest_dir = current_home().pod_config_dir(project) / "policies"
     policy_files = sorted(
         p for pattern in ("*.json", "*.yaml", "*.yml") for p in policies_dir.glob(pattern)
     )
@@ -506,7 +507,7 @@ def _plan_plugins(directory: Path, project: str) -> tuple[list[ApplyItem], list[
     plugins_dir = directory / "plugins"
     if not plugins_dir.is_dir():
         return items, writes
-    dest_dir = _cfg.pod_config_dir(project) / "plugins"
+    dest_dir = current_home().pod_config_dir(project) / "plugins"
     for plugin_file in sorted(plugins_dir.glob("*.py")):
         source = plugin_file.read_bytes()
         dest = dest_dir / plugin_file.name
@@ -538,7 +539,7 @@ def _plan_named_pipelines(
     invalid pipeline, or a stem that is not a task pipeline name) raises PodApplyError."""
     items: list[ApplyItem] = []
     writes: list[_NamedPipelineWrite] = []
-    dest_dir = _cfg.pod_config_dir(project) / "pipelines"
+    dest_dir = current_home().pod_config_dir(project) / "pipelines"
     seen: set[str] = set()
     for pipeline_file in _named_pipeline_files(directory):
         rel = f"pipelines/{pipeline_file.name}"
@@ -591,7 +592,7 @@ def _plan_skills(directory: Path, project: str) -> tuple[list[ApplyItem], list[_
     skills_dir = directory / "skills"
     if not skills_dir.is_dir():
         return items, writes
-    dest_root = _cfg.pod_config_dir(project) / "skills"
+    dest_root = current_home().pod_config_dir(project) / "skills"
     for skill_dir in sorted(p for p in skills_dir.iterdir() if p.is_dir()):
         if not (skill_dir / "SKILL.md").is_file():
             continue
@@ -1189,7 +1190,7 @@ def repo_config_dir(codebase: Path, project: str, *, create: bool = False) -> Pa
 
 def _is_state_root(directory: Path) -> bool:
     try:
-        return directory.resolve() == _cfg.DOCKET_HOME.resolve()
+        return directory.resolve() == current_home().root.resolve()
     except OSError:
         return False
 
@@ -1234,10 +1235,10 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
         _arch.add_user_archetype(role_write.doc, plan.project)
 
     if plan._policy_writes:
-        policies_dir = _cfg.pod_config_dir(plan.project) / "policies"
+        policies_dir = current_home().pod_config_dir(plan.project) / "policies"
         policies_dir.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
-            _cfg.PODS_DIR.chmod(0o700)
+            current_home().pods_dir.chmod(0o700)
             policies_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
             policies_dir.parent.chmod(0o700)  # pod_config_dir(project)
             policies_dir.chmod(0o700)
@@ -1247,10 +1248,10 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
             dest.chmod(0o600)
 
     if plan._plugin_writes:
-        plugins_dir = _cfg.pod_config_dir(plan.project) / "plugins"
+        plugins_dir = current_home().pod_config_dir(plan.project) / "plugins"
         plugins_dir.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
-            _cfg.PODS_DIR.chmod(0o700)
+            current_home().pods_dir.chmod(0o700)
             plugins_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
             plugins_dir.parent.chmod(0o700)  # pod_config_dir(project)
             plugins_dir.chmod(0o700)
@@ -1260,10 +1261,10 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
             dest.chmod(0o600)
 
     if plan._named_pipeline_writes:
-        pipelines_dir = _cfg.pod_config_dir(plan.project) / "pipelines"
+        pipelines_dir = current_home().pod_config_dir(plan.project) / "pipelines"
         pipelines_dir.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
-            _cfg.PODS_DIR.chmod(0o700)
+            current_home().pods_dir.chmod(0o700)
             pipelines_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
             pipelines_dir.parent.chmod(0o700)  # pod_config_dir(project)
             pipelines_dir.chmod(0o700)
@@ -1273,10 +1274,10 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
             dest.chmod(0o600)
 
     if plan._skill_writes:
-        skills_dir = _cfg.pod_config_dir(plan.project) / "skills"
+        skills_dir = current_home().pod_config_dir(plan.project) / "skills"
         skills_dir.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
-            _cfg.PODS_DIR.chmod(0o700)
+            current_home().pods_dir.chmod(0o700)
             skills_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
             skills_dir.parent.chmod(0o700)  # pod_config_dir(project)
             skills_dir.chmod(0o700)
@@ -1316,7 +1317,9 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
 
     for setting_write in plan._setting_writes:
         if setting_write.key == "schedule":
-            _sched.set_schedule(_cfg.SCHEDULE_FILE, plan.project, str(setting_write.value))
+            _sched.set_schedule(
+                current_home().schedule_file, plan.project, str(setting_write.value)
+            )
         _fleet.meta_set(lead_id, setting_write.key, setting_write.value)
 
     if plan.has_changes():
@@ -1364,7 +1367,7 @@ def _export_policies(project: str, directory: Path) -> None:
     """Write *project*'s own policy directory's files as short-form YAML ``policies/<stem>.yaml``
     (``core.policy.to_short_policy``, the inverse of ``normalize_policy``) -- never a file from
     the fleet-wide ``$POLICIES_DIR``."""
-    src_dir = _cfg.pod_config_dir(project) / "policies"
+    src_dir = current_home().pod_config_dir(project) / "policies"
     files = (
         sorted(p for pattern in ("*.json", "*.yaml", "*.yml") for p in src_dir.glob(pattern))
         if src_dir.is_dir()
@@ -1386,7 +1389,7 @@ def _export_plugins(project: str, directory: Path) -> None:
     """Copy *project*'s own ``config/plugins/`` files byte-for-byte as ``plugins/<name>.py``
     -- never a file from a codebase, since a plugin is only ever applied through this pod's
     own scope."""
-    src_dir = _cfg.pod_config_dir(project) / "plugins"
+    src_dir = current_home().pod_config_dir(project) / "plugins"
     files = sorted(src_dir.glob("*.py")) if src_dir.is_dir() else []
     if not files:
         return
@@ -1398,7 +1401,7 @@ def _export_plugins(project: str, directory: Path) -> None:
 
 def _export_named_pipelines(project: str, directory: Path) -> None:
     """Copy *project*'s own ``config/pipelines/`` files byte-for-byte as ``pipelines/<name>``."""
-    files = _named_pipeline_files(_cfg.pod_config_dir(project))
+    files = _named_pipeline_files(current_home().pod_config_dir(project))
     if not files:
         return
     dest_dir = directory / "pipelines"
@@ -1411,7 +1414,7 @@ def _export_skills(project: str, directory: Path) -> None:
     """Copy *project*'s own ``config/skills/`` byte-for-byte into ``skills/<name>/`` -- unlike
     a role or policy, a skill is not regenerated, since it carries its own files rather than a
     wire document this module knows how to re-render."""
-    src_dir = _cfg.pod_config_dir(project) / "skills"
+    src_dir = current_home().pod_config_dir(project) / "skills"
     names = sorted(p.name for p in src_dir.iterdir() if p.is_dir()) if src_dir.is_dir() else []
     if not names:
         return

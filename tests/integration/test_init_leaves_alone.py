@@ -4,16 +4,16 @@ cannot store faithfully (agent-lifecycle, cli-interface, input-validation)."""
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _agents, _pod, app
 from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._agents"
 
@@ -21,14 +21,14 @@ runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
     home = tmp_path / "home"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _mode(path: Path) -> int:
@@ -36,7 +36,7 @@ def _mode(path: Path) -> int:
 
 
 def _members() -> list[str]:
-    return sorted(p.name for p in _cfg.PROJECTS_DIR.iterdir())
+    return sorted(p.name for p in current_home().projects_dir.iterdir())
 
 
 class TestProvisioningLeavesAWorkdirItDidNotCreate:
@@ -73,12 +73,12 @@ class TestProvisioningLeavesAWorkdirItDidNotCreate:
 class TestRemovingTheLastImplementerKeepsThePodsOwnData:
     def test_defect_82_memory_config_and_the_work_dir_survive(self) -> None:
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        memory = _cfg.pod_memory_path("demo")
+        memory = current_home().pod_memory_path("demo")
         memory.write_text("{}")
-        config = _cfg.pod_config_dir("demo")
+        config = current_home().pod_config_dir("demo")
         config.mkdir(parents=True)
         (config / "roles.json").write_text("{}")
-        scratch = _cfg.pod_scratch_dir("demo")
+        scratch = current_home().pod_scratch_dir("demo")
         assert scratch.is_dir()
 
         _pod.remove_member("demo", "demo-implementer", yes=True)
@@ -86,14 +86,14 @@ class TestRemovingTheLastImplementerKeepsThePodsOwnData:
         assert memory.is_file()
         assert (config / "roles.json").is_file()
         assert not scratch.exists()
-        assert not _cfg.pod_cache_dir("demo").exists()
+        assert not current_home().pod_cache_dir("demo").exists()
 
     def test_defect_82_the_port_range_is_released_and_a_new_implementer_gets_one(self) -> None:
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         _pod.remove_member("demo", "demo-implementer", yes=True)
 
         assert _pod.add_members("demo", "implementer") == ["demo-implementer"]
-        assert _cfg.pod_scratch_dir("demo").is_dir()
+        assert current_home().pod_scratch_dir("demo").is_dir()
 
 
 class TestFromRefusesAnEntryWithoutABlueprint:
@@ -119,7 +119,7 @@ class TestFromRefusesAnEntryWithoutABlueprint:
         result = runner.invoke(app, ["init", "--from", spec])
 
         assert result.exit_code == 2
-        assert not (_cfg.PROJECTS_DIR.parent / "escaped").exists()
+        assert not (current_home().projects_dir.parent / "escaped").exists()
         assert _members() == []
 
     def test_q5_the_other_entries_of_the_file_still_provision(self, tmp_path: Path) -> None:
@@ -138,17 +138,16 @@ class TestFromRefusesAnEntryWithoutABlueprint:
 
 class TestInitFromTheDirectoryHoldingTheHome:
     def test_defect_70_a_cwd_whose_dot_docket_is_the_home_applies_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         code = tmp_path / "code"
         home = code / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         (home / "pod.yaml").write_text("kind: pod\nname: demo\ndescription: from the home\n")
-        repoint_docket_home(monkeypatch, home)
+        with use_home(Home(home)):
+            result = runner.invoke(app, ["init", "demo", str(code)])
 
-        result = runner.invoke(app, ["init", "demo", str(code)])
-
-        assert result.exit_code == 0, result.output
-        assert _fleet.meta_get("demo-lead", "configSource", "") == ""
-        assert "from the home" not in _fleet.meta_get("demo-lead", "description", "")
+            assert result.exit_code == 0, result.output
+            assert _fleet.meta_get("demo-lead", "configSource", "") == ""
+            assert "from the home" not in _fleet.meta_get("demo-lead", "description", "")

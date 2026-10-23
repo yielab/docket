@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-from tests.conftest import repoint_docket_home
-
-import docket.config as _cfg
 from docket.core import pod_report
 from docket.core.models import AgentMeta
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_report"
 
@@ -28,7 +25,7 @@ class TestRootsFor:
     def test_falls_back_to_the_agents_own_workspace(self) -> None:
         meta = AgentMeta(kind="project")
         roots = pod_report._roots_for("agent-1", meta)
-        assert roots == (_cfg.workspace_dir("agent-1"),)
+        assert roots == (current_home().workspace_dir("agent-1"),)
 
 
 class TestScopeLabel:
@@ -47,11 +44,9 @@ class TestScopeLabel:
 
 
 class TestNetworkText:
-    def test_none_with_isolation_off_says_it_is_not_enforced(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_none_with_isolation_off_says_it_is_not_enforced(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        text = pod_report.network_text({"mode": "none", "scope": "default"})
-        assert "not enforced" in text and "egress is open" in text
+        with use_home(Home(home)):
+            text = pod_report.network_text({"mode": "none", "scope": "default"})
+            assert "not enforced" in text and "egress is open" in text

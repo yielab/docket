@@ -17,20 +17,20 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 from docket.core import pod_report as _pod_report
 from docket.edges import store as _store
-from docket.kernel.threads import ContextHTTPServer
+from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -44,13 +44,13 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     (home / "approvals").mkdir()
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 @pytest.fixture()
@@ -101,7 +101,7 @@ def _ids() -> list[str]:
 
 
 def _ws(member_id: str) -> Path:
-    return _cfg.PROJECTS_DIR / member_id
+    return current_home().projects_dir / member_id
 
 
 # ── auth ─────────────────────────────────────────────────────────────────────
@@ -304,8 +304,8 @@ class TestIdempotence:
             except Exception as exc:
                 outcomes[name] = exc
 
-        winner = threading.Thread(target=provision, name="winner")
-        loser = threading.Thread(target=provision, name="loser")
+        winner = new_thread(target=provision, name="winner")
+        loser = new_thread(target=provision, name="loser")
         winner.start()
         assert winner_at_first_member.wait(timeout=2)
         loser.start()
@@ -317,9 +317,9 @@ class TestIdempotence:
         assert isinstance(outcomes["winner"], _pp.PodProvisionResult)
         assert isinstance(outcomes["loser"], _pp.PodAlreadyExistsError)
         assert sorted(_ids()) == ["race-implementer", "race-lead"]
-        allocation = _store.read_json(_cfg.PORT_ALLOC_FILE)
+        allocation = _store.read_json(current_home().port_alloc_file)
         assert "race" in allocation["allocations"]
-        scratch = _cfg.pod_scratch_dir("race")
+        scratch = current_home().pod_scratch_dir("race")
         assert scratch.is_dir()
         implementer = json.loads((_ws("race-implementer") / ".docket-meta.json").read_text())
         assert implementer["scratchDir"] == str(scratch)
@@ -334,7 +334,7 @@ class TestRollback:
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A new allocation must not make pre-existing runtime attempt-owned."""
-        runtime = _cfg.PODS_DIR / "flaky"
+        runtime = current_home().pods_dir / "flaky"
         scratch_marker = runtime / ".scratch" / "keep.txt"
         workdir_marker = runtime / "workdir" / "keep.txt"
         scratch_marker.parent.mkdir(parents=True)
@@ -359,7 +359,9 @@ class TestRollback:
         assert calls["n"] == 2
         assert scratch_marker.read_text() == "preserve scratch"
         assert workdir_marker.read_text() == "preserve workdir"
-        assert "flaky" not in _store.read_json(_cfg.PORT_ALLOC_FILE).get("allocations", {})
+        assert "flaky" not in _store.read_json(current_home().port_alloc_file).get(
+            "allocations", {}
+        )
 
     def test_core_level_rollback_leaves_nothing_behind(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -385,9 +387,9 @@ class TestRollback:
         assert not _ws("flaky-lead").exists()
         assert not _ws("flaky-implementer").exists()
         assert _ids() == []
-        alloc = _store.read_json(_cfg.PORT_ALLOC_FILE)
+        alloc = _store.read_json(current_home().port_alloc_file)
         assert "flaky" not in alloc.get("allocations", {})
-        assert not _cfg.pod_scratch_dir("flaky").exists()
+        assert not current_home().pod_scratch_dir("flaky").exists()
 
     def test_http_route_reports_500_and_leaves_nothing_behind(
         self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
@@ -412,7 +414,7 @@ class TestRollback:
         assert not _ws("flaky-lead").exists()
         assert not _ws("flaky-implementer").exists()
         assert _ids() == []
-        alloc = _store.read_json(_cfg.PORT_ALLOC_FILE)
+        alloc = _store.read_json(current_home().port_alloc_file)
         assert "flaky" not in alloc.get("allocations", {})
 
 
@@ -511,13 +513,13 @@ class TestEnsure:
         first_status, first = _post(
             f"{url}/pods", {"name": "demo", "location": "/src/demo", "ensure": True}, token
         )
-        before = (_cfg.FLEET_FILE).read_bytes()
+        before = (current_home().fleet_file).read_bytes()
         status, body = _post(
             f"{url}/pods", {"name": "demo", "location": "/other/path", "ensure": True}, token
         )
         assert (first_status, first["created"]) == (201, True)
         assert (status, body) == (200, {"ok": True, "created": False, "project": "demo"})
-        assert _cfg.FLEET_FILE.read_bytes() == before
+        assert current_home().fleet_file.read_bytes() == before
         raw = json.loads((_ws("demo-lead") / ".docket-meta.json").read_text())
         assert raw["codebase"] == "/src/demo"
 

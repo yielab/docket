@@ -30,10 +30,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-import docket.config as _cfg
 from docket.core.models import AgentMeta
 from docket.edges import store
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 _LENIENT = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -93,24 +93,24 @@ class FleetConfig(BaseModel):
 
 def load_fleet() -> FleetConfig:
     """Return the full fleet registry as a validated model."""
-    raw = store.read_json(_cfg.FLEET_FILE)
+    raw = store.read_json(current_home().fleet_file)
     return FleetConfig.model_validate(raw)
 
 
 def _save_fleet(cfg: FleetConfig) -> None:
-    store.write_json(_cfg.FLEET_FILE, cfg)
+    store.write_json(current_home().fleet_file, cfg)
 
 
 def meta_read(agent_id: str) -> AgentMeta:
     """Read and validate the full .docket-meta.json for an agent."""
-    path = _cfg.meta_path(agent_id)
+    path = current_home().meta_path(agent_id)
     raw = store.read_json(path)
     return AgentMeta.model_validate(raw)
 
 
 def meta_get(agent_id: str, field: str, default: str = "") -> str:
     """Read a single string field from .docket-meta.json."""
-    path = _cfg.meta_path(agent_id)
+    path = current_home().meta_path(agent_id)
     if not path.exists():
         return default
     raw = store.read_json(path)
@@ -120,7 +120,7 @@ def meta_get(agent_id: str, field: str, default: str = "") -> str:
 
 def meta_set(agent_id: str, field: str, value: Any) -> None:
     """Write a single field to .docket-meta.json; validates the full record before writing."""
-    path = _cfg.meta_path(agent_id)
+    path = current_home().meta_path(agent_id)
     raw = store.read_json(path)
     raw[field] = value
     AgentMeta.model_validate(raw)
@@ -317,7 +317,7 @@ def _read_only_refusal(path: Path) -> str | None:
     if not path.exists():
         return "does not exist"
     resolved = path.resolve()
-    docket_home = _cfg.DOCKET_HOME.resolve()
+    docket_home = current_home().root.resolve()
     if resolved == docket_home or resolved.is_relative_to(docket_home):
         return "is docket's home or inside it"
     for guarded in (Path.home().resolve(), docket_home):
@@ -367,7 +367,7 @@ def disable_sandbox_isolation() -> None:
 
 def all_agent_ids() -> list[str]:
     """Return agent ids registered in the fleet; 'main' is always included."""
-    if not _cfg.FLEET_FILE.exists():
+    if not current_home().fleet_file.exists():
         return ["main"]
     try:
         ids = [a.id for a in list_agents() if a.id]
