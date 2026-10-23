@@ -104,6 +104,8 @@ Opus is the integrator only. It writes the error-kind table, reviews W120-1 and 
 
 The scripts run last because the Wave 120 branches touch the same files the codemods touch. A script run once over the merged tree meets no conflict. A worker whose new test raises the `repointers`, `config-reads`, `environ` or `error-raises` count writes the new baseline with `measure_kernel_adoption.py --write` and reports the change; the step 2 and step 3 run brings the counts down. The `clock`, `ids` and `text` counts stay where they are: use `kernel.clock`, `kernel.ids` and `kernel.text`.
 
+**Progress 2026-10-23.** Stage 1 and the code half of stage 2 are merged: Wave 120 batches A and B (W120-1..12), P46-1, P46-2, P46-3, the P46-5 step 2 errors rule and its run (`36867d97`, the other session), and the P46-5 step 3 rules (`cf96f6cf`). Spec versions are bumped per batch (`86a5b4b5`, `e57c32bd`). Q1-Q6 were applied at their defaults. W120-13 runs now; then stage 3.
+
 **Decisions for the maintainer.** Each card applies the default below unless the maintainer answers otherwise before its batch starts.
 
 | # | Question | Default (D-57 unless stated) | Card |
@@ -117,7 +119,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-1 — the rules the documents state
 
-**Status:** TODO · stage 2 · **Size:** S · **Model:** Sonnet writes, integrator reviews · **Kind:** R
+**Status:** DONE 2026-10-23 (`a00dfdef`) · **Size:** S · **Model:** Sonnet writes, integrator reviews · **Kind:** R
 
 - **Trigger:** ADR 0030 points 1-2 and 5 replace the layer rule `cli -> core -> edges`.
 - **Goal:** `CONTRIBUTING.md` "Package layout" describes the context packages, the two-level rule,
@@ -133,7 +135,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-2 — `analyze.py`: the measurements and the first mapping
 
-**Status:** TODO · stage 2 (independent of P46-1: it writes only `scripts/maint/refactor/`) · **Size:** M · **Model:** Sonnet · **Kind:** T (tool with tests)
+**Status:** DONE 2026-10-23 (`be324579`) · **Size:** M · **Model:** Sonnet · **Kind:** T (tool with tests)
 
 - **Goal:** `scripts/maint/refactor/analyze.py` writes `refactor/analysis.json` + markdown: import
   graph and SCCs (top-level and with local imports, via `grimp`); every function-local `docket`
@@ -154,7 +156,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### P46-3 — `move.py` and `refactor_gate.sh`
 
-**Status:** TODO · stage 2 (independent of P46-1 and P46-2 until its real-tree dry run) · **Size:** L · **Model:** Sonnet · **Kind:** T (tool with tests)
+**Status:** DONE 2026-10-23 (`84a332b1`, `85efef83`) · **Size:** L · **Model:** Sonnet · **Kind:** T (tool with tests)
 
 - **Goal:** `scripts/maint/refactor/move.py` (libcst) executes `target-map.toml`: `git mv` whole
   modules; move named definitions with leading comments and decorators in mapping order; rewrite
@@ -209,7 +211,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
   - `adopt_kernel.py` has the rules `ids`, `text`, `clock` and `wrappers`. It rewrote 9 id sites, the text sites, 62 clock sites and 74 wrapper calls, and deleted 13 wrappers.
   - The runtime build hook lists the kernel files.
   - A `ContextVar` does not reach a thread docket spawns: a threaded test re-enters `use_clock` in the thread.
-- **Step 2, errors (stage 2 writes, stage 3 runs).**
+- **Step 2, errors: rule and run DONE (`36867d97`); the `DocketError` catcher at the CLI entry and the HTTP handler is still open.**
   - Opus writes the table that sends each of the 36 builtin-derived classes to a kind.
   - A Sonnet worker adds the rule `errors` to `adopt_kernel.py` (re-parent per the table; `raise ValueError(x)` → `raise InvalidInput(x)`; refuse a raise with more than one argument) and its toy tests.
   - The same worker adds one catcher of `DocketError` at the CLI entry and one in the HTTP handler. It first checks the `except ValueError` sites in `serve.py` (~219, ~991, ~1162).
@@ -219,6 +221,13 @@ The scripts run last because the Wave 120 branches touch the same files the code
   - `config-reads` refuses a read at import time and lists it, because a module-level read freezes the default home.
   - The same worker handles the 34 `environ` sites outside `config.py` from the measurer's list: each becomes a `Home` field or stays at an entry point.
   - Then `config.py` keeps only template lookups and moves to `kernel/`. `test_home_parity.py`, `tests/guards/test_partial_repointers.py` and its baseline are deleted.
+- **Step 3 rules: DONE (`cf96f6cf`), measured with `--check` on 2026-10-23.**
+  - `config-reads` rewrites 799 sites (373 in src, 426 in tests) and refuses 297. Of the refusals, 216 are tests that monkeypatch one config constant; they need a third rule (`monkeypatch.setattr(config, NAME, v)` → a `Home` override). 16 are import-time reads in src, and 56 are names with no `Home` field.
+  - `repointers` rewrites 123 of 190 sites. 57 helpers whose repoint outlives them and 10 thread-starting functions are converted by hand.
+  - Run `config-reads` before `repointers`.
+  - `Home` needs `secrets_file` and `secrets_meta_file`. `secrets_backend_requested`, `no_trace` and `no_export` still need a landing place.
+  - The environ table is in `.agents/handoffs/p46-5-environ-decisions.md` (34 sites to 25).
+  - **Decision (integrator): a thread docket starts runs in its spawner's context.** A `ContextVar` home does not reach `ThreadingHTTPServer` handler threads: 39 serve tests fail after the rules. One kernel helper starts a thread in `contextvars.copy_context()`, and the HTTP server runs each request in the context captured when it starts. That is also the product's behaviour: the server serves the home it started with.
 - **Text, settled.**
   - `approval._audit_field` caps at 513 characters while the audit spec says 512: it becomes `ellipsize(x, 512)`.
   - `…[+N chars]` (`cli/_setup_export.py`) and `[diff truncated …]` (`system.py`) keep their own format, one user each.
@@ -285,7 +294,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-1 — a pod's own rules apply on every screen
 
-**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet, Opus review · **Kind:** fix (security)
+**Status:** DONE 2026-10-23 (`a11594c8`, Opus review passed) · **Size:** M · **Model:** Sonnet, Opus review · **Kind:** fix (security)
 
 - **Defect 39.** `policy_eval_detail` is called without `project`, so a pod-only policy is
   skipped, at these sites:
@@ -316,7 +325,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-2 — `docket init` and provisioning leave alone what they did not create
 
-**Status:** TODO · batch A · **Size:** L · **Model:** Sonnet, Opus review · **Kind:** fix, security items first
+**Status:** DONE 2026-10-23 (`346ec94c`, `1d8ac5c7`, Opus review passed) · **Size:** L · **Model:** Sonnet, Opus review · **Kind:** fix, security items first
 
 - **Security defects.**
   - 60/87: provisioning runs `chmod 700` on a workdir it did not create, the cwd included
@@ -349,7 +358,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-3 — the trace and the exporters tell the truth
 
-**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
+**Status:** DONE 2026-10-23 (`ddd475d8`) · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
 
 - **Defects.**
   - 2: `terminal_outcomes` picks the "latest" sessions by file name (`task-<uuid4>`), so `status`
@@ -374,7 +383,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-4 — the pipeline loader refuses what it cannot run
 
-**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet · **Kind:** fix
+**Status:** DONE 2026-10-23 (`33fbf1d3`, `ae459abc`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
 
 - **Defect 53.** The loader accepts each of these in silence:
   - `run`, `input`, `when` or `archetype` on a `parallel` group
@@ -393,7 +402,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-5 — providers and secrets fail loudly and store nothing on failure
 
-**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet · **Kind:** fix
+**Status:** DONE 2026-10-23 (`5eb6fd9d`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
 
 - **Defect 44.** A global document with empty `presets` makes `load_registry()` raise
   `KeyError: 'economy'`. Instead, raise a `DocumentError` that names the missing anchor, both at
@@ -415,7 +424,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-6 — the HTTP server's own answers
 
-**Status:** TODO · batch A · **Size:** S · **Model:** Sonnet · **Kind:** fix (byte changes, before P46-9)
+**Status:** DONE 2026-10-23 (`f5d081b0`) · **Size:** S · **Model:** Sonnet · **Kind:** fix (byte changes, before P46-9)
 
 - **Defects.**
   - 11: `/metrics` emits `docket_agent_turns_total` without HELP or TYPE and interleaves it with
@@ -433,7 +442,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-7 — the adoption evidence says what it proves
 
-**Status:** TODO · batch A · **Size:** S · **Model:** Sonnet · **Kind:** doc and fix
+**Status:** DONE 2026-10-23 (`841d86fb`, `8266ae01`) · **Size:** S · **Model:** Sonnet · **Kind:** doc and fix
 
 - **Defect 80 (Q6).** `benchmarks/run.py` writes the run, task, session and trace records
   itself, including a fabricated `guardrail_block`. It calls the CLI only for `run --dry-run`,
@@ -446,7 +455,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-8 — dispatch, answers and the budget unblock
 
-**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
+**Status:** DONE 2026-10-23 (`cb3a21c8`) · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
 
 - **Deletions (Q2).**
   - 7: the `requireApprovalRoles` reader (`core/interruptions.py` ~85, `dispatch.py` ~1490)
@@ -467,7 +476,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-9 — roles and configuration documents follow one rule each
 
-**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
+**Status:** DONE 2026-10-23 (`495a11a0`) · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
 
 - **Defects.**
   - 21: denying `fetch` in a pod removes every built-in of kind `read` (read, glob, grep, skill,
@@ -492,7 +501,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-10 — channels and Telegram deliver and refuse correctly
 
-**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix
+**Status:** DONE 2026-10-23 (`efda73d2`, `573a9385`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
 
 - **Defects.**
   - 25: the shipped `email` channel never delivers. The template sets `to`, `from` and
@@ -514,7 +523,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-11 — the CLI's own output is honest
 
-**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix
+**Status:** DONE 2026-10-23 (`202c28fe`) · **Size:** M · **Model:** Sonnet · **Kind:** fix
 
 - **Defects.**
   - 75: the `docket run` header prints `spent $0.00` next to the real cap, but recorded spend is
@@ -538,7 +547,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-12 — the runtime facade counts tokens as the loop does
 
-**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix (the facade's output changes, so it lands before the baseline)
+**Status:** DONE 2026-10-23 (`7e14b128`) · **Size:** M · **Model:** Sonnet · **Kind:** fix (the facade's output changes, so it lands before the baseline)
 
 - **Defects.**
   - 61: the `docket_runtime` envelope counts `total_tokens` (input + output), while the loop
@@ -556,7 +565,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-13 — stale text and dead code
 
-**Status:** TODO · batch C, after batch B merges · **Size:** S · **Model:** Haiku · **Kind:** text, and deletions with a zero-caller proof
+**Status:** IN-PROGRESS 2026-10-23 (Haiku, branch `w120-13`) · **Size:** S · **Model:** Haiku · **Kind:** text, and deletions with a zero-caller proof
 
 - **Text.**
   - 9: the `mcp_client._stdio_params` docstring names an opt-out that does not exist, and
@@ -598,6 +607,12 @@ The scripts run last because the Wave 120 branches touch the same files the code
 ### P46-7 — split `core/dispatch.py`
 
 **Status:** TODO after P46-6 · **Size:** L · **Model:** codemod · **Kind:** T + R
+
+- **The draft map does not apply yet** (`move.py --dry-run` on 2026-10-23: 203 file moves and 2208 test-id changes, then rc 2). Two mapping problems:
+  - `_store` clashes in `docket.hops.workspace.prepare`. Rename one of the two before the move.
+  - `global _sweep_stop` is split across serve, sweep and the HTTP server. Give that state one owner, as an object or a setter.
+- **The map's end state has four top-level import cycles**: about 24 modules across agent/hops/governance, 6 across platform/sandbox, 3 in interfaces.http and 2 between tasks lifecycle and sweep. Each P46 move commit applies a leaf-first slice of the map, never the whole file.
+- **analyze.py prints nine metrics the worker chose**; the ADR names five. Before P46-4 records the baseline, reconcile that list with `refactor_gate.sh` check 9.
 
 - **Goal:** the reviewed mapping assigns the 168 definitions to `tasks/application/` (`queue`,
   `lifecycle`, `actions`, `approvals`, `sweep`), `tasks/domain/task.py` (shared types),
@@ -768,6 +783,16 @@ The scripts run last because the Wave 120 branches touch the same files the code
     repeat after a restart.
   - **Every member of a pod shares the base session key `agent:<pod>:<key>`** (`core/pod.py`
     ~86-90); latent, no turn uses the base key as history. Trigger: a turn that reads it.
+- **Found while merging Wave 120 (2026-10-23).** Each comes from a worker report and was checked against its branch.
+  - **`setup` without `--fix` writes:** its text report re-seeds `WORKFLOW_AUTO.md`. A check that writes is a defect. Trigger: the next edit of `cli/_setup_check.py`.
+  - **The seeds point at `memory/YYYY-MM-DD.md`** (`core/memory.py` and the AGENTS.md seed in `cli/_agents.py`), a path docket never creates. Changing it bumps `CONTRACT_VERSION`, so the maintainer decides.
+  - **A canonical document without `kind:` still loads with a deprecation advisory** (W120-9 deleted only the short-form path, as Q3 named). Under D-57 the advisory is a notice; either every canonical fixture gains `kind:` or the advisory goes. Trigger: the next edit of `core/config_docs.py`.
+  - **`enqueue_task` is kept beside `enqueue_task_once`**, because about 300 test call sites in 40 files use it. Delete it with a script in stage 3 if the two have the same semantics for a fresh task; otherwise each site is a decision.
+  - **`docket start`'s periodic notify flush ignores `FlushReport.error`** (`serve.py::_flush_notify_channels`; serve has no logger). → P46-9.
+  - **An answer to a task run with `run --pipeline <file>` is placed against the pod's pipeline**, because the file's spec is not persisted on the task (W120-8 fixed the named-pipeline half of defect 48). → P46-11, which reshapes the task record.
+  - **Enabling the `email` channel checks nothing**: with no `to`, `from` or `smtpHost`, every delivery fails into the health record. Trigger: an operator enables it.
+  - **The `openhands` and `pydantic_ai` adapters never pass `cache_write_tokens`**, so the facade's cache-write sum is 0 for them. Trigger: either adapter reports usage someone reads.
+  - **`GET /pods` (the list) was not checked** for the invalid-settings failure that W120-6 fixed on `/pods/<p>`. → P46-9's byte-identity check.
 - **Found in the Phase 45 real runs (2026-10-20, two runs of one small task on `fab-dev`).**
   - **The implementer sends 0.65 of what the backend counts** (14 and 13 calls, largest request
     ~7,000 estimated tokens), with no toolchain grant needed (`npm` came from the prepared
