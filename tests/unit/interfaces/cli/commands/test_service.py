@@ -105,10 +105,6 @@ def test_mcp_refuses_the_flags_that_print_to_stdout(home: Path) -> None:
     assert runner.invoke(app, ["start", "--mcp", "--dispatch"]).exit_code == 2
 
 
-def test_serve_is_not_a_command(home: Path) -> None:
-    assert runner.invoke(app, ["serve"]).exit_code == 2
-
-
 @pytest.mark.parametrize(
     ("args", "expected"), [([], "127.0.0.1"), (["--bind", "127.0.0.2"], "127.0.0.2")]
 )

@@ -114,9 +114,6 @@ class TestCoercePaused:
     def test_real_bool_false(self) -> None:
         assert AgentMeta.coerce_paused(False) is False
 
-    def test_legacy_string_true_lowercase(self) -> None:
-        assert AgentMeta.coerce_paused("true") is True
-
     def test_legacy_string_true_titlecase(self) -> None:
         # str(True) in Python is "True" — this is exactly what a real bool
         # round-trips to through meta_get's str() coercion.

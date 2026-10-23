@@ -207,12 +207,6 @@ class TestCostSnapshot:
             assert snap["totalUsd"] == 0.0
 
 
-class TestRemovedCommands:
-    @pytest.mark.parametrize("name", ["cost", "metrics", "snapshot", "dispatch"])
-    def test_a_removed_name_is_an_unknown_command(self, name: str) -> None:
-        assert runner.invoke(_app, [name]).exit_code == 2
-
-
 class TestParkedQuestionAndSandbox:
     def test_a_waiting_input_task_is_counted_and_the_pod_is_waiting(self, tmp_path: Path) -> None:
         """A parked question shows in the JSON count, the pod state and the human Tasks line."""

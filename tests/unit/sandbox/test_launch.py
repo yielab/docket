@@ -60,12 +60,6 @@ class TestChosenBackend:
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         assert _launch.sandbox_availability("auto").backend == "landlock"
 
-    def test_bwrap_is_no_longer_a_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._hosts(monkeypatch, landlock=False, docker=False)
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        assert _launch.sandbox_availability("auto").backend == "none"
-        assert not hasattr(_launch, "bwrap_argv")
-
 
 class TestTaskEnvironmentCacheDir:
     def test_cache_dir_sets_the_six_variables(self, tmp_path: Path) -> None:

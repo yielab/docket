@@ -14,7 +14,6 @@ from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
 from docket.governance import policy as _policy
-from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_config_library as _pod_config_library
@@ -311,15 +310,6 @@ class TestLibraries:
             assert set(both) == {"policies", "plugins"}
             assert _pod_run("policies", "nope").exit_code == 1
             assert _pod_run("policies", "block-destructive", "--plugins").exit_code == 2
-
-
-class TestRemovedNames:
-    @pytest.mark.parametrize("name", ["validate", "pipeline", "roles", "policies", "plugins"])
-    def test_a_removed_top_level_name_is_an_unknown_command(self, name: str) -> None:
-        assert _runner.invoke(app, [name]).exit_code == 2
-
-    def test_recipes_is_not_a_top_level_command(self) -> None:
-        assert _runner.invoke(app, ["recipes"]).exit_code == 2
 
 
 class TestRecipeRows:

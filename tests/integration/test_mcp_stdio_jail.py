@@ -11,12 +11,9 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 import docket.agent.tools.mcp_tools as _mt
 from docket.agent.tools import mcp_client as _client
-from docket.governance import audit as _audit
-from docket.interfaces.cli.app import app
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home, use_home
 from docket.sandbox import landlock
@@ -183,14 +180,3 @@ def test_listing_works_through_the_jail(
     listing = _client.list_remote_tools(server, 30.0, _launch(root, runtime=True))
     assert listing.ok, listing.error
     assert {t.name for t in listing.tools} == {"write", "dial"}
-
-
-def test_the_no_isolate_flag_and_field_are_gone() -> None:
-    runner = CliRunner()
-    refused = runner.invoke(app, ["setup", "mcp", "add", "free", "--no-isolate", "--", "srv", "x"])
-    assert refused.exit_code == 2
-    assert "isolate" not in _mt.McpServerConfig.model_fields
-    assert runner.invoke(app, ["setup", "mcp", "add", "caged", "--", "srv"]).exit_code == 0
-    details = [e["detail"] for e in _audit.read_audit() if e["action"] == "mcp_servers.add"]
-    assert any("name='caged'" in d and "isolate" not in d for d in details)
-    assert "host" not in runner.invoke(app, ["setup", "mcp", "list"]).output

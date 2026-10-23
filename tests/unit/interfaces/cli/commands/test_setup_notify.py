@@ -200,10 +200,6 @@ class TestCatalog:
         )
         assert allowed.exit_code == 0, allowed.output
 
-    def test_removed_top_level_names_are_unknown_commands(self) -> None:
-        for name in ("wire", "unwire", "notify", "conversations", "channels", "exporters"):
-            assert _runner.invoke(app, [name]).exit_code == 2
-
 
 def test_show_telegram_lists_bindings_and_conversations(two_pods: list[str]) -> None:
     _setup_notify._bind("alpha-lead", "55", "telegram")

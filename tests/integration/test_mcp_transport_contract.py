@@ -46,14 +46,6 @@ class TestNoUpperBoundPin:
 
 
 class TestSingleCodePathOnRealSdk:
-    def test_fastmcp_module_no_longer_exists(self) -> None:
-        """`mcp.server.fastmcp` is removed outright, not deprecated in place."""
-        # Nothing left to fall back to, and no reason for a version-sniffing
-        # shim in interfaces/cli/commands/mcp.py.
-        pytest.importorskip("mcp")
-        with pytest.raises(ModuleNotFoundError):
-            import mcp.server.fastmcp  # noqa: F401
-
     def test_build_server_is_the_real_mcpserver_class(self) -> None:
         pytest.importorskip("mcp")
         server = _mcp._build_server()

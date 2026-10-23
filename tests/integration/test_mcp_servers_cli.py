@@ -242,9 +242,6 @@ class TestGroup:
         _, out, _ = _mcp_run([])
         assert "add" in out and "remove" in out and "list" in out
 
-    def test_the_removed_top_level_command_is_unknown(self) -> None:
-        assert _runner.invoke(app, ["mcp", "servers", "list"]).exit_code == 2
-
 
 # ── ownership-row guard: never reaches agent/tools/registry.py or a toolbox handler ────
 

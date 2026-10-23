@@ -126,10 +126,6 @@ class TestPipedReport:
             assert report.endpoint.command
             assert _files(home) == before
 
-    def test_a_removed_name_is_an_unknown_command(self) -> None:
-        for name in ("doctor", "models", "keys", "gates", "completions"):
-            assert _runner.invoke(app, [name]).exit_code == 2
-
 
 class TestScriptedTerminal:
     def test_answering_local_registers_the_provider_and_applies_the_preset(

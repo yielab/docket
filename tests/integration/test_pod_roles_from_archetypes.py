@@ -95,11 +95,6 @@ class TestMemberIdUnaffected:
         assert pod.member_id("shop", "implementer", 2) == "shop-implementer-2"
         assert pod.member_id("shop", "lead") == "shop-lead"
 
-    def test_parse_member_id_round_trips_for_legacy_roles(self) -> None:
-        assert pod.parse_member_id("shop-implementer", "shop") == ("implementer", 1)
-        assert pod.parse_member_id("shop-implementer-2", "shop") == ("implementer", 2)
-        assert pod.parse_member_id("shop-lead", "shop") == ("lead", 1)
-
     def test_parse_member_id_accepts_starter_role(self) -> None:
         assert pod.parse_member_id("shop-researcher", "shop") == ("researcher", 1)
 

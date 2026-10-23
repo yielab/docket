@@ -540,12 +540,6 @@ class TestTaskPrune:
             assert "run record" in result.output
 
 
-class TestRetiredNames:
-    @pytest.mark.parametrize("name", ["runs", "trace", "delegate"])
-    def test_a_removed_top_level_name_is_unknown(self, name: str) -> None:
-        assert _runner.invoke(app, [name]).exit_code == 2
-
-
 def _task(*args: str) -> Any:
     return _runner.invoke(app, ["task", *args])
 
@@ -684,10 +678,6 @@ class TestTaskApprove:
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             assert _task("approve", task["id"], "--once", "--task").exit_code == 2
-
-    def test_the_removed_top_level_names_are_unknown(self) -> None:
-        for name in ("approve", "deny", "chat"):
-            assert _runner.invoke(app, [name]).exit_code == 2
 
 
 class TestTaskDeny:

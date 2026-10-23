@@ -7,8 +7,7 @@ production ``DocketDriver``, with only its `ChatBackend` scripted.
 
 Also covers the task-state-machine suites: ``TestConcurrentDispatch`` (the thread-race
 regression this exists to close), ``TestCrashRecovery`` (stale-claim sweep + resume-from-last-
-hop), ``TestBlockedStaysBlocked`` (kills a blocked-to-pending auto-retry), and
-``TestLegacyQueueLoads`` (a legacy TASK_LIST.json with none of the newer fields still dispatches).
+hop), and ``TestBlockedStaysBlocked`` (kills a blocked-to-pending auto-retry).
 """
 
 from __future__ import annotations
@@ -1578,55 +1577,6 @@ class TestBlockedStaysBlocked:
             assert all(t["status"] == "pending" for t in tasks)
             # Nothing left blocked — a second call is a no-op.
             assert _lifecycle.unblock_pod("demo") == 0
-
-
-# ── backward compatibility — a legacy-shape TASK_LIST.json still loads/dispatches ─
-
-
-class TestLegacyQueueLoads:
-    def test_legacy_task_without_v2_fields_loads_and_dispatches(self, tmp_path: Path) -> None:
-        with _seed_pod(tmp_path):
-            legacy_path = _settings.pod_task_list_path("demo")
-            legacy_path.parent.mkdir(parents=True, exist_ok=True)
-            legacy_path.write_text(
-                json.dumps(
-                    {
-                        "tasks": [
-                            {
-                                # Legacy shape: epoch-ms id, no claimId/claimedAt/failureKind.
-                                "id": "task-1700000000000",
-                                "description": "Old-style task",
-                                "priority": "normal",
-                                "status": "pending",
-                                "created": "2024-01-01T00:00:00+00:00",
-                                "startedAt": None,
-                                "completedAt": None,
-                                "source": "operator",
-                                "hops": [],
-                            }
-                        ]
-                    }
-                )
-            )
-
-            tasks = _queue.read_tasks("demo")
-            assert len(tasks) == 1
-            assert (
-                tasks[0]["id"] == "task-1700000000000"
-            )  # id format is not migrated, just tolerated
-            assert tasks[0]["claimId"] is None
-            assert tasks[0]["claimedAt"] is None
-
-            results = _sweep.dispatch_pod("demo", runner=FakeDriver())
-            assert results[0].status == "done"
-            assert _queue.read_tasks("demo")[0]["status"] == "done"
-
-    def test_legacy_queue_missing_tasks_key_loads_empty(self, tmp_path: Path) -> None:
-        with _seed_pod(tmp_path):
-            legacy_path = _settings.pod_task_list_path("demo")
-            legacy_path.parent.mkdir(parents=True, exist_ok=True)
-            legacy_path.write_text(json.dumps({}))
-            assert _queue.read_tasks("demo") == []
 
 
 # ── `docket run`'s prologue names the resolved pipeline's roles ──

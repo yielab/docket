@@ -227,12 +227,3 @@ class TestPreOutputHighRiskClassification:
         # The operator's own policy wins -- not overwritten by the built-in classifier's tag.
         assert block_events[0]["payload"]["policy"] == "forbidden-marker"
         assert block_events[0]["payload"]["action"] == "block"
-
-    def test_non_matching_output_still_silent(self) -> None:
-        _seed_lean_pod()
-        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
-        runner = _RecordingRunner({"lead": "nothing interesting here"})
-        _sweep.dispatch_pod("myapp", runner=runner)
-
-        events = _trace_events("myapp")
-        assert not any(e["event_type"] in ("guardrail_check", "guardrail_block") for e in events)

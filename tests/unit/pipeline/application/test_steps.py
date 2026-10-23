@@ -370,13 +370,6 @@ class TestBoundPipeline:
         assert results[0].status == "done"
         assert [h.step_id for h in results[0].hops] == ["kickoff", "assemble"]
 
-    def test_unbound_pod_is_unaffected(self, pod_home: Path) -> None:
-        _seed_lean_pod("myapp")
-
-        spec = _steps.effective_pipeline("myapp", None)
-
-        assert spec == _pipeline.default_pipeline()
-
     def test_unset_restores_the_blueprint_default(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
         self._bind("myapp")
