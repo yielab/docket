@@ -1,0 +1,751 @@
+# imports that break an ADR 0030 dependency row today; shrink-only
+# format: contract | importer -> imported; regenerate with
+#   python tests/architecture/test_import_contracts.py --write
+domain imports kernel and its own domain | docket.pipeline.domain.plan -> docket.teams.role_schema
+domain imports kernel and its own domain | docket.pipeline.domain.plan -> docket.teams.roles
+domain imports kernel and its own domain | docket.pipeline.domain.step -> docket.sandbox.launch
+domain imports kernel and its own domain | docket.tasks.domain.options -> docket.governance.policy
+domain imports kernel and its own domain | docket.tasks.domain.options -> docket.hops.workspace.prepare
+domain imports kernel and its own domain | docket.tasks.domain.options -> docket.teams.roles
+domain imports kernel and its own domain | docket.tasks.domain.refs -> docket.hops.application.runner
+domain imports kernel and its own domain | docket.tasks.domain.refs -> docket.tasks.application.queue
+domain imports kernel and its own domain | docket.tasks.domain.refs -> docket.tasks.application.runs
+domain imports kernel and its own domain | docket.tasks.domain.task -> docket.agent.handoff
+application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.tasks.application.actions
+application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.tasks.application.corrections
+application imports kernel, its own context and other contexts' __init__ | docket.governance.approval_pregrant -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.governance.audit -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.governance.network_posture -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.pipeline.application.executor
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.pipeline.domain.gates
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.pipeline.domain.spec
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.sandbox.launch
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.teams.pod_settings
+application imports kernel, its own context and other contexts' __init__ | docket.governance.review -> docket.hops.workspace.protected_paths
+application imports kernel, its own context and other contexts' __init__ | docket.governance.review -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.governance.review -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.governance.review -> docket.teams.apply.review
+application imports kernel, its own context and other contexts' __init__ | docket.governance.secrets -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.governance.secrets -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.governance.security -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.agent.context
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.agent.handoff
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.agent.ports
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.pipeline.domain.gates
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.tasks.application.actions
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.teams.role_schema
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.teams.roles
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.compose -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.agent.conversations
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.agent.handoff
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.agent.memory
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.agent.ports
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.pipeline.domain.gates
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.tasks.application.consult
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.record -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.agent.driver
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.agent.ports
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.models.selection
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.tasks.application.runs
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.agent.isolation_posture
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.agent.ports
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.agent.tools.registry
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.governance.security
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.pipeline.domain.gates
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.sandbox.launch
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.tasks.application.corrections
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.agent.ports
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.governance.approval
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.governance.profile
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.governance.secrets
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.models.selection
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.pipeline.domain.gates
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.teams.pod_settings
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.pre_hop -> docket.teams.utils
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.prepare -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.protected_paths -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.repo_map -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.repo_map -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.repo_map -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.worktree -> docket.agent.handoff
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.worktree -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.worktree -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.worktree -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.worktree -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.worktree -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.hops.workspace.worktree -> docket.teams.task_worktrees
+application imports kernel, its own context and other contexts' __init__ | docket.models.catalog -> docket.agent.llm
+application imports kernel, its own context and other contexts' __init__ | docket.models.catalog -> docket.governance.secrets
+application imports kernel, its own context and other contexts' __init__ | docket.models.catalog -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.models.catalog -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.models.provider_lifecycle -> docket.agent.llm
+application imports kernel, its own context and other contexts' __init__ | docket.models.provider_lifecycle -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.models.provider_lifecycle -> docket.governance.secrets
+application imports kernel, its own context and other contexts' __init__ | docket.models.provider_lifecycle -> docket.models.adapters.openai_http
+application imports kernel, its own context and other contexts' __init__ | docket.models.provider_lifecycle -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.models.provider_lifecycle -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.models.selection -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.models.selection -> docket.teams.builtin_roles
+application imports kernel, its own context and other contexts' __init__ | docket.models.selection -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.models.selection -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.models.selection -> docket.teams.roles
+application imports kernel, its own context and other contexts' __init__ | docket.models.selection -> docket.teams.utils
+application imports kernel, its own context and other contexts' __init__ | docket.observability.exporter -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.observability.exporter -> docket.governance.privacy
+application imports kernel, its own context and other contexts' __init__ | docket.observability.exporter -> docket.governance.secrets
+application imports kernel, its own context and other contexts' __init__ | docket.observability.exporter -> docket.models.document_fields
+application imports kernel, its own context and other contexts' __init__ | docket.observability.exporter -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.observability.exporter -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.observability.telemetry -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.observability.trace -> docket.governance.secrets
+application imports kernel, its own context and other contexts' __init__ | docket.observability.trace -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.observability.trace -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.operator.channel -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.operator.channel -> docket.models.document_fields
+application imports kernel, its own context and other contexts' __init__ | docket.operator.channel -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.operator.inbox -> docket.governance.approval
+application imports kernel, its own context and other contexts' __init__ | docket.operator.inbox -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.operator.inbox -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.operator.inbox -> docket.teams.memory
+application imports kernel, its own context and other contexts' __init__ | docket.operator.inbox -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.operator.notify -> docket.governance.secrets
+application imports kernel, its own context and other contexts' __init__ | docket.operator.notify -> docket.operator.adapters
+application imports kernel, its own context and other contexts' __init__ | docket.operator.notify -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.agent.driver
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.hops.application.runner
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.hops.gates.post_hop
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.hops.gates.pre_hop
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.teams.roles
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.executor -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.schedule -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.governance.security
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.hops.application.compose
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.hops.application.runner
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.hops.gates.post_hop
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.hops.gates.pre_hop
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.models.selection
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.teams.blueprints
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.pipeline.application.steps -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.agent.memory
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.governance.approval
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.governance.approval_pregrant
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.actions -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.agent.handoff
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.hops.gates.post_hop
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.pipeline.application.executor
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.pipeline.application.steps
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.answers -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.consult -> docket.agent.tools.registry
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.consult -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.consult -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.consult -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.corrections -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.escalation -> docket.governance.approval
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.escalation -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.escalation -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.escalation -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.escalation -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.governance.approval_pregrant
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.governance.security
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.operator.channel
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.pipeline.application.steps
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.pipeline.domain.gates
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.pipeline.domain.step
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.teams.pod_settings
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.interruptions -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.agent.memory
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.governance.approval
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.teams.memory
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.lifecycle -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.agent.handoff
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.agent.isolation_posture
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.agent.memory
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.governance.approval
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.hops.workspace.prepare
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.hops.workspace.worktree
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.operator.contract
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.sandbox.launch
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.teams.fleet
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.teams.models
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.teams.pod
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.queue -> docket.teams.settings
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.run_cancellation -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.runs -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.runs -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.runs -> docket.platform.process
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.runs -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.sweep -> docket.hops.application.record
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.sweep -> docket.pipeline.application.executor
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.sweep -> docket.pipeline.application.steps
+application imports kernel, its own context and other contexts' __init__ | docket.tasks.application.sweep -> docket.pipeline.domain.spec
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.model -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.governance.review
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.hops.workspace.protected_paths
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.models.document_fields
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.models.selection
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.observability.exporter
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.pipeline.application.steps
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.pipeline.domain.spec
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.plan -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.recipes -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.recipes -> docket.pipeline.domain.plan
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.recipes -> docket.pipeline.domain.spec
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.review -> docket.governance.review
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.review -> docket.hops.workspace.prepare
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.review -> docket.pipeline.domain.spec
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.write -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.write -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.write -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.write -> docket.pipeline.application.schedule
+application imports kernel, its own context and other contexts' __init__ | docket.teams.apply.write -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.teams.blueprints -> docket.pipeline.domain.gates
+application imports kernel, its own context and other contexts' __init__ | docket.teams.blueprints -> docket.pipeline.domain.spec
+application imports kernel, its own context and other contexts' __init__ | docket.teams.blueprints -> docket.pipeline.domain.step
+application imports kernel, its own context and other contexts' __init__ | docket.teams.config_docs -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.config_docs -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.teams.config_docs -> docket.models.catalog
+application imports kernel, its own context and other contexts' __init__ | docket.teams.config_docs -> docket.models.selection
+application imports kernel, its own context and other contexts' __init__ | docket.teams.config_docs -> docket.observability.exporter
+application imports kernel, its own context and other contexts' __init__ | docket.teams.config_docs -> docket.operator.channel
+application imports kernel, its own context and other contexts' __init__ | docket.teams.config_docs -> docket.pipeline.domain.spec
+application imports kernel, its own context and other contexts' __init__ | docket.teams.fleet -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.teams.member_workspace -> docket.agent.memory
+application imports kernel, its own context and other contexts' __init__ | docket.teams.member_workspace -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.teams.memory -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.teams.memory -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.teams.memory -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.teams.memory -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.teams.memory -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod -> docket.models.selection
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_provisioning -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_provisioning -> docket.models.selection
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_provisioning -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_provisioning -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_settings -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_settings -> docket.governance.security
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_settings -> docket.hops.workspace.prepare
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_settings -> docket.hops.workspace.protected_paths
+application imports kernel, its own context and other contexts' __init__ | docket.teams.pod_settings -> docket.pipeline.application.schedule
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.agent.identity
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.agent.skills
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.agent.tools.builtin_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.agent.tools.mcp_tools
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.governance.network_posture
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.governance.policy
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.governance.profile
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.models.adapters.openai_http
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.models.catalog
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.models.provider_lifecycle
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.observability.exporter
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.pipeline.application.steps
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.teams.report -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.teams.roles -> docket.agent.tools.registry
+application imports kernel, its own context and other contexts' __init__ | docket.teams.roles -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.teams.settings -> docket.tasks.domain.task
+application imports kernel, its own context and other contexts' __init__ | docket.teams.task_worktrees -> docket.governance.audit
+application imports kernel, its own context and other contexts' __init__ | docket.teams.task_worktrees -> docket.platform.git
+application imports kernel, its own context and other contexts' __init__ | docket.teams.task_worktrees -> docket.platform.store
+application imports kernel, its own context and other contexts' __init__ | docket.teams.task_worktrees -> docket.sandbox.landlock
+application imports kernel, its own context and other contexts' __init__ | docket.teams.task_worktrees -> docket.tasks.application.queue
+application imports kernel, its own context and other contexts' __init__ | docket.teams.utils -> docket.agent.driver
+application imports kernel, its own context and other contexts' __init__ | docket.teams.utils -> docket.agent.ports
+application imports kernel, its own context and other contexts' __init__ | docket.teams.utils -> docket.models.selection
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_http -> docket.agent.context
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_http -> docket.agent.llm
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_http -> docket.governance.secrets
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_http -> docket.platform.redirects
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_wire -> docket.agent.llm
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.observability.adapters.otlp_http -> docket.platform.redirects
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.operator.adapters.ntfy -> docket.platform.redirects
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.operator.adapters.telegram -> docket.interfaces.telegram.client
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.operator.adapters.webhook -> docket.platform.redirects
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.platform.fetch -> docket.agent.tools.builtins.toolbox
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.docker -> docket.platform.process
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.landlock -> docket.platform.git
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.landlock -> docket.platform.process
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.launch -> docket.governance.secrets
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.launch -> docket.governance.security
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.launch -> docket.models.catalog
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.launch -> docket.platform.git
+adapters, platform and sandbox import kernel, own context, ports and domain types | docket.sandbox.launch -> docket.teams.fleet
+agent imports kernel only | docket.agent.context -> docket.teams.roles
+agent imports kernel only | docket.agent.conversations -> docket.platform.store
+agent imports kernel only | docket.agent.driver -> docket.governance.policy
+agent imports kernel only | docket.agent.driver -> docket.hops.workspace.repo_view
+agent imports kernel only | docket.agent.driver -> docket.models.adapters.openai_http
+agent imports kernel only | docket.agent.driver -> docket.observability.adapters.sinks
+agent imports kernel only | docket.agent.driver -> docket.observability.telemetry
+agent imports kernel only | docket.agent.driver -> docket.observability.trace
+agent imports kernel only | docket.agent.driver -> docket.platform.git
+agent imports kernel only | docket.agent.driver -> docket.platform.process
+agent imports kernel only | docket.agent.driver -> docket.platform.store
+agent imports kernel only | docket.agent.driver -> docket.tasks.application.consult
+agent imports kernel only | docket.agent.driver -> docket.tasks.application.queue
+agent imports kernel only | docket.agent.driver -> docket.tasks.application.runs
+agent imports kernel only | docket.agent.driver -> docket.tasks.domain.task
+agent imports kernel only | docket.agent.driver -> docket.teams.fleet
+agent imports kernel only | docket.agent.driver -> docket.teams.models
+agent imports kernel only | docket.agent.driver -> docket.teams.pod
+agent imports kernel only | docket.agent.driver -> docket.teams.pod_settings
+agent imports kernel only | docket.agent.driver -> docket.teams.roles
+agent imports kernel only | docket.agent.handoff -> docket.operator.contract
+agent imports kernel only | docket.agent.identity -> docket.governance.audit
+agent imports kernel only | docket.agent.identity -> docket.governance.policy
+agent imports kernel only | docket.agent.identity -> docket.hops.workspace.repo_view
+agent imports kernel only | docket.agent.identity -> docket.teams.fleet
+agent imports kernel only | docket.agent.identity -> docket.teams.memory
+agent imports kernel only | docket.agent.identity -> docket.teams.pod
+agent imports kernel only | docket.agent.identity -> docket.teams.pod_settings
+agent imports kernel only | docket.agent.isolation_posture -> docket.governance.audit
+agent imports kernel only | docket.agent.isolation_posture -> docket.hops.workspace.prepare
+agent imports kernel only | docket.agent.isolation_posture -> docket.sandbox.launch
+agent imports kernel only | docket.agent.isolation_posture -> docket.tasks.domain.task
+agent imports kernel only | docket.agent.isolation_posture -> docket.teams.fleet
+agent imports kernel only | docket.agent.isolation_posture -> docket.teams.pod
+agent imports kernel only | docket.agent.isolation_posture -> docket.teams.pod_settings
+agent imports kernel only | docket.agent.loop -> docket.teams.roles
+agent imports kernel only | docket.agent.loop_trace -> docket.observability.telemetry
+agent imports kernel only | docket.agent.loop_trace -> docket.observability.trace
+agent imports kernel only | docket.agent.session -> docket.platform.store
+agent imports kernel only | docket.agent.session_compaction -> docket.platform.store
+agent imports kernel only | docket.agent.skills -> docket.governance.audit
+agent imports kernel only | docket.agent.skills -> docket.hops.workspace.repo_view
+agent imports kernel only | docket.agent.tools.builtin_tools -> docket.platform.fetch
+agent imports kernel only | docket.agent.tools.builtin_tools -> docket.tasks.application.consult
+agent imports kernel only | docket.agent.tools.builtins.toolbox -> docket.sandbox.docker
+agent imports kernel only | docket.agent.tools.builtins.toolbox -> docket.sandbox.launch
+agent imports kernel only | docket.agent.tools.mcp_client -> docket.sandbox.docker
+agent imports kernel only | docket.agent.tools.mcp_client -> docket.sandbox.landlock
+agent imports kernel only | docket.agent.tools.mcp_client -> docket.sandbox.launch
+agent imports kernel only | docket.agent.tools.mcp_client -> docket.sandbox.seatbelt
+agent imports kernel only | docket.agent.tools.mcp_tools -> docket.governance.audit
+agent imports kernel only | docket.agent.tools.mcp_tools -> docket.governance.policy
+agent imports kernel only | docket.agent.tools.mcp_tools -> docket.platform.store
+agent imports kernel only | docket.agent.tools.registry -> docket.governance.approval
+agent imports kernel only | docket.agent.tools.registry -> docket.governance.approval_pregrant
+agent imports kernel only | docket.agent.tools.registry -> docket.governance.audit
+agent imports kernel only | docket.agent.tools.registry -> docket.governance.policy
+agent imports kernel only | docket.agent.tools.registry -> docket.governance.security
+agent imports kernel only | docket.agent.tools.registry -> docket.observability.trace
+agent imports kernel only | docket.agent.tools.registry -> docket.operator.contract
+agent imports kernel only | docket.agent.tools.registry -> docket.platform.git
+agent imports kernel only | docket.agent.tools.registry -> docket.tasks.application.consult
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.governance.policy
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.governance.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.operator.channel
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.platform.process
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.apply.model
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.apply.plan
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.apply.recipes
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.apply.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.apply.write
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.blueprints
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.config_docs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.pod_provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.teams.provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.inbox -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.inbox -> docket.operator.contract
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.inbox -> docket.operator.inbox
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.inbox -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.inbox -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.log -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.operator.inbox
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.application.actions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.application.answers
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.application.interruptions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.application.lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.application.sweep
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.mcp -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod -> docket.teams.memory
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod -> docket.teams.pod_provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod -> docket.teams.pod_settings
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod -> docket.teams.report
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.agent.tools.builtin_tools
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.agent.tools.registry
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.governance.policy
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.observability.exporter
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.pipeline.application.steps
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.pipeline.domain.plan
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.pipeline.domain.spec
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.apply.model
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.apply.plan
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.apply.recipes
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.apply.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.apply.write
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.config_docs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.member_workspace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.pod_provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.pod_settings
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.role_schema
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.teams.roles
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config_library -> docket.governance.plugins
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config_library -> docket.governance.policy
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config_library -> docket.teams.apply.model
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config_library -> docket.teams.apply.recipes
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config_library -> docket.teams.builtin_roles
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config_library -> docket.teams.role_schema
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config_library -> docket.teams.roles
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.agent.conversations
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.agent.memory
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.models.selection
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.teams.member_workspace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_members -> docket.teams.pod_provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.pipeline.application.schedule
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.pipeline.application.steps
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.pipeline.domain.plan
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.pipeline.domain.spec
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.tasks.application.lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.teams.apply.recipes
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.teams.member_workspace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.teams.pod_provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.teams.pod_settings
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_settings -> docket.teams.roles
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_show -> docket.teams.report
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.governance.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.hops.gates.pre_hop
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.operator.adapters
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.operator.channel
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.operator.notify
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.pipeline.application.steps
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.pipeline.domain.plan
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.pipeline.domain.spec
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.tasks.application.lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.tasks.application.sweep
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.apply.model
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.apply.plan
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.apply.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.apply.write
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.config_docs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.models
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.report
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.roles
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.settings
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.run -> docket.teams.utils
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.service -> docket.platform.process
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.governance.policy
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.models.catalog
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.models.provider_lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.models.selection
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.operator.channel
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.platform.git
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.platform.process
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.sandbox.launch
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.agent.memory
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.governance.network_posture
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.governance.profile
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.models.selection
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.operator.channel
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.pipeline.application.schedule
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.sandbox.launch
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check -> docket.teams.utils
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_budget -> docket.agent.memory
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_budget -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_budget -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_budget -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_budget -> docket.teams.utils
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.agent.memory
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.governance.policy
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.governance.profile
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.teams.member_workspace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_config -> docket.teams.roles
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_providers -> docket.governance.secrets
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_providers -> docket.models.catalog
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_providers -> docket.platform.process
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_providers -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_providers -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_services -> docket.governance.network_posture
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_services -> docket.observability.exporter
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_services -> docket.operator.channel
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_services -> docket.sandbox.docker
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_services -> docket.sandbox.launch
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_check_services -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.governance.privacy
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.adapters.otlp_http
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.exporter
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.projection
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.spans
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_export -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_mcp -> docket.agent.tools.mcp_tools
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_mcp -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model -> docket.governance.secrets
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model -> docket.models.catalog
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model -> docket.models.provider_lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model -> docket.models.selection
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_credentials -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_credentials -> docket.governance.secrets
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_credentials -> docket.models.catalog
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_credentials -> docket.platform.process
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_provider -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_provider -> docket.governance.secrets
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_provider -> docket.models.catalog
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_provider -> docket.models.provider_lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_model_provider -> docket.models.selection
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.agent.conversations
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.governance.secrets
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.adapters
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.channel
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.inbox
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.operator.notify
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.platform.process
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_notify -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_sandbox -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_sandbox -> docket.governance.network_posture
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_sandbox -> docket.governance.profile
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_sandbox -> docket.governance.security
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_sandbox -> docket.sandbox.docker
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_sandbox -> docket.sandbox.launch
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.setup_sandbox -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.agent.ports
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.governance.network_posture
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.governance.profile
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.governance.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.pipeline.application.steps
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.teams.apply.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.teams.models
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.teams.report
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.status -> docket.teams.utils
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.target -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.target -> docket.teams.utils
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.operator.contract
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.actions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.answers
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.corrections
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.evidence
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.interruptions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.domain.refs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.teams.report
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task -> docket.teams.task_worktrees
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.platform.git
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.tasks.application.evidence
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.tasks.application.interruptions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.tasks.domain.refs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.task_render -> docket.teams.report
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.render.progress -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.render.progress -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.render.progress -> docket.tasks.application.actions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.render.progress -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.render.progress -> docket.tasks.domain.refs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.exchange -> docket.teams.provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.approvals -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.approvals -> docket.tasks.application.actions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.dispatch -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.dispatch -> docket.pipeline.application.steps
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.dispatch -> docket.pipeline.domain.spec
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.dispatch -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.dispatch -> docket.tasks.application.sweep
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.dispatch -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.health -> docket.hops.gates.pre_hop
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.health -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.health -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.health -> docket.teams.utils
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.inbox -> docket.operator.inbox
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.metrics -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.metrics -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.metrics -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.metrics -> docket.operator.inbox
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.metrics -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.metrics -> docket.tasks.application.escalation
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.metrics -> docket.teams.utils
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_apply -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_apply -> docket.teams.apply.model
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_apply -> docket.teams.apply.plan
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_apply -> docket.teams.apply.review
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_apply -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_apply -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_create -> docket.teams.blueprints
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_create -> docket.teams.pod
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_create -> docket.teams.pod_provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pod_create -> docket.teams.provisioning
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pods -> docket.tasks.application.corrections
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pods -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pods -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pods -> docket.teams.pod_settings
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.pods -> docket.teams.report
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.runs -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_control -> docket.operator.inbox
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_control -> docket.tasks.application.answers
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_control -> docket.tasks.application.interruptions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_control -> docket.tasks.application.lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_control -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_control -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_create -> docket.operator.contract
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_create -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.task_create -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.tasks -> docket.tasks.application.evidence
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.tasks -> docket.tasks.application.lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.tasks -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.tasks -> docket.tasks.domain.options
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.tasks -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.routes.traces -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.agent.conversations
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.models.provider_lifecycle
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.observability.trace
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.operator.notify
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.tasks.application.answers
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.server -> docket.tasks.application.sweep
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.sweeps -> docket.pipeline.application.schedule
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.sweeps -> docket.tasks.application.runs
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.http.sweeps -> docket.tasks.application.sweep
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.governance.approval
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.governance.policy
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.governance.secrets
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.operator.contract
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.operator.inbox
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.platform.store
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.tasks.application.actions
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.tasks.application.answers
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.tasks.application.queue
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.tasks.domain.task
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.teams.fleet
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.telegram.bot -> docket.teams.pod

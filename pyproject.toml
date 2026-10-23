@@ -146,7 +146,7 @@ ignore_missing_imports = true
 # (specs/test-framework.md "Lanes and placement", D-36) run by the separate
 # `agent-lane` CI job, never by the default suite.
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration", "tests/guards"]
+testpaths = ["tests/unit", "tests/integration", "tests/guards", "tests/architecture"]
 addopts = "-ra -q --import-mode=importlib"
 markers = [
     "slow: builds or installs an artifact; agent-lane only, never the default suite",
