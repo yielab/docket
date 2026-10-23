@@ -150,7 +150,8 @@ def _append_answer(
     ts: str,
     option_id: str | None = None,
 ) -> None:
-    """Append one entry to the task's durable ``answers[]`` and clear its ``question``."""
+    """Append one entry to the task's durable ``answers[]`` and clear its ``question``. The entry
+    keeps the question's ``kind`` and ``createdAt``, which nothing else retains once it is cleared."""
     answers_raw = t.get("answers")
     answers = list(answers_raw) if isinstance(answers_raw, list) else []
     answers.append(
@@ -163,6 +164,9 @@ def _append_answer(
             "channel": channel,
             "actor": actor,
             "answeredAt": ts,
+            # The question is cleared below; the metrics read its kind and age from here.
+            "kind": getattr(question, "kind", "clarification"),
+            "createdAt": question.created_at,
             **({"optionId": option_id} if option_id else {}),
         }
     )
