@@ -38,7 +38,7 @@ arrays. A list-valued pod setting is stored as a comma-joined string.
 
 The documented field set is the one every writer targets, backed by the `AgentMeta` model, but the
 model is **not closed**: it declares `extra="allow"` so unknown keys round-trip. `meta_set` therefore
-does not reject an undeclared key name. The pod settings and `requireApprovalRoles` (see below)
+does not reject an undeclared key name. The pod settings (see below)
 rely on this: none of them is an `AgentMeta` attribute.
 
 Two kinds of file exist:
@@ -102,7 +102,7 @@ listed. Each write is audited (`pod.config`).
 
 | Key | Stored as | Default | Constraints and meaning |
 |-----|-----------|---------|-------------------------|
-| `budgetUsd` | number | `0` (no cap) | At least 0. A positive cap pauses the pod when the estimate reaches it (`paused`). Setting a new value re-queues the pod's budget-blocked tasks and, unless the cap was removed, clears `paused` and `pausedReason`; unsetting it re-queues the tasks but does not clear a pause |
+| `budgetUsd` | number | `0` (no cap) | At least 0. A positive cap pauses the pod when the estimate reaches it (`paused`). Setting or unsetting it re-queues the pod's blocked tasks and clears `paused` and `pausedReason` |
 | `maxReworkCycles` | integer | `1` | At least 0. Bounded rework for a Reviewer's REQUEST-CHANGES verdict: `1` allows exactly one rework cycle before a second REQUEST-CHANGES fails the task, `0` disables rework |
 | `turnTimeoutS` | integer | none | Above 0. Pod-wide agent-turn timeout in seconds. Unset falls back to the global default (or a serve-wide knob); `docket run --timeout` overrides it |
 | `verifyTimeoutS` | integer | none | Above 0. Pod-wide `verifyCmd` timeout in seconds, independent of `turnTimeoutS`; same fallback and override rules |
@@ -128,13 +128,6 @@ set` and a `pod.yaml` `settings` mapping both refuse them), and are read alongsi
 `configSource` (the absolute directory last applied), `configDigest` (sha256 of that directory's
 contents, lowercase hex or empty), and `exporters` (comma-joined exporter names the applied recipe
 named).
-
-`requireApprovalRoles` is also read from the Lead's file, outside `PodSettings`: a comma-separated,
-case-insensitive list of pod roles (for example `implementer,reviewer`) whose hop must wait for a
-granted approval before it runs, and which the interruption report lists as roles that always ask.
-Blank or missing means no pod-level gate. **No command writes it**: `docket pod set` refuses it as
-an unknown key, so it takes effect only when the file is edited by hand. See pod-dispatch.spec.md for
-the gate and `waiting_approval` contract it feeds.
 
 ## Single-source contract
 
@@ -311,7 +304,7 @@ stand as written; these change when the cards land.
 - **P46-11** (pod settings move to `pods/<pod>/settings.json`): the whole "Pod settings on the Lead"
   section (every key of the table, the "only the Lead's value is consulted" rule, the
   absent/`null`/malformed read rules, `unset` writing `null`, the recorded keys `configSource`,
-  `configDigest`, `exporters`), `requireApprovalRoles`, and the pod-level rows `budgetUsd`, `paused`
+  `configDigest`, `exporters`), and the pod-level rows `budgetUsd`, `paused`
   and `pausedReason` of the agent table (the budget pause is stored on the Lead). `verifyCmd` is a
   per-member field and is not part of `PodSettings`; whether it moves is that card's decision.
 - **P46-1** (module layout): the "Implementation" section below is rewritten by the codemod; no
@@ -326,7 +319,6 @@ stand as written; these change when the cards land.
 - `src/docket/cli/_agents.py`: `docket init`, the flat-agent writer for `docket init --from`
 - `src/docket/cli/_pod.py`: `docket pod set` / `unset` / `add`, `verifyCmd` setters
 - `src/docket/cli/_run.py`: `docket run --resume` (clears the pause)
-- `src/docket/core/dispatch.py`: pod-settings readers, the budget gate, `hop_env` (port and scratch injection), `requireApprovalRoles` gate
-- `src/docket/core/interruptions.py`: `requireApprovalRoles` listing
+- `src/docket/core/dispatch.py`: pod-settings readers, the budget gate, `hop_env` (port and scratch injection)
 - `src/docket/core/models_policy.py`: model re-resolution (`docket setup model`)
 - `src/docket/edges/store.py`: atomic JSON read and write

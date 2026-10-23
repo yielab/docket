@@ -265,6 +265,22 @@ def _apply_route_outcome(
         t.pop("blockedReason", None)
 
 
+def _parked_task_pipeline(project: str, task_id: str) -> Any:
+    """The pipeline *task_id* was dispatched through: the one it names itself, else ``None``
+    (the pod's own). A named pipeline that no longer resolves is an ``AnswerError``."""
+    for t in _dispatch.read_tasks(project):
+        if t.get("id") != task_id or not t.get("pipeline"):
+            continue
+        try:
+            spec, _source = _dispatch._task_pipeline(
+                project, t, _dispatch.effective_pipeline(project, None)
+            )
+        except _dispatch.TaskRunRefusal as exc:
+            raise AnswerError(str(exc)) from exc
+        return spec
+    return None
+
+
 def answer_task(
     project: str,
     task_id: str,
@@ -295,7 +311,9 @@ def answer_task(
     # pipeline's *shape* does not change task to task, only the persisted `hops` do, and
     # those are re-read fresh, under the lock, by `_locate_parked_step` below (pure, no I/O
     # of its own).
-    runtime_steps, id_to_index, _instr = _dispatch._resolve_pipeline_steps(project, None)
+    runtime_steps, id_to_index, _instr = _dispatch._resolve_pipeline_steps(
+        project, _parked_task_pipeline(project, task_id)
+    )
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")

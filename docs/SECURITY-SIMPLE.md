@@ -9,7 +9,7 @@
 > policy hook decide `allow`/`ask`/`deny` for every call; no flag or command turns it off. With
 > isolation off (the default), a dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, an unlisted
 > shell interpreter, ...) is routed to **docket's own approval store** and blocks the call until a
-> human answers — the same store a pod-dispatch hop held on a `requireApprovalRoles`/pipeline
+> human answers — the same store a pod-dispatch hop held on a pipeline
 > `approval` step, or a task a guardrail policy flagged at enqueue, also uses (see "Guardrail
 > Policies" below). `git`/`npm` stay on the curated allowlist for usability, so a plain `git push`
 > isn't gated by itself — see "High-Risk Actions" below for the argument-aware exception.

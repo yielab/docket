@@ -1665,9 +1665,11 @@ class TestCancelTask:
             ],
         )
         asked: list[str] = []
+        sources: list[str] = []
 
-        def _cancel(run_id: str) -> _runs.CancelOutcome:
+        def _cancel(run_id: str, *, source: str = "cli") -> _runs.CancelOutcome:
             asked.append(run_id)
+            sources.append(source)
             return _runs.CancelOutcome(ok=True, message=f"asked {run_id}")
 
         monkeypatch.setattr(_runs, "cancel_run", _cancel)
@@ -1675,6 +1677,7 @@ class TestCancelTask:
         outcome = _dispatch.cancel_task("myapp", task_id, channel="http", reason="why")
 
         assert asked == ["run-a"]
+        assert sources == ["http"]
         assert outcome.status == "cancelled"
         assert outcome.cancelled_runs == ("run-a",)
         assert outcome.messages == ("asked run-a",)
@@ -1695,7 +1698,9 @@ class TestCancelTask:
             lambda project=None: [{"id": "run-a", "state": "queued", "taskIds": [task_id]}],
         )
         monkeypatch.setattr(
-            _runs, "cancel_run", lambda run_id: _runs.CancelOutcome(ok=False, message="nope")
+            _runs,
+            "cancel_run",
+            lambda run_id, *, source="cli": _runs.CancelOutcome(ok=False, message="nope"),
         )
 
         outcome = _dispatch.cancel_task("myapp", task_id, channel="cli")

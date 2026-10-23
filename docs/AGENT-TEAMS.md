@@ -255,8 +255,7 @@ tool, or `docket start --dispatch`. `docket pod set approvalMode refuse` fails a
 fast instead of parking it. For an external orchestrator, the HTTP routes enqueue an addressable
 task and follow it (see [Architecture](DOCKET.md#one-door-for-a-program)).
 
-**A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step, a
-`requireApprovalRoles` gate, or a tool call an Implementer's own turn wants to `ask` about all
+**A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step or a tool call an Implementer's own turn wants to `ask` about all
 move the task to `waiting_approval` rather than failing it. Under `docket start --dispatch`'s sweep or a
 non-interactive `docket run`, that `ask` **parks** — it records the exact call and moves on to the
 next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that

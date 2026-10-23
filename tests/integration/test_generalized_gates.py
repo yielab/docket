@@ -239,8 +239,7 @@ class TestPipelineApprovalStepGatesGenuinely:
         assert rec["role"] == "implementer"
 
     def test_grant_resumes_and_completes_without_pod_level_config(self) -> None:
-        """No `requireApprovalRoles` Lead-meta is set anywhere — the gate
-        fires purely from the pipeline step's own resolved gate."""
+        """The gate fires purely from the pipeline step's own resolved gate."""
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")

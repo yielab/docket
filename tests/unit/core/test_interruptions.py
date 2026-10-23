@@ -129,17 +129,6 @@ class TestForecast:
         gates = {i.detail for i in items if i.kind == "pipeline_gate"}
         assert gates == {"ask", "implementer"}
 
-    def test_require_approval_roles_is_forecast(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer, Reviewer")
-
-        items = _interruptions.forecast("demo")
-
-        roles = {i.detail for i in items if i.kind == "role_gate"}
-        assert roles == {"implementer", "reviewer"}
-
     def test_mode_resolves_through_caller_default_when_unset(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

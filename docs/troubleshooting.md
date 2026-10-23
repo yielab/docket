@@ -327,7 +327,7 @@ Lead also un-blocks every `blocked` task in that pod at once:
 docket status                    # see measured token usage
 docket pod set budgetUsd <N>    # raise the cap (USD), if the spend is expected
 docket run --resume        # clear the auto-pause + unblock the pod's queue
-# → Unblocked 1 budget-blocked task(s) in pod 'myapp'.
+# → Unblocked 1 blocked task(s) in pod 'myapp'.
 # ✓ Resumed 'myapp-lead' — auto-pause cleared.
 ```
 

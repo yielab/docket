@@ -391,7 +391,8 @@ failure as a failed `DeliveryResult` without raising.
 1. `answer_task(project, task_id, action, content, *, channel, actor)` MUST be the one function
    every surface (CLI, HTTP, MCP, Telegram) calls to answer a parked question. It MUST refuse
    (`AnswerError`) a task that is not found in that pod, or is not `waiting_input`, or whose
-   parked question does not match its pipeline position; it MUST validate *content* against the
+   parked question does not match its position in the pipeline the task was dispatched through
+   (the task's own named `pipeline` when it has one, else the pod's pipeline); it MUST validate *content* against the
    question's `requestedSchema` (`validate_answer`, or `validate_answer_v11` for a v1.1 question
    with options) and screen every string value in *content* through the Lead's `pre_input`
    policy hook as untrusted input, where a `block` raises `AnswerRejected` naming the policy and
@@ -446,14 +447,13 @@ running a dispatch.
      `docket setup sandbox classes`;
    - the resolved pipeline's (`effective_pipeline(project, None)`) `ApprovalGate` and `input`
      steps, one level into a `parallel` group, kind `"pipeline_gate"`;
-   - the pod's `requireApprovalRoles` (comma-split, lower-cased), kind `"role_gate"`;
    - the resolved `approvalMode` (`pod_approval_mode(project, caller_default=caller_default)`)
      and `approvalExpiryHours` (24 when the pod settings cannot be read), kind `"mode"` —
      context for how an ask would be handled, never itself something that asks;
    - every enabled `kind: channel` document whose capabilities include `notify`, kind
      `"channel"`.
 2. `docket task show <ref>` MUST render the forecast under `May ask you`: the
-   `"policy"`/`"pipeline_gate"`/`"role_gate"` items (the ones that can pause a task) as the
+   `"policy"`/`"pipeline_gate"` items (the ones that can pause a task) as the
    headline list, the resolved `approvalMode`/expiry as one context line, and the high-risk
    classes (`Always enforced:`) and enabled notifying channels (`Will notify:`) each in their
    own labelled section, shown regardless of whether the headline is empty. With `--json`, it

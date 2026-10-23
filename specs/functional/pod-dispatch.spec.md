@@ -595,8 +595,10 @@ wired agent's conversation current with the task it is working.
    refused as written by `docket pod update`, not by `set`. `unset` clears an override by writing
    `null` (read back as absent), falling back to the field's default. Every write is audit-logged as
    `pod.config`. `docket pod set budgetUsd <usd>` persists `budgetUsd` as the validated number, not
-   the raw CLI argument string; any `set` or `unset` of `budgetUsd` re-queues the pod's blocked
-   tasks (`unblock_pod`), and a `set` to a positive cap also clears the Lead's pause.
+   the raw CLI argument string; any `set` or `unset` of `budgetUsd`, whatever the value, re-queues
+   the pod's blocked tasks (`unblock_pod`) and clears the Lead's `paused`/`pausedReason`. The line
+   it prints counts every task `unblock_pod` re-queued, whatever its `blockedReason`:
+   `Unblocked <n> blocked task(s)`.
 3. `approvalMode` (`"wait"` | `"park"` | `"refuse"`, field default `"wait"`) is a setting on the
    same model (`PodSettings.approval_mode`), writable through the same `show`/`set`/`unset` surface.
    A present-but-invalid stored value (anything other than the three literals) raises exactly like a
@@ -879,7 +881,8 @@ wired agent's conversation current with the task it is working.
    pure -- no writes, no trace. A non-empty result ends the task `blocked` with `blockedReason:
    "resources"` (a short code preferred over `reason`'s free text, so the A2A state mapping's
    `AUTH_REQUIRED` check has something stable to key on) and `reason` `brief names missing
-   resources: <items>`, with no further hop attempted. A brief naming no `resources[]`, or every one
+   resources: <items>`, with no further hop attempted for that task; the run goes on to claim the
+   pod's next task. A brief naming no `resources[]`, or every one
    present, is unaffected -- the pipeline proceeds as an ordinary `READY` outcome would.
 4. **`REJECT` fails with a kind.** A route to `fail` from the label `REJECT` (matched uppercased)
    **MUST** set the task's `failureKind` to `rejected`; every other label routed to `fail` sets none
@@ -935,19 +938,17 @@ wired agent's conversation current with the task it is working.
    attempt against this pod -- for this task or any other in its queue -- **MUST** be refused
    outright at claim time (see "Claiming", item 5), not merely re-blocked hop by hop, until an
    operator clears the pause (`docket run --resume`, or a new positive `budgetUsd`; see
-   `cost-tracking.spec.md`). After any task ends `blocked`, `dispatch_pod` claims no further task in
-   that run.
+   `cost-tracking.spec.md`). After a task ends `blocked` on the budget, `dispatch_pod` claims no
+   further task in that run; a task blocked on its brief's missing resources ("Task brief"
+   requirement 3) does not stop the run, because the pause is what makes the budget pod-wide.
 
 ### require_approval gate and waiting_approval
 
 1. Immediately after the budget gate (affordability) and before a hop's message is composed or its
    agent turn runs (permission), dispatch **MUST** evaluate whether that hop requires a human
-   decision. This is an **OR** of independent sources -- any one of them firing is enough to gate:
-   - **Pod-level:** the pod Lead's stored `requireApprovalRoles` value, a comma-separated,
-     case-insensitive role list (e.g. `"implementer,reviewer"`) -- see `docket-meta.spec.md`. Only
-     the Lead's value is consulted. It is not a `PodSettings` key: no docket command writes it.
-   - **Policy-driven:** none. No policy source (e.g. a high-risk action-class match) is consulted at
-     this point; in-turn tool-call policies are the tool gate's (`security-gates.spec.md`).
+   decision. The one source is the pipeline; no pod setting and no policy (e.g. a high-risk
+   action-class match) is consulted at this point, and in-turn tool-call policies are the tool
+   gate's (`security-gates.spec.md`):
    - **Pipeline-defined:** the current pipeline position's *resolved* gate (its own declared `gate`,
      or its archetype's `gateContract` fallback -- see "Generalized gate execution") is an
      `ApprovalGate`. This applies to any role or archetype, and composes with the pod-level source.
@@ -1330,7 +1331,8 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 1. `docket task cancel <ref>` **MUST** resolve the task through `resolve_task`, then (`cancel_task`)
    call `cancel_run` for every queued or running run of the task's pod that lists the task or, while
-   the task is `running`, names none yet (a run lists its tasks only when it finishes), and **MUST**
+   the task is `running`, names none yet (a run lists its tasks only when it finishes), recording
+   the calling channel (`cli`, `http`, `mcp`) as the cancellation's `source`, and **MUST**
    settle a `running` task whose claimant is gone through `reclaim_stale_running` (`failed`,
    `failureKind: "stale_claim"`, audited `task.reclaimed`), ending with
    `Next: docket task retry <id>`. A task parked in `waiting_input` or `waiting_approval` **MUST** be
@@ -2092,12 +2094,12 @@ ok 0 done · 0 failed · 1 blocked · 2.3k tokens (~$0.04 est.)
 -> Next: docket inbox
 
 $ docket pod set budgetUsd 10
--> Unblocked 1 budget-blocked task(s)
+-> Unblocked 1 blocked task(s)
 ok Set budgetUsd=10.0 for pod 'myapp'
 -> Next: docket pod show
 ```
 
-(The second task was never claimed: after a `blocked` result `dispatch_pod` stops the run, and the
+(The second task was never claimed: after a budget `blocked` result `dispatch_pod` stops the run, and the
 Lead stays paused. A positive new cap re-queues the blocked task and clears the pause;
 `docket run --resume` does the same without changing the cap.)
 
@@ -2234,7 +2236,7 @@ queue.)
   `_eligible_for_claim`, `_ensure_task_worktree`, `_refuse_claimed_task`, `_prepare_claimed_task`),
   the step loop (`_run_pipeline`, `_execute_unit`, `_run_group_node`, `_run_command_step`,
   `_run_input_step`, `_step_skipped`, `_route_outcome`), gates (`_gate_budget`,
-  `_gate_pre_hop_approval`, `_hop_requires_approval`, `_policy_requires_approval`,
+  `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`,
   `_evaluate_mechanical_gate`, `_evaluate_external_gate`, `_evaluate_verdict_gate`,
   `_verdict_event_names`, `_check_brief_resources`, `_park_if_check_changed`), the hop
   (`_compose_hop`, `_hop_message`, `_run_hop_turn`, `_persist_hop_and_trace`, `_hop_diff_probe`,
@@ -2255,8 +2257,7 @@ queue.)
   `resolve_member_cwd`, `bound_pipeline_path`, `effective_network`, `effective_read_only`
 - `src/docket/core/answers.py`: `answer_task`, `sweep_expired_questions`, `AnswerError`,
   `AnswerRejected`
-- `src/docket/core/interruptions.py`: `record_pregrant`, `forecast` (the second
-  `requireApprovalRoles` reader), `InterruptionsError`
+- `src/docket/core/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
 - `src/docket/core/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
   `from_output`), `parse_brief`, `render_brief`, `cap_diff`
 - `src/docket/core/context.py`: `compile_artifact`, `budget_for_role`, `hop_share`,

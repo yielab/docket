@@ -147,7 +147,7 @@ def _tokens_label(n: int) -> str:
 
 
 def _clear_pause(project: str) -> None:
-    """``--resume``: clear the Lead's auto-pause and un-block the pod's budget-blocked tasks."""
+    """``--resume``: clear the Lead's auto-pause and un-block the pod's blocked tasks."""
     lead = _pod_core.member_id(project, "lead")
     if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead, "paused", "")):
         _fleet.meta_set(lead, "paused", False)
@@ -155,7 +155,7 @@ def _clear_pause(project: str) -> None:
         audit_log("run.resume", f"pod={project}")
     unblocked = _dispatch.unblock_pod(project)
     if unblocked:
-        ui.info(f"Unblocked {unblocked} budget-blocked task(s) in pod '{project}'")
+        ui.info(f"Unblocked {unblocked} blocked task(s) in pod '{project}'")
 
 
 def _flush_notify_after_dispatch() -> None:

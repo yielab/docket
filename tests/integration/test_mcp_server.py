@@ -71,11 +71,27 @@ def _audit_actions(action: str) -> list[dict[str, Any]]:
     return [e for e in _audit.read_audit() if e["action"] == action]
 
 
-def _bind_ask_pipeline(project: str) -> None:
-    digest = hashlib.sha256(_ASK_PIPELINE_YAML.encode("utf-8")).hexdigest()
+_GATED_PIPELINE_YAML = """\
+name: gated
+steps:
+  - id: lead
+    role: lead
+  - id: implementer
+    role: implementer
+    gate:
+      type: approval
+"""
+
+
+def _gate_implementer(project: str) -> None:
+    _bind_ask_pipeline(project, _GATED_PIPELINE_YAML)
+
+
+def _bind_ask_pipeline(project: str, text: str = _ASK_PIPELINE_YAML) -> None:
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     path = _pod_cli.pod.bound_pipeline_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     _fleet.meta_set(_pod_cli.pod.member_id(project, "lead"), "pipeline", digest)
 
 
@@ -646,7 +662,7 @@ def _gate_then_get_token(
     ``waiting_approval``, and return the token -- the same fixture shape
     test_approval_gated_dispatch.py's ``_gate``/``_gate_then_grant`` build."""
     _seed_pod(tmp_path, monkeypatch, project=project)
-    _fleet.meta_set(f"{project}-lead", "requireApprovalRoles", "implementer")
+    _gate_implementer(project)
     _dispatch.enqueue_task(project, "Ship it", channel="cli")
     _dispatch.dispatch_pod(project, runner=_GateRunner())
     task = _dispatch.read_tasks(project)[0]

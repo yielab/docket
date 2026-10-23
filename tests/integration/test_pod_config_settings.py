@@ -21,6 +21,7 @@ import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import pod
+from docket.edges import store as _store
 
 SUBJECT = "docket.cli._pod"
 
@@ -333,3 +334,47 @@ class TestBudgetSet:
 
         assert _lead_meta("proj")["paused"] is False
         assert _lead_meta("proj")["pausedReason"] == ""
+
+    @pytest.mark.parametrize("how", ["set-zero", "unset"])
+    def test_removing_the_cap_lifts_the_budget_pause(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        lead = pod.member_id("proj", "lead")
+        meta = _lead_meta("proj")
+        meta.update({"paused": True, "pausedReason": "budget"})
+        _cfg.meta_path(lead).write_text(json.dumps(meta))
+        _dispatch.enqueue_task("proj", "held", channel="cli")
+
+        if how == "set-zero":
+            _pod.set_setting("proj", "budgetUsd", "0")
+        else:
+            _pod.unset_setting("proj", "budgetUsd")
+
+        assert _lead_meta("proj")["paused"] is False
+        assert _lead_meta("proj")["pausedReason"] == ""
+        claim = _dispatch._claim_next_task("proj", resume=False)
+        assert claim is not None
+
+    def test_the_unblock_line_counts_every_task_it_requeues_and_says_so(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        for desc in ("needs a file", "needs a file too"):
+            _dispatch.enqueue_task("proj", desc, channel="cli")
+        path = _dispatch.pod_task_list_path("proj")
+        doc = _store.read_json(path)
+        for task in doc["tasks"]:
+            task["status"] = "blocked"
+            task["blockedReason"] = "resources"
+        _store.write_json(path, doc)
+        capsys.readouterr()
+
+        _pod.set_setting("proj", "budgetUsd", "5")
+
+        out = capsys.readouterr().out
+        assert "Unblocked 2 blocked task(s)" in out
+        assert "budget-blocked" not in out
