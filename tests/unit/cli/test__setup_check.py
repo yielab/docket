@@ -7,6 +7,7 @@ report; the return value is the process exit code.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ import docket.config as _cfg
 from docket.cli import _setup_check
 from docket.core import channel as _channel
 from docket.edges import store as _store
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.cli._setup_check"
 
@@ -33,7 +35,7 @@ _FULL_META: dict[str, Any] = {
     "codebase": "/tmp/myshop",
     "sessionKey": "agent:myshop:default",
     "projectKey": "default",
-    "templateVersion": str(_setup_check.TEMPLATE_VERSION),
+    "templateVersion": str(current_home().template_version),
 }
 
 _FLEET_CONFIG: dict[str, Any] = {
@@ -463,6 +465,16 @@ class TestChecks:
         assert issues == 1
         assert "runaway" in out
 
+    def test_the_runaway_thresholds_follow_the_current_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        cost = {"myshop": ("", 1.0, 10)}
+        assert _setup_check._check_runaway(["myshop"], cost) == 0
+        strict = dataclasses.replace(current_home(), runaway_turns_threshold=5)
+        with use_home(strict):
+            assert _setup_check._check_runaway(["myshop"], cost) == 1
+
     def test_runaway_ok(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -607,7 +619,7 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         assert _setup_check._check_template_version(["myshop"]) == 0
-        assert f"v{_setup_check.TEMPLATE_VERSION} (current)" in capsys.readouterr().out
+        assert f"v{current_home().template_version} (current)" in capsys.readouterr().out
 
 
 # ── a leftover shared-agent directory is not the doctor's business ─────────────

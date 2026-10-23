@@ -270,7 +270,7 @@ This specification does NOT cover:
     preserve higher priorities first, and mark any truncation or omission visibly rather than
     silently growing an endpoint's context or dropping state. `resolve_static_context_budget`
     **MUST** resolve, in order: (a) an explicit `CONTEXT_TOKEN_BUDGET` override — the environment
-    variable, or a resolved value that differs from `CONTEXT_TOKEN_BUDGET_DEFAULT` — always wins
+    variable, carried as the current Home's `context_token_budget_override` — always wins
     unchanged (`budgetSource: "env"`); (b) otherwise, when the turn has a positive resolved model
     context window, a documented share of that window after reserving the output-token budget and
     a fixed tool-schema allowance (`resolve_window_share_tokens`, `WINDOW_SHARE`,

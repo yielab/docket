@@ -23,13 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-import docket.config as _cfg
 from docket.edges.adapters import system as _system
 from docket.edges.adapters.system import SandboxAvailability, SandboxBackend
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel import threads as _threads
 from docket.kernel.errors import Refused
+from docket.kernel.home import current_home
 
 SandboxMode = Literal["off", "auto"]
 
@@ -37,9 +37,8 @@ SandboxMode = Literal["off", "auto"]
 # result is a context-budget failure waiting to happen (and, for `bash`, a way
 # to blow the window with one `find /`). Truncation is always announced in the
 # returned text — silently short output would be read as "that is all there is".
-# The value is config.py's (DOCKET_TOOL_MAX_OUTPUT_CHARS) because the usable
-# ceiling depends on the endpoint's context window, not on this module.
-MAX_OUTPUT_CHARS = _cfg.TOOL_MAX_OUTPUT_CHARS
+# The ceiling is the current Home's tool_max_output_chars (DOCKET_TOOL_MAX_OUTPUT_CHARS) because
+# the usable ceiling depends on the endpoint's context window, not on this module.
 MAX_GREP_MATCHES = 200
 MAX_GLOB_RESULTS = 300
 # Vendored and generated trees that glob and grep never report (agent-loop requirement 80).
@@ -72,9 +71,9 @@ class ToolOutcome:
 
 
 def _truncate(text: str, limit: int | None = None) -> str:
-    # Resolved per call, not bound as a default argument, so the ceiling stays
-    # a live setting rather than whatever it happened to be at import time.
-    limit = MAX_OUTPUT_CHARS if limit is None else limit
+    # Resolved per call, not bound as a default argument, so the ceiling follows the
+    # current Home rather than whatever it was at import time.
+    limit = current_home().tool_max_output_chars if limit is None else limit
     return _text.cut_output(text, limit)
 
 

@@ -16,8 +16,10 @@ import os
 from pathlib import Path
 
 import pytest
+from tests.conftest import patch_home
 
 from docket.edges.adapters import toolbox
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.edges.adapters.toolbox"
 
@@ -257,7 +259,7 @@ class TestToolOutputBudget:
         assert "node_modules" not in out.content
         assert lines == sorted(lines)
         assert footer  # the 300-result cap is announced, not silent
-        assert len(out.content) <= toolbox.MAX_OUTPUT_CHARS + 80
+        assert len(out.content) <= current_home().tool_max_output_chars + 80
 
     def test_glob_under_a_second_root_prints_relative_to_that_root(self, tmp_path: Path) -> None:
         first = tmp_path / "first"
@@ -334,7 +336,7 @@ class TestToolOutputBudget:
     def test_glob_and_grep_output_is_bounded_by_the_announced_truncation(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(toolbox, "MAX_OUTPUT_CHARS", 120)
+        patch_home(monkeypatch, tool_max_output_chars=120)
         self._tree(workspace, count=50)
         out = toolbox.grep_files((workspace,), "needle")
         assert out.ok and out.content.endswith("more characters]")

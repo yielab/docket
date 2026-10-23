@@ -157,6 +157,14 @@ def point_home_at(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     )
 
 
+def patch_home(monkeypatch: pytest.MonkeyPatch, **fields: object) -> None:
+    """Set *fields* on the process-default kernel Home for this test, the way a ``Home``
+    override is set in production. Use ``use_home`` when the test body can sit in a block."""
+    monkeypatch.setattr(
+        _home, "_DEFAULT", dataclasses.replace(_home.current_home(), **fields), raising=True
+    )
+
+
 def repoint_docket_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
     """Point every DOCKET_HOME-derived constant at *home*."""
     monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)

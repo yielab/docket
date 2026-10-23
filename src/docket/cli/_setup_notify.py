@@ -27,6 +27,7 @@ from docket.edges.adapters import channels as _channels
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Unavailable
+from docket.kernel.home import current_home
 
 notify_app = typer.Typer(
     name="notify",
@@ -35,7 +36,10 @@ notify_app = typer.Typer(
 )
 
 _LEVELS = ("minimal", "actions", "conversation")
-_TOKEN_NAME = _cfg.TELEGRAM_BOT_TOKEN_KEY
+
+
+def _token_name() -> str:
+    return current_home().telegram_bot_token_key
 
 
 class NotifySetupError(InvalidInput):
@@ -142,8 +146,8 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
     chats = [c.strip() for c in chat_ids if c.strip()]
     if not chats:
         raise NotifySetupError("telegram needs at least one chat id; pass --chat <id>")
-    if token is None and _secrets.secret_value(_TOKEN_NAME) is None:
-        raise NotifySetupError(f"no {_TOKEN_NAME} is stored; pass --token or set it in the env")
+    if token is None and _secrets.secret_value(_token_name()) is None:
+        raise NotifySetupError(f"no {_token_name()} is stored; pass --token or set it in the env")
     if token is not None:
         _backend()
     try:
@@ -152,8 +156,8 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
         raise NotifySetupError(str(exc)) from exc
     stored = ""
     if token is not None:
-        store_secret(_TOKEN_NAME, token)
-        stored = _TOKEN_NAME
+        store_secret(_token_name(), token)
+        stored = _token_name()
     leads = lead_ids()
     for aid in leads:
         _bind(aid, chats[0], "telegram")
@@ -175,15 +179,15 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
 
 def _resolve_token(token: str | None) -> str | None:
     """Flag, then env, then (when nothing is stored) a hidden prompt on a TTY."""
-    given = (token or os.environ.get(_TOKEN_NAME, "")).strip()
+    given = (token or os.environ.get(_token_name(), "")).strip()
     if given:
         return given
-    if _secrets.secret_value(_TOKEN_NAME) is not None:
+    if _secrets.secret_value(_token_name()) is not None:
         return None
     if not _contract._is_tty():
-        ui.error(f"{_TOKEN_NAME} is not set", "Pass --token or export it")
+        ui.error(f"{_token_name()} is not set", "Pass --token or export it")
         raise typer.Exit(1)
-    entered = _getpass.getpass(f"Enter value for {_TOKEN_NAME} (hidden): ").strip()
+    entered = _getpass.getpass(f"Enter value for {_token_name()} (hidden): ").strip()
     if not entered:
         ui.error("The bot token cannot be empty", "Pass --token")
         raise typer.Exit(1)
