@@ -461,7 +461,7 @@ class TestRetryDoesNotTripStaleClaimSweep:
         wall-clock timing: the first implementer attempt is made to outlast
         CLAIM_STALE_TIMEOUT before failing retryably, so only a refreshed `claimedAt` lets the
         second attempt's simulated concurrent sweep leave the task alone."""
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
+        oc_dir = _seed_pod(tmp_path)
         _dispatch.enqueue_task("demo", "Retry me", channel="cli")
         # Small but real threshold: the deliberate 0.3s sleep below comfortably
         # exceeds it (proving the *unrefreshed* claim would already be stale),
@@ -520,7 +520,7 @@ class TestExistingStateMachineBehaviourUnaffected:
     def test_blocked_task_still_never_auto_retries(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
+        _seed_pod(tmp_path)
         _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)

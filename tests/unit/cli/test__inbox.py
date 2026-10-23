@@ -51,7 +51,7 @@ class TestHumanView:
     def test_a_waiting_input_task_prints_its_question_options_and_answer_command(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             _tasks(
                 "demo",
                 {
@@ -87,7 +87,7 @@ class TestHumanView:
     def test_a_multi_line_question_indents_every_continuation_line(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             _tasks(
                 "demo",
                 {
@@ -120,7 +120,7 @@ class TestHumanView:
     def test_a_held_approval_prints_the_whole_command_and_both_decisions(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             action = "tool call 'bash': git push origin production --force-with-lease " + "x" * 300
             token = _approval.approval_create(
                 "demo", "implementer", action, context={"tool": "bash", "parked": True}
@@ -139,7 +139,7 @@ class TestJsonView:
     def test_items_carry_state_and_command_and_no_escape_codes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             _tasks(
                 "demo",
                 {"id": "t-done", "status": "done", "completedAt": "2026-09-28T01:00:00+00:00"},
@@ -157,7 +157,7 @@ class TestJsonView:
     def test_a_granted_task_is_approved_ready_and_points_at_run(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             _tasks("demo", {"id": "t-ok", "status": "pending", "gateOverridePipelineIndex": 2})
 
             body = json.loads(_inbox("--json", "--peek").stdout)
@@ -169,14 +169,14 @@ class TestJsonView:
     def test_a_plain_pending_task_is_not_listed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             _tasks("demo", {"id": "t-new", "status": "pending"})
             assert json.loads(_inbox("--json", "--peek").stdout)["needsYou"] == []
 
 
 class TestUsage:
     def test_an_unknown_flag_exits_2(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             result = _inbox("--bogus")
             assert result.exit_code == 2
             assert "--bogus" in result.output
@@ -186,7 +186,7 @@ class TestCursor:
     def test_a_plain_call_advances_it_and_a_repeat_shows_no_done_item(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             _tasks(
                 "demo", {"id": "t1", "status": "done", "completedAt": "2026-09-28T01:00:00+00:00"}
             )
@@ -204,7 +204,7 @@ class TestCursor:
     def test_peek_and_explicit_since_leave_no_cursor(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed(tmp_path, monkeypatch):
+        with _seed(tmp_path):
             _tasks(
                 "demo", {"id": "t1", "status": "done", "completedAt": "2026-09-28T01:00:00+00:00"}
             )

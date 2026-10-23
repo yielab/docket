@@ -98,8 +98,8 @@ class TestHttpGrantConsumesThePregrant:
         from docket.core.policy import install_policies
 
         with (
-            use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)),
             _seed_pod(tmp_path) as home,
+            use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)),
         ):
             install_policies()
             _fleet.meta_set("demo-lead", "approvalMode", "park")

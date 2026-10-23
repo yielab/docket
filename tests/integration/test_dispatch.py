@@ -1174,53 +1174,55 @@ class TestSweepDoesNotStallOnAParkedPod:
         # task would not even start within this test's own timeout.
         # The scripted turns below are one shared queue consumed in pod order, so the
         # sweep runs serially here; concurrency is TestSweepWorkers' subject.
-        with use_home(
-            dataclasses.replace(current_home(), tool_approval_timeout=60, dispatch_sweep_workers=1)
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        with (
+            use_home(Home(home)),
+            use_home(
+                dataclasses.replace(
+                    current_home(), tool_approval_timeout=60, dispatch_sweep_workers=1
+                )
+            ),
         ):
-            home = tmp_path / ".docket"
-            (home / "workspaces" / "projects").mkdir(parents=True)
-            (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-            with use_home(Home(home)):
-                record_isolation_off(home)
-                _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
-                _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
-                install_policies()
+            record_isolation_off(home)
+            _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
+            _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
+            install_policies()
 
-                # dispatchable_pods() walks fleet.json's own agent order -- alpha's Lead
-                # was registered first, so the sweep reaches alpha before beta and these
-                # four scripted turns are consumed in this exact order.
-                call = ToolCall(
-                    id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"})
-                )
-                backend = _ScriptedBackend(
-                    [
-                        _final_response("alpha lead plan"),
-                        ChatResponse(
-                            ok=True,
-                            message=assistant("", tool_calls=[call]),
-                            finish_reason="tool_calls",
-                            usage=TokenUsage(10, 5),
-                        ),
-                        _final_response("beta lead plan"),
-                        _final_response("beta implementer done"),
-                    ]
-                )
-                driver = DocketDriver(backend_factory=lambda model: backend)
-                monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+            # dispatchable_pods() walks fleet.json's own agent order -- alpha's Lead
+            # was registered first, so the sweep reaches alpha before beta and these
+            # four scripted turns are consumed in this exact order.
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            backend = _ScriptedBackend(
+                [
+                    _final_response("alpha lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                    _final_response("beta lead plan"),
+                    _final_response("beta implementer done"),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-                _dispatch.enqueue_task("alpha", "gated work", channel="cli")
-                _dispatch.enqueue_task("beta", "plain work", channel="cli")
+            _dispatch.enqueue_task("alpha", "gated work", channel="cli")
+            _dispatch.enqueue_task("beta", "plain work", channel="cli")
 
-                started = time.monotonic()
-                _serve._run_sweeps(True)
-                assert _serve._drain_sweeps(timeout=30)
-                elapsed = time.monotonic() - started
+            started = time.monotonic()
+            _serve._run_sweeps(True)
+            assert _serve._drain_sweeps(timeout=30)
+            elapsed = time.monotonic() - started
 
-                assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
-                alpha_task = _dispatch.read_tasks("alpha")[0]
-                beta_task = _dispatch.read_tasks("beta")[0]
-                assert alpha_task["status"] == "waiting_approval", alpha_task.get("reason")
-                assert beta_task["status"] == "done", beta_task.get("reason")
+            assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
+            alpha_task = _dispatch.read_tasks("alpha")[0]
+            beta_task = _dispatch.read_tasks("beta")[0]
+            assert alpha_task["status"] == "waiting_approval", alpha_task.get("reason")
+            assert beta_task["status"] == "done", beta_task.get("reason")
 
 
 class TestCrashRecovery:

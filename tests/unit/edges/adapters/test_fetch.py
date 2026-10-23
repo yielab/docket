@@ -352,7 +352,7 @@ class TestFetchResultScreening:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _allow(server):
-            self._install_result_policy("block", monkeypatch)
+            self._install_result_policy("block")
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
             call = ToolCall(
@@ -386,7 +386,7 @@ class TestFetchResultScreening:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _allow(server):
-            self._install_result_policy(None, monkeypatch)  # default warn
+            self._install_result_policy(None)  # default warn
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
@@ -413,7 +413,7 @@ class TestFetchResultScreening:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _allow(server):
-            self._install_result_policy("redact", monkeypatch)
+            self._install_result_policy("redact")
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
@@ -440,7 +440,7 @@ class TestFetchResultScreening:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _allow(server):
-            self._install_result_policy("block", monkeypatch)
+            self._install_result_policy("block")
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
             call = ToolCall(id="c1", name="fetch", arguments=json.dumps({"url": f"{server}/ok"}))
@@ -453,7 +453,7 @@ class TestFetchResultScreening:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _allow(server):
-            self._install_result_policy("block", monkeypatch)
+            self._install_result_policy("block")
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
