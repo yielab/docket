@@ -934,3 +934,20 @@ def test_the_environment_switches_are_read_live(monkeypatch: pytest.MonkeyPatch)
         True,
         "keyring",
     )
+
+
+def test_env_value_is_stripped_and_empty_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DOCKET_TEST_CRED", raising=False)
+    assert _sys.env_value("DOCKET_TEST_CRED") == ""
+    monkeypatch.setenv("DOCKET_TEST_CRED", "  abc  ")
+    assert _sys.env_value("DOCKET_TEST_CRED") == "abc"
+
+
+def test_credential_env_values_match_by_name_or_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EXACT_NAME", " one ")
+    monkeypatch.setenv("SOMETHING_API_KEY", "two")
+    monkeypatch.setenv("EMPTY_API_KEY", "  ")
+    monkeypatch.setenv("UNRELATED_VALUE", "three")
+    values = _sys.credential_env_values(("EXACT_NAME",), ("_API_KEY",))
+    assert "one" in values and "two" in values
+    assert "three" not in values and "" not in values
