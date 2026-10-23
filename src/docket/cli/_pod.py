@@ -53,6 +53,7 @@ _member_agents = _pp._member_agents
 _member_tools = _pp._member_tools
 teardown_member = _pp.teardown_member
 free_pod_resources = _pp.free_pod_resources
+release_implementer_resources = _pp.release_implementer_resources
 purge_pod_history = _pp.purge_pod_history
 pod_member_ids = _pp.pod_member_ids
 
@@ -349,8 +350,8 @@ def cmd_add(
 
 
 def remove_member(project: str, member_id: str, *, yes: bool) -> None:
-    """Remove one non-Lead member after confirmation; frees the pod's resources with its last
-    implementer."""
+    """Remove one non-Lead member after confirmation; releases the pod's port range, scratch and
+    cache with its last implementer."""
     role = _require_member(project, member_id)
     if role == "lead":
         ui.error(f"{member_id} is the pod's Lead", "Delete the pod instead: docket pod delete")
@@ -369,7 +370,7 @@ def remove_member(project: str, member_id: str, *, yes: bool) -> None:
     if role == "implementer":
         remaining = {_fleet.meta_get(mid, "role", "") for mid in pod_member_ids(project)}
         if "implementer" not in remaining:
-            free_pod_resources(project)
+            release_implementer_resources(project)
 
 
 @pod_app.command("remove")

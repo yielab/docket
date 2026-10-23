@@ -180,10 +180,6 @@ This specification does NOT cover:
    requirement 3). The block stays under 520 characters. A step prompt adds only its own output
    contract. Both templates render to the same bytes for two tasks of one member, so the system
    prompt carries no task data. `POD_TEMPLATE_VERSION` is 5.
-6. **Known gap, outside this requirement:** the standalone (non-pod) project agent's AGENTS.md is
-   written by a separate, hand-written generator that is not archetype-driven. It still tells the
-   model to check `HEARTBEAT.md` every session and to log outcomes to today's
-   `memory/YYYY-MM-DD.md`, contradicting the same runtime contract.
 
 ### Per-role tool sets
 
@@ -619,7 +615,6 @@ docket pod validate ./producer.yaml
 - `src/docket/cli/_pod.py`: `docket pod add`, the `docket pod set pipeline` role check against the pod roster
 - `src/docket/cli/_run.py`: `docket run` plan resolution
 - `src/docket/cli/_setup_check.py`: overlay problem and stale-template reports for `docket setup`
-- `src/docket/cli/_agents.py`: the standalone project agent's AGENTS.md generator (the known gap)
 - `src/docket/config.py`: `ARCHETYPE_REGISTRY_FILE`, `pod_config_dir`, `recipes_dir`
 - `src/docket/templates/recipes/`: the shipped recipe library
 - Tests: `tests/integration/test_pod_role_workspace_parity.py` (byte identity),

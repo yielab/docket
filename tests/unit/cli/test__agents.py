@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -124,22 +123,6 @@ def test_init_closes_with_the_sandbox_line(
     assert "Turn it on: docket setup sandbox on" in tail
 
 
-def test_a_new_workspace_and_its_memory_are_created_0700(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A fresh projects directory, workspace and memory are private under a permissive umask."""
-    old = os.umask(0o002)
-    try:
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "home" / "projects")
-        _agents._create_workspace("demo", "demo", "/tmp/x", "py", "", "m")
-    finally:
-        os.umask(old)
-    assert oct(os.stat(tmp_path / "home" / "projects").st_mode & 0o777) == "0o700"
-    ws = tmp_path / "home" / "projects" / "demo"
-    assert oct(os.stat(ws).st_mode & 0o777) == "0o700"
-    assert oct(os.stat(ws / "memory").st_mode & 0o777) == "0o700"
-
-
 def _repo(tmp_path: Path, step: str = "sh scripts/migrate.sh") -> Path:
     code = tmp_path / "code"
     (code / ".docket").mkdir(parents=True)
@@ -248,17 +231,6 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
         code.mkdir()
         result = runner.invoke(app, ["init", "demo", str(code), "--recipe", "tdd"])
         assert result.exit_code == 0 and _pod_exists()
-
-
-def test_the_generated_agents_file_does_not_tell_the_agent_to_write_the_ledger(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Dispatch maintains HEARTBEAT.md, so AGENTS.md carries no write-it-down instruction."""
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "home" / "projects")
-    _agents._create_workspace("demo", "demo", "/tmp/x", "py", "", "m")
-    text = (tmp_path / "home" / "projects" / "demo" / "AGENTS.md").read_text()
-    assert "Before starting multi-step work" not in text
-    assert "unwritten" not in text
 
 
 def _teams_repo(tmp_path: Path) -> Path:

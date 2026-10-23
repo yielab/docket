@@ -1175,12 +1175,22 @@ def runs_changed(project: str, repo_dir: Path) -> tuple[RunChange, ...]:
 
 def repo_config_dir(codebase: Path, project: str, *, create: bool = False) -> Path:
     """The pod's configuration-of-record directory: ``.docket/teams/<project>`` when it exists
-    (or, with *create*, when the repository keeps ``.docket/teams/``), else ``.docket``."""
+    (or, with *create*, when ``.docket/teams/`` exists), else ``.docket``; never docket's own
+    state root, whose team path is returned instead."""
     base = codebase / ".docket"
     team = base / "teams" / project
+    if _is_state_root(base):
+        return team
     if team.is_dir() or (create and (base / "teams").is_dir()):
         return team
     return base
+
+
+def _is_state_root(directory: Path) -> bool:
+    try:
+        return directory.resolve() == _cfg.DOCKET_HOME.resolve()
+    except OSError:
+        return False
 
 
 def repo_root(repo_dir: Path) -> Path:

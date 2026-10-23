@@ -129,8 +129,8 @@ class TestCmdAdd:
             json.dumps(
                 {
                     "id": "myshop",
-                    "name": "My Shop",
-                    "codebase": "/tmp/myshop",
+                    "blueprint": "software",
+                    "codebase": str(tmp_path),
                     "stack": "Node.js",
                     "description": "Test shop agent",
                 }
@@ -138,18 +138,15 @@ class TestCmdAdd:
         )
         rc, _out, _err = _run(["init", "--from", str(spec)], home)
         assert rc == 0
-        # Check workspace created
-        ws = home / "workspaces" / "projects" / "myshop"
+        ws = home / "workspaces" / "projects" / "myshop-lead"
         assert ws.is_dir()
         assert (ws / "SOUL.md").is_file()
         assert (ws / "AGENTS.md").is_file()
-        assert (ws / "TOOLS.md").is_file()
         assert (ws / "HEARTBEAT.md").is_file()
         assert (ws / ".docket-meta.json").is_file()
-        # Check meta content
         meta = json.loads((ws / ".docket-meta.json").read_text())
-        assert meta["name"] == "My Shop"
-        assert "type" not in meta  # agent-type concept removed — every agent is a repo
+        assert meta["name"] == "myshop lead"
+        assert meta["codebase"] == str(tmp_path)
 
     def test_from_missing_file_exits_1(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
@@ -166,13 +163,16 @@ class TestCmdAdd:
         assert "spec file" in combined.lower()
         assert "no such command" not in combined.lower()
 
-    def test_from_existing_agent_skips(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path, "test-agent")
+    def test_from_existing_pod_skips(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
         spec = self._spec_file(
             tmp_path,
-            json.dumps({"id": "test-agent", "name": "Test Agent"}),
+            json.dumps({"id": "test-agent", "blueprint": "software", "codebase": str(tmp_path)}),
         )
+        assert _run(["init", "--from", str(spec)], home)[0] == 0
+
         rc, out, err = _run(["init", "--from", str(spec)], home)
+
         assert rc == 0
         combined = out + err
         assert "already exists" in combined.lower() or "skipping" in combined.lower()
@@ -300,21 +300,17 @@ class TestCmdAdd:
             or "install" in combined.lower()
         )
 
-    def test_from_list_of_agents(self, tmp_path: Path) -> None:
+    def test_from_list_of_pods(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        spec = self._spec_file(
-            tmp_path,
-            json.dumps(
-                [
-                    {"id": "agent-a", "name": "Agent A", "description": "First"},
-                    {"id": "agent-b", "name": "Agent B", "description": "Second"},
-                ]
-            ),
-        )
+        entries = [
+            {"id": name, "blueprint": "software", "codebase": str(tmp_path), "description": text}
+            for name, text in (("pod-a", "First"), ("pod-b", "Second"))
+        ]
+        spec = self._spec_file(tmp_path, json.dumps(entries))
         rc, _out, _err = _run(["init", "--from", str(spec)], home)
         assert rc == 0
-        assert (home / "workspaces" / "projects" / "agent-a").is_dir()
-        assert (home / "workspaces" / "projects" / "agent-b").is_dir()
+        assert (home / "workspaces" / "projects" / "pod-a-lead").is_dir()
+        assert (home / "workspaces" / "projects" / "pod-b-lead").is_dir()
 
 
 # ---------------------------------------------------------------------------

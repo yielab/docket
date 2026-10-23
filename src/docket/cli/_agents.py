@@ -2,15 +2,11 @@
 
 ``cmd_init`` is the Typer command; it builds an ``InitRequest`` and ``run_init`` returns the
 process exit code.
-``_create_workspace``/``_provision_agent`` are the single-agent template + registration path
-(pods use ``cli/_pod.py`` instead).
 """
 
 from __future__ import annotations
 
-import contextlib
 import json as _json
-import re as _re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,15 +20,10 @@ from docket import ui
 from docket.core import blueprints as _bp
 from docket.core import config_docs as _config_docs
 from docket.core import fleet as _fleet
-from docket.core import memory as _mem
-from docket.core import models_policy as _mp
 from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import provisioning as _prov
-from docket.core import secrets as _secrets
-from docket.core.audit import audit_log
-from docket.edges import store
 
 
 @dataclass(frozen=True)
@@ -460,6 +451,7 @@ def _cmd_add_declarative(from_file: str) -> int:
     created: list[str] = []
     skipped: list[str] = []
     had_invalid_id = False
+    had_refused = False
 
     for spec in agents_spec:
         aid = str(spec.get("id", "")).strip()
@@ -467,62 +459,30 @@ def _cmd_add_declarative(from_file: str) -> int:
             ui.warn("Skipping spec entry with no 'id' field.")
             continue
 
-        # A spec entry carrying a `blueprint` field provisions a *pod*
-        # (build_pod_from_blueprint) instead of the single
-        # flat agent below — a genuinely different shape (a blueprint pod is
-        # never fewer than a Lead + one worker), so it gets its own existence
-        # check (`<aid>-lead`, not the bare `<aid>` workspace dir) rather than
-        # forcing the single-agent branch to understand pods.
         blueprint_name = str(spec.get("blueprint", "")).strip()
-        if blueprint_name:
-            try:
-                pod_created = _provision_pod_from_spec(aid, blueprint_name, spec)
-            except _prov.ProjectIdError as exc:
-                ui.error(f"'{aid}': {exc}")
-                skipped.append(aid)
-                had_invalid_id = True
-                continue
-            if pod_created is None:
-                skipped.append(aid)
-                continue
-            created.extend(pod_created)
-            tg_group = str(spec.get("telegram", "")).strip()
-            if tg_group:
-                lead_id = f"{aid}-lead"
-                _fleet.upsert_binding(lead_id, tg_group, "telegram", "group")
-                ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
+        if not blueprint_name:
+            ui.error(
+                f"'{aid}': an entry needs a 'blueprint' ({', '.join(_bp.load_registry().names())})"
+            )
+            skipped.append(aid)
+            had_refused = True
             continue
-
-        if (_cfg.PROJECTS_DIR / aid).is_dir():
-            ui.warn(f"'{aid}' already exists — skipping.")
+        try:
+            pod_created = _provision_pod_from_spec(aid, blueprint_name, spec)
+        except _prov.ProjectIdError as exc:
+            ui.error(f"'{aid}': {exc}")
+            skipped.append(aid)
+            had_invalid_id = True
+            continue
+        if pod_created is None:
             skipped.append(aid)
             continue
-
-        name = str(spec.get("name", aid))
-        codebase = str(spec.get("codebase", ""))
-        stack = str(spec.get("stack", ""))
-        model = str(spec.get("model", ""))
-        description = str(spec.get("description", ""))
+        created.extend(pod_created)
         tg_group = str(spec.get("telegram", "")).strip()
-        budget = str(spec.get("budgetUsd", ""))
-        project_key = str(spec.get("projectKey", "default"))
-
-        _provision_agent(
-            aid,
-            name,
-            codebase,
-            stack,
-            model,
-            description,
-            project_key,
-            budget,
-            "declarative",
-        )
-        created.append(aid)
-
         if tg_group:
-            _fleet.upsert_binding(aid, tg_group, "telegram", "group")
-            ui.success(f"Telegram binding: {aid} ← group {tg_group}")
+            lead_id = f"{aid}-lead"
+            _fleet.upsert_binding(lead_id, tg_group, "telegram", "group")
+            ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
 
     ui.console.print()
     if created:
@@ -531,166 +491,9 @@ def _cmd_add_declarative(from_file: str) -> int:
         ui.warn(f"Skipped {len(skipped)} existing agent(s): {', '.join(skipped)}")
     if not created and not skipped:
         ui.warn("No agents provisioned.")
+    if had_refused:
+        return 2
     return 1 if had_invalid_id else 0
-
-
-def _create_workspace(
-    agent_id: str,
-    name: str,
-    codebase: str,
-    stack: str,
-    description: str,
-    model: str,
-) -> None:
-    """Create a single project agent's workspace directory and template files."""
-    ws = _cfg.PROJECTS_DIR / agent_id
-    _cfg.mkdir_private(ws)
-    _cfg.mkdir_private(ws / "memory")
-
-    session_key = f"agent:{agent_id}:default"
-
-    test_cmd = _test_cmd_for_stack(stack)
-
-    soul = (
-        f"# SOUL.md — {name}\n\n"
-        "## Identity\n"
-        f"You are the autonomous agent for **{name}**. "
-        "You know this project deeply. You do not discuss or act on other projects.\n\n"
-        f"**Session Key:** `{session_key}`\n\n"
-        "This session key isolates you from other project contexts. "
-        "You may only access resources and memory within this coordinate space.\n\n"
-        "## Description\n"
-        f"{description}\n\n"
-        "## Codebase\n"
-        f"{codebase}\n\n"
-        "## Stack\n"
-        f"{stack}\n\n"
-        "## Test Command\n"
-        f"`{test_cmd}`\n\n"
-        "## Traits\n"
-        "- Read files before making any changes. Never assume structure.\n"
-        "- Completion signal: output `<promise>DONE</promise>` when a task is complete.\n"
-        f"- Proactive: check {_mem.HEARTBEAT_FILE} every session.\n"
-        f"- Scope: never act outside {codebase}.\n"
-        "- Context isolation: respect the session key boundary — no cross-project access.\n\n"
-        "## Safety\n"
-        "- Never push to main/master without HITL approval.\n"
-        "- Never delete files without explicit instruction.\n"
-    )
-    # Section names matter: the turn loop re-injects the "Session Startup"
-    # and "Red Lines" H2 blocks after every compaction (readPostCompactionContext).
-    # Keep these headings verbatim or the injection silently stops firing.
-    agents = (
-        f"# AGENTS.md — {name}\n\n"
-        "## Session Startup\n"
-        "_Lean — re-sent every turn._\n"
-        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
-        "   path (the runtime requires this after every context reset).\n"
-        f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
-        "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
-        "3. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
-        "   specific memory/YYYY-MM-DD.md you need. Do not slurp the whole\n"
-        "   memory/ dir or re-read MEMORY.md when the task doesn't need it —\n"
-        "   every byte you read is re-sent on every later turn.\n"
-        "4. Log outcomes to today's memory/YYYY-MM-DD.md (one file per day).\n\n"
-        "## Red Lines\n"
-        f"- Only act on {name}. Redirect other project questions to the correct group.\n"
-        "- Never push to main/master or delete files without HITL approval.\n\n"
-        "## Project Path\n"
-        f"{codebase}\n\n"
-        "## First Run\n"
-        "If MEMORY.md is missing, read the codebase and write it:\n"
-        "1. Check package.json / requirements.txt / composer.json\n"
-        "2. Read key entry points\n"
-        "3. Check git log --oneline -20\n"
-        "4. Write MEMORY.md: architecture, current state, key files, known issues\n"
-    )
-    tools = (
-        f"# TOOLS.md — {name}\n\n"
-        "## Project Path\n"
-        f"{codebase}\n\n"
-        "## Stack\n"
-        f"{stack}\n\n"
-        "## Commands\n"
-        "```bash\n"
-        f"{test_cmd}       # run tests\n"
-        "git log --oneline -10  # recent history\n"
-        "git diff HEAD          # review before commit\n"
-        "```\n\n"
-        "## Environment Notes\n"
-        "_Add: DB name, ports, env vars, dev server command, seed scripts._\n"
-    )
-
-    heartbeat = _mem.heartbeat_seed(name)
-
-    for fname, text in [
-        ("SOUL.md", soul),
-        ("AGENTS.md", agents),
-        ("TOOLS.md", tools),
-        (_mem.HEARTBEAT_FILE, heartbeat),
-    ]:
-        fpath = ws / fname
-        fpath.write_text(text, encoding="utf-8")
-        fpath.chmod(0o600)
-
-    # Seed the files the turn loop's system-prompt composition re-reads every turn.
-    _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)
-
-    ws.chmod(0o700)
-    (ws / "memory").chmod(0o700)
-
-
-def _provision_agent(
-    agent_id: str,
-    name: str,
-    codebase: str,
-    stack: str,
-    model: str,
-    description: str,
-    project_key: str,
-    budget: str,
-    source: str,
-) -> None:
-    """Create workspace, write metadata, register in the fleet registry."""
-    if not model:
-        model = _mp.resolve_role_model(_mp.REPO_AGENT_ROLE)
-    else:
-        with contextlib.suppress(Exception):
-            model = _mp.validate_model(model)[0]
-
-    session_key = f"agent:{agent_id}:{project_key}"
-
-    _create_workspace(agent_id, name, codebase, stack, description, model)
-
-    meta_data: dict[str, Any] = {
-        "kind": "project",
-        "name": name,
-        "codebase": codebase,
-        "stack": stack,
-        "model": model,
-        "description": description,
-        "sessionKey": session_key,
-        "projectKey": project_key,
-        "templateVersion": str(_cfg.TEMPLATE_VERSION),
-    }
-    if budget and budget not in ("", "0"):
-        meta_data["budgetUsd"] = budget
-
-    meta_file = _cfg.PROJECTS_DIR / agent_id / ".docket-meta.json"
-    store.write_json(meta_file, meta_data)
-
-    # Registration is fleet.json only -- there is no daemon to register with
-    # (and no daemon session directory to pre-create; core/session.py creates
-    # a session's storage lazily).
-    with contextlib.suppress(Exception):
-        _fleet.add_agent(agent_id)
-
-    audit_log("agent.add", f"{agent_id} model={model} source={source}")
-
-    if not _secrets.secrets_keys():
-        ui.warn(
-            "No model-provider credential stored. Run: docket setup provider add <provider> --credential"
-        )
 
 
 def cmd_init(
@@ -777,18 +580,3 @@ def cmd_init(
         with_roles=with_roles or "",
     )
     raise typer.Exit(run_init(req))
-
-
-def _test_cmd_for_stack(stack: str) -> str:
-    """Return a sensible default test command for a detected stack."""
-    if _re.search(r"pytest|Python|FastAPI|Django|Flask", stack, _re.I):
-        return "pytest -v"
-    if _re.search(r"Node|npm|Next|React|Express|Fastify", stack, _re.I):
-        return "npm test"
-    if _re.search(r"PHP|Drupal|Laravel", stack, _re.I):
-        return "./vendor/bin/phpunit"
-    if _re.search(r"\bGo\b", stack):
-        return "go test ./..."
-    if _re.search(r"Rust", stack, _re.I):
-        return "cargo test"
-    return "# add test command"

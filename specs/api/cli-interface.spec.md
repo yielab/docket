@@ -169,8 +169,9 @@ passes without a key.
   most 64 characters and match `^[a-z0-9]+(?:-[a-z0-9]+)*$`. Omitted defaults to the current
   directory name
 - `location` (optional): Meaning depends on the selected blueprint's `workspaceKind` — a codebase
-  path for `software` (the default), or a working directory for `research`/`content`/`ops`
-  (auto-provisioned if omitted)
+  path for `software` (the default), or a working directory for `research`/`content`/`ops`.
+  Omitted, it is the current directory. A working directory is created when missing, and
+  provisioning never changes the mode of a directory it did not create
 **Options**:
 - `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops` |
   `agentic-product`); omitted defaults to `software`. An unknown name fails
@@ -183,8 +184,9 @@ passes without a key.
 - `--with <roles>`: Start from the lean pod and add named roles (comma-separated: `reviewer`,
   `tester`, `implementer`). Applies only to the `software` blueprint; passing it with another
   blueprint warns and is ignored (that blueprint's own fixed roster is used instead)
-- `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); an entry
-  carrying a `blueprint` field provisions a pod the same way `--blueprint` does interactively
+- `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); each entry
+  names a `blueprint` and provisions a pod the same way `--blueprint` does interactively. An
+  entry without one is refused and the command exits 2 once every entry has been processed
 - `--recipe <name|dir>`: Apply a shipped or local recipe directory after provisioning —
   resolved exactly as `docket pod update` resolves a name (`resolve_recipe`); an unresolvable
   name fails cleanly (exit 1) naming the recipes it knows, before any prompt or provisioning.
@@ -198,7 +200,8 @@ passes without a key.
   `{"status": "needs_review", "reviewCode", "items": [{kind, name, runs}]}` instead of prose;
   with `--json`, `init` never asks on a terminal
 
-A repository's own `<location>/.docket/` (the same directory shape `docket pod update` reads,
+A repository's own `<location>/.docket/` (never docket's own state root, which is not a
+repository's configuration; the same directory shape `docket pod update` reads,
 see pod-blueprints.spec.md, "Pod manifests: apply") is discovered automatically: `init` validates
 every document under it before provisioning anything, and — unless `--no-apply` is given — applies
 it after provisioning through the same `plan_apply`/`apply` path `docket pod update` uses. A

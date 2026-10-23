@@ -3,8 +3,7 @@
 **Version**: 2.0.0
 **Status**: Complete. `DOCKET_HOME` is the only state root. Agent workspaces live under
 `~/.docket/workspaces/projects/`; a pod's runtime resources, configuration overlay and learned
-memory live under `~/.docket/workspaces/pods/<pod>/`. `docket init` provisions pods; one
-standalone-agent path remains (see "No shared agents").
+memory live under `~/.docket/workspaces/pods/<pod>/`. `docket init` provisions pods.
 **Last Updated**: 2026-10-22
 
 ## Purpose
@@ -39,8 +38,7 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
    containing:
    - `SOUL.md` — agent identity, scope, and session key
    - `AGENTS.md` — session protocol and delegation rules
-   - `TOOLS.md` — project-specific commands. For a standalone (non-pod) project agent this is
-     always present; for a **pod member**, only an Implementer with allocated runtime resources
+   - `TOOLS.md` — project-specific commands. Only an Implementer with allocated runtime resources
      or a `verifyCmd` gets one (allocated ports/scratch dir and the verify command, when set) —
      a Lead, Reviewer, Tester, or any other pod role has nothing role-specific to document and
      **MUST NOT** be flagged missing one by `docket setup`
@@ -71,7 +69,7 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
      it is: docket never reads, moves or deletes it, `docket pod reset` included, and `docket
      setup` never counts one as missing
 2. Every project agent has **either** a codebase path with auto-detected stack
-   (`workspaceKind: codebase` — every `software`-blueprint pod and every standalone agent)
+   (`workspaceKind: codebase` — every `software`-blueprint pod)
    **or** a plain working directory with no codebase assumption (`workspaceKind: workdir` — a
    `research`/`content`/`ops`-blueprint pod; see pod-blueprints.spec.md), never both.
 3. Pod members are project agents with ids `<project>-<role>[-N]`, each with its **own**
@@ -177,11 +175,10 @@ whole pod and every member that reads it.
 
 1. Agent workspaces exist only under `~/.docket/workspaces/projects/<id>/`. `docket init`
    provisions a pod's own members (the default, `--blueprint`, `--pod`, `--with`, `--recipe`, and
-   a `--from` entry that names a `blueprint`) and registers them in `fleet.json`. A `--from`
-   entry without a `blueprint` provisions one standalone project agent (a workspace satisfying the
-   requirements above, registered in `fleet.json`); no other command creates one.
+   a `--from` entry, which names a `blueprint`) and registers them in `fleet.json`; no other
+   command creates an agent workspace.
 2. `docket pod reset` acts on members of the named pod only. `docket setup --fix` reads every
-   directory under `projects/` that holds a `.docket-meta.json`, pod member or standalone agent;
+   directory under `projects/` that holds a `.docket-meta.json`;
    a directory under `~/.docket/workspaces/` outside `projects/` is not read, healed or reported.
 
 ### Permissions
@@ -337,6 +334,5 @@ Where the names above live today; the only section that names source paths.
 - `src/docket/cli/_pod_config.py`: `cmd_update`, `_sync`
 - `src/docket/cli/_setup.py` and `src/docket/cli/_setup_check.py`: `docket setup --fix`
   (`run_check`, `_check_project_agents`, `_check_pod_sync`, `_check_runtime_contract`)
-- `src/docket/cli/_agents.py`: `cmd_init`, `_provision_agent`, `_create_workspace` (the standalone
-  path)
+- `src/docket/cli/_agents.py`: `cmd_init`
 - `src/docket/edges/store.py`: the atomic JSON writer

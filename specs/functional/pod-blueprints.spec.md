@@ -150,12 +150,10 @@ This specification does NOT cover:
    passing them against any other blueprint **MUST** warn and provision that blueprint's own fixed
    roster, not silently combine the two.
 3. `docket init --from <spec>` (a JSON or YAML file: a list of entries, an object with an
-   `agents` list, or one entry) takes no other argument or option and **MUST** accept a
-   `blueprint` field on any spec entry. An entry carrying one **MUST** provision a pod instead of
-   the single flat agent that an entry without that field provisions; spec files with no
-   `blueprint` field anywhere **MUST** be entirely unaffected (same single-agent path, same
-   output, per `agent-lifecycle.spec.md`'s declarative-provisioning contract). An entry naming an
-   unknown blueprint **MUST** be skipped with a warning naming the valid blueprints.
+   `agents` list, or one entry) takes no other argument or option and **MUST** require a
+   `blueprint` field on every spec entry, which **MUST** provision a pod. An entry without one is
+   refused and an entry naming an unknown blueprint **MUST** be skipped with a warning naming the
+   valid blueprints (`agent-lifecycle.spec.md`'s declarative-provisioning contract).
 4. A `blueprint`-bearing spec entry **MUST** accept `codebase` (for a `codebase`-kind blueprint) or
    `workDir` (for a `workdir`-kind blueprint) as its location field, plus `stack`, `description`,
    `telegram` (a group bound to the pod's Lead), `projectKey`, and `budgetUsd`. `budgetUsd`, when

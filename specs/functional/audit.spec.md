@@ -71,8 +71,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      `exporter.added` / `exporter.removed` / `exporter.enabled` / `exporter.disabled` /
      `exporter.privacy`.
    - **Pods and agents.** `agent.add` (one line per provisioned pod, naming the blueprint, the
-     roles and the source `interactive` or `declarative`; and one line per flat agent from a
-     declarative `docket init --from` entry), `pod.add` (an `add --count N` call writes one line
+     roles and the source `interactive` or `declarative`), `pod.add` (an `add --count N` call writes one line
      naming every member created), `pod.remove`, `pod.reset`, `pod.delete` (one line for the whole
      pod), `pod.set-verify` and `pod.unset-verify` (name the member and the validated command,
      never its output), `pod.config` (`action=set|unset`, key and value), `pod.apply`, `pod.export`,

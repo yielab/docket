@@ -15,12 +15,11 @@ Two kinds of example live here:
 docket init --from examples/configs/agents.yaml
 ```
 
-Re-applying is safe: an entry whose `id` already exists is skipped. Each entry needs an explicit
-`id` (there is no auto-slugify from `name`); `name` defaults to the `id`. Set `blueprint: software`
-(or `research`/`content`/`ops`/`agentic-product` — see `docket init --help`) to provision a full **pod** (a Lead
-plus that blueprint's worker roles); omit `blueprint` and you get a single flat legacy agent
-instead, with no Lead/Implementer split. See the comments in `agents.yaml` for the full field
-list.
+Re-applying is safe: an entry whose pod already exists is skipped. Each entry needs an explicit
+`id` (there is no auto-slugify from `name`) and a `blueprint`: `software`, `research`, `content`,
+`ops` or `agentic-product`, which provisions a **pod** (a Lead plus that blueprint's worker
+roles). An entry without a `blueprint` is refused. See the comments in `agents.yaml` for the full
+field list.
 
 ## `.docket-meta.json` files
 
@@ -29,11 +28,6 @@ list.
 An Implementer inside a **pod** (`blueprint: software`), anchored to a codebase, with the
 runtime-resource fields docket allocates once at pod provisioning: a disjoint port range, a
 scratch directory. A git codebase gets a worktree per task at claim, recorded on the task, not here.
-
-### task-agent-meta.json
-
-A flat agent (no `blueprint`, no `role`, no `pod`) with no fixed codebase (`"codebase": ""`) and
-a model **pinned** directly rather than following the role policy.
 
 ### multi-project-agent-meta.json
 
@@ -57,11 +51,11 @@ day:
 | Field | Type | Notes |
 |-------|------|-------|
 | `kind` | `"project"` \| `"specialist"` | required |
-| `role` | string | pod role (`lead`/`implementer`/`reviewer`/`tester`), empty for a flat agent |
-| `pod` | string | which pod this member belongs to, empty for a flat agent |
+| `role` | string | pod role (`lead`/`implementer`/`reviewer`/`tester`) |
+| `pod` | string | which pod this member belongs to |
 | `blueprint` | string | which pod shape provisioned it (`software`, `research`, ...) |
 | `model` / `modelSource` | string / `"policy"` \| `"pinned"` | `policy` follows the role→model table; `pinned` was set explicitly |
-| `codebase` | string | absolute path; empty for a task agent with no fixed codebase |
+| `codebase` | string | absolute path; empty for a `workdir`-kind member |
 | `sessionKey` / `projectKey` | string | isolation coordinate — see [docs/AGENT-TEAMS.md](../../docs/AGENT-TEAMS.md) |
 | `portRangeStart` / `portRangeCount` / `scratchDir` | int / int / string | Implementer-only, allocated once at pod provisioning |
 | `inPlace` | bool | Implementer-only; `true` when it works in the codebase itself (no task worktree) |
