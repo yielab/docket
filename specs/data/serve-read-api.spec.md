@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 4.1.0
+**Version**: 4.1.1
 **Status**: Stable
 **Last Updated**: 2026-10-23
 

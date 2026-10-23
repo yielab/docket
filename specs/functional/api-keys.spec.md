@@ -1,6 +1,6 @@
 # API Key Management Specification
 
-**Version**: 2.0.1
+**Version**: 2.0.2
 **Status**: Complete
 **Last Updated**: 2026-10-23
 
