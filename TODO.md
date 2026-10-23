@@ -104,7 +104,7 @@ Opus is the integrator only. It writes the error-kind table, reviews W120-1 and 
 
 The scripts run last because the Wave 120 branches touch the same files the codemods touch. A script run once over the merged tree meets no conflict. A worker whose new test raises the `repointers`, `config-reads`, `environ` or `error-raises` count writes the new baseline with `measure_kernel_adoption.py --write` and reports the change; the step 2 and step 3 run brings the counts down. The `clock`, `ids` and `text` counts stay where they are: use `kernel.clock`, `kernel.ids` and `kernel.text`.
 
-**Progress 2026-10-23.** Stage 1 and the code half of stage 2 are merged: Wave 120 batches A and B (W120-1..12), P46-1, P46-2, P46-3, the P46-5 step 2 errors rule and its run (`36867d97`, the other session), and the P46-5 step 3 rules (`cf96f6cf`). Spec versions are bumped per batch (`86a5b4b5`, `e57c32bd`). Q1-Q6 were applied at their defaults. W120-13 runs now; then stage 3.
+**Progress 2026-10-23.** Stage 1 and the code half of stage 2 are merged: Wave 120 batches A and B (W120-1..12), P46-1, P46-2, P46-3, the P46-5 step 2 errors rule and its run (`36867d97`, the other session), and the P46-5 step 3 rules (`cf96f6cf`). Spec versions are bumped per batch (`86a5b4b5`, `e57c32bd`). Q1-Q6 were applied at their defaults. W120-13 merged the same day. Next: stage 3.
 
 **Decisions for the maintainer.** Each card applies the default below unless the maintainer answers otherwise before its batch starts.
 
@@ -565,7 +565,7 @@ The scripts run last because the Wave 120 branches touch the same files the code
 
 ### W120-13 — stale text and dead code
 
-**Status:** IN-PROGRESS 2026-10-23 (Haiku, branch `w120-13`) · **Size:** S · **Model:** Haiku · **Kind:** text, and deletions with a zero-caller proof
+**Status:** DONE 2026-10-23 (`97bb82c2`, `cfcbed86`) · **Size:** S · **Model:** Haiku · **Kind:** text, and deletions with a zero-caller proof
 
 - **Text.**
   - 9: the `mcp_client._stdio_params` docstring names an opt-out that does not exist, and

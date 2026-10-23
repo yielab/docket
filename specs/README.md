@@ -103,8 +103,8 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 2.1.0 | Implemented and live |
 | Pipeline Format | 3.1.0 | Implemented |
 | Pod Blueprints | 2.0.2 | Implemented |
-| Pod Dispatch | 8.0.0 | Implemented |
-| Role Archetypes | 3.0.0 | Implemented |
+| Pod Dispatch | 9.0.0 | Implemented |
+| Role Archetypes | 3.0.1 | Implemented |
 | Security Gates | 1.1.1 | Implemented (gate always on; isolation opt-in) |
 | Session History | 1.9.1 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
@@ -123,7 +123,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.0 | Implemented |
 | Test Framework | 3.1.0 | Active |
-| Starter Journey | 2.0.0 | Implemented |
+| Starter Journey | 2.0.1 | Implemented |
 | Operator Loop | 2.1.0 | Implemented |
 | User Stories | 2.0.0 | Active |
 
