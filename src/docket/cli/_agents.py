@@ -7,6 +7,7 @@ process exit code.
 from __future__ import annotations
 
 import json as _json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import provisioning as _prov
+from docket.kernel.errors import InvalidInput
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,28 @@ class InitRequest:
     from_file: str | None = None
     full: bool = False
     with_roles: str = ""
+
+
+def _stored_location(raw: str, workspace_kind: str) -> str:
+    """The location as docket stores it: ``~`` expanded and absolute, relative to the cwd. A
+    ``codebase`` must be an existing directory; a ``workdir`` is created when missing.
+    Raises ``InvalidInput`` otherwise."""
+    if not raw:
+        return ""
+    path = Path(os.path.abspath(Path(raw).expanduser()))
+    if workspace_kind == "codebase" and not path.is_dir():
+        raise InvalidInput(f"codebase '{path}' is not a directory", "Give the path of the code.")
+    return str(path)
+
+
+def _invalid(req: InitRequest, message: str, hint: str = "") -> int:
+    """Refuse the request before anything is created: the reason on stderr, or as JSON under
+    ``--json``. Exit status 2."""
+    if req.json_out:
+        ui.console.print_json(_json.dumps({"status": "invalid", "reason": message}))
+    else:
+        ui.error(escape(message), escape(hint))
+    return 2
 
 
 def _unnamed_teams(base: Path, chosen: Path) -> list[str]:
@@ -93,7 +117,14 @@ def _stdin_is_tty() -> bool:
     return sys.stdin.isatty()
 
 
-def _refuse_shell(review: _pod_apply.PlanReview) -> int:
+def _refuse_shell(req: InitRequest, review: _pod_apply.PlanReview) -> int:
+    if req.json_out:
+        ui.console.print_json(
+            _json.dumps(
+                {"status": "refused", "refused": list(review.refused), "items": _items(review)}
+            )
+        )
+        return 2
     ui.error(
         f"Not set up. The repository lets the agent run {', '.join(review.refused)}. A shell "
         "runs whatever command follows it, so docket's command checks never see what it "
@@ -103,11 +134,30 @@ def _refuse_shell(review: _pod_apply.PlanReview) -> int:
     return 2
 
 
+def _items(review: _pod_apply.PlanReview) -> list[dict[str, str]]:
+    return [{"kind": i.kind, "name": i.name, "runs": i.runs} for i in review.runs]
+
+
 def _changed_since_review(
-    root: Path, project: str, code: str, review: _pod_apply.PlanReview, command: str = "docket init"
+    req: InitRequest,
+    root: Path,
+    project: str,
+    code: str,
+    review: _pod_apply.PlanReview,
+    command: str = "docket init",
 ) -> int:
     from docket.core import reviewed_repos as _reviewed
 
+    if req.json_out:
+        before = _reviewed.lookup(root, project)
+        was = {(i.kind, i.name): i.runs for i in before.items} if before else {}
+        changed = [
+            {**item, "before": was.get((item["kind"], item["name"]), "")}
+            for item in _items(review)
+            if was.get((item["kind"], item["name"])) != item["runs"]
+        ]
+        ui.console.print_json(_json.dumps({"status": "code_mismatch", "items": changed}))
+        return 2
     ui.error(
         f"{_stopped(command)}. The repository changed what runs on this machine since review "
         f"code {code}:"
@@ -145,9 +195,8 @@ def _needs_review(
     from docket.cli._pod_config import render_run_items
 
     if req.json_out:
-        items = [{"kind": i.kind, "name": i.name, "runs": i.runs} for i in review.runs]
         ui.console.print_json(
-            _json.dumps({"status": "needs_review", "reviewCode": code, "items": items})
+            _json.dumps({"status": "needs_review", "reviewCode": code, "items": _items(review)})
         )
         return 2
     n = len(review.runs)
@@ -182,9 +231,9 @@ def review_repo_source(
     if decision.status == "go":
         return 0
     if decision.status == "refused":
-        return _refuse_shell(review)
+        return _refuse_shell(req, review)
     if decision.status == "code_mismatch":
-        return _changed_since_review(loc_path, project, req.accept or "", review, command)
+        return _changed_since_review(req, loc_path, project, req.accept or "", review, command)
     if decision.status == "needs_code":
         if not (_stdin_is_tty() and not req.json_out):
             return _needs_review(req, review, decision.code, command)
@@ -251,20 +300,20 @@ def run_init(req: InitRequest) -> int:
     # Location and identity are deterministic defaults, not a prompt sequence.
     # This makes `docket init` behave like a conventional project initializer.
     is_workdir = blueprint.workspace_kind == "workdir"
-    if req.location is not None:
-        location = str(Path(req.location).expanduser())
-    else:
-        location = str(_prov.default_codebase())
+    try:
+        location = _stored_location(
+            req.location if req.location is not None else str(_prov.default_codebase()),
+            blueprint.workspace_kind,
+        )
+    except InvalidInput as exc:
+        return _invalid(req, exc.message, exc.hint)
     loc_path = Path(location)
 
-    suggested_name = req.name or _prov.suggest_project_name(loc_path)
-    name = req.name or suggested_name
-    if not name:
-        ui.error("Name is required.")
-        return 1
-
-    slug = _prov.slugify(name)
-    aid = slug
+    name = req.name or _prov.suggest_project_name(loc_path)
+    try:
+        aid = _prov.validate_project_id(_prov.slugify(name))
+    except _prov.ProjectIdError as exc:
+        return _invalid(req, f"'{name[:40]}' is not a usable pod name: {exc}")
 
     if (_cfg.PROJECTS_DIR / aid).is_dir() or (_cfg.PROJECTS_DIR / f"{aid}-lead").is_dir():
         ui.error(f"A project or pod '{aid}' already exists.")
@@ -377,6 +426,7 @@ def _provision_pod_from_spec(
     ``None`` (already warned) means the pod exists or the blueprint is unknown: a skip."""
     from docket.cli import _pod
 
+    _prov.validate_project_id(aid)
     try:
         blueprint = _bp.get_blueprint(blueprint_name)
     except _bp.BlueprintError as exc:
@@ -384,7 +434,7 @@ def _provision_pod_from_spec(
         return None
 
     location_field = "workDir" if blueprint.workspace_kind == "workdir" else "codebase"
-    location = str(spec.get(location_field, ""))
+    location = _stored_location(str(spec.get(location_field, "")), blueprint.workspace_kind)
     stack = str(spec.get("stack", ""))
     description = str(spec.get("description", ""))
     project_key = str(spec.get("projectKey", "default"))
@@ -462,7 +512,9 @@ def _cmd_add_declarative(from_file: str) -> int:
         blueprint_name = str(spec.get("blueprint", "")).strip()
         if not blueprint_name:
             ui.error(
-                f"'{aid}': an entry needs a 'blueprint' ({', '.join(_bp.load_registry().names())})"
+                escape(
+                    f"'{aid}': an entry needs a 'blueprint' ({', '.join(_bp.load_registry().names())})"
+                )
             )
             skipped.append(aid)
             had_refused = True
@@ -470,9 +522,14 @@ def _cmd_add_declarative(from_file: str) -> int:
         try:
             pod_created = _provision_pod_from_spec(aid, blueprint_name, spec)
         except _prov.ProjectIdError as exc:
-            ui.error(f"'{aid}': {exc}")
+            ui.error(escape(f"'{aid}': {exc}"))
             skipped.append(aid)
             had_invalid_id = True
+            continue
+        except InvalidInput as exc:
+            ui.error(escape(f"'{aid}': {exc.message}"))
+            skipped.append(aid)
+            had_refused = True
             continue
         if pod_created is None:
             skipped.append(aid)

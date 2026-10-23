@@ -170,8 +170,10 @@ passes without a key.
   directory name
 - `location` (optional): Meaning depends on the selected blueprint's `workspaceKind` — a codebase
   path for `software` (the default), or a working directory for `research`/`content`/`ops`.
-  Omitted, it is the current directory. A working directory is created when missing, and
-  provisioning never changes the mode of a directory it did not create
+  Omitted, it is the current directory. It is stored absolute (a relative path is taken from the
+  current directory), a codebase that is not an existing directory is refused with exit 2, and a
+  working directory is created when missing; provisioning never changes the mode of a directory
+  it did not create
 **Options**:
 - `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops` |
   `agentic-product`); omitted defaults to `software`. An unknown name fails
@@ -186,7 +188,8 @@ passes without a key.
   blueprint warns and is ignored (that blueprint's own fixed roster is used instead)
 - `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); each entry
   names a `blueprint` and provisions a pod the same way `--blueprint` does interactively. An
-  entry without one is refused and the command exits 2 once every entry has been processed
+  entry without one, or with a location that is not usable, is refused and the command exits 2
+  once every entry has been processed
 - `--recipe <name|dir>`: Apply a shipped or local recipe directory after provisioning —
   resolved exactly as `docket pod update` resolves a name (`resolve_recipe`); an unresolvable
   name fails cleanly (exit 1) naming the recipes it knows, before any prompt or provisioning.
@@ -196,9 +199,13 @@ passes without a key.
   resolved `--recipe`; prints the `docket pod update <dir>` command that would apply it
 - `--accept CODE`: Allow exactly the run-on-this-machine items whose review code is CODE, so a
   repository's commands are allowed off a terminal (pod-blueprints.spec.md requirement 12)
-- `--json`: When the operator's review stops `init`, print
-  `{"status": "needs_review", "reviewCode", "items": [{kind, name, runs}]}` instead of prose;
-  with `--json`, `init` never asks on a terminal
+- `--json`: `init` never asks on a terminal, and a stop of the operator's review or a refused name
+  or location prints one JSON object on stdout instead of prose. `{"status": "needs_review", "reviewCode", "items": [{kind, name,
+  runs}]}` when the operator's review is needed; `{"status": "refused", "refused": [name],
+  "items"}` when the repository allows a shell; `{"status": "code_mismatch", "items": [{kind,
+  name, runs, before}]}` when `--accept` names a code the repository no longer matches (the
+  current code is never printed); `{"status": "invalid", "reason"}` when the pod name or the
+  location is refused
 
 A repository's own `<location>/.docket/` (never docket's own state root, which is not a
 repository's configuration; the same directory shape `docket pod update` reads,
@@ -229,10 +236,10 @@ below, shared with `status` and `setup sandbox --json`): `Sandbox   off. The age
 with your user's permissions.` then `Turn it on: docket setup sandbox on`; `Sandbox   on
 (landlock, network none)`; or `Sandbox   not available: Linux needs a kernel with Landlock (5.13
 or newer).` / `Sandbox   not available on native Windows; use WSL2.` when no backend exists
-**Return**: 0 on success, 1 on error (pod already exists, invalid arguments, unknown blueprint,
-an invalid `.docket/`, or provisioning registered no member — docket's flat convention, see
-Return Code Convention below); 2 on a usage error, when the operator's review stops `init`, or
-when several teams leave the pod's team unnamed
+**Return**: 0 on success, 1 on error (pod already exists, unknown blueprint, an invalid
+`.docket/`, or provisioning registered no member — docket's flat convention, see Return Code
+Convention below); 2 on a usage error, when the pod name or the location is refused, when the
+operator's review stops `init`, or when several teams leave the pod's team unnamed
 
 With no explicit project or location, `init` **MUST** derive both from the current working
 directory without an interactive questionnaire. The intended first-run flow is package-manager

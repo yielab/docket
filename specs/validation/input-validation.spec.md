@@ -44,6 +44,12 @@ before any workspace path is built. A `docket init --from` entry reports the err
 skips the entry and makes the command exit 1; `POST /pods` answers `400`. Every other HTTP route
 with a project path segment calls it right after authentication and answers `400 {"error": ...}`.
 
+`docket init` slugifies its pod name and applies this rule before anything is created: an empty slug
+or one longer than 64 characters is refused with the rule printed verbatim (bracketed pattern
+included) and exit 2, as a `{"status": "invalid", "reason"}` object under `--json`. A `docket init`
+location is stored absolute and a `codebase` that is not an existing directory is refused the same
+way.
+
 ### 2. Model id
 
 **Field**: model.

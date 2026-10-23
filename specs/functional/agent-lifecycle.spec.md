@@ -36,12 +36,15 @@ This specification does NOT cover:
 
 1. **MUST** create a unique pod identifier: the slug of the project name argument (or of the
    current directory's name), refusing with exit 1 when a project or pod with that id already
-   exists. `docket init` asks nothing interactively
+   exists, and with exit 2, before anything is created, when the slug is empty or longer than 64
+   characters (input-validation.spec.md section 1). `docket init` asks nothing interactively
 2. **MUST** take the codebase (for a `codebase`-kind blueprint, `software` by default) or the
    working directory (for a `workdir`-kind blueprint: `research`/`content`/`ops`) from the
-   `location` argument, defaulting to the current directory. `docket init` does not check that a
-   codebase path exists or is a git repository; a `workdir` location is created when missing, and
-   provisioning **MUST NOT** change the mode of a working directory it did not create. A
+   `location` argument, defaulting to the current directory, and **MUST** store it absolute (a
+   relative path is taken from the current directory). A `codebase` that is not an existing
+   directory is refused with exit 2 before anything is created; `docket init` does not check that
+   it is a git repository. A `workdir` location is created when missing, and provisioning
+   **MUST NOT** change the mode of a working directory it did not create. A
    `--from` entry for a `workdir`-kind blueprint with no `workDir` auto-provisions the pod's own
    working directory (see pod-blueprints.spec.md)
 3. **MUST** create an isolated workspace directory for every member
@@ -83,13 +86,15 @@ This specification does NOT cover:
    id is not derived from a `name`
 4. **MUST** be idempotent: an entry whose pod already has members is skipped with a warning, not
    recreated
-5. **MUST** skip an entry with an unknown blueprint, an invalid pod id or an existing target without aborting the rest of the spec file; an invalid pod id makes the command
+5. **MUST** skip an entry with an unknown blueprint, an invalid pod id, an unusable location or an
+   existing target without aborting the rest of the spec file; an invalid pod id makes the command
    exit 1 once every entry has been processed
 6. **MAY** carry a `telegram` field on any entry, binding the pod's Lead to that Telegram group
 7. **MUST** carry a `blueprint` field on every entry; the entry provisions a pod (see
    pod-blueprints.spec.md) with its `codebase` (or `workDir` for a `workdir`-kind blueprint),
    `stack`, `description`, `projectKey` and `budgetUsd`. An entry with no `blueprint` is refused
-   and nothing is created for it; the command exits 2 once every entry has been processed
+   and nothing is created for it, and a location that is not usable is refused the same way; the
+   command exits 2 once every entry has been processed
 
 ### Agent States
 
@@ -271,7 +276,7 @@ After successful creation:
 Where the names above live today; the only place this spec names a path.
 
 - `src/docket/cli/_agents.py`: `run_init`, `InitRequest`, `cmd_init`, the declarative path
-  (`_cmd_add_declarative`, `_provision_pod_from_spec`)
+  (`_cmd_add_declarative`, `_provision_pod_from_spec`), `_stored_location`
 - `src/docket/cli/_pod.py`: `cmd_show`, `cmd_add`, `cmd_remove`, `cmd_reset`, `cmd_delete`,
   `add_members`, `remove_member`, `reset_member`, `build_pod_from_blueprint`
 - `src/docket/cli/_contract.py`: `confirm`
