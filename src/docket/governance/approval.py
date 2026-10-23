@@ -30,9 +30,9 @@ from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import NotFound
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import redact, trace_event
 from docket.operator.contract import Option
-from docket.platform import store as _store
+from docket.platform import read_modify_write, with_lock, write_json
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
 # (see the module docstring). ``timeout`` is the fail-closed expiry path
@@ -107,7 +107,7 @@ def _redact(text: str) -> str:
     never break approval, so any error returns the original text unchanged; the local
     import avoids a cycle with trace."""
     try:
-        return _trace.redact(text)
+        return redact(text)
     except Exception:
         return text
 
@@ -131,7 +131,7 @@ def _emit_trace(
     """Best-effort trace hook to docket.observability.trace.trace_event; any failure is swallowed
     so a trace problem never breaks the approval. Local import avoids a cycle."""
     try:
-        _trace.trace_event(project, session, role, event_type, json.dumps(payload))
+        trace_event(project, session, role, event_type, json.dumps(payload))
     except Exception:
         return None
 
@@ -199,7 +199,7 @@ def _set_state(token: str, new_state: str) -> dict[str, Any]:
         data["state"] = new_state
         return data
 
-    return _store.read_modify_write(path, transition)
+    return read_modify_write(path, transition)
 
 
 def approval_create(
@@ -241,7 +241,7 @@ def approval_create(
     if rationale is not None:
         data["rationale"] = rationale
         data["options"] = approval_options()
-    _store.write_json(_approval_path(token), data)
+    write_json(_approval_path(token), data)
 
     # The call a paused approval is for, when the caller names it.
     requested: dict[str, Any] = {"token": token, "action": redacted_action}
@@ -280,7 +280,7 @@ def approval_set_option(token: str, option_id: str) -> None:
         data["context"] = ctx
         return data
 
-    _store.read_modify_write(path, record)
+    read_modify_write(path, record)
 
 
 def approval_get(token: str) -> dict[str, Any]:
@@ -414,7 +414,7 @@ def prune_resolved(
     cutoff = (now if now is not None else _clock.epoch()) - window
     removed = 0
     for path in sorted(current_home().approvals_dir.glob("*.json")):
-        with _store.with_lock(path):
+        with with_lock(path):
             try:
                 with path.open(encoding="utf-8") as f:
                     data: dict[str, Any] = json.load(f)
@@ -487,7 +487,7 @@ def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
         expired = True
         return data
 
-    _store.read_modify_write(path, transition)
+    read_modify_write(path, transition)
     if expired:
         _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
         audit_log("approval.deny", f"token={token} project={project} channel=timeout")

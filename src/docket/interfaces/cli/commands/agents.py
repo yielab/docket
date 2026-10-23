@@ -33,8 +33,8 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.operator import channel as _channel
+from docket.platform import mkdir_private
 from docket.platform import process as _process
-from docket.platform import store
 from docket.teams import blueprints as _bp
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
@@ -289,7 +289,7 @@ def run_init(req: InitRequest) -> int:
     """Provision a project pod from the request, deriving ordinary defaults from the cwd
     (non-interactive: cwd is the location, its basename the pod id). ``from_file`` takes
     the declarative path instead."""
-    store.mkdir_private(current_home().projects_dir)
+    mkdir_private(current_home().projects_dir)
 
     if req.from_file is not None:
         return _cmd_add_declarative(req.from_file)

@@ -23,7 +23,7 @@ from docket.hops.application import record as _record
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, Refused
-from docket.observability import trace as _trace
+from docket.observability import trace_event
 from docket.operator.contract import (
     AnswerResult,
     AnswerResultV11,
@@ -35,7 +35,7 @@ from docket.operator.contract import (
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
@@ -356,7 +356,7 @@ def answer_task(
             return {"tasks": tasks}
         raise AnswerError(f"task {task_id!r} not found in pod {project!r}")
 
-    _store.read_modify_write(path, _fn)
+    read_modify_write(path, _fn)
     _record_answer_audit_and_trace(
         project, task_id, outcome, channel=channel, actor=actor, result=result
     )
@@ -390,7 +390,7 @@ def _record_answer_audit_and_trace(
         f"project={project} task={task_id} step={outcome.get('step', '')} "
         f"channel={channel} actor={actor} action={result.action}",
     )
-    _trace.trace_event(
+    trace_event(
         project,
         f"agent:{project}:{task_id}",
         "lead",
@@ -444,10 +444,10 @@ def sweep_expired_questions(now: str | None = None) -> int:
                 changed = True
             return {"tasks": tasks} if changed else None
 
-        _store.read_modify_write(path, _fn)
+        read_modify_write(path, _fn)
         for task_id, question_id in expired:
             count += 1
-            _trace.trace_event(
+            trace_event(
                 project,
                 f"agent:{project}:{task_id}",
                 "lead",

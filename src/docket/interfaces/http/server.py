@@ -43,7 +43,7 @@ from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
-from docket.observability import trace
+from docket.observability import expire_old_traces, sweep_all
 from docket.operator.notify import _flush_notify_channels
 from docket.tasks.application import answers
 from docket.tasks.application import queue as _queue
@@ -168,9 +168,9 @@ def _run_sweeps(dispatch: bool = False) -> None:
     skipped, so this returns without waiting for the turns; ``_drain_sweeps`` waits."""
 
     with contextlib.suppress(Exception):
-        trace.sweep_all()
+        sweep_all()
     with contextlib.suppress(Exception):
-        trace.expire_old_traces()
+        expire_old_traces()
     with contextlib.suppress(Exception):
         approval.approval_sweep_expired()
     with contextlib.suppress(Exception):

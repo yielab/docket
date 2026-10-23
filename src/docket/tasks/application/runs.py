@@ -53,9 +53,9 @@ from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import trace_event
 from docket.platform import process as _process
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 from docket.tasks.application.run_cancellation import (
     _CANCELLATION_REASON,
     _CANCELLATION_SOURCE,
@@ -128,7 +128,7 @@ class RunCancellationSignal:
                 return {"runs": runs}
             return None
 
-        _store.read_modify_write(runs_path(), _fn)
+        read_modify_write(runs_path(), _fn)
         if observed_now:
             _emit_cancellation_trace(project, self.run_id, source, "run_cancellation_observed")
         return must_stop
@@ -189,7 +189,7 @@ def create_run(
         runs.append(record)
         return {"runs": runs}
 
-    _store.read_modify_write(runs_path(), _fn)
+    read_modify_write(runs_path(), _fn)
     return record
 
 
@@ -210,7 +210,7 @@ def mark_running(run_id: str) -> bool:
                 return {"runs": runs}
         return None
 
-    _store.read_modify_write(runs_path(), _fn)
+    read_modify_write(runs_path(), _fn)
     return applied
 
 
@@ -276,7 +276,7 @@ def finish_run(
             return {"runs": runs}
         return None
 
-    _store.read_modify_write(runs_path(), _fn)
+    read_modify_write(runs_path(), _fn)
     if observed_now:
         _emit_cancellation_trace(project, run_id, source, "run_cancellation_observed")
     if stopped_now:
@@ -286,7 +286,7 @@ def finish_run(
 
 def get_run(run_id: str) -> dict[str, Any] | None:
     """Return one run record by id, or ``None`` if unknown."""
-    doc = _store.read_json(runs_path())
+    doc = read_json(runs_path())
     for r in _runs_list(doc):
         if r.get("id") == run_id:
             return r
@@ -295,7 +295,7 @@ def get_run(run_id: str) -> dict[str, Any] | None:
 
 def list_runs(project: str | None = None) -> list[dict[str, Any]]:
     """Return run records, newest first, optionally filtered to one project."""
-    doc = _store.read_json(runs_path())
+    doc = read_json(runs_path())
     runs = _runs_list(doc)
     if project:
         runs = [r for r in runs if r.get("project") == project]
@@ -329,7 +329,7 @@ def prune_terminal(
         return epoch is not None and epoch < cutoff
 
     if dry_run:
-        return sum(1 for r in _runs_list(_store.read_json(runs_path())) if _eligible(r))
+        return sum(1 for r in _runs_list(read_json(runs_path())) if _eligible(r))
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         nonlocal removed
@@ -338,7 +338,7 @@ def prune_terminal(
         removed = len(runs) - len(kept)
         return {"runs": kept} if removed else None
 
-    _store.read_modify_write(runs_path(), _fn)
+    read_modify_write(runs_path(), _fn)
     return removed
 
 
@@ -376,7 +376,7 @@ def add_hop_pid(run_id: str, pid: int) -> None:
                 return {"runs": runs}
         return None
 
-    _store.read_modify_write(runs_path(), _fn)
+    read_modify_write(runs_path(), _fn)
 
 
 def remove_hop_pid(run_id: str, pid: int) -> None:
@@ -395,7 +395,7 @@ def remove_hop_pid(run_id: str, pid: int) -> None:
                 return None
         return None
 
-    _store.read_modify_write(runs_path(), _fn)
+    read_modify_write(runs_path(), _fn)
 
 
 def cancel_run(run_id: str, *, source: str = _CANCELLATION_SOURCE) -> CancelOutcome:
@@ -454,7 +454,7 @@ def cancel_run(run_id: str, *, source: str = _CANCELLATION_SOURCE) -> CancelOutc
             return {"runs": runs}
         return None
 
-    _store.read_modify_write(runs_path(), _request)
+    read_modify_write(runs_path(), _request)
     if decision == "unknown":
         return CancelOutcome(ok=False, message=f"unknown run: {run_id}")
     if decision == "terminal":
@@ -494,7 +494,7 @@ def _emit_error_trace(project: str, run_id: str, source: str, error_text: str) -
     try:
         import json as _json
 
-        _trace.trace_event(
+        trace_event(
             project,
             f"agent:{project}:dispatch",
             "lead",

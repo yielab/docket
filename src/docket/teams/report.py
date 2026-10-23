@@ -22,9 +22,9 @@ from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.adapters import openai_http as _llm
-from docket.observability import exporter as _exporter
+from docket.observability import activation_state, load_catalog, read_health, resolve_credentials
 from docket.pipeline.application import steps as _steps
-from docket.platform import store as _store
+from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -218,13 +218,13 @@ def _exporters_report() -> list[dict[str, Any]]:
     """Every catalog exporter's activation state and today's health counters -- global, not
     per-agent (an exporter has no per-pod scope; see observability-export.spec.md
     "Activation")."""
-    catalog = _exporter.load_catalog()
-    health = _exporter.read_health()
+    catalog = load_catalog()
+    health = read_health()
     report: list[dict[str, Any]] = []
     for name in sorted(catalog.entries):
         spec = catalog.entries[name]
-        state, _missing = _exporter.activation_state(spec, health.get(name))
-        _values, credential_source = _exporter.resolve_credentials(spec)
+        state, _missing = activation_state(spec, health.get(name))
+        _values, credential_source = resolve_credentials(spec)
         record = health.get(name, {})
         report.append(
             {
@@ -247,7 +247,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
     """Compose one member's effective configuration. Raises ``DispatchError``/
     ``PodSettingsError`` unchanged when this pod's stored settings are invalid --
     never silently substitutes a default."""
-    raw = _store.read_json(current_home().meta_path(agent_id))
+    raw = read_json(current_home().meta_path(agent_id))
     meta = AgentMeta.model_validate(raw) if raw else AgentMeta(kind=AgentKind.project)
     role = str(raw.get("role", ""))
     project = _pod.pod_of(agent_id) or ""

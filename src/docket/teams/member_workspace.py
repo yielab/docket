@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from docket.agent import memory as _mem
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.platform import store as _store
+from docket.platform import read_json, write_json
 from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import role_schema as _role_schema
@@ -209,7 +209,7 @@ def _write_member_workspace(
     if budget_usd is not None and member.role == "lead":
         meta["budgetUsd"] = str(budget_usd)
     meta_file = ws / current_home().meta_file
-    _store.write_json(meta_file, meta)
+    write_json(meta_file, meta)
 
     # Text files inherit the operator's umask when written above. Docket's
     # workspace contract is stricter (0700 directories, 0600 managed files),
@@ -299,7 +299,7 @@ def rendered_member_files(member_id: str) -> dict[str, str]:
     """The SOUL.md/AGENTS.md/(TOOLS.md, when applicable) text the current archetype
     and *member_id*'s stored metadata would produce -- read-only, writes nothing.
     Empty when the id has no pod metadata."""
-    meta = _store.read_json(current_home().meta_path(member_id))
+    meta = read_json(current_home().meta_path(member_id))
     project = str(meta.get("pod", ""))
     role = str(meta.get("role", ""))
     if not meta or not project or not role:
@@ -347,7 +347,7 @@ def member_sync_status(member_id: str) -> MemberSyncStatus | None:
     rendered = rendered_member_files(member_id)
     if not rendered:
         return None
-    meta = _store.read_json(current_home().meta_path(member_id))
+    meta = read_json(current_home().meta_path(member_id))
     ws = current_home().projects_dir / member_id
     diffs: dict[str, str] = {}
     for name, new_text in rendered.items():

@@ -18,11 +18,11 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
-from docket.observability import exporter as _exporter
+from docket.observability import activation_state, load_catalog
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.platform import store as _store
+from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
@@ -128,12 +128,12 @@ def render_exporter_states(names: tuple[str, ...]) -> None:
     if not names:
         return
 
-    catalog = _exporter.load_catalog()
+    catalog = load_catalog()
     for name in names:
         spec = catalog.get(name)
         if spec is None:
             continue
-        state, missing = _exporter.activation_state(spec, health=None)
+        state, missing = activation_state(spec, health=None)
         if state == "enabled":
             line = f"exporter {name}: enabled"
         elif state == "needs credential":
@@ -246,9 +246,7 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _model.
     except _config_docs.ConfigDocError as exc:
         _fail(str(exc))
     if document.kind == "role":
-        roles = _store.read_json(current_home().pod_config_dir(project) / "roles.json").get(
-            "roles", {}
-        )
+        roles = read_json(current_home().pod_config_dir(project) / "roles.json").get("roles", {})
         exists = document.name in roles
     elif document.kind == "policy":
         exists = (current_home().pod_config_dir(project) / "policies" / path.name).is_file()

@@ -18,7 +18,7 @@ from docket.models.catalog import (
     save_provider,
 )
 from docket.platform import process as _process
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 
 if TYPE_CHECKING:
     from docket.models.adapters.openai_http import ProbeResult
@@ -50,7 +50,7 @@ def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
         providers[spec.name] = entry
         return {"providers": providers}
 
-    _store.read_modify_write(current_home().provider_models_file, _update)
+    read_modify_write(current_home().provider_models_file, _update)
 
 
 def refresh_observed_models_due() -> list[str]:

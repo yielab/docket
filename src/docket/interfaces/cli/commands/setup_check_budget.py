@@ -3,7 +3,7 @@ from __future__ import annotations
 from docket.agent import memory as _mem
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
-from docket.platform import store
+from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import pod as _pod
 from docket.teams.utils import aggregate_cost, gating_cost
@@ -14,7 +14,7 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
     recorded spend only -- see ``_batch_gating_cost`` for the budget-warning figure."""
     out: dict[str, tuple[str, float, int]] = {}
     for aid in agent_ids:
-        raw = store.read_json(current_home().meta_path(aid))
+        raw = read_json(current_home().meta_path(aid))
         budget = str(raw.get("budgetUsd", "") or "")
         totals = aggregate_cost(aid)
         out[aid] = (budget, totals.cost_usd, totals.turns)
@@ -27,7 +27,7 @@ def _batch_gating_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, bool
     driver's recorded cost is always 0.0."""
     out: dict[str, tuple[str, float, bool]] = {}
     for aid in agent_ids:
-        raw = store.read_json(current_home().meta_path(aid))
+        raw = read_json(current_home().meta_path(aid))
         budget = str(raw.get("budgetUsd", "") or "")
         cost_f, estimated = gating_cost(aid)
         out[aid] = (budget, cost_f, estimated)

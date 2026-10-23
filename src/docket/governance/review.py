@@ -13,7 +13,7 @@ from docket.hops.workspace import protected_paths as _protected
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.platform import git as _git
-from docket.platform import store
+from docket.platform import read_json, read_modify_write
 from docket.teams.apply.review import RunItem
 
 CODE_LENGTH = 16
@@ -73,7 +73,7 @@ def _is_one_entry_shape(by_pod: Any) -> bool:
 
 def approvals(repo_root: Path, project: str) -> list[ReviewedRepo]:
     """Every item set *project* approved for *repo_root*, oldest first."""
-    repos = store.read_json(current_home().reviewed_repos_file).get("repos", {})
+    repos = read_json(current_home().reviewed_repos_file).get("repos", {})
     by_pod = repos.get(_key(repo_root))
     if _is_one_entry_shape(by_pod):
         return []
@@ -124,7 +124,7 @@ def remember(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> str:
         repos[key] = kept
         return {"repos": repos}
 
-    store.read_modify_write(current_home().reviewed_repos_file, _write)
+    read_modify_write(current_home().reviewed_repos_file, _write)
     audit_log(
         "repo.allow",
         f"repo={_key(repo_root)} pod={project} code={code} items={len(items)}",

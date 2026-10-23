@@ -13,11 +13,11 @@ from docket.agent import ports as _rd
 from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import TraceStatus, trace_event
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.platform import process as _process
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
@@ -256,12 +256,12 @@ def _replay_pipeline_position(
     )
 
 
-def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
+def _trace_locked(*args: Any, **kwargs: Any) -> TraceStatus:
     """``trace.trace_event``, serialized against ``orchestrator.trace_write_lock`` because a
     parallel group's children share one task's tracefile (the append-only exemption is safe
     only across *different* session files). See pod-dispatch.spec.md ("Parallel step groups")."""
     with _orch.trace_write_lock:
-        return _trace.trace_event(*args, **kwargs)
+        return trace_event(*args, **kwargs)
 
 
 def _verdict_event_names(role: str) -> tuple[str, str, str]:
@@ -640,7 +640,7 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
                 return {"tasks": tasks}
         return None  # task no longer in the queue — nothing to persist
 
-    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = read_modify_write(pod_task_list_path(project), _fn)
     tasks_after = doc.get("tasks")
     lead_id = _pod.member_id(project, "lead")
     _mem.sync_dispatch_tasks(

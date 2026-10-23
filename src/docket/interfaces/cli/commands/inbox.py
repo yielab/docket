@@ -18,7 +18,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.operator import inbox as _inbox
 from docket.operator.contract import ApprovalView, InboxView, TaskView
-from docket.platform import store as _store
+from docket.platform import read_json, write_json
 from docket.tasks.application import queue as _queue
 
 APPROVED_READY = "approved_ready"
@@ -35,12 +35,12 @@ _TASK_STATES = {
 
 
 def _read_cursor() -> str | None:
-    since = _store.read_json(current_home().inbox_cursor_file).get("since")
+    since = read_json(current_home().inbox_cursor_file).get("since")
     return str(since) if since else None
 
 
 def _write_cursor(value: str) -> None:
-    _store.write_json(current_home().inbox_cursor_file, {"since": value})
+    write_json(current_home().inbox_cursor_file, {"since": value})
 
 
 def _approved_ready_tasks() -> list[TaskView]:

@@ -17,27 +17,27 @@ from docket.kernel import clock as _clock
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
 from docket.platform import process as _process
-from docket.platform import store
+from docket.platform import read_json, write_json
 
 
 def load_secrets() -> dict[str, str]:
     """Return the stored {KEY_NAME: value} map ({} if absent/malformed)."""
-    raw = store.read_json(current_home().secrets_file)
+    raw = read_json(current_home().secrets_file)
     return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
 
 
 def save_secrets(secrets: dict[str, str]) -> None:
-    store.write_json(current_home().secrets_file, secrets)
+    write_json(current_home().secrets_file, secrets)
 
 
 def load_secrets_meta() -> dict[str, Any]:
     """Return the raw secrets.meta.json contents ({} if absent/malformed)."""
-    raw = store.read_json(current_home().secrets_meta_file)
+    raw = read_json(current_home().secrets_meta_file)
     return raw if isinstance(raw, dict) else {}
 
 
 def save_secrets_meta(meta: dict[str, Any]) -> None:
-    store.write_json(current_home().secrets_meta_file, meta)
+    write_json(current_home().secrets_meta_file, meta)
 
 
 def secrets_keys() -> set[str]:

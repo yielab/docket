@@ -27,8 +27,8 @@ from typing import Any, Literal
 from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.platform import mkdir_private
 from docket.platform import process as _process
-from docket.platform import store
 
 # A sink receives the exact record trace_event is about to append (after
 # redaction, before the write) -- see subscribe() below.
@@ -185,7 +185,7 @@ def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
     if not records:
         return
     is_new = not tracefile.exists()
-    store.mkdir_private(tracefile.parent)
+    mkdir_private(tracefile.parent)
     with tracefile.open("a", encoding="utf-8") as f:
         for r in records:
             f.write(json.dumps(r) + "\n")

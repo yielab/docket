@@ -59,7 +59,7 @@ from docket.kernel.home import current_home
 from docket.models import selection as _mp
 from docket.operator import channel as _channel
 from docket.pipeline.application import schedule as _sched
-from docket.platform import store
+from docket.platform import read_json
 from docket.sandbox import launch as _launch
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
@@ -324,7 +324,7 @@ def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
         # Pod members use their own template scheme — exclude from single-agent drift.
         if _pod_mod.pod_of(aid) is not None:
             continue
-        tv_raw = store.read_json(current_home().meta_path(aid)).get("templateVersion")
+        tv_raw = read_json(current_home().meta_path(aid)).get("templateVersion")
         tv_i = int(tv_raw) if tv_raw is not None else None
         tmpl_results.append(
             {

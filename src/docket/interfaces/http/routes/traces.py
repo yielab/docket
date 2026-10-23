@@ -6,7 +6,7 @@ import urllib.parse as _urlparse
 
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
-from docket.observability import trace as _trace
+from docket.observability import export_lines
 
 # ── /traces/<project> cursor paging ─────────────────────────────────────────
 #
@@ -97,7 +97,7 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     # multi-session project replays the events that happened to follow the
     # anchor in glob order. Stable, so same-second lines keep their file order,
     # and unkeyable ("") lines sort to the front where the skip loop expects them.
-    lines = sorted(_trace.export_lines(project, cursor_ts), key=_trace_line_ts)
+    lines = sorted(export_lines(project, cursor_ts), key=_trace_line_ts)
 
     # Hold back anything from a second that might not be closed yet (see the
     # rationale above `_TRACE_HOLD_BACK_S`) -- an unkeyable ("") line always passes through,

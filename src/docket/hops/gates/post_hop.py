@@ -21,7 +21,7 @@ from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
+from docket.observability import redact
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.sandbox import launch as _launch
@@ -80,7 +80,7 @@ def _apply_output_guardrails(
                 _json.dumps({"hook": "pre_output", "policy": hit.policy_id, "action": hit.action}),
             )
         if hit.action == "redact":
-            hop_output = _trace.redact(hop_output)
+            hop_output = redact(hop_output)
         elif hit.action == "block":
             _trace_locked(
                 ctx.project,
@@ -137,7 +137,7 @@ def _run_gate_command(
     start = _clock.monotonic()
     code, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
     duration_s = _clock.monotonic() - start
-    return _GateRun(code, _trace.redact(raw_output), duration_s)
+    return _GateRun(code, redact(raw_output), duration_s)
 
 
 def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
@@ -272,7 +272,7 @@ def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
         warn_action="gate.reasons_warn",
         project=ctx.project,
     )
-    return _trace.redact(screened.content) if screened.ok else None
+    return redact(screened.content) if screened.ok else None
 
 
 def _parse_gate_reasons(
@@ -410,7 +410,7 @@ def _evaluate_verdict_gate(
             if cycles_so_far < rework.max_cycles and target_index is not None:
                 ctx.rework_counts[node.step_id] = cycles_so_far + 1
                 rework_event, _unused1, _unused2 = _verdict_event_names(role)
-                redacted = _trace.redact(hop_output)
+                redacted = redact(hop_output)
                 _trace_locked(
                     ctx.project,
                     ctx.session_id,
@@ -434,7 +434,7 @@ def _evaluate_verdict_gate(
             # Rework budget exhausted (or, defensively, no valid target) —
             # this verdict is now terminal.
             _unused3, rejected_event, _unused4 = _verdict_event_names(role)
-            redacted = _trace.redact(hop_output)
+            redacted = redact(hop_output)
             _trace_locked(
                 ctx.project,
                 ctx.session_id,
@@ -456,7 +456,7 @@ def _evaluate_verdict_gate(
     # specifically, they share one event name — see
     # `_verdict_event_names`).
     _unused5, rejected_event2, unparseable_event = _verdict_event_names(role)
-    redacted = _trace.redact(hop_output)
+    redacted = redact(hop_output)
     if verdict is None:
         _trace_locked(
             ctx.project,

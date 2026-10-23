@@ -28,7 +28,7 @@ from docket.hops.gates.pre_hop import (
     _pause_lead_for_budget,
     _refuse_unmet_profile,
 )
-from docket.observability import trace as _trace
+from docket.observability import trace_event
 from docket.pipeline.application.steps import (
     _run_command_step,
     _run_input_step,
@@ -41,7 +41,7 @@ from docket.pipeline.application.steps import (
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import git as _git
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 from docket.tasks.application.queue import pod_full_roster
 from docket.tasks.domain.task import DispatchError, HopResult, TaskResult, TaskRunRefusal
 from docket.teams import roles as _archetypes
@@ -94,7 +94,7 @@ def _record_task_run(project: str, task: dict[str, Any], source: str) -> None:
                 t["gateApplied"] = task["gateApplied"]
         return {"tasks": tasks}
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    read_modify_write(pod_task_list_path(project), _fn)
 
 
 def _run_group_node(
@@ -435,7 +435,7 @@ def dispatch_task(
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"
 
-    _trace.trace_event(
+    trace_event(
         project,
         session_id,
         "lead",
@@ -505,11 +505,11 @@ def dispatch_task(
         result.status = "failed"
         result.reason = str(exc)
         result.failure_kind = "dispatch_refused"
-        _trace.trace_event(
+        trace_event(
             project, session_id, "lead", "dispatch_refused", _json.dumps({"reason": str(exc)})
         )
 
-    _trace.trace_event(
+    trace_event(
         project,
         session_id,
         "lead",

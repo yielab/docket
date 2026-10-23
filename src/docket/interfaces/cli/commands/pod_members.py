@@ -12,7 +12,7 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.models import selection as _mp
-from docket.platform import store
+from docket.platform import read_json
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
@@ -49,7 +49,7 @@ def _implementer_member(project: str, member_id: str) -> None:
 
 def _reset_ledger(agent_id: str, ws: Path) -> None:
     """Replace the member's HEARTBEAT.md with a fresh ledger."""
-    raw = store.read_json(current_home().meta_path(agent_id))
+    raw = read_json(current_home().meta_path(agent_id))
     hb = ws / _mem.HEARTBEAT_FILE
     hb.write_text(_mem.heartbeat_seed(str(raw.get("name", agent_id))), encoding="utf-8")
     hb.chmod(0o600)

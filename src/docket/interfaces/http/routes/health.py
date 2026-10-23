@@ -7,7 +7,7 @@ from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.platform import store
+from docket.platform import read_json
 from docket.teams import fleet, utils
 
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
@@ -34,7 +34,7 @@ def _last_activity_or_never(agent_id: str) -> str:
 
 def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
     meta_path = current_home().meta_path(agent_id)
-    meta: dict[str, Any] = store.read_json(meta_path) if meta_path.exists() else {}
+    meta: dict[str, Any] = read_json(meta_path) if meta_path.exists() else {}
     cost = round(utils.aggregate_cost(agent_id).cost_usd, 6)
     budget_raw = meta.get("budgetUsd")
     budget: float | None = (

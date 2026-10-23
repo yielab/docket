@@ -84,7 +84,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.operator import contract as _oc
 from docket.operator import inbox as _inbox
-from docket.platform import store as _store
+from docket.platform import read_json, write_json
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
@@ -472,13 +472,13 @@ def wire_discovery_configured() -> bool:
 
 
 def _load_offset() -> int:
-    raw = _store.read_json(current_home().telegram_offset_file)
+    raw = read_json(current_home().telegram_offset_file)
     value = raw.get("offset") if isinstance(raw, dict) else None
     return int(value) if isinstance(value, int) else 0
 
 
 def _save_offset(offset: int) -> None:
-    _store.write_json(current_home().telegram_offset_file, {"offset": offset})
+    write_json(current_home().telegram_offset_file, {"offset": offset})
 
 
 # The two operations `interfaces/telegram/client.py` implements. Injectable so

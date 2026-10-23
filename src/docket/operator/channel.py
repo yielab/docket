@@ -35,7 +35,7 @@ from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.operator.contract import EVENT_KINDS
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 
 # The `on:` vocabulary: every ADR 0016 §7 event type suffix, plus the `needs_you` shorthand
 # that stands for every "something needs a human" transition at once.
@@ -291,7 +291,7 @@ def _merge_with_builtin_raw(name: str, raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_global_channels() -> dict[str, ChannelSpec]:
-    raw = _store.read_json(current_home().channels_file)
+    raw = read_json(current_home().channels_file)
     channels = raw.get("channels") if isinstance(raw, dict) else None
     entries: dict[str, ChannelSpec] = {}
     if not isinstance(channels, dict):
@@ -336,7 +336,7 @@ def save_channel(spec: ChannelSpec) -> None:
         current["channels"] = channels
         return current
 
-    _store.read_modify_write(current_home().channels_file, _update)
+    read_modify_write(current_home().channels_file, _update)
 
 
 def delete_channel(name: str) -> None:
@@ -354,7 +354,7 @@ def delete_channel(name: str) -> None:
         removed = True
         return current
 
-    _store.read_modify_write(current_home().channels_file, _update)
+    read_modify_write(current_home().channels_file, _update)
     if removed:
         return
 
@@ -410,7 +410,7 @@ def enable_channel(name: str, overrides: dict[str, Any] | None = None) -> Channe
         doc["channels"] = channels
         return doc
 
-    _store.read_modify_write(current_home().channels_file, _update)
+    read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -441,7 +441,7 @@ def disable_channel(name: str) -> ChannelSpec:
         doc["channels"] = channels
         return doc
 
-    _store.read_modify_write(current_home().channels_file, _update)
+    read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
@@ -487,7 +487,7 @@ def set_content(name: str, level: str) -> ChannelSpec:
         doc["channels"] = channels
         return doc
 
-    _store.read_modify_write(current_home().channels_file, _update)
+    read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 

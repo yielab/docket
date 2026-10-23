@@ -8,7 +8,7 @@ from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.home import current_home
-from docket.platform import store as _store
+from docket.platform import read_modify_write, write_json
 
 
 def create_pregrant(
@@ -50,7 +50,7 @@ def create_pregrant(
     }
     if expires_at:
         data["expiresAt"] = expires_at
-    _store.write_json(_approval_path(token), data)
+    write_json(_approval_path(token), data)
 
     audit_log(
         "approval.pregrant",
@@ -86,7 +86,7 @@ def consume_pregrant(token: str) -> bool:
         consumed = True
         return data
 
-    data = _store.read_modify_write(path, transition)
+    data = read_modify_write(path, transition)
     if consumed:
         tool = str((data.get("context") or {}).get("tool", ""))
         audit_log("approval.consume", f"token={token} tool={tool}")

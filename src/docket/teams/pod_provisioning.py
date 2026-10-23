@@ -24,7 +24,7 @@ from docket.kernel.errors import Conflict, InvalidInput, Unavailable
 from docket.kernel.home import current_home
 from docket.models import selection as _mp
 from docket.platform import git as _git
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write, with_lock
 from docket.teams import blueprints as _bp
 from docket.teams import fleet as _fleet
 from docket.teams import pod
@@ -140,7 +140,7 @@ def _project_provision_lock(project: str) -> Iterator[None]:
     with contextlib.suppress(OSError):
         lock_dir.parent.chmod(0o700)
         lock_dir.chmod(0o700)
-    with _store.with_lock(lock_dir / ".provision"):
+    with with_lock(lock_dir / ".provision"):
         yield
 
 
@@ -156,7 +156,7 @@ def _allocate_pod_resources(project: str) -> tuple[int, int, str, bool, bool]:
         created = updated is not table
         return updated if created else None
 
-    _store.read_modify_write(current_home().port_alloc_file, allocate)
+    read_modify_write(current_home().port_alloc_file, allocate)
     scratch = current_home().pod_scratch_dir(project)
     scratch_created = not scratch.exists()
     scratch.mkdir(parents=True, exist_ok=True)
@@ -190,7 +190,7 @@ def _free_pod_allocation(project: str) -> None:
             return None
         return _res.free_pod_ports(project, table)
 
-    _store.read_modify_write(current_home().port_alloc_file, free)
+    read_modify_write(current_home().port_alloc_file, free)
 
 
 def _remove_attempt_runtime(project: str, *, scratch_created: bool, work_dir_created: bool) -> None:
@@ -259,7 +259,7 @@ def teardown_member(member_id: str) -> tuple[bool, str]:
     # Remove the git worktrees first (before the workspace dir disappears).
     ws = current_home().projects_dir / member_id
     try:
-        raw = _store.read_json(ws / current_home().meta_file)
+        raw = read_json(ws / current_home().meta_file)
         codebase = str(raw.get("codebase", ""))
         project = str(raw.get("pod", ""))
     except Exception:
