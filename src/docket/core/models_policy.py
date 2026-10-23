@@ -44,16 +44,10 @@ _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
 
 
 def rank_anchors() -> dict[str, str]:
-    """Seed values for each rank (what `docket setup model` shows as "rank anchors"), read from the
-    built-in `anthropic` provider's own preset -- NOT a runtime fallback chain; nothing in
-    docket degrades a request to a cheaper model on failure."""
-    spec = _provider.load_catalog().get("anthropic")
-    if spec is None:
-        return {}
-    preset = next((p for p in spec.presets if p.name == "anthropic"), None)
-    if preset is None:
-        return {}
-    return {rank: f"anthropic/{model_id}" for rank, model_id in preset.ranks.items()}
+    """Seed values for each rank (shown by `docket setup model`), read from the `anthropic`
+    provider's own preset -- NOT a runtime fallback chain. Raises ``DocumentError`` when that
+    preset lacks an anchor."""
+    return _provider.rank_anchors_of(_provider.load_catalog())
 
 
 def presets() -> list[tuple[str, _provider.Preset]]:

@@ -297,3 +297,20 @@ class TestRefreshObservedModelsDue:
 
         monkeypatch.setattr(_provider, "probe_spec", fake)
         assert _provider.refresh_observed_models_due() == ["bb"]
+
+
+class TestRegisterRefusesAnUnusableRankSource:
+    def test_an_anthropic_document_without_its_anchors_is_not_registered(self) -> None:
+        from docket.kernel.errors import DocumentError
+
+        builtin = _provider.load_catalog().get("anthropic")
+        assert builtin is not None
+        broken = _provider.ProviderSpec.model_validate(
+            {**builtin.model_dump(by_alias=True), "presets": []}
+        )
+
+        with pytest.raises(DocumentError) as excinfo:
+            _provider.register_provider(broken, probe=ProbeResult(status=200))
+
+        assert "economy" in str(excinfo.value)
+        assert not _cfg.PROVIDERS_FILE.exists()

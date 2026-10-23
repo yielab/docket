@@ -222,3 +222,40 @@ class TestReapplyRolePolicy:
             _mp.RoleRepoint(aid, "demo", "security-vetter", _cfg.DEFAULT_MODEL, "local/local-model")
         ]
         assert _fleet.meta_get(aid, "model", "") == "local/local-model"
+
+
+class TestRankAnchorsFailLoudly:
+    """A catalog whose `anthropic` preset lacks a rank anchor is a document error, not a KeyError."""
+
+    @pytest.mark.parametrize(
+        ("presets", "missing"),
+        [
+            ([], "economy"),
+            ([{"name": "anthropic", "ranks": {"standard": "m"}}], "economy"),
+            ([{"name": "anthropic", "ranks": {"economy": "m"}}], "standard"),
+            ([{"name": "other", "ranks": {"economy": "m", "standard": "m"}}], "economy"),
+        ],
+    )
+    def test_load_registry_names_the_missing_anchor(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        presets: list[dict[str, object]],
+        missing: str,
+    ) -> None:
+        from docket.core import provider as _provider
+        from docket.kernel.errors import DocumentError
+
+        _point_at(tmp_path, monkeypatch)
+        builtin = _provider.load_catalog().get("anthropic")
+        assert builtin is not None
+        broken = _provider.ProviderSpec.model_validate(
+            {**builtin.model_dump(by_alias=True), "presets": presets}
+        )
+        _provider.save_provider(broken)
+
+        with pytest.raises(DocumentError) as excinfo:
+            _mp.load_registry()
+
+        assert missing in str(excinfo.value)
+        assert str(_cfg.PROVIDERS_FILE) in str(excinfo.value)

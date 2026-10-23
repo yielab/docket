@@ -678,11 +678,9 @@ class TestEndpointResolution:
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
         monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
         monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
-        entered = iter(("sk-or-stored", "vercel-stored"))
-        monkeypatch.setattr(_setup_model._getpass, "getpass", lambda prompt: next(entered))
 
-        assert _setup_model.credential_add("OPENROUTER_API_KEY") == 0
-        assert _setup_model.credential_add("AI_GATEWAY_API_KEY") == 0
+        assert _setup_model._write_credential("OPENROUTER_API_KEY", "sk-or-stored", "add")
+        assert _setup_model._write_credential("AI_GATEWAY_API_KEY", "vercel-stored", "add")
 
         openrouter = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
         gateway = adapter.resolve_endpoint("ai-gateway/anthropic/claude-sonnet-4.6")

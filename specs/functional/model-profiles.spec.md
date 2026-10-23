@@ -167,7 +167,11 @@ directly — see "Provider catalog" below.
    them. The anchors are **registry-overridable** (see "User registry overlay" requirement 4) and
    are displayed (read-only) by `docket setup model`, labeled "rank anchors". They are a
    role-default table, not a live runtime fallback chain: nothing in docket degrades a request
-   to a cheaper model on failure.
+   to a cheaper model on failure. When the `anthropic` provider's `anthropic` preset (the
+   built-in or a global document of that name) does not rank `economy` and `standard`,
+   `load_registry` **MUST** raise a `DocumentError` naming the file, the field and the missing
+   anchor, and `docket setup provider add` **MUST** refuse such a document (exit 1) before it
+   stores a credential or writes the catalog.
 
 ### Presets (docket setup model preset)
 
@@ -238,7 +242,8 @@ directly — see "Provider catalog" below.
 3. Registered local providers **MAY** require no bearer credential. Registration **MUST** probe
    `<base-url>/models` with the resolved credential (`verify_endpoint` classifying
    `probe_models`'s result) and classify it rather than collapse it to a boolean: a transport
-   failure (DNS, refused, timeout) **MUST** refuse and leave the prior provider catalog unchanged;
+   failure (DNS, refused, timeout) **MUST** refuse and leave the prior provider catalog and the
+   credential store unchanged (a credential is stored only after the probe got an answer);
    every HTTP response **MUST** register instead, with a warning when it is not a clean 200 ---
    401/403 names the missing or rejected credential, 404 states that `/models` is not served
    (capability unverified), any other status carries the status, and a 200 whose body advertises
@@ -302,10 +307,11 @@ directly — see "Provider catalog" below.
    `save_provider`, never to `fleet.json`, and audit it as `provider.add`. `<name>` is a path to
    a `kind: provider` file (registered as written), a catalog name (with no URL and no `--model`
    the catalog entry is registered as is), or a new name that **MUST** come with a URL
-   (otherwise it fails naming the missing URL). A document built from a URL or `--model` has one
-   model row (`--model`, else the catalog entry's first model, else `local-model`) and the catalog
-   entry's auth; a new name gets bearer auth with credential `<NAME>_API_KEY` when `--credential`
-   is given, else `none` and `local: true`. Re-running with identical arguments **MUST** write
+   (otherwise it fails naming the missing URL). A document built from a URL or `--model` over a
+   catalog entry keeps every row the entry has, with its price, and the entry's auth, headers and
+   identity fields; a `--model` the entry does not list adds a row. A new name has one row
+   (`--model`, else `local-model`); it gets bearer auth with credential `<NAME>_API_KEY` when
+   `--credential` is given, else `none` and `local: true`. Re-running with identical arguments **MUST** write
    nothing (idempotent; the output says `(unchanged)`). It also stores the provider's credential
    (flag, else its environment variable, else one already stored, else a hidden prompt on a
    terminal, else it fails naming the variable; api-keys.spec.md), probes `<baseUrl>/models` with
@@ -375,8 +381,9 @@ directly — see "Provider catalog" below.
    unregistered built-in), by `refresh_observed_models_due`, which `docket start --dispatch`'s
    sweep calls. A probe that is not a 200 records nothing and never erases an earlier
    observation. `setup provider add --ctx/--max-tokens` have no numeric default: absent means
-   "take what the probe observes, else unknown", a given value is declared; they take effect on
-   the model row `add` builds, that is when a URL or `--model` is given. `setup provider show`
+   "take what the probe observes, else unknown", a given value is declared on the row `--model`
+   names, or on the only row when `--model` is absent; with no `--model` and not exactly one row
+   `add` **MUST** refuse (exit 1) naming `--model`, registering nothing. `setup provider show`
    **MUST** print one row per model with `WINDOW` and `OUTPUT` columns, each as
    `<N> (declared)`, `<N> (observed <date>)` or `unknown`; `--json` carries `contextWindow`,
    `maxTokens`, `limitsSource` (`declared` when any limit is declared, else `observed` when any is
@@ -548,7 +555,7 @@ Where the names above live today (the only place paths appear):
   `validate_model`, `role_why`, `reapply_role_policy`, `RoleRepoint`, `is_local_provider`,
   `is_marketplace`, `price_for`, `prices_as_of`, `pricing_label`
 - `src/docket/core/provider.py`: `ProviderSpec`, `load_provider_document`, `load_catalog`,
-  `Catalog`, `save_provider`, `delete_provider`, `remove_provider`, `export_provider`,
+  `Catalog`, `rank_anchors_of`, `check_rank_anchors`, `save_provider`, `delete_provider`, `remove_provider`, `export_provider`,
   `resolve_credential`, `resolve_limits`, `observed_limits`, `record_observed_models`,
   `refresh_observed_models_due`, `verify_endpoint`, `probe_spec`, `register_provider`,
   `model_readiness`
