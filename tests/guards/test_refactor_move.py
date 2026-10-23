@@ -19,7 +19,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "maint" / "refactor" / "move.py"
 CASES = Path(__file__).parent / "fixtures" / "refactor" / "move"
-CASE_NAMES = ("module", "definitions", "tests_split", "package")
+CASE_NAMES = ("module", "definitions", "tests_split", "package", "merge")
 IGNORED = {"__pycache__", ".ruff_cache"}
 
 
@@ -241,3 +241,127 @@ def test_definitions_land_in_an_existing_destination_after_its_own_code(tmp_path
         "from __future__ import annotations\n\n\ndef keep() -> int:\n    return 1\n"
     )
     assert move.main(["--root", str(tmp_path), "--check"]) == 0
+
+
+def test_two_test_files_that_differ_in_a_shared_name_are_a_problem_naming_both(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _copy("merge", "before", tmp_path)
+    path = root / "tests" / "unit" / "edges" / "adapters" / "test_system.py"
+    path.write_text(path.read_text().replace('["true"]', '["false"]'))
+    before = _snapshot(root)
+    assert move.main(["--root", str(root)]) == 2
+    err = capsys.readouterr().err
+    assert "cmd" in err
+    assert "test_landlock.py" in err
+    assert "test_system.py" in err
+    assert _snapshot(root) == before
+
+
+def test_a_split_half_merges_into_a_test_file_that_already_sits_at_its_path(
+    tmp_path: Path,
+) -> None:
+    root = _copy("merge", "before", tmp_path)
+    (root / "refactor" / "target-map.toml").write_text(
+        '[[definition]]\nfrom = "docket.edges.adapters.system"\nto = "docket.edges.adapters.landlock"\n'
+        'names = ["landlock_argv"]\n'
+    )
+    assert move.main(["--root", str(root)]) == 0
+    merged = (root / "tests/unit/edges/adapters/test_landlock.py").read_text()
+    assert "def test_ok" in merged
+    assert "def test_argv" in merged
+    assert merged.count("def cmd") == 1
+    assert move.main(["--root", str(root), "--check"]) == 0
+
+
+def _mini(tmp_path: Path, files: dict[str, str], target_map: str) -> Path:
+    base = {
+        "pyproject.toml": _PYPROJECT,
+        "src/docket/__init__.py": "",
+        "src/docket/core/__init__.py": "",
+        "src/docket/lib/__init__.py": "",
+        "refactor/target-map.toml": target_map,
+    }
+    _write(tmp_path, {**base, **files})
+    return tmp_path
+
+
+_ONE_MOVE = '[[definition]]\nfrom = "docket.core.a"\nto = "docket.lib.b"\nnames = ["moved"]\n'
+
+
+def test_a_global_declared_for_a_name_that_moved_elsewhere_is_a_problem(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _mini(
+        tmp_path,
+        {
+            "src/docket/core/a.py": (
+                "FLAG = 1\n\n\ndef moved() -> None:\n    global FLAG\n    FLAG = 2\n\n\n"
+                "def stays() -> int:\n    return FLAG\n"
+            ),
+        },
+        _ONE_MOVE,
+    )
+    assert move.main(["--root", str(root)]) == 2
+    assert "`global FLAG`" in capsys.readouterr().err
+
+
+def test_an_import_that_clashes_with_a_moved_name_is_a_problem(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _mini(
+        tmp_path,
+        {
+            "src/docket/core/a.py": "from docket.lib import store as _s\n\n\ndef moved() -> int:\n    return _s.x\n",
+            "src/docket/lib/store.py": "x = 1\n",
+            "src/docket/lib/b.py": "def _s() -> int:\n    return 2\n",
+        },
+        _ONE_MOVE,
+    )
+    assert move.main(["--root", str(root)]) == 2
+    assert "already" in capsys.readouterr().err
+
+
+def test_a_unit_that_names_another_unit_stays_in_its_part(tmp_path: Path) -> None:
+    root = _copy("tests_split", "before", tmp_path)
+    path = root / "tests" / "unit" / "core" / "test_dispatch.py"
+    path.write_text(
+        path.read_text() + "\n\nclass TestShared:\n    NAMES = ['a']\n\n\nclass TestUser:\n"
+        "    def test_names(self) -> None:\n        assert TestShared.NAMES\n"
+        "        assert claim_next('a')\n"
+    )
+    assert move.main(["--root", str(root)]) == 0
+    claim = (root / "tests/unit/tasks/test_claim.py").read_text()
+    assert "class TestShared" in claim
+    assert "class TestUser" in claim
+
+
+def test_a_local_import_does_not_stand_in_for_a_module_level_alias(tmp_path: Path) -> None:
+    root = _mini(
+        tmp_path,
+        {
+            "src/docket/core/a.py": "def moved() -> int:\n    return 1\n\n\ndef kept() -> int:\n    return 2\n",
+            "src/docket/lib/b.py": "",
+            "src/docket/core/user.py": (
+                "from docket.core import a as _a\n\n\ndef one() -> int:\n"
+                "    from docket.lib import b as _b\n\n    return _b.__name__ and 1\n\n\n"
+                "def two() -> int:\n    return _a.moved() + _a.kept()\n"
+            ),
+        },
+        _ONE_MOVE,
+    )
+    assert move.main(["--root", str(root)]) == 0
+    text = (root / "src/docket/core/user.py").read_text()
+    compile(text, "user.py", "exec")
+    head, _, two = text.partition("def two")
+    assert "_b.moved()" in two
+    assert "from docket.lib import b as _b" in head.split("def one")[0]
+
+
+def test_a_top_level_import_cycle_between_modules_is_found() -> None:
+    files = {
+        "src/docket/a.py": "from docket.b import x\n",
+        "src/docket/b.py": "from docket import a\n",
+        "src/docket/c.py": "from docket.a import y\n\n\ndef f():\n    from docket.c import z\n",
+    }
+    assert move.import_cycles(files) == [["docket.a", "docket.b"]]

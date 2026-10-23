@@ -1,0 +1,8 @@
+[[module]]
+from = "docket.edges.adapters.landlock"
+to = "docket.sandbox.landlock"
+
+[[definition]]
+from = "docket.edges.adapters.system"
+to = "docket.sandbox.landlock"
+names = ["landlock_argv"]
