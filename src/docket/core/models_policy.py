@@ -250,7 +250,7 @@ def resolve_step_model(model: str) -> str:
     anchors (``economy``/``standard``); any other value is returned unchanged once its
     ``<provider>/...`` prefix is confirmed present in the provider catalog -- raises naming the
     provider otherwise, so a caller can refuse before any hop runs. See model-profiles.spec.md
-    "Model intent per agent" requirement 4."""
+    "Where a member's model comes from" requirement 3."""
     if model in ("cheap", "strong"):
         _, tiers, _ = load_registry()
         return tiers["economy"] if model == "cheap" else tiers["standard"]

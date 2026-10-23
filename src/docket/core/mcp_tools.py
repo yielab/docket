@@ -420,7 +420,7 @@ def _build_tool(
     )
 
 
-# ── the orchestration `core/agent_loop.py` will call once wired ────────────
+# ── the orchestration `core/agent_loop.py` calls ───────────────────────────
 
 
 @dataclass(frozen=True)

@@ -71,7 +71,7 @@ Issues = "https://github.com/yielab/docket/issues"
 Source = "https://github.com/yielab/docket"
 
 # Optional extras: kept out of the base install so `pip install docket` stays
-# dependency-light. `docket mcp serve` (Phase 18 L-3/L-6) needs the official
+# dependency-light. `docket start --mcp` needs the official
 # MCP Python SDK's high-level, decorator/`add_tool`-based server
 # (`mcp.server.MCPServer`) — the direct successor to the 1.x line's
 # `mcp.server.fastmcp.FastMCP` (same ergonomics: `add_tool(fn, name=...)`,

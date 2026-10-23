@@ -68,7 +68,7 @@ class TestSingleCodePathOnRealSdk:
         assert "fastmcp" not in source.lower()
         assert "from mcp.server import MCPServer" in source
 
-    def test_all_ten_tools_are_registered_with_the_real_sdk(self) -> None:
+    def test_every_control_plane_tool_is_registered_with_the_real_sdk(self) -> None:
         pytest.importorskip("mcp")
         import asyncio
 

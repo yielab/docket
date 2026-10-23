@@ -86,7 +86,7 @@ docket setup provider list                    # is TELEGRAM_BOT_TOKEN stored?
 
 **How to fix:**
 ```bash
-docket setup provider add TELEGRAM_BOT_TOKEN --credential  # if not already stored
+docket setup notify enable telegram --chat <chat-id>  # if the token is not already stored
 docket start --telegram             # or: docket start --dispatch --telegram
 ```
 

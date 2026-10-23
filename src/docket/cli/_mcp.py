@@ -238,7 +238,7 @@ def tool_inbox(since: str | None = None) -> dict[str, Any]:
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
     *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
-    figure); the ``MODEL_PRICING`` estimate `docket status` shows is not returned here."""
+    figure); the estimate from the provider catalog's prices that `docket status` shows is not returned here."""
     _audit("cost", f"agent={agent_id or ''}")
     snapshot = _status.cost_snapshot()
     if not agent_id:

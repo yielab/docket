@@ -117,9 +117,7 @@ reason docket owns session state at all.
 
 Every dispatched tool call emits a ``tool_call`` trace event before it runs
 and a ``tool_result`` trace event after (``core/trace.py``'s existing event
-vocabulary — the same two event types ``core/trace.py``'s ``trace_ingest``
-already projects from a driver's decoded session records, reused here for a
-live-emitted equivalent rather than an ingested one). ``docket task trace`` shows
+vocabulary, written through ``trace_append``). ``docket task trace`` shows
 what an agent actually did inside a turn. Entering or refusing the terminal
 response reservation emits the existing ``budget_warning`` event with numeric
 budget/estimate evidence only, never messages or model/tool content.

@@ -107,7 +107,7 @@ KEY_MAX_AGE_DAYS = int(os.environ.get("DOCKET_KEY_MAX_AGE_DAYS", "90"))
 # TRACE_RETENTION_DAYS: how long a TERMINATED trace file (one with a
 # session_end event, real or the synthetic one core/trace.py's sweep_all()
 # appends to a timed-out session) survives before `docket task prune --traces` --
-# and, once wired, the periodic sweep -- deletes it. An OPEN trace (no
+# and the periodic sweep -- deletes it. An OPEN trace (no
 # session_end yet) is never touched by age alone; see
 # core/trace.py::expire_old_traces for the liveness reasoning.
 # 30 days is deliberately generous: enough for an operator to investigate an
@@ -495,7 +495,7 @@ FLEET_FILE = Path(os.environ.get("FLEET_FILE", DOCKET_HOME / "fleet.json"))
 
 # ── docket-owned Telegram approval channel ──
 # The bot token is stored as an ordinary docket-keys secret (core/secrets.py)
-# under this name -- `docket setup provider add TELEGRAM_BOT_TOKEN` -- rather than a
+# under this name (stored by `docket setup notify enable telegram`) rather than a
 # bespoke config file, so it inherits the same at-rest handling (0600 JSON)
 # and the same redaction path (core/trace.py's redact() reads every stored
 # secret VALUE via core.secrets.secret_values()) every other credential
@@ -557,10 +557,10 @@ KEYRING_SERVICE = os.environ.get("DOCKET_KEYRING_SERVICE", "docket-cli")
 
 
 def no_trace() -> bool:
-    """True when DOCKET_NO_TRACE=1 should no-op every trace write/ingest.
+    """True when DOCKET_NO_TRACE=1 should no-op every trace write.
 
     A function, not a cached constant: tests toggle this per-test with
-    ``monkeypatch.setenv`` and expect ``trace_append``/``trace_ingest`` to
+    ``monkeypatch.setenv`` and expect ``trace_append`` to
     see the change within the same process, which a module-level constant
     (read once at import) cannot do.
     """

@@ -258,7 +258,7 @@ class Step(BaseModel):
     # Overrides the model this hop runs on, for this hop only -- `cheap`/`strong` (resolved
     # against the live rank anchors) or a `<provider>/<id>` literal. Never persisted to the
     # target agent's `.docket-meta.json`; see pod-dispatch.spec.md "Per-hop execution" and
-    # model-profiles.spec.md "Model intent per agent". `None` means "defer to the target's
+    # model-profiles.spec.md "Where a member's model comes from". `None` means "defer to the target's
     # own policy/pin resolution", not "no model".
     model: str | None = None
     # Skips this step on a closed predicate vocabulary (see `When`) -- applies to any
