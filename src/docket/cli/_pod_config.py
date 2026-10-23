@@ -392,7 +392,7 @@ def cmd_plan(
         )
     except _dispatch.DispatchError as ex:
         _fail(str(ex))
-    plan = _orch.resolve_plan(effective, roster, registry=_arch.load_registry())
+    plan = _orch.resolve_plan(effective, roster, registry=_arch.load_registry(project))
     ui.header("Pipeline plan", project)
     ui.console.print(f"Source: {source}")
     ui.console.print()
@@ -421,6 +421,14 @@ def _unreachable_handler(_args: dict[str, Any], _ctx: _tools.ToolContext) -> NoR
     raise AssertionError("pod check must never execute a tool")
 
 
+def _pod_allow_commands(project: str) -> tuple[str, ...]:
+    """The pod's ``allowCommands`` as the live gate sees it: empty when the setting is unreadable."""
+    try:
+        return _pod_core.PodSettings.load_for(project).allow_commands
+    except _pod_core.PodSettingsError:
+        return ()
+
+
 def _check_verdict(
     hook: str, role: str, text: str, tool: str, call_args: dict[str, str], project: str
 ) -> tuple[str, str, str, str]:
@@ -441,7 +449,9 @@ def _check_verdict(
                 kind="exec",
             ),
             {"command": text, **call_args},
-            _tools.ToolContext(role=role, project=project),
+            _tools.ToolContext(
+                role=role, project=project, allow_commands=_pod_allow_commands(project)
+            ),
         )
         return verdict.decision, verdict.reason, verdict.policy_id, verdict.policy_action
     call = _policy.ToolCallFacts(tool=tool, args=call_args, branch_of=lambda: "")

@@ -100,9 +100,10 @@ and chain (audit.spec.md).
      `ln` stay allowed as ordinary development writes. The jail is the boundary.
    - **The dry run.** `docket pod check "<text>" --role <role>` evaluates an `exec` tool through
      `evaluate_tool_call`, the function `dispatch_tool` calls, never a second copy of the
-     classifier and policy merge, with the pod's own policies folded in. It runs without the
-     turn's roots, the pod's `allowCommands` and the jail flag, so it reports the verdict of an
-     unjailed call with no workspace on the plain allowlist.
+     classifier and policy merge, with the pod's own policies and the pod's `allowCommands`
+     (read as the live gate reads them: empty when the stored settings are unreadable) folded in.
+     It runs without the turn's roots and the jail flag, so it reports the verdict of an unjailed
+     call with no workspace.
    - **A pod's extra bins.** A pod **MAY** extend the allowlist for its own turns with
      `allowCommands` (`docket pod set allowCommands <bin>[,<bin>...]`, comma-separated exact
      basenames). `classify_command` takes them as `extra_bins` (default empty, which changes no
@@ -399,9 +400,11 @@ where it applies to commands docket itself launches.
    `docket pod policies` and `docket pod check` **MUST** resolve the pod as every pod command does
    (`--pod <p>`, `DOCKET_POD`, the pod whose codebase contains the cwd) and fold that pod's
    directory in; outside any pod they see the global set only. Callers that pass the pod: the
-   in-turn gate (In-turn tool-call gate 4), the screening of `fetch`, MCP and gate-reason text, and
-   instruction and memory screening. The enqueue-time `pre_input` gate (requirement 2) and the
-   `pre_output` scan (requirement 3) pass none, so they evaluate the global set only.
+   in-turn gate (In-turn tool-call gate 4), the screening of `fetch`, MCP and gate-reason text,
+   instruction and memory screening, the enqueue-time `pre_input` gate (requirement 2), the
+   `pre_output` scan (requirement 3), a Telegram `/delegate` description, an approval's rationale
+   and grant or deny reason (the pod of the approval record), and an answer's content. Every
+   screen that judges text on a pod's behalf **MUST** pass that pod.
 
 ### Policy format v1 (ADR 0010)
 
@@ -1056,7 +1059,8 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    `rationale` and `options`.
    - `rationale` is the assistant text of the message that made the call (`ToolContext.rationale`,
      set by the agent loop per tool-call batch). It is screened with
-     `policy_eval_detail("lead", "pre_input", text, trusted=False)`, redacted, and cut to 500
+     `policy_eval_detail("lead", "pre_input", text, trusted=False, project=ctx.project)`,
+     redacted, and cut to 500
      characters. A `block` hit makes it `""` and adds `rationaleBlocked: true` to the trace
      payload. The key is always present for a gated call, `""` when there is no text. Approvals
      created outside a tool call carry neither key.

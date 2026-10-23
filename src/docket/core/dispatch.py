@@ -323,7 +323,9 @@ def _enqueue_pre_input_gate(
     """Evaluate ``pre_input`` once, at enqueue time; never raises. Unlike ``block``,
     ``require_approval`` does not synthesize a session_end -- the task still runs for real
     once granted. See specs/functional/security-gates.spec.md."""
-    hit = _policy.policy_eval_detail("lead", "pre_input", description, trusted=trusted)
+    hit = _policy.policy_eval_detail(
+        "lead", "pre_input", description, trusted=trusted, project=project
+    )
     if hit.action == "allow":
         return hit
 
@@ -2072,7 +2074,7 @@ def _apply_output_guardrails(
     hop_ok = run_res.ok
     hop_error = run_res.error
     if hop_output:
-        hit = _policy.policy_eval_detail(role, "pre_output", hop_output)
+        hit = _policy.policy_eval_detail(role, "pre_output", hop_output, project=ctx.project)
         # Also classify the hop's real output against the built-in
         # high-risk action classes (core/security.py's HIGH_RISK_PATTERNS),
         # independently of the JSON policy engine above. This is a second,
@@ -2976,7 +2978,7 @@ def _resolve_pipeline_steps(
     # The third element is each step id's own declared `instructions` text,
     # not yet interpolated -- see `_pipeline.step_instructions_by_id`.
     effective_spec = effective_pipeline(project, spec)
-    registry = _archetypes.load_registry()
+    registry = _archetypes.load_registry(project)
     roster = pod_full_roster(project)
     plan = _orch.resolve_plan(effective_spec, roster, registry=registry)
     runtime_steps = plan.runnable_nodes()

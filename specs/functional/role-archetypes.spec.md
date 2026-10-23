@@ -396,10 +396,9 @@ This specification does NOT cover:
    the pod's roster, the
    custom-role hop-instruction lookup, `budget_for_role` and `resolve_role_model` **MUST**
    resolve through the calling turn's or member's own project, so a pod-scoped override is
-   enforced on those paths, not only visible to `docket pod roles`. The gate fallback is not one
-   of them today: dispatch, `docket run` and `docket pod plan` resolve a step's missing gate
-   against the registry without the pod overlay, so a pod-only role's `gateContract` applies only
-   when its pipeline step declares the gate itself (a known defect).
+   enforced on those paths, not only visible to `docket pod roles`. So is the gate fallback:
+   dispatch, `docket run` and `docket pod plan` resolve a step's missing gate against the pod's
+   registry, so a pod-only role's `gateContract` gates its step.
    `find_overlay_problems` **MUST** accept the same `project` and cover the pod file too,
    for `docket setup`.
 

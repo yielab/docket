@@ -58,15 +58,15 @@ def approval_options() -> list[dict[str, Any]]:
     ]
 
 
-def screen_rationale(text: str) -> tuple[str, bool]:
-    """Screen the assistant text behind a gated call as untrusted input, then bound it.
-    Returns ``(rationale, blocked)``; a blocked rationale is ``""``."""
+def screen_rationale(text: str, project: str = "") -> tuple[str, bool]:
+    """Screen the assistant text behind a gated call as untrusted input (with *project*'s own
+    policies when it is a pod's), then bound it. Returns ``(rationale, blocked)``; a blocked rationale is ``""``."""
     text = (text or "").strip()
     if not text:
         return "", False
     from docket.core import policy as _policy
 
-    hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False)
+    hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
     if hit.action == "block":
         return "", True
     return _redact(text)[:APPROVAL_RATIONALE_MAX_CHARS], False
@@ -157,6 +157,15 @@ def _read(token: str) -> dict[str, Any]:
         raise ApprovalError(f"Approval not found: {token}")
     with path.open(encoding="utf-8") as f:
         return json.load(f)  # type: ignore[no-any-return]
+
+
+def _record_project(token: str) -> str:
+    """The pod an approval record belongs to; ``""`` for a record that is missing or has none,
+    which the transition after the screen then refuses on its own."""
+    try:
+        return str(_read(token).get("project", ""))
+    except (ApprovalError, OSError, ValueError):
+        return ""
 
 
 def _set_state(token: str, new_state: str) -> dict[str, Any]:
@@ -375,7 +384,9 @@ def approval_grant(
     if reason:
         from docket.core import policy as _policy
 
-        hit = _policy.policy_eval_detail("lead", "pre_input", reason, trusted=False)
+        hit = _policy.policy_eval_detail(
+            "lead", "pre_input", reason, trusted=False, project=_record_project(token)
+        )
         if hit.action == "block":
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
 
@@ -410,7 +421,9 @@ def approval_deny(
     if reason:
         from docket.core import policy as _policy
 
-        hit = _policy.policy_eval_detail("lead", "pre_input", reason, trusted=False)
+        hit = _policy.policy_eval_detail(
+            "lead", "pre_input", reason, trusted=False, project=_record_project(token)
+        )
         if hit.action == "block":
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
 

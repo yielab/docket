@@ -108,21 +108,25 @@ def _load_parked_question(t: dict[str, Any], task_id: str) -> Question:
         raise AnswerError(str(exc)) from exc
 
 
-def _validate_and_screen(question: Question, result: AnswerResult) -> None:
+def _validate_and_screen(project: str, question: Question, result: AnswerResult) -> None:
     """Validate *result* against *question*'s schema, then screen every string value in its
-    content through ``pre_input``. Raises ``AnswerError``/``AnswerRejected``; writes nothing."""
+    content through ``pre_input`` with *project*'s own policies. Raises ``AnswerError``/
+    ``AnswerRejected``; writes nothing."""
     try:
         validate_answer(question, result)
     except ValueError as exc:
         raise AnswerError(str(exc)) from exc
-    _screen_content(result)
+    _screen_content(project, result)
 
 
-def _screen_content(result: AnswerResult) -> None:
-    """Screen every string in *result*'s content through ``pre_input`` (``AnswerRejected``)."""
+def _screen_content(project: str, result: AnswerResult) -> None:
+    """Screen every string in *result*'s content through ``pre_input`` with *project*'s own
+    policies (``AnswerRejected``)."""
     for value in (result.content or {}).values():
         if isinstance(value, str):
-            hit = _policy.policy_eval_detail("lead", "pre_input", value, trusted=False)
+            hit = _policy.policy_eval_detail(
+                "lead", "pre_input", value, trusted=False, project=project
+            )
             if hit.action == "block":
                 raise AnswerRejected(hit.policy_id)
 
@@ -158,6 +162,7 @@ def _append_answer(
 
 
 def _answer_consult(
+    project: str,
     t: dict[str, Any],
     question_raw: dict[str, Any],
     result: AnswerResult,
@@ -178,7 +183,7 @@ def _answer_consult(
         validate_answer_v11(question, answer)
     except (ValidationError, ValueError) as exc:
         raise AnswerError(str(exc)) from exc
-    _screen_content(answer)
+    _screen_content(project, answer)
     _append_answer(t, question, answer, channel=channel, actor=actor, ts=ts, option_id=option_id)
     t["consultAnswer"] = {
         "step": question.step,
@@ -302,12 +307,14 @@ def answer_task(
                 raise AnswerError(f"task {task_id!r} is not waiting_input")
             raw = t.get("question")
             if isinstance(raw, dict) and raw.get("kind") in ("clarification", "decision"):
-                consulted = _answer_consult(t, raw, result, channel=channel, actor=actor, ts=ts)
+                consulted = _answer_consult(
+                    project, t, raw, result, channel=channel, actor=actor, ts=ts
+                )
                 outcome["step"] = consulted.step
                 outcome["question_id"] = consulted.id
                 return {"tasks": tasks}
             question = _load_parked_question(t, task_id)
-            _validate_and_screen(question, result)
+            _validate_and_screen(project, question, result)
             _append_answer(t, question, result, channel=channel, actor=actor, ts=ts)
 
             node, pipeline_index, route_counts = _locate_parked_step(
