@@ -19,6 +19,7 @@ from docket.cli import app as _app
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._inbox"
 
@@ -191,7 +192,10 @@ class TestCursor:
 
         assert [t["id"] for t in first["doneSince"]] == ["t1"]
         assert second["doneSince"] == []
-        assert _store.read_json(_cfg.INBOX_CURSOR_FILE)["since"] == "2026-09-28T01:00:00+00:00"
+        assert (
+            _store.read_json(current_home().inbox_cursor_file)["since"]
+            == "2026-09-28T01:00:00+00:00"
+        )
 
     def test_peek_and_explicit_since_leave_no_cursor(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -203,4 +207,4 @@ class TestCursor:
         body = json.loads(_inbox("--json", "--since", "2026-09-28T05:00:00+00:00").stdout)
 
         assert body["doneSince"] == []
-        assert not _cfg.INBOX_CURSOR_FILE.exists()
+        assert not current_home().inbox_cursor_file.exists()

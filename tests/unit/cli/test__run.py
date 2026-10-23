@@ -25,6 +25,7 @@ from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ass
 from docket.core.policy import install_policies
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._run"
 
@@ -52,7 +53,7 @@ def _endpoint(monkeypatch: pytest.MonkeyPatch, ok: bool) -> None:
 
 
 def _runs_file() -> str:
-    return _cfg.RUNS_FILE.read_text() if _cfg.RUNS_FILE.exists() else ""
+    return current_home().runs_file.read_text() if current_home().runs_file.exists() else ""
 
 
 class _FakeTTY(io.StringIO):
@@ -230,7 +231,7 @@ class TestDryRun:
         assert result.exit_code == 0, result.output
         assert _runs_file() == before_runs
         assert _dispatch.read_tasks("demo") == before_tasks
-        assert list((_cfg.TRACES_DIR / "demo").glob("*.jsonl")) == []
+        assert list((current_home().traces_dir / "demo").glob("*.jsonl")) == []
 
     def test_needs_no_model_endpoint(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
@@ -499,7 +500,9 @@ def _dispatches(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def _installed_skill() -> str:
-    return (_cfg.pod_config_dir("demo") / "skills" / "style-guide" / "SKILL.md").read_text()
+    return (
+        current_home().pod_config_dir("demo") / "skills" / "style-guide" / "SKILL.md"
+    ).read_text()
 
 
 class TestRunPicksUpTheRepository:

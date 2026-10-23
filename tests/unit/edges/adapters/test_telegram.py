@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from docket.edges.adapters import telegram as _tg
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.edges.adapters.telegram"
 
@@ -223,39 +224,38 @@ class TestPoisonUpdateDoesNotWedgeThePoller:
     def test_offset_advances_past_a_raising_update(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from tests.conftest import repoint_docket_home
 
         from docket.core import audit as _audit
         from docket.core import telegram as _core_tg
         from docket.edges.adapters.telegram import GetUpdatesResult, TelegramUpdate
 
-        repoint_docket_home(monkeypatch, tmp_path / "home")
-        monkeypatch.setattr(_core_tg, "_load_token", lambda: "123:token")
-        updates = (
-            TelegramUpdate(update_id=50, chat_id="1", user_id="1", text="/status"),
-            TelegramUpdate(update_id=51, chat_id="1", user_id="1", text="/status"),
-        )
-        seen: list[int] = []
-
-        def _handle(
-            msg: _core_tg.InboundMessage, **_kwargs: object
-        ) -> _core_tg.TelegramActionResult:
-            seen.append(msg.update_id)
-            if msg.update_id == 50:
-                raise RuntimeError("poison")
-            return _core_tg.TelegramActionResult(
-                ok=True, reply="ok", authorized=True, action="status"
+        with use_home(Home(tmp_path / "home")):
+            monkeypatch.setattr(_core_tg, "_load_token", lambda: "123:token")
+            updates = (
+                TelegramUpdate(update_id=50, chat_id="1", user_id="1", text="/status"),
+                TelegramUpdate(update_id=51, chat_id="1", user_id="1", text="/status"),
             )
+            seen: list[int] = []
 
-        monkeypatch.setattr(_core_tg, "handle_message", _handle)
-        sent: list[str] = []
-        summary = _core_tg.poll_once(
-            get_updates=lambda *a, **k: GetUpdatesResult(ok=True, updates=updates),
-            send_message=lambda token, chat_id, text: sent.append(text) or True,
-        )
-        assert summary.ok
-        assert seen == [50, 51]
-        assert _core_tg._load_offset() == 52
-        assert sent == ["ok"]
-        actions = [e.get("action") for e in _audit.read_audit()]
-        assert "telegram.update_failed" in actions
+            def _handle(
+                msg: _core_tg.InboundMessage, **_kwargs: object
+            ) -> _core_tg.TelegramActionResult:
+                seen.append(msg.update_id)
+                if msg.update_id == 50:
+                    raise RuntimeError("poison")
+                return _core_tg.TelegramActionResult(
+                    ok=True, reply="ok", authorized=True, action="status"
+                )
+
+            monkeypatch.setattr(_core_tg, "handle_message", _handle)
+            sent: list[str] = []
+            summary = _core_tg.poll_once(
+                get_updates=lambda *a, **k: GetUpdatesResult(ok=True, updates=updates),
+                send_message=lambda token, chat_id, text: sent.append(text) or True,
+            )
+            assert summary.ok
+            assert seen == [50, 51]
+            assert _core_tg._load_offset() == 52
+            assert sent == ["ok"]
+            actions = [e.get("action") for e in _audit.read_audit()]
+            assert "telegram.update_failed" in actions

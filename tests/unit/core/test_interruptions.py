@@ -4,15 +4,16 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -20,6 +21,7 @@ from docket.core import interruptions as _interruptions
 from docket.core import operator_contract as _oc
 from docket.core import tools as core_tools
 from docket.core.llm import ToolCall
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.interruptions"
 
@@ -75,7 +77,7 @@ class TestForecast:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        policies_dir = _cfg.pod_config_dir("demo") / "policies"
+        policies_dir = current_home().pod_config_dir("demo") / "policies"
         policies_dir.mkdir(parents=True)
         (policies_dir / "prod-approval.yaml").write_text(
             "kind: policy\n"
@@ -102,7 +104,7 @@ class TestForecast:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        policies_dir = _cfg.pod_config_dir("demo") / "policies"
+        policies_dir = current_home().pod_config_dir("demo") / "policies"
         policies_dir.mkdir(parents=True)
         (policies_dir / "src-edits.yaml").write_text(
             "kind: policy\n"
@@ -218,8 +220,9 @@ class TestPregrantAtTheChokepoint:
     rephrased one still asks (ADR 0016 SS10's exact-after-whitespace-collapse limit)."""
 
     @pytest.fixture(autouse=True)
-    def _isolate_gates(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    def _isolate_gates(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            yield
 
     def _pregrants_for(self, task: dict[str, Any]) -> tuple[core_tools.Pregrant, ...]:
         return tuple(

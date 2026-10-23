@@ -74,7 +74,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-import docket.config as _cfg
 from docket.core import answers as _answers
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
@@ -88,6 +87,7 @@ from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters.telegram import GetUpdatesResult
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 __all__ = [
     "InboundMessage",
@@ -459,7 +459,7 @@ class PollSummary:
 
 
 def _load_token() -> str:
-    return _secrets.secret_value(_cfg.TELEGRAM_BOT_TOKEN_KEY) or ""
+    return _secrets.secret_value(current_home().telegram_bot_token_key) or ""
 
 
 def wire_discovery_configured() -> bool:
@@ -469,13 +469,13 @@ def wire_discovery_configured() -> bool:
 
 
 def _load_offset() -> int:
-    raw = _store.read_json(_cfg.TELEGRAM_OFFSET_FILE)
+    raw = _store.read_json(current_home().telegram_offset_file)
     value = raw.get("offset") if isinstance(raw, dict) else None
     return int(value) if isinstance(value, int) else 0
 
 
 def _save_offset(offset: int) -> None:
-    _store.write_json(_cfg.TELEGRAM_OFFSET_FILE, {"offset": offset})
+    _store.write_json(current_home().telegram_offset_file, {"offset": offset})
 
 
 # The two operations `edges/adapters/telegram.py` implements. Injectable so
@@ -551,8 +551,8 @@ def _resolved_request_timeout() -> tuple[float, str]:
     mistake. Returns ``(value, warning)``; warning is empty when the
     configured value already satisfied the invariant.
     """
-    poll = _cfg.TELEGRAM_POLL_TIMEOUT_S
-    configured = _cfg.TELEGRAM_REQUEST_TIMEOUT_S
+    poll = current_home().telegram_poll_timeout_s
+    configured = current_home().telegram_request_timeout_s
     if configured > poll:
         return configured, ""
     clamped = poll + _REQUEST_TIMEOUT_MARGIN_S
@@ -591,7 +591,7 @@ def poll_once(
     result = get_updates_fn(
         token,
         offset=offset,
-        timeout=_cfg.TELEGRAM_POLL_TIMEOUT_S,
+        timeout=current_home().telegram_poll_timeout_s,
         request_timeout=request_timeout,
     )
     if not result.ok:

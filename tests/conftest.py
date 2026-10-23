@@ -9,12 +9,14 @@ secrets).
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 import docket.config as _cfg
 import docket.kernel.home as _home
+from docket.kernel.home import Home, current_home, use_home
 
 _LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 2.0, "integration": 10.0}
 
@@ -69,7 +71,7 @@ def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Safety net: default FLEET_FILE to an ephemeral path for every test.
 
     ``DOCKET_HOME`` (fleet.json's home) is not implicitly isolated by
@@ -80,7 +82,10 @@ def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     patch. A test that wants a specific fleet.json still repoints
     ``_cfg.FLEET_FILE`` itself, which simply overrides this default.
     """
-    monkeypatch.setattr(_cfg, "FLEET_FILE", tmp_path / "_autouse_fleet.json", raising=True)
+    with use_home(
+        dataclasses.replace(current_home(), fleet_file_override=tmp_path / "_autouse_fleet.json")
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -209,18 +214,18 @@ def register_local_provider(
     from docket.core import provider as _provider
 
     with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, home)
-        _provider.save_provider(
-            _provider.ProviderSpec.model_validate(
-                {
-                    "name": name,
-                    "baseUrl": base_url,
-                    "auth": {"type": "none"},
-                    "local": True,
-                    "models": models,
-                }
+        with use_home(Home(home)):
+            _provider.save_provider(
+                _provider.ProviderSpec.model_validate(
+                    {
+                        "name": name,
+                        "baseUrl": base_url,
+                        "auth": {"type": "none"},
+                        "local": True,
+                        "models": models,
+                    }
+                )
             )
-        )
 
 
 def record_isolation_off(home: Path) -> None:

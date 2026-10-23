@@ -16,7 +16,6 @@ import shutil
 from typing import Any
 from urllib.parse import urlsplit
 
-import docket.config as _cfg
 from docket import ui
 from docket.core import channel as _channel
 from docket.core import exporter as _exporter
@@ -74,7 +73,7 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
     recorded spend only -- see ``_batch_gating_cost`` for the budget-warning figure."""
     out: dict[str, tuple[str, float, int]] = {}
     for aid in agent_ids:
-        raw = store.read_json(_cfg.meta_path(aid))
+        raw = store.read_json(current_home().meta_path(aid))
         budget = str(raw.get("budgetUsd", "") or "")
         totals = aggregate_cost(aid)
         out[aid] = (budget, totals.cost_usd, totals.turns)
@@ -87,7 +86,7 @@ def _batch_gating_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, bool
     driver's recorded cost is always 0.0."""
     out: dict[str, tuple[str, float, bool]] = {}
     for aid in agent_ids:
-        raw = store.read_json(_cfg.meta_path(aid))
+        raw = store.read_json(current_home().meta_path(aid))
         budget = str(raw.get("budgetUsd", "") or "")
         cost_f, estimated = gating_cost(aid)
         out[aid] = (budget, cost_f, estimated)
@@ -131,14 +130,14 @@ def _check_project_agents(ids: list[str]) -> int:
     registered = {a.id for a in _fleet.list_agents(fleet)}
 
     for aid in ids:
-        ws = _cfg.PROJECTS_DIR / aid
+        ws = current_home().projects_dir / aid
         tg = _fleet.get_binding(aid, cfg=fleet)
         proj_issues: list[str] = []
         for f in _required_workspace_files(aid):
             if not (ws / f).is_file():
                 proj_issues.append(f"missing {f}")
-        if not (ws / _cfg.META_FILE).is_file():
-            proj_issues.append(f"no {_cfg.META_FILE}")
+        if not (ws / current_home().meta_file).is_file():
+            proj_issues.append(f"no {current_home().meta_file}")
         if aid not in registered:
             proj_issues.append("not registered in fleet")
 
@@ -177,7 +176,7 @@ def _check_schedule_config() -> int:
     from docket.core import schedule as _sched
 
     ui.section("Schedules (docket-schedules.json):")
-    problems = _sched.find_schedule_problems(_cfg.SCHEDULE_FILE)
+    problems = _sched.find_schedule_problems(current_home().schedule_file)
     if not problems:
         ui.success("  All schedules are well-formed")
         return 0
@@ -207,7 +206,7 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
     issues = 0
     for project in pods:
         lead_id = _pod.member_id(project, "lead")
-        ws = _cfg.workspace_dir(lead_id)
+        ws = current_home().workspace_dir(lead_id)
         tasks = _dispatch.read_tasks(project)
         running_ids = {str(t["id"]) for t in tasks if t.get("status") == "running"}
         ledger_ids = set(_mem.read_dispatch_task_ids(ws))
@@ -315,7 +314,7 @@ def _missing_provider_keys(ids: list[str]) -> list[tuple[str, str, str]]:
     stored = _secrets.secrets_keys()
     missing: list[tuple[str, str, str]] = []
     for aid in ids:
-        model = _fleet.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
+        model = _fleet.meta_get(aid, "model", current_home().default_model)
         provider = model.split("/")[0] if "/" in model else ""
         expected = _expected_credential(provider)
         if expected and expected not in stored:
@@ -345,7 +344,7 @@ def _provider_catalog_problems() -> list[tuple[str, str]]:
 
     from docket.core.provider import ProviderSpec
 
-    raw = store.read_json(_cfg.PROVIDERS_FILE)
+    raw = store.read_json(current_home().providers_file)
     providers = raw.get("providers") if isinstance(raw, dict) else None
     problems: list[tuple[str, str]] = []
     if not isinstance(providers, dict):
@@ -374,7 +373,7 @@ def _check_provider_catalog() -> int:
         return 0
     ui.console.print("[red]✗[/red]   Found malformed docket-providers.json entries:")
     for name, reason in problems:
-        ui.console.print(f"    {_cfg.PROVIDERS_FILE}: {name}: {reason}")
+        ui.console.print(f"    {current_home().providers_file}: {name}: {reason}")
     return len(problems)
 
 
@@ -479,7 +478,7 @@ def _check_security_gates(ids: list[str] | None = None) -> int:
             ui.success(f"  Workspace isolation: {state}, backend {backend}")
             if _docker_image_has_git() is False:
                 ui.warn(
-                    f"  Docker jail image {_cfg.SANDBOX_DOCKER_IMAGE} has no git -- a jailed "
+                    f"  Docker jail image {current_home().sandbox_docker_image} has no git -- a jailed "
                     "commit will fail. Set DOCKET_SANDBOX_IMAGE=<an image with git>"
                 )
 
@@ -660,7 +659,8 @@ def _agents_missing_contract(ids: list[str]) -> list[str]:
     return [
         aid
         for aid in ids
-        if _cfg.workspace_dir(aid).is_dir() and not _mem.contract_ok(_cfg.workspace_dir(aid))
+        if current_home().workspace_dir(aid).is_dir()
+        and not _mem.contract_ok(current_home().workspace_dir(aid))
     ]
 
 
@@ -670,8 +670,8 @@ def _check_runtime_contract(ids: list[str]) -> int:
     ui.section("Runtime startup contract:")
     missing = _agents_missing_contract(ids)
     for aid in missing:
-        ws = _cfg.workspace_dir(aid)
-        meta = store.read_json(_cfg.meta_path(aid))
+        ws = current_home().workspace_dir(aid)
+        meta = store.read_json(current_home().meta_path(aid))
         codebase = str(meta.get("codebase", ""))
         stack = str(meta.get("stack", ""))
         name = str(meta.get("name", "") or aid)
@@ -742,12 +742,12 @@ def _check_json_fleet_state() -> tuple[int, dict[str, Any], _fleet.FleetConfig |
         fleet = _fleet.load_fleet()
         fleet_data = {
             "ok": True,
-            "path": str(_cfg.FLEET_FILE),
+            "path": str(current_home().fleet_file),
             "agents": len(fleet.agents),
             "bindings": len(fleet.bindings),
         }
     except Exception as ex:
-        fleet_data = {"ok": False, "path": str(_cfg.FLEET_FILE), "error": str(ex)}
+        fleet_data = {"ok": False, "path": str(current_home().fleet_file), "error": str(ex)}
         issues += 1
     return issues, fleet_data, fleet
 
@@ -767,12 +767,12 @@ def _check_json_agents(
     agents_json: list[dict[str, Any]] = []
     for aid in ids:
         a_issues: list[str] = []
-        ws = _cfg.PROJECTS_DIR / aid
+        ws = current_home().projects_dir / aid
         for f in _required_workspace_files(aid):
             if not (ws / f).exists():
                 a_issues.append(f"missing {f}")
-        if not (ws / _cfg.META_FILE).exists():
-            a_issues.append(f"no {_cfg.META_FILE}")
+        if not (ws / current_home().meta_file).exists():
+            a_issues.append(f"no {current_home().meta_file}")
         if aid not in fleet_agent_map:
             a_issues.append("not registered in fleet")
         if a_issues:
@@ -792,7 +792,7 @@ def _check_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
     dispatch_ledger_results: list[dict[str, Any]] = []
     for project in _dispatch_mod.dispatchable_pods():
         lead_id = _pod_ledger_mod.member_id(project, "lead")
-        ws = _cfg.workspace_dir(lead_id)
+        ws = current_home().workspace_dir(lead_id)
         tasks = _dispatch_mod.read_tasks(project)
         running_ids = {str(t["id"]) for t in tasks if t.get("status") == "running"}
         ledger_ids = set(_mem.read_dispatch_task_ids(ws))
@@ -899,7 +899,7 @@ def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
         # Pod members use their own template scheme — exclude from single-agent drift.
         if _pod_mod.pod_of(aid) is not None:
             continue
-        tv_raw = store.read_json(_cfg.meta_path(aid)).get("templateVersion")
+        tv_raw = store.read_json(current_home().meta_path(aid)).get("templateVersion")
         tv_i = int(tv_raw) if tv_raw is not None else None
         tmpl_results.append(
             {
@@ -918,7 +918,7 @@ def _check_json_config_files(ids: list[str]) -> tuple[int, dict[str, Any]]:
     from docket.core import schedule as _sched
 
     registry = _mp.find_registry_problems()
-    schedules = _sched.find_schedule_problems(_cfg.SCHEDULE_FILE)
+    schedules = _sched.find_schedule_problems(current_home().schedule_file)
     _files, policies = _policy_problems()
     pod_overlays = _pod_overlay_problems()
     stale = [

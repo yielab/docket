@@ -27,6 +27,7 @@ import docket.config as _cfg
 import docket.plugins as _plugin_api
 from docket.core import plugins as _plugins
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 VALID_HOOKS: frozenset[str] = frozenset({"pre_input", "pre_tool_call", "pre_output"})
 VALID_ACTIONS: frozenset[str] = frozenset({"allow", "warn", "redact", "require_approval", "block"})
@@ -317,7 +318,7 @@ def _pod_policies_dir(project: str) -> Path | None:
     """This pod's own policy directory under ``pod_config_dir``, or ``None`` for no pod."""
     if not project:
         return None
-    return _cfg.pod_config_dir(project) / "policies"
+    return current_home().pod_config_dir(project) / "policies"
 
 
 def _glob_policy_files(directory: Path) -> list[Path]:
@@ -334,8 +335,8 @@ def policy_files(project: str = "") -> list[Path]:
     files: list[Path] = []
     # Each directory is checked independently -- an operator with no fleet-wide policies
     # installed must still get their pod's own.
-    if _cfg.POLICIES_DIR.is_dir():
-        files.extend(_glob_policy_files(_cfg.POLICIES_DIR))
+    if current_home().policies_dir.is_dir():
+        files.extend(_glob_policy_files(current_home().policies_dir))
     pod_dir = _pod_policies_dir(project)
     if pod_dir is not None and pod_dir.is_dir():
         files.extend(_glob_policy_files(pod_dir))
@@ -590,15 +591,17 @@ def install_policies() -> PolicyInstallResult:
     behind the workstation foundation bootstrap's policy-provisioning step, so what "installed"
     means has one definition."""
     template_dir = _cfg.policy_templates_dir()
-    result = PolicyInstallResult(template_dir=template_dir, policies_dir=_cfg.POLICIES_DIR)
+    result = PolicyInstallResult(
+        template_dir=template_dir, policies_dir=current_home().policies_dir
+    )
     if not template_dir.is_dir():
         return result
 
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(_cfg.POLICIES_DIR, 0o700)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(current_home().policies_dir, 0o700)
 
     for f in _glob_policy_files(template_dir):
-        dest = _cfg.POLICIES_DIR / f.name
+        dest = current_home().policies_dir / f.name
         if dest.exists():
             result.entries.append((f.name, False))
         else:

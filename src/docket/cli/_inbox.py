@@ -10,7 +10,6 @@ from typing import Any
 
 import typer
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract, _status
 from docket.core import approval as _approval
@@ -19,6 +18,7 @@ from docket.core import inbox as _inbox
 from docket.core.operator_contract import ApprovalView, InboxView, TaskView
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 APPROVED_READY = "approved_ready"
 NEEDS_MEMORY = "needs_memory_approval"
@@ -34,12 +34,12 @@ _TASK_STATES = {
 
 
 def _read_cursor() -> str | None:
-    since = _store.read_json(_cfg.INBOX_CURSOR_FILE).get("since")
+    since = _store.read_json(current_home().inbox_cursor_file).get("since")
     return str(since) if since else None
 
 
 def _write_cursor(value: str) -> None:
-    _store.write_json(_cfg.INBOX_CURSOR_FILE, {"since": value})
+    _store.write_json(current_home().inbox_cursor_file, {"since": value})
 
 
 def _approved_ready_tasks() -> list[TaskView]:

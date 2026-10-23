@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import app
 from docket.core.audit import audit_log
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli._log"
 
@@ -18,9 +19,9 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    repoint_docket_home(monkeypatch, tmp_path / "home")
-    return tmp_path / "home"
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    with use_home(Home(tmp_path / "home")):
+        yield tmp_path / "home"
 
 
 def _record(count: int) -> None:

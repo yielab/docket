@@ -7,22 +7,23 @@ and trace events (task_claim), not monotonic totals.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.core import dispatch as _dispatch
 from docket.core import escalation as _escalation
 from docket.core import trace as _trace
 from docket.edges import store as _store
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.escalation"
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with all docket-owned store paths repointed."""
     d = tmp_path / ".docket"
     d.mkdir()
@@ -46,8 +47,8 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # Create the pod's workspace directory so we can write tasks
     workspace = d / "workspaces" / "projects" / "myproj-lead"
     workspace.mkdir(parents=True, exist_ok=True)
-    repoint_docket_home(monkeypatch, d)
-    return d
+    with use_home(Home(d)):
+        yield d
 
 
 def _write_task(project: str, task_data: dict) -> None:

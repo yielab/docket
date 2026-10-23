@@ -8,14 +8,16 @@ token accounting, and fail-closed summarisation on a failing driver.
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import session as _sess
 from docket.core.llm import ChatMessage, TokenUsage, ToolCall, assistant, system, tool_result, user
 from docket.core.runtime_driver import TurnResult
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.session"
 
@@ -64,8 +66,9 @@ def _empty_reply_driver(
 
 
 @pytest.fixture(autouse=True)
-def _isolate_sessions_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "SESSIONS_DIR", tmp_path / "sessions", raising=True)
+def _isolate_sessions_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(dataclasses.replace(current_home(), sessions_dir_override=tmp_path / "sessions")):
+        yield
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

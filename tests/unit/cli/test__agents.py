@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _agents, app
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._agents"
 
@@ -90,37 +90,33 @@ class TestInitInstallsTheBaselinePolicies:
     def test_a_fresh_home_gets_the_shipped_policies(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from tests.conftest import repoint_docket_home
-
-        import docket.config as _cfg
 
         home = tmp_path / "home"
-        repoint_docket_home(monkeypatch, home)
-        code = tmp_path / "code"
-        code.mkdir()
-        (code / "README.md").write_text("# x\n")
-        rc = _agents.run_init(_agents.InitRequest(name="demo", location=str(code)))
-        assert rc == 0
-        installed = sorted(p.name for p in _cfg.POLICIES_DIR.glob("*.yaml"))
-        assert "prompt-injection.yaml" in installed
-        assert "block-destructive.yaml" in installed or "block-destructive.json" in installed
+        with use_home(Home(home)):
+            code = tmp_path / "code"
+            code.mkdir()
+            (code / "README.md").write_text("# x\n")
+            rc = _agents.run_init(_agents.InitRequest(name="demo", location=str(code)))
+            assert rc == 0
+            installed = sorted(p.name for p in current_home().policies_dir.glob("*.yaml"))
+            assert "prompt-injection.yaml" in installed
+            assert "block-destructive.yaml" in installed or "block-destructive.json" in installed
 
 
 def test_init_closes_with_the_sandbox_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The output ends with a `This machine` block naming the sandbox posture."""
-    from tests.conftest import repoint_docket_home
 
-    repoint_docket_home(monkeypatch, tmp_path / "home")
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
-    code = tmp_path / "code"
-    code.mkdir()
-    assert _agents.run_init(_agents.InitRequest(name="demo", location=str(code))) == 0
-    out = capsys.readouterr().out
-    tail = out[out.index("This machine") :]
-    assert "Sandbox   off. The agent's commands run with your user's permissions." in tail
-    assert "Turn it on: docket setup sandbox on" in tail
+    with use_home(Home(tmp_path / "home")):
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        code = tmp_path / "code"
+        code.mkdir()
+        assert _agents.run_init(_agents.InitRequest(name="demo", location=str(code))) == 0
+        out = capsys.readouterr().out
+        tail = out[out.index("This machine") :]
+        assert "Sandbox   off. The agent's commands run with your user's permissions." in tail
+        assert "Turn it on: docket setup sandbox on" in tail
 
 
 def _repo(tmp_path: Path, step: str = "sh scripts/migrate.sh") -> Path:
@@ -133,7 +129,7 @@ def _repo(tmp_path: Path, step: str = "sh scripts/migrate.sh") -> Path:
 
 
 def _pod_exists() -> bool:
-    return (_cfg.PROJECTS_DIR / "demo-lead").is_dir()
+    return (current_home().projects_dir / "demo-lead").is_dir()
 
 
 class TestInitAsksBeforeApplyingRepositoryCommands:
@@ -201,15 +197,14 @@ class TestInitAsksBeforeApplyingRepositoryCommands:
         monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
         import shutil
 
-        shutil.rmtree(_cfg.PROJECTS_DIR / "demo-lead")
-        shutil.rmtree(_cfg.PROJECTS_DIR / "demo-implementer", ignore_errors=True)
-        _cfg.FLEET_FILE.unlink(missing_ok=True)
+        shutil.rmtree(current_home().projects_dir / "demo-lead")
+        shutil.rmtree(current_home().projects_dir / "demo-implementer", ignore_errors=True)
+        current_home().fleet_file.unlink(missing_ok=True)
         again = runner.invoke(app, ["init", "demo", str(code)])
         assert again.exit_code == 0
-        from tests.conftest import repoint_docket_home
 
-        repoint_docket_home(monkeypatch, tmp_path / "second-home")
-        assert runner.invoke(app, ["init", "demo", str(code)]).exit_code == 2
+        with use_home(Home(tmp_path / "second-home")):
+            assert runner.invoke(app, ["init", "demo", str(code)]).exit_code == 2
 
     def test_a_terminal_n_creates_nothing(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -262,4 +257,4 @@ class TestInitInARepositoryWithTeams:
         result = runner.invoke(app, ["init", "--codebase", str(code)])
         assert result.exit_code == 2
         assert "a, b" in result.output
-        assert not (_cfg.PROJECTS_DIR / "code-lead").exists()
+        assert not (current_home().projects_dir / "code-lead").exists()

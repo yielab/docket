@@ -22,13 +22,13 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-import docket.config as _cfg
 from docket.core import policy as _policy
 from docket.core.audit import audit_log
 from docket.core.tools import Tool, ToolContext, ToolRegistry, screen_tool_result
 from docket.edges import store as _store
 from docket.edges.adapters.toolbox import ToolOutcome
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 __all__ = [
     "NAMESPACE_PREFIX",
@@ -102,8 +102,8 @@ class McpServerConfig(BaseModel):
         Never trusts a configured ``timeout`` outright: it is clamped to
         :data:`docket.config.MCP_CLIENT_MAX_TIMEOUT_S` so one server's config (careless or
         hostile) cannot buy itself an effectively unbounded wait."""
-        requested = self.timeout if self.timeout > 0 else _cfg.MCP_CLIENT_TIMEOUT_S
-        return min(requested, _cfg.MCP_CLIENT_MAX_TIMEOUT_S)
+        requested = self.timeout if self.timeout > 0 else current_home().mcp_client_timeout_s
+        return min(requested, current_home().mcp_client_max_timeout_s)
 
 
 class McpServerRegistry(BaseModel):
@@ -116,7 +116,7 @@ class McpServerRegistry(BaseModel):
 
 def pod_mcp_servers_file(project: str) -> Path:
     """Where *project*'s own pod-scoped servers live: ``<pod config dir>/mcp-servers.json``."""
-    return _cfg.pod_config_dir(project) / "mcp-servers.json"
+    return current_home().pod_config_dir(project) / "mcp-servers.json"
 
 
 def load_pod_mcp_servers(project: str) -> list[McpServerConfig]:
@@ -128,7 +128,7 @@ def load_pod_mcp_servers(project: str) -> list[McpServerConfig]:
 def load_mcp_servers(project: str = "") -> list[McpServerConfig]:
     """The configured MCP servers, in on-disk order; empty when unconfigured. With *project*,
     the pod's own pod-scoped servers follow the global ones (a global name wins a collision)."""
-    data = _store.read_json(_cfg.MCP_SERVERS_FILE)
+    data = _store.read_json(current_home().mcp_servers_file)
     servers = McpServerRegistry.model_validate(data).servers
     if not project:
         return servers
@@ -145,9 +145,9 @@ def write_pod_mcp_servers(project: str, servers: list[McpServerConfig]) -> None:
 
 def pod_scoped_owner(name: str, *, exclude: str = "") -> str:
     """The pod (other than *exclude*) whose pod-scoped file declares *name*, else ``""``."""
-    if not _cfg.PODS_DIR.is_dir():
+    if not current_home().pods_dir.is_dir():
         return ""
-    for entry in sorted(_cfg.PODS_DIR.iterdir()):
+    for entry in sorted(current_home().pods_dir.iterdir()):
         if entry.name == exclude or not pod_mcp_servers_file(entry.name).is_file():
             continue
         if any(s.name == name for s in load_pod_mcp_servers(entry.name)):
@@ -247,7 +247,7 @@ def add_mcp_server(config: McpServerConfig) -> None:
         reg.servers.append(config)
         return reg.model_dump(by_alias=True)
 
-    _store.read_modify_write(_cfg.MCP_SERVERS_FILE, _add)
+    _store.read_modify_write(current_home().mcp_servers_file, _add)
 
 
 def remove_mcp_server(name: str) -> bool:
@@ -263,7 +263,7 @@ def remove_mcp_server(name: str) -> bool:
         removed = True
         return McpServerRegistry(servers=kept).model_dump(by_alias=True)
 
-    _store.read_modify_write(_cfg.MCP_SERVERS_FILE, _remove)
+    _store.read_modify_write(current_home().mcp_servers_file, _remove)
     return removed
 
 

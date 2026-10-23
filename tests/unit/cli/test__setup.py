@@ -13,10 +13,10 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _contract, _setup, app
 from docket.edges.adapters import llm as _llm
 from docket.edges.adapters import system as _system
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._setup"
 
@@ -232,7 +232,7 @@ class TestFix:
 
         assert result.exit_code == 0
         assert calls == [True]
-        assert (_cfg.POLICIES_DIR).is_dir()
+        assert (current_home().policies_dir).is_dir()
 
     def test_fix_json_keeps_stdout_a_single_json_document(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -4,8 +4,10 @@ server's own argv is untouched."""
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,7 @@ from docket.core import audit as _audit
 from docket.edges.adapters import mcp_client as _client
 from docket.edges.adapters import system
 from docket.kernel.errors import Unavailable
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.edges.adapters.mcp_client"
 
@@ -60,10 +63,13 @@ _SERVER = textwrap.dedent(
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "MCP_SERVERS_FILE", tmp_path / "mcp-servers.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
-    monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(
+        dataclasses.replace(current_home(), mcp_servers_file_override=tmp_path / "mcp-servers.json")
+    ):
+        monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        yield
 
 
 @pytest.fixture

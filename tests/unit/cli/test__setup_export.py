@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import time
 from pathlib import Path
@@ -9,9 +10,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _contract, _setup_export, app
 from docket.core import exporter as _exp
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.cli._setup_export"
 
@@ -62,14 +63,14 @@ def test_enable_without_credentials_off_a_tty_writes_nothing(
         monkeypatch.delenv(name, raising=False)
     result = CliRunner().invoke(app, ["setup", "export", "enable", "langfuse"])
     assert result.exit_code == 1
-    assert not _cfg.EXPORTERS_FILE.exists()
+    assert not current_home().exporters_file.exists()
 
 
 def test_widening_privacy_off_a_tty_needs_yes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_contract, "_is_tty", lambda: False)
     result = CliRunner().invoke(app, ["setup", "export", "privacy", "langfuse", "full"])
     assert result.exit_code == 1
-    assert not _cfg.EXPORTERS_FILE.exists()
+    assert not current_home().exporters_file.exists()
 
 
 class TestAttributeClass:
@@ -124,23 +125,23 @@ class TestNewestTraceFile:
     def test_none_when_traces_dir_has_no_sessions(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "TRACES_DIR", tmp_path / "traces", raising=True)
-        assert _preview._newest_trace_file() is None
+        with use_home(dataclasses.replace(current_home(), traces_dir_override=tmp_path / "traces")):
+            assert _preview._newest_trace_file() is None
 
     def test_picks_the_most_recently_modified_file_across_projects(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         traces = tmp_path / "traces"
-        monkeypatch.setattr(_cfg, "TRACES_DIR", traces, raising=True)
-        older = traces / "proj-a" / "sess-old.jsonl"
-        newer = traces / "proj-b" / "sess-new.jsonl"
-        older.parent.mkdir(parents=True)
-        newer.parent.mkdir(parents=True)
-        older.write_text("{}\n")
-        newer.write_text("{}\n")
-        newer.touch()
+        with use_home(dataclasses.replace(current_home(), traces_dir_override=traces)):
+            older = traces / "proj-a" / "sess-old.jsonl"
+            newer = traces / "proj-b" / "sess-new.jsonl"
+            older.parent.mkdir(parents=True)
+            newer.parent.mkdir(parents=True)
+            older.write_text("{}\n")
+            newer.write_text("{}\n")
+            newer.touch()
 
-        old_time = time.time() - 100
-        os.utime(older, (old_time, old_time))
+            old_time = time.time() - 100
+            os.utime(older, (old_time, old_time))
 
-        assert _preview._newest_trace_file() == newer
+            assert _preview._newest_trace_file() == newer

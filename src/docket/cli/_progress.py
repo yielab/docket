@@ -19,7 +19,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, TextIO
 
-import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
@@ -27,6 +26,7 @@ from docket.core import trace as _trace
 from docket.core.task_ref import short_id
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
+from docket.kernel.home import current_home
 
 _POLL_TIMEOUT_S = 0.2
 _RENDERABLE_EVENT_TYPES = frozenset(
@@ -74,7 +74,7 @@ def _seconds_remaining(record: dict[str, Any], *, now: float | None = None) -> i
     parsed = _epoch(str(record.get("ts", "")))
     if parsed is not None:
         elapsed = max(0.0, (now if now is not None else _clock.epoch()) - parsed)
-    return max(0, int(_cfg.TOOL_APPROVAL_TIMEOUT - elapsed))
+    return max(0, int(current_home().tool_approval_timeout - elapsed))
 
 
 def _session_label(record: dict[str, Any], role: str) -> str:

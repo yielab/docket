@@ -11,7 +11,6 @@ from typing import Any, NoReturn
 import typer
 from rich.markup import escape
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.cli._target import TargetError, pod_option
@@ -28,6 +27,7 @@ from docket.core import policy as _policy
 from docket.core import tools as _tools
 from docket.core.audit import audit_log
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 _HOOKS = ("pre_input", "pre_tool_call", "pre_output")
 
@@ -247,10 +247,12 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _pod_ap
     except _config_docs.ConfigDocError as exc:
         _fail(str(exc))
     if document.kind == "role":
-        roles = _store.read_json(_cfg.pod_config_dir(project) / "roles.json").get("roles", {})
+        roles = _store.read_json(current_home().pod_config_dir(project) / "roles.json").get(
+            "roles", {}
+        )
         exists = document.name in roles
     elif document.kind == "policy":
-        exists = (_cfg.pod_config_dir(project) / "policies" / path.name).is_file()
+        exists = (current_home().pod_config_dir(project) / "policies" / path.name).is_file()
     else:
         _fail(
             f"A {document.kind} document is not applied on its own",
@@ -261,7 +263,7 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _pod_ap
 
 
 def _install_policy(project: str, path: Path) -> None:
-    policies_dir = _cfg.pod_config_dir(project) / "policies"
+    policies_dir = current_home().pod_config_dir(project) / "policies"
     policies_dir.mkdir(parents=True, exist_ok=True)
     dest = policies_dir / path.name
     dest.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
@@ -737,7 +739,7 @@ def _policies_list(project: str, json_out: bool, with_plugins: bool) -> None:
             print(
                 f"  {r['id'][:28]:<30} {r['hook'][:14]:<16} {r['action'][:14]:<16} {r['description'][:45]}"
             )
-        ui.dim(f"  Policy files in {_cfg.POLICIES_DIR}")
+        ui.dim(f"  Policy files in {current_home().policies_dir}")
     ui.console.print()
     if with_plugins:
         _render_plugins(plugin_rows)

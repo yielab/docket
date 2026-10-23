@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
+
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -266,7 +268,7 @@ class TestStore:
 
 
 @pytest.fixture()
-def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Set up a temp DOCKET_HOME with fleet.json and a project workspace."""
     home = tmp_path / ".docket"
     home.mkdir()
@@ -279,8 +281,8 @@ def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # its constants at import) and only the attributes patched here actually
     # move. A partial list would leave every unlisted constant aimed at the
     # autouse fixture's home -- one home split in two, with nothing to fail.
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 class TestFleet:

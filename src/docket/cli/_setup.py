@@ -10,7 +10,6 @@ from pathlib import Path
 
 import typer
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.core import policy as _policy
@@ -186,7 +185,7 @@ def step_security() -> None:
     """Tighten docket-owned config and secrets files to owner-only."""
     hardened: list[str] = []
     home = current_home()
-    for path in (_cfg.FLEET_FILE, home.secrets_file, home.secrets_meta_file):
+    for path in (current_home().fleet_file, home.secrets_file, home.secrets_meta_file):
         if not path.is_file():
             continue
         try:

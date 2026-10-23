@@ -26,9 +26,9 @@ from typing import Any, Literal
 
 from filelock import FileLock, Timeout
 
-import docket.config as _cfg
 from docket.edges import store
 from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
 
 # Sentinel prev_hash for the first entry of a chain (fresh log, or the first
 # entry appended after a corrupt line / rotation boundary). Deliberately the
@@ -155,7 +155,7 @@ def _rotate_if_needed(logf: Path) -> tuple[int, str] | None:
     correct either way.
     """
     try:
-        if not (logf.exists() and logf.stat().st_size >= _cfg.AUDIT_LOG_MAX_BYTES):
+        if not (logf.exists() and logf.stat().st_size >= current_home().audit_log_max_bytes):
             return None
         continuation = _chain_head(logf)
         marker = _rotation_marker_path(logf)
@@ -240,7 +240,7 @@ def audit_log(action: str, detail: str = "") -> AuditWriteResult:
     its own parent directory under DOCKET_HOME so a fresh install doesn't silently lose its
     first entry, matching every other DOCKET_HOME-derived writer.
     """
-    logf = _cfg.AUDIT_LOG
+    logf = current_home().audit_log
     try:
         store.mkdir_private(logf.parent)
     except OSError:
@@ -278,7 +278,7 @@ def _read_audit_text_unlocked(logf: Path) -> str | None:
 
 def read_audit_text() -> str | None:
     """Return a locked, exact current-log snapshot for the raw CLI view."""
-    logf = _cfg.AUDIT_LOG
+    logf = current_home().audit_log
     if not logf.parent.is_dir():
         return None
     try:
@@ -505,7 +505,7 @@ def verify_chain() -> VerifyResult:
     """Walk one locked snapshot; readers share the writer's lock so rotation can't split the
     file from the backup proving its claim; failure is non-raising, same as an unavailable log.
     """
-    logf = _cfg.AUDIT_LOG
+    logf = current_home().audit_log
     if not logf.parent.is_dir():
         return VerifyResult(False, 0, 0, None, False)
     try:

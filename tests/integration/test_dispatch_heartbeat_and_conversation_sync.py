@@ -20,12 +20,12 @@ import pytest
 from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import conversations as _conv
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
 from docket.core import runtime_driver as _rd
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core"
 
@@ -52,7 +52,7 @@ def _seed_pod(
 
 
 def _lead_ws(project: str = "demo") -> Path:
-    return _cfg.workspace_dir(f"{project}-lead")
+    return current_home().workspace_dir(f"{project}-lead")
 
 
 # ── HEARTBEAT ledger lifecycle ────────────────────────────────────────────────

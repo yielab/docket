@@ -13,6 +13,7 @@ Acceptance criteria:
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 import docket.serve as serve
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.serve"
 
@@ -44,7 +46,7 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
     ws = home / "workspaces" / "projects" / "apitest"
@@ -55,8 +57,8 @@ def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     # repoint_docket_home points APPROVALS_DIR at home/"approvals" without
     # creating it, so list_pending() still returns [] gracefully.
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 # ── TestApiContract: machine-readable contract pins ───────────────────────────

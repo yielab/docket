@@ -13,9 +13,9 @@ from tests.conftest import record_isolation_off, repoint_docket_home
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.edges.adapters import docket_runtime as _dr
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._pod"
 
@@ -30,7 +30,7 @@ def _make_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repoint_docket_home(monkeypatch, home)
     record_isolation_off(home)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    ws = _cfg.PROJECTS_DIR / _MEMBER
+    ws = current_home().projects_dir / _MEMBER
     (ws / "memory").mkdir(exist_ok=True)
     (ws / "HEARTBEAT.md").write_text(
         "# HEARTBEAT.md\n\n## Active Tasks\n- [ ] a real task\n", encoding="utf-8"
@@ -71,7 +71,7 @@ class TestPodReset:
         (ws / "MEMORY.md").write_text("# MEMORY.md\n\n## Old\nkeep this\n", encoding="utf-8")
         log = ws / "memory" / "2026-07-01.md"
         log.write_text("notes\n", encoding="utf-8")
-        pod_memory = _cfg.pod_memory_path("demo")
+        pod_memory = current_home().pod_memory_path("demo")
         pod_memory.parent.mkdir(parents=True, exist_ok=True)
         pod_memory.write_text('{"entries": []}\n', encoding="utf-8")
 

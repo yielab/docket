@@ -17,11 +17,11 @@ import typer
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import pod
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._pod"
 
@@ -44,7 +44,7 @@ def _build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "proj
 
 
 def _lead_meta(project: str) -> dict[str, object]:
-    path = _cfg.meta_path(f"{project}-lead")
+    path = current_home().meta_path(f"{project}-lead")
     return dict(json.loads(path.read_text()))
 
 
@@ -70,7 +70,7 @@ class TestPodShowSettings:
         _build(tmp_path, monkeypatch)
         meta = _lead_meta("proj")
         meta["turnTimeoutS"] = "not-a-number"
-        _cfg.meta_path("proj-lead").write_text(json.dumps(meta))
+        current_home().meta_path("proj-lead").write_text(json.dumps(meta))
 
         code, out = _show()
         assert code == 1
@@ -234,7 +234,7 @@ class TestConfigSetSchedule:
 
         from docket.core import schedule as _sched
 
-        schedules = _sched.load_schedules(_cfg.SCHEDULE_FILE)
+        schedules = _sched.load_schedules(current_home().schedule_file)
         assert schedules["proj"] == "@every 30m"
         assert _lead_meta("proj")["schedule"] == "@every 30m"
 
@@ -252,7 +252,7 @@ class TestConfigSetSchedule:
 
         from docket.core import schedule as _sched
 
-        assert _sched.load_schedules(_cfg.SCHEDULE_FILE) == {}
+        assert _sched.load_schedules(current_home().schedule_file) == {}
 
     def test_unset_removes_it_from_the_schedules_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -266,7 +266,7 @@ class TestConfigSetSchedule:
 
         from docket.core import schedule as _sched
 
-        assert _sched.load_schedules(_cfg.SCHEDULE_FILE) == {}
+        assert _sched.load_schedules(current_home().schedule_file) == {}
         assert pod.PodSettings.load_for("proj").schedule is None
 
     def test_a_schedule_set_by_the_command_fires_under_the_serve_sweep(
@@ -328,7 +328,7 @@ class TestBudgetSet:
         lead = pod.member_id("proj", "lead")
         meta = _lead_meta("proj")
         meta.update({"paused": True, "pausedReason": "budget"})
-        _cfg.meta_path(lead).write_text(json.dumps(meta))
+        current_home().meta_path(lead).write_text(json.dumps(meta))
 
         _pod.set_setting("proj", "budgetUsd", "10")
 
@@ -343,7 +343,7 @@ class TestBudgetSet:
         lead = pod.member_id("proj", "lead")
         meta = _lead_meta("proj")
         meta.update({"paused": True, "pausedReason": "budget"})
-        _cfg.meta_path(lead).write_text(json.dumps(meta))
+        current_home().meta_path(lead).write_text(json.dumps(meta))
         _dispatch.enqueue_task("proj", "held", channel="cli")
 
         if how == "set-zero":

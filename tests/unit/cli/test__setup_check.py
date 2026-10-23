@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _setup_check
 from docket.core import channel as _channel
 from docket.edges import store as _store
@@ -683,7 +682,7 @@ class TestGuardrailPolicies:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        pol = _cfg.POLICIES_DIR
+        pol = current_home().policies_dir
         pol.mkdir(parents=True, exist_ok=True)
         (pol / "zz-broken.json").write_text('{"id": "zz", not json')
         rc = _setup_check.run_check()
@@ -717,7 +716,7 @@ class TestScheduleConfig:
         home = tmp_path / ".docket"
         _point_config_at(home, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
+        current_home().schedule_file.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
         issues = _setup_check._check_schedule_config()
         out = capsys.readouterr().out
         assert issues == 1
@@ -730,7 +729,7 @@ class TestScheduleConfig:
         home = tmp_path / ".docket"
         _point_config_at(home, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 30m"}}))
+        current_home().schedule_file.write_text(json.dumps({"schedules": {"shop": "@every 30m"}}))
         assert _setup_check._check_schedule_config() == 0
 
 
@@ -749,7 +748,7 @@ class TestModelRegistryEntries:
         home = tmp_path / ".docket"
         _point_config_at(home, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
+        current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
         issues = _setup_check._check_model_registry_entries()
         out = capsys.readouterr().out
         assert issues == 1
@@ -774,7 +773,7 @@ class TestProviderCatalog:
         _point_config_at(home, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
         _store.write_json(
-            _cfg.PROVIDERS_FILE,
+            current_home().providers_file,
             {
                 "providers": {
                     "broken": {
@@ -788,7 +787,7 @@ class TestProviderCatalog:
         issues = _setup_check._check_provider_catalog()
         out = capsys.readouterr().out
         assert issues == 1
-        assert str(_cfg.PROVIDERS_FILE) in out
+        assert str(current_home().providers_file) in out
         assert "auth.type" in out
 
         json_issues, problems = _setup_check._check_json_provider_catalog()
@@ -828,7 +827,7 @@ class TestPodConfigOverlays:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._build_pod(tmp_path, monkeypatch)
-        pod_roles = _cfg.pod_config_dir("demo") / "roles.json"
+        pod_roles = current_home().pod_config_dir("demo") / "roles.json"
         pod_roles.parent.mkdir(parents=True, exist_ok=True)
         pod_roles.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
         issues = _setup_check._check_pod_config_overlays()
@@ -841,7 +840,7 @@ class TestPodConfigOverlays:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._build_pod(tmp_path, monkeypatch)
-        pod_policies = _cfg.pod_config_dir("demo") / "policies"
+        pod_policies = current_home().pod_config_dir("demo") / "policies"
         pod_policies.mkdir(parents=True, exist_ok=True)
         (pod_policies / "zz-broken.json").write_text('{"id": "zz", not json')
         issues = _setup_check._check_pod_config_overlays()
@@ -858,8 +857,8 @@ class TestDoctorSilentOnTwoFixtures:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
-        _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
+        current_home().schedule_file.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
+        current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
         rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
         assert rc == 1
@@ -967,7 +966,7 @@ class TestJsonCoversEveryTextCheck:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._pod_home(tmp_path, monkeypatch)
-        roles = _cfg.pod_config_dir("demo") / "roles.json"
+        roles = current_home().pod_config_dir("demo") / "roles.json"
         roles.parent.mkdir(parents=True, exist_ok=True)
         roles.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
         data = self._json(capsys)
@@ -993,8 +992,8 @@ class TestJsonCoversEveryTextCheck:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "test-key"})
-        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
-        _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
+        current_home().schedule_file.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
+        current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
         data = self._json(capsys)
         checks = data["checks"]
         assert data["healthy"] is False

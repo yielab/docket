@@ -9,6 +9,7 @@ Covers auth rejection, a missing project segment (400), a project with no pod (2
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.error
@@ -22,6 +23,7 @@ import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
+from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -388,14 +390,14 @@ class TestTokenBudget:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        monkeypatch.setattr(_cfg, "AGENT_LOOP_TOKEN_BUDGET", 4321)
-        url, token = live_server
-        _status, created = _post(f"{url}/tasks/demo", {"description": "x"}, token)
-        status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
-        assert status == 200
-        assert record["tokenBudget"] == 4321
-        _status, listed = _get(f"{url}/tasks/demo", token)
-        assert [t["tokenBudget"] for t in listed["tasks"]] == [4321]
+        with use_home(dataclasses.replace(current_home(), agent_loop_token_budget=4321)):
+            url, token = live_server
+            _status, created = _post(f"{url}/tasks/demo", {"description": "x"}, token)
+            status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+            assert status == 200
+            assert record["tokenBudget"] == 4321
+            _status, listed = _get(f"{url}/tasks/demo", token)
+            assert [t["tokenBudget"] for t in listed["tasks"]] == [4321]
 
     def test_a_capped_task_reports_what_its_cap_has_left(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: tuple[str, str]

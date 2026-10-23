@@ -25,6 +25,7 @@ from docket.core import archetypes as _arch
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import pod
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core"
 
@@ -147,7 +148,7 @@ class TestModelClassFallback:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
-        assert _mp.resolve_role_model("totally-not-a-role", {}) == _cfg.DEFAULT_MODEL
+        assert _mp.resolve_role_model("totally-not-a-role", {}) == current_home().default_model
 
 
 class TestPodAddStarterRole:
@@ -171,7 +172,7 @@ class TestPodAddStarterRole:
         assert meta["pod"] == "demo"
         # researcher is modelClass=strong -> resolves via the 'standard' anchor,
         # same model an implementer (also strong-class) would get by default.
-        assert meta["model"] == _cfg.DEFAULT_MODEL
+        assert meta["model"] == current_home().default_model
 
     def test_pod_show_lists_the_added_researcher(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

@@ -10,13 +10,11 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core.llm import (
     ChatMessage,
@@ -29,6 +27,7 @@ from docket.core.llm import (
 from docket.core.tools import Tool as _Tool
 from docket.core.tools import ToolContext, ToolRegistry
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.agent_loop"
 
@@ -67,8 +66,9 @@ class _Backend:
 
 
 @pytest.fixture(autouse=True)
-def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path / "home")
+def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(Home(tmp_path / "home")):
+        yield
 
 
 @pytest.fixture
@@ -162,7 +162,9 @@ def test_zero_disables_the_check(registry: ToolRegistry, ctx: ToolContext) -> No
 
 
 def test_default_comes_from_the_config_constant() -> None:
-    assert _loop.LoopConfig().no_progress_rounds == _cfg.AGENT_LOOP_NO_PROGRESS_ROUNDS == 3
+    assert (
+        _loop.LoopConfig().no_progress_rounds == current_home().agent_loop_no_progress_rounds == 3
+    )
 
 
 def test_env_override_is_honoured(tmp_path: Path) -> None:

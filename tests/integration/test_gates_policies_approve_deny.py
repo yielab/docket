@@ -11,13 +11,14 @@ There is no daemon and no exec-approvals.json file format.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
@@ -26,6 +27,7 @@ from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
 from docket.core.audit import read_audit
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -42,7 +44,7 @@ _FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with config paths repointed; docker stubbed off PATH."""
     d = tmp_path / ".docket"
     (d / "policies").mkdir(parents=True)
@@ -51,12 +53,12 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
 
-    repoint_docket_home(monkeypatch, d)
-    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    # Never touch systemctl.
-    # No real backend probing from these tests: default to "no backend usable".
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-    return d
+    with use_home(Home(d)):
+        with use_home(dataclasses.replace(current_home(), approval_timeout=900)):
+            # Never touch systemctl.
+            # No real backend probing from these tests: default to "no backend usable".
+            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+            yield d
 
 
 def _pod_cli(*args: str) -> Any:
@@ -176,7 +178,7 @@ class TestGatesIsolate:
         out = capsys.readouterr().out
         assert rc == 0
         # Isolation mode lives in fleet.json.
-        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        fleet = json.loads(current_home().fleet_file.read_text())
         assert fleet["security"]["isolationMode"] == "non-main"
         assert "Isolation on" in out
 
@@ -189,7 +191,7 @@ class TestGatesIsolate:
         rc = _setup_sandbox.isolate("off")
         out = capsys.readouterr().out
         assert rc == 0
-        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        fleet = json.loads(current_home().fleet_file.read_text())
         assert fleet["security"]["isolationMode"] == "off"
         assert "Isolation off" in out
         assert _setup_sandbox.sandbox_state()["isolation"] == "off"
@@ -200,7 +202,7 @@ class TestSandboxBackendChoice:
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         assert _setup_sandbox.backend("docker") == 0
-        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        fleet = json.loads(current_home().fleet_file.read_text())
         assert fleet["security"]["sandboxBackend"] == "docker"
         assert "Sandbox backend docker" in capsys.readouterr().out
         assert [e for e in read_audit() if e["action"] == "gates.backend"][-1]["detail"] == "docker"
@@ -208,7 +210,10 @@ class TestSandboxBackendChoice:
     def test_auto_returns_to_the_default(self, oc_dir: Path) -> None:
         _setup_sandbox.backend("docker")
         assert _setup_sandbox.backend("auto") == 0
-        assert json.loads(_cfg.FLEET_FILE.read_text())["security"]["sandboxBackend"] == "auto"
+        assert (
+            json.loads(current_home().fleet_file.read_text())["security"]["sandboxBackend"]
+            == "auto"
+        )
 
     def test_the_verb_takes_only_auto_or_docker(self, oc_dir: Path) -> None:
         runner = CliRunner()

@@ -49,10 +49,10 @@ from pathlib import Path
 from string import Template
 from typing import Any
 
-import docket.config as cfg
 from docket.core.tools import ToolKind, ToolRegistry
 from docket.edges import store as _store
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 SCOPES: frozenset[str] = frozenset({"pod"})
 MODEL_CLASSES: frozenset[str] = frozenset({"cheap", "strong"})
@@ -655,7 +655,7 @@ class ArchetypeRegistry:
 def _pod_roles_file(project: str) -> Path:
     """The role overlay this ``project``'s pod resolves above the built-ins --
     ``pod_config_dir(project)/roles.json``, shape ``{"roles": {name: archetype}}``."""
-    return cfg.pod_config_dir(project) / "roles.json"
+    return current_home().pod_config_dir(project) / "roles.json"
 
 
 def _read_overlay_raw(path: Path) -> dict[str, Any]:
@@ -1025,7 +1025,7 @@ def add_user_archetype(doc: dict[str, Any], project: str) -> RoleArchetype:
     # Both may be freshly created by the mkdir above and inherit umask -- harden
     # them the same way pod_provisioning.py's scratch dir does.
     with contextlib.suppress(OSError):
-        cfg.PODS_DIR.chmod(0o700)
+        current_home().pods_dir.chmod(0o700)
         path.parent.parent.chmod(0o700)
         path.parent.chmod(0o700)
     _store.read_modify_write(path, _fn)

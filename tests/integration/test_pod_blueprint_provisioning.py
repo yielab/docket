@@ -20,11 +20,11 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _agents, _pod, _setup_check
 from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli"
 
@@ -159,7 +159,7 @@ class TestBuiltinBlueprintsProvision:
         _pod.build_pod_from_blueprint("myops", "ops")
         work_dir = Path(_meta(oc_dir, "myops-lead")["workDir"])
         assert work_dir.is_dir()
-        assert work_dir == _cfg.pod_work_dir("myops")
+        assert work_dir == current_home().pod_work_dir("myops")
 
     def test_workdir_explicit_location_used_and_created(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

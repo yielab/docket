@@ -8,16 +8,18 @@ new reader cannot ship without a JSON mode. Anything printed before the document
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
+from tests.conftest import record_isolation_off, register_local_provider
 from typer.core import TyperGroup
 from typer.main import get_command
 from typer.testing import CliRunner
 
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
+from docket.kernel.home import Home, use_home
 
 _runner = CliRunner()
 
@@ -77,23 +79,23 @@ _ALL = sorted({*_readers(), *_BARE_READS})
 
 
 @pytest.fixture
-def fixture_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+def fixture_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    code = tmp_path / "code"
-    code.mkdir()
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
-    register_local_provider(home, "loopback", [{"id": "tiny"}])
-    task = _dispatch.enqueue_task(
-        "demo", "a queued task", channel="cli"
-    )  # also the one audit entry
-    monkeypatch.setenv("DOCKET_POD", "demo")
-    monkeypatch.setenv("DOCKET_NO_HINTS", "1")
-    monkeypatch.chdir(code)
-    return str(task["id"])
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        code = tmp_path / "code"
+        code.mkdir()
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
+        register_local_provider(home, "loopback", [{"id": "tiny"}])
+        task = _dispatch.enqueue_task(
+            "demo", "a queued task", channel="cli"
+        )  # also the one audit entry
+        monkeypatch.setenv("DOCKET_POD", "demo")
+        monkeypatch.setenv("DOCKET_NO_HINTS", "1")
+        monkeypatch.chdir(code)
+        yield str(task["id"])
 
 
 def test_no_reader_is_missing_from_the_argument_table() -> None:

@@ -18,7 +18,6 @@ from typing import Any
 import typer
 from rich.markup import escape
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.cli import _pod_show as _show
@@ -38,6 +37,7 @@ from docket.core import pod_report as _report
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 from docket.edges import store
+from docket.kernel.home import current_home
 
 # Names this module's callers and tests reach on `docket.cli._pod`; the implementations
 # live in core/pod_provisioning.py.
@@ -387,7 +387,7 @@ def cmd_remove(
 
 def _reset_ledger(agent_id: str, ws: Path) -> None:
     """Replace the member's HEARTBEAT.md with a fresh ledger."""
-    raw = store.read_json(_cfg.meta_path(agent_id))
+    raw = store.read_json(current_home().meta_path(agent_id))
     hb = ws / _mem.HEARTBEAT_FILE
     hb.write_text(_mem.heartbeat_seed(str(raw.get("name", agent_id))), encoding="utf-8")
     hb.chmod(0o600)
@@ -402,7 +402,7 @@ def reset_member(project: str, member_id: str, *, yes: bool) -> None:
     ):
         ui.warn("Aborted.")
         raise typer.Exit(1)
-    ws = _cfg.workspace_dir(member_id)
+    ws = current_home().workspace_dir(member_id)
     _reset_ledger(member_id, ws)
     for name, text in _pp.rendered_member_files(member_id).items():
         (ws / name).write_text(text, encoding="utf-8")
@@ -458,7 +458,7 @@ def cmd_delete(
     project = _pod_name(pod_name)
     members = pod_member_ids(project)
     if not members:
-        if _cfg.workspace_dir(project).is_dir():
+        if current_home().workspace_dir(project).is_dir():
             ui.error(f"'{project}' is a member id, not a pod", "Pass the pod name with --pod")
         else:
             ui.error(f"No pod named '{project}'", "See: docket status --all")
@@ -618,7 +618,7 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
         scratch,
         verify_cmd,
     )
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     (ws / "TOOLS.md").write_text(content, encoding="utf-8")
 
 
@@ -638,9 +638,9 @@ def _set_member_verify(project: str, member_id: str, command: str) -> None:
 
 def _unset_member_verify(project: str, member_id: str) -> None:
     _implementer_member(project, member_id)
-    raw = store.read_json(_cfg.meta_path(member_id))
+    raw = store.read_json(current_home().meta_path(member_id))
     raw.pop("verifyCmd", None)
-    store.write_json(_cfg.meta_path(member_id), raw)
+    store.write_json(current_home().meta_path(member_id), raw)
     _regenerate_member_tools(member_id, project)
     audit_log("pod.unset-verify", f"member={member_id}")
     ui.success(f"Cleared the verify command for {member_id}")
@@ -719,7 +719,7 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
             pod.bound_pipeline_path(project).unlink()
     if key == "schedule":
         # docket-schedules.json, not the meta key cleared above, is what the serve sweep reads.
-        _sched.unset_schedule(_cfg.SCHEDULE_FILE, project)
+        _sched.unset_schedule(current_home().schedule_file, project)
     audit_log("pod.config", f"project={project} action=unset key={key}")
     ui.success(f"Unset {key} for pod '{project}'; it falls back to its default")
     if key == "budgetUsd":
@@ -810,7 +810,7 @@ def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
         raise typer.Exit(1) from ex
 
     try:
-        _sched.set_schedule(_cfg.SCHEDULE_FILE, project, str(coerced))
+        _sched.set_schedule(current_home().schedule_file, project, str(coerced))
     except _sched.ScheduleError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex

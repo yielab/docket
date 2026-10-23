@@ -13,16 +13,17 @@ list, never every `fleet.json` binding.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import hashlib
 import json
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
 from tests.fakes import FakeDriver
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import approval as _approval
 from docket.core import audit as _audit
@@ -36,6 +37,7 @@ from docket.core.operator_contract import QuestionV11, make_event
 from docket.edges import store as _store
 from docket.edges.adapters.channels import telegram as _tg_channel
 from docket.edges.adapters.telegram import TelegramUpdate
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -53,9 +55,10 @@ steps:
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+        yield
 
 
 def _seed_pod(project: str = "demo") -> None:
@@ -426,7 +429,7 @@ class TestDelegate:
         refuse fail-closed, never partially enqueue."""
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy = {
             "id": "test-block-delegate",
             "description": "test-only",
@@ -436,7 +439,7 @@ class TestDelegate:
             "action": "block",
             "message": "blocked by test policy",
         }
-        (_cfg.POLICIES_DIR / "test-block-delegate.json").write_text(json.dumps(policy))
+        (current_home().policies_dir / "test-block-delegate.json").write_text(json.dumps(policy))
 
         def _boom(*_a: object, **_k: object) -> object:
             raise AssertionError("enqueue_task must not be called when pre_input blocks")
@@ -459,7 +462,7 @@ class TestDelegate:
         call), so require_approval folds into the same fail-closed outcome as block."""
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy = {
             "id": "test-approval-delegate",
             "description": "test-only",
@@ -469,7 +472,7 @@ class TestDelegate:
             "action": "require_approval",
             "message": "needs review",
         }
-        (_cfg.POLICIES_DIR / "test-approval-delegate.json").write_text(json.dumps(policy))
+        (current_home().policies_dir / "test-approval-delegate.json").write_text(json.dumps(policy))
 
         outcome = _tg.handle_message(_msg("-100300", "/delegate this needs-a-human review"))
 
@@ -563,7 +566,7 @@ class TestAnswer:
         refuses."""
         task = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy = {
             "id": "test-block-answer",
             "description": "test-only",
@@ -573,7 +576,7 @@ class TestAnswer:
             "action": "block",
             "message": "blocked by test policy",
         }
-        (_cfg.POLICIES_DIR / "test-block-answer.json").write_text(json.dumps(policy))
+        (current_home().policies_dir / "test-block-answer.json").write_text(json.dumps(policy))
 
         outcome = _tg.handle_message(
             _msg("-100300", f"/answer {task['id']} this has a forbidden-phrase in it")
@@ -736,47 +739,53 @@ class TestRequestTimeoutIsThreadedFromConfig:
         """A well-formed pair (request > poll) must reach `get_updates` unmodified, proving
         `TELEGRAM_REQUEST_TIMEOUT_S` is not a dead constant: breaking the wiring would surface
         the adapter's hardcoded default (35.0) instead of the configured 99.0."""
-        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 25, raising=True)
-        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 99.0, raising=True)
-        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        with use_home(
+            dataclasses.replace(
+                current_home(), telegram_poll_timeout_s=25, telegram_request_timeout_s=99.0
+            )
+        ):
+            _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
 
-        calls: list[dict[str, object]] = []
-        summary = _tg.poll_once(
-            get_updates=_fake_get_updates_capturing(calls),
-            send_message=lambda *a, **k: True,
-        )
+            calls: list[dict[str, object]] = []
+            summary = _tg.poll_once(
+                get_updates=_fake_get_updates_capturing(calls),
+                send_message=lambda *a, **k: True,
+            )
 
-        assert summary.ok
-        assert summary.warning == ""
-        assert len(calls) == 1
-        assert calls[0]["request_timeout"] == 99.0
-        assert calls[0]["timeout"] == 25
+            assert summary.ok
+            assert summary.warning == ""
+            assert len(calls) == 1
+            assert calls[0]["request_timeout"] == 99.0
+            assert calls[0]["timeout"] == 25
 
     def test_a_different_configured_value_also_reaches_the_adapter(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A second, distinct value to rule out a coincidental match with
         the adapter's own hardcoded default."""
-        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 10, raising=True)
-        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 40.0, raising=True)
-        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        with use_home(
+            dataclasses.replace(
+                current_home(), telegram_poll_timeout_s=10, telegram_request_timeout_s=40.0
+            )
+        ):
+            _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
 
-        calls: list[dict[str, object]] = []
-        summary = _tg.poll_once(
-            get_updates=_fake_get_updates_capturing(calls),
-            send_message=lambda *a, **k: True,
-        )
+            calls: list[dict[str, object]] = []
+            summary = _tg.poll_once(
+                get_updates=_fake_get_updates_capturing(calls),
+                send_message=lambda *a, **k: True,
+            )
 
-        assert summary.ok
-        assert summary.warning == ""
-        assert calls[0]["request_timeout"] == 40.0
+            assert summary.ok
+            assert summary.warning == ""
+            assert calls[0]["request_timeout"] == 40.0
 
 
 class TestWireDiscovery:
     def test_exact_challenge_discovers_only_groups_without_advancing_offset(self) -> None:
         _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
-        _cfg.TELEGRAM_OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _cfg.TELEGRAM_OFFSET_FILE.write_text('{"offset": 40}')
+        current_home().telegram_offset_file.parent.mkdir(parents=True, exist_ok=True)
+        current_home().telegram_offset_file.write_text('{"offset": 40}')
         calls: list[dict[str, object]] = []
 
         def _updates(token: str, **kwargs: object) -> _tg.GetUpdatesResult:
@@ -798,7 +807,7 @@ class TestWireDiscovery:
         assert result.configured
         assert result.groups == (_tg.TelegramGroup("-100456", "Right Team"),)
         assert calls == [{"token": "123:abc", "offset": 40, "timeout": 2, "request_timeout": 12.0}]
-        assert json.loads(_cfg.TELEGRAM_OFFSET_FILE.read_text()) == {"offset": 40}
+        assert json.loads(current_home().telegram_offset_file.read_text()) == {"offset": 40}
 
     def test_missing_token_and_transport_failure_are_typed_fallbacks(self) -> None:
         missing = _tg.discover_wire_groups("A1B2C3")
@@ -822,58 +831,67 @@ class TestRequestTimeoutInvariantIsEnforced:
         """The invariant TELEGRAM_REQUEST_TIMEOUT_S > TELEGRAM_POLL_TIMEOUT_S is enforced, not
         merely stated: a misconfigured pair must not reach the adapter as-is, or every
         legitimately-empty long-poll would look like a local timeout."""
-        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 50, raising=True)
-        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 35.0, raising=True)
-        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        with use_home(
+            dataclasses.replace(
+                current_home(), telegram_poll_timeout_s=50, telegram_request_timeout_s=35.0
+            )
+        ):
+            _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
 
-        calls: list[dict[str, object]] = []
-        summary = _tg.poll_once(
-            get_updates=_fake_get_updates_capturing(calls),
-            send_message=lambda *a, **k: True,
-        )
+            calls: list[dict[str, object]] = []
+            summary = _tg.poll_once(
+                get_updates=_fake_get_updates_capturing(calls),
+                send_message=lambda *a, **k: True,
+            )
 
-        assert summary.ok
-        assert summary.warning != ""
-        assert "TELEGRAM_REQUEST_TIMEOUT_S" in summary.warning
-        assert "TELEGRAM_POLL_TIMEOUT_S" in summary.warning
-        request_timeout = calls[0]["request_timeout"]
-        assert isinstance(request_timeout, float)
-        assert request_timeout > 50
+            assert summary.ok
+            assert summary.warning != ""
+            assert "TELEGRAM_REQUEST_TIMEOUT_S" in summary.warning
+            assert "TELEGRAM_POLL_TIMEOUT_S" in summary.warning
+            request_timeout = calls[0]["request_timeout"]
+            assert isinstance(request_timeout, float)
+            assert request_timeout > 50
 
     def test_equal_values_also_violate_the_invariant(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """`>` not `>=`: equal values still leave zero margin for the round
         trip and must also be corrected."""
-        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 30, raising=True)
-        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 30.0, raising=True)
-        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        with use_home(
+            dataclasses.replace(
+                current_home(), telegram_poll_timeout_s=30, telegram_request_timeout_s=30.0
+            )
+        ):
+            _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
 
-        calls: list[dict[str, object]] = []
-        summary = _tg.poll_once(
-            get_updates=_fake_get_updates_capturing(calls),
-            send_message=lambda *a, **k: True,
-        )
+            calls: list[dict[str, object]] = []
+            summary = _tg.poll_once(
+                get_updates=_fake_get_updates_capturing(calls),
+                send_message=lambda *a, **k: True,
+            )
 
-        assert summary.warning != ""
-        request_timeout = calls[0]["request_timeout"]
-        assert isinstance(request_timeout, float)
-        assert request_timeout > 30
+            assert summary.warning != ""
+            request_timeout = calls[0]["request_timeout"]
+            assert isinstance(request_timeout, float)
+            assert request_timeout > 30
 
     def test_warning_is_carried_even_on_a_failed_poll(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The misconfiguration warning must not be lost just because the poll also failed for an
         unrelated reason -- `serve.py`'s loop must learn of a bad config on the first poll."""
-        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 50, raising=True)
-        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 5.0, raising=True)
-        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        with use_home(
+            dataclasses.replace(
+                current_home(), telegram_poll_timeout_s=50, telegram_request_timeout_s=5.0
+            )
+        ):
+            _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
 
-        def _failing(token: str, **kwargs: object) -> _tg.GetUpdatesResult:
-            return _tg.GetUpdatesResult(False, error="cannot reach Telegram: boom")
+            def _failing(token: str, **kwargs: object) -> _tg.GetUpdatesResult:
+                return _tg.GetUpdatesResult(False, error="cannot reach Telegram: boom")
 
-        summary = _tg.poll_once(get_updates=_failing, send_message=lambda *a, **k: True)
+            summary = _tg.poll_once(get_updates=_failing, send_message=lambda *a, **k: True)
 
-        assert not summary.ok
-        assert summary.warning != ""
+            assert not summary.ok
+            assert summary.warning != ""
 
 
 # ── the outbound channel dialect ─────────────────────────────────────────────
@@ -1069,19 +1087,19 @@ class TestUnauthorizedBatchIsCoalesced:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Ten refusals in one batch audit as one telegram.unauthorized line with count=10."""
-        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 0, raising=True)
-        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
-        replies: list[str] = []
-        summary = _tg.poll_once(
-            get_updates=self._updates("-999999", 10),
-            send_message=lambda _t, _c, text: replies.append(text) or True,
-        )
-        assert summary.processed == 10
-        assert len(replies) == 10
-        entries = [e for e in _read_audit() if e.get("action") == "telegram.unauthorized"]
-        assert len(entries) == 1
-        assert "count=10" in str(entries[0]["detail"])
-        assert "-999999" in str(entries[0]["detail"])
+        with use_home(dataclasses.replace(current_home(), telegram_poll_timeout_s=0)):
+            _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+            replies: list[str] = []
+            summary = _tg.poll_once(
+                get_updates=self._updates("-999999", 10),
+                send_message=lambda _t, _c, text: replies.append(text) or True,
+            )
+            assert summary.processed == 10
+            assert len(replies) == 10
+            entries = [e for e in _read_audit() if e.get("action") == "telegram.unauthorized"]
+            assert len(entries) == 1
+            assert "count=10" in str(entries[0]["detail"])
+            assert "-999999" in str(entries[0]["detail"])
 
     def test_two_unbound_chats_in_one_batch_write_one_entry_each(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1089,18 +1107,18 @@ class TestUnauthorizedBatchIsCoalesced:
         """Coalescing is per chat id, so two chats in one batch keep two entries."""
         from docket.edges.adapters.telegram import GetUpdatesResult
 
-        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 0, raising=True)
-        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
-        updates = (
-            TelegramUpdate(update_id=1, chat_id="-111", user_id="9", text="/status"),
-            TelegramUpdate(update_id=2, chat_id="-222", user_id="9", text="/status"),
-            TelegramUpdate(update_id=3, chat_id="-111", user_id="9", text="/status"),
-        )
-        _tg.poll_once(
-            get_updates=lambda _t, **_: GetUpdatesResult(True, updates=updates),
-            send_message=lambda *a: True,
-        )
-        entries = [e for e in _read_audit() if e.get("action") == "telegram.unauthorized"]
-        assert len(entries) == 2
-        assert sorted(str(e["detail"]).count("count=") for e in entries) == [1, 1]
-        assert any("count=2" in str(e["detail"]) for e in entries)
+        with use_home(dataclasses.replace(current_home(), telegram_poll_timeout_s=0)):
+            _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+            updates = (
+                TelegramUpdate(update_id=1, chat_id="-111", user_id="9", text="/status"),
+                TelegramUpdate(update_id=2, chat_id="-222", user_id="9", text="/status"),
+                TelegramUpdate(update_id=3, chat_id="-111", user_id="9", text="/status"),
+            )
+            _tg.poll_once(
+                get_updates=lambda _t, **_: GetUpdatesResult(True, updates=updates),
+                send_message=lambda *a: True,
+            )
+            entries = [e for e in _read_audit() if e.get("action") == "telegram.unauthorized"]
+            assert len(entries) == 2
+            assert sorted(str(e["detail"]).count("count=") for e in entries) == [1, 1]
+            assert any("count=2" in str(e["detail"]) for e in entries)

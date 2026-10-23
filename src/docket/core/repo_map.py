@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from collections import Counter
 
-import docket.config as _cfg
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
 from docket.edges.adapters import system as _sys
+from docket.kernel.home import current_home
 
 #: Directories the built-in ``glob``/``grep`` skip; a unit test pins this to the toolbox set.
 SKIPPED_DIRS = frozenset(
@@ -43,7 +43,7 @@ def render_repo_map(root: str) -> str:
     paths = _sys.git_ls_files(root)
     if not paths:
         return ""
-    cap = _cfg.REPO_MAP_MAX_CHARS
+    cap = current_home().repo_map_max_chars
     rendered = ""
     for depth in _DEPTHS:
         counts = _directory_counts(paths, depth)

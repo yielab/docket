@@ -18,12 +18,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import register_local_provider, repoint_docket_home
+from tests.conftest import register_local_provider
 from typer.testing import CliRunner
 
 import docket.config as _cfg
 from docket.cli import app as _app
 from docket.core import models_policy as _mp
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -226,10 +227,10 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, home)
-        if extra_path is not None:
-            mp.setenv("PATH", f"{extra_path}{os.pathsep}{os.environ['PATH']}")
-        result = _runner.invoke(_app, args)
+        with use_home(Home(home)):
+            if extra_path is not None:
+                mp.setenv("PATH", f"{extra_path}{os.pathsep}{os.environ['PATH']}")
+            result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
 
 

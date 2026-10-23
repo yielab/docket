@@ -18,10 +18,10 @@ from typing import Any, Literal
 
 from filelock import FileLock
 
-import docket.config as _cfg
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 LOCKFILES: tuple[tuple[str, str], ...] = (
     ("package-lock.json", "npm ci"),
@@ -121,7 +121,7 @@ def codebase_dir(codebase: str) -> Path:
     """Where the entries of one codebase live."""
     resolved = Path(codebase).resolve()
     key = hashlib.sha256(str(resolved).encode()).hexdigest()[:8]
-    return _cfg.PREPARE_CACHE_DIR / f"{resolved.name or 'repo'}-{key}"
+    return current_home().prepare_cache_dir / f"{resolved.name or 'repo'}-{key}"
 
 
 def entry_dir(codebase: str, spec: PrepareSpec) -> Path:
@@ -133,7 +133,7 @@ def entry_dir(codebase: str, spec: PrepareSpec) -> Path:
 def linked_entries(root: str | Path) -> tuple[Path, ...]:
     """The cache entries *root* links into, found from its own symlinks and never outside the
     cache: the read-only roots a jailed command in *root* needs."""
-    base = _cfg.PREPARE_CACHE_DIR.resolve()
+    base = current_home().prepare_cache_dir.resolve()
     found: dict[Path, None] = {}
     for name in LINKED_DIRS:
         link = Path(root) / name
@@ -217,7 +217,7 @@ def prepare_worktree(
             _store(entry, root)
             if entry.is_dir():
                 _exclude(common_dir, _link(entry, root))
-                _evict(directory, _cfg.PREPARE_CACHE_KEEP)
+                _evict(directory, current_home().prepare_cache_keep)
         return PrepareOutcome(code == 0, False, code, _clock.monotonic() - start, output)
 
 

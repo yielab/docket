@@ -22,6 +22,7 @@ from docket.cli import _pod as _pod_cli
 from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -154,14 +155,14 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        server = _mcp._build_server()
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            server = _mcp._build_server()
 
-        result = asyncio.run(_call(server, "runs", {"run_id": "run-does-not-exist"}))
-        assert result.is_error is True
-        text = "".join(getattr(block, "text", "") for block in result.content)
-        assert "Unknown run" in text
+            result = asyncio.run(_call(server, "runs", {"run_id": "run-does-not-exist"}))
+            assert result.is_error is True
+            text = "".join(getattr(block, "text", "") for block in result.content)
+            assert "Unknown run" in text
 
     def test_audit_is_written_before_work_even_when_the_call_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -172,13 +173,13 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        server = _mcp._build_server()
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            server = _mcp._build_server()
 
-        result = asyncio.run(_call(server, "runs", {"run_id": "run-does-not-exist"}))
-        assert result.is_error is True
-        assert len(_audit_actions("mcp.runs")) == 1
+            result = asyncio.run(_call(server, "runs", {"run_id": "run-does-not-exist"}))
+            assert result.is_error is True
+            assert len(_audit_actions("mcp.runs")) == 1
 
     def test_unknown_approval_token_is_audited_then_surfaces_as_iserror(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -186,17 +187,17 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        server = _mcp._build_server()
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            server = _mcp._build_server()
 
-        result = asyncio.run(_call(server, "approvals_grant", {"token": "apr-does-not-exist"}))
-        assert result.is_error is True
-        text = "".join(getattr(block, "text", "") for block in result.content)
-        assert "not found" in text
-        # Audited even though the underlying grant never happened.
-        assert len(_audit_actions("mcp.approvals_grant")) == 1
-        assert len(_audit_actions("approval.grant")) == 0
+            result = asyncio.run(_call(server, "approvals_grant", {"token": "apr-does-not-exist"}))
+            assert result.is_error is True
+            text = "".join(getattr(block, "text", "") for block in result.content)
+            assert "not found" in text
+            # Audited even though the underlying grant never happened.
+            assert len(_audit_actions("mcp.approvals_grant")) == 1
+            assert len(_audit_actions("approval.grant")) == 0
 
 
 # ── 4. no MCP-side bypass, proven end-to-end through the real transport ────
@@ -231,18 +232,18 @@ class TestNoBypassThroughRealTransport:
         pytest.importorskip("mcp")
         import asyncio
 
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        token = _approval.approval_create("demo", "implementer", "deploy prod")
-        server = _mcp._build_server()
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            token = _approval.approval_create("demo", "implementer", "deploy prod")
+            server = _mcp._build_server()
 
-        result = asyncio.run(_call(server, "approvals_grant", {"token": token}))
-        assert result.is_error is False
-        assert result.structured_content == {"ok": True, "token": token, "state": "granted"}
-        # The exact core.approval state transition happened — not a parallel one.
-        assert _approval.approval_get(token)["state"] == "granted"
-        entry = _audit_actions("approval.grant")[-1]
-        assert entry["detail"] == f"token={token} project=demo channel=mcp"
+            result = asyncio.run(_call(server, "approvals_grant", {"token": token}))
+            assert result.is_error is False
+            assert result.structured_content == {"ok": True, "token": token, "state": "granted"}
+            # The exact core.approval state transition happened — not a parallel one.
+            assert _approval.approval_get(token)["state"] == "granted"
+            entry = _audit_actions("approval.grant")[-1]
+            assert entry["detail"] == f"token={token} project=demo channel=mcp"
 
 
 # ── stdio discipline sanity: no tool import ever pulls in docket.ui ────────

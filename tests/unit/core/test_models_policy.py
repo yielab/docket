@@ -15,6 +15,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import models_policy as _mp
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.models_policy"
 
@@ -35,7 +36,7 @@ class TestFindRegistryProblems:
     ) -> None:
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(
+        current_home().model_registry_file.write_text(
             json.dumps(
                 {
                     "default": "anthropic/claude-sonnet-4-6",
@@ -51,7 +52,7 @@ class TestFindRegistryProblems:
     ) -> None:
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(
+        current_home().model_registry_file.write_text(
             json.dumps({"rankAnchors": {"deluxe": "anthropic/claude-sonnet-4-6"}})
         )
         problems = _mp.find_registry_problems()
@@ -62,7 +63,7 @@ class TestFindRegistryProblems:
     ) -> None:
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
+        current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
         problems = _mp.find_registry_problems()
         assert len(problems) == 1
         assert problems[0][0] == "default"
@@ -71,7 +72,7 @@ class TestFindRegistryProblems:
     def test_unknown_role_is_named(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(
+        current_home().model_registry_file.write_text(
             json.dumps({"roles": {"astrologer": "anthropic/claude-haiku-4-5"}})
         )
         problems = _mp.find_registry_problems()
@@ -82,10 +83,10 @@ class TestFindRegistryProblems:
     ) -> None:
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text("{not json")
+        current_home().model_registry_file.write_text("{not json")
         problems = _mp.find_registry_problems()
         assert len(problems) == 1
-        assert problems[0][0] == str(_cfg.MODEL_REGISTRY_FILE)
+        assert problems[0][0] == str(current_home().model_registry_file)
 
 
 class TestResolveStepModel:
@@ -114,7 +115,7 @@ class TestResolveRoleModelInPodScope:
 
     def _registry_on_local(self, home: Path) -> None:
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(
+        current_home().model_registry_file.write_text(
             json.dumps(
                 {
                     "default": "local/x",
@@ -183,7 +184,7 @@ class TestOneRoleVocabulary:
     ) -> None:
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(
+        current_home().model_registry_file.write_text(
             json.dumps({"roles": {"implementer": "openai/gpt-4.1"}}), encoding="utf-8"
         )
         assert _mp.resolve_role_model("implementer") == "openai/gpt-4.1"
@@ -193,14 +194,16 @@ class TestOneRoleVocabulary:
     ) -> None:
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(
+        current_home().model_registry_file.write_text(
             json.dumps({"roles": {"programmer": "openai/gpt-4.1"}}), encoding="utf-8"
         )
         assert _mp.resolve_role_model("implementer") != "openai/gpt-4.1"
         assert _mp.find_registry_problems() == [("roles.programmer", "unknown role")]
-        _cfg.MODEL_REGISTRY_FILE.unlink()
+        current_home().model_registry_file.unlink()
         _mp.write_registry({"role.programmer": "x/y"})
-        assert "programmer" not in json.loads(_cfg.MODEL_REGISTRY_FILE.read_text()).get("roles", {})
+        assert "programmer" not in json.loads(current_home().model_registry_file.read_text()).get(
+            "roles", {}
+        )
 
 
 class TestReapplyRolePolicy:
@@ -215,11 +218,11 @@ class TestReapplyRolePolicy:
 
         home = _point_at(tmp_path, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
-        _cfg.MODEL_REGISTRY_FILE.write_text(
+        current_home().model_registry_file.write_text(
             json.dumps({"default": "local/local-model"}), encoding="utf-8"
         )
         aid = "demo-security-vetter"
-        path = _cfg.meta_path(aid)
+        path = current_home().meta_path(aid)
         path.parent.mkdir(parents=True, exist_ok=True)
         _store.write_json(
             path,
@@ -229,12 +232,14 @@ class TestReapplyRolePolicy:
                 "scope": "project",
                 "role": "security-vetter",
                 "pod": "demo",
-                "model": _cfg.DEFAULT_MODEL,
+                "model": current_home().default_model,
             },
         )
 
         assert _mp.reapply_role_policy() == [
-            _mp.RoleRepoint(aid, "demo", "security-vetter", _cfg.DEFAULT_MODEL, "local/local-model")
+            _mp.RoleRepoint(
+                aid, "demo", "security-vetter", current_home().default_model, "local/local-model"
+            )
         ]
         assert _fleet.meta_get(aid, "model", "") == "local/local-model"
 
@@ -273,4 +278,4 @@ class TestRankAnchorsFailLoudly:
             _mp.load_registry()
 
         assert missing in str(excinfo.value)
-        assert str(_cfg.PROVIDERS_FILE) in str(excinfo.value)
+        assert str(current_home().providers_file) in str(excinfo.value)

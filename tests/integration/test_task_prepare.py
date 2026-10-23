@@ -18,12 +18,12 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import trace as _trace
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.prepare"
 
@@ -121,7 +121,7 @@ def _npm_calls(log: Path) -> list[str]:
 
 
 def _prepare_events(task_id: str) -> list[dict[str, Any]]:
-    path = _cfg.TRACES_DIR / "demo" / f"agent:demo:{task_id}.jsonl"
+    path = current_home().traces_dir / "demo" / f"agent:demo:{task_id}.jsonl"
     return [r for r in _trace.read_trace(path) if r["event_type"] == "prepare"]
 
 
@@ -191,7 +191,7 @@ def test_a_broken_lockfile_fails_the_task_before_any_hop(
     assert "lockfile is broken" in task["reason"] and "npm ci" in task["reason"]
     assert task["hops"] == [] and runner.seen == []
     assert "prepared" not in task
-    assert [p for p in _cfg.PREPARE_CACHE_DIR.glob("*/*") if p.is_dir()] == []
+    assert [p for p in current_home().prepare_cache_dir.glob("*/*") if p.is_dir()] == []
     (event,) = _prepare_events(task["id"])
     assert event["payload"]["exit"] == 1
 

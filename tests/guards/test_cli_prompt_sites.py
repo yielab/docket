@@ -10,16 +10,18 @@ from __future__ import annotations
 import ast
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
+from tests.conftest import record_isolation_off, register_local_provider
 from typer.testing import CliRunner
 
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
+from docket.kernel.home import Home, use_home
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "docket"
 
@@ -93,25 +95,25 @@ def _seed_documents(tmp_path: Path) -> None:
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, root)
-    record_isolation_off(root)
-    code = tmp_path / "code"
-    code.mkdir()
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
-    register_local_provider(root, "loopback", [{"id": "tiny"}])
-    _dispatch.enqueue_task("demo", "a queued task", channel="cli")
-    _fleet.upsert_binding("demo-lead", "-1001")
-    _mp.write_registry({"lead": "loopback/tiny"})
-    _seed_documents(tmp_path)
-    monkeypatch.setenv("DOCKET_POD", "demo")
-    monkeypatch.setenv("DOCKET_NO_HINTS", "1")
-    monkeypatch.chdir(code)
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
-    return root
+    with use_home(Home(root)):
+        record_isolation_off(root)
+        code = tmp_path / "code"
+        code.mkdir()
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
+        register_local_provider(root, "loopback", [{"id": "tiny"}])
+        _dispatch.enqueue_task("demo", "a queued task", channel="cli")
+        _fleet.upsert_binding("demo-lead", "-1001")
+        _mp.write_registry({"lead": "loopback/tiny"})
+        _seed_documents(tmp_path)
+        monkeypatch.setenv("DOCKET_POD", "demo")
+        monkeypatch.setenv("DOCKET_NO_HINTS", "1")
+        monkeypatch.chdir(code)
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+        yield root
 
 
 @pytest.mark.parametrize(

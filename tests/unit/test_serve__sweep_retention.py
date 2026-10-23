@@ -11,31 +11,34 @@ before expiry can consider it eligible.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket import serve
 from docket.core import approval as _ap
 from docket.core import trace as _trace
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.serve"
 
 
 @pytest.fixture()
-def swept_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def swept_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with the sweep's paths and windows repointed."""
     d = tmp_path / ".docket"
     d.mkdir()
-    repoint_docket_home(monkeypatch, d)
-    monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 3600, raising=True)
-    monkeypatch.setattr(_cfg, "TRACE_RETENTION_DAYS", 30, raising=True)
-    monkeypatch.setattr(_cfg, "TRACE_RETENTION_S", 30 * 86400, raising=True)
-    monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-    return d
+    with use_home(Home(d)):
+        with use_home(
+            dataclasses.replace(current_home(), session_timeout=3600, trace_retention_days=30)
+        ):
+            monkeypatch.setattr(_cfg, "TRACE_RETENTION_S", 30 * 86400, raising=True)
+            monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+            yield d
 
 
 def _write_trace(pdir: Path, name: str, lines: list[dict[str, object]]) -> Path:

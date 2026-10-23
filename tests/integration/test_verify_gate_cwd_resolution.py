@@ -14,6 +14,7 @@ covers NUL/newline rejection, the length cap, and the ``pod.set-verify`` audit e
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
 from docket.core import runtime_driver as _rd
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -73,7 +75,7 @@ class TestResolveMemberCwd:
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,
@@ -112,7 +114,7 @@ class TestDispatchVerifyCwd:
     ``run_verify_cmd``, proving the actual cwd rather than a helper's return value."""
 
     @pytest.fixture(autouse=True)
-    def _hermetic(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def _hermetic(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
         monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
         monkeypatch.setenv("DOCKET_NO_TRACE", "0")
         monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
@@ -121,7 +123,8 @@ class TestDispatchVerifyCwd:
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-        repoint_docket_home(monkeypatch, home)
+        with use_home(Home(home)):
+            yield
 
     def test_verify_runs_in_worktree_when_present(self, tmp_path: Path) -> None:
         worktree = tmp_path / "worktree"
@@ -168,7 +171,7 @@ class TestDispatchVerifyCwd:
             "myapp-implementer",
             {"codebase": "", "verifyCmd": "test -f WORKSPACE_MARKER"},
         )
-        ws = _cfg.PROJECTS_DIR / "myapp-implementer"
+        ws = current_home().projects_dir / "myapp-implementer"
         (ws / "WORKSPACE_MARKER").touch()
 
         task: dict[str, Any] = {"id": "cw3", "description": "work", "status": "pending"}

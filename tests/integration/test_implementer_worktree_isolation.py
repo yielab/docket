@@ -12,14 +12,13 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest import mock
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 import docket.edges.adapters.system as _sys
 from docket.cli._pod import (
     _provision_task_worktree,
@@ -28,6 +27,7 @@ from docket.cli._pod import (
     teardown_member,
 )
 from docket.core.pod import PodMember
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._pod"
 
@@ -79,15 +79,15 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
     projects = home / "workspaces" / "projects"
     projects.mkdir(parents=True)
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps(FLEET_CONFIG))
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 @pytest.fixture()
@@ -136,7 +136,7 @@ class TestProvisionTaskWorktree:
     def test_worktree_created_under_member_tasks_dir(self, git_repo: Path, pod_home: Path) -> None:
         rec, reason = _provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
         assert reason == ""
-        assert rec["dir"] == str(_cfg.PROJECTS_DIR / "myapp-implementer" / "tasks" / "t1")
+        assert rec["dir"] == str(current_home().projects_dir / "myapp-implementer" / "tasks" / "t1")
         assert Path(rec["dir"]).is_dir()
         assert rec["branch"] == _worktree_branch("myapp", "t1")
         assert _sys.git_current_branch(rec["dir"]) == rec["branch"]
@@ -163,14 +163,16 @@ class TestProvisionMemberMakesNoWorktree:
             project_key="default",
         )
         assert ok, msg
-        return json.loads((_cfg.PROJECTS_DIR / member.member_id / _cfg.META_FILE).read_text())
+        return json.loads(
+            (current_home().projects_dir / member.member_id / current_home().meta_file).read_text()
+        )
 
     def test_repo_implementer_has_no_worktree(self, git_repo: Path, pod_home: Path) -> None:
         m = _make_member("implementer")
         meta = self._provision(m, str(git_repo))
         assert "worktreeDir" not in meta
         assert "worktreeBranch" not in meta
-        assert not (_cfg.PROJECTS_DIR / m.member_id / "tasks").exists()
+        assert not (current_home().projects_dir / m.member_id / "tasks").exists()
         listing = subprocess.run(
             ["git", "-C", str(git_repo), "worktree", "list"], capture_output=True, text=True
         ).stdout
@@ -183,14 +185,14 @@ class TestProvisionMemberMakesNoWorktree:
 class TestTeardownMemberWorktree:
     def _write_meta(self, ws: Path, meta: dict[str, Any]) -> None:
         ws.mkdir(parents=True, exist_ok=True)
-        (ws / _cfg.META_FILE).write_text(json.dumps(meta))
+        (ws / current_home().meta_file).write_text(json.dumps(meta))
 
     def _setup(self, tmp_path: Path, project: str, tasks: tuple[str, ...]) -> tuple[Path, str]:
         repo = tmp_path / f"repo-{project}"
         repo.mkdir()
         _init_git_repo(repo)
         member_id = f"{project}-implementer"
-        ws = _cfg.PROJECTS_DIR / member_id
+        ws = current_home().projects_dir / member_id
         self._write_meta(ws, {"codebase": str(repo), "pod": project, "role": "implementer"})
         for task in tasks:
             _rec, reason = _provision_task_worktree(member_id, project, task, str(repo))
@@ -210,10 +212,10 @@ class TestTeardownMemberWorktree:
             ["git", "-C", str(repo), "worktree", "list"], capture_output=True, text=True
         ).stdout
         assert len(listing.strip().splitlines()) == 1
-        assert not (_cfg.PROJECTS_DIR / member_id).exists()
+        assert not (current_home().projects_dir / member_id).exists()
 
     def test_teardown_without_tasks_dir_no_crash(self, pod_home: Path) -> None:
-        ws = _cfg.PROJECTS_DIR / "proj2-implementer"
+        ws = current_home().projects_dir / "proj2-implementer"
         self._write_meta(ws, {"codebase": "", "role": "implementer"})
         with mock.patch.object(_sys, "git_worktree_remove") as remove:
             ok, _ = teardown_member("proj2-implementer")
@@ -231,7 +233,7 @@ class TestTeardownMemberWorktree:
         self, tmp_path: Path, pod_home: Path
     ) -> None:
         repo, member_id = self._setup(tmp_path, "proj5", ("t1", "t2"))
-        wt = _cfg.PROJECTS_DIR / member_id / "tasks" / "t1"
+        wt = current_home().projects_dir / member_id / "tasks" / "t1"
         (wt / "extra.txt").write_text("unmerged work\n")
         subprocess.run(["git", "-C", str(wt), "add", "."], check=True, capture_output=True)
         subprocess.run(

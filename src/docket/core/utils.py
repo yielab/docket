@@ -4,17 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import docket.config as cfg
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
+from docket.kernel.home import current_home
 
 
 def project_ids() -> list[str]:
     """Sorted list of project agent IDs (dirs containing .docket-meta.json)."""
-    if not cfg.PROJECTS_DIR.is_dir():
+    if not current_home().projects_dir.is_dir():
         return []
     return sorted(
-        d.name for d in cfg.PROJECTS_DIR.iterdir() if d.is_dir() and (d / cfg.META_FILE).is_file()
+        d.name
+        for d in current_home().projects_dir.iterdir()
+        if d.is_dir() and (d / current_home().meta_file).is_file()
     )
 
 

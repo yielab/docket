@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod, _setup_check
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -41,7 +41,7 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "d
 
 
 def _lead_ws(project: str = "demo") -> Path:
-    return _cfg.workspace_dir(f"{project}-lead")
+    return current_home().workspace_dir(f"{project}-lead")
 
 
 def _claim_a_task(project: str = "demo") -> str:
@@ -61,9 +61,9 @@ class TestNoPods:
         home = tmp_path / ".docket"
         home.mkdir()
         (home / "fleet.json").write_text(json.dumps({"agents": []}))
-        repoint_docket_home(monkeypatch, home)
-        assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
-        assert "Dispatch task ledger" not in capsys.readouterr().out
+        with use_home(Home(home)):
+            assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
+            assert "Dispatch task ledger" not in capsys.readouterr().out
 
 
 class TestInSync:

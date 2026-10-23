@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import docket.config as _cfg
 from docket.edges import store
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
@@ -52,7 +51,7 @@ def secret_value(name: str) -> str | None:
     if name not in raw:
         return None
     if _system.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
-        value = _system.secret_tool_lookup(_cfg.KEYRING_SERVICE, name)
+        value = _system.secret_tool_lookup(current_home().keyring_service, name)
     else:
         value = raw.get(name)
     clean = str(value or "").strip()
@@ -88,7 +87,7 @@ def secret_values() -> list[str]:
     if _system.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
         backend = "keyring"
     if backend == "keyring":
-        service = _cfg.KEYRING_SERVICE
+        service = current_home().keyring_service
         out: list[str] = []
         for key in raw:
             value = _system.secret_tool_lookup(service, str(key))

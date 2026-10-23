@@ -6,17 +6,17 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import pod
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.pod"
 
 
 def _write_meta(member_id: str, pod_name: str, role: str = "") -> None:
     """Seed just enough of `.docket-meta.json` for `pod_of`'s meta-first read."""
-    path = _cfg.meta_path(member_id)
+    path = current_home().meta_path(member_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     _store.write_json(
         path,
@@ -73,7 +73,7 @@ class TestPodOf:
         assert pod.pod_of("demo-lead") == "demo"
 
     def test_falls_back_to_string_parsing_when_meta_has_no_pod_field(self) -> None:
-        path = _cfg.meta_path("demo-lead")
+        path = current_home().meta_path("demo-lead")
         path.parent.mkdir(parents=True, exist_ok=True)
         _store.write_json(path, {"schemaVersion": 1, "kind": "project", "role": "lead"})
         assert pod.pod_of("demo-lead") == "demo"
@@ -125,7 +125,7 @@ class TestPodScopedRoleInRoster:
     `docket pod roles`."""
 
     def test_pod_scoped_role_resolves_in_the_roster(self) -> None:
-        _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json")
+        _write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json")
 
         assert pod.parse_member_id("acme-vetter", "acme") == ("vetter", 1)
         found = pod.members_of(["acme-lead", "acme-vetter"], "acme")
@@ -134,7 +134,7 @@ class TestPodScopedRoleInRoster:
     def test_pod_scoped_role_does_not_leak_to_a_different_pod(self) -> None:
         # Fail-closed / most-restrictive case: pod "acme"'s overlay must not authorize a
         # same-named member id under an unrelated pod "beta".
-        _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json")
+        _write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json")
 
         assert pod.parse_member_id("beta-vetter", "beta") is None
 
@@ -200,7 +200,7 @@ class TestAddMember:
 
 def _write_lead_meta(project: str, fields: dict[str, object] | None = None) -> None:
     """Seed just the pod Lead's meta keys ``PodSettings`` reads."""
-    path = _cfg.meta_path(pod.member_id(project, "lead"))
+    path = current_home().meta_path(pod.member_id(project, "lead"))
     path.parent.mkdir(parents=True, exist_ok=True)
     data: dict[str, object] = {"schemaVersion": 1, "kind": "project", "scope": "project"}
     if fields:

@@ -13,6 +13,7 @@ is monkeypatched at each call site to stay hermetic -- pipeline internals are co
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import time
@@ -31,6 +32,7 @@ from docket.cli import _pod, _run
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
 from docket.edges import store as _store
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -75,58 +77,58 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        trace_calls: list[tuple[object, ...]] = []
+        with use_home(Home(home)):
+            trace_calls: list[tuple[object, ...]] = []
 
-        def _capture_trace(*args: object, **_kwargs: object) -> str:
-            trace_calls.append(args)
-            return "written"
+            def _capture_trace(*args: object, **_kwargs: object) -> str:
+                trace_calls.append(args)
+                return "written"
 
-        monkeypatch.setattr("docket.core.trace.trace_event", _capture_trace)
-        record = _runs.create_run("cli", "demo")
-        task = _dispatch.TaskResult(
-            task_id="task-failed",
-            status="failed",
-            reason="turn budget exhausted",
-        )
+            monkeypatch.setattr("docket.core.trace.trace_event", _capture_trace)
+            record = _runs.create_run("cli", "demo")
+            task = _dispatch.TaskResult(
+                task_id="task-failed",
+                status="failed",
+                reason="turn budget exhausted",
+            )
 
-        returned = _runs.execute(record["id"], lambda: [task])
+            returned = _runs.execute(record["id"], lambda: [task])
 
-        assert returned == [task]
-        persisted = _runs.get_run(record["id"])
-        assert persisted is not None
-        assert persisted["state"] == "failed"
-        assert persisted["taskIds"] == ["task-failed"]
-        assert "task-failed" in persisted["error"]
-        assert "turn budget exhausted" in persisted["error"]
-        assert len(trace_calls) == 1
-        assert trace_calls[0][3] == "error"
-        assert json.loads(str(trace_calls[0][4]))["error"] == persisted["error"]
+            assert returned == [task]
+            persisted = _runs.get_run(record["id"])
+            assert persisted is not None
+            assert persisted["state"] == "failed"
+            assert persisted["taskIds"] == ["task-failed"]
+            assert "task-failed" in persisted["error"]
+            assert "turn budget exhausted" in persisted["error"]
+            assert len(trace_calls) == 1
+            assert trace_calls[0][3] == "error"
+            assert json.loads(str(trace_calls[0][4]))["error"] == persisted["error"]
 
     def test_failed_wins_a_mixed_result_and_preserves_every_task_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        record = _runs.create_run("webhook", "demo")
-        results = [
-            _dispatch.TaskResult(task_id="task-done", status="done"),
-            _dispatch.TaskResult(task_id="task-wait", status="waiting_approval"),
-            _dispatch.TaskResult(
-                task_id="task-failed", status="failed", reason="verify gate\nfailed"
-            ),
-            _dispatch.TaskResult(task_id="task-blocked", status="blocked"),
-        ]
+        with use_home(Home(home)):
+            record = _runs.create_run("webhook", "demo")
+            results = [
+                _dispatch.TaskResult(task_id="task-done", status="done"),
+                _dispatch.TaskResult(task_id="task-wait", status="waiting_approval"),
+                _dispatch.TaskResult(
+                    task_id="task-failed", status="failed", reason="verify gate\nfailed"
+                ),
+                _dispatch.TaskResult(task_id="task-blocked", status="blocked"),
+            ]
 
-        returned = _runs.execute(record["id"], lambda: results)
+            returned = _runs.execute(record["id"], lambda: results)
 
-        assert returned == results
-        persisted = _runs.get_run(record["id"])
-        assert persisted is not None
-        assert persisted["state"] == "failed"
-        assert persisted["taskIds"] == [result.task_id for result in results]
-        assert "task-failed: verify gate failed" in persisted["error"]
+            assert returned == results
+            persisted = _runs.get_run(record["id"])
+            assert persisted is not None
+            assert persisted["state"] == "failed"
+            assert persisted["taskIds"] == [result.task_id for result in results]
+            assert "task-failed: verify gate failed" in persisted["error"]
 
     @pytest.mark.parametrize(
         "results",
@@ -146,150 +148,150 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        record = _runs.create_run("cli", "demo")
+        with use_home(Home(home)):
+            record = _runs.create_run("cli", "demo")
 
-        returned = _runs.execute(record["id"], lambda: results)
+            returned = _runs.execute(record["id"], lambda: results)
 
-        assert returned == results
-        persisted = _runs.get_run(record["id"])
-        assert persisted is not None
-        assert persisted["state"] == "succeeded"
-        assert persisted["taskIds"] == [result.task_id for result in results]
-        assert persisted["error"] == ""
+            assert returned == results
+            persisted = _runs.get_run(record["id"])
+            assert persisted is not None
+            assert persisted["state"] == "succeeded"
+            assert persisted["taskIds"] == [result.task_id for result in results]
+            assert persisted["error"] == ""
 
     def test_failure_summary_is_bounded_and_a_concurrent_cancel_still_wins(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        record = _runs.create_run("cli", "demo")
-        results = [
-            _dispatch.TaskResult(
-                task_id=f"task-{index}",
-                status="failed",
-                reason=f"reason {index} " + ("x" * 2_000) + " RAW_TAIL_SENTINEL",
-            )
-            for index in range(20)
-        ]
+        with use_home(Home(home)):
+            record = _runs.create_run("cli", "demo")
+            results = [
+                _dispatch.TaskResult(
+                    task_id=f"task-{index}",
+                    status="failed",
+                    reason=f"reason {index} " + ("x" * 2_000) + " RAW_TAIL_SENTINEL",
+                )
+                for index in range(20)
+            ]
 
-        def _cancel_then_return() -> list[_dispatch.TaskResult]:
-            _runs.cancel_run(record["id"])
-            return results
+            def _cancel_then_return() -> list[_dispatch.TaskResult]:
+                _runs.cancel_run(record["id"])
+                return results
 
-        returned = _runs.execute(record["id"], _cancel_then_return)
+            returned = _runs.execute(record["id"], _cancel_then_return)
 
-        assert returned == results
-        persisted = _runs.get_run(record["id"])
-        assert persisted is not None
-        assert persisted["state"] == "cancelled"
-        assert persisted["error"] == "cancelled by operator"
+            assert returned == results
+            persisted = _runs.get_run(record["id"])
+            assert persisted is not None
+            assert persisted["state"] == "cancelled"
+            assert persisted["error"] == "cancelled by operator"
 
-        uncancelled = _runs.create_run("cli", "demo")
-        _runs.execute(uncancelled["id"], lambda: results)
-        failed = _runs.get_run(uncancelled["id"])
-        assert failed is not None
-        assert failed["state"] == "failed"
-        assert failed["taskIds"] == [result.task_id for result in results]
-        assert len(failed["error"]) <= 1_024
-        assert "RAW_TAIL_SENTINEL" not in failed["error"]
-        assert "more" in failed["error"]
+            uncancelled = _runs.create_run("cli", "demo")
+            _runs.execute(uncancelled["id"], lambda: results)
+            failed = _runs.get_run(uncancelled["id"])
+            assert failed is not None
+            assert failed["state"] == "failed"
+            assert failed["taskIds"] == [result.task_id for result in results]
+            assert len(failed["error"]) <= 1_024
+            assert "RAW_TAIL_SENTINEL" not in failed["error"]
+            assert "more" in failed["error"]
 
     def test_execute_folds_the_returned_list_exactly_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        record = _runs.create_run("cli", "demo")
+        with use_home(Home(home)):
+            record = _runs.create_run("cli", "demo")
 
-        class CountingResults(list[_dispatch.TaskResult]):
-            iterations = 0
+            class CountingResults(list[_dispatch.TaskResult]):
+                iterations = 0
 
-            def __iter__(self):  # type: ignore[no-untyped-def]
-                self.iterations += 1
-                return super().__iter__()
+                def __iter__(self):  # type: ignore[no-untyped-def]
+                    self.iterations += 1
+                    return super().__iter__()
 
-        results = CountingResults(
-            [_dispatch.TaskResult(task_id="task-failed", status="failed", reason="broken")]
-        )
+            results = CountingResults(
+                [_dispatch.TaskResult(task_id="task-failed", status="failed", reason="broken")]
+            )
 
-        _runs.execute(record["id"], lambda: results)
+            _runs.execute(record["id"], lambda: results)
 
-        assert results.iterations == 1
+            assert results.iterations == 1
 
     def test_cancel_between_fold_and_terminal_write_cannot_be_clobbered(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        record = _runs.create_run("cli", "demo")
-        real_read_modify_write = _store.read_modify_write
-        writes = 0
+        with use_home(Home(home)):
+            record = _runs.create_run("cli", "demo")
+            real_read_modify_write = _store.read_modify_write
+            writes = 0
 
-        def _inject_cancel_before_second_write(path: Path, fn: Any) -> dict[str, Any]:
-            nonlocal writes
-            writes += 1
-            if writes == 2:  # mark_running is first; terminal transition is second
+            def _inject_cancel_before_second_write(path: Path, fn: Any) -> dict[str, Any]:
+                nonlocal writes
+                writes += 1
+                if writes == 2:  # mark_running is first; terminal transition is second
 
-                def _cancel(doc: dict[str, Any]) -> dict[str, Any]:
-                    for candidate in doc.get("runs", []):
-                        if candidate.get("id") == record["id"]:
-                            candidate["state"] = "cancelled"
-                            candidate["error"] = "cancelled by operator"
-                    return doc
+                    def _cancel(doc: dict[str, Any]) -> dict[str, Any]:
+                        for candidate in doc.get("runs", []):
+                            if candidate.get("id") == record["id"]:
+                                candidate["state"] = "cancelled"
+                                candidate["error"] = "cancelled by operator"
+                        return doc
 
-                real_read_modify_write(path, _cancel)
-            return real_read_modify_write(path, fn)
+                    real_read_modify_write(path, _cancel)
+                return real_read_modify_write(path, fn)
 
-        monkeypatch.setattr(_store, "read_modify_write", _inject_cancel_before_second_write)
-        trace_calls: list[tuple[object, ...]] = []
-        monkeypatch.setattr(
-            "docket.core.trace.trace_event",
-            lambda *args, **_kwargs: trace_calls.append(args) or "written",
-        )
+            monkeypatch.setattr(_store, "read_modify_write", _inject_cancel_before_second_write)
+            trace_calls: list[tuple[object, ...]] = []
+            monkeypatch.setattr(
+                "docket.core.trace.trace_event",
+                lambda *args, **_kwargs: trace_calls.append(args) or "written",
+            )
 
-        returned = _runs.execute(
-            record["id"],
-            lambda: [
-                _dispatch.TaskResult(
-                    task_id="task-failed", status="failed", reason="must lose to cancel"
-                )
-            ],
-        )
+            returned = _runs.execute(
+                record["id"],
+                lambda: [
+                    _dispatch.TaskResult(
+                        task_id="task-failed", status="failed", reason="must lose to cancel"
+                    )
+                ],
+            )
 
-        assert returned is not None
-        persisted = _runs.get_run(record["id"])
-        assert persisted is not None
-        assert persisted["state"] == "cancelled"
-        assert persisted["error"] == "cancelled by operator"
-        assert trace_calls == []
+            assert returned is not None
+            persisted = _runs.get_run(record["id"])
+            assert persisted is not None
+            assert persisted["state"] == "cancelled"
+            assert persisted["error"] == "cancelled by operator"
+            assert trace_calls == []
 
     def test_execute_never_revives_a_run_cancelled_while_queued(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        repoint_docket_home(monkeypatch, home)
-        record = _runs.create_run("webhook", "demo")
-        assert _runs.cancel_run(record["id"]).ok
-        invoked = False
+        with use_home(Home(home)):
+            record = _runs.create_run("webhook", "demo")
+            assert _runs.cancel_run(record["id"]).ok
+            invoked = False
 
-        def _must_not_run() -> list[_dispatch.TaskResult]:
-            nonlocal invoked
-            invoked = True
-            return [_dispatch.TaskResult(task_id="task-late", status="failed", reason="late")]
+            def _must_not_run() -> list[_dispatch.TaskResult]:
+                nonlocal invoked
+                invoked = True
+                return [_dispatch.TaskResult(task_id="task-late", status="failed", reason="late")]
 
-        returned = _runs.execute(record["id"], _must_not_run)
+            returned = _runs.execute(record["id"], _must_not_run)
 
-        assert returned is None
-        assert invoked is False
-        persisted = _runs.get_run(record["id"])
-        assert persisted is not None
-        assert persisted["state"] == "cancelled"
-        assert persisted["error"] == "cancelled by operator"
+            assert returned is None
+            assert invoked is False
+            persisted = _runs.get_run(record["id"])
+            assert persisted is not None
+            assert persisted["state"] == "cancelled"
+            assert persisted["error"] == "cancelled by operator"
 
 
 # ── CLI dispatch path ─────────────────────────────────────────────────────────
@@ -576,53 +578,57 @@ class TestScheduleDispatchPath:
     def test_due_schedule_creates_a_run_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"projA": "@every 1s"}}))
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            current_home().schedule_file.write_text(
+                json.dumps({"schedules": {"projA": "@every 1s"}})
+            )
 
-        def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-            return [_dispatch.TaskResult(task_id="task-sched", status="done")]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+                return [_dispatch.TaskResult(task_id="task-sched", status="done")]
 
-        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
 
-        _serve._check_schedules(time.time())
+            _serve._check_schedules(time.time())
 
-        deadline = time.time() + 2
-        records: list[dict[str, Any]] = []
-        while time.time() < deadline:
-            records = _runs.list_runs("projA")
-            if records and records[0]["state"] in ("succeeded", "failed"):
-                break
-            time.sleep(0.02)
+            deadline = time.time() + 2
+            records: list[dict[str, Any]] = []
+            while time.time() < deadline:
+                records = _runs.list_runs("projA")
+                if records and records[0]["state"] in ("succeeded", "failed"):
+                    break
+                time.sleep(0.02)
 
-        assert len(records) == 1
-        assert records[0]["source"] == "schedule"
-        assert records[0]["state"] == "succeeded"
+            assert len(records) == 1
+            assert records[0]["source"] == "schedule"
+            assert records[0]["state"] == "succeeded"
 
     def test_exception_in_scheduled_dispatch_is_recorded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"projB": "@every 1s"}}))
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            current_home().schedule_file.write_text(
+                json.dumps({"schedules": {"projB": "@every 1s"}})
+            )
 
-        def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-            raise RuntimeError("schedule dispatch exploded")
+            def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+                raise RuntimeError("schedule dispatch exploded")
 
-        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _boom)
+            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _boom)
 
-        _serve._check_schedules(time.time())
+            _serve._check_schedules(time.time())
 
-        deadline = time.time() + 2
-        records: list[dict[str, Any]] = []
-        while time.time() < deadline:
-            records = _runs.list_runs("projB")
-            if records and records[0]["state"] == "failed":
-                break
-            time.sleep(0.02)
+            deadline = time.time() + 2
+            records: list[dict[str, Any]] = []
+            while time.time() < deadline:
+                records = _runs.list_runs("projB")
+                if records and records[0]["state"] == "failed":
+                    break
+                time.sleep(0.02)
 
-        assert len(records) == 1
-        assert "schedule dispatch exploded" in records[0]["error"]
+            assert len(records) == 1
+            assert "schedule dispatch exploded" in records[0]["error"]
 
 
 # ── sweep loop dispatch path ──────────────────────────────────────────────────
@@ -633,20 +639,22 @@ class TestSweepDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, project="sweepdemo")
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
+        with use_home(
+            dataclasses.replace(current_home(), approvals_dir_override=tmp_path / "approvals")
+        ):
 
-        def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-            return [_dispatch.TaskResult(task_id="task-sweep", status="done")]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+                return [_dispatch.TaskResult(task_id="task-sweep", status="done")]
 
-        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
 
-        _serve._run_sweeps(dispatch=True)
-        assert _serve._drain_sweeps(timeout=10)
+            _serve._run_sweeps(dispatch=True)
+            assert _serve._drain_sweeps(timeout=10)
 
-        records = _runs.list_runs("sweepdemo")
-        assert len(records) == 1
-        assert records[0]["source"] == "sweep"
-        assert records[0]["state"] == "succeeded"
+            records = _runs.list_runs("sweepdemo")
+            assert len(records) == 1
+            assert records[0]["source"] == "sweep"
+            assert records[0]["state"] == "succeeded"
 
     def test_one_pod_exploding_does_not_stop_the_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -656,23 +664,25 @@ class TestSweepDispatchPath:
         one to catch it)."""
         _seed_pod(tmp_path, monkeypatch, project="pod-a")
         _pod.build_pod("pod-b", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/pod-b")
-        monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
+        with use_home(
+            dataclasses.replace(current_home(), approvals_dir_override=tmp_path / "approvals")
+        ):
 
-        def _selective_boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-            if proj == "pod-a":
-                raise RuntimeError("pod-a exploded")
-            return [_dispatch.TaskResult(task_id="task-b", status="done")]
+            def _selective_boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+                if proj == "pod-a":
+                    raise RuntimeError("pod-a exploded")
+                return [_dispatch.TaskResult(task_id="task-b", status="done")]
 
-        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _selective_boom)
+            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _selective_boom)
 
-        _serve._run_sweeps(dispatch=True)
-        assert _serve._drain_sweeps(timeout=10)  # must not raise
+            _serve._run_sweeps(dispatch=True)
+            assert _serve._drain_sweeps(timeout=10)  # must not raise
 
-        a_records = _runs.list_runs("pod-a")
-        b_records = _runs.list_runs("pod-b")
-        assert len(a_records) == 1 and a_records[0]["state"] == "failed"
-        assert "pod-a exploded" in a_records[0]["error"]
-        assert len(b_records) == 1 and b_records[0]["state"] == "succeeded"
+            a_records = _runs.list_runs("pod-a")
+            b_records = _runs.list_runs("pod-b")
+            assert len(a_records) == 1 and a_records[0]["state"] == "failed"
+            assert "pod-a exploded" in a_records[0]["error"]
+            assert len(b_records) == 1 and b_records[0]["state"] == "succeeded"
 
 
 class TestSweepWorkers:

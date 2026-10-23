@@ -29,20 +29,20 @@ waits on, and resolves a real approval rather than sitting with zero production 
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.core import approval as _ap
 from docket.core import audit as _audit
@@ -55,6 +55,7 @@ from docket.core import trace as _trace
 from docket.core.llm import ToolCall
 from docket.core.policy import install_policies
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -64,18 +65,19 @@ SUBJECT = "docket.core"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
+        yield
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,
@@ -133,7 +135,7 @@ def _seed_full_pod(project: str = "myapp", *, gated: bool = False) -> None:
 
 def _trace_events(project: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    traces_dir = _cfg.TRACES_DIR / project
+    traces_dir = current_home().traces_dir / project
     if not traces_dir.is_dir():
         return events
     for f in traces_dir.glob("*.jsonl"):
@@ -329,9 +331,9 @@ class TestNotClaimableConcurrently:
         # Even if the stale-claim clock were somehow tripped, a
         # waiting_approval task has no claimedAt to go stale against — the
         # sweep only ever looks at status == "running".
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
-        _dispatch._sweep_stale_claims("myapp")
-        assert _dispatch.read_tasks("myapp")[0]["status"] == "waiting_approval"
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            _dispatch._sweep_stale_claims("myapp")
+            assert _dispatch.read_tasks("myapp")[0]["status"] == "waiting_approval"
 
 
 # ── grant resumes at the exact hop ────────────────────────────────────────────────
@@ -470,7 +472,7 @@ class TestExpirySweepDenies:
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
         rec["expiresAt"] = rec["created"]
-        _cfg.APPROVALS_DIR.joinpath(f"{token}.json").write_text(json.dumps(rec))
+        current_home().approvals_dir.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
         swept = _ap.approval_sweep_expired()
         assert swept == 1
@@ -481,11 +483,13 @@ class TestExpirySweepDenies:
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
         rec["expiresAt"] = rec["created"]
-        _cfg.APPROVALS_DIR.joinpath(f"{token}.json").write_text(json.dumps(rec))
+        current_home().approvals_dir.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
         _ap.approval_sweep_expired()
         entries = [
-            json.loads(line) for line in _cfg.AUDIT_LOG.read_text().splitlines() if line.strip()
+            json.loads(line)
+            for line in current_home().audit_log.read_text().splitlines()
+            if line.strip()
         ]
         assert any(
             e["action"] == "approval.deny"
@@ -503,7 +507,7 @@ class TestExpirySweepDenies:
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
         rec["expiresAt"] = rec["created"]
-        _cfg.APPROVALS_DIR.joinpath(f"{token}.json").write_text(json.dumps(rec))
+        current_home().approvals_dir.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
         swept = _ap.approval_sweep_expired()
         assert swept == 1
@@ -665,26 +669,29 @@ class TestToolLevelApprovalMode:
         # instead of blocking; the empty approvals dir is what proves no wait
         # happened. The elapsed bound is loose because shared CI runners have
         # measured over 100ms for this call.
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
-        install_policies()
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        ctx = ToolContext(agent_id="demo", role="implementer", project="demo", roots=(ws,))
-        ctx.approval_mode = "refuse"
-        registry = builtin_registry()
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            install_policies()
+            ws = tmp_path / "ws"
+            ws.mkdir()
+            ctx = ToolContext(agent_id="demo", role="implementer", project="demo", roots=(ws,))
+            ctx.approval_mode = "refuse"
+            registry = builtin_registry()
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
 
-        started = time.monotonic()
-        result = dispatch_tool(call, ctx, registry)
-        elapsed = time.monotonic() - started
+            started = time.monotonic()
+            result = dispatch_tool(call, ctx, registry)
+            elapsed = time.monotonic() - started
 
-        assert elapsed < 1.0
-        assert result.decision == "deny"
-        assert result.denial_kind == "approval_unavailable"
-        assert result.policy_id == "block-destructive"
-        assert not _cfg.APPROVALS_DIR.exists() or list(_cfg.APPROVALS_DIR.glob("*.json")) == []
-        ask_entries = [e for e in _audit.read_audit() if e["action"] == "tool.ask"]
-        assert len(ask_entries) == 1
+            assert elapsed < 1.0
+            assert result.decision == "deny"
+            assert result.denial_kind == "approval_unavailable"
+            assert result.policy_id == "block-destructive"
+            assert (
+                not current_home().approvals_dir.exists()
+                or list(current_home().approvals_dir.glob("*.json")) == []
+            )
+            ask_entries = [e for e in _audit.read_audit() if e["action"] == "tool.ask"]
+            assert len(ask_entries) == 1
 
     def test_wait_mode_is_unchanged_still_creates_a_record_and_times_out(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -692,19 +699,19 @@ class TestToolLevelApprovalMode:
         """`approval_mode` defaults to `"wait"` -- today's behavior, byte for
         byte: a real record is created and an unanswered call times out to
         denied, exactly as before this field existed."""
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
-        install_policies()
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        ctx = ToolContext(agent_id="demo", role="implementer", project="demo", roots=(ws,))
-        registry = builtin_registry()
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            install_policies()
+            ws = tmp_path / "ws"
+            ws.mkdir()
+            ctx = ToolContext(agent_id="demo", role="implementer", project="demo", roots=(ws,))
+            registry = builtin_registry()
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
 
-        result = dispatch_tool(call, ctx, registry)
+            result = dispatch_tool(call, ctx, registry)
 
-        assert result.decision == "deny"
-        assert result.denial_kind == "approval_timeout"
-        records = list(_cfg.APPROVALS_DIR.glob("*.json"))
-        assert len(records) == 1
-        stored = json.loads(records[0].read_text())
-        assert stored["state"] == "denied"
+            assert result.decision == "deny"
+            assert result.denial_kind == "approval_timeout"
+            records = list(current_home().approvals_dir.glob("*.json"))
+            assert len(records) == 1
+            stored = json.loads(records[0].read_text())
+            assert stored["state"] == "denied"

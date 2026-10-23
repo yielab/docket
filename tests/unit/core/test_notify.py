@@ -22,6 +22,7 @@ from docket.core.operator_contract import (
     TaskBrief,
     TaskView,
 )
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.notify"
 
@@ -379,10 +380,9 @@ class TestFlush:
         )
         assert report.failed == 1
         assert report.delivered == 0
-        import docket.config as _cfg
         from docket.edges import store as _store
 
-        health = _store.read_json(_cfg.CHANNELS_HEALTH_FILE)
+        health = _store.read_json(current_home().channels_health_file)
         assert health["chan"]["lastError"] == "connection refused"
         # never retried on a later flush -- the snapshot was already saved
         report2 = _notify.flush([_spec()], lambda _spec: deliver, now="2026-09-28T00:01:00Z")

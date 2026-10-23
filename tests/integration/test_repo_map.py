@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import repo_map as R
 from docket.edges.adapters import toolbox
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.repo_map"
 
@@ -56,22 +57,20 @@ class TestRenderRepoMap:
     ) -> None:
         files = [f"pkg/mod{i}/sub/f.py" for i in range(30)]
         root = _repo(tmp_path / "r", files)
-        monkeypatch.setattr(_cfg, "REPO_MAP_MAX_CHARS", 200)
+        with use_home(dataclasses.replace(current_home(), repo_map_max_chars=200)):
+            rendered = R.render_repo_map(str(root))
 
-        rendered = R.render_repo_map(str(root))
-
-        assert rendered == "pkg/ (30 files)"
+            assert rendered == "pkg/ (30 files)"
 
     def test_a_wide_tree_is_cut_at_the_cap_with_a_marker(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         root = _repo(tmp_path / "r", [f"dir{i:03d}/f.py" for i in range(80)])
-        monkeypatch.setattr(_cfg, "REPO_MAP_MAX_CHARS", 300)
+        with use_home(dataclasses.replace(current_home(), repo_map_max_chars=300)):
+            rendered = R.render_repo_map(str(root))
 
-        rendered = R.render_repo_map(str(root))
-
-        assert len(rendered) <= 300 + len("... 80 more directories")
-        assert rendered.splitlines()[-1].startswith("... ") and "more directories" in rendered
+            assert len(rendered) <= 300 + len("... 80 more directories")
+            assert rendered.splitlines()[-1].startswith("... ") and "more directories" in rendered
 
     def test_a_directory_that_is_not_a_repository_has_no_map(self, tmp_path: Path) -> None:
         (tmp_path / "plain").mkdir()

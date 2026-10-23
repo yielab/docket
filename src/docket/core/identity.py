@@ -26,7 +26,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-import docket.config as _cfg
 from docket.core import context as _context
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
@@ -329,7 +328,7 @@ def _runtime_workspace_context(
         return "", ()
 
     if max_bytes is None:
-        max_bytes = current_home().context_token_budget * _cfg.CONTEXT_BYTES_PER_TOKEN
+        max_bytes = current_home().context_token_budget * current_home().context_bytes_per_token
     remaining = max_bytes - len(base_prompt.encode("utf-8"))
     if base_prompt:
         remaining -= len(b"\n\n---\n\n")
@@ -529,8 +528,8 @@ def _pod_memory_section(
         return "", None
     root = project_roots[0] if project_roots else None
     overhead = len(POD_MEMORY_FRAME.encode("utf-8")) + 2 + _FRAME_JOIN_BYTES
-    cap = max(0, min(_cfg.POD_MEMORY_RENDER_MAX_BYTES, room - overhead))
-    whole = _pod_memory.render_entries(project, root, _cfg.POD_MEMORY_RENDER_MAX_BYTES)
+    cap = max(0, min(current_home().pod_memory_render_max_bytes, room - overhead))
+    whole = _pod_memory.render_entries(project, root, current_home().pod_memory_render_max_bytes)
     if not whole:
         return "", None
     text = _pod_memory.render_entries(project, root, cap)
@@ -568,7 +567,7 @@ def compose_agent_prompt(
     )
     if not agent_id:
         return PromptComposition("", budget_tokens=budget_tokens, budget_source=budget_source)
-    ws = _cfg.workspace_dir(agent_id)
+    ws = current_home().workspace_dir(agent_id)
     soul_text_raw = _read_workspace_text(ws / SOUL_FILE)
     instructions_raw = _read_workspace_text(ws / INSTRUCTIONS_FILE)
     project_instructions_raw = _project_instructions_raw(agent_id, project_roots)
@@ -587,7 +586,7 @@ def compose_agent_prompt(
     )
     if not has_prompt_material:
         return PromptComposition("", budget_tokens=budget_tokens, budget_source=budget_source)
-    max_bytes = budget_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
+    max_bytes = budget_tokens * current_home().context_bytes_per_token
     soul_text, soul_report = _cap_soul_text(soul_text_raw, max_bytes)
     # Operator instructions are fit into whatever room SOUL left, not a fresh half of
     # the whole budget -- so SOUL plus INSTRUCTIONS together can never exceed the

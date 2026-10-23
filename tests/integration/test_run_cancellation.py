@@ -13,21 +13,23 @@ a truthful full-stop oracle. Full driver/dispatch coverage is in
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import runs as _runs
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.config"
 
@@ -72,8 +74,11 @@ class TestKillProcessGroup:
 
 
 @pytest.fixture(autouse=True)
-def _hermetic_runs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
+def _hermetic_runs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    with use_home(
+        dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
+    ):
+        yield
 
 
 class TestRunsPidTracking:
@@ -168,7 +173,7 @@ class TestCancelRun:
             doc["runs"][0]["futureField"] = {"preserve": True}
             return doc
 
-        _store.read_modify_write(_cfg.RUNS_FILE, _add_unknown_field)
+        _store.read_modify_write(current_home().runs_file, _add_unknown_field)
         outcome = _runs.cancel_run(record["id"])
 
         assert outcome.ok is True
@@ -335,7 +340,7 @@ class TestCancelRun:
             assert body_started.wait(timeout=5)
             env = os.environ.copy()
             env["DOCKET_HOME"] = str(tmp_path)
-            env["RUNS_FILE"] = str(_cfg.RUNS_FILE)
+            env["RUNS_FILE"] = str(current_home().runs_file)
             code = (
                 "import json; from dataclasses import asdict; "
                 "from docket.core.runs import cancel_run; "
@@ -384,7 +389,7 @@ class TestCancelRun:
             doc["runs"][0]["cancellation"] = malformed
             return doc
 
-        _store.read_modify_write(_cfg.RUNS_FILE, _corrupt)
+        _store.read_modify_write(current_home().runs_file, _corrupt)
         signal = _runs.RunCancellationSignal(record["id"])
         assert signal.is_requested() is True
         assert signal.observe() is True

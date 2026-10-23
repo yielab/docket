@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod, _run
 from docket.core import answers as _answers
 from docket.core import approval as _approval
@@ -27,6 +27,7 @@ from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import runtime_driver as _rd
 from docket.core import telegram as _tg
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.dispatch"
 
@@ -67,18 +68,19 @@ steps:
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+        yield
 
 
 def _pod_policy(name: str, body: str, project: str = "demo") -> None:
-    policies = _cfg.pod_config_dir(project) / "policies"
+    policies = current_home().pod_config_dir(project) / "policies"
     policies.mkdir(parents=True, exist_ok=True)
     (policies / f"{name}.yaml").write_text(body, encoding="utf-8")
 

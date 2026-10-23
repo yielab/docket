@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import stat
 import threading
@@ -13,9 +14,9 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app
 from docket.edges import store
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.config"
 
@@ -157,13 +158,14 @@ def test_task_prune_cli_recovers_the_prior_complete_registry(
     newer = {"runs": [*prior["runs"], {"id": "run-newer", "created": "2026-09-02T11:00:00Z"}]}
     _seed_two_generations(path, prior, newer)
     path.write_bytes(_CORRUPT_PRIMARY)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", path, raising=True)
+    with use_home(dataclasses.replace(current_home(), runs_file_override=path)):
+        result = CliRunner().invoke(
+            app, ["task", "prune", "--traces", "--dry-run", "--pod", "demo"]
+        )
 
-    result = CliRunner().invoke(app, ["task", "prune", "--traces", "--dry-run", "--pod", "demo"])
-
-    assert result.exit_code == 0, result.output
-    assert json.loads(path.read_bytes()) == prior
-    assert _quarantine(path).read_bytes() == _CORRUPT_PRIMARY
+        assert result.exit_code == 0, result.output
+        assert json.loads(path.read_bytes()) == prior
+        assert _quarantine(path).read_bytes() == _CORRUPT_PRIMARY
 
 
 @pytest.mark.parametrize("backup_state", ["missing", "malformed"])

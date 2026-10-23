@@ -7,31 +7,33 @@ at a temp seed and drive the public surfaces in-process.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
 from docket.kernel import clock as _clock
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
 
 @pytest.fixture()
-def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with config paths repointed for trace + audit."""
     d = tmp_path / ".docket"
     d.mkdir()
-    repoint_docket_home(monkeypatch, d)
-    monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 3600, raising=True)
-    monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-    monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-    return d
+    with use_home(Home(d)):
+        with use_home(dataclasses.replace(current_home(), session_timeout=3600)):
+            monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+            monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
+            yield d
 
 
 # ── audit ────────────────────────────────────────────────────────────────────────
@@ -168,29 +170,29 @@ class TestTraceSweep:
     def test_sweep_closes_stale_open_trace(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 1, raising=True)
-        pdir = oc_dir / "traces" / "myshop"
-        pdir.mkdir(parents=True)
-        (pdir / "stale.jsonl").write_text(
-            json.dumps(
-                {"ts": "2000-01-01T00:00:00Z", "event_type": "tool_call", "project": "myshop"}
+        with use_home(dataclasses.replace(current_home(), session_timeout=1)):
+            pdir = oc_dir / "traces" / "myshop"
+            pdir.mkdir(parents=True)
+            (pdir / "stale.jsonl").write_text(
+                json.dumps(
+                    {"ts": "2000-01-01T00:00:00Z", "event_type": "tool_call", "project": "myshop"}
+                )
+                + "\n"
             )
-            + "\n"
-        )
-        trace_core.sweep_all()
-        types = [r["event_type"] for r in trace_core.read_trace(pdir / "stale.jsonl")]
-        assert types[-1] == "session_end"
+            trace_core.sweep_all()
+            types = [r["event_type"] for r in trace_core.read_trace(pdir / "stale.jsonl")]
+            assert types[-1] == "session_end"
 
     def test_sweep_leaves_closed_trace(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 1, raising=True)
-        pdir = oc_dir / "traces" / "myshop"
-        pdir.mkdir(parents=True)
-        (pdir / "done.jsonl").write_text(
-            json.dumps({"ts": "2000-01-01T00:00:00Z", "event_type": "session_end"}) + "\n"
-        )
-        trace_core.sweep_all()
-        types = [r["event_type"] for r in trace_core.read_trace(pdir / "done.jsonl")]
-        assert types == ["session_end"]
+        with use_home(dataclasses.replace(current_home(), session_timeout=1)):
+            pdir = oc_dir / "traces" / "myshop"
+            pdir.mkdir(parents=True)
+            (pdir / "done.jsonl").write_text(
+                json.dumps({"ts": "2000-01-01T00:00:00Z", "event_type": "session_end"}) + "\n"
+            )
+            trace_core.sweep_all()
+            types = [r["event_type"] for r in trace_core.read_trace(pdir / "done.jsonl")]
+            assert types == ["session_end"]
 
     def test_sweep_leaves_fresh_trace(self, oc_dir: Path) -> None:
         pdir = oc_dir / "traces" / "myshop"

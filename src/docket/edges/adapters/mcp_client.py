@@ -36,13 +36,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import docket.config as _cfg
 from docket.core.mcp_tools import McpListResult, McpRemoteTool, McpServerConfig, StdioLaunch
 from docket.edges.adapters import system as _system
 from docket.edges.adapters.toolbox import ToolOutcome
 from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import Refused, Unavailable
+from docket.kernel.home import current_home
 
 MISSING_SDK_HINT = (
     "The 'mcp' package is not installed -- an MCP tool server needs the optional MCP extra.\n"
@@ -64,7 +64,7 @@ def _sdk_available() -> bool:
 def _truncate(text: str) -> str:
     # Resolve per call, matching toolbox.py: operators tune this to the active
     # endpoint's window, and tests may change it after this module is imported.
-    return _text.cut_output(text, _cfg.TOOL_MAX_OUTPUT_CHARS)
+    return _text.cut_output(text, current_home().tool_max_output_chars)
 
 
 def _stdio_params(config: McpServerConfig, launch: StdioLaunch | None = None) -> Any:

@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -42,7 +42,7 @@ steps:
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -51,11 +51,12 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
 
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
+        yield
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,

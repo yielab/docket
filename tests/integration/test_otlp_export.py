@@ -11,6 +11,7 @@ starts and stops; nothing reaches a real vendor host.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import json
 import socket
 import threading
@@ -21,24 +22,25 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
-import docket.config as _cfg
 from docket.core import exporter as _exporter
 from docket.core import telemetry as _telemetry
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.edges.adapters.docket_runtime"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path / "docket")
-    record_isolation_off(tmp_path / "docket")
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(Home(tmp_path / "docket")):
+        record_isolation_off(tmp_path / "docket")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            yield
 
 
 @pytest.fixture(autouse=True)
@@ -52,10 +54,11 @@ def _reset_telemetry_registry() -> Iterator[None]:
 
 
 def _write_meta(agent_id: str) -> Path:
-    ws = _cfg.workspace_dir(agent_id)
+    ws = current_home().workspace_dir(agent_id)
     ws.mkdir(parents=True, exist_ok=True)
     _store.write_json(
-        _cfg.meta_path(agent_id), {"kind": "project", "role": "implementer", "model": "test/model"}
+        current_home().meta_path(agent_id),
+        {"kind": "project", "role": "implementer", "model": "test/model"},
     )
     return ws
 
@@ -97,7 +100,7 @@ def _enable_local_exporter(endpoint: str, privacy: str | None = "full", **extra:
     inheritance kicks in -- straight through `edges/store.py`, the same file `core.exporter`
     reads back."""
     _store.write_json(
-        _cfg.EXPORTERS_FILE,
+        current_home().exporters_file,
         {
             "exporters": {
                 "local": {
@@ -402,51 +405,50 @@ class TestHungDestination:
         """The server accepts the connection and never answers; `run_turn` must still return
         promptly (bounded by `config.EXPORT_FLUSH_TIMEOUT_S`) and report the same result as a
         run with no exporter configured at all."""
-        monkeypatch.setattr(_cfg, "EXPORT_FLUSH_TIMEOUT_S", 0.2, raising=True)
-
-        _write_meta("baseline-agent")
-        backend = _ScriptedBackend([_final_response("hello")])
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        start = _time.perf_counter()
-        baseline = driver.run_turn("baseline-agent", "agent:baseline-agent:default", "hi", 60)
-        no_exporter_duration = _time.perf_counter() - start
-
-        _write_meta("hung-agent")
-        url, shutdown = _hang_server()
-        try:
-            _enable_local_exporter(url)
-            backend2 = _ScriptedBackend([_final_response("hello")])
-            driver2 = DocketDriver(backend_factory=lambda model: backend2)
-
+        with use_home(dataclasses.replace(current_home(), export_flush_timeout_s=0.2)):
+            _write_meta("baseline-agent")
+            backend = _ScriptedBackend([_final_response("hello")])
+            driver = DocketDriver(backend_factory=lambda model: backend)
             start = _time.perf_counter()
-            result = driver2.run_turn("hung-agent", "agent:hung-agent:default", "hi", 60)
-            with_exporter_duration = _time.perf_counter() - start
-        finally:
-            shutdown()
+            baseline = driver.run_turn("baseline-agent", "agent:baseline-agent:default", "hi", 60)
+            no_exporter_duration = _time.perf_counter() - start
 
-        assert result.ok == baseline.ok
-        assert result.output == baseline.output
-        assert result.failure_kind == baseline.failure_kind
-        # The real bound: a hung destination costs at most one bounded flush wait on top of the
-        # turn's own (near-zero, fake-backend) time -- never the multi-second span a real socket
-        # timeout would otherwise impose. `no_exporter_duration` is dominated by filesystem I/O
-        # (session/meta/trace writes) common to both runs, not by anything export-related. The
-        # slack floor is 0.5s: a slow CI runner measured 0.32s against an older 0.1s slack, and
-        # 0.7s in all is still far below the sender's 5s transport timeout this guards against.
-        assert with_exporter_duration < _cfg.EXPORT_FLUSH_TIMEOUT_S + max(
-            no_exporter_duration * 2, 0.5
-        )
+            _write_meta("hung-agent")
+            url, shutdown = _hang_server()
+            try:
+                _enable_local_exporter(url)
+                backend2 = _ScriptedBackend([_final_response("hello")])
+                driver2 = DocketDriver(backend_factory=lambda model: backend2)
 
-        # The bounded flush above gave up long before the background sender's own transport
-        # timeout could fire, so the eventual failure lands in `core.telemetry.health()` (the
-        # live, in-process registry) some time after `run_turn` already returned -- read that
-        # directly rather than `config.EXPORTERS_HEALTH_FILE`, which `run_turn` only snapshots
-        # once, at the moment `flush` gave up (before the send had failed).
-        deadline = _time.monotonic() + 6.0
-        health = _telemetry.health().get("local") or {}
-        while (
-            health.get("failed", 0) + health.get("dropped", 0)
-        ) == 0 and _time.monotonic() < deadline:
-            _time.sleep(0.02)
+                start = _time.perf_counter()
+                result = driver2.run_turn("hung-agent", "agent:hung-agent:default", "hi", 60)
+                with_exporter_duration = _time.perf_counter() - start
+            finally:
+                shutdown()
+
+            assert result.ok == baseline.ok
+            assert result.output == baseline.output
+            assert result.failure_kind == baseline.failure_kind
+            # The real bound: a hung destination costs at most one bounded flush wait on top of the
+            # turn's own (near-zero, fake-backend) time -- never the multi-second span a real socket
+            # timeout would otherwise impose. `no_exporter_duration` is dominated by filesystem I/O
+            # (session/meta/trace writes) common to both runs, not by anything export-related. The
+            # slack floor is 0.5s: a slow CI runner measured 0.32s against an older 0.1s slack, and
+            # 0.7s in all is still far below the sender's 5s transport timeout this guards against.
+            assert with_exporter_duration < current_home().export_flush_timeout_s + max(
+                no_exporter_duration * 2, 0.5
+            )
+
+            # The bounded flush above gave up long before the background sender's own transport
+            # timeout could fire, so the eventual failure lands in `core.telemetry.health()` (the
+            # live, in-process registry) some time after `run_turn` already returned -- read that
+            # directly rather than `config.EXPORTERS_HEALTH_FILE`, which `run_turn` only snapshots
+            # once, at the moment `flush` gave up (before the send had failed).
+            deadline = _time.monotonic() + 6.0
             health = _telemetry.health().get("local") or {}
-        assert health.get("failed", 0) >= 1 or health.get("dropped", 0) >= 1
+            while (
+                health.get("failed", 0) + health.get("dropped", 0)
+            ) == 0 and _time.monotonic() < deadline:
+                _time.sleep(0.02)
+                health = _telemetry.health().get("local") or {}
+            assert health.get("failed", 0) >= 1 or health.get("dropped", 0) >= 1

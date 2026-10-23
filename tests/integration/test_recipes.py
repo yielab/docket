@@ -34,6 +34,7 @@ from docket.core import policy as _policy
 from docket.core import runtime_driver as _rd
 from docket.core import tools as _tools
 from docket.core import trace as _trace
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.config"
 
@@ -203,7 +204,7 @@ def test_apply_with_an_invalid_setting_writes_nothing(
     with pytest.raises(_pod_apply.PodApplyError, match="zzz"):
         _pod_apply.plan_apply(project, bad_dir)
 
-    assert not _cfg.pod_config_dir(project).exists()
+    assert not current_home().pod_config_dir(project).exists()
 
 
 def test_apply_with_an_invalid_policy_writes_nothing(
@@ -231,7 +232,7 @@ def test_apply_with_an_invalid_policy_writes_nothing(
     with pytest.raises(_pod_apply.PodApplyError, match=r"broken\.json"):
         _pod_apply.plan_apply(project, bad_dir)
 
-    assert not _cfg.pod_config_dir(project).exists()
+    assert not current_home().pod_config_dir(project).exists()
 
 
 def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
@@ -249,9 +250,9 @@ def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
     assert [(i.name, i.action) for i in policy_items] == [(src.name, "add")]
     _pod_apply.apply(plan)
 
-    dest = _cfg.pod_config_dir(project) / "policies" / src.name
+    dest = current_home().pod_config_dir(project) / "policies" / src.name
     assert dest.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
-    assert not (_cfg.POLICIES_DIR / src.name).exists()
+    assert not (current_home().policies_dir / src.name).exists()
     assert dest in _policy.policy_files(project)
 
     entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
@@ -281,7 +282,7 @@ def test_secure_build_plans_applies_and_round_trips_its_skill(
     assert [(i.name, i.action) for i in skill_items] == [("security-review", "add")]
     _pod_apply.apply(plan)
 
-    dest = _cfg.pod_config_dir(project) / "skills" / "security-review" / "SKILL.md"
+    dest = current_home().pod_config_dir(project) / "skills" / "security-review" / "SKILL.md"
     assert dest.is_file()
     assert dest.read_text(encoding="utf-8") == (
         recipe_dir / "skills" / "security-review" / "SKILL.md"
@@ -415,7 +416,7 @@ class _SecureBuildRunner:
 
 def _trace_events(project: str) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
-    traces_dir = _cfg.TRACES_DIR / project
+    traces_dir = current_home().traces_dir / project
     if not traces_dir.is_dir():
         return events
     for f in traces_dir.glob("*.jsonl"):
@@ -553,8 +554,8 @@ def test_export_writes_only_this_pods_own_scope_never_global(
     project = "guardedexp"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
 
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-    (_cfg.POLICIES_DIR / "global-policy.json").write_text(
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+    (current_home().policies_dir / "global-policy.json").write_text(
         json.dumps(
             {
                 "id": "global-policy",
@@ -568,7 +569,7 @@ def test_export_writes_only_this_pods_own_scope_never_global(
     )
 
     _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "secure-build"))
-    pod_policies_dir = _cfg.pod_config_dir(project) / "policies"
+    pod_policies_dir = current_home().pod_config_dir(project) / "policies"
     pod_policies_dir.mkdir(parents=True, exist_ok=True)
     policy_text = (
         RECIPES_DIR / "secure-build" / "policies" / "require-approval-secret-writes.yaml"
@@ -695,22 +696,22 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     home = tmp_path / "home" / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+    with use_home(Home(home)):
+        _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
 
-    default_dir = codebase / ".docket"
-    default_dir.mkdir()
-    (default_dir / "marker.txt").write_text("existing", encoding="utf-8")
+        default_dir = codebase / ".docket"
+        default_dir.mkdir()
+        (default_dir / "marker.txt").write_text("existing", encoding="utf-8")
 
-    assert _pod_cli("export", "--pod", project).exit_code == 1
-    assert not (default_dir / "pod.yaml").exists()
+        assert _pod_cli("export", "--pod", project).exit_code == 1
+        assert not (default_dir / "pod.yaml").exists()
 
-    assert _pod_cli("export", "--pod", project, "--force").exit_code == 0
-    assert (default_dir / "pod.yaml").is_file()
+        assert _pod_cli("export", "--pod", project, "--force").exit_code == 0
+        assert (default_dir / "pod.yaml").is_file()
 
-    # The exported default directory re-applies as a no-op.
-    reapply_plan = _pod_apply.plan_apply(project, default_dir)
-    assert [item.action for item in reapply_plan.items] == ["skip"] * len(reapply_plan.items)
+        # The exported default directory re-applies as a no-op.
+        reapply_plan = _pod_apply.plan_apply(project, default_dir)
+        assert [item.action for item in reapply_plan.items] == ["skip"] * len(reapply_plan.items)
 
 
 def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
@@ -719,7 +720,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
     """A recipe's own role, applied into the pod, gets the fleet's model, never the literal."""
     project = "fixture"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
-    _cfg.MODEL_REGISTRY_FILE.write_text(
+    current_home().model_registry_file.write_text(
         json.dumps(
             {
                 "default": "local/x",
@@ -749,7 +750,7 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
     project = "recipefixture"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
 
-    mine_dir = _cfg.user_recipes_dir() / "mine"
+    mine_dir = current_home().user_recipes_dir / "mine"
     (mine_dir / "policies").mkdir(parents=True)
     (mine_dir / "policies" / "x.yaml").write_text(
         "id: x\n"
@@ -779,13 +780,12 @@ def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
     and ``shipped:`` recipe lists -- the same fail-closed error ``docket pod update``/
     ``docket init --recipe`` raise."""
     home = tmp_path / ".docket"
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
+        result = _pod_cli("recipes", "nope")
 
-    result = _pod_cli("recipes", "nope")
-
-    assert result.exit_code == 1
-    assert "operator:" in result.output
-    assert "shipped:" in result.output
+        assert result.exit_code == 1
+        assert "operator:" in result.output
+        assert "shipped:" in result.output
 
 
 def test_a_recipe_step_env_survives_apply_and_export(

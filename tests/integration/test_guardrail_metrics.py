@@ -13,33 +13,36 @@ bracket, excluding an unfinished one.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-import docket.config as _cfg
 import docket.serve as serve
 from docket.core import approval as _approval
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.core.trace import trace_event
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.tools"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """On top of conftest's autouse store isolation, pins TOOL_APPROVAL_TIMEOUT to 0 so an
     unanswered `ask` fails closed immediately, with no real sleep."""
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+        yield
 
 
 def _write_policy(
     policy_id: str, pattern: str, action: str, *, hook: str = "pre_tool_call"
 ) -> None:
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
         "id": policy_id,
         "description": f"test policy {policy_id}",
@@ -49,11 +52,13 @@ def _write_policy(
         "action": action,
         "message": "",
     }
-    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+    (current_home().policies_dir / f"{policy_id}.json").write_text(
+        json.dumps(doc), encoding="utf-8"
+    )
 
 
 def _write_trace(project: str, session: str, events: list[dict[str, Any]]) -> None:
-    d = _cfg.TRACES_DIR / project
+    d = current_home().traces_dir / project
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{session}.jsonl").write_text(
         "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8"

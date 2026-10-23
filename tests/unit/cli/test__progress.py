@@ -5,6 +5,7 @@ Behind a real TTY on a real dispatch, see `tests/unit/cli/test_pod.py`.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import queue
@@ -15,9 +16,9 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _progress
 from docket.core import approval as _ap
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.cli._progress"
 
@@ -129,17 +130,17 @@ class TestRenderEvent:
     def test_approval_requested_counts_down_from_the_configured_timeout(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 120, raising=True)
-        record = _record(
-            "approval_requested",
-            {"token": "apr-2", "action": "bash('rm -rf x')"},
-        )
-        now = _progress._epoch(record["ts"]) + 20  # 20s have elapsed since the event
-        line = _progress.render_event(record, now=now)
-        assert line == (
-            "⏸ implementer wants: bash('rm -rf x') · token apr-2 · denies in 100s · "
-            "docket task approve apr-2"
-        )
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=120)):
+            record = _record(
+                "approval_requested",
+                {"token": "apr-2", "action": "bash('rm -rf x')"},
+            )
+            now = _progress._epoch(record["ts"]) + 20  # 20s have elapsed since the event
+            line = _progress.render_event(record, now=now)
+            assert line == (
+                "⏸ implementer wants: bash('rm -rf x') · token apr-2 · denies in 100s · "
+                "docket task approve apr-2"
+            )
 
     def test_an_unrenderable_event_type_returns_none(self) -> None:
         assert _progress.render_event(_record("llm_call", {})) is None
@@ -266,40 +267,40 @@ class TestDispatchWithProgress:
         _home(tmp_path, monkeypatch)
         from docket.core import trace as _trace
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_POLL_INTERVAL_S", 0.02, raising=True)
-        granted_token: dict[str, str] = {}
+        with use_home(dataclasses.replace(current_home(), tool_approval_poll_interval_s=0.02)):
+            granted_token: dict[str, str] = {}
 
-        def fake_execute(run_id: str, fn: Any) -> list[Any]:
-            _trace.trace_event("demo", _TASK_SESSION, "lead", "session_start", json.dumps({}))
-            hop = json.dumps({"hop": "implementer", "agent": "demo-implementer"})
-            _trace.trace_event("demo", _TASK_SESSION, "implementer", "tool_call", hop)
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-            granted_token["token"] = token
-            deadline = time.monotonic() + 1.5
-            while time.monotonic() < deadline:
-                if _ap.approval_get(token)["state"] != "pending":
-                    break
-                time.sleep(0.02)
-            end = json.dumps({"status": "done"})
-            _trace.trace_event("demo", _TASK_SESSION, "lead", "session_end", end)
-            return []
+            def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                _trace.trace_event("demo", _TASK_SESSION, "lead", "session_start", json.dumps({}))
+                hop = json.dumps({"hop": "implementer", "agent": "demo-implementer"})
+                _trace.trace_event("demo", _TASK_SESSION, "implementer", "tool_call", hop)
+                token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+                granted_token["token"] = token
+                deadline = time.monotonic() + 1.5
+                while time.monotonic() < deadline:
+                    if _ap.approval_get(token)["state"] != "pending":
+                        break
+                    time.sleep(0.02)
+                end = json.dumps({"status": "done"})
+                _trace.trace_event("demo", _TASK_SESSION, "lead", "session_end", end)
+                return []
 
-        monkeypatch.setattr(_progress._runs, "execute", fake_execute)
-        lines: list[str] = []
+            monkeypatch.setattr(_progress._runs, "execute", fake_execute)
+            lines: list[str] = []
 
-        result = _progress.dispatch_with_progress(
-            "run-1", lambda: [], prompt=True, stdin=io.StringIO("a\n"), println=lines.append
-        )
+            result = _progress.dispatch_with_progress(
+                "run-1", lambda: [], prompt=True, stdin=io.StringIO("a\n"), println=lines.append
+            )
 
-        assert result == []
-        assert _ap.approval_get(granted_token["token"])["state"] == "granted"
-        task_line = lines.index(f"▶ {_TASK_SHORT} …")
-        hop_line = lines.index("  ▶ implementer …")
-        approval_line = next(
-            i for i, line in enumerate(lines) if "wants: bash: git push origin main" in line
-        )
-        assert task_line < hop_line < approval_line
-        assert lines[-1] == f"■ {_TASK_SHORT} finished — status=done"
+            assert result == []
+            assert _ap.approval_get(granted_token["token"])["state"] == "granted"
+            task_line = lines.index(f"▶ {_TASK_SHORT} …")
+            hop_line = lines.index("  ▶ implementer …")
+            approval_line = next(
+                i for i, line in enumerate(lines) if "wants: bash: git push origin main" in line
+            )
+            assert task_line < hop_line < approval_line
+            assert lines[-1] == f"■ {_TASK_SHORT} finished — status=done"
 
     def test_without_prompt_it_only_renders(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -15,6 +15,7 @@ from docket.core import archetypes as _arch
 from docket.core import config_docs as _config_docs
 from docket.core import context as _ctx
 from docket.core.handoff import HandoffArtifact
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.context"
 
@@ -28,7 +29,8 @@ class TestEstimateTokens:
     def test_uses_the_documented_bytes_per_token_ratio(self) -> None:
         text = "x" * 40
         assert (
-            _ctx.estimate_tokens(text) == len(text.encode("utf-8")) // _cfg.CONTEXT_BYTES_PER_TOKEN
+            _ctx.estimate_tokens(text)
+            == len(text.encode("utf-8")) // current_home().context_bytes_per_token
         )
 
     def test_reuses_the_existing_config_ratio_not_a_second_one(self) -> None:
@@ -47,7 +49,7 @@ class TestEstimateTokens:
         # "é" is 2 bytes in UTF-8 -- the estimate must reflect that, not the
         # 1-character length Python's `len()` would report.
         text = "é" * 8  # 16 bytes
-        assert _ctx.estimate_tokens(text) == 16 // _cfg.CONTEXT_BYTES_PER_TOKEN
+        assert _ctx.estimate_tokens(text) == 16 // current_home().context_bytes_per_token
 
 
 # ── budget_for_role ──────────────────────────────────────────────────────────

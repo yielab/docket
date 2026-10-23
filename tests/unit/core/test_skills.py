@@ -7,13 +7,14 @@ describing it in one sentence, and the three-scope, nearest-wins discovery order
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import audit as _audit
 from docket.core import skills as _skills
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.skills"
 
@@ -78,50 +79,58 @@ class TestDiscoverSkills:
         codebase = tmp_path / "repo"
         _write_skill(codebase / ".docket" / "skills", "shared", "codebase version")
         project = "nearest-demo"
-        _write_skill(_cfg.pod_config_dir(project) / "skills", "shared", "pod version")
-        monkeypatch.setattr(_cfg, "SKILLS_DIR", tmp_path / "global-skills", raising=True)
-        _write_skill(_cfg.SKILLS_DIR, "shared", "global version")
+        _write_skill(current_home().pod_config_dir(project) / "skills", "shared", "pod version")
+        with use_home(
+            dataclasses.replace(current_home(), skills_dir_override=tmp_path / "global-skills")
+        ):
+            _write_skill(current_home().skills_dir, "shared", "global version")
 
-        found = _skills.discover_skills(project, codebase)
+            found = _skills.discover_skills(project, codebase)
 
-        assert found["shared"].description == "codebase version"
-        assert found["shared"].scope == "codebase"
+            assert found["shared"].description == "codebase version"
+            assert found["shared"].scope == "codebase"
 
     def test_pod_scope_wins_over_global(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         project = "pod-wins-demo"
-        _write_skill(_cfg.pod_config_dir(project) / "skills", "shared", "pod version")
-        monkeypatch.setattr(_cfg, "SKILLS_DIR", tmp_path / "global-skills", raising=True)
-        _write_skill(_cfg.SKILLS_DIR, "shared", "global version")
+        _write_skill(current_home().pod_config_dir(project) / "skills", "shared", "pod version")
+        with use_home(
+            dataclasses.replace(current_home(), skills_dir_override=tmp_path / "global-skills")
+        ):
+            _write_skill(current_home().skills_dir, "shared", "global version")
 
-        found = _skills.discover_skills(project, None)
+            found = _skills.discover_skills(project, None)
 
-        assert found["shared"].description == "pod version"
-        assert found["shared"].scope == "pod"
+            assert found["shared"].description == "pod version"
+            assert found["shared"].scope == "pod"
 
     def test_an_invalid_skill_is_skipped_and_audited_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The fail-closed negative: a name/directory mismatch never raises into discovery,
         the skill is simply absent, and exactly one `skills.invalid` audit line records why."""
-        monkeypatch.setattr(_cfg, "SKILLS_DIR", tmp_path / "global-skills", raising=True)
-        skill_dir = _cfg.SKILLS_DIR / "on-disk-name"
-        skill_dir.mkdir(parents=True)
-        (skill_dir / "SKILL.md").write_text(
-            "---\nname: different-name\ndescription: A sentence.\n---\nBody.\n", encoding="utf-8"
-        )
+        with use_home(
+            dataclasses.replace(current_home(), skills_dir_override=tmp_path / "global-skills")
+        ):
+            skill_dir = current_home().skills_dir / "on-disk-name"
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                "---\nname: different-name\ndescription: A sentence.\n---\nBody.\n",
+                encoding="utf-8",
+            )
 
-        found = _skills.discover_skills("", None)
+            found = _skills.discover_skills("", None)
 
-        assert found == {}
-        entries = [e for e in _audit.read_audit() if e["action"] == "skills.invalid"]
-        assert len(entries) == 1
-        assert "on-disk-name" in entries[0]["detail"]
+            assert found == {}
+            entries = [e for e in _audit.read_audit() if e["action"] == "skills.invalid"]
+            assert len(entries) == 1
+            assert "on-disk-name" in entries[0]["detail"]
 
     def test_no_skills_anywhere_is_empty(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "SKILLS_DIR", tmp_path / "empty-global", raising=True)
-
-        assert _skills.discover_skills("", None) == {}
+        with use_home(
+            dataclasses.replace(current_home(), skills_dir_override=tmp_path / "empty-global")
+        ):
+            assert _skills.discover_skills("", None) == {}

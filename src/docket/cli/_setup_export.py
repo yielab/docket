@@ -12,7 +12,6 @@ from urllib.parse import urlsplit
 import typer
 from rich.markup import escape
 
-import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
 from docket.cli._setup_notify import NotifySetupError, store_secret
@@ -23,6 +22,7 @@ from docket.core import trace as _trace
 from docket.core.audit import audit_log
 from docket.edges.adapters.exporters import otlp_http as _otlp_http
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 export_app = typer.Typer(
     name="export",
@@ -434,7 +434,7 @@ def cmd_privacy(
 
 def _newest_trace_file() -> Path | None:
     """The most-recently-modified `*.jsonl` under `TRACES_DIR`, across every project."""
-    files = list(_cfg.TRACES_DIR.glob("*/*.jsonl"))
+    files = list(current_home().traces_dir.glob("*/*.jsonl"))
     if not files:
         return None
     return max(files, key=lambda p: p.stat().st_mtime)

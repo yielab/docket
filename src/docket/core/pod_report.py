@@ -11,7 +11,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
 from docket.core import exporter as _exporter
@@ -29,6 +28,7 @@ from docket.core import tools as _tools
 from docket.core.models import AgentKind, AgentMeta
 from docket.edges import store as _store
 from docket.edges.adapters import llm as _llm
+from docket.kernel.home import current_home
 
 
 def network_text(net: dict[str, Any]) -> str:
@@ -48,7 +48,7 @@ def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
         return (Path(meta.codebase),)
     if meta.work_dir:
         return (Path(meta.work_dir),)
-    return (_cfg.workspace_dir(agent_id),)
+    return (current_home().workspace_dir(agent_id),)
 
 
 _SOURCE_SCOPE: dict[str, str] = {"built-in": "built-in", "starter": "built-in"}
@@ -66,7 +66,7 @@ def _policies_for_role(role: str, project: str) -> list[dict[str, str]]:
     """Installed policies whose ``applies_to`` covers *role*, read from
     ``policy_files(project)``, each carrying its ``scope`` (``pod`` for this pod's own
     ``config/policies/`` directory, else ``global``)."""
-    pod_policies_dir = _cfg.pod_config_dir(project) / "policies" if project else None
+    pod_policies_dir = current_home().pod_config_dir(project) / "policies" if project else None
     matched: list[dict[str, str]] = []
     for path in _policy.policy_files(project):
         try:
@@ -240,12 +240,12 @@ def member_report(agent_id: str) -> dict[str, Any]:
     """Compose one member's effective configuration. Raises ``DispatchError``/
     ``PodSettingsError`` unchanged when this pod's stored settings are invalid --
     never silently substitutes a default."""
-    raw = _store.read_json(_cfg.meta_path(agent_id))
+    raw = _store.read_json(current_home().meta_path(agent_id))
     meta = AgentMeta.model_validate(raw) if raw else AgentMeta(kind=AgentKind.project)
     role = str(raw.get("role", ""))
     project = _pod.pod_of(agent_id) or ""
 
-    model = str(raw.get("model") or "") or _cfg.DEFAULT_MODEL
+    model = str(raw.get("model") or "") or current_home().default_model
     model_source = _model_source(role, project)
     readiness = _provider.model_readiness(model)
     provider_report = _provider_report(model)
@@ -287,7 +287,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
 
     return {
         "id": agent_id,
-        "workspace": str(_cfg.workspace_dir(agent_id)),
+        "workspace": str(current_home().workspace_dir(agent_id)),
         "role": role,
         "roleScope": role_scope,
         "pod": project,
@@ -351,10 +351,10 @@ def pod_report(project: str) -> dict[str, Any]:
             "id": mid,
             "role": role,
             "model": {
-                "value": _fleet.meta_get(mid, "model", "") or _cfg.DEFAULT_MODEL,
+                "value": _fleet.meta_get(mid, "model", "") or current_home().default_model,
                 "source": _model_source(role, project),
             },
-            "workspace": str(_cfg.workspace_dir(mid)),
+            "workspace": str(current_home().workspace_dir(mid)),
             "verifyCmd": _fleet.meta_get(mid, "verifyCmd", ""),
         }
         for mid, role, _idx in _pod.members_of(ids, project)

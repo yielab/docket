@@ -13,6 +13,7 @@ hop), ``TestBlockedStaysBlocked`` (kills a blocked-to-pending auto-retry), and
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import time
@@ -39,6 +40,7 @@ from docket.core import session as _session
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -219,7 +221,7 @@ class TestPipeline:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, roles=_pod.pod.FULL_POD_ROLES)
-        worktree = _cfg.PROJECTS_DIR / "demo-implementer" / "tasks" / "wt1"
+        worktree = current_home().projects_dir / "demo-implementer" / "tasks" / "wt1"
         worktree.mkdir(parents=True)
         calls: list[tuple[str, str, dict[str, str] | None]] = []
 
@@ -536,7 +538,7 @@ class TestHopEnvInjection:
         _seed_pod(tmp_path, monkeypatch)
         # build_pod always allocates ports for an implementer; simulate a member
         # with no allocation by clearing the meta fields directly.
-        path = _cfg.meta_path("demo-implementer")
+        path = current_home().meta_path("demo-implementer")
         raw = json.loads(path.read_text())
         raw.pop("portRangeStart", None)
         raw.pop("portRangeCount", None)
@@ -575,7 +577,7 @@ class TestHopEnvInjection:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        path = _cfg.meta_path("demo-implementer")
+        path = current_home().meta_path("demo-implementer")
         raw = json.loads(path.read_text())
         raw.pop("portRangeStart", None)
         raw.pop("portRangeCount", None)
@@ -684,46 +686,47 @@ class TestEndToEnd:
         with the `approval_unavailable` reason recorded, instead of blocking on nobody."""
         from docket.core.policy import install_policies
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        install_policies()
-        _fleet.meta_set("demo-lead", "approvalMode", "refuse")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)):
+            oc_dir = _seed_pod(tmp_path, monkeypatch)
+            install_policies()
+            _fleet.meta_set("demo-lead", "approvalMode", "refuse")
 
-        # "lead" denies the `bash` tool outright (core/archetypes.py); the gated call has
-        # to be the Implementer's, so the Lead's turn gets an ordinary final response first.
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        backend = _ScriptedBackend(
-            [
-                _final_response("lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+            # "lead" denies the `bash` tool outright (core/archetypes.py); the gated call has
+            # to be the Implementer's, so the Lead's turn gets an ordinary final response first.
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            backend = _ScriptedBackend(
+                [
+                    _final_response("lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
-        started = time.monotonic()
-        results = _dispatch.dispatch_pod("demo")
-        elapsed = time.monotonic() - started
+            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            started = time.monotonic()
+            results = _dispatch.dispatch_pod("demo")
+            elapsed = time.monotonic() - started
 
-        assert elapsed < 1.0, f"took {elapsed:.2f}s -- refuse mode should not wait"
-        assert results[0].status == "failed"
-        assert "approval_unavailable" in results[0].reason
-        tasks = _dispatch.read_tasks("demo")
-        assert tasks[0]["status"] == "failed"
-        assert "approval_unavailable" in tasks[0]["reason"]
-        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
-        assert trace_files
-        trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
-        assert any(
-            ev["event_type"] == "error" and "approval_unavailable" in ev["payload"].get("text", "")
-            for ev in trace_events
-        )
+            assert elapsed < 1.0, f"took {elapsed:.2f}s -- refuse mode should not wait"
+            assert results[0].status == "failed"
+            assert "approval_unavailable" in results[0].reason
+            tasks = _dispatch.read_tasks("demo")
+            assert tasks[0]["status"] == "failed"
+            assert "approval_unavailable" in tasks[0]["reason"]
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            assert trace_files
+            trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
+            assert any(
+                ev["event_type"] == "error"
+                and "approval_unavailable" in ev["payload"].get("text", "")
+                for ev in trace_events
+            )
 
     def test_park_approval_mode_parks_a_gated_hop_immediately_instead_of_waiting(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -732,51 +735,51 @@ class TestEndToEnd:
         well under `TOOL_APPROVAL_TIMEOUT` and parks the task, token recorded."""
         from docket.core.policy import install_policies
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        install_policies()
-        _fleet.meta_set("demo-lead", "approvalMode", "park")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)):
+            oc_dir = _seed_pod(tmp_path, monkeypatch)
+            install_policies()
+            _fleet.meta_set("demo-lead", "approvalMode", "park")
 
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        backend = _ScriptedBackend(
-            [
-                _final_response("lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            backend = _ScriptedBackend(
+                [
+                    _final_response("lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            started = time.monotonic()
+            results = _dispatch.dispatch_pod("demo")
+            elapsed = time.monotonic() - started
+
+            assert elapsed < 1.0, f"took {elapsed:.2f}s -- park mode should not wait"
+            assert results[0].status == "waiting_approval", results[0].reason
+            assert results[0].approval_token
+            tasks = _dispatch.read_tasks("demo")
+            assert tasks[0]["status"] == "waiting_approval"
+            assert tasks[0]["approvalToken"] == results[0].approval_token
+            # The parked hop is persisted (audit/trace history stays true) --
+            # `parked: true`, not silently dropped.
+            assert tasks[0]["hops"][-1]["role"] == "implementer"
+            assert tasks[0]["hops"][-1]["parked"] is True
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            assert trace_files
+            trace_events = [
+                json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
             ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-
-        _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
-        started = time.monotonic()
-        results = _dispatch.dispatch_pod("demo")
-        elapsed = time.monotonic() - started
-
-        assert elapsed < 1.0, f"took {elapsed:.2f}s -- park mode should not wait"
-        assert results[0].status == "waiting_approval", results[0].reason
-        assert results[0].approval_token
-        tasks = _dispatch.read_tasks("demo")
-        assert tasks[0]["status"] == "waiting_approval"
-        assert tasks[0]["approvalToken"] == results[0].approval_token
-        # The parked hop is persisted (audit/trace history stays true) --
-        # `parked: true`, not silently dropped.
-        assert tasks[0]["hops"][-1]["role"] == "implementer"
-        assert tasks[0]["hops"][-1]["parked"] is True
-        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
-        assert trace_files
-        trace_events = [
-            json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
-        ]
-        assert any(
-            ev["event_type"] == "approval_required"
-            and ev["payload"].get("token") == results[0].approval_token
-            for ev in trace_events
-        )
+            assert any(
+                ev["event_type"] == "approval_required"
+                and ev["payload"].get("token") == results[0].approval_token
+                for ev in trace_events
+            )
 
     def test_park_grant_resumes_the_parked_hop_with_a_single_use_pregrant(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -787,74 +790,74 @@ class TestEndToEnd:
         from docket.core import approval as _approval_mod
         from docket.core.policy import install_policies
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        _seed_pod(tmp_path, monkeypatch)
-        install_policies()
-        _fleet.meta_set("demo-lead", "approvalMode", "park")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)):
+            _seed_pod(tmp_path, monkeypatch)
+            install_policies()
+            _fleet.meta_set("demo-lead", "approvalMode", "park")
 
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        park_backend = _ScriptedBackend(
-            [
-                _final_response("lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: park_backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            park_backend = _ScriptedBackend(
+                [
+                    _final_response("lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: park_backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
-        parked = _dispatch.dispatch_pod("demo")
-        token = parked[0].approval_token
-        assert token
+            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            parked = _dispatch.dispatch_pod("demo")
+            token = parked[0].approval_token
+            assert token
 
-        # docket task approve <token>
-        _approval_mod.approval_grant(token, channel="cli")
-        assert _dispatch.resolve_waiting_approval(token, "granted") is True
-        task = _dispatch.read_tasks("demo")[0]
-        assert task["status"] == "pending"
-        assert len(task["pregrants"]) == 1
-        assert task["pregrants"][0]["token"] == token
-        assert task["pregrants"][0]["tool"] == "bash"
-        assert task["pregrants"][0]["argsDigest"]
-        # The override-index field is for skipping a pre-hop approval *gate*,
-        # never reused to re-run an already-attempted hop.
-        assert task.get("gateOverridePipelineIndex") is None
+            # docket task approve <token>
+            _approval_mod.approval_grant(token, channel="cli")
+            assert _dispatch.resolve_waiting_approval(token, "granted") is True
+            task = _dispatch.read_tasks("demo")[0]
+            assert task["status"] == "pending"
+            assert len(task["pregrants"]) == 1
+            assert task["pregrants"][0]["token"] == token
+            assert task["pregrants"][0]["tool"] == "bash"
+            assert task["pregrants"][0]["argsDigest"]
+            # The override-index field is for skipping a pre-hop approval *gate*,
+            # never reused to re-run an already-attempted hop.
+            assert task.get("gateOverridePipelineIndex") is None
 
-        # docket run -- the implementer's identical call is
-        # re-issued by the model and this time passes via the pre-grant, then
-        # the hop finishes normally.
-        resume_backend = _ScriptedBackend(
-            [
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-                _final_response("implementer done"),
-            ]
-        )
-        driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
+            # docket run -- the implementer's identical call is
+            # re-issued by the model and this time passes via the pre-grant, then
+            # the hop finishes normally.
+            resume_backend = _ScriptedBackend(
+                [
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                    _final_response("implementer done"),
+                ]
+            )
+            driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
 
-        second = _dispatch.dispatch_pod("demo")
+            second = _dispatch.dispatch_pod("demo")
 
-        assert second[0].status == "done", second[0].reason
-        final = _dispatch.read_tasks("demo")[0]
-        # Lead's already-persisted hop was not re-run; the implementer step
-        # appears twice -- the parked attempt and the real one -- exactly the
-        # same "each attempt is its own audit record" shape a rework cycle's
-        # repeated reviewer hop already has, never overwritten in place.
-        assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
-        assert final["hops"][1]["parked"] is True
-        assert final["hops"][1]["ok"] is False
-        assert final["hops"][-1]["parked"] is False
-        assert final["hops"][-1]["ok"] is True
+            assert second[0].status == "done", second[0].reason
+            final = _dispatch.read_tasks("demo")[0]
+            # Lead's already-persisted hop was not re-run; the implementer step
+            # appears twice -- the parked attempt and the real one -- exactly the
+            # same "each attempt is its own audit record" shape a rework cycle's
+            # repeated reviewer hop already has, never overwritten in place.
+            assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
+            assert final["hops"][1]["parked"] is True
+            assert final["hops"][1]["ok"] is False
+            assert final["hops"][-1]["parked"] is False
+            assert final["hops"][-1]["ok"] is True
 
     def test_park_deny_fails_the_task_approval_denied(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -862,36 +865,36 @@ class TestEndToEnd:
         from docket.core import approval as _approval_mod
         from docket.core.policy import install_policies
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        _seed_pod(tmp_path, monkeypatch)
-        install_policies()
-        _fleet.meta_set("demo-lead", "approvalMode", "park")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)):
+            _seed_pod(tmp_path, monkeypatch)
+            install_policies()
+            _fleet.meta_set("demo-lead", "approvalMode", "park")
 
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        backend = _ScriptedBackend(
-            [
-                _final_response("lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            backend = _ScriptedBackend(
+                [
+                    _final_response("lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
-        parked = _dispatch.dispatch_pod("demo")
-        token = parked[0].approval_token
+            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            parked = _dispatch.dispatch_pod("demo")
+            token = parked[0].approval_token
 
-        _approval_mod.approval_deny(token, channel="cli")
-        assert _dispatch.resolve_waiting_approval(token, "denied") is True
+            _approval_mod.approval_deny(token, channel="cli")
+            assert _dispatch.resolve_waiting_approval(token, "denied") is True
 
-        task = _dispatch.read_tasks("demo")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "approval_denied"
+            task = _dispatch.read_tasks("demo")[0]
+            assert task["status"] == "failed"
+            assert task["failureKind"] == "approval_denied"
 
     def test_park_expiry_past_deadline_denies_via_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -902,46 +905,46 @@ class TestEndToEnd:
         from docket.core import approval as _approval_mod
         from docket.core.policy import install_policies
 
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        _seed_pod(tmp_path, monkeypatch)
-        install_policies()
-        _fleet.meta_set("demo-lead", "approvalMode", "park")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=2)):
+            _seed_pod(tmp_path, monkeypatch)
+            install_policies()
+            _fleet.meta_set("demo-lead", "approvalMode", "park")
 
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        backend = _ScriptedBackend(
-            [
-                _final_response("lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            backend = _ScriptedBackend(
+                [
+                    _final_response("lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
-        parked = _dispatch.dispatch_pod("demo")
-        token = parked[0].approval_token
-        assert token
+            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            parked = _dispatch.dispatch_pod("demo")
+            token = parked[0].approval_token
+            assert token
 
-        # Force this record's own expiresAt into the past -- the parked
-        # record carries its own deadline (core/tools.py's `_park_call`),
-        # never the generic APPROVAL_TIMEOUT.
-        rec_path = _cfg.APPROVALS_DIR / f"{token}.json"
-        rec = json.loads(rec_path.read_text(encoding="utf-8"))
-        assert rec["expiresAt"]
-        rec["expiresAt"] = "2000-01-01T00:00:00Z"
-        rec_path.write_text(json.dumps(rec), encoding="utf-8")
+            # Force this record's own expiresAt into the past -- the parked
+            # record carries its own deadline (core/tools.py's `_park_call`),
+            # never the generic APPROVAL_TIMEOUT.
+            rec_path = current_home().approvals_dir / f"{token}.json"
+            rec = json.loads(rec_path.read_text(encoding="utf-8"))
+            assert rec["expiresAt"]
+            rec["expiresAt"] = "2000-01-01T00:00:00Z"
+            rec_path.write_text(json.dumps(rec), encoding="utf-8")
 
-        swept = _approval_mod.approval_sweep_expired()
-        assert swept == 1
+            swept = _approval_mod.approval_sweep_expired()
+            assert swept == 1
 
-        task = _dispatch.read_tasks("demo")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "approval_denied"
+            task = _dispatch.read_tasks("demo")[0]
+            assert task["status"] == "failed"
+            assert task["failureKind"] == "approval_denied"
 
     def test_each_step_replays_only_its_history_and_receives_typed_handoff_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -950,60 +953,65 @@ class TestEndToEnd:
         Implementer both Lead's raw assistant turn and the handoff that already
         carries it."""
         home = _seed_pod(tmp_path, monkeypatch)
-        monkeypatch.setattr(_cfg, "SESSIONS_DIR", home / "sessions", raising=True)
+        with use_home(dataclasses.replace(current_home(), sessions_dir_override=home / "sessions")):
+            backend = _ScriptedBackend(
+                [_final_response("LEAD_RAW_PLAN_SENTINEL"), _final_response("implementation done")]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        backend = _ScriptedBackend(
-            [_final_response("LEAD_RAW_PLAN_SENTINEL"), _final_response("implementation done")]
-        )
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+            task = _dispatch.enqueue_task("demo", "Keep context bounded", channel="cli")
+            legacy_task_key = f"agent:demo:{task['id']}"
+            legacy_message = assistant("LEGACY_TASK_WIDE_HISTORY")
+            _session.append_messages(legacy_task_key, [legacy_message])
+            result = _dispatch.dispatch_pod("demo")[0]
+            assert result.status == "done"
 
-        task = _dispatch.enqueue_task("demo", "Keep context bounded", channel="cli")
-        legacy_task_key = f"agent:demo:{task['id']}"
-        legacy_message = assistant("LEGACY_TASK_WIDE_HISTORY")
-        _session.append_messages(legacy_task_key, [legacy_message])
-        result = _dispatch.dispatch_pod("demo")[0]
-        assert result.status == "done"
+            lead_key = _dispatch.step_session_key("demo-lead", "demo", task["id"], "lead")
+            implementer_key = _dispatch.step_session_key(
+                "demo-implementer", "demo", task["id"], "implementer"
+            )
+            assert lead_key != implementer_key
 
-        lead_key = _dispatch.step_session_key("demo-lead", "demo", task["id"], "lead")
-        implementer_key = _dispatch.step_session_key(
-            "demo-implementer", "demo", task["id"], "implementer"
-        )
-        assert lead_key != implementer_key
+            lead_history = _session.load_messages(lead_key)
+            implementer_history = _session.load_messages(implementer_key)
+            assert any(
+                m.role == "assistant" and m.content == "LEAD_RAW_PLAN_SENTINEL"
+                for m in lead_history
+            )
+            assert not any(
+                m.role == "assistant" and m.content == "LEAD_RAW_PLAN_SENTINEL"
+                for m in implementer_history
+            )
 
-        lead_history = _session.load_messages(lead_key)
-        implementer_history = _session.load_messages(implementer_key)
-        assert any(
-            m.role == "assistant" and m.content == "LEAD_RAW_PLAN_SENTINEL" for m in lead_history
-        )
-        assert not any(
-            m.role == "assistant" and m.content == "LEAD_RAW_PLAN_SENTINEL"
-            for m in implementer_history
-        )
+            implementer_backend_messages = backend.calls[1]
+            assert (
+                sum("LEAD_RAW_PLAN_SENTINEL" in m.content for m in implementer_backend_messages)
+                == 1
+            )
+            assert all("LEGACY_TASK_WIDE_HISTORY" not in m.content for m in backend.calls[0])
+            assert all(
+                "LEGACY_TASK_WIDE_HISTORY" not in m.content for m in implementer_backend_messages
+            )
+            assert any(
+                m.role == "user" and "LEAD_RAW_PLAN_SENTINEL" in m.content
+                for m in implementer_backend_messages
+            )
 
-        implementer_backend_messages = backend.calls[1]
-        assert sum("LEAD_RAW_PLAN_SENTINEL" in m.content for m in implementer_backend_messages) == 1
-        assert all("LEGACY_TASK_WIDE_HISTORY" not in m.content for m in backend.calls[0])
-        assert all(
-            "LEGACY_TASK_WIDE_HISTORY" not in m.content for m in implementer_backend_messages
-        )
-        assert any(
-            m.role == "user" and "LEAD_RAW_PLAN_SENTINEL" in m.content
-            for m in implementer_backend_messages
-        )
+            assert [s.session_id for s in driver.list_sessions("demo-lead")] == [lead_key]
+            assert [s.session_id for s in driver.list_sessions("demo-implementer")] == [
+                implementer_key
+            ]
+            assert _session.load_messages(legacy_task_key) == [legacy_message]
+            assert [s.session_id for s in driver.list_sessions("demo")] == [legacy_task_key]
 
-        assert [s.session_id for s in driver.list_sessions("demo-lead")] == [lead_key]
-        assert [s.session_id for s in driver.list_sessions("demo-implementer")] == [implementer_key]
-        assert _session.load_messages(legacy_task_key) == [legacy_message]
-        assert [s.session_id for s in driver.list_sessions("demo")] == [legacy_task_key]
-
-        trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
-        assert len(trace_files) == 1
-        trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
-        assert trace_events[0]["session_id"] == f"agent:demo:{task['id']}"
-        assert all(e["session_id"] == f"agent:demo:{task['id']}" for e in trace_events)
-        assert sum(e["event_type"] == "session_compaction" for e in trace_events) == 2
-        assert {path.name for path in (home / "traces").iterdir()} == {"demo"}
+            trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
+            assert len(trace_files) == 1
+            trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
+            assert trace_events[0]["session_id"] == f"agent:demo:{task['id']}"
+            assert all(e["session_id"] == f"agent:demo:{task['id']}" for e in trace_events)
+            assert sum(e["event_type"] == "session_compaction" for e in trace_events) == 2
+            assert {path.name for path in (home / "traces").iterdir()} == {"demo"}
 
     def test_step_history_key_encodes_custom_step_ids_without_collisions(self) -> None:
         colon = _dispatch.step_session_key("member", "demo", "task-1", "review:security")
@@ -1173,53 +1181,53 @@ class TestSweepDoesNotStallOnAParkedPod:
         # Deliberately slow -- if the sweep's "park" default did not fire, alpha's
         # `wait`-mode ask would block on nobody for up to this long, and beta's
         # task would not even start within this test's own timeout.
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 60, raising=True)
         # The scripted turns below are one shared queue consumed in pod order, so the
         # sweep runs serially here; concurrency is TestSweepWorkers' subject.
-        monkeypatch.setattr(_cfg, "DISPATCH_SWEEP_WORKERS", 1, raising=True)
+        with use_home(
+            dataclasses.replace(current_home(), tool_approval_timeout=60, dispatch_sweep_workers=1)
+        ):
+            home = tmp_path / ".docket"
+            (home / "workspaces" / "projects").mkdir(parents=True)
+            (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+            repoint_docket_home(monkeypatch, home)
+            record_isolation_off(home)
+            _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
+            _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
+            install_policies()
 
-        home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        record_isolation_off(home)
-        _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
-        _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
-        install_policies()
+            # dispatchable_pods() walks fleet.json's own agent order -- alpha's Lead
+            # was registered first, so the sweep reaches alpha before beta and these
+            # four scripted turns are consumed in this exact order.
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            backend = _ScriptedBackend(
+                [
+                    _final_response("alpha lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                    _final_response("beta lead plan"),
+                    _final_response("beta implementer done"),
+                ]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        # dispatchable_pods() walks fleet.json's own agent order -- alpha's Lead
-        # was registered first, so the sweep reaches alpha before beta and these
-        # four scripted turns are consumed in this exact order.
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        backend = _ScriptedBackend(
-            [
-                _final_response("alpha lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-                _final_response("beta lead plan"),
-                _final_response("beta implementer done"),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+            _dispatch.enqueue_task("alpha", "gated work", channel="cli")
+            _dispatch.enqueue_task("beta", "plain work", channel="cli")
 
-        _dispatch.enqueue_task("alpha", "gated work", channel="cli")
-        _dispatch.enqueue_task("beta", "plain work", channel="cli")
+            started = time.monotonic()
+            _serve._run_sweeps(True)
+            assert _serve._drain_sweeps(timeout=30)
+            elapsed = time.monotonic() - started
 
-        started = time.monotonic()
-        _serve._run_sweeps(True)
-        assert _serve._drain_sweeps(timeout=30)
-        elapsed = time.monotonic() - started
-
-        assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
-        alpha_task = _dispatch.read_tasks("alpha")[0]
-        beta_task = _dispatch.read_tasks("beta")[0]
-        assert alpha_task["status"] == "waiting_approval", alpha_task.get("reason")
-        assert beta_task["status"] == "done", beta_task.get("reason")
+            assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
+            alpha_task = _dispatch.read_tasks("alpha")[0]
+            beta_task = _dispatch.read_tasks("beta")[0]
+            assert alpha_task["status"] == "waiting_approval", alpha_task.get("reason")
+            assert beta_task["status"] == "done", beta_task.get("reason")
 
 
 class TestCrashRecovery:
@@ -1242,21 +1250,25 @@ class TestCrashRecovery:
         assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
 
         # Force the claim stale — simulate enough wall-clock time having passed.
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            resumer = _VerdictAwareRunner()
+            results = _dispatch.dispatch_pod("demo", runner=resumer, resume=True)
+            assert len(results) == 1
+            assert results[0].status == "done"
+            # Only the hops that hadn't completed before the crash run again —
+            # lead and implementer are NOT re-invoked.
+            roles_called = [c[0].rsplit("-", 1)[-1] for c in resumer.calls]
+            assert roles_called == ["reviewer", "tester"]
 
-        resumer = _VerdictAwareRunner()
-        results = _dispatch.dispatch_pod("demo", runner=resumer, resume=True)
-        assert len(results) == 1
-        assert results[0].status == "done"
-        # Only the hops that hadn't completed before the crash run again —
-        # lead and implementer are NOT re-invoked.
-        roles_called = [c[0].rsplit("-", 1)[-1] for c in resumer.calls]
-        assert roles_called == ["reviewer", "tester"]
-
-        final = _dispatch.read_tasks("demo")[0]
-        assert final["status"] == "done"
-        assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "reviewer", "tester"]
-        assert final["claimId"] is None
+            final = _dispatch.read_tasks("demo")[0]
+            assert final["status"] == "done"
+            assert [h["role"] for h in final["hops"]] == [
+                "lead",
+                "implementer",
+                "reviewer",
+                "tester",
+            ]
+            assert final["claimId"] is None
 
     def test_stale_claim_without_resume_is_not_reclaimed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1268,14 +1280,14 @@ class TestCrashRecovery:
         with pytest.raises(RuntimeError):
             _dispatch.dispatch_pod("demo", runner=crasher)
 
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
-        runner = FakeDriver()
-        results = _dispatch.dispatch_pod("demo", runner=runner)  # resume defaults to False
-        assert results == []  # nothing eligible without --resume
-        assert runner.calls == []
-        task = _dispatch.read_tasks("demo")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "stale_claim"
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            runner = FakeDriver()
+            results = _dispatch.dispatch_pod("demo", runner=runner)  # resume defaults to False
+            assert results == []  # nothing eligible without --resume
+            assert runner.calls == []
+            task = _dispatch.read_tasks("demo")[0]
+            assert task["status"] == "failed"
+            assert task["failureKind"] == "stale_claim"
 
     def test_stale_claim_sweep_emits_trace_event(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1286,12 +1298,14 @@ class TestCrashRecovery:
         with pytest.raises(RuntimeError):
             _dispatch.dispatch_pod("demo", runner=crasher)
 
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
-        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
-        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
-        events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
-        assert any(e["event_type"] == "stale_claim" for e in events)
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            events = [
+                json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
+            ]
+            assert any(e["event_type"] == "stale_claim" for e in events)
 
 
 # ── a deterministic refusal (e.g. cross-pod) fails only that task ────────────
@@ -1457,14 +1471,14 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
         assert tasks_before[0]["status"] == "running"
         assert not any(t.get("status") == "pending" for t in tasks_before)
 
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
-        monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver())
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver())
 
-        _endpoint_ready(monkeypatch)
-        result = CliRunner().invoke(app, ["run", "--pod", "demo", "--resume"])
+            _endpoint_ready(monkeypatch)
+            result = CliRunner().invoke(app, ["run", "--pod", "demo", "--resume"])
 
-        assert "No pending tasks" not in result.output
-        assert _dispatch.read_tasks("demo")[0]["status"] == "done"
+            assert "No pending tasks" not in result.output
+            assert _dispatch.read_tasks("demo")[0]["status"] == "done"
 
     def test_resume_still_warns_with_nothing_pending_resumable_or_running(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1620,17 +1634,17 @@ class TestRunCliPrologue:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        record_isolation_off(home)
+        with use_home(Home(home)):
+            record_isolation_off(home)
 
-        _pod.build_pod_from_blueprint("rsch", "research", location="", description="")
-        _dispatch.enqueue_task("rsch", "look into it", channel="cli")
-        monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
+            _pod.build_pod_from_blueprint("rsch", "research", location="", description="")
+            _dispatch.enqueue_task("rsch", "look into it", channel="cli")
+            monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
 
-        _endpoint_ready(monkeypatch)
-        result = CliRunner().invoke(app, ["run", "--pod", "rsch"])
+            _endpoint_ready(monkeypatch)
+            result = CliRunner().invoke(app, ["run", "--pod", "rsch"])
 
-        assert "through: lead → researcher → analyst → writer → critic" in result.output
+            assert "through: lead → researcher → analyst → writer → critic" in result.output
 
 
 # ── operator `input` steps execute: park, answer, resume (ADR 0016 SS4/SS8) ──

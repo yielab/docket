@@ -17,13 +17,13 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
-import docket.config as _cfg
 from docket.core import exporter as _exporter
 from docket.core import trace
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel import threads as _threads
+from docket.kernel.home import current_home
 
 AttrValue = str | int | bool
 Attributes = dict[str, AttrValue]
@@ -869,10 +869,10 @@ class Pipeline:
     def close(self) -> None:
         """Flush, then stop the drain thread and release the sink."""
         with contextlib.suppress(Exception):
-            self.flush(_cfg.EXPORT_FLUSH_TIMEOUT_S, final=True)
+            self.flush(current_home().export_flush_timeout_s, final=True)
         with contextlib.suppress(queue.Full):
             self._queue.put_nowait(_STOP)
-        self._thread.join(timeout=_cfg.EXPORT_FLUSH_TIMEOUT_S)
+        self._thread.join(timeout=current_home().export_flush_timeout_s)
         with contextlib.suppress(Exception):
             self._sink.close()
 
@@ -998,7 +998,7 @@ def start(specs: Sequence[Any], sink_for: SinkFactory) -> int:
                 content_max_chars=spec.content_max_chars,
             )
             _REGISTRY[spec.name] = Pipeline(
-                sink, policy, queue_max=_cfg.EXPORT_QUEUE_MAX, clock=_clock.monotonic
+                sink, policy, queue_max=current_home().export_queue_max, clock=_clock.monotonic
             )
             started += 1
         if started:

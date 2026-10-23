@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 from tests.fakes import FakeDriver
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import answers as _answers
 from docket.core import audit as _audit
@@ -18,6 +17,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import policy as _policy
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.answers"
 
@@ -148,7 +148,7 @@ class TestAnswerTaskPlacement:
         self,
     ) -> None:
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        pipelines = _cfg.pod_config_dir("demo") / "pipelines"
+        pipelines = current_home().pod_config_dir("demo") / "pipelines"
         pipelines.mkdir(parents=True)
         (pipelines / "ask.yaml").write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
         _dispatch.enqueue_task("demo", "needs a decision", channel="cli")

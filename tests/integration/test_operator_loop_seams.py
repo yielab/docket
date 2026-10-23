@@ -34,6 +34,7 @@ from docket.core.llm import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import channels as _channel_adapters
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -225,79 +226,79 @@ class TestChannelContentLevelEnforcedAtDelivery:
         """Two real `webhook` channels, one `content: minimal` and one `content: actions`,
         both subscribed to the same approval event: the canary command line must be absent
         from the wire at `minimal` and present at `actions`."""
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        record_isolation_off(tmp_path / ".docket")
-        canary = "git push origin CANARY_a1b2c3d4e5f6"
-        _secrets.save_secrets({"WEBHOOK_SECRET": "whsec_dGVzdHNlY3JldGtleQ=="})
+        with use_home(Home(tmp_path / ".docket")):
+            record_isolation_off(tmp_path / ".docket")
+            canary = "git push origin CANARY_a1b2c3d4e5f6"
+            _secrets.save_secrets({"WEBHOOK_SECRET": "whsec_dGVzdHNlY3JldGtleQ=="})
 
-        minimal_srv, minimal_url, minimal_handler = _capture_server()
-        actions_srv, actions_url, actions_handler = _capture_server()
-        try:
-            token = _approval.approval_create("alpha", "implementer", canary)
+            minimal_srv, minimal_url, minimal_handler = _capture_server()
+            actions_srv, actions_url, actions_handler = _capture_server()
+            try:
+                token = _approval.approval_create("alpha", "implementer", canary)
 
-            minimal_spec = _channel.ChannelSpec(
-                kind="channel",
-                name="minimal-hook",
-                dialect="webhook",
-                enabled=True,
-                capabilities=["notify"],
-                on=["approval.requested"],
-                content="minimal",
-                config={"url": minimal_url},
-                secret="WEBHOOK_SECRET",
-            )
-            actions_spec = _channel.ChannelSpec(
-                kind="channel",
-                name="actions-hook",
-                dialect="webhook",
-                enabled=True,
-                capabilities=["notify"],
-                on=["approval.requested"],
-                content="actions",
-                config={"url": actions_url},
-                secret="WEBHOOK_SECRET",
-            )
+                minimal_spec = _channel.ChannelSpec(
+                    kind="channel",
+                    name="minimal-hook",
+                    dialect="webhook",
+                    enabled=True,
+                    capabilities=["notify"],
+                    on=["approval.requested"],
+                    content="minimal",
+                    config={"url": minimal_url},
+                    secret="WEBHOOK_SECRET",
+                )
+                actions_spec = _channel.ChannelSpec(
+                    kind="channel",
+                    name="actions-hook",
+                    dialect="webhook",
+                    enabled=True,
+                    capabilities=["notify"],
+                    on=["approval.requested"],
+                    content="actions",
+                    config={"url": actions_url},
+                    secret="WEBHOOK_SECRET",
+                )
 
-            report = _notify.flush(
-                [minimal_spec, actions_spec],
-                _channel_adapters.sink_for,
-                now="2026-09-29T00:00:00Z",
-            )
+                report = _notify.flush(
+                    [minimal_spec, actions_spec],
+                    _channel_adapters.sink_for,
+                    now="2026-09-29T00:00:00Z",
+                )
 
-            assert report.delivered == 2, report
-            assert len(minimal_handler.requests) == 1
-            assert len(actions_handler.requests) == 1
+                assert report.delivered == 2, report
+                assert len(minimal_handler.requests) == 1
+                assert len(actions_handler.requests) == 1
 
-            minimal_body = minimal_handler.requests[0]["raw"]
-            actions_body = actions_handler.requests[0]["raw"]
-            assert canary.encode() not in minimal_body, (
-                "minimal content leaked the command line onto the wire"
-            )
-            assert canary.encode() in actions_body
+                minimal_body = minimal_handler.requests[0]["raw"]
+                actions_body = actions_handler.requests[0]["raw"]
+                assert canary.encode() not in minimal_body, (
+                    "minimal content leaked the command line onto the wire"
+                )
+                assert canary.encode() in actions_body
 
-            minimal_json = minimal_handler.requests[0]["json"]
-            actions_json = actions_handler.requests[0]["json"]
-            assert "action" not in minimal_json["data"]
-            assert actions_json["data"]["action"] == canary
-            # Both still carry the token -- content level narrows what is shared, never
-            # whether the item is identifiable at all.
-            assert minimal_json["data"]["token"] == token
-            assert actions_json["data"]["token"] == token
+                minimal_json = minimal_handler.requests[0]["json"]
+                actions_json = actions_handler.requests[0]["json"]
+                assert "action" not in minimal_json["data"]
+                assert actions_json["data"]["action"] == canary
+                # Both still carry the token -- content level narrows what is shared, never
+                # whether the item is identifiable at all.
+                assert minimal_json["data"]["token"] == token
+                assert actions_json["data"]["token"] == token
 
-            # The signature really verifies -- a genuine Standard Webhooks round trip,
-            # not just a header's presence.
-            from docket.edges.adapters.channels.webhook import _sign
+                # The signature really verifies -- a genuine Standard Webhooks round trip,
+                # not just a header's presence.
+                from docket.edges.adapters.channels.webhook import _sign
 
-            secret_value = _secrets.secret_value("WEBHOOK_SECRET")
-            assert secret_value is not None
-            req = minimal_handler.requests[0]
-            event_id = req["headers"]["webhook-id"]
-            ts = req["headers"]["webhook-timestamp"]
-            expected = _sign(secret_value, event_id, ts, req["raw"])
-            assert req["headers"]["webhook-signature"] == expected
-        finally:
-            minimal_srv.shutdown()
-            actions_srv.shutdown()
+                secret_value = _secrets.secret_value("WEBHOOK_SECRET")
+                assert secret_value is not None
+                req = minimal_handler.requests[0]
+                event_id = req["headers"]["webhook-id"]
+                ts = req["headers"]["webhook-timestamp"]
+                expected = _sign(secret_value, event_id, ts, req["raw"])
+                assert req["headers"]["webhook-signature"] == expected
+            finally:
+                minimal_srv.shutdown()
+                actions_srv.shutdown()
 
 
 # ── seam c: the Lead's brief question -> answer_task -> the Lead's own next hop message ──

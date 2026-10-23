@@ -11,12 +11,13 @@ all. No real subprocess.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import dataclasses
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
 import docket.config as _cfg
 from docket.core import mcp_tools as _mt
@@ -28,23 +29,25 @@ from docket.core.tools import ToolRegistry, builtin_registry
 from docket.edges import store as _store
 from docket.edges.adapters.docket_runtime import DocketDriver, _load_mcp_tools
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.mcp_tools"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path / "docket")
-    record_isolation_off(tmp_path / "docket")
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(Home(tmp_path / "docket")):
+        record_isolation_off(tmp_path / "docket")
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            yield
 
 
 def _write_meta(agent_id: str, **overrides: object) -> Path:
-    ws = _cfg.workspace_dir(agent_id)
+    ws = current_home().workspace_dir(agent_id)
     ws.mkdir(parents=True, exist_ok=True)
     data: dict[str, object] = {"kind": "project", "role": "implementer", "model": "test/model"}
     data.update(overrides)
-    _store.write_json(_cfg.meta_path(agent_id), data)
+    _store.write_json(current_home().meta_path(agent_id), data)
     return ws
 
 
@@ -434,7 +437,7 @@ def _install_result_policy(action: str | None) -> None:
     swapped for *action* when given -- the real engine stays the oracle."""
     import shutil
 
-    d = _cfg.POLICIES_DIR
+    d = current_home().policies_dir
     d.mkdir(parents=True, exist_ok=True)
     shipped = _cfg.policy_templates_dir() / "prompt-injection.yaml"
     if action is None:
@@ -541,17 +544,16 @@ message: canary
 
 
 @pytest.fixture()
-def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
-    from tests.conftest import repoint_docket_home
 
     home = tmp_path / "home"
-    repoint_docket_home(monkeypatch, home)
-    policies = _cfg.pod_config_dir("mypod") / "policies"
-    policies.mkdir(parents=True)
-    (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-    return home
+    with use_home(Home(home)):
+        policies = current_home().pod_config_dir("mypod") / "policies"
+        policies.mkdir(parents=True)
+        (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+        yield home
 
 
 def test_the_description_screen_sees_the_pod_policy(pod_input_policy: Path) -> None:

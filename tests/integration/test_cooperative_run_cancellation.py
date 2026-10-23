@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import agent_loop as _agent_loop
 from docket.core import audit as _audit
@@ -27,6 +26,7 @@ from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, Too
 from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.runs"
 
@@ -155,17 +155,17 @@ def test_returned_cancelled_task_terminalizes_the_run(
 ) -> None:
     home = tmp_path / ".docket"
     home.mkdir()
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    run = _runs.create_run("cli", "demo")
-    result = _dispatch.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        run = _runs.create_run("cli", "demo")
+        result = _dispatch.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
 
-    assert _runs.execute(run["id"], lambda: [result]) == [result]
+        assert _runs.execute(run["id"], lambda: [result]) == [result]
 
-    persisted = _runs.get_run(run["id"])
-    assert persisted is not None
-    assert persisted["state"] == "cancelled"
-    assert persisted["taskIds"] == ["task-cancelled"]
+        persisted = _runs.get_run(run["id"])
+        assert persisted is not None
+        assert persisted["state"] == "cancelled"
+        assert persisted["taskIds"] == ["task-cancelled"]
 
 
 class _OneShotBashBackend:
@@ -210,7 +210,7 @@ def _mark_running(project: str, task_id: str) -> None:
 
 
 def _write_agent_meta(agent_id: str, codebase: Path) -> None:
-    workspace = _cfg.PROJECTS_DIR / agent_id
+    workspace = current_home().projects_dir / agent_id
     workspace.mkdir(parents=True, exist_ok=True)
     meta = {
         "schemaVersion": 1,

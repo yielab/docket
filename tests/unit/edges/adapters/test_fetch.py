@@ -8,6 +8,7 @@ is gated exactly like any other built-in through the real, unmodified
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import time
@@ -16,23 +17,26 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from tests.conftest import patch_home, repoint_docket_home
+from tests.conftest import patch_home
 
 import docket.config as _cfg
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import fetch as _fetch
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.edges.adapters.fetch"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Isolate every docket-owned store this module touches and default the
     fetch allowlist closed so each test opts a host in explicitly."""
-    repoint_docket_home(monkeypatch, tmp_path)
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
-    monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", (), raising=True)
+    with use_home(Home(tmp_path)):
+        with use_home(
+            dataclasses.replace(current_home(), tool_approval_timeout=0, fetch_allowed_domains=())
+        ):
+            yield
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -143,12 +147,12 @@ class TestResponseSizeCap:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _allow(monkeypatch, server)
-        monkeypatch.setattr(_cfg, "FETCH_MAX_RESPONSE_BYTES", 100, raising=True)
-        out = _fetch.fetch_url(f"{server}/big")
-        assert out.ok
-        assert "[truncated: response exceeded 100 bytes]" in out.content
-        # exactly 100 filler bytes were kept, not the full 5000
-        assert out.content.count("z") == 100
+        with use_home(dataclasses.replace(current_home(), fetch_max_response_bytes=100)):
+            out = _fetch.fetch_url(f"{server}/big")
+            assert out.ok
+            assert "[truncated: response exceeded 100 bytes]" in out.content
+            # exactly 100 filler bytes were kept, not the full 5000
+            assert out.content.count("z") == 100
 
     def test_response_under_the_cap_is_not_annotated(
         self, server: str, monkeypatch: pytest.MonkeyPatch
@@ -184,25 +188,25 @@ class TestTimeout:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _allow(monkeypatch, server)
-        monkeypatch.setattr(_cfg, "FETCH_TIMEOUT_S", 1.0, raising=True)
-        seen: list[float] = []
-        real_build = _fetch.urllib.request.build_opener
+        with use_home(dataclasses.replace(current_home(), fetch_timeout_s=1.0)):
+            seen: list[float] = []
+            real_build = _fetch.urllib.request.build_opener
 
-        def _record(*handlers: object) -> object:
-            opener = real_build(*handlers)
-            real_open = opener.open
+            def _record(*handlers: object) -> object:
+                opener = real_build(*handlers)
+                real_open = opener.open
 
-            def _open(req: object, data: object = None, timeout: float = 0) -> object:
-                seen.append(timeout)
-                return real_open(req, data, timeout=timeout)
+                def _open(req: object, data: object = None, timeout: float = 0) -> object:
+                    seen.append(timeout)
+                    return real_open(req, data, timeout=timeout)
 
-            opener.open = _open  # type: ignore[method-assign]
-            return opener
+                opener.open = _open  # type: ignore[method-assign]
+                return opener
 
-        monkeypatch.setattr(_fetch.urllib.request, "build_opener", _record)
-        out = _fetch.fetch_url(f"{server}/ok", timeout=99999999)
-        assert out.ok
-        assert seen == [4.0]  # FETCH_TIMEOUT_S times the clamp multiple
+            monkeypatch.setattr(_fetch.urllib.request, "build_opener", _record)
+            out = _fetch.fetch_url(f"{server}/ok", timeout=99999999)
+            assert out.ok
+            assert seen == [4.0]  # FETCH_TIMEOUT_S times the clamp multiple
 
     def test_a_slow_response_times_out(self, server: str, monkeypatch: pytest.MonkeyPatch) -> None:
         _allow(monkeypatch, server)
@@ -214,10 +218,10 @@ class TestTimeout:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _allow(monkeypatch, server)
-        monkeypatch.setattr(_cfg, "FETCH_TIMEOUT_S", 1.0, raising=True)
-        out = _fetch.fetch_url(f"{server}/slow", timeout=0)
-        assert not out.ok
-        assert "timed out after 1" in out.error
+        with use_home(dataclasses.replace(current_home(), fetch_timeout_s=1.0)):
+            out = _fetch.fetch_url(f"{server}/slow", timeout=0)
+            assert not out.ok
+            assert "timed out after 1" in out.error
 
 
 class TestRedirects:
@@ -252,11 +256,13 @@ class TestGatedExactlyLikeABuiltin:
     """The registration itself must not create a second execution path."""
 
     def test_fetch_is_registered_as_a_read_kind_tool(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
-        tool = builtin_registry().get("fetch")
-        assert tool is not None
-        assert tool.kind == "read"
-        assert tool.required_args == ("url",)
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            tool = builtin_registry().get("fetch")
+            assert tool is not None
+            assert tool.kind == "read"
+            assert tool.required_args == ("url",)
 
     def test_an_empty_allowlist_leaves_fetch_out_of_the_offered_tools(self) -> None:
         registry = builtin_registry()
@@ -264,8 +270,10 @@ class TestGatedExactlyLikeABuiltin:
         assert "fetch" not in [spec.name for spec in registry.specs()]
 
     def test_a_configured_allowlist_offers_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
-        assert "fetch" in builtin_registry().names()
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            assert "fetch" in builtin_registry().names()
 
     def test_a_call_to_an_unoffered_fetch_is_refused_like_an_unknown_tool(self) -> None:
         ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
@@ -288,18 +296,20 @@ class TestGatedExactlyLikeABuiltin:
     def test_missing_url_argument_is_denied_before_any_side_effect(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
-        ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
-        call = ToolCall(id="c1", name="fetch", arguments="{}")
-        res = dispatch_tool(call, ctx, builtin_registry())
-        assert res.denied and not res.executed
-        assert "url" in res.reason
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
+            call = ToolCall(id="c1", name="fetch", arguments="{}")
+            res = dispatch_tool(call, ctx, builtin_registry())
+            assert res.denied and not res.executed
+            assert "url" in res.reason
 
     def test_a_pre_tool_call_policy_gates_fetch_exactly_like_a_builtin(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A `pre_tool_call` policy denies a fetch call before the handler ever runs -- proof `fetch` runs through the existing gate (`evaluate_tool_call`) rather than around it."""
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         doc = {
             "id": "no-fetch-test",
             "description": "test-only policy",
@@ -309,16 +319,17 @@ class TestGatedExactlyLikeABuiltin:
             "action": "block",
             "message": "fetch disabled by policy",
         }
-        (_cfg.POLICIES_DIR / "no-fetch-test.json").write_text(json.dumps(doc), encoding="utf-8")
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("example.test",), raising=True)
-
-        ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
-        call = ToolCall(
-            id="c1", name="fetch", arguments=json.dumps({"url": "http://example.test/ok"})
+        (current_home().policies_dir / "no-fetch-test.json").write_text(
+            json.dumps(doc), encoding="utf-8"
         )
-        res = dispatch_tool(call, ctx, builtin_registry())
-        assert res.denied and not res.executed
-        assert "fetch disabled by policy" in res.reason
+        with use_home(dataclasses.replace(current_home(), fetch_allowed_domains=("example.test",))):
+            ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),))
+            call = ToolCall(
+                id="c1", name="fetch", arguments=json.dumps({"url": "http://example.test/ok"})
+            )
+            res = dispatch_tool(call, ctx, builtin_registry())
+            assert res.denied and not res.executed
+            assert "fetch disabled by policy" in res.reason
 
 
 class TestFetchResultScreening:
@@ -331,7 +342,7 @@ class TestFetchResultScreening:
         """Install the shipped prompt-injection policy with action overridden if given."""
         import shutil
 
-        d = _cfg.POLICIES_DIR
+        d = current_home().policies_dir
         d.mkdir(parents=True, exist_ok=True)
         shipped = _cfg.policy_templates_dir() / "prompt-injection.yaml"
         if action is None:

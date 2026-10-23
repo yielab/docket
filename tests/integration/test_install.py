@@ -18,6 +18,7 @@ from docket.cli import _agents, _setup
 from docket.core import models_policy as _models_policy
 from docket.core import provider as _prov
 from docket.core import secrets as _secrets
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core"
 
@@ -166,5 +167,5 @@ def test_init_with_an_endpoint_does_not_mention_setup(
     captured = capsys.readouterr()
     assert rc == 0
     assert "No model endpoint yet" not in captured.out
-    assert json.loads(Path(_cfg.FLEET_FILE).read_text())["agents"]
-    assert os.path.isdir(_cfg.PROJECTS_DIR)
+    assert json.loads(Path(current_home().fleet_file).read_text())["agents"]
+    assert os.path.isdir(current_home().projects_dir)

@@ -18,7 +18,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-import docket.config as _cfg
 from docket.core.operator_contract import (
     ApprovalView,
     CloudEvent,
@@ -28,6 +27,7 @@ from docket.core.operator_contract import (
     make_event,
 )
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 __all__ = [
     "Deliver",
@@ -331,15 +331,15 @@ def build_test_event(spec: Any, *, now: str) -> CloudEvent:
 def read_state() -> dict[str, Any]:
     """The persisted dedupe snapshot (`config.NOTIFY_STATE_FILE`), through `edges/store.py`
     like every other docket-owned JSON read. `{}` before the first flush."""
-    return _store.read_json(_cfg.NOTIFY_STATE_FILE)
+    return _store.read_json(current_home().notify_state_file)
 
 
 def _save_state(snapshot: dict[str, Any]) -> None:
-    _store.write_json(_cfg.NOTIFY_STATE_FILE, snapshot)
+    _store.write_json(current_home().notify_state_file, snapshot)
 
 
 def _load_health() -> dict[str, Any]:
-    raw = _store.read_json(_cfg.CHANNELS_HEALTH_FILE)
+    raw = _store.read_json(current_home().channels_health_file)
     return dict(raw) if isinstance(raw, dict) else {}
 
 
@@ -467,6 +467,6 @@ def _flush(
             health[spec.name] = entry
 
     if channels:
-        _store.write_json(_cfg.CHANNELS_HEALTH_FILE, health)
+        _store.write_json(current_home().channels_health_file, health)
 
     return FlushReport(events=len(events), delivered=delivered, failed=failed, skipped=skipped)

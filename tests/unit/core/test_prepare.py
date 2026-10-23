@@ -10,6 +10,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import prepare as _prepare
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.prepare"
 
@@ -175,7 +176,7 @@ def test_without_a_lockfile_nothing_is_cached_or_linked(tmp_path: Path) -> None:
     run = _Run(root)
     outcome = _prepare.prepare_worktree(spec, root, str(tmp_path / "repo"), "", run)
     assert outcome.ok and not (root / "node_modules").is_symlink()
-    assert not _cfg.PREPARE_CACHE_DIR.exists()
+    assert not current_home().prepare_cache_dir.exists()
 
 
 def test_three_entries_are_kept_and_the_oldest_removed(tmp_path: Path) -> None:

@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -111,8 +111,8 @@ def _write_docket_session(
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
     """Invoke the CLI in-process against *oc_dir* as an isolated DOCKET_HOME."""
     with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, oc_dir)
-        result = _runner.invoke(_app, args)
+        with use_home(Home(oc_dir)):
+            result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
 
 

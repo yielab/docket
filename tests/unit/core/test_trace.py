@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from docket.core import trace
+from docket.kernel.home import current_home
 
 
 @pytest.fixture
@@ -196,9 +197,7 @@ class TestTaskId:
 def _session(project: str, name: str, status: str, end: str = "10:00:05") -> None:
     import json
 
-    import docket.config as _cfg
-
-    d = _cfg.TRACES_DIR / project
+    d = current_home().traces_dir / project
     d.mkdir(parents=True, exist_ok=True)
     events = [
         {"event_type": "session_start", "ts": "2026-10-01T10:00:00Z", "agent_role": "lead"},
@@ -258,9 +257,8 @@ class TestTerminalOutcomes:
 
 class TestSweepAll:
     def _stale(self, name: str = "stale") -> Path:
-        import docket.config as _cfg
 
-        d = _cfg.TRACES_DIR / "demo"
+        d = current_home().traces_dir / "demo"
         d.mkdir(parents=True, exist_ok=True)
         tf = d / f"{name}.jsonl"
         tf.write_text(json.dumps({"ts": "2000-01-01T00:00:00Z", "event_type": "tool_call"}) + "\n")
@@ -303,9 +301,8 @@ class TestSweepAll:
 
 class TestLinesThatAreNotObjects:
     def _write(self) -> Path:
-        import docket.config as _cfg
 
-        d = _cfg.TRACES_DIR / "demo"
+        d = current_home().traces_dir / "demo"
         d.mkdir(parents=True, exist_ok=True)
         tf = d / "s.jsonl"
         tf.write_text(

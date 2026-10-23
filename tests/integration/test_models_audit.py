@@ -14,10 +14,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import register_local_provider, repoint_docket_home
+from tests.conftest import register_local_provider
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.cli"
 
@@ -53,8 +54,8 @@ def _register_openai(oc_dir: Path) -> None:
 
 def _run(args: list[str], oc_dir: Path, input_text: str | None = None) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, oc_dir)
-        result = _runner.invoke(_app, args, input=input_text)
+        with use_home(Home(oc_dir)):
+            result = _runner.invoke(_app, args, input=input_text)
     return result.exit_code, result.stdout, result.stderr
 
 

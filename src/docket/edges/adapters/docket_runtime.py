@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote as _url_unquote
 
-import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp
@@ -62,6 +61,7 @@ from docket.edges import store as _store
 from docket.edges.adapters import exporters as _exporters
 from docket.edges.adapters import llm as _llm
 from docket.edges.adapters import system as _system
+from docket.kernel.home import current_home
 
 __all__ = ["DocketDriver"]
 
@@ -72,7 +72,7 @@ def _close_telemetry() -> None:
     final = _telemetry.close()
     if final:
         with contextlib.suppress(Exception):
-            _store.write_json(_cfg.EXPORTERS_HEALTH_FILE, final)
+            _store.write_json(current_home().exporters_health_file, final)
 
 
 # Runs once per process at import time. `telemetry.close()` returns `{}` when nothing was
@@ -147,7 +147,7 @@ def _load_agent_meta(agent_id: str) -> AgentMeta | None:
     """Read *agent_id*'s ``.docket-meta.json`` via ``edges/store.py``. Returns ``(None, "")`` for
     a missing or malformed record rather than raising, per the Protocol's "never raises for an
     ordinary failure" contract."""
-    raw = _store.read_json(_cfg.meta_path(agent_id))
+    raw = _store.read_json(current_home().meta_path(agent_id))
     if not raw:
         return None
     try:
@@ -165,7 +165,7 @@ def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
         return (Path(meta.codebase),)
     if meta is not None and meta.work_dir:
         return (Path(meta.work_dir),)
-    return (_cfg.workspace_dir(agent_id),)
+    return (current_home().workspace_dir(agent_id),)
 
 
 def _pod_cache_dir(agent_id: str) -> Path | None:
@@ -190,7 +190,7 @@ def _approval_timeout(raw: str | None) -> int | None:
 
 def _ensure_pod_cache(project: str) -> Path | None:
     """*project*'s cache dir, created 0700 when missing; ``None`` when it cannot be created."""
-    cache = _cfg.pod_cache_dir(project)
+    cache = current_home().pod_cache_dir(project)
     try:
         cache.mkdir(mode=0o700, parents=True, exist_ok=True)
     except OSError:
@@ -210,7 +210,7 @@ def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> s
         parsed = _pod.parse_member_id(registered.id, project)
         if parsed is None or parsed[0] != "implementer":
             continue
-        tasks_dir = (_cfg.PROJECTS_DIR / registered.id / "tasks").resolve()
+        tasks_dir = (current_home().projects_dir / registered.id / "tasks").resolve()
         if candidate_path.parent == tasks_dir and candidate_path.is_dir():
             return str(candidate_path)
     return ""
@@ -283,8 +283,8 @@ def _turn_token_budget(raw: str | None) -> int:
     try:
         value = int(raw or "")
     except ValueError:
-        return _cfg.AGENT_LOOP_TOKEN_BUDGET
-    return value if value > 0 else _cfg.AGENT_LOOP_TOKEN_BUDGET
+        return current_home().agent_loop_token_budget
+    return value if value > 0 else current_home().agent_loop_token_budget
 
 
 def _task_scope(registry: ToolRegistry, tool_env: dict[str, str]) -> AbstractContextManager[None]:
@@ -559,8 +559,8 @@ class DocketDriver:
                 model=model,
             )
         finally:
-            _telemetry.flush(_cfg.EXPORT_FLUSH_TIMEOUT_S)
-            _store.write_json(_cfg.EXPORTERS_HEALTH_FILE, _telemetry.health())
+            _telemetry.flush(current_home().export_flush_timeout_s)
+            _store.write_json(current_home().exporters_health_file, _telemetry.health())
 
     def _run_turn_body(
         self,
@@ -589,7 +589,7 @@ class DocketDriver:
             )
 
         want_sandbox, network_allowed = _resolve_posture(agent_id, meta.role, env)
-        effective_model = model or meta.model or _cfg.DEFAULT_MODEL
+        effective_model = model or meta.model or current_home().default_model
         backend = self.backend_factory(effective_model)
         if backend is None:
             return TurnResult(
@@ -704,11 +704,11 @@ class DocketDriver:
         """Enumerate this agent's sessions. A directory name is the percent-encoded session KEY
         (``agent:<id>:<project>``), not the bare id, so matching by the ``agent:<id>:`` prefix
         also surfaces every project key this agent has had."""
-        if not _cfg.SESSIONS_DIR.is_dir():
+        if not current_home().sessions_dir.is_dir():
             return []
         prefix = f"agent:{agent_id}:"
         out: list[SessionSummary] = []
-        for entry in sorted(_cfg.SESSIONS_DIR.iterdir()):
+        for entry in sorted(current_home().sessions_dir.iterdir()):
             if not entry.is_dir():
                 continue
             key = _url_unquote(entry.name)

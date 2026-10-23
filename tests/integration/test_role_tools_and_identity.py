@@ -13,14 +13,14 @@ asserting `dispatch_tool` returns an "unknown tool" denial -- not by inspecting 
 
 from __future__ import annotations
 
+import dataclasses
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import pytest
-from tests.conftest import patch_home, repoint_docket_home
+from tests.conftest import patch_home
 
-import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core import archetypes as _archetypes
 from docket.core import audit as _audit
@@ -37,6 +37,7 @@ from docket.core.llm import (
 from docket.core.tools import Tool, ToolContext, ToolRegistry, builtin_registry, dispatch_tool
 from docket.edges import store as _store
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -44,17 +45,18 @@ SUBJECT = "docket.core"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path / "docket")
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(Home(tmp_path / "docket")):
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            yield
 
 
 def _write_meta(agent_id: str, **overrides: object) -> Path:
-    ws = _cfg.workspace_dir(agent_id)
+    ws = current_home().workspace_dir(agent_id)
     ws.mkdir(parents=True, exist_ok=True)
     data: dict[str, object] = {"kind": "project", "role": "implementer"}
     data.update(overrides)
-    _store.write_json(_cfg.meta_path(agent_id), data)
+    _store.write_json(current_home().meta_path(agent_id), data)
     return ws
 
 
@@ -271,10 +273,12 @@ class TestRegistryForRoleExcludesByKindToo:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Drift guard: a new built-in must gain a capability entry; fetch needs an allowlist."""
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
-        real = builtin_registry()
-        actual = {name: real.get(name).kind for name in real.names()}  # type: ignore[union-attr]
-        assert actual == _archetypes.BUILTIN_TOOL_KINDS
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            real = builtin_registry()
+            actual = {name: real.get(name).kind for name in real.names()}  # type: ignore[union-attr]
+            assert actual == _archetypes.BUILTIN_TOOL_KINDS
 
 
 class TestReviewerCannotDispatchAWrite:
@@ -627,8 +631,8 @@ class TestProjectInstructionsSection:
     def test_an_injection_pattern_line_trips_pre_input_and_is_excluded(
         self, tmp_path: Path
     ) -> None:
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-        (_cfg.POLICIES_DIR / "no-jailbreak.json").write_text(
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+        (current_home().policies_dir / "no-jailbreak.json").write_text(
             json.dumps(
                 {
                     "id": "no-jailbreak",
@@ -662,8 +666,8 @@ class TestProjectInstructionsSection:
         assert "identity.project_instructions_blocked" in actions
 
     def test_a_warn_action_still_composes_the_content(self, tmp_path: Path) -> None:
-        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-        (_cfg.POLICIES_DIR / "odd-wording.json").write_text(
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+        (current_home().policies_dir / "odd-wording.json").write_text(
             json.dumps(
                 {
                     "id": "odd-wording",
@@ -816,7 +820,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         for section in events[0]["sections"]:
             assert section["status"] in {"full", "truncated", "omitted"}
             assert isinstance(section["bytes"], int)
-        assert events[0]["budgetTokens"] == _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        assert events[0]["budgetTokens"] == current_home().context_token_budget_default
         assert events[0]["budgetSource"] == "default"
 
     def test_prompt_composed_names_a_window_share_budget_end_to_end(
@@ -862,7 +866,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
 
         assert len(events) == 1
         assert events[0]["budgetSource"] == "window"
-        assert events[0]["budgetTokens"] > _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        assert events[0]["budgetTokens"] > current_home().context_token_budget_default
         soul_section = next(s for s in events[0]["sections"] if s["name"] == "SOUL.md")
         assert soul_section["status"] == "full"
 
@@ -910,7 +914,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
 
         assert len(events) == 1
         assert events[0]["budgetSource"] == "default"
-        assert events[0]["budgetTokens"] == _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        assert events[0]["budgetTokens"] == current_home().context_token_budget_default
         soul_section = next(s for s in events[0]["sections"] if s["name"] == "SOUL.md")
         assert soul_section["status"] == "truncated"
 

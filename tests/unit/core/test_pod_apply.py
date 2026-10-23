@@ -13,6 +13,7 @@ import docket.config as _cfg
 from docket.core import orchestrator as _orch
 from docket.core import pod
 from docket.core import pod_apply as _pod_apply
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.pod_apply"
 
@@ -123,7 +124,7 @@ class TestSummarizeRecipe:
         with pytest.raises(_pod_apply.PodApplyError, match="scope"):
             _pod_apply.plan_apply(project, recipe_dir)
 
-        assert not _cfg.pod_config_dir(project).exists()
+        assert not current_home().pod_config_dir(project).exists()
 
 
 class TestRolesInEveryConfigFormat:
@@ -155,7 +156,9 @@ class TestRolesInEveryConfigFormat:
 
         assert sorted(i.name for i in plan.items if i.kind == "role") == ["from-json", "from-yml"]
         _pod_apply.apply(plan)
-        roles = json.loads((_cfg.pod_config_dir(project) / "roles.json").read_text())["roles"]
+        roles = json.loads((current_home().pod_config_dir(project) / "roles.json").read_text())[
+            "roles"
+        ]
         assert {"from-yml", "from-json"} <= set(roles)
 
     def test_a_json_role_that_drops_a_builtin_denial_is_a_run_item(self, tmp_path: Path) -> None:
@@ -209,7 +212,7 @@ class TestRecipeExporters:
 
         assert result.exporters == ("langfuse",)
         assert pod.PodSettings.load_for(project).exporters == ("langfuse",)
-        assert not _cfg.EXPORTERS_FILE.exists()
+        assert not current_home().exporters_file.exists()
 
     def test_plan_apply_rejects_a_credential_shaped_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -226,7 +229,7 @@ class TestRecipeExporters:
         with pytest.raises(_pod_apply.PodApplyError, match="exporters"):
             _pod_apply.plan_apply(project, recipe_dir)
 
-        assert not _cfg.EXPORTERS_FILE.exists()
+        assert not current_home().exporters_file.exists()
         assert pod.PodSettings.load_for(project).exporters == ()
 
     def test_plan_apply_rejects_an_unknown_exporter_name(

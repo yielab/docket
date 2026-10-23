@@ -19,7 +19,6 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
@@ -29,6 +28,7 @@ from docket.core import pod as _podcore
 from docket.core import runtime_driver as _rd
 from docket.core import utils as _utils
 from docket.core.models import AgentMeta
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core"
 
@@ -81,7 +81,7 @@ def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tok
     from urllib.parse import quote
 
     session_key = f"agent:{agent_id}:default"
-    sdir = _cfg.SESSIONS_DIR / quote(session_key, safe="")
+    sdir = current_home().sessions_dir / quote(session_key, safe="")
     sdir.mkdir(parents=True, exist_ok=True)
     record = {
         "sessionKey": session_key,

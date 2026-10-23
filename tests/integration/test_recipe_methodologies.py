@@ -23,6 +23,7 @@ from docket.core import pod
 from docket.core import pod_apply as _pod_apply
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.config"
 
@@ -53,7 +54,7 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
 
 def _trace_events(project: str) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
-    traces_dir = _cfg.TRACES_DIR / project
+    traces_dir = current_home().traces_dir / project
     if not traces_dir.is_dir():
         return events
     for f in traces_dir.glob("*.jsonl"):

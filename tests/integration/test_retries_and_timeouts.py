@@ -11,19 +11,20 @@ that a retrying task never trips the stale-claim sweep.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -31,7 +32,7 @@ SUBJECT = "docket.core"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -40,11 +41,12 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
 
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
+        yield
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = _cfg.PROJECTS_DIR / member_id
+    ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
         "schemaVersion": 1,
@@ -66,7 +68,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
 
 def _trace_events(project: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    traces_dir = _cfg.TRACES_DIR / project
+    traces_dir = current_home().traces_dir / project
     if not traces_dir.is_dir():
         return events
     for f in traces_dir.glob("*.jsonl"):
@@ -79,7 +81,7 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "d
     only by the ``dispatch_pod``-level integration tests (stale-claim + timeouts
     that read the Lead's meta), not the direct ``dispatch_task`` unit tests."""
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return _cfg.DOCKET_HOME
+    return current_home().root
 
 
 def _no_sleep(_seconds: float) -> None:
@@ -116,7 +118,10 @@ class TestRetryPolicy:
         assert "invalid_output" not in _dispatch._RETRYABLE_FAILURE_KINDS
 
     def test_unknown_role_falls_back_to_default_budget(self) -> None:
-        assert _dispatch._retries_for_role("some-future-role") == _cfg.DISPATCH_RETRIES_DEFAULT
+        assert (
+            _dispatch._retries_for_role("some-future-role")
+            == current_home().dispatch_retries_default
+        )
 
 
 # ── dispatch_task: the retry loop itself (direct call, no persisted queue) ────────
@@ -176,7 +181,7 @@ class TestHopRetryLoop:
     def test_retries_exhausted_then_fails_with_attempts_persisted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setitem(_cfg.DISPATCH_RETRIES_PER_ROLE, "implementer", 2)
+        monkeypatch.setitem(current_home().dispatch_retries_per_role, "implementer", 2)
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
 
@@ -310,8 +315,8 @@ class TestHopRetryLoop:
         task: dict[str, Any] = {"id": "t7", "description": "work", "status": "pending"}
         _dispatch.dispatch_task("myapp", task, runner=runner, sleep=lambda s: sleeps.append(s))
         assert sleeps == [
-            _cfg.DISPATCH_RETRY_BACKOFF_S * 1,
-            _cfg.DISPATCH_RETRY_BACKOFF_S * 2,
+            current_home().dispatch_retry_backoff_s * 1,
+            current_home().dispatch_retry_backoff_s * 2,
         ]
 
     def test_retry_after_wins_over_backoff_when_longer(self, tmp_path: Path) -> None:
@@ -346,32 +351,32 @@ class TestHopRetryLoop:
     ) -> None:
         """A retry_after_s far past the ceiling (e.g. a 429 asking for an hour) never
         stalls a hop past DISPATCH_RETRY_MAX_WAIT_S."""
-        monkeypatch.setattr(_cfg, "DISPATCH_RETRY_MAX_WAIT_S", 60.0)
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        runner = _ScriptedRunner(
-            {
-                "implementer": [
-                    _rd.TurnResult(
-                        False,
-                        "",
-                        0.0,
-                        {},
-                        "boom",
-                        failure_kind="daemon_error",
-                        retry_after_s=3600.0,
-                    ),
-                    _rd.TurnResult(True, "done", 0.0, {}),
-                ]
-            }
-        )
-        sleeps: list[float] = []
-        task: dict[str, Any] = {"id": "t10", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
-            "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
-        )
-        assert res.status == "done"
-        assert sleeps == [60.0]
+        with use_home(dataclasses.replace(current_home(), dispatch_retry_max_wait_s=60.0)):
+            _write_meta("myapp-lead")
+            _write_meta("myapp-implementer")
+            runner = _ScriptedRunner(
+                {
+                    "implementer": [
+                        _rd.TurnResult(
+                            False,
+                            "",
+                            0.0,
+                            {},
+                            "boom",
+                            failure_kind="daemon_error",
+                            retry_after_s=3600.0,
+                        ),
+                        _rd.TurnResult(True, "done", 0.0, {}),
+                    ]
+                }
+            )
+            sleeps: list[float] = []
+            task: dict[str, Any] = {"id": "t10", "description": "work", "status": "pending"}
+            res = _dispatch.dispatch_task(
+                "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
+            )
+            assert res.status == "done"
+            assert sleeps == [60.0]
 
 
 # ── timeout resolution: turn vs verify, independently settable and applied ────────
@@ -466,47 +471,48 @@ class TestRetryDoesNotTripStaleClaimSweep:
         # next line of Python comfortably does not (generous margin for a
         # loaded CI box — a handful of local filelock read-modify-writes, not
         # network I/O).
-        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", 0.1, raising=True)
+        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=0.1)):
+            import time as _real_time
 
-        import time as _real_time
+            calls = {"implementer": 0}
 
-        calls = {"implementer": 0}
-
-        def _flaky_then_ok(
-            agent_id: str,
-            session_key: str,
-            message: str,
-            timeout: int,
-            env: dict[str, str] | None = None,
-        ) -> _rd.TurnResult:
-            role = agent_id.rsplit("-", 1)[-1]
-            if role != "implementer":
+            def _flaky_then_ok(
+                agent_id: str,
+                session_key: str,
+                message: str,
+                timeout: int,
+                env: dict[str, str] | None = None,
+            ) -> _rd.TurnResult:
+                role = agent_id.rsplit("-", 1)[-1]
+                if role != "implementer":
+                    return _rd.TurnResult(True, "done", 0.0, {})
+                calls["implementer"] += 1
+                if calls["implementer"] == 1:
+                    # This attempt alone already outlasts CLAIM_STALE_TIMEOUT — an
+                    # un-refreshed claimedAt would read as stale from this point on.
+                    _real_time.sleep(0.3)
+                    return _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout")
+                # Second attempt: simulate a concurrent dispatcher's sweep landing
+                # here, immediately after on_retry refreshed claimedAt for the
+                # failed first attempt and right before this (successful) retry.
+                _dispatch._sweep_stale_claims("demo")
                 return _rd.TurnResult(True, "done", 0.0, {})
-            calls["implementer"] += 1
-            if calls["implementer"] == 1:
-                # This attempt alone already outlasts CLAIM_STALE_TIMEOUT — an
-                # un-refreshed claimedAt would read as stale from this point on.
-                _real_time.sleep(0.3)
-                return _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout")
-            # Second attempt: simulate a concurrent dispatcher's sweep landing
-            # here, immediately after on_retry refreshed claimedAt for the
-            # failed first attempt and right before this (successful) retry.
-            _dispatch._sweep_stale_claims("demo")
-            return _rd.TurnResult(True, "done", 0.0, {})
 
-        results = _dispatch.dispatch_pod("demo", runner=_flaky_then_ok, sleep=_no_sleep)
-        assert len(results) == 1
-        assert results[0].status == "done"
-        assert calls["implementer"] == 2
+            results = _dispatch.dispatch_pod("demo", runner=_flaky_then_ok, sleep=_no_sleep)
+            assert len(results) == 1
+            assert results[0].status == "done"
+            assert calls["implementer"] == 2
 
-        tasks = _dispatch.read_tasks("demo")
-        assert tasks[0]["status"] == "done"
-        assert tasks[0].get("failureKind") != "stale_claim"
+            tasks = _dispatch.read_tasks("demo")
+            assert tasks[0]["status"] == "done"
+            assert tasks[0].get("failureKind") != "stale_claim"
 
-        # No stale_claim trace event should have fired for this task.
-        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
-        events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
-        assert not any(e["event_type"] == "stale_claim" for e in events)
+            # No stale_claim trace event should have fired for this task.
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            events = [
+                json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
+            ]
+            assert not any(e["event_type"] == "stale_claim" for e in events)
 
 
 # ── regression guard: existing state-machine behaviour is untouched ─────────────

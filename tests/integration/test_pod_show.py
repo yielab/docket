@@ -10,6 +10,7 @@ dispatch (FakeDriver) actually used for the hop.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -18,7 +19,6 @@ from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
@@ -27,6 +27,7 @@ from docket.core import mcp_tools as _mcp_tools
 from docket.core import pod, pod_report
 from docket.core import policy as _policy
 from docket.edges import store as _store
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.cli._pod_show"
 
@@ -142,7 +143,9 @@ class TestPodShowMatchesRealDispatch:
         lead = pod.member_id("demo", "lead")
         report = _explain_json(lead, capsys)
         assert report["model"]["source"] == "policy"
-        assert report["model"]["value"] == _fleet.meta_get(lead, "model", _cfg.DEFAULT_MODEL)
+        assert report["model"]["value"] == _fleet.meta_get(
+            lead, "model", current_home().default_model
+        )
 
 
 class TestPodShowToolDenial:
@@ -166,23 +169,28 @@ class TestPodShowTextUnchangedWithNoPodScope:
     def test_implementer_text_matches_the_base_exactly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
-        _seed(tmp_path, monkeypatch)
-        text = _explain_text(pod.member_id("demo", "implementer"), capsys)
-        assert (
-            "  Tools allowed: bash, consult, edit, fetch, glob, grep, read, skill, write\n" in text
-        )
-        assert "  Tools denied:  (none)\n" in text
-        assert "  MCP servers:   (none configured)\n" in text
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            _seed(tmp_path, monkeypatch)
+            text = _explain_text(pod.member_id("demo", "implementer"), capsys)
+            assert (
+                "  Tools allowed: bash, consult, edit, fetch, glob, grep, read, skill, write\n"
+                in text
+            )
+            assert "  Tools denied:  (none)\n" in text
+            assert "  MCP servers:   (none configured)\n" in text
 
     def test_reviewer_text_matches_the_base_exactly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
-        _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
-        text = _explain_text(pod.member_id("demo", "reviewer"), capsys)
-        assert "  Tools allowed: consult, fetch, glob, grep, read, skill\n" in text
-        assert "  Tools denied:  bash, edit, write\n" in text
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+            text = _explain_text(pod.member_id("demo", "reviewer"), capsys)
+            assert "  Tools allowed: consult, fetch, glob, grep, read, skill\n" in text
+            assert "  Tools denied:  bash, edit, write\n" in text
 
 
 class TestPodShowScopeLabels:
@@ -192,66 +200,72 @@ class TestPodShowScopeLabels:
     def test_pod_overlay_shadowed_role_policy_server_and_denial(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", ("api.example.test",), raising=True)
-        _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
 
-        # The pod's own overlay shadows the built-in `reviewer` archetype.
-        _archetypes.add_user_archetype(
-            {
-                "name": "reviewer",
-                "scope": "pod",
-                "modelClass": "cheap",
-                "soulTemplate": "# shadowed reviewer\n${role}",
-                "agentsTemplate": "# shadowed reviewer agents\n${role}",
-                "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
-                "deniedTools": ["write", "edit", "bash"],
-            },
-            project="demo",
-        )
-
-        # One global policy (the shipped baseline) and one pod-only policy, both
-        # applying to reviewer.
-        result = _policy.install_policies()
-        assert result.installed  # sanity: the shipped baseline actually installed
-        pod_policies_dir = _cfg.pod_config_dir("demo") / "policies"
-        pod_policies_dir.mkdir(parents=True)
-        (pod_policies_dir / "pod-only.json").write_text(
-            json.dumps(
+            # The pod's own overlay shadows the built-in `reviewer` archetype.
+            _archetypes.add_user_archetype(
                 {
-                    "id": "pod-only",
-                    "applies_to": ["reviewer"],
-                    "hook": "pre_tool_call",
-                    "match": {"type": "regex", "pattern": "x"},
-                    "action": "warn",
-                }
+                    "name": "reviewer",
+                    "scope": "pod",
+                    "modelClass": "cheap",
+                    "soulTemplate": "# shadowed reviewer\n${role}",
+                    "agentsTemplate": "# shadowed reviewer agents\n${role}",
+                    "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
+                    "deniedTools": ["write", "edit", "bash"],
+                },
+                project="demo",
             )
-        )
 
-        # One MCP server, declared read, selected by this pod alone.
-        _mcp_tools.add_mcp_server(
-            _mcp_tools.McpServerConfig(name="search", command="stub", kind="read")
-        )
-        lead = pod.member_id("demo", "lead")
-        _fleet.meta_set(lead, "mcpServers", "search")
-        _fleet.meta_set(lead, "deniedTools", "fetch")
+            # One global policy (the shipped baseline) and one pod-only policy, both
+            # applying to reviewer.
+            result = _policy.install_policies()
+            assert result.installed  # sanity: the shipped baseline actually installed
+            pod_policies_dir = current_home().pod_config_dir("demo") / "policies"
+            pod_policies_dir.mkdir(parents=True)
+            (pod_policies_dir / "pod-only.json").write_text(
+                json.dumps(
+                    {
+                        "id": "pod-only",
+                        "applies_to": ["reviewer"],
+                        "hook": "pre_tool_call",
+                        "match": {"type": "regex", "pattern": "x"},
+                        "action": "warn",
+                    }
+                )
+            )
 
-        reviewer = pod.member_id("demo", "reviewer")
-        report = _explain_json(reviewer, capsys)
+            # One MCP server, declared read, selected by this pod alone.
+            _mcp_tools.add_mcp_server(
+                _mcp_tools.McpServerConfig(name="search", command="stub", kind="read")
+            )
+            lead = pod.member_id("demo", "lead")
+            _fleet.meta_set(lead, "mcpServers", "search")
+            _fleet.meta_set(lead, "deniedTools", "fetch")
 
-        assert report["roleScope"] == "pod"
-        assert report["model"]["source"] == "pod overlay"
+            reviewer = pod.member_id("demo", "reviewer")
+            report = _explain_json(reviewer, capsys)
 
-        scopes_by_id = {p["id"]: p["scope"] for p in report["policies"]}
-        assert scopes_by_id["pod-only"] == "pod"
-        assert any(scope == "global" for pid, scope in scopes_by_id.items() if pid != "pod-only")
+            assert report["roleScope"] == "pod"
+            assert report["model"]["source"] == "pod overlay"
 
-        assert report["tools"]["mcpServers"] == [{"name": "search", "kind": "read", "scope": "pod"}]
+            scopes_by_id = {p["id"]: p["scope"] for p in report["policies"]}
+            assert scopes_by_id["pod-only"] == "pod"
+            assert any(
+                scope == "global" for pid, scope in scopes_by_id.items() if pid != "pod-only"
+            )
 
-        denied = {d["name"]: d["scope"] for d in report["tools"]["denied"]}
-        assert denied["fetch"] == "pod"
-        # The shadowed archetype's own denials are pod-scoped too, since the
-        # archetype itself resolved from this pod's overlay.
-        assert denied["write"] == "pod"
+            assert report["tools"]["mcpServers"] == [
+                {"name": "search", "kind": "read", "scope": "pod"}
+            ]
+
+            denied = {d["name"]: d["scope"] for d in report["tools"]["denied"]}
+            assert denied["fetch"] == "pod"
+            # The shadowed archetype's own denials are pod-scoped too, since the
+            # archetype itself resolved from this pod's overlay.
+            assert denied["write"] == "pod"
 
     def test_pod_only_denial_is_labeled_pod_even_for_a_built_in_role(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -275,7 +289,7 @@ class TestPodShowNonPodAgent:
         ws = home / "workspaces" / "solo"
         ws.mkdir(parents=True)
         _store.write_json(
-            _cfg.meta_path("solo"),
+            current_home().meta_path("solo"),
             {"kind": "project", "role": "", "model": "", "name": "solo"},
         )
         report = _explain_json("solo", capsys)
@@ -308,7 +322,7 @@ class TestPodShowPolicies:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        policies_dir = _cfg.POLICIES_DIR
+        policies_dir = current_home().policies_dir
         policies_dir.mkdir(parents=True)
         (policies_dir / "implementer-only.json").write_text(
             json.dumps(
@@ -335,7 +349,7 @@ class TestPodShowInvalidPodSettingsRefuses:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         lead = pod.member_id("demo", "lead")
-        meta_path = _cfg.meta_path(lead)
+        meta_path = current_home().meta_path(lead)
         meta = json.loads(meta_path.read_text())
         meta["turnTimeoutS"] = "not-a-number"
         meta_path.write_text(json.dumps(meta))

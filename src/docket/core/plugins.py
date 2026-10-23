@@ -19,11 +19,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import docket.config as _cfg
 import docket.plugins as _api
 from docket.core.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 DEFAULT_BUDGET_MS = 250
 
@@ -75,9 +75,9 @@ def _load_file(path: Path, scope: str) -> dict[str, LoadedPredicate]:
 
 
 def _scoped_dirs(project: str) -> list[tuple[Path, str]]:
-    dirs = [(_cfg.PLUGINS_DIR, "global")]
+    dirs = [(current_home().plugins_dir, "global")]
     if project:
-        dirs.append((_cfg.pod_config_dir(project) / "plugins", f"pod:{project}"))
+        dirs.append((current_home().pod_config_dir(project) / "plugins", f"pod:{project}"))
     return dirs
 
 

@@ -16,11 +16,11 @@ from pathlib import Path
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import pod_provisioning as _pp
 from docket.core import resources as _res
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core"
 
@@ -116,7 +116,7 @@ class TestPortAllocation:
 
         def staged_write(path: Path, data: dict[str, object]) -> None:
             nonlocal write_count
-            if path == _cfg.PORT_ALLOC_FILE:
+            if path == current_home().port_alloc_file:
                 with write_count_lock:
                     write_count += 1
                     should_wait = write_count <= 2
@@ -146,7 +146,7 @@ class TestPortAllocation:
         assert not failures
         assert all(not thread.is_alive() for thread in threads)
         assert results["alpha"][0] != results["beta"][0]
-        allocation_table = _store.read_json(_cfg.PORT_ALLOC_FILE)
+        allocation_table = _store.read_json(current_home().port_alloc_file)
         assert allocation_table["allocations"] == {
             "alpha": results["alpha"][0],
             "beta": results["beta"][0],

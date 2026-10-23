@@ -27,6 +27,7 @@ import docket.config as _cfg
 import docket.serve as serve
 from docket.core import trace as _trace
 from docket.kernel.clock import use_clock
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -78,11 +79,11 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
 
 
 @pytest.fixture()
-def traces_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def traces_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 class _FakeClock:

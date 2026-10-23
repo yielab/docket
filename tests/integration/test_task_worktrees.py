@@ -16,7 +16,6 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import answers as _answers
 from docket.core import dispatch as _dispatch
@@ -24,6 +23,7 @@ from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.edges.adapters import system as _sys
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.dispatch"
 
@@ -186,7 +186,7 @@ def test_provisioning_a_repo_pod_creates_no_worktree(
     _init_repo(repo)
     _seed_pod(tmp_path, monkeypatch, repo)
     assert _worktree_paths(repo) == [str(repo.resolve())]
-    assert not (_cfg.PROJECTS_DIR / "demo-implementer" / "tasks").exists()
+    assert not (current_home().projects_dir / "demo-implementer" / "tasks").exists()
 
 
 def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(
@@ -215,7 +215,7 @@ def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(
     tasks = {t["id"]: t for t in _dispatch.read_tasks("demo")}
     wt_one = tasks[first["id"]]["worktree"]
     wt_two = tasks[second["id"]]["worktree"]
-    tasks_dir = _cfg.PROJECTS_DIR / "demo-implementer" / "tasks"
+    tasks_dir = current_home().projects_dir / "demo-implementer" / "tasks"
     assert wt_one["dir"] == str(tasks_dir / first["id"])
     assert wt_two["dir"] == str(tasks_dir / second["id"])
     assert wt_one["branch"] == f"docket/demo/{first['id']}"

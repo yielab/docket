@@ -26,11 +26,11 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-import docket.config as _cfg
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel.errors import Unavailable
+from docket.kernel.home import current_home
 
 
 def _epoch_from_iso(ts: str) -> float | None:
@@ -241,7 +241,7 @@ def remove_agent(reg: ConversationRegistry, agent_id: str) -> ConversationRegist
 
 def load(path: Path | None = None) -> ConversationRegistry:
     """Load the registry, or an empty one if the file is absent/unreadable."""
-    p = path or _cfg.CONVERSATIONS_FILE
+    p = path or current_home().conversations_file
     if not p.exists():
         return ConversationRegistry()
     try:
@@ -271,7 +271,7 @@ def mutate(
     byte-identical. Malformed data is not treated as an empty registry here: that forgiving
     read behavior belongs to ``load`` for inspection, while a write must fail closed.
     """
-    p = path or _cfg.CONVERSATIONS_FILE
+    p = path or current_home().conversations_file
     result: _MutationResult
 
     def _apply(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -352,7 +352,7 @@ def prune_closed_durable(
     """Remove ``done`` conversations past the retention window (default
     ``config.TRACE_RETENTION_S``). Returns the count removed (or, under *dry_run*,
     that would be)."""
-    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
+    window = current_home().trace_retention_s if retention_s is None else retention_s
     cutoff_epoch = (now if now is not None else _clock.epoch()) - window
     if dry_run:
         removed, _ = prune_closed(load(path), cutoff_epoch=cutoff_epoch)

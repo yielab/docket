@@ -20,10 +20,10 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app as _app
 from docket.core import secrets as _secrets
 from docket.core.audit import read_audit
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.exporter"
 
@@ -76,9 +76,9 @@ def _serve(status: int, body: bytes = b"{}") -> Iterator[str]:
 
 
 def _global_exporters(_home: Path) -> dict:
-    if not _cfg.EXPORTERS_FILE.is_file():
+    if not current_home().exporters_file.is_file():
         return {}
-    cfg = json.loads(_cfg.EXPORTERS_FILE.read_text())
+    cfg = json.loads(current_home().exporters_file.read_text())
     exporters = cfg.get("exporters", {})
     assert isinstance(exporters, dict)
     return exporters
@@ -100,7 +100,7 @@ class TestEnableWithoutCredentials:
         combined = result.stdout + result.stderr
         assert "LANGFUSE_PUBLIC_KEY" in combined
         assert "LANGFUSE_SECRET_KEY" in combined
-        assert not _cfg.EXPORTERS_FILE.exists()
+        assert not current_home().exporters_file.exists()
 
 
 class TestEnableWithLocalServer:
@@ -159,7 +159,7 @@ class TestEnableWithLocalServer:
 
         assert result.exit_code == 1
         assert _global_exporters(home) == {}
-        assert not _cfg.EXPORTERS_FILE.exists()
+        assert not current_home().exporters_file.exists()
         assert "Could not reach" in result.stderr
 
 
@@ -181,7 +181,7 @@ class TestPodShowExporters:
         from docket.cli import _pod as _pod_cli
 
         _seed(tmp_path, monkeypatch)
-        (_cfg.DOCKET_HOME / "workspaces" / "projects").mkdir(parents=True)
+        (current_home().root / "workspaces" / "projects").mkdir(parents=True)
         _pod_cli.build_pod("demo", ("lead",), codebase="/src/demo")
         _store_langfuse_keys()
 
@@ -208,14 +208,14 @@ class TestPrivacyCommand:
         home = _seed(tmp_path, monkeypatch)
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        before_exists = _cfg.EXPORTERS_FILE.exists()
+        before_exists = current_home().exporters_file.exists()
         before_audit = read_audit()
 
         result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse", "conversation"])
 
         assert result.exit_code == 1
         assert "--yes" in (result.stdout + result.stderr)
-        assert _cfg.EXPORTERS_FILE.exists() == before_exists
+        assert current_home().exporters_file.exists() == before_exists
         assert _global_exporters(home) == {}
         assert read_audit() == before_audit
 
@@ -283,7 +283,9 @@ class TestDoctorExporterHealth:
             )
         assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
 
-        _cfg.EXPORTERS_HEALTH_FILE.write_text(json.dumps({"langfuse": {"failed": 3, "lastOk": ""}}))
+        current_home().exporters_health_file.write_text(
+            json.dumps({"langfuse": {"failed": 3, "lastOk": ""}})
+        )
 
         capsys.readouterr()
         run_check()
@@ -346,7 +348,11 @@ def _snapshot(home: Path) -> tuple[bytes | None, bytes | None, bytes | None]:
     def _read(p: Path) -> bytes | None:
         return p.read_bytes() if p.is_file() else None
 
-    return _read(_cfg.EXPORTERS_FILE), _read(_cfg.EXPORTERS_HEALTH_FILE), _read(_cfg.AUDIT_LOG)
+    return (
+        _read(current_home().exporters_file),
+        _read(current_home().exporters_health_file),
+        _read(current_home().audit_log),
+    )
 
 
 class TestPreview:

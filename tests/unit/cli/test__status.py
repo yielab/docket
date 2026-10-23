@@ -10,11 +10,11 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod, _status
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._status"
 
@@ -39,7 +39,7 @@ def _tasks(project: str, *statuses: str) -> None:
 
 
 def _trace(project: str, name: str, status: str) -> None:
-    d = _cfg.TRACES_DIR / project
+    d = current_home().traces_dir / project
     d.mkdir(parents=True, exist_ok=True)
     events = [
         {"event_type": "session_start", "ts": "2026-10-01T10:00:00Z", "agent_role": "lead"},

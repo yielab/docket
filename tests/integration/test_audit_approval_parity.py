@@ -12,15 +12,16 @@ unchanged) and the new audit-log line with the correct channel tag.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import stat
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
@@ -28,6 +29,7 @@ from docket.cli import app
 from docket.core import approval as _ap
 from docket.core import audit as _audit
 from docket.core import trace as _trace
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -37,17 +39,17 @@ _TEST_TOKEN = "test-serve-token-fd4-xyz789"
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with all docket-owned store paths repointed."""
     d = tmp_path / ".docket"
     d.mkdir()
     (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, d)
-    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-    monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-    monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
-    return d
+    with use_home(Home(d)):
+        with use_home(dataclasses.replace(current_home(), approval_timeout=900)):
+            monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+            monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
+            monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
+            yield d
 
 
 @pytest.fixture()

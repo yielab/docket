@@ -10,19 +10,20 @@ import sys
 import textwrap
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
+from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
 
-import docket.config as _cfg
 from docket import serve
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.kernel import clock as _clock
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.serve"
 
@@ -97,21 +98,21 @@ _TWO = (
 
 
 @pytest.fixture()
-def sweep_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def sweep_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, root)
-    record_isolation_off(root)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
-    _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
-    _fleet.meta_set("demo-implementer", "verifyCmd", "")
-    pipelines = _cfg.pod_config_dir("demo") / "pipelines"
-    pipelines.mkdir(parents=True, exist_ok=True)
-    (pipelines / "solo.yaml").write_text(_SOLO, encoding="utf-8")
-    (pipelines / "two.yaml").write_text(_TWO, encoding="utf-8")
-    return root
+    with use_home(Home(root)):
+        record_isolation_off(root)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
+        _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
+        _fleet.meta_set("demo-implementer", "verifyCmd", "")
+        pipelines = current_home().pod_config_dir("demo") / "pipelines"
+        pipelines.mkdir(parents=True, exist_ok=True)
+        (pipelines / "solo.yaml").write_text(_SOLO, encoding="utf-8")
+        (pipelines / "two.yaml").write_text(_TWO, encoding="utf-8")
+        yield root
 
 
 def _wire(home: Path, server: _ScriptedLLMServer) -> None:

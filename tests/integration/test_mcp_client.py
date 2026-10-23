@@ -15,22 +15,23 @@ from __future__ import annotations
 
 import ast
 import builtins
+import dataclasses
 import sys
 import time
 import types
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import mcp_tools as _mt
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, ToolRegistry, builtin_registry, dispatch_tool
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.edges.adapters"
 
@@ -38,9 +39,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repoint_docket_home(monkeypatch, tmp_path)
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    with use_home(Home(tmp_path)):
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            yield
 
 
 def _audit_actions() -> list[str]:
@@ -52,7 +54,7 @@ def _write_pre_tool_call_policy(
 ) -> None:
     import json
 
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
         "id": policy_id,
         "description": f"test policy {policy_id}",
@@ -62,13 +64,15 @@ def _write_pre_tool_call_policy(
         "action": action,
         "message": message,
     }
-    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+    (current_home().policies_dir / f"{policy_id}.json").write_text(
+        json.dumps(doc), encoding="utf-8"
+    )
 
 
 def _write_pre_input_policy(policy_id: str, pattern: str, action: str) -> None:
     import json
 
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
         "id": policy_id,
         "description": f"test policy {policy_id}",
@@ -78,7 +82,9 @@ def _write_pre_input_policy(policy_id: str, pattern: str, action: str) -> None:
         "action": action,
         "message": "flagged",
     }
-    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+    (current_home().policies_dir / f"{policy_id}.json").write_text(
+        json.dumps(doc), encoding="utf-8"
+    )
 
 
 def _config(name: str = "weather", **kw: Any) -> _mt.McpServerConfig:
@@ -399,36 +405,38 @@ class TestGatedExactlyLikeABuiltin:
     ) -> None:
         """Executes once granted -- proves the full in-turn approval routing
         (not just a block) treats an MCP tool identically to a built-in."""
-        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 10, raising=True)
-        _write_pre_tool_call_policy("needs-a-human", r"launch-codes", "require_approval")
-        ran = {"mcp_handler": False}
-        registry = self._registry_with_mcp_tool(ran)
-        ctx = ToolContext(agent_id="a", role="implementer", project="p", roots=(Path.cwd(),))
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=10)):
+            _write_pre_tool_call_policy("needs-a-human", r"launch-codes", "require_approval")
+            ran = {"mcp_handler": False}
+            registry = self._registry_with_mcp_tool(ran)
+            ctx = ToolContext(agent_id="a", role="implementer", project="p", roots=(Path.cwd(),))
 
-        def _grant_the_pending_call(_seconds: float) -> None:
-            pending = _approval.list_pending()
-            assert pending
-            _approval.approval_grant(pending[0]["token"])
+            def _grant_the_pending_call(_seconds: float) -> None:
+                pending = _approval.list_pending()
+                assert pending
+                _approval.approval_grant(pending[0]["token"])
 
-        import time as _real_time
+            import time as _real_time
 
-        monkeypatch.setattr(
-            _approval,
-            "_time",
-            types.SimpleNamespace(sleep=_grant_the_pending_call, monotonic=_real_time.monotonic),
-            raising=True,
-        )
+            monkeypatch.setattr(
+                _approval,
+                "_time",
+                types.SimpleNamespace(
+                    sleep=_grant_the_pending_call, monotonic=_real_time.monotonic
+                ),
+                raising=True,
+            )
 
-        res = dispatch_tool(
-            ToolCall(
-                id="c3", name="mcp__weather__danger_zone", arguments='{"city": "launch-codes"}'
-            ),
-            ctx,
-            registry,
-        )
+            res = dispatch_tool(
+                ToolCall(
+                    id="c3", name="mcp__weather__danger_zone", arguments='{"city": "launch-codes"}'
+                ),
+                ctx,
+                registry,
+            )
 
-        assert ran["mcp_handler"] is True
-        assert res.executed and res.decision == "allow"
+            assert ran["mcp_handler"] is True
+            assert res.executed and res.decision == "allow"
 
     def test_an_unrelated_call_to_the_mcp_tool_is_unaffected(self) -> None:
         """Sanity: the gate is argument-sensitive, not a blanket block on the
@@ -488,20 +496,20 @@ class TestTimeoutClamping:
     def test_zero_timeout_uses_the_configured_default(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "MCP_CLIENT_TIMEOUT_S", 7.0, raising=True)
-        assert _config(timeout=0).resolved_timeout() == 7.0
+        with use_home(dataclasses.replace(current_home(), mcp_client_timeout_s=7.0)):
+            assert _config(timeout=0).resolved_timeout() == 7.0
 
     def test_a_modest_timeout_passes_through_unchanged(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "MCP_CLIENT_MAX_TIMEOUT_S", 60.0, raising=True)
-        assert _config(timeout=15).resolved_timeout() == 15.0
+        with use_home(dataclasses.replace(current_home(), mcp_client_max_timeout_s=60.0)):
+            assert _config(timeout=15).resolved_timeout() == 15.0
 
     def test_an_excessive_timeout_is_clamped_to_the_hard_ceiling(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "MCP_CLIENT_MAX_TIMEOUT_S", 60.0, raising=True)
-        assert _config(timeout=999_999).resolved_timeout() == 60.0
+        with use_home(dataclasses.replace(current_home(), mcp_client_max_timeout_s=60.0)):
+            assert _config(timeout=999_999).resolved_timeout() == 60.0
 
 
 # ── edges/adapters/mcp_client.py: the SDK boundary itself ───────────────────
@@ -648,13 +656,17 @@ class TestRealSdkStubbed:
         self._install_fake_client(monkeypatch, on_call=_on_call)
         from docket.edges.adapters import mcp_client as _client
 
-        monkeypatch.setattr(_cfg, "TOOL_MAX_OUTPUT_CHARS", 8, raising=True)
-        first = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
-        monkeypatch.setattr(_cfg, "TOOL_MAX_OUTPUT_CHARS", 5, raising=True)
-        second = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
+        with use_home(dataclasses.replace(current_home(), tool_max_output_chars=8)):
+            first = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
+            with use_home(dataclasses.replace(current_home(), tool_max_output_chars=5)):
+                second = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
 
-        assert first == ToolOutcome(True, content="abcdefgh\n\n[truncated: 4 more characters]")
-        assert second == ToolOutcome(True, content="abcde\n\n[truncated: 7 more characters]")
+                assert first == ToolOutcome(
+                    True, content="abcdefgh\n\n[truncated: 4 more characters]"
+                )
+                assert second == ToolOutcome(
+                    True, content="abcde\n\n[truncated: 7 more characters]"
+                )
 
     def test_call_remote_tool_reports_a_tool_side_error(
         self, monkeypatch: pytest.MonkeyPatch

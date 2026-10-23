@@ -48,7 +48,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-import docket.config as _cfg
 from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
@@ -56,6 +55,7 @@ from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 RunSource = Literal["cli", "webhook", "schedule", "sweep", "mcp"]
 RunState = Literal[
@@ -257,7 +257,7 @@ def _set_cancellation_lifecycle(rec: dict[str, Any], lifecycle: CancellationLife
 
 
 def runs_path() -> Path:
-    return _cfg.RUNS_FILE
+    return current_home().runs_file
 
 
 def _runs_list(doc: dict[str, Any]) -> list[dict[str, Any]]:
@@ -445,7 +445,7 @@ def prune_terminal(
     # delete evidence of live work. A record with no parseable finishedAt (malformed)
     # is kept, never guessed at. Sharing TRACE_RETENTION_S with core/trace.py's own
     # expiry keeps every docket-owned store bounded by one operator-facing knob.
-    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
+    window = current_home().trace_retention_s if retention_s is None else retention_s
     cutoff = (now if now is not None else _clock.epoch()) - window
     removed = 0
 

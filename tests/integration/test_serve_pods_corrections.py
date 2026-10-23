@@ -6,15 +6,16 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.core import corrections as _corrections
 from docket.core import pod_provisioning as _pp
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -30,13 +31,13 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     (home / "approvals").mkdir()
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 @pytest.fixture()

@@ -13,15 +13,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
+from tests.conftest import record_isolation_off, register_local_provider
 from tests.fakes import FakeDriver
 from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import trace as _trace
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.dispatch"
 
@@ -36,25 +36,25 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, root)
-    record_isolation_off(root)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
-    _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
-    return root
+    with use_home(Home(root)):
+        record_isolation_off(root)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
+        _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
+        yield root
 
 
 def _pod_pipeline(name: str, text: str) -> None:
-    target = _cfg.pod_config_dir("demo") / "pipelines"
+    target = current_home().pod_config_dir("demo") / "pipelines"
     target.mkdir(parents=True, exist_ok=True)
     (target / f"{name}.yaml").write_text(text, encoding="utf-8")
 
 
 def _task_events(task_id: str, event_type: str) -> list[dict[str, Any]]:
-    tf = _cfg.TRACES_DIR / "demo" / f"agent:demo:{task_id}.jsonl"
+    tf = current_home().traces_dir / "demo" / f"agent:demo:{task_id}.jsonl"
     return [e for e in _trace.read_trace(tf) if e["event_type"] == event_type]
 
 

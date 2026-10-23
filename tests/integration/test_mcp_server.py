@@ -30,6 +30,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -154,8 +155,8 @@ class TestToolPods:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        assert _mcp.tool_pods() == {"pods": []}
+        with use_home(Home(home)):
+            assert _mcp.tool_pods() == {"pods": []}
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
@@ -242,9 +243,9 @@ class TestToolDelegate:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        with pytest.raises(_mcp.McpToolError, match="no pod"):
-            _mcp.tool_delegate("ghost-project", "task")
+        with use_home(Home(home)):
+            with pytest.raises(_mcp.McpToolError, match="no pod"):
+                _mcp.tool_delegate("ghost-project", "task")
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch, project="demo")
@@ -410,43 +411,43 @@ class TestToolRuns:
     def test_lists_all_runs_newest_first(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        first = _runs.create_run("cli", "alpha")
-        second = _runs.create_run("mcp", "beta")
-        result = _mcp.tool_runs()
-        assert [r["id"] for r in result["runs"]] == [second["id"], first["id"]]
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            first = _runs.create_run("cli", "alpha")
+            second = _runs.create_run("mcp", "beta")
+            result = _mcp.tool_runs()
+            assert [r["id"] for r in result["runs"]] == [second["id"], first["id"]]
 
     def test_filters_by_project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        _runs.create_run("cli", "alpha")
-        _runs.create_run("cli", "beta")
-        result = _mcp.tool_runs(project="alpha")
-        assert len(result["runs"]) == 1
-        assert result["runs"][0]["project"] == "alpha"
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            _runs.create_run("cli", "alpha")
+            _runs.create_run("cli", "beta")
+            result = _mcp.tool_runs(project="alpha")
+            assert len(result["runs"]) == 1
+            assert result["runs"][0]["project"] == "alpha"
 
     def test_fetch_by_id_returns_bare_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        rec = _runs.create_run("cli", "demo")
-        result = _mcp.tool_runs(run_id=rec["id"])
-        assert result["id"] == rec["id"]
-        assert "runs" not in result
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            rec = _runs.create_run("cli", "demo")
+            result = _mcp.tool_runs(run_id=rec["id"])
+            assert result["id"] == rec["id"]
+            assert "runs" not in result
 
     def test_unknown_id_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        with pytest.raises(_mcp.McpToolError, match="Unknown run"):
-            _mcp.tool_runs(run_id="run-nope")
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            with pytest.raises(_mcp.McpToolError, match="Unknown run"):
+                _mcp.tool_runs(run_id="run-nope")
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        _mcp.tool_runs()
-        assert len(_audit_actions("mcp.runs")) == 1
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            _mcp.tool_runs()
+            assert len(_audit_actions("mcp.runs")) == 1
 
 
 # ── approvals: list / grant / deny ───────────────────────────────────────────
@@ -454,17 +455,17 @@ class TestToolRuns:
 
 class TestToolApprovalsList:
     def test_lists_pending_approvals(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        token = _approval.approval_create("demo", "implementer", "deploy prod")
-        result = _mcp.tool_approvals_list()
-        assert [p["token"] for p in result["pending"]] == [token]
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            token = _approval.approval_create("demo", "implementer", "deploy prod")
+            result = _mcp.tool_approvals_list()
+            assert [p["token"] for p in result["pending"]] == [token]
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        _mcp.tool_approvals_list()
-        assert len(_audit_actions("mcp.approvals_list")) == 1
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            _mcp.tool_approvals_list()
+            assert len(_audit_actions("mcp.approvals_list")) == 1
 
 
 class TestToolTaskAnswer:
@@ -529,10 +530,10 @@ class TestToolInbox:
         assert set(result.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        _mcp.tool_inbox()
-        assert len(_audit_actions("mcp.inbox")) == 1
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            _mcp.tool_inbox()
+            assert len(_audit_actions("mcp.inbox")) == 1
 
 
 class TestToolApprovalsGrantDeny:
@@ -587,10 +588,10 @@ class TestToolApprovalsGrantDeny:
     def test_grant_unknown_token_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-        (tmp_path / ".docket").mkdir(exist_ok=True)
-        with pytest.raises(_mcp.McpToolError, match="not found"):
-            _mcp.tool_approvals_grant("apr-does-not-exist")
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            with pytest.raises(_mcp.McpToolError, match="not found"):
+                _mcp.tool_approvals_grant("apr-does-not-exist")
 
     def test_deny_after_grant_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         token = self._seed(tmp_path, monkeypatch)

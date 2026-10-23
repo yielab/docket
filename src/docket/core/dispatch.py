@@ -65,6 +65,7 @@ from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 # Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
 PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
@@ -261,7 +262,7 @@ def pod_task_list_path(project: str) -> Path:
     the Lead, so pods never share a task list.
     """
     lead_id = _pod.member_id(project, "lead")
-    return _cfg.workspace_dir(lead_id) / "TASK_LIST.json"
+    return current_home().workspace_dir(lead_id) / "TASK_LIST.json"
 
 
 # Fields a task record may lack because enqueue_task does not write them.
@@ -629,11 +630,11 @@ TASK_PIPELINE_NAME = _re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
     """The file and source label *name* resolves to: the pod's ``pipelines/`` directory, then a
     recipe (the operator's before the shipped ones) holding a ``pipeline.yaml``."""
-    pod_dir = _cfg.pod_config_dir(project) / "pipelines"
+    pod_dir = current_home().pod_config_dir(project) / "pipelines"
     for suffix in (".yaml", ".yml"):
         if (pod_dir / f"{name}{suffix}").is_file():
             return pod_dir / f"{name}{suffix}", f"pod:{name}"
-    for root in (_cfg.user_recipes_dir(), _cfg.recipes_dir()):
+    for root in (current_home().user_recipes_dir, _cfg.recipes_dir()):
         if (root / name / "pipeline.yaml").is_file():
             return root / name / "pipeline.yaml", f"recipe:{name}"
     return None
@@ -778,7 +779,9 @@ def pod_max_rework_cycles(project: str) -> int:
 
 def _retries_for_role(role: str) -> int:
     """Max retry attempts (after the first try) for one role's hop."""
-    return _cfg.DISPATCH_RETRIES_PER_ROLE.get(role, _cfg.DISPATCH_RETRIES_DEFAULT)
+    return current_home().dispatch_retries_per_role.get(
+        role, current_home().dispatch_retries_default
+    )
 
 
 def _lead_meta_timeout(project: str, field_name: str) -> int | None:
@@ -1191,7 +1194,7 @@ def _render_operator_answers(task: dict[str, Any]) -> str:
     from docket.core import context as _ctx
 
     text = "\n\n".join(blocks)
-    budget_tokens = _ANSWERS_CHAR_BUDGET // _cfg.CONTEXT_BYTES_PER_TOKEN
+    budget_tokens = _ANSWERS_CHAR_BUDGET // current_home().context_bytes_per_token
     capped, _truncated = _ctx._truncate_summary(text, budget_tokens)
     return capped
 
@@ -1264,7 +1267,7 @@ def _hop_diff_probe(
 def _tree_diff(cwd: str) -> str:
     """The tree's uncommitted tracked changes plus the content of its new files, capped at
     ``HANDOFF_DIFF_MAX_CHARS`` with a marker; ``""`` when git can say nothing."""
-    limit = _cfg.HANDOFF_DIFF_MAX_CHARS
+    limit = current_home().handoff_diff_max_chars
     text = (_sys.git_diff(cwd, "HEAD") or "") + _sys.git_new_files_text(cwd, limit)
     return _handoff.cap_diff(text, limit)
 
@@ -1699,7 +1702,7 @@ def _hop_model(node: _orch.PlannedUnit, member_id: str) -> str:
             return _models_policy.resolve_step_model(node.model)
         except ValueError:
             return node.model
-    return str(_fleet.meta_get(member_id, "model", "") or _cfg.DEFAULT_MODEL)
+    return str(_fleet.meta_get(member_id, "model", "") or current_home().default_model)
 
 
 def _unpriced(model: str) -> bool:
@@ -1732,7 +1735,7 @@ def unpriced_budget_models(project: str) -> list[str]:
         return []
     ids = [a.id for a in _fleet.list_agents()]
     models = {
-        str(_fleet.meta_get(mid, "model", "") or _cfg.DEFAULT_MODEL)
+        str(_fleet.meta_get(mid, "model", "") or current_home().default_model)
         for mid, _role, _idx in _pod.members_of(ids, project)
     }
     steps = list(effective_pipeline(project, None).steps)
@@ -2016,8 +2019,10 @@ def _run_hop_turn(
         # the failure-kind taxonomy" requirement 3).
         ctx.do_sleep(
             min(
-                max(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt, run_res.retry_after_s or 0.0),
-                _cfg.DISPATCH_RETRY_MAX_WAIT_S,
+                max(
+                    current_home().dispatch_retry_backoff_s * attempt, run_res.retry_after_s or 0.0
+                ),
+                current_home().dispatch_retry_max_wait_s,
             )
         )
         attempt += 1
@@ -2414,7 +2419,7 @@ def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
         "cmd": cmd,
         "exitCode": exit_code,
         "durationS": round(run.duration_s, 3),
-        "outputTail": run.redacted[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :],
+        "outputTail": run.redacted[-current_home().verify_evidence_tail_chars :],
     }
 
 
@@ -2512,7 +2517,9 @@ def _gate_reasons_path(project: str, task_id: str, step_id: str) -> Path:
     """Where an external gate's verifier writes its reasons: under the pod cache dir (a
     read-write jail root), one file per task and step. Deleted before every run."""
     return (
-        _cfg.pod_cache_dir(project) / "gate" / f"{_gate_file_stem(task_id, step_id)}.reasons.json"
+        current_home().pod_cache_dir(project)
+        / "gate"
+        / f"{_gate_file_stem(task_id, step_id)}.reasons.json"
     )
 
 
@@ -3787,7 +3794,7 @@ def _refuse_claimed_task(
     )
     tasks_after = doc.get("tasks")
     _mem.sync_dispatch_tasks(
-        _cfg.workspace_dir(_pod.member_id(project, "lead")),
+        current_home().workspace_dir(_pod.member_id(project, "lead")),
         tasks_after if isinstance(tasks_after, list) else [],
     )
     return TaskResult(task_id=task_id, status="failed", reason=reason, failure_kind=failure_kind)
@@ -3800,13 +3807,15 @@ def _run_prepare_command(project: str, cmd: str, cwd: str) -> tuple[int | None, 
     if refusal is not None:
         return None, f"[prepare not run: {refusal}]"
     if jail is None:
-        return _sys.run_command(cmd, cwd, _cfg.PREPARE_TIMEOUT_S)
-    return _sys.run_command(cmd, cwd, _cfg.PREPARE_TIMEOUT_S, jail=replace(jail, network=True))
+        return _sys.run_command(cmd, cwd, current_home().prepare_timeout_s)
+    return _sys.run_command(
+        cmd, cwd, current_home().prepare_timeout_s, jail=replace(jail, network=True)
+    )
 
 
 def _prepare_reason(command: str, outcome: _prepare.PrepareOutcome) -> str:
     status = f"exit {outcome.exit_code}" if outcome.exit_code is not None else "no exit status"
-    tail = _trace.redact(outcome.output)[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :]
+    tail = _trace.redact(outcome.output)[-current_home().verify_evidence_tail_chars :]
     return f"prepare failed: {command} ({status}): {tail}"
 
 
@@ -3936,7 +3945,7 @@ def _claim_next_task(
     resume_hops = [_hop_from_record(h) for h in claimed.get("hops", []) if isinstance(h, dict)]
     tasks_after = doc.get("tasks")
     _mem.sync_dispatch_tasks(
-        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
     )
     return claimed, resume_hops
 
@@ -3966,7 +3975,7 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
     tasks_after = doc.get("tasks")
     lead_id = _pod.member_id(project, "lead")
     _mem.sync_dispatch_tasks(
-        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
     )
 
     _conv.touch_for_hop_durable(
@@ -3993,7 +4002,7 @@ def _touch_claim(project: str, task_id: str) -> None:
     tasks_after = doc.get("tasks")
     lead_id = _pod.member_id(project, "lead")
     _mem.sync_dispatch_tasks(
-        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
     )
 
 
@@ -4025,7 +4034,7 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     tasks_after = doc.get("tasks")
     lead_id = _pod.member_id(project, "lead")
     _mem.sync_dispatch_tasks(
-        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
     )
     _pod_memory.record_task_memory(project, task_id, res)
 
@@ -4052,7 +4061,7 @@ def _sweep_stale_claims(project: str) -> None:
             claimed_at = _parse_iso(str(t.get("claimedAt") or ""))
             if claimed_at is None:
                 continue
-            if (now - claimed_at).total_seconds() <= _cfg.CLAIM_STALE_TIMEOUT:
+            if (now - claimed_at).total_seconds() <= current_home().claim_stale_timeout:
                 continue
             t["status"] = "failed"
             t["reason"] = "stale claim — dispatcher likely crashed mid-task"
@@ -4189,7 +4198,7 @@ def cancel_parked_task(
             _ap.approval_deny(token, channel, actor=actor)
     tasks_after = doc.get("tasks")
     _mem.sync_dispatch_tasks(
-        _cfg.workspace_dir(_pod.member_id(project, "lead")),
+        current_home().workspace_dir(_pod.member_id(project, "lead")),
         tasks_after if isinstance(tasks_after, list) else [],
     )
     _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, reason))
@@ -4462,7 +4471,7 @@ def resolve_waiting_approval_detail(
     if updated and check_changed:
         tasks_after = doc.get("tasks")
         _mem.sync_dispatch_tasks(
-            _cfg.workspace_dir(_pod.member_id(project, "lead")),
+            current_home().workspace_dir(_pod.member_id(project, "lead")),
             tasks_after if isinstance(tasks_after, list) else [],
         )
     return updated, note

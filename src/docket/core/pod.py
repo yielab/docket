@@ -20,7 +20,6 @@ from typing import Any, ClassVar, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from pydantic import ValidationError as _PydanticValidationError
 
-import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp_tools
@@ -30,6 +29,7 @@ from docket.core import protected_paths as _protected
 from docket.core import schedule as _schedule
 from docket.core import security as _security
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
 FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
@@ -259,7 +259,7 @@ def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = 
         return task_worktree
     if codebase:
         return codebase
-    return str(_cfg.workspace_dir(member_id))
+    return str(current_home().workspace_dir(member_id))
 
 
 class PodSettingsError(InvalidInput):
@@ -767,4 +767,4 @@ BOUND_PIPELINE_FILENAME = "PIPELINE.yaml"
 
 def bound_pipeline_path(project: str) -> Path:
     """Where a pod's bound pipeline copy lives, if ``PodSettings.pipeline`` is set."""
-    return _cfg.workspace_dir(member_id(project, "lead")) / BOUND_PIPELINE_FILENAME
+    return current_home().workspace_dir(member_id(project, "lead")) / BOUND_PIPELINE_FILENAME

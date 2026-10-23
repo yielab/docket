@@ -12,11 +12,11 @@ from tests.conftest import record_isolation_off, repoint_docket_home
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import interruptions as _interruptions
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._task"
 
@@ -380,7 +380,7 @@ class TestTaskAdd:
 
     def test_counts_are_pluralised(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        policies_dir = _cfg.pod_config_dir("demo") / "policies"
+        policies_dir = current_home().pod_config_dir("demo") / "policies"
         policies_dir.mkdir(parents=True)
         for name in ("a", "b"):
             (policies_dir / f"{name}.yaml").write_text(

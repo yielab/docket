@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 from docket.core import runs as _runs
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.cli"
 
 
 @pytest.fixture()
-def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     f = tmp_path / "docket-runs.json"
-    monkeypatch.setattr(_cfg, "RUNS_FILE", f, raising=True)
-    return f
+    with use_home(dataclasses.replace(current_home(), runs_file_override=f)):
+        yield f
 
 
 class TestRunsPruneCli:

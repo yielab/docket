@@ -20,12 +20,12 @@ from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 import docket.core.memory as _mem
 from docket.core.models import AgentMeta
 from docket.core.pod import PodMember
 from docket.core.pod_provisioning import provision_member
 from docket.edges.adapters.docket_runtime import _resolve_roots
+from docket.kernel.home import current_home
 
 _MODEL = "anthropic/claude-haiku-4-5-20251001"
 
@@ -58,7 +58,9 @@ def _init_git_repo(path: Path) -> None:
 
 def _roots_for(member_id: str) -> tuple[Path, ...]:
     """Exactly what the driver will gate this member's tool calls against."""
-    raw = json.loads((_cfg.workspace_dir(member_id) / _cfg.META_FILE).read_text())
+    raw = json.loads(
+        (current_home().workspace_dir(member_id) / current_home().meta_file).read_text()
+    )
     return _resolve_roots(AgentMeta.model_validate(raw), member_id)
 
 
@@ -101,7 +103,7 @@ def test_soul_and_agents_name_no_path(repo: Path) -> None:
     member = _make_member("implementer")
     _provision(member, repo)
 
-    ws = _cfg.workspace_dir(member.member_id)
+    ws = current_home().workspace_dir(member.member_id)
     for name in ("SOUL.md", "AGENTS.md"):
         assert not re.search(r"(^|[\s`(])/[\w.-]+/", (ws / name).read_text()), name
 
@@ -126,7 +128,9 @@ def test_implementer_startup_contract_names_a_path_inside_its_own_roots(repo: Pa
     _provision(member, repo)
 
     roots = _roots_for(member.member_id)
-    contract = (_cfg.workspace_dir(member.member_id) / _mem.REQUIRED_STARTUP_FILE).read_text()
+    contract = (
+        current_home().workspace_dir(member.member_id) / _mem.REQUIRED_STARTUP_FILE
+    ).read_text()
 
     outside = [
         p
@@ -141,7 +145,7 @@ def test_implementer_tools_md_names_a_root_inside_its_own_roots(repo: Path) -> N
     member = _make_member("implementer")
     _provision(member, repo)
 
-    tools = (_cfg.workspace_dir(member.member_id) / "TOOLS.md").read_text()
+    tools = (current_home().workspace_dir(member.member_id) / "TOOLS.md").read_text()
     project_root = tools.split("Project root:", 1)[1].split("\n", 1)[0].strip().strip("`")
 
     assert _inside(Path(project_root), _roots_for(member.member_id))
@@ -152,7 +156,9 @@ def test_implementer_has_no_member_worktree(repo: Path) -> None:
     member = _make_member("implementer")
     _provision(member, repo)
 
-    raw = json.loads((_cfg.workspace_dir(member.member_id) / _cfg.META_FILE).read_text())
+    raw = json.loads(
+        (current_home().workspace_dir(member.member_id) / current_home().meta_file).read_text()
+    )
     assert "worktreeDir" not in raw
     assert raw["codebase"] == str(repo)
 
@@ -166,7 +172,7 @@ def test_other_roles_are_told_the_codebase(repo: Path, role: str) -> None:
     member = _make_member(role)
     _provision(member, repo)
 
-    ws = _cfg.workspace_dir(member.member_id)
+    ws = current_home().workspace_dir(member.member_id)
     contract = (ws / _mem.REQUIRED_STARTUP_FILE).read_text()
     assert f"`{repo}`" in contract
     assert _inside(Path(str(repo)), _roots_for(member.member_id))
@@ -182,7 +188,7 @@ def test_doctor_contract_heal_keeps_the_member_inside_its_roots(repo: Path) -> N
     member = _make_member("implementer")
     _provision(member, repo)
 
-    ws = _cfg.workspace_dir(member.member_id)
+    ws = current_home().workspace_dir(member.member_id)
     contract = ws / _mem.REQUIRED_STARTUP_FILE
     contract.write_text("# stale, no contract marker\n", encoding="utf-8")
     assert not _mem.contract_ok(ws)

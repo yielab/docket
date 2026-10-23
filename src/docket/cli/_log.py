@@ -7,9 +7,9 @@ from typing import Any
 import typer
 from typer.core import TyperGroup
 
-import docket.config as _cfg
 from docket import ui
 from docket.core import audit as _audit
+from docket.kernel.home import current_home
 
 _COUNT_KEY = "docket.log.count"
 _DEFAULT_COUNT = 20
@@ -40,7 +40,7 @@ log_app = typer.Typer(
 
 def show_log(limit: int | None = None, json_out: bool = False) -> int:
     """Print the last *limit* entries (default 20), or the raw JSONL with *json_out*."""
-    logf = _cfg.AUDIT_LOG
+    logf = current_home().audit_log
     raw = _audit.read_audit_text()
     if json_out:
         print(raw or "", end="")
@@ -81,7 +81,7 @@ def verify_log() -> int:
             f"{result.break_at.reason}",
             "Compare the file against your last known-good copy",
         )
-        ui.dim(f"  file: {_cfg.AUDIT_LOG}")
+        ui.dim(f"  file: {current_home().audit_log}")
         return 1
 
     ui.success(f"{result.chained} chained line(s) verified clean.")

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
@@ -17,6 +17,7 @@ from docket.core import audit as _audit
 from docket.core import identity as _identity
 from docket.core import pod_memory as _pm
 from docket.edges import store as _store
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._pod"
 
@@ -32,17 +33,17 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
-    repo = tmp_path / "origin"
-    (repo / "dist").mkdir(parents=True)
-    (repo / "dist" / "bundle.js").write_text("x\n")
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
-    return repo
+    with use_home(Home(home)):
+        monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
+        repo = tmp_path / "origin"
+        (repo / "dist").mkdir(parents=True)
+        (repo / "dist" / "bundle.js").write_text("x\n")
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
+        yield repo
 
 
 def _entry(kind: str, subject: str, status: str, note: str = "A fact.") -> dict[str, Any]:
@@ -58,7 +59,7 @@ def _entry(kind: str, subject: str, status: str, note: str = "A fact.") -> dict[
 
 
 def _seed(*entries: dict[str, Any]) -> None:
-    path = _cfg.pod_memory_path("demo")
+    path = current_home().pod_memory_path("demo")
     path.parent.mkdir(parents=True, exist_ok=True)
     _store.write_json(path, {"entries": list(entries)})
 

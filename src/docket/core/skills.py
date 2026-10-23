@@ -17,10 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import docket.config as _cfg
 from docket.core.audit import audit_log
 from docket.core.repo_view import RepoView, view_for
 from docket.kernel.errors import DocumentError
+from docket.kernel.home import current_home
 
 SkillScope = Literal["codebase", "pod", "global", ""]
 
@@ -115,8 +115,8 @@ def discover_skills(project: str, codebase_root: Path | str | None) -> dict[str,
     if codebase_root is not None:
         scopes.append((Path(codebase_root) / ".docket" / "skills", "codebase"))
     if project:
-        scopes.append((_cfg.pod_config_dir(project) / "skills", "pod"))
-    scopes.append((_cfg.SKILLS_DIR, "global"))
+        scopes.append((current_home().pod_config_dir(project) / "skills", "pod"))
+    scopes.append((current_home().skills_dir, "global"))
 
     view = view_for(codebase_root)
     for directory, scope in scopes:

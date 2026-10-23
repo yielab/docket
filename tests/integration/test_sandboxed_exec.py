@@ -13,12 +13,14 @@ specs/functional/security-gates.spec.md Requirements 1-6.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import shutil
 import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -28,6 +30,7 @@ from docket.core import fleet as _fleet
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import system, toolbox
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core.tools"
 
@@ -43,13 +46,19 @@ needs_landlock = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Tests here call `dispatch_tool` directly, which consults `core/policy.py` and
     `core/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
     developer's real ``~/.docket/policies`` or blocks on an approval nothing will grant."""
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "_policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "_approvals", raising=True)
-    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    with use_home(
+        dataclasses.replace(
+            current_home(),
+            policies_dir_override=tmp_path / "_policies",
+            approvals_dir_override=tmp_path / "_approvals",
+            tool_approval_timeout=0,
+        )
+    ):
+        yield
 
 
 @pytest.fixture
@@ -213,7 +222,7 @@ class TestArgvShape:
         assert f"{os.getuid()}:{os.getgid()}" in argv
         resolved = str(workspace.resolve())
         assert f"{resolved}:{resolved}" in argv
-        assert argv[-4:] == [_cfg.SANDBOX_DOCKER_IMAGE, "sh", "-c", "echo hi"]
+        assert argv[-4:] == [current_home().sandbox_docker_image, "sh", "-c", "echo hi"]
 
     def test_docker_run_forwards_only_the_explicit_env_not_the_host_env(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
@@ -733,19 +742,19 @@ class TestDockerJailedCommit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-        monkeypatch.setattr(_cfg, "SANDBOX_DOCKER_IMAGE", docker_git_image)
-        main = tmp_path / "main"
-        wt = tmp_path / "wt"
-        _git(tmp_path, "init", "-q", str(main))
-        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
+        with use_home(dataclasses.replace(current_home(), sandbox_docker_image=docker_git_image)):
+            main = tmp_path / "main"
+            wt = tmp_path / "wt"
+            _git(tmp_path, "init", "-q", str(main))
+            _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+            _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
 
-        outcome = toolbox.run_bash(
-            (wt,),
-            "echo x > f && git add f && "
-            "git -c user.name=t -c user.email=t@t commit -q -m jailed-in-docker",
-            sandbox="auto",
-        )
-        assert outcome.ok, outcome.error or outcome.content
-        assert "jailed-in-docker" in _git(wt, "log", "--format=%s", "-1")
-        assert (wt / "f").read_text().strip() == "x"
+            outcome = toolbox.run_bash(
+                (wt,),
+                "echo x > f && git add f && "
+                "git -c user.name=t -c user.email=t@t commit -q -m jailed-in-docker",
+                sandbox="auto",
+            )
+            assert outcome.ok, outcome.error or outcome.content
+            assert "jailed-in-docker" in _git(wt, "log", "--format=%s", "-1")
+            assert (wt / "f").read_text().strip() == "x"

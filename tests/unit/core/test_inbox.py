@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import pytest
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
@@ -16,6 +15,7 @@ from docket.core import inbox as _inbox
 from docket.core import pod as _pod_mod
 from docket.core.operator_contract import ApprovalView, TaskView
 from docket.edges import store as _store
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.inbox"
 
@@ -213,7 +213,7 @@ class TestPendingMemory:
             }
             for i, (kind, subject, status) in enumerate(rows)
         ]
-        path = _cfg.pod_memory_path(project)
+        path = current_home().pod_memory_path(project)
         path.parent.mkdir(parents=True, exist_ok=True)
         _store.write_json(path, {"entries": entries})
 

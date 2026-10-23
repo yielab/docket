@@ -15,6 +15,7 @@ from docket.core import archetypes as _arch
 from docket.core import pod as _pod_core
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._pod_config"
 
@@ -100,7 +101,7 @@ class TestPodApply:
         role.write_text(_ROLE, encoding="utf-8")
         result = _pod_run("update", str(role), "--pod", "demo")
         assert result.exit_code == 0
-        stored = json.loads((_cfg.pod_config_dir("demo") / "roles.json").read_text())
+        stored = json.loads((current_home().pod_config_dir("demo") / "roles.json").read_text())
         assert "vetter" in stored["roles"]
         assert _arch.load_registry("demo").get("vetter") is not None
 
@@ -110,7 +111,7 @@ class TestPodApply:
         role.write_text(_ROLE, encoding="utf-8")
         result = _pod_run("update", str(role), "--pod", "demo", "--dry-run", "--json")
         assert json.loads(result.output)["items"][0]["action"] == "add"
-        assert not (_cfg.pod_config_dir("demo") / "roles.json").exists()
+        assert not (current_home().pod_config_dir("demo") / "roles.json").exists()
 
     def test_a_document_that_is_not_a_role_or_policy_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -127,7 +128,7 @@ class TestPodApply:
         source = sorted(_cfg.policy_templates_dir().glob("*.yaml"))[0]
         result = _pod_run("update", str(source), "--pod", "demo")
         assert result.exit_code == 0
-        assert (_cfg.pod_config_dir("demo") / "policies" / source.name).is_file()
+        assert (current_home().pod_config_dir("demo") / "policies" / source.name).is_file()
 
     def test_a_directory_is_planned_and_json_names_the_items(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -9,8 +9,8 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _setup_sandbox, app
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.cli._setup_sandbox"
 
@@ -31,26 +31,26 @@ def test_bare_sandbox_is_a_read_that_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _fresh_home(tmp_path, monkeypatch)
-    fleet_before, audit_before = _bytes(_cfg.FLEET_FILE), _bytes(_cfg.AUDIT_LOG)
+    fleet_before, audit_before = _bytes(current_home().fleet_file), _bytes(current_home().audit_log)
 
     result = _runner.invoke(app, ["setup", "sandbox"])
 
     assert result.exit_code == 0
     assert "always active" in result.stdout
-    assert _bytes(_cfg.FLEET_FILE) == fleet_before
-    assert _bytes(_cfg.AUDIT_LOG) == audit_before
+    assert _bytes(current_home().fleet_file) == fleet_before
+    assert _bytes(current_home().audit_log) == audit_before
 
 
 def test_a_bad_network_word_is_a_usage_error_and_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _fresh_home(tmp_path, monkeypatch)
-    fleet_before = _bytes(_cfg.FLEET_FILE)
+    fleet_before = _bytes(current_home().fleet_file)
 
     result = _runner.invoke(app, ["setup", "sandbox", "network", "sideways"])
 
     assert result.exit_code == 2
-    assert _bytes(_cfg.FLEET_FILE) == fleet_before
+    assert _bytes(current_home().fleet_file) == fleet_before
 
 
 def test_json_status_reports_the_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,10 +68,10 @@ def test_isolate_on_without_a_backend_fails_and_writes_nothing(
 ) -> None:
     _fresh_home(tmp_path, monkeypatch)
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-    fleet_before = _bytes(_cfg.FLEET_FILE)
+    fleet_before = _bytes(current_home().fleet_file)
 
     assert _setup_sandbox.isolate("on") == 1
-    assert _bytes(_cfg.FLEET_FILE) == fleet_before
+    assert _bytes(current_home().fleet_file) == fleet_before
 
 
 def _probe(
@@ -225,7 +225,7 @@ class TestReadOnlyGrants:
         assert result.exit_code == 0, result.output
         status = _runner.invoke(app, ["setup", "sandbox", "status", "--json"])
         assert json.loads(status.stdout)["readOnly"] == [str(tool.resolve())]
-        assert "gates.read" in _cfg.AUDIT_LOG.read_text()
+        assert "gates.read" in current_home().audit_log.read_text()
 
     def test_remove_drops_the_grant(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _fresh_home(tmp_path, monkeypatch)
@@ -253,16 +253,16 @@ class TestReadOnlyGrants:
         target = {
             "relative": "opt/node",
             "missing": str(tmp_path / "nope"),
-            "docket-home": str(_cfg.DOCKET_HOME),
-            "inside-home-dir": str(_cfg.DOCKET_HOME / "workspaces"),
+            "docket-home": str(current_home().root),
+            "inside-home-dir": str(current_home().root / "workspaces"),
             "home": str(home),
             "root": "/",
         }[kind]
         if kind == "inside-home-dir":
-            (_cfg.DOCKET_HOME / "workspaces").mkdir(exist_ok=True)
-        fleet_before = _bytes(_cfg.FLEET_FILE)
+            (current_home().root / "workspaces").mkdir(exist_ok=True)
+        fleet_before = _bytes(current_home().fleet_file)
 
         result = _runner.invoke(app, ["setup", "sandbox", "read", "add", target])
 
         assert result.exit_code == 1, result.output
-        assert _bytes(_cfg.FLEET_FILE) == fleet_before
+        assert _bytes(current_home().fleet_file) == fleet_before

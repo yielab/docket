@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import _contract, _setup_notify, app
 from docket.core import channel as _chan
 from docket.core import fleet as _fleet
@@ -39,7 +38,7 @@ def sink(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 def two_pods() -> list[str]:
     ids = ["alpha-lead", "alpha-implementer", "beta-lead", "beta-implementer"]
     for aid in ids:
-        _cfg.workspace_dir(aid).mkdir(parents=True, exist_ok=True)
+        current_home().workspace_dir(aid).mkdir(parents=True, exist_ok=True)
         _fleet.add_agent(aid)
     return ids
 
@@ -75,7 +74,7 @@ class TestEnableTelegram:
     def test_without_a_chat_nothing_is_written(self, two_pods: list[str]) -> None:
         result = _runner.invoke(app, ["setup", "notify", "enable", "telegram", "--token", "t"])
         assert result.exit_code == 1
-        assert not _cfg.CHANNELS_FILE.exists()
+        assert not current_home().channels_file.exists()
         assert _secrets.secret_value("TELEGRAM_BOT_TOKEN") is None
         assert _bindings() == {}
 
@@ -86,7 +85,7 @@ class TestEnableTelegram:
         monkeypatch.setattr(_contract, "_is_tty", lambda: False)
         result = _runner.invoke(app, ["setup", "notify", "enable", "telegram", "--chat", "42"])
         assert result.exit_code == 1
-        assert not _cfg.CHANNELS_FILE.exists()
+        assert not current_home().channels_file.exists()
         assert _bindings() == {}
 
     def test_the_function_keeps_a_stored_token_when_given_none(self, two_pods: list[str]) -> None:

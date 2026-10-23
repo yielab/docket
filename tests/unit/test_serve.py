@@ -13,14 +13,15 @@ import json
 import shutil
 import threading
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 from threading import Thread
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 import docket.serve as serve
+from docket.kernel.home import Home, use_home
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.serve"
@@ -45,7 +46,7 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Seed a temp DOCKET_HOME with one project agent + fleet.json."""
     home = tmp_path / ".docket"
     home.mkdir()
@@ -66,8 +67,8 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 # ── build_status ──────────────────────────────────────────────────────────────

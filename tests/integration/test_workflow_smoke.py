@@ -19,6 +19,7 @@ import pytest
 
 from docket.core.pipeline import MechanicalGate, load_pipeline
 from docket.edges.adapters import toolbox
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.pipeline"
 
@@ -84,7 +85,7 @@ def test_memory_smoke_delegation_routes_private_context_only_through_typed_hando
 def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.conftest import record_isolation_off, repoint_docket_home
+    from tests.conftest import record_isolation_off
     from typer.testing import CliRunner
 
     from docket.cli import _pod, app
@@ -96,27 +97,27 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     codebase.mkdir()
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    _pod.build_pod(
-        "smoke",
-        ("lead", "implementer", "reviewer", "tester"),
-        codebase=str(codebase),
-    )
-    results: list[object] = []
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        _pod.build_pod(
+            "smoke",
+            ("lead", "implementer", "reviewer", "tester"),
+            codebase=str(codebase),
+        )
+        results: list[object] = []
 
-    def run_cli(*args: str) -> None:
-        results.append(CliRunner().invoke(app, list(args)))
+        def run_cli(*args: str) -> None:
+            results.append(CliRunner().invoke(app, list(args)))
 
-    _smoke._delegate_smoke_task(run_cli, _smoke._MEMORY_SCENARIO)
+        _smoke._delegate_smoke_task(run_cli, _smoke._MEMORY_SCENARIO)
 
-    assert len(results) == 1
-    result = results[0]
-    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
-    tasks = _dispatch.read_tasks("smoke")
-    assert len(tasks) == 1
-    assert tasks[0]["description"] == _smoke._memory_task_description()
-    assert len(tasks[0]["description"]) <= 500
+        assert len(results) == 1
+        result = results[0]
+        assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+        tasks = _dispatch.read_tasks("smoke")
+        assert len(tasks) == 1
+        assert tasks[0]["description"] == _smoke._memory_task_description()
+        assert len(tasks[0]["description"]) <= 500
 
 
 def test_basic_smoke_delegation_remains_byte_identical() -> None:

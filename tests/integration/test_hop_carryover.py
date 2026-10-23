@@ -20,11 +20,11 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import context as _context
 from docket.core import dispatch as _dispatch
 from docket.core import runtime_driver as _rd
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core"
 
@@ -150,7 +150,7 @@ class TestHopMessageCap:
         prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
         message, comp = _dispatch._hop_message(task, "tester", prior)
 
-        cap_bytes = cap_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
+        cap_bytes = cap_tokens * current_home().context_bytes_per_token
         total_carryover = sum(s["sent_bytes"] for s in comp.sections)
         assert total_carryover < cap_bytes
         assert all(s["truncated"] for s in comp.sections)

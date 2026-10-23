@@ -18,6 +18,7 @@ from pathlib import Path
 from tests.conftest import _DOCKET_HOME_PATHS
 
 import docket.config as _cfg
+from docket.kernel.home import current_home
 
 REAL_DOCKET_HOME = Path.home() / ".docket"
 
@@ -45,8 +46,8 @@ class TestNoConfigPathResolvesIntoTheRealDocketHome:
     def test_fleet_file_is_isolated_too(self) -> None:
         """``FLEET_FILE`` is covered by its own sibling fixture; pin it here so
         the two fixtures cannot drift apart without a test noticing."""
-        assert not _is_under(_cfg.FLEET_FILE, REAL_DOCKET_HOME), (
-            f"FLEET_FILE still resolves into {REAL_DOCKET_HOME}: {_cfg.FLEET_FILE}"
+        assert not _is_under(current_home().fleet_file, REAL_DOCKET_HOME), (
+            f"FLEET_FILE still resolves into {REAL_DOCKET_HOME}: {current_home().fleet_file}"
         )
 
     def test_the_guard_covers_every_docket_home_derived_constant(self) -> None:

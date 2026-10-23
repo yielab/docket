@@ -23,6 +23,7 @@ from docket.core import provider as _provider
 from docket.core.llm import ModelLimits
 from docket.edges.adapters.llm import ProbeResult
 from docket.kernel.clock import use_clock
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.core.provider"
 
@@ -97,7 +98,7 @@ class TestBuiltinCatalog:
         spec = _provider.load_catalog().get("anthropic")
         assert spec is not None
         preset = next(p for p in spec.presets if p.name == "anthropic")
-        assert f"anthropic/{preset.ranks['standard']}" == _cfg.DEFAULT_MODEL
+        assert f"anthropic/{preset.ranks['standard']}" == current_home().default_model
 
 
 class TestLoadProviderDocument:
@@ -182,7 +183,7 @@ class TestShippedTemplatesDeclareNoLimit:
 class TestObservedLimitsStore:
     def test_record_writes_the_documented_shape_through_the_store(self) -> None:
         _provider.record_observed_models(_spec(), _probe(("m", 32768, None), ("n", None, 4096)))
-        on_disk = json.loads(_cfg.PROVIDER_MODELS_FILE.read_text(encoding="utf-8"))
+        on_disk = json.loads(current_home().provider_models_file.read_text(encoding="utf-8"))
         entry = on_disk["providers"]["gw"]
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["observedAt"])
         assert entry["models"] == {
@@ -313,4 +314,4 @@ class TestRegisterRefusesAnUnusableRankSource:
             _provider.register_provider(broken, probe=ProbeResult(status=200))
 
         assert "economy" in str(excinfo.value)
-        assert not _cfg.PROVIDERS_FILE.exists()
+        assert not current_home().providers_file.exists()

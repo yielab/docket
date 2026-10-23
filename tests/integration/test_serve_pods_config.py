@@ -12,9 +12,9 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.core import audit as _audit
 from docket.core import fleet as _fleet
+from docket.kernel.home import current_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -82,7 +82,7 @@ _RUNS = {"pod.yaml": "kind: pod\nname: x\nsettings:\n  allowCommands: [make]\n"}
 
 
 def _roles(project: str) -> dict[str, Any]:
-    path = _cfg.pod_config_dir(project) / "roles.json"
+    path = current_home().pod_config_dir(project) / "roles.json"
     return json.loads(path.read_text()).get("roles", {}) if path.is_file() else {}
 
 
