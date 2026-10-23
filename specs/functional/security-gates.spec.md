@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 1.1.2
+**Version**: 1.1.3
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
 MCP and Telegram. The exec jail is opt-in and fails closed when on without a usable backend.

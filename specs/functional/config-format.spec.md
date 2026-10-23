@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Implemented
 **Last Updated**: 2026-10-23
 

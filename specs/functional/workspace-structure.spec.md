@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 2.1.1
+**Version**: 2.1.2
 **Status**: Complete. `DOCKET_HOME` is the only state root. Agent workspaces live under
 `~/.docket/workspaces/projects/`; a pod's runtime resources, configuration overlay and learned
 memory live under `~/.docket/workspaces/pods/<pod>/`. `docket init` provisions pods.

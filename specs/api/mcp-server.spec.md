@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.4
+**Version**: 1.9.5
 **Status**: Implemented
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 
