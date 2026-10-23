@@ -477,15 +477,28 @@ class TestRealDockerJail:
         so killing only its process group does not stop the container (`system.docker_kill`).
         Verified red by removing the `docker_kill` call: the container stayed up; reverted, not."""
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
+        killed: list[str] = []
+        real_kill = sandbox_docker.docker_kill
+
+        def recording_kill(name: str) -> None:
+            killed.append(name)
+            real_kill(name)
+
+        monkeypatch.setattr(sandbox_docker, "docker_kill", recording_kill)
         out = toolbox.run_bash((workspace,), "sleep 20", timeout=1, sandbox="auto")
         assert not out.ok and "timed out" in out.error
-        time.sleep(1)
-        result = subprocess.run(
-            ["docker", "ps", "-a", "--filter", "name=docket-sbx-", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        assert killed
+        deadline = time.monotonic() + 10
+        while True:
+            result = subprocess.run(
+                ["docker", "ps", "-a", "--filter", f"name=^{killed[0]}$", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if not result.stdout.strip() or time.monotonic() > deadline:
+                break
+            time.sleep(0.2)
         assert result.stdout.strip() == ""
 
 
