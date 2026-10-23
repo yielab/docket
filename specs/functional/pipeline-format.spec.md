@@ -233,9 +233,8 @@ This specification does NOT cover:
    groups"), for example one per `--count N` duplicate role member.
 2. A parallel-group step **MUST NOT** also declare `role`, `agent`, `gate`, `retries`, `timeout`,
    `instructions`, `model`, `on`, `env`, `run`, `input`, `when` or `archetype` at the group
-   level — only its children carry those; declaring any of them on the group **MUST** be a
-   validation error naming the field. An empty `parallel` list
-   **MUST** be a validation error.
+   level — its children carry the hop fields; declaring any of them on the group **MUST** be a
+   validation error naming the field. An empty `parallel` list **MUST** be a validation error.
 3. Nesting **MUST** be limited to exactly one level: a child of a `parallel` group **MUST NOT**
    itself declare `parallel`. A nested `parallel` **MUST** be a validation error naming the
    offending child.
@@ -243,9 +242,9 @@ This specification does NOT cover:
    `id`, a valid target, valid `archetype`/`retries`/`timeout`/`instructions`/`model`/`gate`
    shape), except that a child's gate **MUST NOT** carry a `rework` edge (Rework edges
    Requirement 5). Short form applies to top-level steps only; a group and its children are written
-   in canonical form. A child's `on` and `input` are validated as a top-level step's are
-   (Outcome routing Requirement 3; Operator input steps Requirement 2), measured from the group's
-   position, and a child's unquoted `on:` key is read as `on`.
+   in canonical form. The executor runs a child as a plain role or agent hop and acts on none of
+   `run`, `input`, `when` and `on` there, so a child **MUST NOT** declare any of them; each is a
+   validation error naming the child and the field (a child's unquoted `on:` key is read as `on`).
 
 ### Zero migration
 
@@ -367,11 +366,10 @@ This specification does NOT cover:
    backward or self target counted against its own `max`). An outcome the map does not name behaves
    as it always has. How a routing decision is executed, counted and traced is
    `pod-dispatch.spec.md`, "Generalized gate execution".
-3. `PipelineSpec` **MUST** validate every `on` entry of every top-level step and every `parallel`
-   child: a `goto` or bare step id **MUST** name an existing top-level step id in the document
-   (forward or backward) or be `fail`/`stop`; a `max` that is not an integer `>= 1`, or a backward
-   or self target without one, **MUST** be a validation error
-   naming the step; and a step that no execution path reaches **MUST** be a validation error naming
+3. `PipelineSpec` **MUST** validate every top-level step's `on` entries: a `goto` or bare step id
+   **MUST** name an existing top-level step id in the document (forward or backward) or be
+   `fail`/`stop`; a `max` that is not an integer `>= 1`, or a backward or self target without one,
+   **MUST** be a validation error naming the step; and a step that no execution path reaches **MUST** be a validation error naming
    the unreachable step. The reachability walk starts at the first step, follows each step's default
    successor and every `on` target, and never continues past a `fail`/`stop` terminal; a step's
    default successor edge is not followed when its `on` map names every outcome that would
@@ -431,9 +429,9 @@ This specification does NOT cover:
    step **MUST NOT** declare `role`, `agent`, `gate`, `retries`, `timeout`, `instructions`, `model`
    or `env`. Its `on` routing, when present, **MUST** use only the keys `answered` or `declined`
    (case-insensitive).
-2. `input.from` **MUST** be the id of a *top-level* step that precedes this one in the pipeline (a
-   `parallel` child's `input` is measured from its group); a forward or self reference, or an id that is not a top-level step id, is a validation error naming
-   the step id and the bad source.
+2. `input.from` **MUST** be the id of a *top-level* step that precedes this one in the pipeline; a
+   forward or self reference, or an id that is not a top-level step id, is a validation error
+   naming the step id and the bad source.
 3. `docket pod plan` renders an `input` step as `asks the operator (from <source-step-id>)`; the
    plan only describes the step, it never asks.
 4. Execution — parking the task in `waiting_input` and resuming from an operator's answer — is

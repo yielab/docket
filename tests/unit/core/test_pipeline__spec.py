@@ -1068,50 +1068,29 @@ class TestRefusedShapes:
         )
         assert load_pipeline(_HEAD + body).ok
 
-    @pytest.mark.parametrize("on_key", ["on", '"on"'])
-    def test_parallel_child_on_is_validated(self, on_key: str) -> None:
-        body = (
-            _UNIT_A
-            + "  - id: g\n    parallel:\n"
-            + _CHILD
-            + f"        {on_key}:\n          pass: nowhere\n"
-        )
-        _refused(body, "'c'", "nowhere")
-
-    def test_parallel_child_on_unquoted_key_is_corrected_not_unknown(self) -> None:
-        body = (
-            _UNIT_A + "  - id: g\n    parallel:\n" + _CHILD + "        on:\n          fail: stop\n"
-        )
-        result = load_pipeline(_HEAD + body)
-        assert result.ok, result.errors
-        assert result.spec is not None
-        child = result.spec.steps[1].parallel[0]  # type: ignore[index]
-        assert child.on == {"fail": "stop"}
-
-    def test_parallel_child_backward_route_needs_max(self) -> None:
-        body = _UNIT_A + "  - id: g\n    parallel:\n" + _CHILD + "        on:\n          fail: a\n"
-        _refused(body, "'c'", "'max'")
-
     @pytest.mark.parametrize(
-        "from_",
-        ["ghost", "c2", "later"],
+        ("child_yaml", "field"),
+        [
+            ("        run: echo hi\n", "run"),
+            ("        input:\n          from: a\n", "input"),
+            ("        role: reviewer\n        when:\n          memberPresent: lead\n", "when"),
+            ("        role: reviewer\n        on:\n          fail: stop\n", "on"),
+            ('        role: reviewer\n        "on":\n          fail: stop\n', "on"),
+        ],
     )
-    def test_parallel_child_input_from_is_validated(self, from_: str) -> None:
-        body = (
-            _UNIT_A
-            + "  - id: g\n    parallel:\n"
-            + _CHILD
-            + "      - id: c2\n        input:\n"
-            + f"          from: {from_}\n"
-            + "  - id: later\n    role: tester\n"
-        )
-        _refused(body, "'c2'", "'from'")
+    def test_parallel_child_refuses_a_field_the_group_never_runs(
+        self, child_yaml: str, field: str
+    ) -> None:
+        # The group's children run through `_execute_unit`, which acts on none of these.
+        body = _UNIT_A + "  - id: g\n    parallel:\n      - id: c\n" + child_yaml
+        _refused(body, "'c'", f"'{field}'", "parallel")
 
-    def test_parallel_child_input_from_an_earlier_step_accepted(self) -> None:
+    def test_parallel_child_with_executed_fields_accepted(self) -> None:
         body = (
             _UNIT_A
             + "  - id: g\n    parallel:\n"
             + _CHILD
-            + "      - id: c2\n        input:\n          from: a\n"
+            + "        retries: 1\n        timeout: 30\n        model: cheap\n"
+            + "        archetype: critic\n        gate: {type: mechanical}\n"
         )
         assert load_pipeline(_HEAD + body).ok

@@ -335,6 +335,17 @@ class Step(BaseModel):
             if not self.parallel:
                 raise ValueError(f"step {self.id!r}: 'parallel' must list at least one step")
             for child in self.parallel:
+                for child_field, child_value in (
+                    ("run", child.run),
+                    ("input", child.input),
+                    ("when", child.when),
+                    ("on", child.on),
+                ):
+                    if child_value is not None:
+                        raise InvalidInput(
+                            f"step {child.id!r}: a 'parallel' child carries no {child_field!r} "
+                            "(a group runs its children as plain role/agent hops)"
+                        )
                 if child.parallel is not None:
                     raise ValueError(
                         f"step {self.id!r}: nested 'parallel' groups are not supported "
@@ -571,9 +582,9 @@ def _check_input_keys(step: Step) -> None:
 
 
 def _check_routes(step: Step, index: int, top_index: dict[str, int]) -> None:
-    """Validate every ``on`` entry of *step*, which sits at top-level position *index*
-    (a parallel child sits at its group's position): the target, and ``max`` wherever
-    it is written, required to be an integer ``>= 1`` when the target is not ahead."""
+    """Validate every ``on`` entry of the top-level *step* at position *index*: the target,
+    and ``max`` wherever it is written, an integer ``>= 1`` and required when the target is
+    not ahead."""
     for label, route in (step.on or {}).items():
         target, max_value, has_max = _route_shape(step.id, label, route)
         valid_max = (
@@ -640,10 +651,6 @@ class PipelineSpec(BaseModel):
                             f"step {child.id!r}: a rework edge inside a 'parallel' group "
                             "is not supported (target a top-level step instead)"
                         )
-                    if child.input is not None:
-                        _check_input_from(child, i, top_index)
-                        _check_input_keys(child)
-                    _check_routes(child, i, top_index)
                 continue
             if s.input is not None:
                 _check_input_from(s, i, top_index)

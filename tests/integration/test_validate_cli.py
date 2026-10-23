@@ -79,12 +79,12 @@ _REFUSED_PIPELINES = {
     "child-on": (
         "  - id: a\n    role: lead\n  - id: g\n    parallel:\n"
         "      - id: c\n        role: reviewer\n        on:\n          pass: nowhere\n",
-        "nowhere",
+        "'on'",
     ),
-    "child-input-from": (
+    "child-input": (
         "  - id: a\n    role: lead\n  - id: g\n    parallel:\n"
         "      - id: c\n        input:\n          from: ghost\n",
-        "'from'",
+        "'input'",
     ),
 }
 
