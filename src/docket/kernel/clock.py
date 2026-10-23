@@ -85,3 +85,27 @@ def today() -> date:
 
 def today_iso() -> str:
     return today().isoformat()
+
+
+def parse_epoch(ts: object) -> float | None:
+    """The leading ``YYYY-MM-DDTHH:MM:SS`` of *ts* as a UTC epoch, whatever follows it (a
+    fraction, ``Z``, an offset); ``None`` when *ts* is not text or does not start with one."""
+    if not isinstance(ts, str):
+        return None
+    try:
+        parsed = datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC).timestamp()
+
+
+def parse_iso(ts: str | None) -> datetime | None:
+    """*ts* as a timezone-aware datetime, a naive stamp read as UTC; ``None`` when empty or
+    not ISO 8601."""
+    if not ts:
+        return None
+    try:
+        parsed = datetime.fromisoformat(ts)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)

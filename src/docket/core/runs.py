@@ -167,15 +167,6 @@ class RunError(InvalidInput):
     """Raised for an invalid run source/state or other misuse of this API."""
 
 
-def _epoch_from_iso(ts: str) -> float | None:
-    """Parse the leading 'YYYY-MM-DDTHH:MM:SS' of *ts* as a UTC epoch."""
-    try:
-        dt = _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
-    except (ValueError, IndexError):
-        return None
-    return dt.replace(tzinfo=_dt.UTC).timestamp()
-
-
 def _valid_timestamp(value: object) -> bool:
     if value is None:
         return True
@@ -427,7 +418,7 @@ def prune_terminal(
             return False
         if str(rec.get("state", "")) not in _TERMINAL_STATES:
             return False
-        epoch = _epoch_from_iso(str(rec.get("finishedAt") or ""))
+        epoch = _clock.parse_epoch(str(rec.get("finishedAt") or ""))
         return epoch is not None and epoch < cutoff
 
     if dry_run:

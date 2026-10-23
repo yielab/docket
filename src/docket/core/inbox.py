@@ -7,7 +7,6 @@ store lives in this module, matching every other `core/` service.
 
 from __future__ import annotations
 
-import datetime as _dt
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +26,7 @@ from docket.core.operator_contract import (
     TaskView,
     a2a_state,
 )
+from docket.kernel import clock as _clock
 
 __all__ = ["MemoryItem", "build_inbox", "pending_memory", "task_view"]
 
@@ -41,23 +41,11 @@ def _all_projects() -> list[str]:
     return sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
 
 
-def _parse_iso(ts: str) -> _dt.datetime | None:
-    if not ts:
-        return None
-    try:
-        dt = _dt.datetime.fromisoformat(ts)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=_dt.UTC)
-    return dt
-
-
 def _newer(latest: str | None, candidate: str) -> str | None:
-    candidate_dt = _parse_iso(candidate)
+    candidate_dt = _clock.parse_iso(candidate)
     if candidate_dt is None:
         return latest
-    latest_dt = _parse_iso(latest) if latest else None
+    latest_dt = _clock.parse_iso(latest) if latest else None
     if latest_dt is None or candidate_dt > latest_dt:
         return candidate
     return latest
@@ -135,7 +123,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     done_since: list[TaskView] = []
     running: list[TaskView] = []
     latest: str | None = None
-    since_dt = _parse_iso(since) if since else None
+    since_dt = _clock.parse_iso(since) if since else None
 
     for project in _all_projects():
         for task in _dispatch.read_tasks(project):
@@ -146,7 +134,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
             elif view.status == "failed":
                 failed.append(view)
             elif view.status == "done":
-                ts_dt = _parse_iso(view.updated_at)
+                ts_dt = _clock.parse_iso(view.updated_at)
                 if since_dt is None or (ts_dt is not None and ts_dt > since_dt):
                     done_since.append(view)
             elif view.status == "running":

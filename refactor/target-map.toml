@@ -546,11 +546,6 @@ names = [
 
 [[definition]]
 from = "docket.core.dispatch"
-to = "docket.kernel.clock"
-names = ["_parse_iso"]
-
-[[definition]]
-from = "docket.core.dispatch"
 to = "docket.pipeline.application.executor"
 names = [
     "_resolve_task_run",
@@ -733,7 +728,6 @@ names = [
     "_POLICY_AUDIT_RE",
     "_CHANNEL_AUDIT_RE",
     "LoopMetrics",
-    "_epoch_seconds",
     "_collect_trace_loop_metrics",
     "_collect_audit_loop_metrics",
     "_loop_metrics",

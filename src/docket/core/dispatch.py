@@ -239,19 +239,6 @@ class TaskResult:
         return round(sum(h.cost_usd for h in self.hops), 6)
 
 
-def _parse_iso(ts: str) -> _dt.datetime | None:
-    """Parse an ISO timestamp produced by ``kernel.clock.iso()``; None on anything else."""
-    if not ts:
-        return None
-    try:
-        dt = _dt.datetime.fromisoformat(ts)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=_dt.UTC)
-    return dt
-
-
 def pod_task_list_path(project: str) -> Path:
     """The pod's task queue lives in its Lead's workspace: one queue per pod, keyed by
     the Lead, so pods never share a task list.
@@ -613,7 +600,7 @@ def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
     for suffix in (".yaml", ".yml"):
         if (pod_dir / f"{name}{suffix}").is_file():
             return pod_dir / f"{name}{suffix}", f"pod:{name}"
-    for root in (current_home().user_recipes_dir, _templates.recipes_dir()):
+    for root in (current_home().user_recipes_dir, _templates.RECIPES_DIR):
         if (root / name / "pipeline.yaml").is_file():
             return root / name / "pipeline.yaml", f"recipe:{name}"
     return None
@@ -2253,9 +2240,10 @@ def _persist_hop_and_trace(
         hop.trace["lastTs"] = _clock.stamp()
     duration_ms: int | None = None
     if hop.trace and hop.trace.get("firstTs") and hop.trace.get("lastTs"):
-        first = _dt.datetime.fromisoformat(hop.trace["firstTs"].replace("Z", "+00:00"))
-        last = _dt.datetime.fromisoformat(hop.trace["lastTs"].replace("Z", "+00:00"))
-        duration_ms = int((last - first).total_seconds() * 1000)
+        first = _clock.parse_iso(hop.trace["firstTs"])
+        last = _clock.parse_iso(hop.trace["lastTs"])
+        if first is not None and last is not None:
+            duration_ms = int((last - first).total_seconds() * 1000)
     verdict = hop.artifact.verdict if hop.artifact is not None else None
     gate: str | None = None
     if hop.verify is not None:
@@ -4037,7 +4025,7 @@ def _sweep_stale_claims(project: str) -> None:
         for t in tasks:
             if t.get("status") != "running":
                 continue
-            claimed_at = _parse_iso(str(t.get("claimedAt") or ""))
+            claimed_at = _clock.parse_iso(str(t.get("claimedAt") or ""))
             if claimed_at is None:
                 continue
             if (now - claimed_at).total_seconds() <= current_home().claim_stale_timeout:
@@ -4068,7 +4056,7 @@ def _claim_stale_reason(task: dict[str, Any], now: _dt.datetime, lease_s: int) -
     pid = task.get("claimPid")
     if isinstance(pid, int) and not _sys.process_alive(pid):
         return f"claimant pid {pid} is gone"
-    claimed_at = _parse_iso(str(task.get("claimedAt") or ""))
+    claimed_at = _clock.parse_iso(str(task.get("claimedAt") or ""))
     if claimed_at is None:
         return ""
     if (now - claimed_at).total_seconds() > lease_s:

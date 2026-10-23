@@ -15,6 +15,7 @@ import pytest
 
 from docket.core import conversations as C
 from docket.edges import store as _store
+from docket.kernel import clock as _clock
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 
@@ -81,7 +82,7 @@ class TestPureOps:
             id="c", agent_id="z", status=C.ConversationStatus.active, updated="2020-01-01T00:00:00"
         )
         r = _reg(old_done, recent_done, old_active)
-        cutoff = C._epoch_from_iso("2025-01-01T00:00:00")
+        cutoff = _clock.parse_epoch("2025-01-01T00:00:00")
         assert cutoff is not None
 
         removed, r2 = C.prune_closed(r, cutoff_epoch=cutoff)

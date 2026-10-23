@@ -208,18 +208,6 @@ class LoopMetrics:
     turn_duration_seconds_count: int = 0
 
 
-def _epoch_seconds(ts: Any) -> float | None:
-    """Parse a leading 'YYYY-MM-DDTHH:MM:SS' trace timestamp as a UTC epoch."""
-    if not isinstance(ts, str) or len(ts) < 19:
-        return None
-    try:
-        return (
-            _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_dt.UTC).timestamp()
-        )
-    except ValueError:
-        return None
-
-
 def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
     """Fold every project's trace JSONL into *m*. Mirrors
     ``core.trace.sweep_all``'s ``*/*.jsonl`` glob -- every project, not one.
@@ -250,7 +238,7 @@ def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
             elif etype == "session_end":
                 end_ts = rec.get("ts")
         if start_ts and end_ts:
-            s, e = _epoch_seconds(start_ts), _epoch_seconds(end_ts)
+            s, e = _clock.parse_epoch(start_ts), _clock.parse_epoch(end_ts)
             if s is not None and e is not None and e >= s:
                 m.turn_duration_seconds_sum += e - s
                 m.turn_duration_seconds_count += 1

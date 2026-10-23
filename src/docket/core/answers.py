@@ -405,7 +405,7 @@ def sweep_expired_questions(now: str | None = None) -> int:
     """Expire every ``waiting_input`` task past its question's ``expiresAt``: fails closed but
     never fails -- moves it to ``blocked``/``"input_expired"``, never ``failed``.
     ``retry_task``/``unblock_pod`` reopen it; returns the number of tasks expired."""
-    now_dt = _dispatch._parse_iso(now or _clock.iso())
+    now_dt = _clock.parse_iso(now or _clock.iso())
     if now_dt is None:
         return 0
     count = 0
@@ -428,7 +428,7 @@ def sweep_expired_questions(now: str | None = None) -> int:
                 expires_at = question.get("expiresAt")
                 if not expires_at:
                     continue
-                exp_dt = _dispatch._parse_iso(str(expires_at))
+                exp_dt = _clock.parse_iso(str(expires_at))
                 if exp_dt is None or exp_dt > now_dt:
                     continue
                 t["status"] = "blocked"

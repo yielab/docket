@@ -57,3 +57,33 @@ def test_the_system_clock_is_utc_aware() -> None:
     assert clock.now().utcoffset() == timedelta(0)
     assert clock.stamp().endswith("Z")
     assert clock.monotonic() <= clock.monotonic()
+
+
+def test_parse_epoch_reads_the_leading_seconds_of_any_stamp_as_utc() -> None:
+    expected = datetime(2026, 10, 22, 9, 30, 5, tzinfo=UTC).timestamp()
+    for text in (
+        "2026-10-22T09:30:05",
+        "2026-10-22T09:30:05Z",
+        "2026-10-22T09:30:05.987Z",
+        "2026-10-22T09:30:05.987654+00:00",
+    ):
+        assert clock.parse_epoch(text) == expected, text
+
+
+def test_parse_epoch_is_none_for_anything_that_is_not_a_stamp() -> None:
+    for value in ("", "yesterday", "2026-10-22", None, 7):
+        assert clock.parse_epoch(value) is None, value
+
+
+def test_parse_iso_makes_a_naive_stamp_utc_and_keeps_an_offset() -> None:
+    naive = clock.parse_iso("2026-10-22T09:30:05")
+    assert naive == datetime(2026, 10, 22, 9, 30, 5, tzinfo=UTC)
+    shifted = clock.parse_iso("2026-10-22T09:30:05.5+02:00")
+    assert shifted is not None and shifted.utcoffset() == timedelta(hours=2)
+    assert clock.parse_iso(clock.iso()) is not None
+
+
+def test_parse_iso_is_none_for_empty_or_unparseable_text() -> None:
+    assert clock.parse_iso("") is None
+    assert clock.parse_iso(None) is None
+    assert clock.parse_iso("not a time") is None
