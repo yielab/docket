@@ -146,6 +146,10 @@ from = "docket.core.corrections"
 to = "docket.tasks.application.corrections"
 
 [[module]]
+from = "docket.core.document_fields"
+to = "docket.kernel.document_fields"
+
+[[module]]
 from = "docket.core.escalation"
 to = "docket.tasks.application.escalation"
 
@@ -442,6 +446,7 @@ names = [
     "_task_pipeline",
     "_task_gate",
     "_task_gate_step_id",
+    "unpriced_budget_models",
     "_run_command_step",
     "_command_outcome_label",
     "_DEFAULT_INPUT_SCHEMA",
@@ -452,24 +457,11 @@ names = [
 from = "docket.core.dispatch"
 to = "docket.hops.application.runner"
 names = [
-    "Runner",
     "_RETRYABLE_FAILURE_KINDS",
     "step_session_key",
-    "hop_env",
-    "_hop_diff_probe",
-    "_tree_diff",
-    "_pin_hop_tree",
-    "_UnitOutcome",
-    "_UnitContext",
     "_run_hop_turn",
-    "_PARKED_ERROR_PREFIX",
-    "_APPROVAL_TOKEN_RE",
-    "_parked_approval_token",
-    "_parked_consult_question",
     "_execute_unit",
     "_when_cwd",
-    "_task_command_env",
-    "_run_in_envelope",
 ]
 
 [[definition]]
@@ -477,6 +469,7 @@ from = "docket.core.dispatch"
 to = "docket.teams.settings"
 names = [
     "DEFAULT_TIMEOUT",
+    "pod_task_list_path",
     "pod_recorded_cost",
     "_pod_settings",
     "pod_budget",
@@ -496,7 +489,6 @@ to = "docket.tasks.application.queue"
 names = [
     "_PRIORITY_RANK",
     "RESUMABLE_FAILURE_KINDS",
-    "pod_task_list_path",
     "read_tasks",
     "_enqueue_pre_input_gate",
     "validate_task_options",
@@ -505,8 +497,14 @@ names = [
     "pod_full_roster",
     "_eligible_for_claim",
     "_refuse_claimed_task",
+    "_run_prepare_command",
+    "_prepare_reason",
+    "_trace_prepare",
+    "_store_prepared",
+    "_prepare_claimed_task",
     "_claim_next_task",
     "_touch_claim",
+    "_task_record",
     "dispatchable_pods",
     "pod_roster",
 ]
@@ -518,18 +516,21 @@ names = [
     "DispatchError",
     "TaskNotFoundError",
     "TaskRestrictionError",
+    "HopResult",
     "TaskResult",
     "_TASK_SCALAR_DEFAULTS",
     "_normalize_task",
     "TaskRunRefusal",
-    "_task_record",
 ]
 
 [[definition]]
 from = "docket.core.dispatch"
 to = "docket.hops.application.record"
 names = [
-    "HopResult",
+    "Runner",
+    "_gate_did_not_pass",
+    "_is_gate_failure_carryover",
+    "hop_env",
     "_hop_record",
     "_hop_from_record",
     "_ResumePosition",
@@ -537,9 +538,16 @@ names = [
     "_replay_pipeline_position",
     "_trace_locked",
     "_verdict_event_names",
+    "_UnitOutcome",
+    "_UnitContext",
     "_hop_usage",
     "_hop_trace_link",
     "_build_hop_result",
+    "_PARKED_ERROR_PREFIX",
+    "_APPROVAL_TOKEN_RE",
+    "_parked_approval_token",
+    "_parked_consult_question",
+    "_turn_budget_failure_kind",
     "_persist_hop_and_trace",
     "_persist_hop",
 ]
@@ -550,7 +558,6 @@ to = "docket.pipeline.application.executor"
 names = [
     "_resolve_task_run",
     "_record_task_run",
-    "_match_on_route",
     "_run_group_node",
     "_resolve_pipeline_steps",
     "_resolve_resume_state",
@@ -578,7 +585,6 @@ names = [
     "_hop_model",
     "_unpriced",
     "_warn_unpriced_hop",
-    "unpriced_budget_models",
     "_gate_pre_hop_approval",
     "_consult_budget_env",
     "_check_brief_resources",
@@ -594,8 +600,6 @@ to = "docket.hops.application.compose"
 names = [
     "_HopComposition",
     "_resolve_hop_instructions",
-    "_gate_did_not_pass",
-    "_is_gate_failure_carryover",
     "_render_gate_reasons",
     "_gate_failed_section",
     "_gate_report",
@@ -605,7 +609,6 @@ names = [
     "_ANSWERS_CHAR_BUDGET",
     "_render_answer_value",
     "_render_operator_answers",
-    "_cut_at_word",
     "_consult_answer_note",
     "_compose_hop",
     "_brief_from_step",
@@ -615,14 +618,21 @@ names = [
 [[definition]]
 from = "docket.core.dispatch"
 to = "docket.hops.workspace.worktree"
-names = ["_task_worktree_dir", "_ensure_task_worktree"]
+names = [
+    "_task_worktree_dir",
+    "_hop_diff_probe",
+    "_tree_diff",
+    "_cut_at_word",
+    "_pin_hop_tree",
+    "_ensure_task_worktree",
+]
 
 [[definition]]
 from = "docket.core.dispatch"
 to = "docket.hops.gates.post_hop"
 names = [
     "_apply_output_guardrails",
-    "_turn_budget_failure_kind",
+    "_match_on_route",
     "_GateRun",
     "_gate_cwd",
     "_run_gate_command",
@@ -643,6 +653,8 @@ names = [
     "_evaluate_hop_gates",
     "_resolve_gate_override",
     "_latest_implementer_evidence",
+    "_task_command_env",
+    "_run_in_envelope",
 ]
 
 [[definition]]
@@ -651,6 +663,9 @@ to = "docket.tasks.application.lifecycle"
 names = [
     "_apply_result",
     "_finalize_task",
+    "_sweep_stale_claims",
+    "_claim_stale_reason",
+    "reclaim_stale_running",
     "retry_task",
     "cancel_parked_task",
     "_cancel_detail",
@@ -664,19 +679,8 @@ names = [
 
 [[definition]]
 from = "docket.core.dispatch"
-to = "docket.hops.workspace.prepare"
-names = [
-    "_run_prepare_command",
-    "_prepare_reason",
-    "_trace_prepare",
-    "_store_prepared",
-    "_prepare_claimed_task",
-]
-
-[[definition]]
-from = "docket.core.dispatch"
 to = "docket.tasks.application.sweep"
-names = ["_sweep_stale_claims", "_claim_stale_reason", "reclaim_stale_running", "dispatch_pod"]
+names = ["dispatch_pod"]
 
 [[definition]]
 from = "docket.core.dispatch"
@@ -695,12 +699,22 @@ to = "docket.interfaces.http.server"
 names = [
     "DEFAULT_PORT",
     "DEFAULT_INTERVAL",
-    "SERVE_API_VERSION",
     "_HTTP_APPROVAL_CHANNELS",
-    "_esc",
-    "_TOOL_GATE_ACTIONS",
-    "_APPROVAL_AUDIT_ACTIONS",
+    "render_health",
+    "_SWEEP_LOCK",
+    "_sweep_inflight",
+    "_sweep_pool",
+    "_sweep_run_ids",
+    "_sweep_stop",
+    "SWEEP_ABANDON_WAIT_S",
+    "_sweep_one_pod",
+    "_submit_pod_sweep",
+    "_drain_sweeps",
+    "_abandon_sweeps",
+    "_pending_sweeps",
     "_StopController",
+    "_run_sweeps",
+    "_sweep_loop",
     "MAX_POST_BODY_BYTES",
     "_TASK_OPTION_FIELDS",
     "_DocketHandler",
@@ -712,11 +726,11 @@ names = [
 from = "docket.serve"
 to = "docket.interfaces.http.routes.health"
 names = [
+    "SERVE_API_VERSION",
     "_with_token_budget",
     "_last_activity_or_never",
     "_agent_record",
     "build_status",
-    "render_health",
     "render_status",
 ]
 
@@ -725,8 +739,11 @@ from = "docket.serve"
 to = "docket.interfaces.http.routes.metrics"
 names = [
     "_cost_json",
+    "_esc",
     "_POLICY_AUDIT_RE",
     "_CHANNEL_AUDIT_RE",
+    "_TOOL_GATE_ACTIONS",
+    "_APPROVAL_AUDIT_ACTIONS",
     "LoopMetrics",
     "_collect_trace_loop_metrics",
     "_collect_audit_loop_metrics",
@@ -747,25 +764,6 @@ names = ["_flush_notify_channels"]
 
 [[definition]]
 from = "docket.serve"
-to = "docket.tasks.application.sweep"
-names = [
-    "_SWEEP_LOCK",
-    "_sweep_inflight",
-    "_sweep_pool",
-    "_sweep_run_ids",
-    "_sweep_stop",
-    "SWEEP_ABANDON_WAIT_S",
-    "_sweep_one_pod",
-    "_submit_pod_sweep",
-    "_drain_sweeps",
-    "_abandon_sweeps",
-    "_pending_sweeps",
-    "_run_sweeps",
-    "_sweep_loop",
-]
-
-[[definition]]
-from = "docket.serve"
 to = "docket.interfaces.telegram.poll"
 names = ["_TELEGRAM_UNCONFIGURED_BACKOFF_S", "_TELEGRAM_ERROR_BACKOFF_S", "_telegram_poll_loop"]
 
@@ -778,7 +776,6 @@ names = ["_TRACE_HOLD_BACK_S", "_trace_line_ts", "_decode_trace_cursor", "_trace
 from = "docket.edges.adapters.system"
 to = "docket.platform.git"
 names = [
-    "_QUERY_TIMEOUT",
     "trust_worktree",
     "_git_plain",
     "_WORKTREE_CONFIG_ON",
@@ -833,14 +830,15 @@ names = [
 from = "docket.edges.adapters.system"
 to = "docket.platform.process"
 names = [
+    "_QUERY_TIMEOUT",
     "_which",
     "secret_tool_available",
     "desktop_notifications_available",
     "secret_tool_lookup",
     "secret_tool_store",
     "secret_tool_clear",
+    "_SANDBOX_PROBE_TIMEOUT",
     "_TRUSTED_TREES",
-    "run_command",
     "make_non_dumpable",
     "process_alive",
     "_process_group_alive",
@@ -866,8 +864,6 @@ from = "docket.edges.adapters.system"
 to = "docket.sandbox.launch"
 names = [
     "SandboxBackend",
-    "_SANDBOX_PROBE_TIMEOUT",
-    "_SANDBOX_EXEC",
     "SandboxAvailability",
     "sandbox_availability",
     "_VERIFY_MAX_OUTPUT",
@@ -882,6 +878,7 @@ names = [
     "tmp_environment",
     "jailed_env",
     "jail_launch",
+    "run_command",
 ]
 
 [[definition]]
@@ -915,6 +912,7 @@ names = [
 from = "docket.edges.adapters.system"
 to = "docket.sandbox.seatbelt"
 names = [
+    "_SANDBOX_EXEC",
     "seatbelt_available",
     "_SEATBELT_READ",
     "_SEATBELT_READ_DEVICES",
