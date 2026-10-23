@@ -24,12 +24,12 @@ from typing import Any
 import pytest
 
 from docket.agent.llm import ToolCall
+from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import (
     Tool,
     ToolContext,
     ToolRegistry,
-    builtin_registry,
     dispatch_tool,
     evaluate_tool_call,
     render_tool_call,

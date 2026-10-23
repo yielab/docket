@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from docket.agent.tools.registry import Tool, ToolOutcome, builtin_registry
+from docket.agent.tools.builtin_tools import builtin_registry
+from docket.agent.tools.registry import Tool, ToolOutcome
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
 from docket.teams.pod import member_id as _pod_member_id

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from docket.agent import driver as _dr
+from docket.agent import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop
 from docket.hops.workspace import prepare as _prepare
 from docket.sandbox import launch as _launch
@@ -19,7 +19,9 @@ def test_the_install_opens_the_network_for_its_own_launch_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pods_jail = _launch.JailPolicy(network=False)
-    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (pods_jail, None))
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (pods_jail, None)
+    )
     seen: list[_launch.JailPolicy] = []
     monkeypatch.setattr(_launch, "run_command", lambda *a, **k: seen.append(k["jail"]) or (0, ""))
     _queue._run_prepare_command("demo", "npm ci", "/wt")
@@ -32,7 +34,9 @@ def test_a_gate_in_the_jail_reads_the_cache_entry_its_worktree_links_into(
     entry = tmp_path / "entry"
     monkeypatch.setattr(_prepare, "linked_entries", lambda root: (entry,))
     monkeypatch.setattr(
-        _dr, "resolve_command_jail", lambda project, label: (_launch.JailPolicy(), None)
+        _isolation_posture,
+        "resolve_command_jail",
+        lambda project, label: (_launch.JailPolicy(), None),
     )
     seen: list[_launch.JailPolicy] = []
     monkeypatch.setattr(_launch, "run_command", lambda *a, **k: seen.append(k["jail"]) or (0, ""))

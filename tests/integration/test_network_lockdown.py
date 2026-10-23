@@ -162,7 +162,7 @@ class TestGatesCommand:
 
 class TestRefusal:
     def test_the_unrecorded_default_is_not_refused_without_a_jail(self) -> None:
-        from docket.agent.driver import _resolve_network
+        from docket.agent.isolation_posture import _resolve_network
 
         assert _fleet.get_network_mode() == "none"
         assert _resolve_network("solo-agent", "implementer", False) == (True, None)

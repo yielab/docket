@@ -23,15 +23,11 @@ import pytest
 from docket.agent import context as _context
 from docket.agent import identity as _identity
 from docket.agent import loop as _loop
+from docket.agent import loop_trace as _loop_trace
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
-from docket.agent.tools.registry import (
-    Tool,
-    ToolContext,
-    ToolRegistry,
-    builtin_registry,
-    dispatch_tool,
-)
+from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry, dispatch_tool
 from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
@@ -814,7 +810,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
 
         _loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:traced-agent:default", "go")
 
@@ -857,7 +853,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
 
         _loop.run_agent_turn(
             backend,
@@ -905,7 +901,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
 
         _loop.run_agent_turn(
             backend,
@@ -950,7 +946,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
 
         _loop.run_agent_turn(
             backend, builtin_registry(), ctx, "agent:contract-only-agent:default", "go"
@@ -986,7 +982,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
 
         _loop.run_agent_turn(
             backend, builtin_registry(), ctx, "agent:bare-traced-agent:default", "go"

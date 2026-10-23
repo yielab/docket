@@ -25,8 +25,12 @@ from typing import Any
 import pytest
 from tests.integration import llm_stub as _stub
 
+from docket.agent import context as _agent_context
 from docket.agent import loop as _loop
+from docket.agent import loop_trace as _loop_trace
 from docket.agent import session as _session
+from docket.agent import session_compaction as _session_compaction
+from docket.agent import session_units as _session_units
 from docket.agent.llm import (
     ChatMessage,
     ChatResponse,
@@ -341,7 +345,7 @@ class TestCooperativeRunCancellation:
             events.append((event_type, json.loads(payload)))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
         session_key = "agent:cancel-task:demo"
         worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
         try:
@@ -538,7 +542,7 @@ class TestCooperativeRunCancellation:
             events.append((event_type, json.loads(payload)))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
         session_key = "agent:cancel-tool-batch:demo"
         worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
         try:
@@ -570,8 +574,8 @@ class TestCooperativeRunCancellation:
             stored.messages[3].content
             == "REFUSED [run_cancelled]: run cancellation requested before execution"
         )
-        assert not _session.find_orphaned_tool_messages(stored.messages)
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_orphaned_tool_messages(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
         tool_results = [payload for kind, payload in events if kind == "tool_result"]
         assert [payload["callId"] for payload in tool_results] == ["first-call", "second-call"]
         assert tool_results[1]["executed"] is False
@@ -646,8 +650,8 @@ class TestLiveSessionCompaction:
         assert backend.tool_specs[1] == []
         assert not any(large_result in message.content for message in backend.calls[2])
         stored = _session.load_messages(session_key)
-        assert not _session.find_orphaned_tool_messages(stored)
-        assert not _session.find_unanswered_tool_calls(stored)
+        assert not _session_units.find_orphaned_tool_messages(stored)
+        assert not _session_units.find_unanswered_tool_calls(stored)
         assert any(message.content == "inspect the diagnostic" for message in stored)
         assert any(message.content.startswith("[compacted summary of ") for message in stored)
 
@@ -794,8 +798,8 @@ class TestLiveSessionCompaction:
         assert stored.usage.input_tokens == 22
         assert stored.usage.output_tokens == 13
         assert any("current suffix" in message.content for message in stored.messages)
-        assert not _session.find_orphaned_tool_messages(stored.messages)
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_orphaned_tool_messages(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
     def test_concurrent_suffix_append_is_a_new_request_fit_revision(
         self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
@@ -880,7 +884,9 @@ class TestLiveSessionCompaction:
         injected = False
         ranged_calls: list[tuple[int, int]] = []
 
-        def _append_after_ranged_write(*args: Any, **kwargs: Any) -> _session.CompactionResult:
+        def _append_after_ranged_write(
+            *args: Any, **kwargs: Any
+        ) -> _session_compaction.CompactionResult:
             nonlocal injected
             result = real_compact_session(*args, **kwargs)
             compact_range = kwargs.get("compact_range")
@@ -920,8 +926,8 @@ class TestLiveSessionCompaction:
         assert any("FIRST_SUMMARY" in message.content for message in stored.messages)
         assert any("SECOND_SUMMARY" in message.content for message in stored.messages)
         assert any(message.content == "inspect concurrent history" for message in stored.messages)
-        assert not _session.find_orphaned_tool_messages(stored.messages)
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_orphaned_tool_messages(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
     def test_fixed_revision_cap_rechecks_the_last_accepted_summary(
         self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
@@ -997,7 +1003,7 @@ class TestLiveSessionCompaction:
 
         def _append_after_every_ranged_write(
             *args: Any, **kwargs: Any
-        ) -> _session.CompactionResult:
+        ) -> _session_compaction.CompactionResult:
             result = real_compact_session(*args, **kwargs)
             compact_range = kwargs.get("compact_range")
             if isinstance(compact_range, tuple) and result.compacted:
@@ -1150,7 +1156,7 @@ class TestLiveSessionCompaction:
             events.append((event_type, json.loads(payload)))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
         backend = ScriptedBackend(
             [
                 _final("old decision preserved", TokenUsage(input_tokens=30, output_tokens=7)),
@@ -1177,8 +1183,8 @@ class TestLiveSessionCompaction:
         assert any("old decision preserved" in m.content for m in backend.calls[1])
         stored = load_session(session_key)
         stored_messages = _session.load_messages(session_key)
-        assert not _session.find_orphaned_tool_messages(stored_messages)
-        assert not _session.find_unanswered_tool_calls(stored_messages)
+        assert not _session_units.find_orphaned_tool_messages(stored_messages)
+        assert not _session_units.find_unanswered_tool_calls(stored_messages)
         assert result.usage == TokenUsage(input_tokens=41, output_tokens=10)
         assert stored.usage.input_tokens == 41
         assert stored.usage.output_tokens == 10
@@ -1235,7 +1241,7 @@ class TestLiveSessionCompaction:
                     )
                 return _final("task done", TokenUsage(input_tokens=5, output_tokens=1))
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
         backend = _Backend()
         result = _loop.run_agent_turn(
             backend,
@@ -1253,7 +1259,7 @@ class TestLiveSessionCompaction:
         assert result.ok
         assert rounds > 1
         assert all(
-            _session._context.estimate_tokens(prompt) <= 180 for prompt in backend.summary_prompts
+            _agent_context.estimate_tokens(prompt) <= 180 for prompt in backend.summary_prompts
         )
         assert result.usage == TokenUsage(
             input_tokens=rounds * 10 + 5,
@@ -1368,7 +1374,7 @@ class TestLiveSessionCompaction:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
         backend = ScriptedBackend([_final("done")])
         result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo-agent:demo", "hello")
 
@@ -1415,7 +1421,7 @@ class TestLiveSessionCompaction:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
         backend = ScriptedBackend(
             [ChatResponse(ok=False, error="summary timed out", failure_kind="timeout")]
         )
@@ -2217,8 +2223,8 @@ class TestTerminalResponseReservation:
         stored = load_session(session_key)
         assert any("DURABLE_CURRENT_UNIT_SUMMARY" in message.content for message in stored.messages)
         assert all("CURRENT_TOOL_UNIT" not in message.content for message in stored.messages)
-        assert not _session.find_orphaned_tool_messages(stored.messages)
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_orphaned_tool_messages(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
     def test_irreducible_budget_fails_without_a_second_transport(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -2330,7 +2336,7 @@ class TestTerminalResponseReservation:
         assert backend.tool_specs[1] == []
         stored = load_session(session_key)
         assert [message.role for message in stored.messages] == ["user", "assistant", "tool"]
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
     def test_truncated_finalization_persists_only_measured_usage(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -2366,7 +2372,7 @@ class TestTerminalResponseReservation:
         assert stored.usage.input_tokens == 73
         assert stored.usage.output_tokens == 7
         assert stored.usage.turns == 2
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
     def test_measured_post_response_overrun_refuses_tool_call_and_preserves_prior_history(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -2399,7 +2405,7 @@ class TestTerminalResponseReservation:
         assert len(backend.calls) == 1
         stored = load_session(session_key)
         assert [message.role for message in stored.messages] == ["user"]
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
     @pytest.mark.parametrize("failure_kind", ["timeout", "daemon_error"])
     def test_finalization_timeout_or_backend_error_is_fail_closed(
@@ -2429,7 +2435,7 @@ class TestTerminalResponseReservation:
         assert backend.tool_specs[1] == []
         stored = load_session(session_key)
         assert [message.role for message in stored.messages] == ["user", "assistant", "tool"]
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
 
 # ── durability: persisted per iteration ──────────────────────────────────────
@@ -2747,7 +2753,7 @@ class TestLlmCallTrace:
         self, ctx: ToolContext, registry: ToolRegistry, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            _loop._telemetry, "capture_classes", lambda: frozenset({"prompts", "completions"})
+            _loop_trace._telemetry, "capture_classes", lambda: frozenset({"prompts", "completions"})
         )
         session_key = "agent:demo:content"
         secret_call = '{"text": "leaked-secret@example.com"}'
@@ -2801,7 +2807,7 @@ class TestLlmCallTrace:
     def test_empty_grant_matches_the_capture_disabled_shape(
         self, ctx: ToolContext, registry: ToolRegistry, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_loop._telemetry, "capture_classes", lambda: frozenset())
+        monkeypatch.setattr(_loop_trace._telemetry, "capture_classes", lambda: frozenset())
         session_key = "agent:demo:no-content"
         backend = ScriptedBackend(
             [_tool_call_response("c1", "echo", '{"text": "hi"}'), _final("ok")]
@@ -2820,14 +2826,14 @@ class TestLlmCallTrace:
         # every call site did before this card -- the capture path never runs.
         baseline_events: list[dict[str, Any]] = []
         with _trace.subscribe(baseline_events.append):
-            _loop._trace_llm_call(
+            _loop_trace._trace_llm_call(
                 "demo",
                 session_key,
                 "implementer",
                 _tool_call_response("c1", "echo", '{"text": "hi"}'),
                 1,
             )
-            _loop._trace_llm_call("demo", session_key, "implementer", _final("ok"), 2)
+            _loop_trace._trace_llm_call("demo", session_key, "implementer", _final("ok"), 2)
         baseline = [json.dumps(e["payload"]) for e in baseline_events]
 
         assert with_capture_path == baseline
@@ -2840,7 +2846,7 @@ class TestLlmCallTrace:
         monkeypatch: pytest.MonkeyPatch,
         granted: frozenset[str],
     ) -> None:
-        monkeypatch.setattr(_loop._telemetry, "capture_classes", lambda: granted)
+        monkeypatch.setattr(_loop_trace._telemetry, "capture_classes", lambda: granted)
         backend = ScriptedBackend(
             [_tool_call_response("c1", "echo", '{"text": "echoed-back"}'), _final("ok")]
         )

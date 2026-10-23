@@ -27,6 +27,7 @@ from tests.conftest import record_isolation_off
 from docket.agent import driver as _docket_runtime
 from docket.agent import memory as _memory
 from docket.agent import session as _session
+from docket.agent import session_units as _session_units
 from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.agent.ports import DOCKET_APPROVAL_MODE, PIPELINE_WORKTREE_ENV
@@ -785,8 +786,8 @@ class TestRunTurn:
         assert any("S" * 100 in message.content for message in stored)
         assert all("ORIGINAL_SENTINEL" not in message.content for message in stored)
         assert any(message.content == "inspect the diagnostic" for message in stored)
-        assert not _session.find_orphaned_tool_messages(stored)
-        assert not _session.find_unanswered_tool_calls(stored)
+        assert not _session_units.find_orphaned_tool_messages(stored)
+        assert not _session_units.find_unanswered_tool_calls(stored)
 
     def test_request_fit_rechecks_an_append_completed_during_the_fit_check(self) -> None:
         _write_meta("fit-refresh-agent")
@@ -953,8 +954,8 @@ class TestRunTurn:
         ]
         assert len(stored_tasks) == 1
         assert stored_tasks[0].name == ""
-        assert not _session.find_orphaned_tool_messages(stored.messages)
-        assert not _session.find_unanswered_tool_calls(stored.messages)
+        assert not _session_units.find_orphaned_tool_messages(stored.messages)
+        assert not _session_units.find_unanswered_tool_calls(stored.messages)
 
         trace_path = current_home().traces_dir / "fit-refresh-agent" / f"{session_key}.jsonl"
         records = [json.loads(line) for line in trace_path.read_text().splitlines()]
@@ -1106,8 +1107,8 @@ class TestRunTurn:
         assert any("PREFIX_ANCHOR" in message.content for message in stored)
         assert any("PREFIX_SUMMARY" in message.content for message in stored)
         assert any("SUFFIX_SUMMARY" in message.content for message in stored)
-        assert not _session.find_orphaned_tool_messages(stored)
-        assert not _session.find_unanswered_tool_calls(stored)
+        assert not _session_units.find_orphaned_tool_messages(stored)
+        assert not _session_units.find_unanswered_tool_calls(stored)
 
     def test_happy_path_final_message_costs_nothing(self) -> None:
         _write_meta("solo-agent")
@@ -1984,7 +1985,7 @@ def _allow_commands_probe_registry() -> ToolRegistry:
 
 class TestAllowCommandsWiring:
     """A pod Lead's `allowCommands` setting reaching a member agent's real
-    `ToolContext` (`teams.pod.PodSettings` -> `agent/driver.py`)."""
+    `ToolContext` (`teams.pod_settings.PodSettings` -> `agent/driver.py`)."""
 
     def test_a_non_pod_agent_gets_no_extra_bins(self) -> None:
         _write_meta("solo-agent")

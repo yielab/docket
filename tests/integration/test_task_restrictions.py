@@ -205,7 +205,7 @@ def test_the_jail_network_is_none_for_a_task_whatever_the_pod_records(
     tmp_path: Path, stub: Any
 ) -> None:
     """The computed hop network is cut by a task's none and open for the same pod without it."""
-    from docket.agent.driver import _resolve_network
+    from docket.agent.isolation_posture import _resolve_network
     from docket.teams import fleet as fleet
 
     with _seed_pod(tmp_path, stub([_final_response("x")]).base_url):

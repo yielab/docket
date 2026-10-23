@@ -33,6 +33,7 @@ from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
+from docket.teams import pod_settings as _pod_settings
 
 SUBJECT = "docket.tasks.application.consult"
 
@@ -111,15 +112,17 @@ def _start(
     build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(workspace))
     _fleet.meta_set("demo-implementer", "codebase", str(workspace))
     _fleet.meta_set("demo-implementer", "verifyCmd", "true")
-    _fleet.meta_set("demo-lead", "approvalMode", _pod.pod.PodSettings.coerce("approvalMode", mode))
     _fleet.meta_set(
-        "demo-lead", "requireVerify", _pod.pod.PodSettings.coerce("requireVerify", "true")
+        "demo-lead", "approvalMode", _pod_settings.PodSettings.coerce("approvalMode", mode)
+    )
+    _fleet.meta_set(
+        "demo-lead", "requireVerify", _pod_settings.PodSettings.coerce("requireVerify", "true")
     )
     if expiry_hours is not None:
         _fleet.meta_set(
             "demo-lead",
             "inputExpiryHours",
-            _pod.pod.PodSettings.coerce("inputExpiryHours", str(expiry_hours)),
+            _pod_settings.PodSettings.coerce("inputExpiryHours", str(expiry_hours)),
         )
     if pipeline_yaml is not None:
         digest = hashlib.sha256(pipeline_yaml.encode("utf-8")).hexdigest()

@@ -10,6 +10,7 @@ from typing import Any, NoReturn
 import typer
 from rich.markup import escape
 
+from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.agent.tools import registry as _tools
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
@@ -429,7 +430,7 @@ def _check_verdict(
     hook: str, role: str, text: str, tool: str, call_args: dict[str, str], project: str
 ) -> tuple[str, str, str, str]:
     """``(action, reason, policy_id, policy_action)`` the live gate would reach."""
-    registry = _tools.builtin_registry()
+    registry = _builtin_tools.builtin_registry()
     builtin = {n: t for n in registry.names() if (t := registry.get(n)) is not None}
     if hook != "pre_tool_call":
         return _policy.policy_test(hook, role, text, project=project), "", "", ""

@@ -23,8 +23,9 @@ import docket.kernel.templates as _templates
 from docket.agent.driver import DocketDriver, _load_mcp_tools
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
 from docket.agent.tools import mcp_tools as _mt
+from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
-from docket.agent.tools.registry import ToolRegistry, builtin_registry
+from docket.agent.tools.registry import ToolRegistry
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
 from docket.tasks.domain.task import DispatchError

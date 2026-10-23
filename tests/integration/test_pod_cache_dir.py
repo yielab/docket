@@ -58,10 +58,10 @@ def test_the_real_home_stays_unwritable_in_the_jail(tmp_path: Path) -> None:
 
 
 def test_the_driver_resolves_and_creates_a_members_pod_cache() -> None:
-    from docket.agent import driver as _rt
+    from docket.agent import isolation_posture as _isolation_posture
 
-    cache = _rt._pod_cache_dir("cachepod-implementer")
+    cache = _isolation_posture._pod_cache_dir("cachepod-implementer")
 
     assert cache == current_home().pod_cache_dir("cachepod")
     assert oct(cache.stat().st_mode & 0o777) == "0o700"
-    assert _rt._pod_cache_dir("not-a-pod-member") is None
+    assert _isolation_posture._pod_cache_dir("not-a-pod-member") is None

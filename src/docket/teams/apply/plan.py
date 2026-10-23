@@ -1,5 +1,5 @@
 """``docket pod update <dir>``: compose the pre-existing writers (``teams.roles.
-add_user_archetype``, member provisioning, the pipeline bind, and ``teams.pod.PodSettings``)
+add_user_archetype``, member provisioning, the pipeline bind, and ``teams.pod_settings.PodSettings``)
 into one operation, driven by a small ``pod.yaml`` manifest (``members``, ``settings``,
 ``pipeline``) alongside the same ``roles/*.yaml``/``pipeline.yaml`` shape the shipped recipes
 already ship. A role goes into *project*'s own pod-scoped overlay (``core.config.

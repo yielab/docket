@@ -10,6 +10,7 @@ fails; remove clears the keyring entry too.
 
 from __future__ import annotations
 
+import getpass
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -19,7 +20,6 @@ import pytest
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
-from docket.interfaces.cli.commands import setup_model as _setup_model
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import process as _process
@@ -72,9 +72,7 @@ class TestNoEnvSync:
             ws = _seed_workspace(home)
             _add("ANTHROPIC_API_KEY", "fake-ant-firstvalue000000")
 
-            monkeypatch.setattr(
-                _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-secondvalue00000"
-            )
+            monkeypatch.setattr(getpass, "getpass", lambda *a, **k: "fake-ant-secondvalue00000")
             rc = _setup_model_credentials.credential_rotate("ANTHROPIC_API_KEY")
 
             assert rc == 0
@@ -148,9 +146,7 @@ class TestKeyringBackendStores:
                 "secret_tool_store",
                 lambda service, key, value: stored.setdefault(key, value) or True,
             )
-            monkeypatch.setattr(
-                _setup_model._getpass, "getpass", lambda *a, **k: "fake-ant-rotated000000000"
-            )
+            monkeypatch.setattr(getpass, "getpass", lambda *a, **k: "fake-ant-rotated000000000")
 
             rc = _setup_model_credentials.credential_rotate("ANTHROPIC_API_KEY")
 

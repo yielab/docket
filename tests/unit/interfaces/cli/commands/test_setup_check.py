@@ -24,6 +24,7 @@ from docket.interfaces.cli.commands import setup_check_providers as _setup_check
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services
 from docket.kernel.home import Home, current_home, use_home
 from docket.operator import channel as _channel
+from docket.sandbox import docker as _sandbox_docker
 
 SUBJECT = "docket.interfaces.cli.commands.setup_check"
 
@@ -542,7 +543,7 @@ class TestChecks:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
             monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-            monkeypatch.setattr(_setup_check._docker, "docker_image_has_git", lambda: False)
+            monkeypatch.setattr(_sandbox_docker, "docker_image_has_git", lambda: False)
             _setup_check_services._check_security_gates()
             out = capsys.readouterr().out
             assert "has no git" in out and "DOCKET_SANDBOX_IMAGE=<an image with git>" in out
@@ -554,7 +555,7 @@ class TestChecks:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
             monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-            monkeypatch.setattr(_setup_check._docker, "docker_image_has_git", lambda: True)
+            monkeypatch.setattr(_sandbox_docker, "docker_image_has_git", lambda: True)
             _setup_check_services._check_security_gates()
             assert "has no git" not in capsys.readouterr().out
             assert _setup_check._check_json_security()["dockerImageHasGit"] is True
@@ -569,7 +570,7 @@ class TestChecks:
             def boom() -> bool:
                 raise AssertionError("probed")
 
-            monkeypatch.setattr(_setup_check._docker, "docker_image_has_git", boom)
+            monkeypatch.setattr(_sandbox_docker, "docker_image_has_git", boom)
             _setup_check_services._check_security_gates()
             assert _setup_check._check_json_security()["dockerImageHasGit"] is None
 

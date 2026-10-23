@@ -13,8 +13,8 @@ from typing import Any, Literal
 
 from docket.agent import identity as _identity
 from docket.agent import skills as _skills
+from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.agent.tools import mcp_tools as _mcp_tools
-from docket.agent.tools import registry as _tools
 from docket.governance import network_posture as _network_posture
 from docket.governance import policy as _policy
 from docket.governance import profile as _profile
@@ -272,7 +272,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
     role_registry_scope = _archetypes.load_registry(project)
     role_scope = _scope_label(role_registry_scope.source_of(role))
 
-    base_registry = _tools.builtin_registry()
+    base_registry = _builtin_tools.builtin_registry()
     role_registry = (
         _archetypes.registry_for_role(base_registry, role, project) if role else base_registry
     )

@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from docket.agent import driver as _dr
+from docket.agent import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace import worktree as _worktree
@@ -498,13 +498,17 @@ def test_a_verify_command_cannot_write_outside_the_worktree(
     wt = task_tree.wt
     target = arena / "verify-escape.txt"
     jail = _launch.JailPolicy(network=True)
-    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (jail, None))
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (jail, None)
+    )
     cmd = f"touch inside-verify && echo escaped > {target}"
     code, output = _post_hop._run_in_envelope("proj", "verify", cmd, str(wt), 60)
     assert (wt / "inside-verify").exists(), f"the verify command never ran: {output}"
     assert not target.exists(), "a verifyCmd wrote outside its worktree"
     assert code != 0
-    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (None, None))
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (None, None)
+    )
     host_code, _ = _post_hop._run_in_envelope("proj", "verify", cmd, str(wt), 60)
     assert host_code == 0 and target.exists()
 
@@ -575,11 +579,15 @@ def test_a_prepared_cache_entry_is_readable_but_not_writable_to_a_jailed_gate(
     entry = _install_into(task_tree.wt, task_tree.main)
     cmd = "cat node_modules/tool > read.txt; echo planted > node_modules/planted"
     jail = _launch.JailPolicy(network=True)
-    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (jail, None))
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (jail, None)
+    )
     _post_hop._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
     assert (task_tree.wt / "read.txt").read_text() == "installed\n", "the entry was unreadable"
     assert not (entry / "node_modules" / "planted").exists(), "a gate wrote the cache entry"
-    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (None, None))
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (None, None)
+    )
     _post_hop._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
     assert (entry / "node_modules" / "planted").exists(), "control: unjailed can write"
 
@@ -598,7 +606,9 @@ def test_the_prepare_launch_has_the_network_a_gate_under_network_none_lacks(
             "s.sendall(b'hello')\""
         )
     pods_jail = _launch.JailPolicy(network=False)
-    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (pods_jail, None))
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (pods_jail, None)
+    )
     try:
         _queue._run_prepare_command("proj", attack, str(task_tree.wt))
         for _ in range(50):

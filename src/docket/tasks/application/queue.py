@@ -8,8 +8,8 @@ from typing import Any
 
 from pydantic import ValidationError as _ValidationError
 
-from docket.agent import driver as _dr
 from docket.agent import handoff as _handoff
+from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import memory as _mem
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
@@ -293,7 +293,7 @@ def _refuse_claimed_task(
 def _run_prepare_command(project: str, cmd: str, cwd: str) -> tuple[int | None, str]:
     """Run a task's install command: in the pod's jail with the network open for this launch
     only when isolation is on, on the host like a ``verifyCmd`` otherwise."""
-    jail, refusal = _dr.resolve_command_jail(project, "prepare")
+    jail, refusal = _isolation_posture.resolve_command_jail(project, "prepare")
     if refusal is not None:
         return None, f"[prepare not run: {refusal}]"
     if jail is None:

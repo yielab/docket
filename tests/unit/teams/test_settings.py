@@ -64,7 +64,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
 
 
 class TestPodSettingReaders:
-    """Each Lead-meta setting reader routes through ``teams.pod.PodSettings`` --
+    """Each Lead-meta setting reader routes through ``teams.pod_settings.PodSettings`` --
     a valid override reads through, and an invalid stored value refuses
     dispatch instead of silently substituting the field's default."""
 

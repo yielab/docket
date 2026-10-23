@@ -545,7 +545,7 @@ def classify_command(
     already confined to; otherwise -> allow.
 
     *extra_bins* is a caller-supplied, per-pod extension of the membership
-    check only (``teams.pod.PodSettings.allow_commands``) -- it never widens
+    check only (``teams.pod_settings.PodSettings.allow_commands``) -- it never widens
     the opaque-marker check or the high-risk-class check above, both of which
     still run against the full command line first. Every member of
     *extra_bins* is treated as redirect-sensitive, the same conservative rule

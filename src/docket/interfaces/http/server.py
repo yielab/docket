@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from docket.governance import audit as _audit
+from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.routes.health import (
     SERVE_API_VERSION,
     _with_token_budget,
@@ -40,8 +41,6 @@ from docket.interfaces.http.sweeps import (
     _check_schedules,
     _drain_sweeps,
     _StopController,
-    _sweep_inflight,
-    _sweep_run_ids,
 )
 from docket.interfaces.telegram.poll import _telegram_poll_loop
 from docket.kernel import clock as _clock
@@ -68,7 +67,7 @@ _HTTP_APPROVAL_CHANNELS: frozenset[str] = frozenset({"http", "tack"})
 def render_health(dispatch_on: bool = False) -> str:
     """Render the /health body: status, API version and the dispatch block."""
     with _SWEEP_LOCK:
-        inflight = sorted(_sweep_inflight)
+        inflight = sorted(_sweeps._sweep_inflight)
     body = {
         "status": "ok",
         "apiVersion": SERVE_API_VERSION,
@@ -97,7 +96,7 @@ def _sweep_one_pod(project: str) -> None:
     try:
         record = _runs.create_run("sweep", project)
         with _SWEEP_LOCK:
-            _sweep_run_ids[project] = record["id"]
+            _sweeps._sweep_run_ids[project] = record["id"]
         _runs.execute(
             record["id"],
             lambda: _sweep.dispatch_pod(
@@ -113,8 +112,8 @@ def _sweep_one_pod(project: str) -> None:
         print(f"[serve] sweep: pod {project} failed: {exc}")
     finally:
         with _SWEEP_LOCK:
-            _sweep_inflight.pop(project, None)
-            _sweep_run_ids.pop(project, None)
+            _sweeps._sweep_inflight.pop(project, None)
+            _sweeps._sweep_run_ids.pop(project, None)
 
 
 def _submit_pod_sweep(project: str) -> bool:
@@ -126,7 +125,7 @@ def _submit_pod_sweep(project: str) -> bool:
     workers = max(1, current_home().dispatch_sweep_workers)
     stale = None
     with _SWEEP_LOCK:
-        if project in _sweep_inflight:
+        if project in _sweeps._sweep_inflight:
             return False
         if _sweep_pool is None or _sweep_pool[0] != workers:
             stale = _sweep_pool
@@ -136,7 +135,7 @@ def _submit_pod_sweep(project: str) -> bool:
                     max_workers=workers, thread_name_prefix="docket-sweep"
                 ),
             )
-        _sweep_inflight[project] = _threads.submit(_sweep_pool[1], _sweep_one_pod, project)
+        _sweeps._sweep_inflight[project] = _threads.submit(_sweep_pool[1], _sweep_one_pod, project)
     if stale is not None:
         stale[1].shutdown(wait=False)
     return True
@@ -148,7 +147,7 @@ def _abandon_sweeps(wait_s: float = SWEEP_ABANDON_WAIT_S) -> bool:
     from docket.tasks.application import runs as _runs
 
     with _SWEEP_LOCK:
-        run_ids = list(_sweep_run_ids.values())
+        run_ids = list(_sweeps._sweep_run_ids.values())
         pool = _sweep_pool
     if pool is not None:
         pool[1].shutdown(wait=False, cancel_futures=True)

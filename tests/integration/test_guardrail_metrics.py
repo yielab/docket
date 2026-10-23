@@ -22,7 +22,8 @@ from typing import Any
 import pytest
 
 from docket.agent.llm import ToolCall
-from docket.agent.tools.registry import ToolContext, builtin_registry, dispatch_tool
+from docket.agent.tools.builtin_tools import builtin_registry
+from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.governance import approval as _approval
 from docket.interfaces.http.routes import metrics
 from docket.kernel.home import current_home, use_home

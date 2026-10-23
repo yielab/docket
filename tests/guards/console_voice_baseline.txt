@@ -2,6 +2,10 @@
 interfaces/cli/commands/agents.py 1
 cli/_channels.py 1
 cli/_conversations.py 4
-interfaces/cli/commands/pod.py 3
-interfaces/cli/commands/setup_check.py 17
+interfaces/cli/commands/pod_settings.py 2
+interfaces/cli/commands/setup_check.py 6
+interfaces/cli/commands/setup_check_budget.py 3
+interfaces/cli/commands/setup_check_config.py 4
+interfaces/cli/commands/setup_check_providers.py 2
+interfaces/cli/commands/setup_check_services.py 1
 interfaces/cli/commands/setup_notify.py 1

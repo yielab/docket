@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from docket.agent import driver as _dr
+from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import ports as _rd
 from docket.governance import policy as _policy
 from docket.governance import security as _sec
@@ -594,7 +594,7 @@ def _run_in_envelope(
 ) -> tuple[int | None, str]:
     """Run a verify or ``run:`` command under the pod's isolation posture (jail when isolation
     is on, refused with no usable backend, host otherwise): ``(exit status or None, output)``."""
-    jail, refusal = _dr.resolve_command_jail(project, label)
+    jail, refusal = _isolation_posture.resolve_command_jail(project, label)
     if refusal is not None:
         return None, f"[{label} not run: {refusal}]"
     if jail is not None:

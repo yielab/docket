@@ -27,8 +27,9 @@ import pytest
 
 from docket.agent.llm import ToolCall
 from docket.agent.tools import mcp_tools as _mt
+from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
-from docket.agent.tools.registry import ToolContext, ToolRegistry, builtin_registry, dispatch_tool
+from docket.agent.tools.registry import ToolContext, ToolRegistry, dispatch_tool
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home

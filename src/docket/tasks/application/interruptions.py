@@ -13,7 +13,7 @@ import datetime as _dt
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from docket.governance import approval as _approval
+from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import policy as _policy
 from docket.governance import security as _security
 from docket.kernel import clock as _clock
@@ -195,7 +195,7 @@ def record_pregrant(
     args_digest = _oc.canonical_args_digest(tool, {"command": normalized})
     expires_at = (_clock.now() + _dt.timedelta(hours=_approval_expiry_hours(project))).isoformat()
 
-    token = _approval.create_pregrant(
+    token = _approval_pregrant.create_pregrant(
         project,
         "implementer",
         tool,

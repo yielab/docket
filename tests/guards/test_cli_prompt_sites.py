@@ -33,10 +33,10 @@ _PROMPT_SITES: dict[str, int] = {
     "interfaces/cli/commands/contract.py": 2,
     "interfaces/cli/commands/setup.py": 5,
     "interfaces/cli/commands/setup_notify.py": 4,
-    "interfaces/cli/commands/setup_model.py": 1,
+    "interfaces/cli/commands/setup_model_credentials.py": 1,
     "interfaces/cli/commands/setup_export.py": 1,
     "interfaces/cli/commands/agents.py": 2,
-    "interfaces/cli/commands/task.py": 2,
+    "interfaces/cli/commands/task_approval.py": 2,
     "interfaces/cli/commands/run.py": 1,
 }
 

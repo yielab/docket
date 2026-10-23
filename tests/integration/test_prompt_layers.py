@@ -11,7 +11,7 @@ import pytest
 from tests.pods import build_pod
 
 from docket.agent import identity as _identity
-from docket.agent.tools import registry as _tools
+from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.teams import roles as _arch
@@ -61,8 +61,12 @@ def test_two_worktrees_compose_a_byte_identical_system_prompt(
 
 
 def test_tool_schemas_do_not_depend_on_the_worktree() -> None:
-    first = _arch.registry_for_role(_tools.builtin_registry(), "implementer", "demo").specs()
-    second = _arch.registry_for_role(_tools.builtin_registry(), "implementer", "demo").specs()
+    first = _arch.registry_for_role(
+        _builtin_tools.builtin_registry(), "implementer", "demo"
+    ).specs()
+    second = _arch.registry_for_role(
+        _builtin_tools.builtin_registry(), "implementer", "demo"
+    ).specs()
     assert first == second
 
 

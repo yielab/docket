@@ -1,7 +1,7 @@
 """`docket pod show` -- the pod and a member's effective configuration, with provenance.
 
 Composes existing resolvers only (model policy, `agent.identity`'s prompt composer,
-role/tool denial, the guardrail policy engine, `teams.pod.PodSettings`, and
+role/tool denial, the guardrail policy engine, `teams.pod_settings.PodSettings`, and
 `pipeline.application.steps.effective_pipeline_source`); writes nothing and adds no new core
 surface. See specs/data/cli-json-shapes.spec.md, "`docket pod show --json`". The oracle
 case (`TestPodShowMatchesRealDispatch`) cross-checks the reports against what a real pod

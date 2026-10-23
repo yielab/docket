@@ -16,6 +16,7 @@ import pytest
 from tests.pods import build_pod
 
 from docket.agent.llm import ToolCall
+from docket.agent.tools import builtin_tools
 from docket.agent.tools import registry as core_tools
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
@@ -234,7 +235,7 @@ class TestPregrantAtTheChokepoint:
                     id="c1", name="bash", arguments=json.dumps({"command": "git push origin main"})
                 ),
                 ctx,
-                core_tools.builtin_registry(),
+                builtin_tools.builtin_registry(),
             )
             assert granted.decision == "allow"
             assert granted.executed
@@ -246,7 +247,7 @@ class TestPregrantAtTheChokepoint:
                     arguments=json.dumps({"command": "git push origin main --force"}),
                 ),
                 ctx,
-                core_tools.builtin_registry(),
+                builtin_tools.builtin_registry(),
             )
             assert forced.decision == "deny"
 
@@ -256,6 +257,6 @@ class TestPregrantAtTheChokepoint:
                     id="c3", name="bash", arguments=json.dumps({"command": "git push origin main"})
                 ),
                 ctx,
-                core_tools.builtin_registry(),
+                builtin_tools.builtin_registry(),
             )
             assert again.decision == "deny"

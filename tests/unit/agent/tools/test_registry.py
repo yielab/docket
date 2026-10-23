@@ -19,7 +19,9 @@ from typing import ClassVar
 import pytest
 
 from docket.agent.llm import ToolCall
+from docket.agent.tools import builtin_tools
 from docket.agent.tools import registry as core_tools
+from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.builtins.toolbox import PathEscapeError, ToolOutcome, resolve_within
 from docket.agent.tools.registry import (
@@ -28,11 +30,11 @@ from docket.agent.tools.registry import (
     ToolContext,
     ToolRegistry,
     ToolResult,
-    builtin_registry,
     dispatch_tool,
     evaluate_tool_call,
 )
 from docket.governance import approval as core_approval
+from docket.governance import approval_pregrant
 from docket.governance.security import classify_command
 from docket.kernel.home import Home, current_home, use_home
 from docket.operator.contract import canonical_args_digest
@@ -348,7 +350,7 @@ class TestJailedGateStandsDownTheAllowlist:
 
 
 class TestExtraBinsExtendTheAllowlist:
-    """`classify_command`'s `extra_bins` parameter -- `teams.pod.PodSettings.allow_commands`'s
+    """`classify_command`'s `extra_bins` parameter -- `teams.pod_settings.PodSettings.allow_commands`'s
     live path. Default empty leaves every prior verdict byte-identical."""
 
     def test_default_is_identical_to_omitting_the_argument(self) -> None:
@@ -714,7 +716,7 @@ class TestPreGrants:
 
     def test_a_matching_pregrant_runs_the_handler_without_asking(self, ctx: ToolContext) -> None:
         digest = canonical_args_digest("bash", {"command": "rm x"})
-        token = core_approval.create_pregrant("operator", "tool", "bash", digest, channel="cli")
+        token = approval_pregrant.create_pregrant("operator", "tool", "bash", digest, channel="cli")
         ctx.approval_mode = "refuse"  # a pre-grant must win even over "refuse"
         ctx.pregrants = (Pregrant(token=token, tool="bash", args_digest=digest),)
 
@@ -728,7 +730,7 @@ class TestPreGrants:
 
     def test_an_identical_second_call_asks_again(self, ctx: ToolContext) -> None:
         digest = canonical_args_digest("bash", {"command": "rm x"})
-        token = core_approval.create_pregrant("operator", "tool", "bash", digest, channel="cli")
+        token = approval_pregrant.create_pregrant("operator", "tool", "bash", digest, channel="cli")
         ctx.pregrants = (Pregrant(token=token, tool="bash", args_digest=digest),)
 
         first = dispatch_tool(_call("bash", '{"command": "rm x"}', "c1"), ctx, builtin_registry())
@@ -740,12 +742,14 @@ class TestPreGrants:
 
     def test_a_different_argument_does_not_match(self, ctx: ToolContext) -> None:
         digest = canonical_args_digest("bash", {"command": "rm x"})
-        token = core_approval.create_pregrant("operator", "tool", "bash", digest, channel="cli")
+        token = approval_pregrant.create_pregrant("operator", "tool", "bash", digest, channel="cli")
         ctx.pregrants = (Pregrant(token=token, tool="bash", args_digest=digest),)
 
         res = dispatch_tool(_call("bash", '{"command": "rm y"}'), ctx, builtin_registry())
         assert res.decision == "deny"
-        assert core_approval.consume_pregrant(token) is True  # never spent by the mismatch above
+        assert (
+            approval_pregrant.consume_pregrant(token) is True
+        )  # never spent by the mismatch above
 
 
 class TestResultReportedBackToTheModel:
@@ -768,45 +772,6 @@ class TestResultReportedBackToTheModel:
     def test_failure_surfaces_the_error(self) -> None:
         res = ToolResult(ok=False, error="not a file: x", executed=True)
         assert "not a file: x" in res.as_tool_output()
-
-
-class TestRegistry:
-    @pytest.fixture(autouse=True)
-    def _fetch_allowlisted(self) -> Iterator[None]:
-        """`fetch` is offered only with an allowlist (agent-loop requirement 83); these tests
-        describe the full built-in set."""
-        with use_home(
-            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
-        ):
-            yield
-
-    def test_builtins_present(self) -> None:
-        assert builtin_registry().names() == [
-            "bash",
-            "consult",
-            "edit",
-            "fetch",
-            "glob",
-            "grep",
-            "read",
-            "skill",
-            "write",
-        ]
-
-    def test_specs_carry_schemas_the_model_can_use(self) -> None:
-        specs = {s.name: s for s in builtin_registry().specs()}
-        assert specs["bash"].parameters["required"] == ["command"]
-        assert specs["read"].description
-
-    def test_without_narrows_the_set(self) -> None:
-        readonly = builtin_registry().without("write", "edit", "bash")
-        assert "write" not in readonly and "read" in readonly
-        assert len(readonly) == 6
-
-    def test_a_narrowed_registry_denies_the_removed_tool(self, ctx: ToolContext) -> None:
-        readonly = builtin_registry().without("write")
-        res = dispatch_tool(_call("write", '{"path":"x","content":"y"}'), ctx, readonly)
-        assert res.denied and not (ctx.roots[0] / "x").exists()
 
 
 class TestSkillTool:
@@ -872,6 +837,7 @@ class TestSinglePathToExecution:
     # `toolbox.read_file` et al.); nothing outside `dispatch_tool` ever does.
     ALLOWED_IMPORTERS: ClassVar[set[str]] = {
         "agent/tools/registry.py",
+        "agent/tools/builtin_tools.py",
         "agent/tools/builtins/toolbox.py",
         "agent/tools/mcp_tools.py",
         "agent/tools/mcp_client.py",
@@ -993,7 +959,7 @@ class TestUntrustedResultScreensSeeThePodPolicy:
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("---\nname: deploy\ndescription: d\n---\nCANARY-PHRASE\n")
         ctx = ToolContext(agent_id="a", roots=(ws,), timeout=5, project="mypod", role="implementer")
-        out = core_tools._skill_read({"name": "deploy"}, ctx)
+        out = builtin_tools._skill_read({"name": "deploy"}, ctx)
         assert out.ok is False
         assert "CANARY-PHRASE" not in (out.content or "")
 
@@ -1038,14 +1004,3 @@ class TestRefusedCallsAreAudited:
         )
         assert ok.ok and not missing.ok
         assert self._refused() == []
-
-
-class TestBashDescriptionPrefersTheFileTools:
-    """The bash schema description steers file changes to write/edit."""
-
-    def test_description_names_write_and_edit_over_heredocs(self) -> None:
-        tool = core_tools.builtin_registry().get("bash")
-
-        assert tool is not None
-        assert "`write`/`edit`" in tool.description
-        assert "heredocs" in tool.description

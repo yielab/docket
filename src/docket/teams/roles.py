@@ -229,7 +229,7 @@ def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolR
     Looks *role* up in the live archetype registry (*project*'s pod overlay, when
     given, resolving nearest-wins above the global overlay -- see `load_registry`) and
     removes every name in the **union** of its `denied_tools` and *project*'s own
-    `deniedTools` pod setting (`teams.pod.PodSettings`, see `_pod_denied_tools`) via the
+    `deniedTools` pod setting (`teams.pod_settings.PodSettings`, see `_pod_denied_tools`) via the
     public `ToolRegistry.without()` API -- data-driven, not a per-role branch
     (`agent/loop.py` is the one caller, once per turn, passing the turn's
     `ToolContext.project`). A pod-level denial is therefore as strong as an

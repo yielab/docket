@@ -12,7 +12,8 @@ from typing import Any
 import pytest
 
 from docket.agent.llm import ToolCall
-from docket.agent.tools.registry import ToolContext, ToolResult, builtin_registry, dispatch_tool
+from docket.agent.tools.builtin_tools import builtin_registry
+from docket.agent.tools.registry import ToolContext, ToolResult, dispatch_tool
 from docket.kernel.home import current_home, use_home
 from docket.observability import trace as _trace
 from docket.tasks.application import consult as _consult

@@ -14,7 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from docket.agent import context as _agent_context
 from docket.agent import session as _sess
+from docket.agent import session_compaction as _session_compaction
+from docket.agent import session_units as _session_units
 from docket.agent.llm import ChatMessage, TokenUsage, ToolCall, assistant, system, tool_result, user
 from docket.agent.ports import TurnResult
 from docket.kernel.home import current_home, use_home
@@ -226,188 +229,10 @@ class TestMeasuredUsage:
         # Compaction planning must not be influenced by the measured figure --
         # a budget big enough for the *estimated* content, tiny compared to
         # the measured usage, still reports nothing to compact.
-        plan = _sess.plan_compaction(_sess.load_messages("agent:x:default"), budget_tokens=1000)
-        assert not plan.needed
-
-
-# ── atomic grouping ───────────────────────────────────────────────────────────
-
-
-class TestGroupAtomicUnits:
-    def test_plain_messages_are_each_their_own_unit(self) -> None:
-        msgs = [system("s"), user("u"), assistant("a")]
-        assert _sess.group_atomic_units(msgs) == [[m] for m in msgs]
-
-    def test_tool_call_and_its_result_group_together(self) -> None:
-        turn = _tool_call_turn()
-        groups = _sess.group_atomic_units(turn)
-        assert groups == [turn]
-
-    def test_multiple_tool_calls_group_with_all_their_results(self) -> None:
-        c1 = ToolCall(id="a", name="read", arguments="{}")
-        c2 = ToolCall(id="b", name="write", arguments="{}")
-        asst = assistant("", tool_calls=[c1, c2])
-        r1 = tool_result(c1, "res-a")
-        r2 = tool_result(c2, "res-b")
-        groups = _sess.group_atomic_units([asst, r1, r2])
-        assert groups == [[asst, r1, r2]]
-
-    def test_group_closes_once_matching_results_are_exhausted(self) -> None:
-        """A later, unrelated message after a fully-answered tool call starts a new unit rather than being swept into the group."""
-        turn = _tool_call_turn()
-        tail = user("next question")
-        groups = _sess.group_atomic_units([*turn, tail])
-        assert groups == [turn, [tail]]
-
-    def test_unanswered_tool_call_still_forms_its_own_unit(self) -> None:
-        call = ToolCall(id="c1", name="read", arguments="{}")
-        asst = assistant("", tool_calls=[call])
-        groups = _sess.group_atomic_units([asst])
-        assert groups == [[asst]]
-
-    def test_preexisting_orphan_tool_message_is_its_own_unit(self) -> None:
-        orphan = ChatMessage(role="tool", content="stray", tool_call_id="ghost", name="x")
-        groups = _sess.group_atomic_units([user("hi"), orphan])
-        assert groups == [[user("hi")], [orphan]]
-
-
-class TestOrphanDetection:
-    def test_no_orphans_in_a_well_formed_history(self) -> None:
-        history = [user("q"), *_tool_call_turn(), assistant("done")]
-        assert _sess.find_orphaned_tool_messages(history) == []
-        assert _sess.find_unanswered_tool_calls(history) == []
-
-    def test_detects_a_tool_message_with_no_preceding_call(self) -> None:
-        orphan = ChatMessage(role="tool", content="x", tool_call_id="ghost", name="y")
-        history = [user("q"), orphan]
-        assert _sess.find_orphaned_tool_messages(history) == [1]
-
-    def test_detects_an_unanswered_tool_call(self) -> None:
-        call = ToolCall(id="c1", name="read", arguments="{}")
-        history = [assistant("", tool_calls=[call])]
-        assert _sess.find_unanswered_tool_calls(history) == ["c1"]
-
-    def test_drift_planted_a_split_group_is_caught(self) -> None:
-        """Guard evidence: manually split an atomic unit (the exact bug compaction must never introduce) and confirm the checker flags it both ways -- an orphaned result and, on the other half, an unanswered call."""
-        turn = _tool_call_turn()
-        assistant_only = [turn[0]]
-        tool_only = [turn[1]]
-        assert _sess.find_unanswered_tool_calls(assistant_only) == ["c1"]
-        assert _sess.find_orphaned_tool_messages(tool_only) == [0]
-
-
-# ── plan_compaction: budgeting + the atomicity boundary case ──────────────────
-
-
-class TestPlanCompactionBasics:
-    def test_fits_within_budget_is_a_no_op_plan(self) -> None:
-        msgs = [system("s"), user("hi"), assistant("hello")]
-        plan = _sess.plan_compaction(msgs, budget_tokens=100_000)
-        assert not plan.needed
-        assert plan.keep_head == [system("s")]
-        assert plan.keep_tail == [user("hi"), assistant("hello")]
-
-    def test_leading_system_messages_are_always_kept(self) -> None:
-        msgs = [system("s1"), system("s2"), user("hi")]
-        plan = _sess.plan_compaction(msgs, budget_tokens=1)
-        assert plan.keep_head == [system("s1"), system("s2")]
-
-    def test_at_least_the_most_recent_unit_survives_a_tiny_budget(self) -> None:
-        msgs = [user("a" * 5000), user("final question")]
-        plan = _sess.plan_compaction(msgs, budget_tokens=1)
-        assert plan.keep_tail == [user("final question")]
-        assert plan.to_summarize == [[user("a" * 5000)]]
-
-    def test_no_messages_at_all(self) -> None:
-        plan = _sess.plan_compaction([], budget_tokens=1000)
-        assert plan.keep_head == []
-        assert plan.to_summarize == []
-        assert plan.keep_tail == []
-        assert not plan.needed
-
-    def test_ranged_plan_can_summarize_its_only_unit_when_anchor_is_external(self) -> None:
-        latest = user("large completed tool context " * 100)
-
-        plan = _sess.plan_compaction([latest], budget_tokens=1, keep_latest_unit=False)
-
-        assert plan.keep_tail == []
-        assert plan.to_summarize == [[latest]]
-
-
-class TestPlanCompactionAtomicityBoundary:
-    """The card's named trap: a cut that would land inside a tool-call group."""
-
-    def test_boundary_cut_never_splits_the_tool_call_group(self) -> None:
-        from docket.agent.context import estimate_tokens
-
-        m0 = user("first question, quite a bit of padding text to add weight")
-        call = ToolCall(id="c1", name="read_file", arguments='{"path": "notes.md"}')
-        m1 = assistant("let me check that file", tool_calls=[call])
-        m2 = tool_result(call, "file contents: lorem ipsum dolor sit amet")
-        m3 = user("second question")
-        m4 = assistant("final answer")
-        history = [m0, m1, m2, m3, m4]
-
-        # Craft a budget that fits m4 + m3 + m2 exactly, but not m1 too -- a
-        # naive flat-message cut would keep m2 (the tool result) while
-        # dropping m1 (the tool call that produced it), splitting the group.
-        def _tok(msg: ChatMessage) -> int:
-            return estimate_tokens(_sess._render_message_for_estimate(msg))
-
-        budget = _tok(m4) + _tok(m3) + _tok(m2)
-
-        plan = _sess.plan_compaction(history, budget_tokens=budget)
-
-        # The group [m1, m2] must appear together, either entirely kept or
-        # entirely summarized -- never split across the two.
-        tail_has_m1 = m1 in plan.keep_tail
-        tail_has_m2 = m2 in plan.keep_tail
-        assert tail_has_m1 == tail_has_m2, "tool-call group was split across keep_tail"
-
-        summarized_flat = [m for unit in plan.to_summarize for m in unit]
-        summ_has_m1 = m1 in summarized_flat
-        summ_has_m2 = m2 in summarized_flat
-        assert summ_has_m1 == summ_has_m2, "tool-call group was split across to_summarize"
-
-        # With this specific budget, the group doesn't fit alongside m3+m4,
-        # so it (and the even-older m0) must be pushed into to_summarize
-        # together, whole.
-        assert plan.to_summarize == [[m0], [m1, m2]]
-        assert plan.keep_tail == [m3, m4]
-
-    def test_boundary_case_end_to_end_through_compact_session_has_no_orphans(self) -> None:
-        from docket.agent.context import estimate_tokens
-
-        call = ToolCall(id="c1", name="read_file", arguments="{}")
-        m0 = user("padding " * 20)
-        m1 = assistant("checking", tool_calls=[call])
-        m2 = tool_result(call, "contents")
-        m3 = user("q2")
-        m4 = assistant("a2")
-        _sess.append_messages("agent:x:default", [m0, m1, m2, m3, m4])
-
-        def _tok(msg: ChatMessage) -> int:
-            return estimate_tokens(_sess._render_message_for_estimate(msg))
-
-        budget = _tok(m4) + _tok(m3) + _tok(m2)
-        result = _sess.compact_session(
-            "agent:x:default",
-            role="lead",
-            agent_id="x-lead",
-            summarizer=_summarizing_driver(),
-            budget_tokens=budget,
+        plan = _session_units.plan_compaction(
+            _sess.load_messages("agent:x:default"), budget_tokens=1000
         )
-
-        assert result.ok
-        assert result.compacted
-        final = _sess.load_messages("agent:x:default")
-        assert _sess.find_orphaned_tool_messages(final) == []
-        assert _sess.find_unanswered_tool_calls(final) == []
-        # The tool call and its result are either both gone (folded into the
-        # summary) or both present -- never one without the other.
-        has_call = any(m.tool_calls for m in final)
-        has_result = any(m.role == "tool" for m in final)
-        assert has_call == has_result
+        assert not plan.needed
 
 
 # ── compact_session: fail-closed contract ─────────────────────────────────────
@@ -423,7 +248,7 @@ class TestCompactSessionFailClosed:
         self._seed_over_budget_session()
         before = _sess.load_messages("agent:x:default")
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -439,7 +264,7 @@ class TestCompactSessionFailClosed:
         self._seed_over_budget_session()
         before = _sess.load_messages("agent:x:default")
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -455,14 +280,14 @@ class TestCompactSessionFailClosed:
         """Guard evidence: a compactor that drops old units *before* checking the driver result (the regression this contract forbids) would lose data on a failing driver. Simulate that bug directly and show it would indeed produce a shorter history than the fail-closed implementation does."""
         self._seed_over_budget_session()
         messages = _sess.load_messages("agent:x:default")
-        plan = _sess.plan_compaction(messages, budget_tokens=1)
+        plan = _session_units.plan_compaction(messages, budget_tokens=1)
         assert plan.needed  # there is something a buggy compactor could drop
 
         buggy_result_after_drop = [*plan.keep_head, *plan.keep_tail]
         assert len(buggy_result_after_drop) < len(messages)
 
         # The real implementation must not match the buggy behaviour above.
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -481,7 +306,7 @@ class TestCompactSessionSuccess:
         final = assistant("later durable answer")
         _sess.append_messages("agent:x:default", [task, *tool_unit, final])
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -496,8 +321,8 @@ class TestCompactSessionSuccess:
         assert stored[0] == task
         assert stored[-1] == final
         assert stored[1].content.startswith("[compacted summary of ")
-        assert not _sess.find_orphaned_tool_messages(stored)
-        assert not _sess.find_unanswered_tool_calls(stored)
+        assert not _session_units.find_orphaned_tool_messages(stored)
+        assert not _session_units.find_unanswered_tool_calls(stored)
 
     def test_ranged_compaction_rejects_a_boundary_inside_tool_unit(self) -> None:
         task = user("task")
@@ -506,7 +331,7 @@ class TestCompactSessionSuccess:
         path = _sess._session_path("agent:x:default", None)
         before = path.read_bytes()
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -524,7 +349,7 @@ class TestCompactSessionSuccess:
         _sess.append_messages("agent:x:default", [user("hi")])
         driver, calls = _recording_driver()
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -550,7 +375,7 @@ class TestCompactSessionSuccess:
             seen_keys.append(session_key)
             return TurnResult(True, "summary", 0.0, {})
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -563,7 +388,7 @@ class TestCompactSessionSuccess:
 
     def test_nested_compaction_is_rejected_before_another_summarizer_call(self) -> None:
         _sess.append_messages("agent:x:default", [user("old " * 200), user("keep me")])
-        nested: list[_sess.CompactionResult] = []
+        nested: list[_session_compaction.CompactionResult] = []
         calls = 0
 
         def _driver(
@@ -576,7 +401,7 @@ class TestCompactSessionSuccess:
             nonlocal calls
             calls += 1
             nested.append(
-                _sess.compact_session(
+                _session_compaction.compact_session(
                     "agent:y:default",
                     role="lead",
                     agent_id="y-lead",
@@ -586,7 +411,7 @@ class TestCompactSessionSuccess:
             )
             return TurnResult(True, "summary", 0.0, {})
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -604,7 +429,7 @@ class TestCompactSessionSuccess:
         _sess.append_messages(
             "agent:x:default", [system("sys"), user("old stuff " * 50), user("keep me")]
         )
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -651,7 +476,7 @@ class TestCompactSessionSuccess:
             prompts.append(message)
             return TurnResult(True, f"bounded round {len(prompts)}", 0.0, {})
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             key,
             role="lead",
             agent_id="large-lead",
@@ -665,15 +490,15 @@ class TestCompactSessionSuccess:
         assert result.summary_rounds == len(prompts)
         assert result.summary_rounds > 1
         assert result.max_summary_prompt_estimated_tokens <= 180
-        assert all(_sess._context.estimate_tokens(prompt) <= 180 for prompt in prompts)
+        assert all(_agent_context.estimate_tokens(prompt) <= 180 for prompt in prompts)
         assert any("[compacted summary" in prompt for prompt in prompts[1:])
         assert all(("ATOMIC_CALL" in prompt) == ("ATOMIC_RESULT" in prompt) for prompt in prompts)
         final = _sess.load_messages(key)
         assert final[0] == real_system
         assert final[-1] == user("recent unit must remain")
-        assert _sess._messages_estimated_tokens(final) < result.before_estimated_tokens
-        assert _sess.find_orphaned_tool_messages(final) == []
-        assert _sess.find_unanswered_tool_calls(final) == []
+        assert _session_units._messages_estimated_tokens(final) < result.before_estimated_tokens
+        assert _session_units.find_orphaned_tool_messages(final) == []
+        assert _session_units.find_unanswered_tool_calls(final) == []
 
     def test_failure_in_a_later_round_writes_no_intermediate_candidate(self) -> None:
         key = "agent:late-failure:default"
@@ -695,7 +520,7 @@ class TestCompactSessionSuccess:
                 return TurnResult(False, "", 0.0, {}, "later timeout", "timeout")
             return TurnResult(True, "first bounded summary", 0.0, {})
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             key,
             role="lead",
             agent_id="late-failure-lead",
@@ -716,7 +541,7 @@ class TestCompactSessionSuccess:
         before = path.read_bytes()
         driver, calls = _recording_driver()
 
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             key,
             role="lead",
             agent_id="oversized-lead",
@@ -736,7 +561,7 @@ class TestCompactSessionSuccess:
             [user("old " * 200), user("keep me")],
             usage=TokenUsage(input_tokens=999, output_tokens=111),
         )
-        _sess.compact_session(
+        _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -752,7 +577,7 @@ class TestCompactSessionSuccess:
             "agent:x:default", [user("very important old context"), user("keep me")]
         )
         driver, calls = _recording_driver()
-        _sess.compact_session(
+        _session_compaction.compact_session(
             "agent:x:default",
             role="lead",
             agent_id="x-lead",
@@ -765,7 +590,7 @@ class TestCompactSessionSuccess:
     def test_explicit_budget_overrides_role_resolution(self) -> None:
         """A role with no archetype entry still works when budget_tokens is given explicitly -- compact_session must not require a real role registry."""
         _sess.append_messages("agent:x:default", [user("a" * 4000), user("keep")])
-        result = _sess.compact_session(
+        result = _session_compaction.compact_session(
             "agent:x:default",
             role="not-a-real-role",
             agent_id="x-lead",

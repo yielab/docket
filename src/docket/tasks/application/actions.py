@@ -6,6 +6,7 @@ from typing import Any
 
 from docket.agent import memory as _mem
 from docket.governance import approval as _ap
+from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import audit as _audit
 from docket.hops.application.record import _UnitContext
 from docket.kernel import clock as _clock
@@ -209,7 +210,7 @@ def _mint_task_grant_pregrants(ctx: _UnitContext, role: str) -> list[dict[str, s
         digest = str(grant.get("argsDigest", ""))
         channel = str(grant.get("channel", ""))
         try:
-            pre = _ap.create_pregrant(
+            pre = _approval_pregrant.create_pregrant(
                 ctx.project,
                 role,
                 tool,

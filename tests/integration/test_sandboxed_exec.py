@@ -27,8 +27,9 @@ from pathlib import Path
 import pytest
 
 from docket.agent.llm import ToolCall
+from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
-from docket.agent.tools.registry import ToolContext, builtin_registry, dispatch_tool
+from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.kernel.home import current_home, use_home
 from docket.sandbox import docker as sandbox_docker
 from docket.sandbox import landlock as sandbox_landlock

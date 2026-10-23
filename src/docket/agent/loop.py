@@ -147,17 +147,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import threading
-from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from docket.agent import context as _context
 from docket.agent import identity as _identity
 from docket.agent.llm import (
     ChatBackend,
     ChatMessage,
-    ChatResponse,
     TokenUsage,
     ToolCall,
     ToolSpec,
@@ -165,14 +162,27 @@ from docket.agent.llm import (
     tool_result,
     user,
 )
-from docket.agent.ports import FailureKind, TurnResult
-from docket.agent.session import (
-    CompactionResult,
-    append_messages,
-    compact_session,
-    condense_history,
-    load_messages,
+from docket.agent.loop_request import (
+    _accumulate,
+    _build_reduction_candidates,
+    _estimate_input_tokens,
+    _finalization_messages,
+    _segment_revision,
+    _selected_estimate,
+    _usage_delta,
 )
+from docket.agent.loop_trace import (
+    _trace_compaction,
+    _trace_llm_call,
+    _trace_prompt_composed,
+    _trace_request_fit,
+    _trace_terminal_finalization,
+    _trace_tool_call,
+    _trace_tool_result,
+)
+from docket.agent.ports import FailureKind, TurnResult
+from docket.agent.session import append_messages, condense_history, load_messages
+from docket.agent.session_compaction import CompactionResult, compact_session
 from docket.agent.tools.registry import (
     ToolContext,
     ToolDenialKind,
@@ -181,10 +191,7 @@ from docket.agent.tools.registry import (
     dispatch_tool,
 )
 from docket.kernel import clock as _clock
-from docket.kernel import text as _text
 from docket.kernel.home import current_home
-from docket.observability import telemetry as _telemetry
-from docket.observability.trace import trace_event
 from docket.teams import roles as _archetypes
 
 __all__ = [
@@ -210,12 +217,6 @@ StopReason = Literal[
     "approval_parked",
     "no_progress",
 ]
-
-_FINALIZATION_INSTRUCTION = (
-    "The remaining cumulative turn budget cannot safely fund another tool-enabled round. "
-    "Return the truthful terminal response now using only the work already completed and the "
-    "tool results above. Do not request any tools. If the task is incomplete, say so explicitly."
-)
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
 # The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
 MIN_OUTPUT_TOKENS = 256
@@ -284,134 +285,6 @@ class AgentLoopResult:
     provider: str = ""
 
 
-def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
-    """Fold one exchange's real ``TokenUsage`` into the turn's running total.
-
-    Mirrors ``agent.session._add_usage``'s shape exactly (a separate function,
-    not an import of that private helper, since the two accumulate into
-    different record types — a session's lifetime total vs. one turn's).
-    """
-    return TokenUsage(
-        input_tokens=current.input_tokens + delta.input_tokens,
-        output_tokens=current.output_tokens + delta.output_tokens,
-        cached_tokens=current.cached_tokens + delta.cached_tokens,
-        cache_write_tokens=current.cache_write_tokens + delta.cache_write_tokens,
-    )
-
-
-def _usage_delta(current: TokenUsage, previous: TokenUsage) -> TokenUsage:
-    return TokenUsage(
-        input_tokens=current.input_tokens - previous.input_tokens,
-        output_tokens=current.output_tokens - previous.output_tokens,
-        cached_tokens=current.cached_tokens - previous.cached_tokens,
-        cache_write_tokens=current.cache_write_tokens - previous.cache_write_tokens,
-    )
-
-
-def _fallback_input_estimate(
-    messages: list[ChatMessage],
-    tools: list[ToolSpec],
-    max_tokens: int | None,
-    temperature: float | None,
-) -> int:
-    """Estimate all model-visible components for a non-wire-aware backend."""
-    payload = {
-        "messages": [
-            {
-                "role": message.role,
-                "content": message.content,
-                "tool_calls": [
-                    {"id": call.id, "name": call.name, "arguments": call.arguments}
-                    for call in message.tool_calls
-                ],
-                "tool_call_id": message.tool_call_id,
-                "name": message.name,
-            }
-            for message in messages
-        ],
-        "tools": [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parameters,
-            }
-            for tool in tools
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-    return max(1, _context.estimate_tokens(json.dumps(payload, ensure_ascii=False))) + 16
-
-
-def _estimate_input_tokens(
-    backend: ChatBackend,
-    messages: list[ChatMessage],
-    tools: list[ToolSpec],
-    max_tokens: int | None,
-    temperature: float | None,
-) -> int:
-    estimator = getattr(backend, "estimate_input_tokens", None)
-    if callable(estimator):
-        estimated = estimator(
-            messages,
-            tools=tools,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        return max(1, int(estimated))
-    return _fallback_input_estimate(messages, tools, max_tokens, temperature)
-
-
-def _trace_request_fit(
-    project: str,
-    session_key: str,
-    role: str,
-    *,
-    purpose: str,
-    status: str,
-    estimated_input_tokens: int,
-    output_reserve_tokens: int,
-    context_window_tokens: int | None,
-    task_id: str = "",
-) -> None:
-    trace_event(
-        project,
-        session_key,
-        role,
-        "request_fit",
-        json.dumps(
-            {
-                "purpose": purpose,
-                "status": status,
-                "estimatedInputTokens": estimated_input_tokens,
-                "outputReserveTokens": output_reserve_tokens,
-                "contextWindowTokens": context_window_tokens,
-                "estimate": True,
-            }
-        ),
-        task_id=task_id,
-    )
-
-
-def _trace_tool_call(
-    project: str,
-    session_key: str,
-    role: str,
-    tool: str,
-    call_id: str,
-    arguments: str,
-    task_id: str = "",
-) -> None:
-    trace_event(
-        project,
-        session_key,
-        role,
-        "tool_call",
-        json.dumps({"tool": tool, "callId": call_id, "arguments": arguments}),
-        task_id=task_id,
-    )
-
-
 # Quoted key=value pairs, because TurnResult carries no structured field to hold these. A
 # function rather than an inline string so a test can drive the real format.
 def approval_unavailable_error(result: ToolResult) -> str:
@@ -429,241 +302,6 @@ def approval_parked_error(result: ToolResult) -> str:
         f"approval_parked: tool={result.tool!r} call_id={result.call_id!r} "
         f"policy_id={result.policy_id!r} reason={result.reason!r} "
         f"approval_token={result.approval_token!r}"
-    )
-
-
-def _trace_tool_result(
-    project: str,
-    session_key: str,
-    role: str,
-    tool: str,
-    call_id: str,
-    decision: str,
-    ok: bool,
-    executed: bool,
-    denial_kind: ToolDenialKind | None,
-    policy_id: str = "",
-    reason: str = "",
-    task_id: str = "",
-    output: str | None = None,
-) -> None:
-    """One tool outcome; *output*, the text fed back to the model, is recorded as ``text``
-    only when an enabled exporter grants ``toolResults``."""
-    payload: dict[str, Any] = {
-        "tool": tool,
-        "callId": call_id,
-        "decision": decision,
-        "ok": ok,
-        "executed": executed,
-    }
-    if denial_kind is not None:
-        payload["denialKind"] = denial_kind
-    if policy_id:
-        payload["policyId"] = policy_id
-    if reason:
-        payload["reason"] = reason
-    if output is not None and "toolResults" in _telemetry.capture_classes():
-        payload["text"] = _text.cut_chars(output, _CONTENT_MAX_CHARS_ON_DISK)
-    trace_event(
-        project,
-        session_key,
-        role,
-        "tool_result",
-        json.dumps(payload),
-        task_id=task_id,
-    )
-
-
-# On-disk bound for one captured text/argument/response part (ADR 0015 §2 rule 5). The
-# per-exporter cut applied at projection time is a separate, narrower bound.
-_CONTENT_MAX_CHARS_ON_DISK = 4000
-
-# The last system-instructions SHA-256 recorded per trace key, so `_capture_llm_call_content`
-# writes the text again only when it changes (ADR 0015 §2 rule 5).
-_INSTRUCTIONS_HASH_LOCK = threading.Lock()
-_LAST_INSTRUCTIONS_HASH: dict[str, str] = {}
-
-
-def _messages_to_otel(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
-    """*messages* in the OTel GenAI ``{"role", "parts"}`` shape (ADR 0015 §1): a ``tool``
-    turn becomes one ``tool_call_response`` part, an assistant's requested tool calls become
-    ``tool_call`` parts, and text becomes a ``text`` part."""
-    out: list[dict[str, Any]] = []
-    for message in messages:
-        parts: list[dict[str, Any]] = []
-        if message.role == "tool":
-            parts.append(
-                {
-                    "type": "tool_call_response",
-                    "id": message.tool_call_id,
-                    "response": _text.cut_chars(message.content, _CONTENT_MAX_CHARS_ON_DISK),
-                }
-            )
-        else:
-            if message.content:
-                parts.append(
-                    {
-                        "type": "text",
-                        "content": _text.cut_chars(message.content, _CONTENT_MAX_CHARS_ON_DISK),
-                    }
-                )
-            for call in message.tool_calls:
-                parts.append(
-                    {
-                        "type": "tool_call",
-                        "id": call.id,
-                        "name": call.name,
-                        "arguments": _text.cut_chars(call.arguments, _CONTENT_MAX_CHARS_ON_DISK),
-                    }
-                )
-        out.append({"role": message.role, "parts": parts})
-    return out
-
-
-def _capture_llm_call_content(
-    payload: dict[str, Any],
-    trace_key: str,
-    messages: Sequence[ChatMessage],
-    response: ChatResponse,
-) -> None:
-    """Add ``inputMessages``/``outputMessages``/``systemInstructions`` to *payload* for the
-    classes an enabled exporter was granted (ADR 0015 §2 rule 4); a no-op when nothing is
-    granted, so the payload stays exactly what it was before this capture existed."""
-    granted = _telemetry.capture_classes()
-    if not granted:
-        return
-    if "prompts" in granted:
-        payload["inputMessages"] = _messages_to_otel([m for m in messages if m.role != "system"])
-    if "completions" in granted:
-        payload["outputMessages"] = _messages_to_otel([response.message])
-    if "instructions" not in granted:
-        return
-    system_text = next((m.content for m in messages if m.role == "system"), None)
-    if system_text is None:
-        return
-    digest = hashlib.sha256(system_text.encode()).hexdigest()
-    with _INSTRUCTIONS_HASH_LOCK:
-        if _LAST_INSTRUCTIONS_HASH.get(trace_key) != digest:
-            payload["systemInstructions"] = _text.cut_chars(system_text, _CONTENT_MAX_CHARS_ON_DISK)
-            _LAST_INSTRUCTIONS_HASH[trace_key] = digest
-    payload["systemInstructionsSha256"] = digest
-
-
-def _trace_llm_call(
-    project: str,
-    session_key: str,
-    role: str,
-    response: ChatResponse,
-    iteration: int | None = None,
-    *,
-    purpose: str = "",
-    task_id: str = "",
-    messages: Sequence[ChatMessage] | None = None,
-) -> None:
-    """One backend chat-completions exchange, measured -- never a cost figure. ``request`` is the
-    adapter's own byte count of the body it sent; the content of *messages* is captured only for
-    classes an enabled exporter asked for."""
-    payload: dict[str, Any] = {
-        "model": response.model,
-        "provider": response.provider,
-        "ok": response.ok,
-        "finishReason": response.finish_reason,
-        "failureKind": response.failure_kind,
-        "inputTokens": response.usage.input_tokens,
-        "outputTokens": response.usage.output_tokens,
-        "cachedTokens": response.usage.cached_tokens,
-    }
-    if response.usage.cache_write_tokens > 0:
-        payload["cacheWriteTokens"] = response.usage.cache_write_tokens
-    if iteration is not None:
-        payload["iteration"] = iteration
-    if purpose:
-        payload["purpose"] = purpose
-    if response.request_bytes:
-        payload["request"] = {
-            part: {"bytes": size, "estTokens": size // current_home().context_bytes_per_token}
-            for part, size in response.request_bytes.items()
-        }
-    if messages is not None:
-        _capture_llm_call_content(payload, session_key, messages, response)
-    trace_event(
-        project,
-        session_key,
-        role,
-        "llm_call",
-        json.dumps(payload),
-        duration_ms=response.latency_ms,
-        task_id=task_id,
-    )
-
-
-def _trace_compaction(
-    project: str,
-    session_key: str,
-    role: str,
-    result: CompactionResult,
-    task_id: str = "",
-) -> None:
-    status = "failed" if not result.ok else "succeeded" if result.compacted else "no_op"
-    trace_event(
-        project,
-        session_key,
-        role,
-        "session_compaction",
-        json.dumps(
-            {
-                "status": status,
-                "beforeMessageCount": result.before_message_count,
-                "afterMessageCount": result.after_message_count,
-                "beforeEstimatedTokens": result.before_estimated_tokens,
-                "afterEstimatedTokens": result.after_estimated_tokens,
-                "groupsSummarized": result.groups_summarized,
-                "summaryRounds": result.summary_rounds,
-                "maxSummaryPromptEstimatedTokens": (result.max_summary_prompt_estimated_tokens),
-            }
-        ),
-        task_id=task_id,
-    )
-
-
-def _trace_terminal_finalization(
-    project: str,
-    session_key: str,
-    role: str,
-    *,
-    status: str,
-    reason: str,
-    token_budget: int,
-    measured_tokens_used: int,
-    normal_estimated_input_tokens: int,
-    finalization_estimated_input_tokens: int,
-    output_reserve_tokens: int,
-    task_id: str = "",
-) -> None:
-    remaining = max(0, token_budget - measured_tokens_used)
-    trace_event(
-        project,
-        session_key,
-        role,
-        "budget_warning",
-        json.dumps(
-            {
-                "action": "terminal_finalization",
-                "status": status,
-                "reason": reason,
-                "tokenBudget": token_budget,
-                "measuredTokensUsed": measured_tokens_used,
-                "remainingMeasuredTokens": remaining,
-                "normalEstimatedInputTokens": normal_estimated_input_tokens,
-                "finalizationEstimatedInputTokens": finalization_estimated_input_tokens,
-                "outputReserveTokens": output_reserve_tokens,
-                "normalProspectiveTokens": normal_estimated_input_tokens + output_reserve_tokens,
-                "finalizationProspectiveTokens": finalization_estimated_input_tokens
-                + output_reserve_tokens,
-                "estimate": True,
-            }
-        ),
-        task_id=task_id,
     )
 
 
@@ -702,33 +340,6 @@ def _resolve_trace_coordinates(
     return project, trace_key
 
 
-def _trace_prompt_composed(
-    project: str,
-    session_key: str,
-    role: str,
-    sections: tuple[_identity.PromptSectionReport, ...],
-    budget_tokens: int,
-    budget_source: str,
-    task_id: str = "",
-) -> None:
-    trace_event(
-        project,
-        session_key,
-        role,
-        "prompt_composed",
-        json.dumps(
-            {
-                "sections": [
-                    {"name": s.name, "bytes": s.bytes, "status": s.status} for s in sections
-                ],
-                "budgetTokens": budget_tokens,
-                "budgetSource": budget_source,
-            }
-        ),
-        task_id=task_id,
-    )
-
-
 # Resolved once per turn, not per iteration -- neither the role's toolset nor
 # this agent's identity files change mid-turn. *context_window_tokens*/
 # *output_reserve_tokens* are this turn's already-resolved model bounds (see
@@ -751,66 +362,6 @@ def _resolve_role_registry_and_prompt(
         max_output_tokens=output_reserve_tokens,
     )
     return registry, composition, registry.specs()
-
-
-def _selected_estimate(selected: list[ChatMessage]) -> int:
-    return max(1, _fallback_input_estimate(selected, [], None, None) - 16)
-
-
-def _segment_revision(selected: list[ChatMessage]) -> str:
-    encoded = json.dumps(
-        [asdict(message) for message in selected],
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _build_reduction_candidates(
-    durable: list[ChatMessage],
-    task_index: int,
-    protected_segments: dict[str, tuple[int, str]],
-) -> list[tuple[str, tuple[int, int], bool, int]]:
-    """Suffix-then-prefix compaction candidates; mutates ``protected_segments`` for a
-    stale checkpoint that no longer matches durable history."""
-    candidate_ranges: list[tuple[str, tuple[int, int], bool, int]] = []
-    if task_index + 1 < len(durable):
-        suffix_start = task_index + 1
-        prior_protected_count = 0
-        checkpoint = protected_segments.get("suffix")
-        if checkpoint is not None:
-            protected_count, protected_revision = checkpoint
-            suffix = durable[suffix_start:]
-            protected = suffix[:protected_count]
-            if (
-                len(protected) == protected_count
-                and _segment_revision(protected) == protected_revision
-            ):
-                suffix_start += protected_count
-                prior_protected_count = protected_count
-            else:
-                protected_segments.pop("suffix", None)
-        if suffix_start < len(durable):
-            candidate_ranges.append(
-                ("suffix", (suffix_start, len(durable)), False, prior_protected_count)
-            )
-    if task_index > 0:
-        prefix = durable[:task_index]
-        checkpoint = protected_segments.get("prefix")
-        if checkpoint is None or checkpoint != (len(prefix), _segment_revision(prefix)):
-            candidate_ranges.append(("prefix", (0, task_index), True, 0))
-    return candidate_ranges
-
-
-def _finalization_messages(current: list[ChatMessage]) -> list[ChatMessage]:
-    # Keep the instruction in the leading system slot for adapters/models
-    # that require system messages before conversation history. This copy
-    # is request-only and is never written to durable history.
-    if current and current[0].role == "system":
-        terminal_system = system(f"{current[0].content}\n\n{_FINALIZATION_INSTRUCTION}")
-        return [terminal_system, *current[1:]]
-    return [system(_FINALIZATION_INSTRUCTION), *current]
 
 
 @dataclass

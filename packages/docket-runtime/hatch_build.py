@@ -29,6 +29,7 @@ _RUNTIME_FILES = (
     "agent/tools/registry.py",
     "governance/__init__.py",
     "governance/approval.py",
+    "governance/approval_pregrant.py",
     "governance/audit.py",
     "governance/plugin_api.py",
     "governance/plugins.py",

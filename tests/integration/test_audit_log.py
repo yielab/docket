@@ -12,6 +12,7 @@ fixture, since these tests inspect what got written.
 from __future__ import annotations
 
 import dataclasses
+import getpass
 import json
 import multiprocessing
 import os
@@ -29,7 +30,6 @@ from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import log as audit_cli
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
-from docket.interfaces.cli.commands import setup_model as keys_cli
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.interfaces.cli.commands.agents import InitRequest, run_init
 from docket.kernel.home import Home, current_home, use_home
@@ -685,7 +685,7 @@ class TestKeysAudit:
         self, keys_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _setup_model_credentials._write_credential("ANTHROPIC_API_KEY", _KEY_VALUE, "add")
-        monkeypatch.setattr(keys_cli._getpass, "getpass", lambda *a, **k: _KEY_VALUE)
+        monkeypatch.setattr(getpass, "getpass", lambda *a, **k: _KEY_VALUE)
         rc = _setup_model_credentials.credential_rotate("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.rotate")
