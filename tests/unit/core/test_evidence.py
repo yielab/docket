@@ -83,8 +83,8 @@ class TestTaskEvidence:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         task_id = _run_three_hops(monkeypatch)
-        ev = _ev.task_evidence("demo", task_id, "1.0.0")
-        assert ev.v == _ev.EVIDENCE_V1 == "1.0.0"
+        ev = _ev.task_evidence("demo", task_id, "1.1.0")
+        assert ev.v == _ev.EVIDENCE_V1_1 == "1.1.0"
         assert (ev.pod, ev.task_id, ev.status) == ("demo", task_id, "done")
         assert [h.role for h in ev.hops] == ["lead", "implementer", "reviewer"]
         for hop in ev.hops:
@@ -97,7 +97,7 @@ class TestTaskEvidence:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         task_id = _run_three_hops(monkeypatch)
-        ev = _ev.task_evidence("demo", task_id, "1.0.0")
+        ev = _ev.task_evidence("demo", task_id, "1.1.0")
         for hop in ev.hops:
             assert hop.trace is not None
             found = _trace.find_trace(hop.trace.session)
@@ -111,37 +111,13 @@ class TestTaskEvidence:
             assert window, f"no events for {hop.role} inside its recorded window"
             assert any(r["event_type"] == "llm_call" for r in window)
 
-    def test_evidence_never_carries_the_internal_touched_key(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x", channel="cli")
-        rec = _dispatch._hop_record(
-            _dispatch.HopResult(
-                role="implementer",
-                member_id="demo-implementer",
-                ok=True,
-                verify={
-                    "cmd": "true",
-                    "exitCode": 0,
-                    "durationS": 0.1,
-                    "outputTail": "",
-                    "touched": ["/x/y"],
-                },
-            )
-        )
-        _seed_task(task["id"], [rec])
-        ev = _ev.task_evidence("demo", task["id"], "1.0.0")
-        assert ev.hops[0].verify is not None
-        assert "touched" not in json.dumps(ev.model_dump(by_alias=True))
-
     def test_legacy_record_without_the_new_fields_builds(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         task = _dispatch.enqueue_task("demo", "old", channel="cli")
         _seed_task(task["id"], [{"role": "lead", "member": "demo-lead", "ok": True}])
-        ev = _ev.task_evidence("demo", task["id"], "1.0.0")
+        ev = _ev.task_evidence("demo", task["id"], "1.1.0")
         hop = ev.hops[0]
         assert hop.usage is None and hop.trace is None and hop.verify is None
         assert hop.commit is None and hop.step_id == "lead"
@@ -151,7 +127,7 @@ class TestTaskEvidence:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         with pytest.raises(_ev.EvidenceNotFound):
-            _ev.task_evidence("demo", "task-nope", "1.0.0")
+            _ev.task_evidence("demo", "task-nope", "1.1.0")
 
 
 _GATED_VERIFY = {
@@ -164,7 +140,6 @@ _GATED_VERIFY = {
     "reasonsInvalid": False,
 }
 _REPO_FILES = {"AGENTS.md": "a" * 64}
-_V1_KEYS = {"v", "pod", "taskId", "status", "hops"}
 
 
 def _gated_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
@@ -217,18 +192,6 @@ class TestEvidence11:
         doc = json.loads(ev.model_dump_json(by_alias=True))
         assert "directives" not in doc and "gate" not in doc["hops"][0]
         jsonschema.validate(doc, _schema("evidence-v1.1"))
-
-    def test_one_point_zero_is_the_old_document_whatever_the_record_holds(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        task_id = _gated_task(tmp_path, monkeypatch)
-        doc = json.loads(_ev.task_evidence("demo", task_id, "1.0.0").model_dump_json(by_alias=True))
-        assert doc["v"] == "1.0.0" and set(doc) == _V1_KEYS
-        assert all("gate" not in hop for hop in doc["hops"])
-        assert set(doc["hops"][0]) == {
-            "role", "stepId", "ok", "verdict", "verify", "commit", "baseCommit",
-            "diffStat", "usage", "trace",
-        }  # fmt: skip
 
     def test_unknown_version_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

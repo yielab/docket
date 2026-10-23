@@ -1,10 +1,9 @@
-"""evidence: what a finished task's hops kept, as one published model (1.0.0 and 1.1.0).
+"""evidence: what a finished task's hops kept, as one published model (1.1.0).
 
 ``task_evidence`` is the one builder. It reads the persisted task record and projects each hop
 through these models; later surfaces (CLI, HTTP) serve the result and never assemble it
 themselves. Everything here is measured or recorded: tokens are the endpoint's counts, never an
 estimate or a dollar figure, and the model carries no score or verdict about the evidence.
-The internal ``verify["touched"]`` key never crosses into this contract.
 """
 
 from __future__ import annotations
@@ -16,9 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler
 from docket.core import dispatch as _dispatch
 from docket.kernel.errors import InvalidInput, NotFound
 
-EVIDENCE_V1 = "1.0.0"
-EVIDENCE_V1_1 = "1.1.0"
-EvidenceVersion = Literal["1.0.0", "1.1.0"]
+EVIDENCE_V1_1: Literal["1.1.0"] = "1.1.0"
+EvidenceVersion = Literal["1.1.0"]
 
 
 class EvidenceNotFound(NotFound):
@@ -72,7 +70,9 @@ class HopEvidence(_Model):
 
 
 class TaskEvidence(_Model):
-    v: Literal["1.0.0"] = EVIDENCE_V1  # type: ignore[assignment]
+    """The shared shape; ``TaskEvidence11`` is the only published document and pins ``v``."""
+
+    v: str
     pod: str
     task_id: str = Field(alias="taskId")
     status: str
@@ -108,7 +108,7 @@ class HopEvidence11(HopEvidence):
 class TaskEvidence11(TaskEvidence):
     """``directives`` is absent, never ``null``, when no hop composed a repository file."""
 
-    v: Literal["1.1.0"] = EVIDENCE_V1_1  # type: ignore[assignment]
+    v: Literal["1.1.0"] = EVIDENCE_V1_1
     hops: list[HopEvidence11]  # type: ignore[assignment]
     directives: list[DirectiveEvidence] | None = None
 
@@ -211,18 +211,15 @@ def _directives(records: list[dict[str, Any]]) -> list[DirectiveEvidence]:
 
 
 def task_evidence(project: str, task_id: str, version: EvidenceVersion) -> TaskEvidence:
-    """The one evidence builder: *task_id*'s record in pod *project* as the *version* document
-    (``"1.0.0"`` never carries the 1.1.0 fields). Raises ``EvidenceNotFound`` for an unknown
-    task and ``ValueError`` for an unknown version."""
-    if version not in (EVIDENCE_V1, EVIDENCE_V1_1):
+    """The one evidence builder: *task_id*'s record in pod *project* as the *version* document.
+    Raises ``EvidenceNotFound`` for an unknown task and ``ValueError`` for an unknown version."""
+    if version != EVIDENCE_V1_1:
         raise InvalidInput(f"unknown evidence version {version!r}")
     for task in _dispatch.read_tasks(project):
         if task.get("id") == task_id:
             records = [h for h in task.get("hops", []) if isinstance(h, dict)]
             hops = [_hop_evidence(h) for h in records]
             status = str(task.get("status", ""))
-            if version == EVIDENCE_V1:
-                return TaskEvidence(pod=project, task_id=task_id, status=status, hops=hops)
             return TaskEvidence11(
                 pod=project,
                 task_id=task_id,

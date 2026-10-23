@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gen_evidence_schema.py -- render the evidence contracts' schema.json (1.0.0 and 1.1.0).
+"""gen_evidence_schema.py -- render the evidence contract's schema.json (1.1.0).
 
 ``core.evidence``'s Pydantic models are the source of truth; this script only serializes
 them, so `--check` failing means the wire shape moved without regenerating the published
@@ -19,7 +19,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "docs" / "contracts"
 SCHEMA_PATHS = {
-    "1.0.0": CONTRACTS / "evidence-v1" / "schema.json",
     "1.1.0": CONTRACTS / "evidence-v1.1" / "schema.json",
 }
 
@@ -30,7 +29,7 @@ def render(version: str) -> str:
     """Return the generated schema.json content for *version*, trailing newline included."""
     from docket.core import evidence
 
-    model = evidence.TaskEvidence if version == evidence.EVIDENCE_V1 else evidence.TaskEvidence11
+    model = evidence.TaskEvidence11
     document = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "docket evidence contract",

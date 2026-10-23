@@ -159,7 +159,6 @@ class TestHandoffArtifactBrief:
             files_changed=["a.py", "b.py"],
             diff_ref="feature-branch",
             verdict="approve",
-            notes="some notes",
             brief=brief,
         )
         compiled = _ctx.compile_artifact(artifact, budget_tokens=1)
@@ -167,7 +166,7 @@ class TestHandoffArtifactBrief:
         # brief's own content must still be present in the final rendered text, since
         # it is excluded from DROP_ORDER and `render()` always includes it when set.
         assert "Objective: add a widget" in compiled.text
-        assert set(compiled.dropped_fields) == {"notes", "diff_ref", "files_changed", "verdict"}
+        assert set(compiled.dropped_fields) == {"diff_ref", "files_changed", "verdict"}
 
 
 class TestDiff:

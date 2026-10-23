@@ -5,7 +5,7 @@ hop otherwise has nothing to reason about except opaque prior-hop text — no
 notion of which part of a reply is a one-line verdict, which is the file list
 a code change touched, or which fields are safe to shed first once a token
 budget gets tight. The shape (``summary``, ``files_changed``, ``diff_ref``, ``diff``,
-``verdict``, ``notes``) plus a declared drop order gives a size-constrained
+``verdict``) plus a declared drop order gives a size-constrained
 consumer (``core/context.py``'s token-budget compiler) an order to shed
 fields in without inventing one itself.
 
@@ -41,10 +41,6 @@ other field at its default).
   empty default for a ``workdir`` (non-codebase) pod, a workspace that is not a
   git repository, or a host with no ``git`` binary — an honest degrade, never an
   exception, never a crash mid-dispatch.
-- ``notes`` — free-form and **reserved**: the schema carries it (and
-  ``DROP_ORDER`` accounts for it) so a future producer never needs a schema
-  migration, but nothing in dispatch writes it today. Always ``""`` unless a
-  caller builds an artifact by hand.
 - ``brief`` — the Lead's typed intake output (``parse_brief``), when its raw
   reply's last fenced ``json`` block validates as a ``TaskBrief``. ``None``
   for every other hop, and for a Lead hop with no parseable brief -- a brief
@@ -145,10 +141,6 @@ class HandoffArtifact(BaseModel):
     #: (``cap_diff``). First in ``DROP_ORDER``; ``""`` when the hop changed nothing.
     diff: str = ""
     verdict: str | None = None
-    #: Free-form and reserved: the schema and DROP_ORDER account for it
-    #: so a future producer needs no migration, but dispatch writes nothing
-    #: here today — always "" unless a caller builds an artifact by hand.
-    notes: str = ""
     #: The Lead's typed intake output, when this hop's raw text parsed as one
     #: (``parse_brief``) -- ``None`` for every other hop. Never shed: excluded
     #: from ``DROP_ORDER`` on purpose, the same posture as ``summary``.
@@ -157,7 +149,6 @@ class HandoffArtifact(BaseModel):
     #: Least-valuable-first shedding order for a token-budgeted consumer.
     DROP_ORDER: ClassVar[tuple[str, ...]] = (
         "diff",
-        "notes",
         "diff_ref",
         "files_changed",
         "verdict",
@@ -166,7 +157,6 @@ class HandoffArtifact(BaseModel):
     #: The "reset to empty" value for each droppable field — used by ``dropped()``.
     _EMPTY_VALUES: ClassVar[dict[str, Any]] = {
         "diff": "",
-        "notes": "",
         "diff_ref": None,
         "files_changed": [],
         "verdict": None,
@@ -202,8 +192,6 @@ class HandoffArtifact(BaseModel):
             lines.append(f"Files changed: {', '.join(self.files_changed)}")
         if self.diff_ref is not None:
             lines.append(f"Diff ref: {self.diff_ref}")
-        if self.notes:
-            lines.append(f"Notes: {self.notes}")
         return "\n".join(lines)
 
     def dropped(self, field: str) -> HandoffArtifact:

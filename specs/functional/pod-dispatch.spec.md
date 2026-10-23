@@ -1403,16 +1403,14 @@ parsing for any verdict-gated step (`parse_verdict`).
    marker for a `VerdictGate`-gated hop, else `None`), `files_changed` (populated by a real git
    probe for any hop that changed the tree -- see "Implementer diff producer" below), `diff_ref` (the
    same probe, Implementer hops only), `diff` (the capped text of what a hop that changed the tree
-   wrote, `""` otherwise), `brief` (a parsed `TaskBrief`, see "Task brief", else `None`) and `notes`
-   (free-form and **reserved**: the schema and `DROP_ORDER` account for it, but no dispatch code
-   writes it). `HopResult.artifact` **MUST** always be set once a hop is constructed -- a hop built
+   wrote, `""` otherwise), `brief` (a parsed `TaskBrief`, see "Task brief", else `None`). `HopResult.artifact` **MUST** always be set once a hop is constructed -- a hop built
    without one backfills `HandoffArtifact.from_output(output)` (the raw text as `summary`, every other
    field at its default).
 2. The next hop's prompt **MUST** be composed from the prior hop's *rendered artifact*
    (`HandoffArtifact.render()`), never from its raw `output` string directly. `render()` returns
    exactly `summary` unchanged when every other field is at its default; otherwise it appends, in
    this fixed order, a `"Diff:"` block, a `"Brief:"` block, a `"Verdict: <value>"` line, a
-   `"Files changed: ..."` line, a `"Diff ref: ..."` line and a `"Notes: ..."` line for each field
+   `"Files changed: ..."` line, a `"Diff ref: ..."` line for each field
    that is set, so the next hop sees structure the raw reply does not carry, and the diff only once.
 3. The artifact **MUST** be persisted alongside its hop record (an `artifact` key in the persisted
    `hops[]` entry, `HandoffArtifact.model_dump()`) so `--resume` recovers it exactly, not just the
@@ -1421,7 +1419,7 @@ parsing for any verdict-gated step (`parse_verdict`).
    a persisted artifact's normalized `verdict` without reparsing its raw model prose. A record whose
    artifact carries no verdict falls back to parsing the hop's raw output.
 4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
-   (`diff`, `notes`, `diff_ref`, `files_changed`, `verdict` -- `summary` and `brief` are never
+   (`diff`, `diff_ref`, `files_changed`, `verdict` -- `summary` and `brief` are never
    included; `summary` is the artifact's minimum viable content) and a `dropped(field)` helper that
    returns a copy with *field* reset to empty. The context compiler (`compile_artifact`) walks
    `DROP_ORDER` to budget one hop's carryover against its role's token budget (see "Bounded hop
@@ -1773,8 +1771,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    own description **MUST NEVER** itself be truncated or shed -- only a prior hop's rendered artifact
    is subject to budgeting.
 3. When a prior hop's rendered artifact does not fit its share, `compile_artifact` **MUST** shed
-   `HandoffArtifact.DROP_ORDER`'s fields one at a time, least-valuable-first (`diff`, then `notes`,
-   then `diff_ref`, then `files_changed`, then `verdict`), re-measuring the rendered text against
+   `HandoffArtifact.DROP_ORDER`'s fields one at a time, least-valuable-first (`diff`, then
+   `diff_ref`, then `files_changed`, then `verdict`), re-measuring the rendered text against
    the budget after each drop and stopping the moment it fits. A field that is already empty **MUST
    NOT** be reported as dropped -- only a field whose removal changed the rendered text counts. The
    token estimate this checks **MUST** be the rendered artifact's size (`summary` plus any appended
@@ -1900,14 +1898,13 @@ hop records. It scores nothing and carries no dollar figure.
 
 1. The evidence models **MUST** be: `HopEvidence{role, stepId, ok, verdict, verify, commit,
    baseCommit, diffStat, usage{input, output}, trace{project, session, firstTs, lastTs}}` and
-   `TaskEvidence{v, pod, taskId, status, hops}` with camelCase wire names. The version constants are
-   `EVIDENCE_V1` (`"1.0.0"`) and `EVIDENCE_V1_1` (`"1.1.0"`). The schema is generated into
-   `docs/contracts/evidence-v1/schema.json` by a generator whose `--check` runs in CI's docs job.
+   `TaskEvidence{v, pod, taskId, status, hops}` with camelCase wire names. The version constant is
+   `EVIDENCE_V1_1` (`"1.1.0"`). The schema is generated into
+   `docs/contracts/evidence-v1.1/schema.json` by a generator whose `--check` runs in CI's docs job.
 2. `task_evidence(project, task_id, version)` **MUST** be the only builder, reading the pod's queue.
    An unknown task raises `EvidenceNotFound` (surfaces map it to 404 / exit 1); an unknown version
    raises `ValueError`.
-3. `verify` in evidence **MUST** carry exactly `cmd`, `exitCode`, `durationS`, `outputTail`. The
-   internal `touched` key **MUST NOT** appear in evidence.
+3. `verify` in evidence **MUST** carry exactly `cmd`, `exitCode`, `durationS`, `outputTail`.
 4. Each hop record **MUST** persist `usage` (`{"input", "cached", "cacheWrite", "output"}`, the turn's
    measured `TokenUsage`, never an estimate; evidence projects `input` and `output`) and `trace`
    (`{"project", "session", "firstTs", "lastTs"}`). `TurnResult.usage` carries the measured counts;
@@ -1924,7 +1921,7 @@ hop records. It scores nothing and carries no dollar figure.
 6. A hop record that lacks these fields **MUST** still build: `usage`, `trace`, `verify`, `commit`,
    `baseCommit` and `diffStat` are `null`.
 7. **Evidence 1.1.0** (ADR 0025) adds exactly two optional fields and nothing else. `task_evidence`
-   **MUST** take the version, `"1.0.0"` or `"1.1.0"`; `"1.0.0"` **MUST** carry neither new field.
+   **MUST** take the version `"1.1.0"`, the only evidence version; any other version raises `ValueError`.
    `docket task show --json` and `GET /tasks/<pod>/<id>/evidence` **MUST** serve `"1.1.0"`.
 8. Under `"1.1.0"`, `HopEvidence.gate` is `{label, exitCode, reasonsInvalid}`, copied from the hop's
    `verify` and present only when that `verify` carries a `label` (a hop that ran an external gate);
@@ -1933,8 +1930,7 @@ hop records. It scores nothing and carries no dollar figure.
    `repoFiles` (the `TurnResult.repo_files` the turn composed from the task's base commit; dispatch
    copies it onto the hop, evidence never recomputes it). A field with nothing to say **MUST** be
    absent from the document, not `null`. The 1.1.0 schema is generated into
-   `docs/contracts/evidence-v1.1/schema.json`; `docs/contracts/evidence-v1/schema.json` stays
-   byte-identical.
+   `docs/contracts/evidence-v1.1/schema.json`.
 
 ### Sweep workers
 
@@ -2266,7 +2262,7 @@ queue.)
 - `src/docket/core/archetypes.py`: `load_registry`, `resolve_hop_instruction`, `registry_for_role`,
   `BUILTIN_TOOL_KINDS`
 - `src/docket/core/blueprints.py`: `get_blueprint`
-- `src/docket/core/evidence.py`: `task_evidence`, `EVIDENCE_V1`, `EVIDENCE_V1_1`, `HopEvidence`,
+- `src/docket/core/evidence.py`: `task_evidence`, `EVIDENCE_V1_1`, `HopEvidence`,
   `TaskEvidence`, `EvidenceNotFound`
 - `src/docket/core/prepare.py`: preparation resolution, cache and record (`resolve`,
   `needs_prepare`, `prepare_worktree`, `linked_entries`)

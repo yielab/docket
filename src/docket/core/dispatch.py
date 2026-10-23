@@ -167,9 +167,7 @@ class HopResult:
     # resumes by re-running this exact index rather than advancing past it.
     parked: bool = False
     # Real evidence from this hop's mechanical verify gate (``_evaluate_mechanical_gate``):
-    # ``{"cmd", "exitCode", "durationS", "outputTail", "touched"}`` (``touched`` = absolute paths
-    # the verify command created or changed in a git checkout, internal: never published), or
-    # ``None`` for a hop with no
+    # ``{"cmd", "exitCode", "durationS", "outputTail"}``, or ``None`` for a hop with no
     # verify gate, or one whose gate had no ``verifyCmd`` configured (see
     # ``verification_skipped``). ``exitCode`` is ``0``/``1`` (``run_verify_cmd`` itself
     # carries no numeric exit code to relay). ``outputTail`` is already redacted -- see
@@ -2379,12 +2377,11 @@ def _match_on_route(on: dict[str, Any] | None, label: str) -> Any:
 @dataclass
 class _GateRun:
     """One gate command's result: its exit status (``None`` when it never ran to an exit:
-    refused, timed out, failed to start), redacted output, wall clock and touched paths."""
+    refused, timed out, failed to start), redacted output and wall clock."""
 
     code: int | None
     redacted: str
     duration_s: float
-    touched: list[str]
 
     @property
     def passed(self) -> bool:
@@ -2401,15 +2398,12 @@ def _gate_cwd(ctx: _UnitContext, member_id: str) -> str:
 def _run_gate_command(
     ctx: _UnitContext, cmd: str, cwd: str, timeout: int, env: dict[str, str] | None = None
 ) -> _GateRun:
-    """Run a gate command in the pod's envelope and fingerprint the worktree around it. The
-    output is redacted here, once, so no caller can persist the raw string."""
-    before = _sys.git_worktree_fingerprint(cwd)
+    """Run a gate command in the pod's envelope. The output is redacted here, once, so no
+    caller can persist the raw string."""
     start = _clock.monotonic()
     code, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
     duration_s = _clock.monotonic() - start
-    after = _sys.git_worktree_fingerprint(cwd)
-    produced = sorted(p for p, fp in after.items() if before.get(p) != fp)
-    return _GateRun(code, _trace.redact(raw_output), duration_s, produced)
+    return _GateRun(code, _trace.redact(raw_output), duration_s)
 
 
 def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
@@ -2421,7 +2415,6 @@ def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
         "exitCode": exit_code,
         "durationS": round(run.duration_s, 3),
         "outputTail": run.redacted[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :],
-        "touched": run.touched,
     }
 
 
