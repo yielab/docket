@@ -107,7 +107,7 @@ def _valid_hop(role: str, *, attempts: int, summary: str) -> dict[str, Any]:
             "files_changed": [RAW_HOME + "/changed.py"],
             "diff_ref": RAW_HOME,
             "verdict": None,
-            "notes": RAW_SECRET,
+            "diff": RAW_SECRET,
         },
     }
 

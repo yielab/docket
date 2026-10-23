@@ -108,7 +108,6 @@ def _valid_hop(role: str = "lead") -> dict[str, Any]:
             "files_changed": [],
             "diff_ref": "fixture",
             "verdict": None,
-            "notes": "",
         },
     }
 
