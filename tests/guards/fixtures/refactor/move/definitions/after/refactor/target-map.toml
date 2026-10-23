@@ -1,0 +1,9 @@
+[[definition]]
+from = "docket.core.dispatch"
+to = "docket.tasks.claim"
+names = ["_ClaimState", "_read", "claim_next"]
+
+[[definition]]
+from = "docket.core.dispatch"
+to = "docket.hops.runner"
+names = ["QUEUE_LIMIT", "run_hop"]
