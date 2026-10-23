@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from threading import RLock
 
+from docket_runtime import _bind  # noqa: F401  (binds the real adapters)
 from docket_runtime._execution import ExecutionLimits, ExecutionResult, GovernedExecution
 from docket_runtime._internal.docket.agent.handoff import HandoffArtifact
 from docket_runtime._internal.docket.agent.llm import TokenUsage, ToolCall, ToolSpec
