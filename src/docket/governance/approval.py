@@ -1,12 +1,12 @@
 """Durable pending-approval store for HITL gating. Records persist to
 ``$APPROVALS_DIR/<token>.json`` (atomic, 0600); as docket-owned artefacts, writes go through
 ``platform/store.py``. ``context`` is optional caller data stored verbatim, a seam letting a
-later resolver (e.g. ``core/dispatch.py``) find what a token gated. Trace and redaction are
+later resolver (e.g. ``tasks/application/actions.py``) find what a token gated. Trace and redaction are
 best-effort behind ``_emit_trace``/``_redact`` so tests can stub them; grant/deny also
 audit-log the calling channel, restricted to the closed ``APPROVAL_CHANNELS`` set so a caller
 (e.g. ``serve.py``) cannot inject an arbitrary string into the record. The expiry sweep
 resolves a stale pending record to **denied** (fail-closed, not ``"expired"``) and notifies
-``core/dispatch.py`` so a waiting task is not left stranded. ``wait_for_approval`` blocks the
+``tasks/application/actions.py`` so a waiting task is not left stranded. ``wait_for_approval`` blocks the
 calling thread instead for ``agent/tools/registry.py``'s in-turn gate, sharing the same fail-closed
 resolution via ``_resolve_timeout_as_denied``.
 """
@@ -441,7 +441,7 @@ def prune_resolved(
 
 def _resolve_timeout_as_denied(token: str) -> bool:
     """Fail-closed timeout resolution shared by the sweep and the in-turn waiter. Returns ``True``
-    only for the transition winner, which writes the audit entry and notifies ``core/dispatch.py``;
+    only for the transition winner, which writes the audit entry and notifies ``tasks/application/actions.py``;
     a grant, deny, expiry, or deletion winning first is a harmless ``False``, not an overwrite."""
     try:
         data = _set_state(token, "denied")
@@ -557,7 +557,7 @@ def wait_for_approval(
 ) -> ApprovalWaitResult:
     """Block the calling thread on *token* until it resolves, then fail closed.
 
-    Unlike ``core/dispatch.py``'s require_approval gate — which creates a token and leaves
+    Unlike ``hops/gates/pre_hop.py``'s require_approval gate — which creates a token and leaves
     the task ``waiting_approval`` for a later call to resolve — an in-turn tool call
     (``agent/tools/registry.py``'s ``dispatch_tool``) has nowhere else to go while it waits: the model
     is blocked on this exact answer. So this function polls the record every

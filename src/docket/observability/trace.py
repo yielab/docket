@@ -81,7 +81,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         # built-in ones (which keep emitting their own names above —
         # rework_started/review_rejected/reviewer_verdict_unparseable for
         # reviewer, tester_verdict_failed for tester — see
-        # core/dispatch.py's _verdict_event_names).
+        # hops/application/record.py's _verdict_event_names).
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",

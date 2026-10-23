@@ -99,7 +99,7 @@ def _budget_changed(project: str, lead_id: str) -> None:
 
 
 # Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the
-# operator's original path, which can drift or disappear -- core/dispatch.py's
+# operator's original path, which can drift or disappear -- pipeline/application/steps.py's
 # effective_pipeline verifies the copy against this hash on every read.
 def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
     """``docket pod set pipeline <file>``: validate *path_str* and

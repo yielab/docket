@@ -56,9 +56,9 @@ __all__ = [
 ]
 
 #: The shape `compact_session` needs from a driver -- identical to
-#: `agent.memory.DistillRunner`/`core.dispatch.Runner`: `RuntimeDriver.run_turn`'s
+#: `agent.memory.DistillRunner`/`hops.application.runner`'s 5-arg `Runner`: `RuntimeDriver.run_turn`'s
 #: core 5-arg call, nothing more. A separate alias (not an import of either)
-#: because this module must not depend on `agent/memory.py` or `core/dispatch.py`
+#: because this module must not depend on `agent/memory.py` or `hops/application/runner.py`
 #: for a plain structural type -- see the module docstring's fail-closed section.
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 

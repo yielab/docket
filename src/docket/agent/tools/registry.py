@@ -509,7 +509,7 @@ def _park_call(
     result: ToolResult,
 ) -> None:
     """Record the exact call and end the turn without waiting -- a later grant
-    re-enters the pipeline with a single-use pre-grant for it (core/dispatch.py's
+    re-enters the pipeline with a single-use pre-grant for it (tasks/application/actions.py's
     resume path). Mutates *result* into its terminal ``approval_parked`` denial."""
     park_context: dict[str, Any] = {
         "tool": tool.name,

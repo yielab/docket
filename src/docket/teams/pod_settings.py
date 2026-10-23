@@ -62,7 +62,7 @@ _OPAQUE_COMMAND_NAMES: frozenset[str] = frozenset({"eval", "exec", "source", "."
 # specs/data/docket-meta.spec.md). A missing/blank meta key uses the field
 # default below, but a *present, malformed* stored value is never silently
 # replaced by it: ``load_for``/``coerce`` raise ``PodSettingsError`` naming the
-# key instead, and core/dispatch.py's readers let that propagate, so a bad
+# key instead, and teams/settings.py's readers let that propagate, so a bad
 # stored value refuses dispatch rather than guessing at one. A later pod
 # setting (approvalMode, pipeline, allowCommands) adds a field plus a
 # ``KEYS``/alias entry here, never a second reader.
@@ -78,15 +78,15 @@ class PodSettings(BaseModel):
     # Whether an unattended hop waits on an `ask` verdict (today's behavior,
     # byte-identical), parks it durably for a human to resolve later, or
     # refuses it at once -- threaded into the hop's tool env as
-    # DOCKET_APPROVAL_MODE (see core/dispatch.py's `_compose_hop` and
+    # DOCKET_APPROVAL_MODE (see hops/application/compose.py's `_compose_hop` and
     # agent/tools/registry.py's `ToolContext.approval_mode`). The field default stays
     # "wait" (export/apply round-trips and goldens depend on it); "unset" --
     # which caller-scoped default applies (ADR 0016 SS2) -- is detected from
     # whether the Lead's meta carries this key at all
-    # (core/dispatch.py's `pod_approval_mode_is_set`), never from this value.
+    # (teams/settings.py's `pod_approval_mode_is_set`), never from this value.
     approval_mode: Literal["wait", "park", "refuse"] = Field("wait", alias="approvalMode")
     # Hours a park-mode approval record stays live before the fail-closed
-    # sweep denies it (core/dispatch.py's `_compose_hop`, which stamps each
+    # sweep denies it (hops/application/compose.py's `_compose_hop`, which stamps each
     # parked call's own `expiresAt`).
     approval_expiry_hours: int = Field(24, alias="approvalExpiryHours", ge=1)
     # Hours an `input` step's unanswered question stays live before it is
@@ -97,7 +97,7 @@ class PodSettings(BaseModel):
     # sha256 hex digest of the docket-owned bound-pipeline copy in the Lead's workspace
     # (``bound_pipeline_path``) -- never the operator's original file path. Set only by
     # ``docket pod set pipeline <file>``, which validates the file and
-    # writes the copy before this ever gets written (see core/dispatch.py's
+    # writes the copy before this ever gets written (see pipeline/application/steps.py's
     # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
     pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
     # An `@every`/`HH:MM`/cron spec (pipeline/application/schedule.py). Mirrors the value the dedicated

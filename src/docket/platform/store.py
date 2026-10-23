@@ -97,7 +97,7 @@ def read_modify_write(
     Holds *path*'s per-directory filelock (via ``with_lock``) across the whole
     read + *fn* + write, so no concurrent ``write_json``/``read_modify_write``
     call on the same path can interleave (this is what closes the
-    dispatch-queue claim race — see ``core/dispatch.py``). *fn* receives the
+    dispatch-queue claim race — see ``tasks/application/queue.py``). *fn* receives the
     file's current contents (``{}`` if it doesn't exist yet) and returns the
     new contents to persist, or ``None`` to abort without writing (e.g.
     "nothing eligible to claim"). Returns whatever ended up in the file (the

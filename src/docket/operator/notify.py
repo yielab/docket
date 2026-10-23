@@ -5,7 +5,7 @@ knowledge. ``flush`` is the one impure orchestrator -- it builds the current inb
 against the persisted dedupe snapshot, saves the new snapshot BEFORE delivering (a crash
 mid-delivery must never re-emit: at-most-once, not at-least-once), then hands each event to
 whatever ``sink_for`` returns for a channel's dialect. This module never imports
-``edges/adapters`` itself -- it receives a sink factory from its caller, the same seam
+``operator/adapters`` itself -- it receives a sink factory from its caller, the same seam
 ``observability/telemetry.py``'s ``start(specs, sink_for)`` uses. A failed delivery is recorded in
 ``channels-health.json`` and is never retried on a later flush -- only within the one flush
 call that discovered it.
@@ -96,7 +96,7 @@ class FlushReport:
 class DeliveryOutcome(Protocol):
     """The shape `flush` reads off whatever a `Deliver` call returns. Matched structurally
     against `operator/adapters/webhook.py::DeliveryResult`'s field names, never imported
-    by name -- this module never imports `edges/adapters` (see the module docstring)."""
+    by name -- this module never imports `operator/adapters` (see the module docstring)."""
 
     @property
     def ok(self) -> bool: ...

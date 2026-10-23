@@ -1,6 +1,6 @@
 """Context compiler: fit a hop's prior-hop artifacts to a per-role token budget.
 
-``core/dispatch.py``'s ``_hop_message`` calls this module, and only this
+``hops/application/compose.py``'s ``_hop_message`` calls this module, and only this
 module, to truncate a hop's prompt — there is no second, layered truncation
 mechanism anywhere else in the hop-composition path.
 
@@ -42,7 +42,7 @@ field, or a pipeline step targeting an unregistered role name).
 
 This module is a pure leaf, the same shape as ``agent/handoff.py``: no
 filesystem I/O of its own beyond ``teams/roles.py``'s existing registry
-read, no subprocess, no import of ``core/dispatch.py``. ``core/dispatch.py``'s
+read, no subprocess, no import of ``hops/application/compose.py``. Its
 ``_hop_message`` is the one production caller — it composes the final hop
 message (the task description, any rework note, then the recency-ordered
 prior-hop carryover) from this module's ``compile_artifact``/``hop_share``,
@@ -242,7 +242,7 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        ``verdict``), re-measuring after each drop and stopping the moment it
        fits. A field that is already empty (``files_changed``/``diff_ref`` are only
        populated for a successful Implementer hop, see `agent/handoff.py`/
-       `core/dispatch.py`) is skipped rather than reported as "dropped": there
+       `hops/application/record.py`) is skipped rather than reported as "dropped": there
        was nothing there to shed, so claiming otherwise in the trace would be
        dishonest. ``dropped_fields`` therefore only ever names a field that
        actually changed the rendered text.

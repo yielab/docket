@@ -13,7 +13,7 @@ one client here for one open protocol, not one per provider. llama.cpp, vLLM,
 LM Studio, OpenAI, Groq, Together and OpenRouter all speak it.
 
 **What this module refuses to do:** decide anything. It does not retry (that
-policy lives in ``core/dispatch.py``, keyed on ``FailureKind``), does not
+policy lives in ``hops/application/runner.py``, keyed on ``FailureKind``), does not
 inspect tool calls (that is the gate's job), and does not raise for endpoint
 failures — every ordinary failure comes back as ``ChatResponse(ok=False, ...)``
 so the caller stays in control of what happens next.

@@ -3,7 +3,7 @@ See specs/functional/pipeline-format.spec.md for the document shape, gate kinds,
 edges, and parallel-group contract this module implements.
 
 Zero-migration: ``load_pipeline(None)`` returns :func:`default_pipeline`, byte-equivalent to
-``core/dispatch.py``'s hardcoded pipeline (drift-guarded by test, not hand-copied). This module
+``pipeline/application/steps.py``'s built-in pipeline order (drift-guarded by test, not hand-copied). This module
 does not import ``dispatch`` itself, to stay decoupled from its heavier import chain -- the same
 reason a step's ``archetype`` field validates only slug shape, never existence against the
 archetype registry.
@@ -393,22 +393,23 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
     return PipelineLoadResult(spec=spec, errors=[], source="file")
 
 
-# Mirrors core/dispatch.py's Reviewer/Tester verdict conventions exactly —
-# ``tests/unit/core/test_pipeline__spec.py`` cross-checks these two patterns
-# and the role order below directly against ``dispatch.py``'s own constants,
+# Mirrors the Reviewer/Tester verdict conventions of the built-in archetypes exactly —
+# ``tests/unit/pipeline/domain/test_spec__spec.py`` cross-checks these two patterns
+# and the role order below directly against the archetype registry and
+# ``pipeline/application/steps.py``'s ``PIPELINE_ORDER``,
 # so this module's hardcoding one drift-guarded copy (rather than importing
-# dispatch.py at runtime) is a deliberate, tested tradeoff — see the module
+# the executor at runtime) is a deliberate, tested tradeoff — see the module
 # docstring.
 _REVIEWER_PATTERN = r"^\s*(APPROVE|REQUEST-CHANGES)\b"
 _TESTER_PATTERN = r"^\s*(PASS|FAIL)\b"
 
-# The literal default dispatch.py's pod_max_rework_cycles() falls back to
+# The literal default teams/settings.py's pod_max_rework_cycles() falls back to
 # when a pod's Lead has no maxReworkCycles meta set.
 _DEFAULT_MAX_REWORK_CYCLES = 1
 
 
 def default_pipeline() -> PipelineSpec:
-    """The built-in zero-migration pipeline, equivalent to ``core/dispatch.py``'s hardcoded
+    """The built-in zero-migration pipeline, equivalent to ``pipeline/application/steps.py``'s
     ``PIPELINE_ORDER``: lead -> implementer -> reviewer -> tester. See
     specs/functional/pipeline-format.spec.md ("Zero migration") for the exact gates/rework bound."""
     return PipelineSpec(

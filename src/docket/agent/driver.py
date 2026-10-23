@@ -1,6 +1,6 @@
 """``DocketDriver``: the ``RuntimeDriver`` implementation.
 
-Implements ``agent.ports.RuntimeDriver`` on ``agent/loop.py`` so ``core/dispatch.py``,
+Implements ``agent.ports.RuntimeDriver`` on ``agent/loop.py`` so ``hops/application/runner.py``,
 the pipeline executor, and every Protocol caller work unchanged. ``default_driver()`` is the single
 resolution point production callers -- pod dispatch, distillation, cost aggregation, trace
 ingestion -- use, running on docket's gated loop.
@@ -409,16 +409,16 @@ class DocketDriver:
         exception: ``DispatchError`` for a deterministic refusal -- a refused isolation or
         network posture (``_resolve_posture``), or ``self.mcp_loader`` finding an ``mcpServers``
         name absent from the live catalog (see ``_load_mcp_tools``'s own docstring). A caller
-        misconfiguration, not an ordinary turn failure, and every production call site (``core/dispatch.py``'s
+        misconfiguration, not an ordinary turn failure, and every production call site (``pipeline/application/executor.py``'s
         pipeline runner) already lets a raised ``DispatchError``
         propagate to its own settle/fail path rather than treating this driver as
         exception-free. ``on_spawn`` is ignored: this driver backs onto no OS process to
         track -- the loop makes HTTP calls in-process -- and the Protocol allows a
         process-less driver to ignore it. ``timeout`` overrides
-        ``LoopConfig.wall_clock_timeout_s`` directly, the same per-hop figure ``core/dispatch.py``
+        ``LoopConfig.wall_clock_timeout_s`` directly, the same per-hop figure ``hops/application/runner.py``
         already resolves, not a second independently-tuned number. ``model``, when given, wins
         over *agent_id*'s own configured model for this call's endpoint only -- a caller (e.g. a
-        pipeline step's own override, resolved to a literal by ``core/dispatch.py`` first) is
+        pipeline step's own override, resolved to a literal by ``hops/application/runner.py`` first) is
         responsible for handing this a real ``provider/id``, never a rank word; this driver never
         writes it back to ``.docket-meta.json``. Starts the observability export pipeline lazily
         before the turn and flushes it (recording ``telemetry.health()``) in a ``finally``, so

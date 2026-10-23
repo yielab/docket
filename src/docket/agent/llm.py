@@ -4,7 +4,7 @@ inference. This module is the *port*; ``models/adapters/openai_http.py`` is the 
 gate; it rents only protocols, and inference is one (an HTTP POST with a JSON body) — nothing
 here knows that JSON shape, the shapes below are docket's own vocabulary, and the adapter
 translates in both directions, the same split ``agent/ports.py`` (pure typing) /
-``edges/adapters/`` (format knowledge) already uses, keeping a future second endpoint dialect
+``models/adapters/`` (format knowledge) already uses, keeping a future second endpoint dialect
 from leaking wire fields into ``core/``. Deliberately absent: streaming, and any notion of "an
 agent" — a ``ChatBackend`` performs exactly one request/response exchange; multi-step behaviour
 (feeding tool results back, deciding when a turn is over) belongs to ``agent/loop.py``,
@@ -150,7 +150,7 @@ class TokenUsage:
 class ChatResponse:
     """Outcome of one exchange, never an exception for ordinary failures. Mirrors ``TurnResult``'s
     contract deliberately (reusing ``FailureKind`` so ``agent/loop.py``'s driver slots under
-    ``core/dispatch.py``'s retry policy); ``failure_kind`` is ``None`` iff ``ok`` is True."""
+    ``hops/application/runner.py``'s retry policy); ``failure_kind`` is ``None`` iff ``ok`` is True."""
 
     ok: bool
     message: ChatMessage = field(default_factory=lambda: ChatMessage(role="assistant"))

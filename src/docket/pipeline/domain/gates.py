@@ -79,7 +79,7 @@ class VerdictGate(BaseModel):
 
 class ApprovalGate(BaseModel):
     """The step must not proceed until an operator grants approval. Carries no
-    token/timeout/resolution state -- ``core/dispatch.py`` wires it to a real
+    token/timeout/resolution state -- ``hops/gates/pre_hop.py`` wires it to a real
     ``governance/approval.py`` record; see specs/functional/pipeline-format.spec.md ("Gates")."""
 
     model_config = ConfigDict(extra="forbid")

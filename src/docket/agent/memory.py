@@ -417,7 +417,7 @@ def read_dispatch_task_ids(ws: Path) -> list[str]:
 def sync_dispatch_tasks(ws: Path, task_records: Iterable[Mapping[str, Any]]) -> None:
     """Regenerate *ws*'s dispatch ledger from a pod's TASK_LIST.json task dicts. Filters to
     ``status == "running"``, the only state where a hop is genuinely in flight; every other
-    status means nothing to hold open. Called by both ``core/dispatch.py`` (at each
+    status means nothing to hold open. Called by both ``tasks/application/`` (at each
     task-state-persistence point) and ``docket setup --fix`` to re-sync a drifted ledger —
     always safe since ``TASK_LIST.json`` is dispatch's source of truth and the ledger's
     dispatch region is entirely docket-owned."""

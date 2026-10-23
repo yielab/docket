@@ -8,7 +8,7 @@ step's *resolved* gate -- its own, or (only when omitted) its archetype's
 ``gateContract`` -- instead of branching on a hardcoded role name.
 
 Deliberately **pure and dispatch-independent**: no filesystem I/O, no subprocess, no
-import of ``core/dispatch.py`` (the dependency runs one-way -- ``dispatch.py``'s hop
+import of ``pipeline/application/executor.py`` (the dependency runs one-way -- the executor's hop
 loop calls back into :func:`resolve_plan`/:func:`resolve_gate`/:func:`parse_verdict`/
 :func:`run_group`; the reverse would be a cycle). ``docket pod plan`` renders
 directly from :func:`resolve_plan` too, so there is never a second, drift-prone
@@ -56,7 +56,7 @@ class PlannedUnit:
     retries: int | None
     timeout: int | None
     # A copy of the step's own `model` override (see `_pipeline.Step.model`), or `None` --
-    # resolved and applied for this hop only by `core/dispatch.py`'s hop-execution call,
+    # resolved and applied for this hop only by `hops/application/runner.py`'s hop-execution call,
     # never written back to the target's own persisted meta. See
     # specs/functional/pod-dispatch.spec.md ("Per-hop execution").
     model: str | None = None

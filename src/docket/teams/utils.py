@@ -44,7 +44,7 @@ def aggregate_cost(agent_id: str) -> UsageTotals:
     ``UsageTotals`` as reported. See agent/ports.py.
 
     Resolves ``agent.driver.default_driver()``
-    (``DocketDriver``) -- load-bearing for ``core/dispatch.py``'s own
+    (``DocketDriver``) -- load-bearing for ``hops/gates/pre_hop.py``'s own
     pod-budget gate (``pod_gating_cost`` calls this for every hop's member),
     which must see the same driver hops actually execute through or the
     budget cap silently stops tripping.

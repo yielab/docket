@@ -3,7 +3,7 @@
 Execution-related state (session records, turn results, cost/usage) tends to leak
 its on-disk/wire shape into every caller that reads it. This module is the fix: a
 single typed ``Protocol`` that ``core/`` and ``cli/`` program against, so no module
-outside ``edges/adapters/`` needs to know what a session record, a driver
+outside ``models/adapters/`` needs to know what a session record, a driver
 invocation, or a cost figure actually looks like on disk.
 
 ROADMAP §4.5 bans an ``AbstractBackend``; this module revises that ban, not repeals
@@ -13,7 +13,7 @@ coupling, not speculative plugin-framework generality — a second real driver s
 needs a §4.5 trigger (upstream stall/breakage) or a paying user.
 
 The required members mirror an agent's whole lifecycle: ``run_turn`` (one
-costed agent turn, the hot path -- ``core/dispatch.py``'s pipeline and docket's own
+costed agent turn, the hot path -- ``hops/application/runner.py``'s pipeline and docket's own
 self-originated LLM calls go through this); ``list_sessions``/``usage`` (durable-session
 enumeration and token/cost aggregation, keeping on-disk format knowledge out of
 ``core/``); ``capabilities`` (what this driver instance can actually promise, e.g.
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 # ── run_turn ──────────────────────────────────────────────────────────────────
 
 # Only "timeout"/"daemon_error" are retryable (a transient hiccup talking to the
-# model backend, not a real answer) — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS.
+# model backend, not a real answer) — see hops/application/runner.py's _RETRYABLE_FAILURE_KINDS.
 FailureKind = Literal[
     "timeout",
     "daemon_error",

@@ -9,7 +9,7 @@ budget gets tight. The shape (``summary``, ``files_changed``, ``diff_ref``, ``di
 consumer (``agent/context.py``'s token-budget compiler) an order to shed
 fields in without inventing one itself.
 
-``core/dispatch.py`` attaches one to every ``HopResult`` (see that module's
+``hops/application/record.py`` attaches one to every ``HopResult`` (see that module's
 docstring) and composes the next hop's message from ``HandoffArtifact.render()``
 — never from a hop's raw output directly — then fits the rendered text to the
 role's token budget via ``agent/context.py``'s ``compile_artifact``. The
@@ -26,12 +26,12 @@ other field at its default).
   archetype). ``None`` for every other hop: Lead, a ``MechanicalGate``- or
   ``ApprovalGate``-gated hop, or an unparseable verdict.
 - ``files_changed`` / ``diff_ref`` / ``diff`` — populated via a real git probe:
-  ``core/dispatch.py``'s ``_hop_diff_probe`` resolves the member's
+  ``hops/workspace/worktree.py``'s ``_hop_diff_probe`` resolves the member's
   working tree the same way the mechanical verify gate does (worktree →
   shared codebase → the member's own workspace dir, via
   ``teams.pod.resolve_member_cwd``) and, when that tree is a real git
   repository and a ``git`` binary is on ``PATH``, calls
-  ``edges/adapters/system.py``'s ``git_changed_files``/``git_current_branch``.
+  ``platform/git.py``'s ``git_changed_files``/``git_current_branch``.
   ``files_changed`` is the working tree's uncommitted changes (staged,
   unstaged, untracked — not a diff against a fixed base ref); ``diff_ref`` is
   the member's current branch name (Implementer hops only), a reference a caller
@@ -47,7 +47,7 @@ other field at its default).
   is always optional (ADR 0016 §4).
 
 This module is deliberately pure — no filesystem I/O, no subprocess, no import
-of ``core/dispatch.py`` — the same "leaf" shape as ``pipeline/domain/spec.py``. It
+of ``hops/application/record.py`` — the same "leaf" shape as ``pipeline/domain/spec.py``. It
 does import ``operator/contract.py`` (``TaskBrief``), itself an equally
 pure leaf module, for the one shared shape every intake consumer must agree
 on rather than a second, independently-drifting copy of the same fields.
@@ -129,7 +129,7 @@ class HandoffArtifact(BaseModel):
     truncated once ``render()``'s output no longer fits its token budget.
     ``brief`` is deliberately absent too, for the same reason: a Lead hop's
     typed intake is never shed by a token-budgeted consumer, only carried
-    forward whole or not at all (see ``core/dispatch.py``'s ``_build_hop_result``).
+    forward whole or not at all (see ``hops/application/record.py``'s ``_build_hop_result``).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

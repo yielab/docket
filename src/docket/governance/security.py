@@ -8,7 +8,7 @@ docket's own workspace-isolation and network state is configurable
 ``docket setup sandbox network``) -- not whether calls are gated, only whether
 execution is sandboxed and what network the sandbox has. Also owns
 ``match_high_risk``, the argument-aware allow/ask/deny classifier used by
-the live gate and ``edges/adapters/system.py``'s ``run_command``.
+the live gate and ``sandbox/launch.py``'s ``run_command``.
 """
 
 from __future__ import annotations

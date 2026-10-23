@@ -262,7 +262,7 @@ def _classify_http_status(status: int) -> FailureKind:
     """Map an HTTP status onto docket's retry vocabulary.
 
     ``nonzero_exit``/``daemon_error`` read oddly for HTTP; they are reused
-    because ``core/dispatch.py``'s ``_RETRYABLE_FAILURE_KINDS`` is keyed on
+    because ``hops/application/runner.py``'s ``_RETRYABLE_FAILURE_KINDS`` is keyed on
     the existing ``FailureKind`` literals, and inventing a synonym would mean
     either a parallel retry table or a rename across dozens of test modules
     for no behavioural gain. The daemon these names originally described is

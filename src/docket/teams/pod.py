@@ -242,7 +242,7 @@ def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = 
     """Resolve the real working directory for a pod member's mechanical operations. Preference
     order: the running task's own git **worktree** (recorded at claim) -> the pod's shared
     **codebase** root -> the member's own docket **workspace** dir. Both the verification gate
-    (``core/dispatch.py``) and the TOOLS.md generator (``interfaces/cli/commands/pod.py``) resolve through this
+    (``hops/gates/post_hop.py``) and the TOOLS.md generator (``interfaces/cli/commands/pod.py``) resolve through this
     one helper so they can never disagree about which tree an implementer's work is checked
     against."""
     if task_worktree:
@@ -256,7 +256,7 @@ def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = 
 # Lead's own workspace -- alongside SOUL.md/AGENTS.md/HEARTBEAT.md -- never at the
 # operator's original path, which can drift or disappear. ``PodSettings.pipeline`` stores
 # only that copy's sha256 hex digest, so a hand-edited or stale copy is detected rather
-# than silently trusted (see core/dispatch.py's ``_blueprint_pipeline``).
+# than silently trusted (see pipeline/application/steps.py's ``_blueprint_pipeline``).
 BOUND_PIPELINE_FILENAME = "PIPELINE.yaml"
 
 

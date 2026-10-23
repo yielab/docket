@@ -57,7 +57,7 @@ class AgentMeta(BaseModel):
     paused_reason: str = Field("", alias="pausedReason")
 
     # Pod-wide dispatch timeout overrides, set on the Lead alongside
-    # budgetUsd (core/dispatch.py reads them the same way it reads the Lead's
+    # budgetUsd (teams/settings.py reads them the same way it reads the Lead's
     # budgetUsd for pod_budget()). None = no pod-level override; falls back to
     # DEFAULT_TIMEOUT (or a serve-wide config knob) at dispatch time.
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS")
@@ -78,7 +78,7 @@ class AgentMeta(BaseModel):
         """Coerce a raw (possibly stringified) ``paused`` value to a real ``bool``. Guards a
         type bug: comparing a JSON boolean against the *string* ``"true"`` is never equal
         to Python ``True``, so a paused agent could silently display as not-paused. Every
-        raw-dict read site (and ``core/dispatch.py``'s claim-time refusal) should call
+        raw-dict read site (and ``tasks/application/sweep.py``'s claim-time refusal) should call
         this instead of re-implementing the comparison; tolerates both forms
         (case-insensitive)."""
         if isinstance(value, bool):

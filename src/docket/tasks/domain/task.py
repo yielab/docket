@@ -13,7 +13,7 @@ from docket.kernel.errors import InvalidInput
 # execution reads a step's *resolved* gate generically (see `_execute_unit`'s
 # `isinstance(gate, _pipeline.VerdictGate)` branch and `pipeline.domain.plan.parse_verdict`)
 # instead of branching on a hardcoded role name. A second, independent copy of these patterns
-# here would drift from that single source of truth (see `tests/unit/core/test_pipeline__spec.py`).
+# here would drift from that single source of truth (see `tests/unit/pipeline/domain/test_spec__spec.py`).
 
 
 class DispatchError(InvalidInput):

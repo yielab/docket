@@ -65,7 +65,7 @@ def post_approval(h: HttpExchange, approval_token: str) -> None:
         else:
             approval.approval_deny(approval_token, channel=channel, actor=actor, reason=reason)
         # If this token gated a dispatch task, genuinely resume
-        # (grant) or kill (deny) it — see core/dispatch.py's
+        # (grant) or kill (deny) it — see tasks/application/actions.py's
         # resolve_waiting_approval. A no-op for any other approval.
         _, note = _actions.resolve_waiting_approval_detail(
             approval_token, decision, channel=channel, actor=actor, reason=reason

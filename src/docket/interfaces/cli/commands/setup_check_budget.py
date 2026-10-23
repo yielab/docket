@@ -98,7 +98,7 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
     """TASK_LIST.json (``status: "running"``) vs. the pod Lead's HEARTBEAT.md dispatch ledger —
     must agree.
 
-    ``core/dispatch.py`` keeps the ledger synced mechanically; this check catches whatever slips
+    ``tasks/application/queue.py`` keeps the ledger synced mechanically; this check catches whatever slips
     through anyway (an old docket version, a hand-edited file, a crash mid-write). See
     specs/functional/pod-dispatch.spec.md, "Mechanical HEARTBEAT ledger". ``--fix`` re-syncs the
     ledger to exactly what TASK_LIST.json says now — always safe, since the ledger's dispatch

@@ -94,7 +94,7 @@ class Home:
     pod_memory_max_per_task: int = 8
     pod_memory_note_max_chars: int = 200
     pod_memory_render_max_bytes: int = 3000
-    # Retries after the first try for a retryable failure (core/dispatch.py::
+    # Retries after the first try for a retryable failure (hops/application/runner.py::
     # _RETRYABLE_FAILURE_KINDS); a non-zero exit or a verdict is an answer, never retried.
     dispatch_retries_default: int = 2
     # Retry N waits N times this many seconds.

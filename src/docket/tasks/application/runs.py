@@ -15,16 +15,16 @@ docket-owned JSON document, one list of records) through
 the pod task queue, since multiple threads (webhook handler, schedule thread,
 sweep loop) and the CLI can all be appending/updating concurrently.
 
-This module never imports ``core/dispatch.py`` — ``execute()`` takes an
+This module never imports ``tasks/application/sweep.py`` — ``execute()`` takes an
 arbitrary zero-arg callable and duck-types a ``task_id`` attribute off
 whatever it returns (matching ``dispatch.TaskResult`` without a hard
 dependency), so the run registry stays agnostic of what it is recording and
-``core/dispatch.py`` only needs to return its typed task outcomes; this module
+``tasks/application/sweep.py`` only needs to return its typed task outcomes; this module
 does not import or reinterpret dispatch internals.
 
 Cancellation: ``execute()`` publishes "which
 run id is currently executing" via a ``contextvars.ContextVar`` for the
-duration of *fn* — ``core/dispatch.py``'s production-driver hop call site
+duration of *fn* — ``hops/application/runner.py``'s production-driver hop call site
 reads it (``current_run_id()``) to know which run to record a spawned
 subprocess's pid against (``add_hop_pid``/``remove_hop_pid``), and
 ``pipeline.domain.plan.run_group`` explicitly propagates that context into a

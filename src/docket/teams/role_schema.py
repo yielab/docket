@@ -74,7 +74,7 @@ class RoleArchetype:
     # for any archetype that does not opt in.
     denied_tools: tuple[str, ...] = ()
     # This role's own hop-message instruction footer (see
-    # `resolve_hop_instruction` below and `core/dispatch.py`'s hop-message
+    # `resolve_hop_instruction` below and `hops/application/compose.py`'s hop-message
     # builder). Open prose, like `tool_profile`/`description` — "" (the
     # default) means "no declared instruction", not "no instruction at all":
     # a gated role still gets one generated from `gate_contract`.
@@ -189,7 +189,7 @@ def resolve_hop_instruction(archetype: RoleArchetype) -> str:
     """*archetype*'s own `hop_instruction` if declared, else one generated from its
     `gate_contract` (verdict/mechanical/approval); a `none`-kind gate generates none. See
     specs/functional/role-archetypes.spec.md ("Hop instructions")."""
-    # `implementer`/`reviewer`/`tester` never reach this: `core/dispatch.py`'s hop-message
+    # `implementer`/`reviewer`/`tester` never reach this: `hops/application/compose.py`'s hop-message
     # builder keeps their own hardcoded text unconditionally. `lead` DOES reach this --
     # its built-in `hop_instruction` below carries that same fixed text, so this returns
     # it verbatim absent an overlay.

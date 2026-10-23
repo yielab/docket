@@ -30,8 +30,8 @@ from docket.platform import process as _process
 # ── Export pipeline: bounded queue, background sender, module registry ──
 #
 # Everything below is deliberately impure -- a queue, a thread, a module-level registry -- unlike
-# the projection/policy above it. `Pipeline` never imports `edges/`: it receives an already-built
-# `SpanSink` object and never constructs one itself (`edges/adapters/exporters` does that).
+# the projection/policy above it. `Pipeline` never imports `observability/adapters`: it receives an already-built
+# `SpanSink` object and never constructs one itself (`observability/adapters` does that).
 
 
 # Matched structurally against observability/adapters/otlp_http.py::SinkResult's field names,
@@ -53,7 +53,7 @@ class SinkOutcome(Protocol):
 
 class SpanSink(Protocol):
     """What a wire adapter must supply for `Pipeline` to drain into it. One instance per enabled
-    exporter, built by `edges/adapters/exporters` from an `ExporterSpec` -- this module never
+    exporter, built by `observability/adapters` from an `ExporterSpec` -- this module never
     builds one itself."""
 
     def emit(self, spans: Sequence[Span]) -> SinkOutcome: ...
