@@ -481,7 +481,7 @@ under the trust boundary a policy's place demands: a policy runs inside the gate
 call the agent makes, so a plugin loaded from the codebase the agent edits would let the agent
 rewrite its own gate for the next turn.
 
-1. `docket.plugins` **MUST** be the only module a plugin file imports for the API: it carries
+1. `docket.governance.plugin_api` **MUST** be the only module a plugin file imports for the API: it carries
    `PLUGIN_API_VERSION`, the `@predicate(name)` decorator, and the frozen
    `ToolCall(tool, args, rendered)` and `PolicyContext(role, project, branch, worktree_root)`
    types a predicate receives. It **MUST NOT** import anything else from docket, since a plugin
@@ -489,7 +489,7 @@ rewrite its own gate for the next turn.
 2. The plugin loader's `discover(project: str = "") -> dict[str, LoadedPredicate]` **MUST** search
    only `$PLUGINS_DIR` (global, default `$DOCKET_HOME/plugins`) and, when *project* is given, that
    pod's own `config/plugins/`, **never** a codebase path. Each `*.py` file **MUST** be imported
-   from its file location, draining `docket.plugins.REGISTRY` after each file; a duplicate
+   from its file location, draining `docket.governance.plugin_api.REGISTRY` after each file; a duplicate
    predicate name across files **MUST** raise `PluginError` naming both files. A cache keyed by a
    file's `(mtime_ns, size)` **MUST** skip re-importing an unchanged file, so a live turn does not
    re-import on every call.
@@ -692,7 +692,7 @@ runs: additive to the gate and to `resolve_within`, never a replacement for eith
 
 1. **Backend detection is real, not assumed.** `sandbox_availability()` probes, on every call,
    which backend the host has *right now*:
-   - **`landlock`**: the Linux kernel's own sandbox (`python -m docket.jail`, requirement 10).
+   - **`landlock`**: the Linux kernel's own sandbox (`python -m docket.sandbox.jail`, requirement 10).
      Requires a real ABI probe (`landlock_create_ruleset` with the VERSION flag returns >= 1); a
      kernel without Landlock, or one whose seccomp policy blocks the syscall, is unavailable, never
      assumed.
@@ -787,8 +787,8 @@ runs: additive to the gate and to `resolve_within`, never a replacement for eith
      (`off (default)` | `on` | `off`), `sandboxBackend`, `sandboxUsable`, `dockerImageHasGit`,
      `network` and `networkEnforced`. `docket setup sandbox` reports the gate, the isolation state,
      the probed backend, the network mode and the read-only grants.
-10. **The Landlock jail (`python -m docket.jail`).** `landlock_argv(roots, command, network,
-    read_only)` returns `[sys.executable, "-m", "docket.jail", "--rw", <path>..., "--ro",
+10. **The Landlock jail (`python -m docket.sandbox.jail`).** `landlock_argv(roots, command, network,
+    read_only)` returns `[sys.executable, "-m", "docket.sandbox.jail", "--rw", <path>..., "--ro",
     <path>..., ["--refuse", <reason>], "--net", none|open, "--", "/bin/sh", "-c", command]`; the
     first root is the cwd. The entry sets `PR_SET_NO_NEW_PRIVS`, then a Landlock ruleset that
     handles every filesystem right the probed ABI knows: read-write (read, write, make-*, remove,
@@ -1519,32 +1519,32 @@ $ git clone https://anywhere.example/repo.git
 
 ## Implementation
 
-- `src/docket/core/tools.py`: `dispatch_tool`, `evaluate_tool_call`, `render_tool_call`,
+- `src/docket/agent/tools/registry.py`: `dispatch_tool`, `evaluate_tool_call`, `render_tool_call`,
   `ToolContext`, `ToolResult`, `ToolVerdict`, `Pregrant`, `screen_tool_result`, `builtin_registry`
   (the `bash`, `consult` and `fetch` registrations), the wait, park, pre-grant and `approve_task`
   handling, the `tool.*` audit entries
-- `src/docket/core/security.py`: `SAFE_BINS`, `HighRiskClass`, `HIGH_RISK_PATTERNS`,
+- `src/docket/governance/security.py`: `SAFE_BINS`, `HighRiskClass`, `HIGH_RISK_PATTERNS`,
   `match_high_risk`, `classify_command`, `CommandVerdict`, `apply_workspace_isolation`,
   `disable_workspace_isolation`
-- `src/docket/core/approval.py`: `approval_create`, `approval_get`, `approval_grant`,
+- `src/docket/governance/approval.py`: `approval_create`, `approval_get`, `approval_grant`,
   `approval_deny`, `approval_set_option`, `approval_options`, `wait_for_approval`,
   `approval_sweep_expired`, `create_pregrant`, `consume_pregrant`, `screen_rationale`,
   `APPROVAL_CHANNELS`, `APPROVAL_TOKEN_RE`, `APPROVAL_RATIONALE_MAX_CHARS`, `ApprovalError`,
   `ApprovalNoop`, `ApprovalConflict`
-- `src/docket/core/policy.py`: `policy_files`, `policy_eval`, `policy_eval_detail`, `policy_test`,
+- `src/docket/governance/policy.py`: `policy_files`, `policy_eval`, `policy_eval_detail`, `policy_test`,
   `normalize_policy`, `read_policy`, `validate_policy`, `install_policies`, `ToolCallFacts`,
   `PolicyHit`, `task_policies`, `TASK_POLICY_ID`, `denied_tools_document`,
   `task_policy_document`, the `when` and `plugin` predicate evaluation
-- `src/docket/plugins.py`: the `docket.plugins` API (`PLUGIN_API_VERSION`, `predicate`,
+- `src/docket/governance/plugin_api.py`: the `docket.governance.plugin_api` API (`PLUGIN_API_VERSION`, `predicate`,
   `ToolCall`, `PolicyContext`, `REGISTRY`)
-- `src/docket/core/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`
+- `src/docket/governance/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`
 - `src/docket/core/dispatch.py`: `enqueue_task_once` (the `pre_input` gate), `dispatch_task` (the
   `pre_output` scan, the profile check), `pod_approval_mode`, hop composition
   (`DOCKET_APPROVAL_MODE`, `DOCKET_APPROVAL_EXPIRES_AT`, the task restriction keys, the hop
   network), the verify, `run:` and prepare launches, `resolve_waiting_approval`
-- `src/docket/core/runtime_driver.py`: `DOCKET_APPROVAL_MODE`, `DOCKET_TASK_DENIED_TOOLS`,
+- `src/docket/agent/ports.py`: `DOCKET_APPROVAL_MODE`, `DOCKET_TASK_DENIED_TOOLS`,
   `DOCKET_TASK_NETWORK`, `DOCKET_TASK_POLICIES`
-- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver.run_turn` (isolation and network
+- `src/docket/agent/driver.py`: `DocketDriver.run_turn` (isolation and network
   resolution, `isolation.refused`, `network.refused`, approval mode, `allow_commands`, project
   resolution, task policies, `make_non_dumpable`), `resolve_command_jail`
 - `src/docket/edges/adapters/system.py`: `sandbox_availability`, `SandboxAvailability`,
@@ -1553,44 +1553,44 @@ $ git clone https://anywhere.example/repo.git
   `docker_kill`, `docker_image_has_git`, `git_identity_env`, `git_dirs`, `trust_worktree`,
   `task_environment`, `credential_names`, `run_command`, `make_non_dumpable`,
   `git_current_branch`
-- `src/docket/edges/adapters/landlock.py`: `abi_version`, `plan_ruleset`, `socket_filter`,
+- `src/docket/sandbox/landlock.py`: `abi_version`, `plan_ruleset`, `socket_filter`,
   `DEFAULT_RO`, `DEFAULT_RO_FILES`, `DEFAULT_RW_FILES`
-- `src/docket/jail.py`: the `python -m docket.jail` entry (`--rw`, `--ro`, `--refuse`, `--net`,
+- `src/docket/sandbox/jail.py`: the `python -m docket.sandbox.jail` entry (`--rw`, `--ro`, `--refuse`, `--net`,
   exit 125)
-- `src/docket/edges/adapters/toolbox.py`: `run_bash`, `resolve_within`, `PathEscapeError`,
+- `src/docket/agent/tools/builtins/toolbox.py`: `run_bash`, `resolve_within`, `PathEscapeError`,
   `ToolOutcome`, `glob_files`, `grep_files`
-- `src/docket/edges/adapters/mcp_client.py`: the jailed stdio MCP launch
-- `src/docket/edges/adapters/fetch.py`: `fetch_url`, the domain-locked redirect handler
-- `src/docket/core/fleet.py`: `FleetSecurity`, `get_isolation_enabled`, `get_isolation_state`,
+- `src/docket/agent/tools/mcp_client.py`: the jailed stdio MCP launch
+- `src/docket/platform/fetch.py`: `fetch_url`, the domain-locked redirect handler
+- `src/docket/teams/fleet.py`: `FleetSecurity`, `get_isolation_enabled`, `get_isolation_state`,
   `get_network_mode`, `get_sandbox_backend`, `add_read_only`, `remove_read_only`, `get_profile`,
   `set_profile`
-- `src/docket/core/pod.py`: `PodSettings`, `effective_network`, `effective_read_only`, `pod_of`
-- `src/docket/core/network_posture.py`: `network_posture`, `global_posture`
-- `src/docket/core/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
+- `src/docket/teams/pod.py`: `PodSettings`, `effective_network`, `effective_read_only`, `pod_of`
+- `src/docket/governance/network_posture.py`: `network_posture`, `global_posture`
+- `src/docket/governance/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
   `effective_profile`
-- `src/docket/core/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
-- `src/docket/core/reviewed_repos.py`: `review_code` and the reviewed digest
-- `src/docket/core/prepare.py`: `LOCKFILES`, `linked_entries`
-- `src/docket/core/pod_apply.py`: `REPO_REFUSED_COMMANDS`, `review_decision`, `apply_directory`
-- `src/docket/core/pod_provisioning.py`: `provision_task_worktree`
-- `src/docket/core/operator_contract.py`: `canonical_args_digest`
-- `src/docket/core/archetypes.py`: `registry_for_role`
-- `src/docket/core/agent_loop.py`: the `approval_parked` stop, `approval_parked_error`
-- `src/docket/core/telegram.py`: the `/approve` and `/deny` handlers
+- `src/docket/hops/workspace/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
+- `src/docket/governance/review.py`: `review_code` and the reviewed digest
+- `src/docket/hops/workspace/prepare.py`: `LOCKFILES`, `linked_entries`
+- `src/docket/teams/apply/plan.py`: `REPO_REFUSED_COMMANDS`, `review_decision`, `apply_directory`
+- `src/docket/teams/pod_provisioning.py`: `provision_task_worktree`
+- `src/docket/operator/contract.py`: `canonical_args_digest`
+- `src/docket/teams/roles.py`: `registry_for_role`
+- `src/docket/agent/loop.py`: the `approval_parked` stop, `approval_parked_error`
+- `src/docket/interfaces/telegram/bot.py`: the `/approve` and `/deny` handlers
 - `src/docket/serve.py`: `GET /approvals`, `POST /approvals/<token>` and its channel set,
   `POST /tasks` (`trusted`), the expiry sweep, `/metrics` (`docket_policy_hits_total`)
-- `src/docket/cli/_setup_sandbox.py`: `docket setup sandbox` and its verbs, `docket setup profile`,
+- `src/docket/interfaces/cli/commands/setup_sandbox.py`: `docket setup sandbox` and its verbs, `docket setup profile`,
   the `gates.*` audit entries
-- `src/docket/cli/_setup_check.py`: `docket setup`'s security report and `securityGates`
-- `src/docket/cli/_task.py`: `docket task approve`, `docket task deny`
-- `src/docket/cli/_mcp.py`: `approvals_list`, `approvals_grant`, `approvals_deny`
-- `src/docket/cli/_progress.py`: the `docket run` approval prompt
-- `src/docket/cli/_pod_config.py`: `docket pod check`, `docket pod policies`,
+- `src/docket/interfaces/cli/commands/setup_check.py`: `docket setup`'s security report and `securityGates`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task approve`, `docket task deny`
+- `src/docket/interfaces/cli/commands/mcp.py`: `approvals_list`, `approvals_grant`, `approvals_deny`
+- `src/docket/interfaces/cli/render/progress.py`: the `docket run` approval prompt
+- `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod check`, `docket pod policies`,
   `docket pod validate`, `docket pod update`
-- `src/docket/cli/_agents.py`: `docket init` (policy install, the repository shell refusal)
-- `src/docket/cli/_run.py`: `docket run`'s re-apply of a repository directory
-- `src/docket/cli/_service.py`: `docket start` (`make_non_dumpable`)
-- `src/docket/cli/_status.py`: `docket status`'s profile and network lines
+- `src/docket/interfaces/cli/commands/agents.py`: `docket init` (policy install, the repository shell refusal)
+- `src/docket/interfaces/cli/commands/run.py`: `docket run`'s re-apply of a repository directory
+- `src/docket/interfaces/cli/commands/service.py`: `docket start` (`make_non_dumpable`)
+- `src/docket/interfaces/cli/commands/status.py`: `docket status`'s profile and network lines
 - `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`,
   `tool_approval_poll_interval_s`, `approval_timeout`, `fetch_allowed_domains`,
   `fetch_max_response_bytes`, `fetch_timeout_s`, `policies_dir`, `plugins_dir`, `approvals_dir`,
@@ -1607,5 +1607,5 @@ $ git clone https://anywhere.example/repo.git
   `release-journey` CI job), `tests/integration/test_envelope_commands.py`,
   `tests/integration/test_network_lockdown.py`, `tests/integration/test_lights_out_profile.py`,
   `tests/integration/test_task_credentials.py`, `tests/integration/test_process_non_dumpable.py`,
-  `tests/unit/edges/adapters/test_fetch.py` (`TestDomainAllowlist`, `TestRedirects`),
-  `tests/unit/core/test_approval.py`
+  `tests/unit/platform/test_fetch.py` (`TestDomainAllowlist`, `TestRedirects`),
+  `tests/unit/governance/test_approval.py`

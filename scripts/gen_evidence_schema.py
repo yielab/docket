@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 def render(version: str) -> str:
     """Return the generated schema.json content for *version*, trailing newline included."""
-    from docket.core import evidence
+    from docket.tasks.application import evidence
 
     model = evidence.TaskEvidence11
     document = {

@@ -954,38 +954,38 @@ ok Exporter privacy updated: langfuse
 
 ## Implementation
 
-- `src/docket/core/telemetry.py`: `Span`, `SpanEvent`, `ProjectionState`, `ExportPolicy`,
+- `src/docket/observability/telemetry.py`: `Span`, `SpanEvent`, `ProjectionState`, `ExportPolicy`,
   `MINIMAL_POLICY`, `project`, `flush_turn`, `flush_open`, `DEFAULT_EVENTS`,
   `ATTRIBUTE_CLASSES`, the structural-key table (`_STRUCTURAL_KEYS`), the grant check
   (`_granted`), `SinkOutcome`, `SpanSink`, `PipelineStats`, `Pipeline`, `SinkFactory`,
   `load_enabled_exporters`, `start`, `flush`, `close`, `health`, `capture_classes`
-- `src/docket/core/privacy.py`: `CONTENT_CLASSES`, `LEVELS`, `resolve`, `describe`
-- `src/docket/core/exporter.py`: `ExporterAuth`, `ExporterSpec`, `ExporterError`,
+- `src/docket/governance/privacy.py`: `CONTENT_CLASSES`, `LEVELS`, `resolve`, `describe`
+- `src/docket/observability/exporter.py`: `ExporterAuth`, `ExporterSpec`, `ExporterError`,
   `load_exporter_document`, `Catalog`, `load_catalog`, `save_exporter`, `delete_exporter`,
   `export_exporter`, `resolve_credentials`, `enable_exporter`, `disable_exporter`,
   `is_widening`, `set_privacy`, `ExporterState`, `activation_state`, `ProbeResult`,
   `ExporterVerification`, `verify_endpoint`, `read_health`
-- `src/docket/core/provider.py`: `ProviderError`, the provider `verify_endpoint` (requirements
+- `src/docket/models/catalog.py`: `ProviderError`, the provider `verify_endpoint` (requirements
   22-23, 31)
-- `src/docket/edges/adapters/exporters/otlp_http.py`: `AuthHeader`, `encode`, `SinkResult`,
+- `src/docket/observability/adapters/otlp_http.py`: `AuthHeader`, `encode`, `SinkResult`,
   `OtlpHttpSink`, `ProbeResult`, `probe`
 - `src/docket/edges/adapters/exporters/__init__.py`: `sink_for`
-- `src/docket/edges/adapters/redirects.py`: `open_same_origin`
-- `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver.run_turn` (requirement 55), the
+- `src/docket/platform/redirects.py`: `open_same_origin`
+- `src/docket/agent/driver.py`: `DocketDriver.run_turn` (requirement 55), the
   `atexit` hook `_close_telemetry` (requirement 109)
-- `src/docket/edges/store.py`: the docket-owned JSON store (`read_json`, `write_json`,
+- `src/docket/platform/store.py`: the docket-owned JSON store (`read_json`, `write_json`,
   `read_modify_write`)
 - `src/docket/core/dispatch.py`: the hop marker and hop reply (requirement 108) and the
   `session_end` write (requirement 106)
 - `src/docket/kernel/home.py`: the `Home` members `exporters_file`, `exporters_health_file`,
   `export_queue_max`, `export_flush_timeout_s`, `dispatch_retry_max_wait_s`, `traces_dir`
 - `src/docket/kernel/templates.py`: `EXPORTER_TEMPLATES_DIR`
-- `src/docket/core/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
+- `src/docket/kernel/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
 - `src/docket/edges/adapters/system.py`: `no_export` (`DOCKET_NO_EXPORT`, read live)
 - `src/docket/templates/exporters/`: the five built-in documents
-- `src/docket/cli/_setup_export.py`: `docket setup export` (requirements 60-63, 90-102)
-- `src/docket/cli/_setup_check.py`: the `docket setup` exporter lines (requirement 97)
-- `src/docket/cli/_pod_show.py`, `src/docket/core/pod_report.py`: `docket pod show`'s exporters
+- `src/docket/interfaces/cli/commands/setup_export.py`: `docket setup export` (requirements 60-63, 90-102)
+- `src/docket/interfaces/cli/commands/setup_check.py`: the `docket setup` exporter lines (requirement 97)
+- `src/docket/interfaces/cli/commands/pod_show.py`, `src/docket/teams/report.py`: `docket pod show`'s exporters
   report (requirement 97)
 - `tests/fixtures/traces/dispatch-3-hops.jsonl`, `tests/fixtures/otlp-v1/dispatch-3-hops.json`:
   the fixture trace and its OTLP golden

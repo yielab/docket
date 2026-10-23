@@ -19,13 +19,15 @@ import typer
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import pod
-from docket.edges import store as _store
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.pipeline.application import steps as _steps
+from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
+from docket.teams import pod
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.cli._pod"
+SUBJECT = "docket.interfaces.cli.commands.pod"
 
 
 @pytest.fixture(autouse=True)
@@ -91,16 +93,16 @@ class TestConfigSet:
     ) -> None:
         with _build(tmp_path):
             _pod.set_setting("proj", "maxReworkCycles", "2")
-            assert _dispatch.pod_max_rework_cycles("proj") == 2
+            assert _settings.pod_max_rework_cycles("proj") == 2
             capsys.readouterr()
 
     def test_set_approval_mode_refuse_persists_and_dispatch_reads_it(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _build(tmp_path):
-            assert _dispatch.pod_approval_mode("proj") == "wait"
+            assert _settings.pod_approval_mode("proj") == "wait"
             _pod.set_setting("proj", "approvalMode", "refuse")
-            assert _dispatch.pod_approval_mode("proj") == "refuse"
+            assert _settings.pod_approval_mode("proj") == "refuse"
             capsys.readouterr()
 
     def test_set_invalid_value_exits_1_and_leaves_meta_unchanged(
@@ -145,7 +147,7 @@ class TestConfigUnset:
             capsys.readouterr()
             _pod.unset_setting("proj", "maxReworkCycles")
             capsys.readouterr()
-            assert _dispatch.pod_max_rework_cycles("proj") == 1
+            assert _settings.pod_max_rework_cycles("proj") == 1
 
 
 _CUSTOM_PIPELINE = (
@@ -176,7 +178,7 @@ class TestConfigSetPipeline:
             assert isinstance(digest, str) and len(digest) == 64
             stored = pod.bound_pipeline_path("proj")
             assert stored.read_text() == _CUSTOM_PIPELINE
-            spec = _dispatch.effective_pipeline("proj", None)
+            spec = _steps.effective_pipeline("proj", None)
             assert [step.id for step in spec.steps] == ["kickoff", "assemble"]
 
     def test_set_refuses_when_a_step_targets_a_role_the_pod_lacks(
@@ -219,7 +221,7 @@ class TestConfigSetPipeline:
             capsys.readouterr()
 
             assert not pod.bound_pipeline_path("proj").exists()
-            spec = _dispatch.effective_pipeline("proj", None)
+            spec = _steps.effective_pipeline("proj", None)
             assert [step.role for step in spec.steps] == [
                 "lead",
                 "implementer",
@@ -240,7 +242,7 @@ class TestConfigSetSchedule:
             _pod.set_setting("proj", "schedule", "@every 30m")
             capsys.readouterr()
 
-            from docket.core import schedule as _sched
+            from docket.pipeline.application import schedule as _sched
 
             schedules = _sched.load_schedules(current_home().schedule_file)
             assert schedules["proj"] == "@every 30m"
@@ -258,7 +260,7 @@ class TestConfigSetSchedule:
             assert "schedule" in capsys.readouterr().err
             assert _lead_meta("proj") == before
 
-            from docket.core import schedule as _sched
+            from docket.pipeline.application import schedule as _sched
 
             assert _sched.load_schedules(current_home().schedule_file) == {}
 
@@ -272,7 +274,7 @@ class TestConfigSetSchedule:
             _pod.unset_setting("proj", "schedule")
             capsys.readouterr()
 
-            from docket.core import schedule as _sched
+            from docket.pipeline.application import schedule as _sched
 
             assert _sched.load_schedules(current_home().schedule_file) == {}
             assert pod.PodSettings.load_for("proj").schedule is None
@@ -285,7 +287,7 @@ class TestConfigSetSchedule:
         pick it up."""
         import time as _time
 
-        import docket.serve as _serve
+        from docket.pipeline.application import schedule as _sched
 
         with _build(tmp_path):
             _pod.set_setting("proj", "schedule", "@every 1s")
@@ -293,10 +295,10 @@ class TestConfigSetSchedule:
 
             dispatched: list[str] = []
             monkeypatch.setattr(
-                "docket.core.dispatch.dispatch_pod",
+                "docket.tasks.application.sweep.dispatch_pod",
                 lambda proj, **kw: dispatched.append(proj) or [],
             )
-            _serve._check_schedules(_time.time())
+            _sched._check_schedules(_time.time())
             deadline = _time.time() + 2
             while not dispatched and _time.time() < deadline:
                 _time.sleep(0.05)
@@ -315,7 +317,7 @@ class TestBudgetSet:
         with _build(tmp_path):
             _pod.set_setting("proj", "budgetUsd", "5")
             _pod.set_setting("proj", "budgetUsd", "0")
-            assert _dispatch.pod_budget("proj") == 0.0
+            assert _settings.pod_budget("proj") == 0.0
 
     @pytest.mark.parametrize("bad", ["abc", "-1"])
     def test_a_bad_budget_exits_1_and_changes_nothing(self, tmp_path: Path, bad: str) -> None:
@@ -344,7 +346,7 @@ class TestBudgetSet:
             meta = _lead_meta("proj")
             meta.update({"paused": True, "pausedReason": "budget"})
             current_home().meta_path(lead).write_text(json.dumps(meta))
-            _dispatch.enqueue_task_once("proj", "held", channel="cli")
+            _queue.enqueue_task_once("proj", "held", channel="cli")
 
             if how == "set-zero":
                 _pod.set_setting("proj", "budgetUsd", "0")
@@ -353,7 +355,7 @@ class TestBudgetSet:
 
             assert _lead_meta("proj")["paused"] is False
             assert _lead_meta("proj")["pausedReason"] == ""
-            claim = _dispatch._claim_next_task("proj", resume=False)
+            claim = _queue._claim_next_task("proj", resume=False)
             assert claim is not None
 
     def test_the_unblock_line_counts_every_task_it_requeues_and_says_so(
@@ -363,8 +365,8 @@ class TestBudgetSet:
     ) -> None:
         with _build(tmp_path):
             for desc in ("needs a file", "needs a file too"):
-                _dispatch.enqueue_task_once("proj", desc, channel="cli")
-            path = _dispatch.pod_task_list_path("proj")
+                _queue.enqueue_task_once("proj", desc, channel="cli")
+            path = _settings.pod_task_list_path("proj")
             doc = _store.read_json(path)
             for task in doc["tasks"]:
                 task["status"] = "blocked"

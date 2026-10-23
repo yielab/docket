@@ -25,21 +25,23 @@ import pytest
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import approval as _approval
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import policy as _policy
-from docket.core import secrets as _secrets
-from docket.core import telegram as _tg
-from docket.core.channel import ChannelSpec
-from docket.core.operator_contract import QuestionV11, make_event
-from docket.edges import store as _store
-from docket.edges.adapters.channels import telegram as _tg_channel
-from docket.edges.adapters.telegram import TelegramUpdate
+from docket.governance import approval as _approval
+from docket.governance import audit as _audit
+from docket.governance import policy as _policy
+from docket.governance import secrets as _secrets
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.telegram import bot as _tg
+from docket.interfaces.telegram.client import TelegramUpdate
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.operator.adapters import telegram as _tg_channel
+from docket.operator.channel import ChannelSpec
+from docket.operator.contract import QuestionV11, make_event
+from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
 SUBJECT = "docket.core"
 
@@ -95,9 +97,9 @@ def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     reached by actually dispatching through an ``input`` step."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task_once(project, "needs a decision", channel="cli")
-    _dispatch.dispatch_pod(project, runner=FakeDriver())
-    return _dispatch.read_tasks(project)[0]
+    _queue.enqueue_task_once(project, "needs a decision", channel="cli")
+    _sweep.dispatch_pod(project, runner=FakeDriver())
+    return _queue.read_tasks(project)[0]
 
 
 # ── authorization: the security-critical invariant ──────────────────────────
@@ -359,11 +361,11 @@ class TestStatus:
     def test_status_shows_a_blocked_task_scoped_to_this_pod(self) -> None:
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
-        _dispatch.enqueue_task_once("demo", "Do the thing", channel="cli")
-        tasks = _dispatch.read_tasks("demo")
+        _queue.enqueue_task_once("demo", "Do the thing", channel="cli")
+        tasks = _queue.read_tasks("demo")
         tasks[0]["status"] = "blocked"
         tasks[0]["blockedReason"] = "budget"
-        _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})
+        _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": tasks})
 
         outcome = _tg.handle_message(_msg("-100300", "/status"))
 
@@ -383,7 +385,7 @@ class TestDelegate:
 
         assert outcome.ok
         assert outcome.action == "delegate"
-        tasks = _dispatch.read_tasks("demo")
+        tasks = _queue.read_tasks("demo")
         assert len(tasks) == 1
         assert tasks[0]["description"] == "fix the login bug"
 
@@ -400,7 +402,7 @@ class TestDelegate:
         outcome = _tg.handle_message(_msg("-100300", "/delegatefoo bar"))
 
         assert outcome.action == "unparseable"
-        assert _dispatch.read_tasks("demo") == []
+        assert _queue.read_tasks("demo") == []
 
     def test_delegate_accepts_the_bot_suffix_and_a_multiline_description(self) -> None:
         _seed_pod("demo")
@@ -409,7 +411,7 @@ class TestDelegate:
         outcome = _tg.handle_message(_msg("-100300", "/delegate@docket_bot\nline one\nline two"))
 
         assert outcome.ok
-        assert _dispatch.read_tasks("demo")[0]["description"] == "line one\nline two"
+        assert _queue.read_tasks("demo")[0]["description"] == "line one\nline two"
 
     def test_a_bare_delegate_gets_the_usage_reply(self) -> None:
         _seed_pod("demo")
@@ -446,13 +448,13 @@ class TestDelegate:
         def _boom(*_a: object, **_k: object) -> object:
             raise AssertionError("enqueue_task_once must not be called when pre_input blocks")
 
-        monkeypatch.setattr(_dispatch, "enqueue_task_once", _boom, raising=True)
+        monkeypatch.setattr(_queue, "enqueue_task_once", _boom, raising=True)
 
         outcome = _tg.handle_message(_msg("-100300", "/delegate this has a forbidden-phrase in it"))
 
         assert not outcome.ok
         assert "blocked by policy" in outcome.reply
-        tasks = _dispatch.read_tasks("demo")
+        tasks = _queue.read_tasks("demo")
         assert tasks == []
         blocked = [e for e in _read_audit() if e.get("action") == "telegram.delegate_blocked"]
         assert len(blocked) == 1
@@ -477,13 +479,13 @@ class TestDelegate:
         outcome = _tg.handle_message(_msg("-100300", "/delegate this needs-a-human review"))
 
         assert not outcome.ok
-        assert _dispatch.read_tasks("demo") == []
+        assert _queue.read_tasks("demo") == []
 
     def test_a_warn_policy_allows_but_still_audits(self) -> None:
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
         # The shipped prompt-injection template is action=warn by default.
-        from docket.core.policy import install_policies
+        from docket.governance.policy import install_policies
 
         install_policies()
 
@@ -492,7 +494,7 @@ class TestDelegate:
         )
 
         assert outcome.ok
-        assert len(_dispatch.read_tasks("demo")) == 1
+        assert len(_queue.read_tasks("demo")) == 1
         warns = [e for e in _read_audit() if e.get("action") == "telegram.delegate_warn"]
         assert len(warns) == 1
 
@@ -510,7 +512,7 @@ class TestAnswer:
         assert outcome.ok
         assert outcome.action == "answer"
         assert task["id"] in outcome.reply
-        after = _dispatch.read_tasks("demo")[0]
+        after = _queue.read_tasks("demo")[0]
         assert after["status"] == "pending"
         assert after["answers"][0]["content"] == {"answer": "ship it"}
         assert after["answers"][0]["channel"] == "telegram"
@@ -543,22 +545,22 @@ class TestAnswer:
 
         assert not outcome.ok
         assert "not found" in outcome.reply
-        assert _dispatch.read_tasks("other")[0]["status"] == "waiting_input"
+        assert _queue.read_tasks("other")[0]["status"] == "waiting_input"
 
     def test_a_multi_property_question_is_refused_with_cli_guidance(self) -> None:
         """A bare chat message cannot be split across fields -- mirrors ``cli/_task.py``'s
         ``_task_answer`` bare-text refusal for the same case."""
         task = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
-        tasks = _dispatch.read_tasks("demo")
+        tasks = _queue.read_tasks("demo")
         tasks[0]["question"]["requestedSchema"]["properties"]["confirm"] = {"type": "boolean"}
-        _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})
+        _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": tasks})
 
         outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} ship it"))
 
         assert not outcome.ok
         assert "docket task answer" in outcome.reply
-        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+        assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
 
     def test_a_block_policy_refuses_before_the_answer_is_ever_written(self) -> None:
         """Mirrors ``TestDelegate``'s block test: a real installed policy, not a patched
@@ -584,7 +586,7 @@ class TestAnswer:
 
         assert not outcome.ok
         assert "blocked by policy" in outcome.reply
-        after = _dispatch.read_tasks("demo")[0]
+        after = _queue.read_tasks("demo")[0]
         assert after["status"] == "waiting_input"
         assert after.get("answers", []) == []
         blocked = [e for e in _read_audit() if e.get("action") == "telegram.answer_blocked"]
@@ -594,8 +596,8 @@ class TestAnswer:
 def _park_consult(project: str = "demo") -> dict[str, Any]:
     """A real pod whose one task is parked on a v1.1 consult question with two options."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    _dispatch.enqueue_task_once(project, "pick a design", channel="cli")
-    tasks = _dispatch.read_tasks(project)
+    _queue.enqueue_task_once(project, "pick a design", channel="cli")
+    tasks = _queue.read_tasks(project)
     question = QuestionV11.model_validate(
         {
             "id": "q-consult00001",
@@ -615,7 +617,7 @@ def _park_consult(project: str = "demo") -> dict[str, Any]:
     )
     tasks[0]["status"] = "waiting_input"
     tasks[0]["question"] = question.model_dump(by_alias=True, mode="json")
-    _store.write_json(_dispatch.pod_task_list_path(project), {"tasks": tasks})
+    _store.write_json(_settings.pod_task_list_path(project), {"tasks": tasks})
     return tasks[0]
 
 
@@ -627,7 +629,7 @@ class TestAnswerPicksAnOption:
         outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} iterative"))
 
         assert outcome.ok, outcome.reply
-        after = _dispatch.read_tasks("demo")[0]
+        after = _queue.read_tasks("demo")[0]
         assert after["status"] == "pending"
         assert after["answers"][0]["optionId"] == "iterative"
         assert after["answers"][0]["channel"] == "telegram"
@@ -639,7 +641,7 @@ class TestAnswerPicksAnOption:
         outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} do the first one"))
 
         assert not outcome.ok
-        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+        assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
 
 
 # ── unrecognized input never guesses ────────────────────────────────────────
@@ -693,12 +695,12 @@ class TestTheBotReadsItsTokenThroughTheSecretsBackend:
     def test_a_keyring_stored_token_reaches_get_updates(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.edges.adapters import system as _system
+        from docket.platform import process as _process
 
         monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
-        monkeypatch.setattr(_system, "secret_tool_available", lambda: True)
+        monkeypatch.setattr(_process, "secret_tool_available", lambda: True)
         monkeypatch.setattr(
-            _system,
+            _process,
             "secret_tool_lookup",
             lambda service, key: "999:from-keyring" if key == "TELEGRAM_BOT_TOKEN" else None,
         )
@@ -719,7 +721,7 @@ class TestTheBotReadsItsTokenThroughTheSecretsBackend:
 
 class TestOneEnqueueEntryPoint:
     def test_telegram_and_the_mcp_tools_call_enqueue_task_once(self) -> None:
-        from docket.cli import _mcp
+        from docket.interfaces.cli.commands import mcp as _mcp
 
         for module in (_tg, _mcp):
             tree = ast.parse(Path(module.__file__ or "").read_text(encoding="utf-8"))
@@ -952,7 +954,7 @@ class TestTelegramChannelDialect:
         assert "-100" in result.error
 
     def test_sink_for_resolves_the_telegram_dialect_to_this_module(self) -> None:
-        from docket.edges.adapters.channels import sink_for
+        from docket.operator.adapters import sink_for
 
         assert sink_for(_channel_spec(["-100"])) is _tg_channel.deliver
 
@@ -1062,7 +1064,7 @@ class TestUnauthorizedBatchIsCoalesced:
 
     @staticmethod
     def _updates(chat_id: str, count: int) -> _tg.GetUpdatesFn:
-        from docket.edges.adapters.telegram import GetUpdatesResult
+        from docket.interfaces.telegram.client import GetUpdatesResult
 
         updates = tuple(
             TelegramUpdate(update_id=i, chat_id=chat_id, user_id="9", text="/status")
@@ -1092,7 +1094,7 @@ class TestUnauthorizedBatchIsCoalesced:
 
     def test_two_unbound_chats_in_one_batch_write_one_entry_each(self) -> None:
         """Coalescing is per chat id, so two chats in one batch keep two entries."""
-        from docket.edges.adapters.telegram import GetUpdatesResult
+        from docket.interfaces.telegram.client import GetUpdatesResult
 
         with use_home(dataclasses.replace(current_home(), telegram_poll_timeout_s=0)):
             _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})

@@ -24,9 +24,9 @@ LARGE_MODULE_LINES = 150
 # Predate the filename-mirrors-module convention: each checks an invariant that spans
 # multiple modules or a non-src contract, so its SUBJECT is asserted verbatim, not derived.
 _STRUCTURAL_EXEMPT = {
-    "test_cli_stubs.py": "docket.cli",
-    "test_registry.py": "docket.cli",
-    "test_store_writer.py": "docket.edges.store",
+    "test_cli_stubs.py": "docket.interfaces.cli.app",
+    "test_registry.py": "docket.interfaces.cli.app",
+    "test_store_writer.py": "docket.platform.store",
     "test_runtime_adapter_fixture_contract.py": "tests.fixtures.runtime_adapters.scenarios",
 }
 

@@ -16,17 +16,17 @@ import pytest
 from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod_config
-from docket.core import config_docs as _config_docs
-from docket.core import mcp_tools as _mt
-from docket.core import pod
-from docket.core import pod_apply as _pod_apply
-from docket.core.tools import ToolRegistry
-from docket.edges.adapters.docket_runtime import _load_mcp_tools
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.agent.driver import _load_mcp_tools
+from docket.agent.tools import mcp_tools as _mt
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import ToolRegistry
+from docket.interfaces.cli.commands import pod_config as _pod_config
 from docket.kernel.home import Home, current_home, use_home
+from docket.teams import config_docs as _config_docs
+from docket.teams import pod
+from docket.teams.apply import plan as _pod_apply
 
-SUBJECT = "docket.core.pod_apply"
+SUBJECT = "docket.teams.apply.plan"
 
 _SERVER_DOC = """\
 kind: mcp-server

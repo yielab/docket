@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from docket.cli import app
-from docket.core import trace as trace_core
+from docket.interfaces.cli.app import app
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as trace_core
 
-SUBJECT = "docket.core.trace"
+SUBJECT = "docket.observability.trace"
 
 
 @pytest.fixture()

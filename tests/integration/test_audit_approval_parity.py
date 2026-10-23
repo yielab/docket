@@ -24,13 +24,13 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import app
-from docket.core import approval as _ap
-from docket.core import audit as _audit
-from docket.core import trace as _trace
+from docket.governance import approval as _ap
+from docket.governance import audit as _audit
+from docket.interfaces.cli.app import app
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
-from docket.serve import _DocketHandler
+from docket.observability import trace as _trace
 
 SUBJECT = "docket.core"
 

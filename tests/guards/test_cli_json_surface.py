@@ -18,9 +18,10 @@ from typer.core import TyperGroup
 from typer.main import get_command
 from typer.testing import CliRunner
 
-from docket.cli import _pod, app
-from docket.core import dispatch as _dispatch
+from docket.interfaces.cli.app import app
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import queue as _queue
 
 _runner = CliRunner()
 
@@ -90,7 +91,7 @@ def fixture_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[st
         code.mkdir()
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
         register_local_provider(home, "loopback", [{"id": "tiny"}])
-        task = _dispatch.enqueue_task_once("demo", "a queued task", channel="cli")[
+        task = _queue.enqueue_task_once("demo", "a queued task", channel="cli")[
             0
         ]  # also the one audit entry
         monkeypatch.setenv("DOCKET_POD", "demo")

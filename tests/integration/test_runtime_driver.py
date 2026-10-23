@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from tests.fakes import FakeDriver
 
-from docket.core import runtime_driver as _rd
+from docket.agent import ports as _rd
 
-SUBJECT = "docket.core.runtime_driver"
+SUBJECT = "docket.agent.ports"
 
 # ── protocol conformance ──────────────────────────────────────────────────────
 
@@ -23,13 +23,13 @@ class TestProtocolConformance:
         assert isinstance(FakeDriver(), _rd.RuntimeDriver)
 
     def test_docket_driver_satisfies_runtime_driver(self) -> None:
-        from docket.edges.adapters.docket_runtime import DocketDriver
+        from docket.agent.driver import DocketDriver
 
         assert isinstance(DocketDriver(), _rd.RuntimeDriver)
 
     def test_default_driver_is_a_singleton(self) -> None:
-        from docket.edges.adapters import docket_runtime as _dr
-        from docket.edges.adapters.docket_runtime import DocketDriver
+        from docket.agent import driver as _dr
+        from docket.agent.driver import DocketDriver
 
         assert _dr.default_driver() is _dr.default_driver()
         assert isinstance(_dr.default_driver(), DocketDriver)

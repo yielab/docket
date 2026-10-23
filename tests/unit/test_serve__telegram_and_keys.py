@@ -13,34 +13,21 @@ import time
 
 import pytest
 
-import docket.serve as serve
-from docket.core import telegram as _telegram
+from docket.interfaces.telegram import bot as _telegram
+from docket.interfaces.telegram import poll
 from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.serve"
 
-# ── the poll loop's pacing/backoff discipline ───────────────────────────────
-
-
-class _FakeServer:
-    def __init__(self, *_a: object, **_k: object) -> None:
-        pass
-
-    def serve_forever(self) -> None:
-        raise KeyboardInterrupt
-
-    def server_close(self) -> None:
-        pass
-
 
 @pytest.fixture(autouse=True)
 def _fast_backoffs(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(serve, "_TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
-    monkeypatch.setattr(serve, "_TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)
+    monkeypatch.setattr(poll, "_TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
+    monkeypatch.setattr(poll, "_TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)
 
 
 def _run_loop_until(stop: threading.Event, n_calls: int, timeout: float = 5.0) -> None:
-    t = new_thread(target=serve._telegram_poll_loop, args=(stop,), daemon=True)
+    t = new_thread(target=poll._telegram_poll_loop, args=(stop,), daemon=True)
     t.start()
     t.join(timeout=timeout)
     assert not t.is_alive(), f"telegram poll loop did not stop after {n_calls} calls"
@@ -127,44 +114,3 @@ class TestPollLoopPacing:
         elapsed = time.monotonic() - start
         assert calls >= 50
         assert elapsed < 2.0  # would take 50 * backoff seconds if it wrongly slept
-
-
-# ── run_serve(telegram=...) actually starts (or doesn't start) the loop ─────
-
-
-class TestRunServeTelegramFlag:
-    def test_telegram_true_starts_the_poll_thread(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
-
-        started = threading.Event()
-        monkeypatch.setattr(serve, "_telegram_poll_loop", lambda stop: started.set(), raising=True)
-
-        serve.run_serve(port=0, interval=30, telegram=True)
-        assert started.wait(timeout=2), "telegram=True must start the poll loop thread"
-
-    def test_telegram_false_never_starts_the_poll_thread(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
-
-        started = threading.Event()
-        monkeypatch.setattr(serve, "_telegram_poll_loop", lambda stop: started.set(), raising=True)
-
-        serve.run_serve(port=0, interval=30, telegram=False)
-        assert not started.wait(timeout=0.5)
-
-    def test_telegram_true_prints_a_banner_flag(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setattr(serve, "_telegram_poll_loop", lambda stop: None, raising=True)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
-
-        serve.run_serve(port=0, interval=30, telegram=True)
-        out = capsys.readouterr().out
-        assert "telegram=on" in out

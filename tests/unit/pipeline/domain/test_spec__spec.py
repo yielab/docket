@@ -1,0 +1,1096 @@
+"""docket-native pipeline spec.
+
+``core/pipeline.py`` defines the format only, a Pydantic model for the
+YAML dialect the executor runs pods through; tests the model and its
+validation only, not dispatch behavior. See
+specs/functional/pipeline-format.spec.md for the zero-migration contract.
+
+  * TestRoundTrip, TestUnknownKeyRejected, TestGateTypes, TestReworkBounds,
+    TestParallelGroups, TestVariables, TestStepTargeting — shape validation.
+  * TestZeroMigration, TestLoadPipeline, TestCommandSteps — the built-in
+    pipeline, YAML/PyYAML errors, and a ``run`` step's shape/rendering.
+"""
+
+from __future__ import annotations
+
+import sys
+
+import pytest
+import yaml
+from pydantic import ValidationError
+
+from docket.pipeline.application import steps as _steps
+from docket.pipeline.domain import plan as _orch
+from docket.pipeline.domain.spec import (
+    ApprovalGate,
+    MechanicalGate,
+    PipelineSpec,
+    ReworkEdge,
+    Step,
+    Variable,
+    VerdictGate,
+    default_pipeline,
+    interpolate_instructions,
+    load_pipeline,
+    normalize_pipeline,
+    step_instructions_by_id,
+    unresolved_step_variables,
+)
+from docket.teams import roles as _archetypes
+
+SUBJECT = "docket.pipeline.domain.spec"
+
+FULL_YAML = """\
+name: release
+description: Ship a change through the pod.
+
+variables:
+  TARGET:
+    default: main
+    description: branch to ship
+  REASON:
+    required: true
+
+steps:
+  - id: plan
+    role: lead
+
+  - id: build
+    role: implementer
+    retries: 2
+    timeout: 600
+    archetype: implementer
+    gate:
+      type: mechanical
+      command: "make test"
+      timeout: 300
+
+  - id: review
+    role: reviewer
+    gate:
+      type: verdict
+      pattern: "^(APPROVE|REQUEST-CHANGES)\\\\b"
+      passValues: [approve]
+      rework:
+        to: build
+        when: [request-changes]
+        maxCycles: 2
+
+  - id: fanout
+    parallel:
+      - id: impl-a
+        agent: myapp-implementer
+      - id: impl-b
+        agent: myapp-implementer-2
+
+  - id: ship
+    role: implementer
+    gate:
+      type: approval
+      message: "Ready to deploy?"
+"""
+
+
+# ── TestRoundTrip ────────────────────────────────────────────────────────────
+
+
+class TestRoundTrip:
+    def test_valid_pipeline_loads(self) -> None:
+        result = load_pipeline(FULL_YAML)
+        assert result.ok, result.errors
+        assert result.source == "file"
+        assert result.spec is not None
+        assert [s.id for s in result.spec.steps] == ["plan", "build", "review", "fanout", "ship"]
+
+    def test_round_trips_through_dump(self) -> None:
+        spec = load_pipeline(FULL_YAML).spec
+        assert spec is not None
+        dumped = spec.model_dump(by_alias=True)
+        reloaded = PipelineSpec.model_validate(dumped)
+        assert reloaded == spec
+
+    def test_variables_parsed(self) -> None:
+        spec = load_pipeline(FULL_YAML).spec
+        assert spec is not None
+        assert spec.variables["TARGET"].default == "main"
+        assert spec.variables["REASON"].required is True
+        assert spec.variables["REASON"].default is None
+
+    def test_nested_parallel_children_parsed(self) -> None:
+        spec = load_pipeline(FULL_YAML).spec
+        assert spec is not None
+        fanout = next(s for s in spec.steps if s.id == "fanout")
+        assert fanout.parallel is not None
+        assert [c.id for c in fanout.parallel] == ["impl-a", "impl-b"]
+        assert fanout.parallel[0].agent == "myapp-implementer"
+
+
+# ── TestUnknownKeyRejected ───────────────────────────────────────────────────
+
+
+class TestUnknownKeyRejected:
+    def test_unknown_top_level_key_rejected(self) -> None:
+        result = load_pipeline(FULL_YAML + "\nnotARealField: 1\n")
+        assert not result.ok
+        assert any("notARealField" in e for e in result.errors)
+
+    def test_unknown_step_key_rejected(self) -> None:
+        text = "name: p\nsteps:\n  - id: s1\n    role: lead\n    bogus: yes\n"
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("bogus" in e for e in result.errors)
+
+    def test_unknown_gate_key_rejected(self) -> None:
+        text = (
+            "name: p\nsteps:\n  - id: s1\n    role: implementer\n"
+            "    gate:\n      type: mechanical\n      command: echo hi\n      wat: 1\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("wat" in e for e in result.errors)
+
+    def test_unknown_rework_key_rejected(self) -> None:
+        text = (
+            "name: p\nsteps:\n"
+            "  - id: build\n    role: implementer\n"
+            "  - id: review\n    role: reviewer\n"
+            "    gate:\n      type: verdict\n      pattern: '^(A|B)'\n"
+            "      passValues: [a]\n"
+            "      rework:\n        to: build\n        when: [b]\n        bogus: 1\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("bogus" in e for e in result.errors)
+
+    def test_unknown_variable_key_rejected(self) -> None:
+        text = (
+            "name: p\nvariables:\n  X:\n    default: 1\n    bogus: yes\n"
+            "steps:\n  - id: s1\n    role: lead\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("bogus" in e for e in result.errors)
+
+    def test_pydantic_model_extra_forbid_directly(self) -> None:
+        with pytest.raises(ValidationError):
+            PipelineSpec.model_validate(
+                {
+                    "name": "p",
+                    "steps": [{"id": "s1", "role": "lead"}],
+                    "notAField": True,
+                }
+            )
+
+
+# ── TestGateTypes ────────────────────────────────────────────────────────────
+
+
+class TestGateTypes:
+    def test_mechanical_gate_minimal(self) -> None:
+        gate = MechanicalGate()
+        assert gate.command is None
+        assert gate.type == "mechanical"
+
+    def test_mechanical_gate_with_command(self) -> None:
+        gate = MechanicalGate(command="pytest -q", timeout=120)
+        assert gate.command == "pytest -q"
+
+    def test_mechanical_gate_timeout_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            MechanicalGate(timeout=0)
+
+    def test_verdict_gate_minimal(self) -> None:
+        gate = VerdictGate(pattern=r"^(PASS|FAIL)\b", passValues=["pass"])
+        assert gate.rework is None
+        assert gate.case_sensitive is False
+
+    def test_verdict_gate_empty_pattern_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            VerdictGate(pattern="   ", passValues=["pass"])
+
+    def test_verdict_gate_bad_regex_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            VerdictGate(pattern="(unclosed", passValues=["pass"])
+
+    def test_verdict_gate_empty_pass_values_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            VerdictGate(pattern="^(PASS|FAIL)", passValues=[])
+
+    def test_verdict_gate_pass_and_rework_overlap_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            VerdictGate(
+                pattern="^(APPROVE|REQUEST-CHANGES)",
+                passValues=["approve"],
+                rework=ReworkEdge(to="build", when=["approve"]),
+            )
+
+    def test_verdict_gate_overlap_check_case_insensitive_by_default(self) -> None:
+        with pytest.raises(ValidationError):
+            VerdictGate(
+                pattern="^(APPROVE|REQUEST-CHANGES)",
+                passValues=["Approve"],
+                rework=ReworkEdge(to="build", when=["APPROVE"]),
+            )
+
+    def test_approval_gate_minimal(self) -> None:
+        gate = ApprovalGate()
+        assert gate.type == "approval"
+        assert gate.message == ""
+
+    def test_approval_gate_with_message(self) -> None:
+        gate = ApprovalGate(message="ship it?")
+        assert gate.message == "ship it?"
+
+    def test_gate_discriminated_by_type_field(self) -> None:
+        spec = PipelineSpec.model_validate(
+            {
+                "name": "p",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "role": "implementer",
+                        "gate": {"type": "approval", "message": "go?"},
+                    }
+                ],
+            }
+        )
+        assert isinstance(spec.steps[0].gate, ApprovalGate)
+
+    def test_gate_unknown_type_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PipelineSpec.model_validate(
+                {
+                    "name": "p",
+                    "steps": [{"id": "s1", "role": "implementer", "gate": {"type": "psychic"}}],
+                }
+            )
+
+
+# ── TestReworkBounds ─────────────────────────────────────────────────────────
+
+
+class TestReworkBounds:
+    def test_max_cycles_default_is_one(self) -> None:
+        edge = ReworkEdge(to="build", when=["request-changes"])
+        assert edge.max_cycles == 1
+
+    def test_max_cycles_zero_disables_rework_but_still_valid(self) -> None:
+        edge = ReworkEdge(to="build", when=["request-changes"], maxCycles=0)
+        assert edge.max_cycles == 0
+
+    def test_max_cycles_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ReworkEdge(to="build", when=["request-changes"], maxCycles=-1)
+
+    def test_empty_to_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ReworkEdge(to="   ", when=["request-changes"])
+
+    def test_empty_when_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ReworkEdge(to="build", when=[])
+
+    def _pipeline(self, review_gate_yaml: str) -> str:
+        return f"name: p\nsteps:\n  - id: build\n    role: implementer\n{review_gate_yaml}"
+
+    def test_rework_target_must_exist(self) -> None:
+        text = self._pipeline(
+            "  - id: review\n    role: reviewer\n"
+            "    gate:\n      type: verdict\n      pattern: '^(A|R)'\n"
+            "      passValues: [a]\n      rework:\n        to: nope\n        when: [r]\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("nope" in e and "top-level step" in e for e in result.errors)
+
+    def test_rework_target_must_be_earlier(self) -> None:
+        text = (
+            "name: p\nsteps:\n"
+            "  - id: review\n    role: reviewer\n"
+            "    gate:\n      type: verdict\n      pattern: '^(A|R)'\n"
+            "      passValues: [a]\n      rework:\n        to: build\n        when: [r]\n"
+            "  - id: build\n    role: implementer\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("earlier step" in e for e in result.errors)
+
+    def test_rework_target_cannot_be_self(self) -> None:
+        text = (
+            "name: p\nsteps:\n"
+            "  - id: review\n    role: reviewer\n"
+            "    gate:\n      type: verdict\n      pattern: '^(A|R)'\n"
+            "      passValues: [a]\n      rework:\n        to: review\n        when: [r]\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("earlier step" in e for e in result.errors)
+
+    def test_rework_target_earlier_step_valid(self) -> None:
+        text = self._pipeline(
+            "  - id: review\n    role: reviewer\n"
+            "    gate:\n      type: verdict\n      pattern: '^(A|R)'\n"
+            "      passValues: [a]\n      rework:\n        to: build\n        when: [r]\n"
+        )
+        result = load_pipeline(text)
+        assert result.ok, result.errors
+
+    def test_rework_inside_parallel_group_rejected(self) -> None:
+        text = (
+            "name: p\nsteps:\n"
+            "  - id: build\n    role: implementer\n"
+            "  - id: fanout\n    parallel:\n"
+            "      - id: r1\n        role: reviewer\n"
+            "        gate:\n          type: verdict\n          pattern: '^(A|R)'\n"
+            "          passValues: [a]\n"
+            "          rework:\n            to: build\n            when: [r]\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("parallel" in e for e in result.errors)
+
+
+# ── TestParallelGroups ───────────────────────────────────────────────────────
+
+
+class TestParallelGroups:
+    def test_parallel_group_parses(self) -> None:
+        spec = PipelineSpec.model_validate(
+            {
+                "name": "p",
+                "steps": [
+                    {
+                        "id": "fanout",
+                        "parallel": [
+                            {"id": "a", "role": "implementer"},
+                            {"id": "b", "role": "implementer"},
+                        ],
+                    }
+                ],
+            }
+        )
+        assert spec.steps[0].parallel is not None
+        assert len(spec.steps[0].parallel) == 2
+
+    def test_parallel_group_rejects_own_role(self) -> None:
+        with pytest.raises(ValidationError):
+            PipelineSpec.model_validate(
+                {
+                    "name": "p",
+                    "steps": [
+                        {
+                            "id": "fanout",
+                            "role": "implementer",
+                            "parallel": [{"id": "a", "role": "implementer"}],
+                        }
+                    ],
+                }
+            )
+
+    def test_parallel_group_rejects_own_gate(self) -> None:
+        with pytest.raises(ValidationError):
+            PipelineSpec.model_validate(
+                {
+                    "name": "p",
+                    "steps": [
+                        {
+                            "id": "fanout",
+                            "gate": {"type": "approval"},
+                            "parallel": [{"id": "a", "role": "implementer"}],
+                        }
+                    ],
+                }
+            )
+
+    def test_parallel_group_rejects_own_retries_timeout(self) -> None:
+        with pytest.raises(ValidationError):
+            PipelineSpec.model_validate(
+                {
+                    "name": "p",
+                    "steps": [
+                        {
+                            "id": "fanout",
+                            "retries": 1,
+                            "parallel": [{"id": "a", "role": "implementer"}],
+                        }
+                    ],
+                }
+            )
+
+    def test_parallel_group_must_be_non_empty(self) -> None:
+        with pytest.raises(ValidationError):
+            PipelineSpec.model_validate({"name": "p", "steps": [{"id": "fanout", "parallel": []}]})
+
+    def test_nested_parallel_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PipelineSpec.model_validate(
+                {
+                    "name": "p",
+                    "steps": [
+                        {
+                            "id": "fanout",
+                            "parallel": [
+                                {
+                                    "id": "inner",
+                                    "parallel": [{"id": "a", "role": "implementer"}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+    def test_duplicate_id_across_parallel_children_rejected(self) -> None:
+        text = (
+            "name: p\nsteps:\n"
+            "  - id: dup\n    role: lead\n"
+            "  - id: fanout\n    parallel:\n"
+            "      - id: dup\n        role: implementer\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("duplicate" in e for e in result.errors)
+
+    def test_duplicate_id_between_two_parallel_children_rejected(self) -> None:
+        text = (
+            "name: p\nsteps:\n"
+            "  - id: fanout\n    parallel:\n"
+            "      - id: same\n        role: implementer\n"
+            "      - id: same\n        role: reviewer\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("duplicate" in e for e in result.errors)
+
+
+# ── TestVariables ────────────────────────────────────────────────────────────
+
+
+class TestVariables:
+    def test_variable_with_default(self) -> None:
+        v = Variable(default="main")
+        assert v.default == "main"
+        assert v.required is False
+
+    def test_required_variable_no_default(self) -> None:
+        v = Variable(required=True)
+        assert v.default is None
+
+    def test_required_variable_with_default_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Variable(required=True, default="main")
+
+    def test_invalid_variable_identifier_rejected(self) -> None:
+        text = (
+            "name: p\nvariables:\n  '1bad':\n    default: x\nsteps:\n  - id: s1\n    role: lead\n"
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("1bad" in e for e in result.errors)
+
+    def test_valid_variable_identifier_with_underscore(self) -> None:
+        text = (
+            "name: p\nvariables:\n  _my_var:\n    default: x\nsteps:\n  - id: s1\n    role: lead\n"
+        )
+        result = load_pipeline(text)
+        assert result.ok, result.errors
+
+
+# ── TestStepTargeting ────────────────────────────────────────────────────────
+
+
+class TestStepTargeting:
+    def test_role_only(self) -> None:
+        step = Step(id="s1", role="implementer")
+        assert step.agent is None
+
+    def test_agent_only(self) -> None:
+        step = Step(id="s1", agent="myapp-implementer-2")
+        assert step.role is None
+
+    def test_neither_role_nor_agent_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1")
+
+    def test_both_role_and_agent_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="implementer", agent="myapp-implementer")
+
+    def test_empty_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="   ", role="lead")
+
+    def test_uppercase_role_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="Implementer")
+
+    def test_role_with_hyphen_and_digits_ok(self) -> None:
+        step = Step(id="s1", role="content-writer-2")
+        assert step.role == "content-writer-2"
+
+    def test_archetype_shape_validated(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="implementer", archetype="Not A Slug")
+
+    def test_archetype_valid_slug_accepted(self) -> None:
+        step = Step(id="s1", role="implementer", archetype="backend-implementer")
+        assert step.archetype == "backend-implementer"
+
+    def test_archetype_existence_never_checked(self) -> None:
+        # The pipeline format deliberately does not know about the archetype
+        # registry — any shape-valid name is accepted, existing or not.
+        step = Step(id="s1", role="implementer", archetype="some-archetype-that-does-not-exist")
+        assert step.archetype == "some-archetype-that-does-not-exist"
+
+    def test_duplicate_top_level_step_id_rejected(self) -> None:
+        text = "name: p\nsteps:\n  - id: dup\n    role: lead\n  - id: dup\n    role: implementer\n"
+        result = load_pipeline(text)
+        assert not result.ok
+        assert any("duplicate" in e for e in result.errors)
+
+    def test_empty_steps_list_rejected(self) -> None:
+        result = load_pipeline("name: p\nsteps: []\n")
+        assert not result.ok
+
+    def test_retries_must_be_non_negative(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="implementer", retries=-1)
+
+    def test_timeout_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="implementer", timeout=0)
+
+
+# ── TestStepModel ─────────────────────────────────────────────────────────────
+
+
+class TestStepModel:
+    """A unit step's own ``model`` override (pipeline-format.spec.md Steps Req. 10):
+    shape-only validation here, and short-form passthrough like ``timeout``/``retries``."""
+
+    def test_step_model_defaults_to_none(self) -> None:
+        assert Step(id="s1", role="implementer").model is None
+
+    def test_step_model_accepts_rank_word(self) -> None:
+        assert Step(id="s1", role="implementer", model="strong").model == "strong"
+
+    def test_step_model_accepts_provider_literal(self) -> None:
+        step = Step(id="s1", role="implementer", model="anthropic/claude-sonnet-4-6")
+        assert step.model == "anthropic/claude-sonnet-4-6"
+
+    def test_step_model_rejects_malformed_literal(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="implementer", model="not-a-rank-or-model-id")
+
+    def test_parallel_group_cannot_declare_model(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="fanout", model="strong", parallel=[Step(id="a", role="implementer")])
+
+    def test_run_step_cannot_declare_model(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="check", run="false", model="strong")
+
+    def test_short_form_carries_model_through(self) -> None:
+        doc = {
+            "name": "p",
+            "steps": [{"id": "plan", "role": "lead"}, {"build": "implementer", "model": "strong"}],
+        }
+        normalized = normalize_pipeline(doc)
+        build = normalized["steps"][1]
+        assert build == {"id": "build", "role": "implementer", "model": "strong"}
+        spec = PipelineSpec.model_validate(normalized)
+        assert spec.steps[1].model == "strong"
+
+
+# ── TestStepInstructions ─────────────────────────────────────────────────────
+
+
+class TestStepInstructions:
+    def test_step_instructions_defaults_to_none(self) -> None:
+        step = Step(id="s1", role="implementer")
+        assert step.instructions is None
+
+    def test_step_instructions_accepted(self) -> None:
+        step = Step(id="s1", role="security-reviewer", instructions="Focus on ${area}")
+        assert step.instructions == "Focus on ${area}"
+
+    def test_parallel_group_cannot_declare_instructions(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(
+                id="fanout",
+                instructions="not allowed on a group",
+                parallel=[Step(id="a", role="implementer")],
+            )
+
+    def test_step_instructions_by_id_collects_top_level_and_parallel_children(self) -> None:
+        spec = PipelineSpec(
+            name="p",
+            steps=[
+                Step(id="lead", role="lead"),
+                Step(id="review", role="security-reviewer", instructions="Focus on ${area}"),
+                Step(
+                    id="fanout",
+                    parallel=[
+                        Step(id="a", role="implementer", instructions="A note"),
+                        Step(id="b", role="implementer"),
+                    ],
+                ),
+            ],
+        )
+        assert step_instructions_by_id(spec) == {"review": "Focus on ${area}", "a": "A note"}
+
+    def test_unresolved_step_variables_names_missing_reference(self) -> None:
+        spec = PipelineSpec(
+            name="p",
+            steps=[Step(id="review", role="security-reviewer", instructions="Focus on ${area}")],
+        )
+        assert unresolved_step_variables(spec, {}) == ["area"]
+
+    def test_unresolved_step_variables_empty_when_resolved(self) -> None:
+        spec = PipelineSpec(
+            name="p",
+            steps=[Step(id="review", role="security-reviewer", instructions="Focus on ${area}")],
+        )
+        assert unresolved_step_variables(spec, {"area": "auth"}) == []
+
+    def test_interpolate_instructions_substitutes_var(self) -> None:
+        assert interpolate_instructions("Focus on ${area}", {"area": "auth"}) == "Focus on auth"
+
+    def test_interpolate_instructions_leaves_unresolved_reference_literal(self) -> None:
+        assert interpolate_instructions("Focus on ${area}", {}) == "Focus on ${area}"
+
+    def test_interpolate_instructions_ignores_bare_dollar_sign(self) -> None:
+        # Only the exact ${name} spelling is a placeholder -- a literal dollar
+        # amount in prose is never mistaken for one.
+        assert interpolate_instructions("Costs $5 total", {}) == "Costs $5 total"
+
+
+# ── TestZeroMigration ────────────────────────────────────────────────────────
+
+
+class TestZeroMigration:
+    """Absence of a pipeline file MUST mean today's built-in dispatch order,
+    byte-identical -- drift-guarded against ``core/dispatch.py``'s own
+    constants, not a hand-copied literal, so real drift fails this suite."""
+
+    def test_no_text_returns_builtin_source(self) -> None:
+        result = load_pipeline(None)
+        assert result.source == "builtin"
+        assert result.ok
+
+    def test_builtin_role_order_matches_dispatch_pipeline_order(self) -> None:
+        spec = default_pipeline()
+        assert tuple(s.role for s in spec.steps) == _steps.PIPELINE_ORDER
+
+    def test_builtin_lead_has_no_gate(self) -> None:
+        spec = default_pipeline()
+        lead = next(s for s in spec.steps if s.id == "lead")
+        assert lead.gate is None
+
+    def test_builtin_implementer_gate_defers_to_verify_cmd(self) -> None:
+        spec = default_pipeline()
+        implementer = next(s for s in spec.steps if s.id == "implementer")
+        assert isinstance(implementer.gate, MechanicalGate)
+        assert implementer.gate.command is None
+
+    def test_builtin_reviewer_pattern_matches_archetype_resolved_gate(self) -> None:
+        """Gate execution reads a step's resolved gate generically, not a
+        dispatch-private regex constant: checks the format's hardcoded
+        default agrees with the archetype registry's ``gateContract``."""
+        spec = default_pipeline()
+        reviewer = next(s for s in spec.steps if s.id == "reviewer")
+        assert isinstance(reviewer.gate, VerdictGate)
+        registry = _archetypes.load_registry()
+        bare_step = Step(id="probe", role="reviewer")  # no gate of its own
+        resolved = _orch.resolve_gate(bare_step, registry)
+        assert isinstance(resolved, VerdictGate)
+        assert reviewer.gate.pattern == resolved.pattern
+        # Both sides are case_sensitive=False, so only case-insensitive
+        # agreement is required — the pipeline default happens to spell its
+        # passValues lowercase, the archetype's regexes upper-case.
+        assert [v.lower() for v in reviewer.gate.pass_values] == [
+            v.lower() for v in resolved.pass_values
+        ]
+        assert reviewer.gate.pass_values == ["approve"]
+
+    def test_builtin_reviewer_rework_targets_implementer_default_one_cycle(self) -> None:
+        spec = default_pipeline()
+        reviewer = next(s for s in spec.steps if s.id == "reviewer")
+        assert isinstance(reviewer.gate, VerdictGate)
+        assert reviewer.gate.rework is not None
+        assert reviewer.gate.rework.to == "implementer"
+        assert reviewer.gate.rework.when == ["request-changes"]
+        assert reviewer.gate.rework.max_cycles == 1
+
+    def test_builtin_tester_pattern_matches_archetype_resolved_gate(self) -> None:
+        """See the reviewer test's docstring above."""
+        spec = default_pipeline()
+        tester = next(s for s in spec.steps if s.id == "tester")
+        assert isinstance(tester.gate, VerdictGate)
+        registry = _archetypes.load_registry()
+        bare_step = Step(id="probe", role="tester")  # no gate of its own
+        resolved = _orch.resolve_gate(bare_step, registry)
+        assert isinstance(resolved, VerdictGate)
+        assert tester.gate.pattern == resolved.pattern
+        assert [v.lower() for v in tester.gate.pass_values] == [
+            v.lower() for v in resolved.pass_values
+        ]
+        assert tester.gate.pass_values == ["pass"]
+
+    def test_builtin_tester_has_no_rework(self) -> None:
+        spec = default_pipeline()
+        tester = next(s for s in spec.steps if s.id == "tester")
+        assert isinstance(tester.gate, VerdictGate)
+        assert tester.gate.rework is None
+
+    def test_builtin_pipeline_itself_is_valid(self) -> None:
+        # default_pipeline() must satisfy every validator PipelineSpec enforces
+        # for a hand-authored file — it is not exempt from its own rules.
+        dumped = default_pipeline().model_dump(by_alias=True)
+        PipelineSpec.model_validate(dumped)  # raises on failure
+
+
+# ── TestLoadPipeline ─────────────────────────────────────────────────────────
+
+
+class TestLoadPipeline:
+    def test_yaml_parse_error(self) -> None:
+        result = load_pipeline("name: test\nsteps:\n  - {\n")
+        assert not result.ok
+        assert result.spec is None
+        assert any("YAML parse error" in e for e in result.errors)
+
+    def test_empty_document_is_an_error(self) -> None:
+        result = load_pipeline("")
+        assert not result.ok
+        assert result.source == "file"
+
+    def test_non_mapping_document_is_an_error(self) -> None:
+        result = load_pipeline("- just\n- a\n- list\n")
+        assert not result.ok
+        assert any("mapping" in e for e in result.errors)
+
+    def test_missing_name_rejected(self) -> None:
+        result = load_pipeline("steps:\n  - id: s1\n    role: lead\n")
+        assert not result.ok
+
+    def test_missing_steps_rejected(self) -> None:
+        result = load_pipeline("name: p\n")
+        assert not result.ok
+
+    def test_missing_pyyaml_gives_actionable_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(sys.modules, "yaml", None)
+        result = load_pipeline("name: p\nsteps:\n  - id: s1\n    role: lead\n")
+        assert not result.ok
+        assert any("pyyaml" in e.lower() for e in result.errors)
+
+
+# ── TestShortForm ────────────────────────────────────────────────────────────
+
+_SECURE_BUILD_LONG = """\
+name: secure-build
+description: >-
+  Lead plans the change, Implementer builds it (gated on its own verify command), then a
+  read-only Security Vetter reviews the diff and must APPROVE before the task is done. A
+  REQUEST-CHANGES verdict sends it back to the Implementer once.
+steps:
+  - id: plan
+    role: lead
+  - id: build
+    role: implementer
+    timeout: 900
+    gate:
+      type: mechanical
+  - id: vet
+    role: security-vetter
+    gate:
+      type: verdict
+      pattern: '^\\s*(APPROVE|REQUEST-CHANGES)\\b'
+      passValues: [approve]
+      rework:
+        to: build
+        when: [request-changes]
+        maxCycles: 1
+"""
+
+_SECURE_BUILD_SHORT = """\
+kind: pipeline
+name: secure-build
+description: >-
+  Lead plans the change, Implementer builds it (gated on its own verify command), then a
+  read-only Security Vetter reviews the diff and must APPROVE before the task is done. A
+  REQUEST-CHANGES verdict sends it back to the Implementer once.
+steps:
+  - plan: lead
+  - build: implementer
+    timeout: 900
+    verify: true
+  - vet: security-vetter
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}
+"""
+
+
+class TestShortForm:
+    def test_secure_build_short_form_round_trips_to_the_canonical_spec(self) -> None:
+        long_result = load_pipeline(_SECURE_BUILD_LONG)
+        assert long_result.ok, long_result.errors
+
+        short_doc = yaml.safe_load(_SECURE_BUILD_SHORT)
+        short_doc.pop("kind")
+        normalized = normalize_pipeline(short_doc)
+        assert PipelineSpec.model_validate(normalized) == long_result.spec
+
+        # load_pipeline itself accepts the short form end to end, `kind` included.
+        assert load_pipeline(_SECURE_BUILD_SHORT).spec == long_result.spec
+
+    def test_backward_goto_without_max_names_the_step(self) -> None:
+        text = _SECURE_BUILD_SHORT.replace(
+            "on: {REQUEST-CHANGES: {goto: build, max: 1}}",
+            "on: {REQUEST-CHANGES: {goto: build}}",
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "vet" in result.errors[0]
+        assert "max" in result.errors[0]
+
+
+class TestCommandSteps:
+    def test_run_step_loads_and_renders_gate_as_exit_code(self) -> None:
+        spec = PipelineSpec(name="p", steps=[Step(id="check", run="false")])
+        plan = _orch.resolve_plan(spec, {})
+        assert "run 'false' [gate: exit code]" in _orch.render_plan(plan)
+
+
+# ── TestOutcomeRouting ────────────────────────────────────────────────────────
+#
+# `on:` is a real canonical `Step.on` field the executor (core/dispatch.py) reads
+# directly -- not only the single bounded backward rework edge the short form's
+# `on:` sugar could otherwise produce. `until: verify` + `max` is sugar for a
+# bounded self-retry, and the format validates every route's target and a
+# document's overall reachability.
+
+
+class TestOutcomeRouting:
+    def test_until_verify_sugar_normalises_to_bounded_fail_route_and_loads(self) -> None:
+        # On the base this rejects outright: `until`/`max` were not yet
+        # recognized short-form sugar keys, so the step entry was left as an
+        # invalid canonical mapping ("build"/"until"/"max" all read as
+        # unknown `Step` fields alongside a missing `id`).
+        text = """\
+name: p
+steps:
+  - id: plan
+    role: lead
+  - build: implementer
+    verify: true
+    until: verify
+    max: 2
+"""
+        result = load_pipeline(text)
+        assert result.ok, result.errors
+        assert result.spec is not None
+        build = result.spec.steps[1]
+        assert build.on == {"fail": {"goto": "build", "max": 2}}
+        assert build.gate == MechanicalGate()
+
+    def test_unreachable_step_is_a_load_error_naming_it(self) -> None:
+        # On the base this also rejects, but for an unrelated reason: `Step`
+        # had no `on` field at all yet, and PyYAML's bare `on:` key resolves
+        # to the boolean `True`, which pydantic refuses outright ("Keys
+        # should be strings") long before any notion of reachability exists.
+        text = """\
+name: p
+steps:
+  - id: plan
+    role: lead
+  - id: build
+    role: implementer
+    gate:
+      type: mechanical
+    on:
+      pass: stop
+      fail: stop
+  - id: dead
+    role: implementer
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "dead" in result.errors[0]
+
+
+class TestInputSteps:
+    def test_valid_input_step_parses_and_renders(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: triage
+      message: "Confirm the approach?"
+"""
+        result = load_pipeline(text)
+        assert result.ok, result.errors
+        assert result.spec is not None
+        ask = result.spec.steps[1]
+        assert ask.input is not None
+        assert ask.input.from_ == "triage"
+        assert ask.input.message == "Confirm the approach?"
+
+        plan = _orch.resolve_plan(result.spec, {})
+        assert "asks the operator (from triage)" in _orch.render_plan(plan)
+
+    def test_input_step_cannot_also_set_role(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    role: implementer
+    input:
+      from: triage
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "input" in result.errors[0]
+        assert "role" in result.errors[0]
+
+    def test_input_step_from_references_nonexistent_step(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: no_such_step
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "no_such_step" in result.errors[0]
+
+    def test_input_step_from_references_later_step(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: plan
+  - id: plan
+    role: implementer
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "plan" in result.errors[0]
+        assert "earlier" in result.errors[0]
+
+    def test_input_step_on_keys_must_be_subset_of_answered_declined(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: triage
+    on:
+      answered: pass
+      unknown_key: fail
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "unknown_key" in result.errors[0]
+
+
+# ── TestRefusedShapes ────────────────────────────────────────────────────────
+
+_HEAD = "name: p\nsteps:\n"
+_UNIT_A = "  - id: a\n    role: lead\n"
+_UNIT_B = "  - id: b\n    role: implementer\n"
+_CHILD = "      - id: c\n        role: reviewer\n"
+
+
+def _refused(body: str, *needles: str) -> None:
+    result = load_pipeline(_HEAD + body)
+    assert not result.ok, "the loader accepted a shape the executor cannot run"
+    joined = " | ".join(result.errors)
+    for needle in needles:
+        assert needle in joined, joined
+
+
+class TestRefusedShapes:
+    """A shape the executor cannot run is a load error naming the field, not silence."""
+
+    @pytest.mark.parametrize(
+        ("field_yaml", "field"),
+        [
+            ("    run: echo hi\n", "run"),
+            ("    input:\n      from: a\n", "input"),
+            ("    when:\n      memberPresent: lead\n", "when"),
+            ("    archetype: critic\n", "archetype"),
+        ],
+    )
+    def test_parallel_group_refuses_its_own_field(self, field_yaml: str, field: str) -> None:
+        body = _UNIT_A + "  - id: g\n" + field_yaml + "    parallel:\n" + _CHILD
+        _refused(body, "'g'", f"'{field}'", "parallel")
+
+    def test_step_with_run_and_input_refused(self) -> None:
+        body = _UNIT_A + "  - id: ask\n    run: echo hi\n    input:\n      from: a\n"
+        _refused(body, "'ask'", "'run'", "'input'")
+
+    @pytest.mark.parametrize("bad_max", ["0", "-1", "x", "true", "1.5"])
+    def test_forward_route_with_invalid_max_refused(self, bad_max: str) -> None:
+        body = (
+            "  - id: a\n    role: implementer\n    gate: {type: mechanical}\n"
+            f"    on:\n      fail: {{goto: b, max: {bad_max}}}\n" + _UNIT_B
+        )
+        _refused(body, "'a'", "'max'")
+
+    def test_forward_route_with_valid_max_accepted(self) -> None:
+        body = (
+            "  - id: a\n    role: implementer\n    gate: {type: mechanical}\n"
+            "    on:\n      fail: {goto: b, max: 2}\n" + _UNIT_B
+        )
+        assert load_pipeline(_HEAD + body).ok
+
+    @pytest.mark.parametrize(
+        ("child_yaml", "field"),
+        [
+            ("        run: echo hi\n", "run"),
+            ("        input:\n          from: a\n", "input"),
+            ("        role: reviewer\n        when:\n          memberPresent: lead\n", "when"),
+            ("        role: reviewer\n        on:\n          fail: stop\n", "on"),
+            ('        role: reviewer\n        "on":\n          fail: stop\n', "on"),
+        ],
+    )
+    def test_parallel_child_refuses_a_field_the_group_never_runs(
+        self, child_yaml: str, field: str
+    ) -> None:
+        # The group's children run through `_execute_unit`, which acts on none of these.
+        body = _UNIT_A + "  - id: g\n    parallel:\n      - id: c\n" + child_yaml
+        _refused(body, "'c'", f"'{field}'", "parallel")
+
+    def test_parallel_child_with_executed_fields_accepted(self) -> None:
+        body = (
+            _UNIT_A
+            + "  - id: g\n    parallel:\n"
+            + _CHILD
+            + "        retries: 1\n        timeout: 30\n        model: cheap\n"
+            + "        archetype: critic\n        gate: {type: mechanical}\n"
+        )
+        assert load_pipeline(_HEAD + body).ok

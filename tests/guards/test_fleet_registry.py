@@ -18,7 +18,7 @@ from typing import ClassVar
 
 import pytest
 
-from docket.core.fleet import FleetAgent
+from docket.teams.fleet import FleetAgent
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKET_SRC = REPO_ROOT / "src" / "docket"

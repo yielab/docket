@@ -22,7 +22,7 @@ from typing import Any
 
 import typer.main
 
-from docket.cli import app
+from docket.interfaces.cli.app import app
 
 ROOT_CMD: Any = typer.main.get_command(app)
 SPAN = re.compile(r"`([^`]*)`")

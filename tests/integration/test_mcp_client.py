@@ -25,12 +25,12 @@ from typing import Any
 
 import pytest
 
-from docket.core import approval as _approval
-from docket.core import audit as _audit
-from docket.core import mcp_tools as _mt
-from docket.core.llm import ToolCall
-from docket.core.tools import ToolContext, ToolRegistry, builtin_registry, dispatch_tool
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.agent.llm import ToolCall
+from docket.agent.tools import mcp_tools as _mt
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import ToolContext, ToolRegistry, builtin_registry, dispatch_tool
+from docket.governance import approval as _approval
+from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.edges.adapters"
@@ -522,7 +522,7 @@ class TestMissingSdkRealAbsence:
         else:
             pytest.skip("mcp SDK installed in this environment; cannot test genuine absence")
 
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 1.0)
         assert result.ok is False
@@ -551,7 +551,7 @@ class TestMissingSdkSimulated:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._block_mcp_client(monkeypatch)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 1.0)
         assert result == _mt.McpListResult(ok=False, error=_client.MISSING_SDK_HINT)
@@ -560,7 +560,7 @@ class TestMissingSdkSimulated:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._block_mcp_client(monkeypatch)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.call_remote_tool(_config(), "get_forecast", {"city": "Berlin"}, 1.0)
         assert result == ToolOutcome(False, error=_client.MISSING_SDK_HINT)
@@ -617,7 +617,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_list=_on_list)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 5.0)
         assert result.ok is True
@@ -636,7 +636,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_call=_on_call)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.call_remote_tool(_config(), "get_forecast", {"city": "Berlin"}, 5.0)
         assert result == ToolOutcome(True, content="It is sunny.")
@@ -650,7 +650,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_call=_on_call)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         with use_home(dataclasses.replace(current_home(), tool_max_output_chars=8)):
             first = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
@@ -673,7 +673,7 @@ class TestRealSdkStubbed:
             )
 
         self._install_fake_client(monkeypatch, on_call=_on_call)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.call_remote_tool(_config(), "get_forecast", {"city": "??"}, 5.0)
         assert result.ok is False
@@ -686,7 +686,7 @@ class TestRealSdkStubbed:
             raise ConnectionRefusedError("no one is listening")
 
         self._install_fake_client(monkeypatch, on_list=_on_list)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         result = _client.list_remote_tools(_config(), 5.0)
         assert result.ok is False
@@ -705,7 +705,7 @@ class TestRealSdkStubbed:
             raise AssertionError("unreachable: the timeout should have cancelled this first")
 
         self._install_fake_client(monkeypatch, on_list=_hang)
-        from docket.edges.adapters import mcp_client as _client
+        from docket.agent.tools import mcp_client as _client
 
         started = time.monotonic()
         result = _client.list_remote_tools(_config(), 0.05)

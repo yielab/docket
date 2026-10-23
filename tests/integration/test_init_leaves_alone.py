@@ -11,12 +11,14 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _contract, _pod, app
-from docket.core import fleet as _fleet
-from docket.core import pod_provisioning as _pp
+from docket.interfaces.cli.app import app
+from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.teams import fleet as _fleet
+from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.cli._agents"
+SUBJECT = "docket.interfaces.cli.commands.agents"
 
 runner = CliRunner()
 

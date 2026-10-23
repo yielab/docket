@@ -20,13 +20,18 @@ from typing import Any
 
 import pytest
 
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import orchestrator as _orch
-from docket.core import pipeline as _pipeline
-from docket.core import runtime_driver as _rd
-from docket.core import trace as _trace
+from docket.agent import ports as _rd
+from docket.hops.application import record as _record
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.pipeline.application import executor as _executor
+from docket.pipeline.domain import plan as _orch
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
 SUBJECT = "docket.core"
 
@@ -153,7 +158,7 @@ class TestParseReviewerVerdict:
 class TestReviewerGateBasic:
     """APPROVE/no-reviewer are unchanged; unparseable output fails distinctly."""
 
-    def _runner(self, reviewer_output: str, tester_output: str = "PASS - fine") -> _dispatch.Runner:
+    def _runner(self, reviewer_output: str, tester_output: str = "PASS - fine") -> _record.Runner:
         def _run(
             member_id: str,
             session_id: str,
@@ -175,20 +180,20 @@ class TestReviewerGateBasic:
     def test_approve_advances_to_done(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=self._runner("APPROVE - looks good"))
+        res = _executor.dispatch_task("myapp", task, runner=self._runner("APPROVE - looks good"))
         assert res.status == "done"
         assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer", "tester"]
 
     def test_approve_case_insensitive(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task: dict[str, Any] = {"id": "t1b", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=self._runner("approve, ship it"))
+        res = _executor.dispatch_task("myapp", task, runner=self._runner("approve, ship it"))
         assert res.status == "done"
 
     def test_reviewer_and_tester_markers_may_follow_evidence(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task: dict[str, Any] = {"id": "t1c", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp",
             task,
             runner=self._runner(
@@ -206,7 +211,7 @@ class TestReviewerGateBasic:
     def test_conflicting_reviewer_markers_fail_as_unparseable(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task: dict[str, Any] = {"id": "t1d", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task(
+        res = _executor.dispatch_task(
             "myapp", task, runner=self._runner("APPROVE\nREQUEST-CHANGES")
         )
 
@@ -217,7 +222,7 @@ class TestReviewerGateBasic:
     def test_unparseable_reviewer_output_fails(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=self._runner("this looks fine I guess"))
+        res = _executor.dispatch_task("myapp", task, runner=self._runner("this looks fine I guess"))
         assert res.status == "failed"
         assert "unparseable" in res.reason
         # Distinct wording from an explicit rejection — never conflated.
@@ -239,13 +244,13 @@ class TestReviewerGateBasic:
             return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=_run)
+        _executor.dispatch_task("myapp", task, runner=_run)
         assert calls == ["lead", "implementer", "reviewer"]
 
     def test_unparseable_emits_distinct_trace_event(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=self._runner("hmm not sure"))
+        _executor.dispatch_task("myapp", task, runner=self._runner("hmm not sure"))
         events = _trace_events("myapp")
         types = [e["event_type"] for e in events]
         assert "reviewer_verdict_unparseable" in types
@@ -254,7 +259,7 @@ class TestReviewerGateBasic:
     def test_empty_reviewer_output_is_unparseable_not_rejection(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task: dict[str, Any] = {"id": "t5", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=self._runner(""))
+        res = _executor.dispatch_task("myapp", task, runner=self._runner(""))
         assert res.status == "failed"
         assert "unparseable" in res.reason
 
@@ -274,7 +279,7 @@ class TestReviewerGateBasic:
             return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t6", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("leanapp", task, runner=_run)
+        res = _executor.dispatch_task("leanapp", task, runner=_run)
         assert res.status == "done"
         assert [h.role for h in res.hops] == ["lead", "implementer"]
 
@@ -324,7 +329,7 @@ class TestReviewerReworkLoop:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=1)
         task: dict[str, Any] = {"id": "r1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner)
+        res = _executor.dispatch_task("myapp", task, runner=runner)
 
         assert res.status == "done"
         roles_called = [c[0] for c in runner.calls]
@@ -347,7 +352,7 @@ class TestReviewerReworkLoop:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=1)
         task: dict[str, Any] = {"id": "r2", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=runner)
+        _executor.dispatch_task("myapp", task, runner=runner)
 
         implementer_messages = [msg for role, msg in runner.calls if role == "implementer"]
         assert len(implementer_messages) == 2
@@ -362,7 +367,7 @@ class TestReviewerReworkLoop:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=1)
         task: dict[str, Any] = {"id": "r3", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=runner)
+        _executor.dispatch_task("myapp", task, runner=runner)
         events = _trace_events("myapp")
         rework_events = [e for e in events if e["event_type"] == "rework_started"]
         assert len(rework_events) == 1
@@ -372,7 +377,7 @@ class TestReviewerReworkLoop:
         _seed_full_pod()  # default maxReworkCycles is 1
         runner = _ReworkRunner(request_changes_count=2)  # always rejects
         task: dict[str, Any] = {"id": "r4", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner)
+        res = _executor.dispatch_task("myapp", task, runner=runner)
 
         assert res.status == "failed"
         assert "REQUEST-CHANGES" in res.reason
@@ -386,19 +391,19 @@ class TestReviewerReworkLoop:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=2)
         task: dict[str, Any] = {"id": "r5", "description": "work", "status": "pending"}
-        _dispatch.dispatch_task("myapp", task, runner=runner)
+        _executor.dispatch_task("myapp", task, runner=runner)
         events = _trace_events("myapp")
         ev = next(e for e in events if e["event_type"] == "review_rejected")
         assert ev["payload"]["cycles"] == 1
 
     def test_rework_hops_appear_in_persisted_queue(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _ReworkRunner(request_changes_count=1)
-        results = _dispatch.dispatch_pod("myapp", runner=runner)
+        results = _sweep.dispatch_pod("myapp", runner=runner)
 
         assert results[0].status == "done"
-        persisted = _dispatch.read_tasks("myapp")[0]
+        persisted = _queue.read_tasks("myapp")[0]
         assert persisted["status"] == "done"
         assert [h["role"] for h in persisted["hops"]] == [
             "lead",
@@ -415,7 +420,7 @@ class TestReviewerReworkLoop:
         _seed_full_pod(lead_extra={"maxReworkCycles": "0"})
         runner = _ReworkRunner(request_changes_count=1)
         task: dict[str, Any] = {"id": "r6", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner)
+        res = _executor.dispatch_task("myapp", task, runner=runner)
 
         assert res.status == "failed"
         assert "0 rework cycle" in res.reason
@@ -429,18 +434,18 @@ class TestReviewerReworkLoop:
 
     def test_default_max_rework_cycles_is_one(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead")
-        assert _dispatch.pod_max_rework_cycles("myapp") == 1
+        assert _settings.pod_max_rework_cycles("myapp") == 1
 
     def test_max_rework_cycles_reads_lead_meta(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead", {"maxReworkCycles": "3"})
-        assert _dispatch.pod_max_rework_cycles("myapp") == 3
+        assert _settings.pod_max_rework_cycles("myapp") == 3
 
     def test_max_rework_cycles_invalid_value_refuses_instead_of_defaulting(
         self, tmp_path: Path
     ) -> None:
         _write_meta("myapp-lead", {"maxReworkCycles": "not-a-number"})
-        with pytest.raises(_dispatch.DispatchError, match="maxReworkCycles"):
-            _dispatch.pod_max_rework_cycles("myapp")
+        with pytest.raises(_task.DispatchError, match="maxReworkCycles"):
+            _settings.pod_max_rework_cycles("myapp")
 
 
 # ── resume mid-rework: the integration point that matters most ─────────────────
@@ -480,24 +485,24 @@ class _CrashOnSecondImplementerCallRunner:
 class TestReviewerReworkResume:
     def test_resume_continues_into_rework_implementer_not_past_it(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        _dispatch.enqueue_task_once("myapp", "Resume me mid-rework", channel="cli")
+        _queue.enqueue_task_once("myapp", "Resume me mid-rework", channel="cli")
 
         crasher = _CrashOnSecondImplementerCallRunner()
         with pytest.raises(RuntimeError, match="simulated crash mid-rework"):
-            _dispatch.dispatch_pod("myapp", runner=crasher)
+            _sweep.dispatch_pod("myapp", runner=crasher)
 
         # lead, implementer, and the REQUEST-CHANGES reviewer hop were all
         # persisted before the crash; the rework implementer's request went
         # out (recorded in crasher.calls) but never came back.
         assert crasher.calls == ["lead", "implementer", "reviewer", "implementer"]
-        tasks = _dispatch.read_tasks("myapp")
+        tasks = _queue.read_tasks("myapp")
         assert tasks[0]["status"] == "running"
         assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer", "reviewer"]
 
         # Force the claim stale, exactly like test_dispatch.py's own crash-recovery tests.
         with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
             resumer = _ReworkRunner(request_changes_count=0)  # approves whenever asked
-            results = _dispatch.dispatch_pod("myapp", runner=resumer, resume=True)
+            results = _sweep.dispatch_pod("myapp", runner=resumer, resume=True)
 
             assert len(results) == 1
             assert results[0].status == "done"
@@ -509,7 +514,7 @@ class TestReviewerReworkResume:
             roles_resumed = [c[0] for c in resumer.calls]
             assert roles_resumed == ["implementer", "reviewer", "tester"]
 
-            final = _dispatch.read_tasks("myapp")[0]
+            final = _queue.read_tasks("myapp")[0]
             assert final["status"] == "done"
             assert [h["role"] for h in final["hops"]] == [
                 "lead",
@@ -526,14 +531,14 @@ class TestReviewerReworkResume:
     ) -> None:
         """The rework note must survive a crash+resume, not just a live run."""
         _seed_full_pod()
-        _dispatch.enqueue_task_once("myapp", "Resume me mid-rework", channel="cli")
+        _queue.enqueue_task_once("myapp", "Resume me mid-rework", channel="cli")
 
         crasher = _CrashOnSecondImplementerCallRunner()
         with pytest.raises(RuntimeError):
-            _dispatch.dispatch_pod("myapp", runner=crasher)
+            _sweep.dispatch_pod("myapp", runner=crasher)
         with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
             resumer = _ReworkRunner(request_changes_count=0)
-            _dispatch.dispatch_pod("myapp", runner=resumer, resume=True)
+            _sweep.dispatch_pod("myapp", runner=resumer, resume=True)
 
             rework_message = next(msg for role, msg in resumer.calls if role == "implementer")
             assert "REWORK REQUIRED" in rework_message

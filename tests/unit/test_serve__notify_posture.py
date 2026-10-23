@@ -7,7 +7,8 @@ from __future__ import annotations
 import pytest
 
 from docket import serve
-from docket.core import channel as _channel
+from docket.interfaces.http import server
+from docket.operator import channel as _channel
 
 SUBJECT = "docket.serve"
 
@@ -24,10 +25,10 @@ class _FakeServer:
 
 
 def _run(monkeypatch: pytest.MonkeyPatch, *, dispatch: bool) -> None:
-    monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
+    monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
     monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
     monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
-    serve.run_serve(port=0, interval=30, dispatch=dispatch)
+    server.run_serve(port=0, interval=30, dispatch=dispatch)
 
 
 def test_dispatch_with_only_console_warns_at_startup(

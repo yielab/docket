@@ -275,19 +275,19 @@ After successful creation:
 
 Where the names above live today; the only place this spec names a path.
 
-- `src/docket/cli/_agents.py`: `run_init`, `InitRequest`, `cmd_init`, the declarative path
+- `src/docket/interfaces/cli/commands/agents.py`: `run_init`, `InitRequest`, `cmd_init`, the declarative path
   (`_cmd_add_declarative`, `_provision_pod_from_spec`), `_stored_location`
-- `src/docket/cli/_pod.py`: `cmd_show`, `cmd_add`, `cmd_remove`, `cmd_reset`, `cmd_delete`,
+- `src/docket/interfaces/cli/commands/pod.py`: `cmd_show`, `cmd_add`, `cmd_remove`, `cmd_reset`, `cmd_delete`,
   `add_members`, `remove_member`, `reset_member`, `build_pod_from_blueprint`
-- `src/docket/cli/_contract.py`: `confirm`
-- `src/docket/core/pod_provisioning.py`: `provision_pod`, `provision_members`, `teardown_member`,
+- `src/docket/interfaces/cli/commands/contract.py`: `confirm`
+- `src/docket/teams/pod_provisioning.py`: `provision_pod`, `provision_members`, `teardown_member`,
   `allocate_pod_resources`, `release_implementer_resources`, `free_pod_resources`, `purge_pod_history`, `rendered_member_files`,
   `POD_TEMPLATE_VERSION`
-- `src/docket/core/pod.py`: `session_key`, `plan_added_member`, `normalize_role`
-- `src/docket/core/pod_report.py`: `pod_report`, `member_report`
-- `src/docket/core/provisioning.py`: `slugify`, `validate_project_id`, `detect_stack`
+- `src/docket/teams/pod.py`: `session_key`, `plan_added_member`, `normalize_role`
+- `src/docket/teams/report.py`: `pod_report`, `member_report`
+- `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`, `detect_stack`
 - `src/docket/core/dispatch.py`: `pod_approval_mode`
-- `src/docket/core/fleet.py`: `fleet.json` registration, bindings
-- `src/docket/core/conversations.py`: `remove_agent_durable`
+- `src/docket/teams/fleet.py`: `fleet.json` registration, bindings
+- `src/docket/agent/conversations.py`: `remove_agent_durable`
 - `src/docket/edges/adapters/system.py`: `git_current_branch`, `git_branch_merged`,
   `git_branch_delete`

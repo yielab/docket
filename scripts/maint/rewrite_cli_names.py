@@ -319,7 +319,7 @@ def _leading_words(replacement: str) -> list[str]:
 def self_check() -> list[str]:
     import typer.main
 
-    from docket.cli import app
+    from docket.interfaces.cli.app import app
 
     root = typer.main.get_command(app)
     problems: list[str] = []

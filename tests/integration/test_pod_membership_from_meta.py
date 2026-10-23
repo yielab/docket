@@ -20,15 +20,16 @@ import pytest
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import archetypes as _arch
-from docket.core import dispatch as _dispatch
-from docket.core import pipeline as _pipeline
-from docket.core import pod
-from docket.core import runtime_driver as _rd
+from docket.agent import ports as _rd
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import pod
+from docket.teams import roles as _arch
 
-SUBJECT = "docket.core.pod"
+SUBJECT = "docket.teams.pod"
 
 
 @pytest.fixture(autouse=True)
@@ -94,7 +95,7 @@ class TestCustomRoleEndingInRegisteredRoleName:
             # fixture actually reproduces the trigger's precondition before dispatching.
             assert pod.pod_of("proj-security-reviewer") == "proj"
 
-            _dispatch.enqueue_task_once("proj", "ship the security review", channel="cli")
+            _queue.enqueue_task_once("proj", "ship the security review", channel="cli")
 
             driver = FakeDriver()
 
@@ -110,9 +111,7 @@ class TestCustomRoleEndingInRegisteredRoleName:
                     return _rd.TurnResult(True, "APPROVE - clean", result.cost_usd, {"output": "x"})
                 return result
 
-            results = _dispatch.dispatch_pod(
-                "proj", runner=_runner, spec=_security_review_pipeline()
-            )
+            results = _sweep.dispatch_pod("proj", runner=_runner, spec=_security_review_pipeline())
 
             assert len(results) == 1
             assert results[0].status == "done", results[0].reason

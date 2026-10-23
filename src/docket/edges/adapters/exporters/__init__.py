@@ -13,10 +13,10 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable
 
-from docket.core.exporter import ExporterSpec
-from docket.core.telemetry import SpanSink
-from docket.edges.adapters.exporters.otlp_http import AuthHeader, OtlpHttpSink
 from docket.kernel.errors import InvalidInput
+from docket.observability.adapters.otlp_http import AuthHeader, OtlpHttpSink
+from docket.observability.exporter import ExporterSpec
+from docket.observability.telemetry import SpanSink
 
 
 def _auth_header(spec: ExporterSpec, values: list[str]) -> AuthHeader:

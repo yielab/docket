@@ -19,14 +19,17 @@ from typing import Any
 
 import pytest
 
-from docket.core import approval as _ap
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pipeline as _pipeline
-from docket.core import runtime_driver as _rd
-from docket.core import trace as _trace
-from docket.edges.adapters import system as _sys
+from docket.agent import ports as _rd
+from docket.governance import approval as _ap
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.pipeline.application import executor as _executor
+from docket.pipeline.domain import spec as _pipeline
+from docket.platform import git as _git
+from docket.tasks.application import actions as _actions
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.core"
 
@@ -114,7 +117,7 @@ class TestMechanicalGateGeneralized:
             ],
         )
         task: dict[str, Any] = {"id": "m1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
+        res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "done"
         assert [h.role for h in res.hops] == ["lead", "operator"]
 
@@ -131,7 +134,7 @@ class TestMechanicalGateGeneralized:
             ],
         )
         task: dict[str, Any] = {"id": "m2", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
+        res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "failed"
         assert "verifyCmd failed" in res.reason
         events = _trace_events("myapp")
@@ -152,7 +155,7 @@ class TestMechanicalGateGeneralized:
             ],
         )
         task: dict[str, Any] = {"id": "m3", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
+        res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "done"
 
 
@@ -177,7 +180,7 @@ class TestVerdictGateGeneralized:
         _write_meta("myapp-critic")
         runner = _RoleRunner({"critic": "APPROVE\nlooks good"})
         task: dict[str, Any] = {"id": "v1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=self._spec())
+        res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "done"
 
     def test_reject_fails_the_task_with_generic_event(self) -> None:
@@ -185,7 +188,7 @@ class TestVerdictGateGeneralized:
         _write_meta("myapp-critic")
         runner = _RoleRunner({"critic": "REJECT\nneeds work"})
         task: dict[str, Any] = {"id": "v2", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=self._spec())
+        res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "failed"
         assert "REJECT" in res.reason
         events = _trace_events("myapp")
@@ -199,7 +202,7 @@ class TestVerdictGateGeneralized:
         _write_meta("myapp-critic")
         runner = _RoleRunner({"critic": "not sure about this one"})
         task: dict[str, Any] = {"id": "v3", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=self._spec())
+        res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "failed"
         assert "unparseable" in res.reason
         events = _trace_events("myapp")
@@ -227,9 +230,9 @@ class TestPipelineApprovalStepGatesGenuinely:
     def test_gate_stops_before_the_gated_hop_runs(self) -> None:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RoleRunner({})
-        results = _dispatch.dispatch_pod("myapp", runner=runner, spec=self._spec())
+        results = _sweep.dispatch_pod("myapp", runner=runner, spec=self._spec())
         assert len(results) == 1
         assert results[0].status == "waiting_approval"
         assert results[0].approval_token
@@ -243,18 +246,18 @@ class TestPipelineApprovalStepGatesGenuinely:
         """The gate fires purely from the pipeline step's own resolved gate."""
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         spec = self._spec()
-        _dispatch.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
-        token = _dispatch.read_tasks("myapp")[0]["approvalToken"]
+        _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
+        token = _queue.read_tasks("myapp")[0]["approvalToken"]
         assert token
 
         _ap.approval_grant(token, channel="cli")
-        assert _dispatch.resolve_waiting_approval(token, "granted") is True
-        assert _dispatch.read_tasks("myapp")[0]["status"] == "pending"
+        assert _actions.resolve_waiting_approval(token, "granted") is True
+        assert _queue.read_tasks("myapp")[0]["status"] == "pending"
 
         runner2 = _RoleRunner({})
-        results = _dispatch.dispatch_pod("myapp", runner=runner2, spec=spec)
+        results = _sweep.dispatch_pod("myapp", runner=runner2, spec=spec)
         assert results[0].status == "done"
         # The lead hop is not re-run; only the gated implementer hop runs now.
         assert [c[0].rsplit("-", 1)[-1] for c in runner2.calls] == ["implementer"]
@@ -262,15 +265,15 @@ class TestPipelineApprovalStepGatesGenuinely:
     def test_deny_fails_the_task_terminally(self) -> None:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         spec = self._spec()
-        _dispatch.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
-        token = _dispatch.read_tasks("myapp")[0]["approvalToken"]
+        _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
+        token = _queue.read_tasks("myapp")[0]["approvalToken"]
 
         _ap.approval_deny(token, channel="cli")
-        assert _dispatch.resolve_waiting_approval(token, "denied") is True
+        assert _actions.resolve_waiting_approval(token, "denied") is True
 
-        task = _dispatch.read_tasks("myapp")[0]
+        task = _queue.read_tasks("myapp")[0]
         assert task["status"] == "failed"
         assert task["failureKind"] == "approval_denied"
 
@@ -302,9 +305,9 @@ class TestParallelGroupThroughDispatch:
                 ),
             ],
         )
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RoleRunner({"tester": "PASS\nall good"})
-        results = _dispatch.dispatch_pod("myapp", runner=runner, spec=spec)
+        results = _sweep.dispatch_pod("myapp", runner=runner, spec=spec)
         assert results[0].status == "done"
 
         # Both fan-out children ran (an agent-targeted child's hop role is
@@ -316,7 +319,7 @@ class TestParallelGroupThroughDispatch:
         # ... and only *after* the group joined does the tester run.
         assert agents_called[-1] == "myapp-tester"
 
-        persisted = _dispatch.read_tasks("myapp")[0]
+        persisted = _queue.read_tasks("myapp")[0]
         assert [h["stepId"] for h in persisted["hops"]] == [
             "plan",
             "impl-a",
@@ -345,11 +348,11 @@ class TestParallelGroupThroughDispatch:
                 ),
             ],
         )
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
-        results = _dispatch.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
+        results = _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
         assert results[0].status == "failed"
         # Both children still ran (and persisted) despite one failing.
-        persisted = _dispatch.read_tasks("myapp")[0]
+        persisted = _queue.read_tasks("myapp")[0]
         assert [h["stepId"] for h in persisted["hops"]] == ["plan", "impl-a", "impl-b"]
 
     def test_approval_gate_inside_a_group_is_a_clear_configuration_error(self) -> None:
@@ -374,7 +377,7 @@ class TestParallelGroupThroughDispatch:
             ],
         )
         task: dict[str, Any] = {"id": "g1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
+        res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "failed"
         assert "not supported inside a parallel group" in res.reason
 
@@ -394,7 +397,7 @@ class TestCommandSteps:
         )
         task: dict[str, Any] = {"id": "c1", "description": "work", "status": "pending"}
         runner = _RoleRunner({})
-        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=spec)
+        res = _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
         assert res.status == "failed"
         # Only the lead's agent turn ran -- the command step never calls the driver.
         assert [c[0].rsplit("-", 1)[-1] for c in runner.calls] == ["lead"]
@@ -409,7 +412,7 @@ class TestConditionalSteps:
         _write_meta("myapp-lead")
         _write_meta("myapp-operator")
         _write_meta("myapp-analyst")
-        monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: ["docs/readme.md"])
+        monkeypatch.setattr(_git, "git_changed_files", lambda _cwd: ["docs/readme.md"])
         spec = _pipeline.PipelineSpec(
             name="cond",
             steps=[
@@ -420,7 +423,7 @@ class TestConditionalSteps:
         )
         task: dict[str, Any] = {"id": "c2", "description": "work", "status": "pending"}
         runner = _RoleRunner({})
-        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=spec)
+        res = _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
         assert res.status == "done"
         # The gated "operator" step never ran -- the pipeline skipped straight to "analyst".
         assert [c[0].rsplit("-", 1)[-1] for c in runner.calls] == ["lead", "analyst"]
@@ -460,7 +463,7 @@ class TestOutcomeRoutingThroughDispatch:
         )
         runner = _RoleRunner({"critic": "FAIL\nneeds a human look"})
         task: dict[str, Any] = {"id": "r1", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=spec)
+        res = _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
 
         assert res.status == "waiting_approval"
         assert [h.role for h in res.hops] == ["lead", "critic"]

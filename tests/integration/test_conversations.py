@@ -13,13 +13,13 @@ from threading import Barrier
 
 import pytest
 
-from docket.core import conversations as C
-from docket.edges import store as _store
+from docket.agent import conversations as C
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
+from docket.platform import store as _store
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 
 def _write(reg: C.ConversationRegistry, path: Path) -> None:

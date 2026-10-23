@@ -61,7 +61,7 @@ def _make_meta(workspace: Path, overrides: dict | None = None) -> Path:
 
 class TestAgentMeta:
     def test_round_trip_camel_case(self) -> None:
-        from docket.core.models import AgentKind, AgentMeta
+        from docket.teams.models import AgentKind, AgentMeta
 
         raw = {
             "kind": "project",
@@ -83,7 +83,7 @@ class TestAgentMeta:
         assert "sessionKey" in dumped
 
     def test_extra_fields_survive_round_trip(self) -> None:
-        from docket.core.models import AgentMeta
+        from docket.teams.models import AgentMeta
 
         raw = {"kind": "project", "role": "programmer", "futureField": "x"}
         meta = AgentMeta.model_validate(raw)
@@ -93,7 +93,7 @@ class TestAgentMeta:
     # ── the scope axis ──────────────────────────────────────
 
     def test_scope_round_trips_when_explicit(self) -> None:
-        from docket.core.models import AgentMeta, AgentScope
+        from docket.teams.models import AgentMeta, AgentScope
 
         meta = AgentMeta.model_validate({"kind": "project", "type": "repo", "scope": "project"})
         assert meta.scope == AgentScope.project
@@ -102,7 +102,7 @@ class TestAgentMeta:
     def test_scope_rejects_unknown_value(self) -> None:
         from pydantic import ValidationError
 
-        from docket.core.models import AgentMeta
+        from docket.teams.models import AgentMeta
 
         with pytest.raises(ValidationError):
             AgentMeta.model_validate({"kind": "project", "scope": "org"})
@@ -110,7 +110,7 @@ class TestAgentMeta:
             AgentMeta.model_validate({"kind": "specialist"})
 
     def test_scope_defaults_to_project(self) -> None:
-        from docket.core.models import AgentMeta, AgentScope
+        from docket.teams.models import AgentMeta, AgentScope
 
         meta = AgentMeta.model_validate({"kind": "project"})
         assert meta.scope == AgentScope.project
@@ -123,7 +123,7 @@ class TestFleetConfig:
     """core/fleet.py's FleetConfig -- docket's own agent/binding registry."""
 
     def test_parse_fixture(self, tmp_path: Path) -> None:
-        from docket.core.fleet import FleetConfig
+        from docket.teams.fleet import FleetConfig
 
         raw = json.loads(_make_fleet(tmp_path).read_text())
         cfg = FleetConfig.model_validate(raw)
@@ -133,7 +133,7 @@ class TestFleetConfig:
         assert cfg.bindings[0].agent_id == "myshop"
 
     def test_extra_fields_survive(self) -> None:
-        from docket.core.fleet import FleetConfig
+        from docket.teams.fleet import FleetConfig
 
         raw = {
             "agents": [],
@@ -151,12 +151,12 @@ class TestFleetConfig:
 
 class TestStore:
     def test_read_missing_returns_empty(self, tmp_path: Path) -> None:
-        from docket.edges import store
+        from docket.platform import store
 
         assert store.read_json(tmp_path / "nope.json") == {}
 
     def test_write_creates_file_with_correct_perms(self, tmp_path: Path) -> None:
-        from docket.edges import store
+        from docket.platform import store
 
         path = tmp_path / "test.json"
         store.write_json(path, {"key": "value"})
@@ -165,7 +165,7 @@ class TestStore:
         assert json.loads(path.read_text()) == {"key": "value"}
 
     def test_write_creates_bak(self, tmp_path: Path) -> None:
-        from docket.edges import store
+        from docket.platform import store
 
         path = tmp_path / "test.json"
         store.write_json(path, {"v": 1})
@@ -175,8 +175,8 @@ class TestStore:
         assert json.loads(bak.read_text()) == {"v": 1}
 
     def test_write_accepts_pydantic_model(self, tmp_path: Path) -> None:
-        from docket.core.models import AgentMeta
-        from docket.edges import store
+        from docket.platform import store
+        from docket.teams.models import AgentMeta
 
         meta = AgentMeta.model_validate({"kind": "project", "role": "programmer"})
         path = tmp_path / "meta.json"
@@ -188,7 +188,7 @@ class TestStore:
     # ── read_modify_write / with_lock (the locked-claim primitive) ────────────────
 
     def test_read_modify_write_mutates_and_persists(self, tmp_path: Path) -> None:
-        from docket.edges import store
+        from docket.platform import store
 
         path = tmp_path / "test.json"
         store.write_json(path, {"count": 1})
@@ -202,7 +202,7 @@ class TestStore:
         assert json.loads(path.read_text()) == {"count": 2}
 
     def test_read_modify_write_on_missing_file_starts_from_empty_dict(self, tmp_path: Path) -> None:
-        from docket.edges import store
+        from docket.platform import store
 
         path = tmp_path / "nope.json"
         seen: dict = {}
@@ -217,7 +217,7 @@ class TestStore:
         assert json.loads(path.read_text()) == {"created": True}
 
     def test_read_modify_write_none_aborts_without_writing(self, tmp_path: Path) -> None:
-        from docket.edges import store
+        from docket.platform import store
 
         path = tmp_path / "test.json"
         store.write_json(path, {"v": 1})
@@ -228,7 +228,7 @@ class TestStore:
         assert path.stat().st_mtime_ns == mtime_before  # file genuinely untouched
 
     def test_read_modify_write_sets_perms_and_bak(self, tmp_path: Path) -> None:
-        from docket.edges import store
+        from docket.platform import store
 
         path = tmp_path / "test.json"
         store.write_json(path, {"v": 1})
@@ -242,7 +242,7 @@ class TestStore:
         interleaves and corrupts the file; it just blocks until the lock is free."""
         import time
 
-        from docket.edges import store
+        from docket.platform import store
 
         path = tmp_path / "test.json"
         store.write_json(path, {"v": 0})
@@ -291,24 +291,24 @@ class TestFleet:
     dotted path through."""
 
     def test_list_agents(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         agents = _fleet.list_agents()
         assert len(agents) == 1
         assert agents[0].id == "myshop"
 
     def test_agent_registered_true(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         assert _fleet.agent_registered("myshop")
 
     def test_agent_registered_false(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         assert not _fleet.agent_registered("nobody")
 
     def test_get_agent(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         agent = _fleet.get_agent("myshop")
         assert agent is not None
@@ -319,7 +319,7 @@ class TestFleet:
         assert _fleet.meta_get("myshop", "sessionKey") == "agent:myshop:default"
 
     def test_add_remove_agent(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         _fleet.add_agent("newbot")
         assert _fleet.agent_registered("newbot")
@@ -327,25 +327,25 @@ class TestFleet:
         assert not _fleet.agent_registered("newbot")
 
     def test_add_agent_idempotent(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         _fleet.add_agent("myshop")
         # Should not duplicate
         assert len(_fleet.list_agents()) == 1
 
     def test_get_binding(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         peer_id = _fleet.get_binding("myshop")
         assert peer_id == "-999"
 
     def test_get_binding_missing(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         assert _fleet.get_binding("nobody") == ""
 
     def test_upsert_and_remove_binding(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         _fleet.upsert_binding("myshop", "-1001234567890")
         assert _fleet.get_binding("myshop") == "-1001234567890"
@@ -353,7 +353,7 @@ class TestFleet:
         assert _fleet.get_binding("myshop") == ""
 
     def test_isolation(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         assert not _fleet.get_isolation_enabled()
         assert _fleet.get_isolation_state() == "off (default)"
@@ -365,7 +365,7 @@ class TestFleet:
         assert _fleet.get_isolation_state() == "on"
 
     def test_meta_get_set(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         val = _fleet.meta_get("myshop", "name")
         assert val == "My Shop"
@@ -373,13 +373,13 @@ class TestFleet:
         assert _fleet.meta_get("myshop", "name") == "Updated Shop"
 
     def test_meta_get_default(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         val = _fleet.meta_get("myshop", "nonexistent", "fallback")
         assert val == "fallback"
 
     def test_set_model_both(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         _fleet.set_model_both("myshop", "anthropic/claude-haiku-4-5")
         assert _fleet.meta_get("myshop", "model") == "anthropic/claude-haiku-4-5"

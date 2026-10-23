@@ -44,7 +44,7 @@ _NAME_FOR_MODEL_V11: dict[str, str] = {"question": "QuestionV11", "answer": "Ans
 def render(kind: str, version: str = "1") -> str:
     """Return the generated ``<kind>.schema.json`` content, trailing newline included.
     *version* is ``"1"`` or ``"1.1"``."""
-    from docket.core import operator_contract
+    from docket.operator import contract as operator_contract
 
     names = _NAME_FOR_MODEL_V11 if version == "1.1" else _NAME_FOR_MODEL
     model = getattr(operator_contract, names[kind])

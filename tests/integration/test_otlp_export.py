@@ -24,15 +24,15 @@ from typing import Any, ClassVar
 import pytest
 from tests.conftest import record_isolation_off
 
-from docket.core import exporter as _exporter
-from docket.core import telemetry as _telemetry
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.edges import store as _store
-from docket.edges.adapters import docket_runtime
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent import driver as docket_runtime
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import exporter as _exporter
+from docket.observability import telemetry as _telemetry
+from docket.platform import store as _store
 
-SUBJECT = "docket.edges.adapters.docket_runtime"
+SUBJECT = "docket.agent.driver"
 
 
 @pytest.fixture(autouse=True)
@@ -368,7 +368,7 @@ class TestZeroExportersAndNoExport:
         _write_meta("solo-agent")
         backend = _ScriptedBackend([_final_response("hello")])
         driver = DocketDriver(backend_factory=lambda model: backend)
-        from docket.core import trace as _trace
+        from docket.observability import trace as _trace
 
         before = threading.active_count()
         result = driver.run_turn("solo-agent", "agent:solo-agent:default", "hi", 60)

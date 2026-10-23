@@ -16,16 +16,18 @@ from tests.fakes import FakeDriver
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import mcp_tools as _mcp
-from docket.core import pipeline as _pipeline
-from docket.core import pod as _pod_core
-from docket.core import secrets as _secrets
-from docket.edges.adapters import system as _system
+from docket.agent.tools import mcp_tools as _mcp
+from docket.governance import audit as _audit
+from docket.governance import secrets as _secrets
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.pipeline.domain import spec as _pipeline
+from docket.sandbox import launch as _launch
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import pod as _pod_core
 
 SUBJECT = "docket.core"
 
@@ -48,8 +50,8 @@ steps:
     role: implementer
 """
 
-_USABLE = _system.SandboxAvailability(backend="landlock", docker=False, landlock=True)
-_NONE = _system.SandboxAvailability(backend="none", docker=False)
+_USABLE = _launch.SandboxAvailability(backend="landlock", docker=False, landlock=True)
+_NONE = _launch.SandboxAvailability(backend="none", docker=False)
 
 
 def _spec(text: str) -> _pipeline.PipelineSpec:
@@ -73,19 +75,19 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 def _meet_everything(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     record_isolation_on(root)
-    monkeypatch.setattr(_system, "sandbox_availability", lambda *a, **k: _USABLE)
+    monkeypatch.setattr(_launch, "sandbox_availability", lambda *a, **k: _USABLE)
     _fleet.set_network_mode("none")
     _fleet.set_profile("lights-out")
 
 
-def _dispatch_one(spec_text: str) -> tuple[_dispatch.TaskResult, FakeDriver]:
-    _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
+def _dispatch_one(spec_text: str) -> tuple[_task.TaskResult, FakeDriver]:
+    _queue.enqueue_task_once("demo", "Ship it", channel="cli")
     driver = FakeDriver()
-    res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(spec_text))[0]
+    res = _sweep.dispatch_pod("demo", runner=driver, spec=_spec(spec_text))[0]
     return res, driver
 
 
-def _refused(res: _dispatch.TaskResult, driver: FakeDriver, requirement: str) -> None:
+def _refused(res: _task.TaskResult, driver: FakeDriver, requirement: str) -> None:
     assert res.status == "failed"
     assert res.failure_kind == "dispatch_refused"
     assert requirement in (res.reason or "")
@@ -110,7 +112,7 @@ class TestRefusals:
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _meet_everything(home, monkeypatch)
-        monkeypatch.setattr(_system, "sandbox_availability", lambda *a, **k: _NONE)
+        monkeypatch.setattr(_launch, "sandbox_availability", lambda *a, **k: _NONE)
 
         res, driver = _dispatch_one(_GATED)
 
@@ -176,7 +178,7 @@ class TestRefusals:
         _meet_everything(home, monkeypatch)
         record_isolation_off(home)
         res, _driver = _dispatch_one(_GATED)
-        assert res.failure_kind in _dispatch.RESUMABLE_FAILURE_KINDS
+        assert res.failure_kind in _queue.RESUMABLE_FAILURE_KINDS
 
 
 class TestPositive:
@@ -223,7 +225,7 @@ class TestStricterOnly:
         assert _pod_core.PodSettings.coerce("profile", "attended", project="demo") == "attended"
 
     def test_pod_set_refuses_the_weaker_value(self, home: Path) -> None:
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         _fleet.set_profile("lights-out")
         result = CliRunner().invoke(app, ["pod", "set", "profile", "attended", "--pod", "demo"])
@@ -234,7 +236,7 @@ class TestStricterOnly:
 
 class TestSetupProfile:
     def test_records_and_audits_and_clears(self, home: Path) -> None:
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         runner = CliRunner()
         assert runner.invoke(app, ["setup", "profile", "lights-out"]).exit_code == 0
@@ -246,7 +248,7 @@ class TestSetupProfile:
         assert json.loads((home / "fleet.json").read_text())["security"]["profile"] == "unset"
 
     def test_a_stray_word_is_a_usage_error(self, home: Path) -> None:
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         assert CliRunner().invoke(app, ["setup", "profile", "loud"]).exit_code == 2
 
@@ -255,8 +257,9 @@ class TestStatusAndDoctor:
     def test_status_and_doctor_show_the_same_violations(
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.cli import _setup_check, _status
-        from docket.core import profile as _profile
+        from docket.governance import profile as _profile
+        from docket.interfaces.cli.commands import setup_check as _setup_check
+        from docket.interfaces.cli.commands import status as _status
 
         _meet_everything(home, monkeypatch)
         record_isolation_off(home)
@@ -269,7 +272,8 @@ class TestStatusAndDoctor:
         assert [v["requirement"] for v in report["violations"]] == expected
 
     def test_attended_output_has_no_profile_keys(self, home: Path) -> None:
-        from docket.cli import _setup_check, _status
+        from docket.interfaces.cli.commands import setup_check as _setup_check
+        from docket.interfaces.cli.commands import status as _status
 
         assert "profile" not in _status._project_summary("demo")
         assert "profile" not in _setup_check._check_json()["checks"]["securityGates"]

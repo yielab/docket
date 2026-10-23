@@ -13,15 +13,15 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import docket.core.mcp_tools as _mt
-from docket.cli import app
-from docket.core import audit as _audit
-from docket.edges.adapters import mcp_client as _client
-from docket.edges.adapters import system
+import docket.agent.tools.mcp_tools as _mt
+from docket.agent.tools import mcp_client as _client
+from docket.governance import audit as _audit
+from docket.interfaces.cli.app import app
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home, use_home
+from docket.sandbox import landlock
 
-SUBJECT = "docket.edges.adapters.mcp_client"
+SUBJECT = "docket.agent.tools.mcp_client"
 
 # The launch argv is built as the SDK's StdioServerParameters: the optional [mcp] extra.
 pytest.importorskip("mcp")
@@ -30,7 +30,7 @@ _needs_sdk = pytest.mark.skipif(
     not _client._sdk_available(), reason="the optional mcp SDK is absent"
 )
 _needs_landlock = pytest.mark.skipif(
-    not system.landlock_available(), reason="landlock is not available on this host"
+    not landlock.landlock_available(), reason="landlock is not available on this host"
 )
 
 _SERVER = textwrap.dedent(

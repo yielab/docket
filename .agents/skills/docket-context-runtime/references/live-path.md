@@ -1,7 +1,7 @@
 # Live context path invariants
 
-Read this for changes touching `core/dispatch.py`, `edges/adapters/docket_runtime.py`,
-`core/agent_loop.py`, `core/session.py`, `core/context.py`, `core/handoff.py`, identity/memory
+Read this for changes touching `core/dispatch.py`, `agent/driver.py`,
+`agent/loop.py`, `agent/session.py`, `agent/context.py`, `agent/handoff.py`, identity/memory
 composition, or MCP/tool output.
 
 ## Prove the wire

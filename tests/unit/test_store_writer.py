@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SUBJECT = "docket.edges.store"
+SUBJECT = "docket.platform.store"
 
 _REPO = Path(__file__).parent.parent.parent
 _SRC = _REPO / "src" / "docket"

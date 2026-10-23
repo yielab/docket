@@ -30,7 +30,7 @@ KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "exporter", "chan
 
 def render(kind: str) -> str:
     """Return the generated ``<kind>.schema.json`` content, trailing newline included."""
-    from docket.core import config_docs
+    from docket.teams import config_docs
 
     model = config_docs._MODEL_FOR_KIND[kind]
     schema = model.model_json_schema()

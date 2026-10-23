@@ -5,7 +5,7 @@ Importing this module has no side effect; `main()` only runs under
 
 from __future__ import annotations
 
-from docket.cli import app
+from docket.interfaces.cli.app import app
 
 
 def main() -> None:

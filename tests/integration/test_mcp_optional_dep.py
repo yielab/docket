@@ -21,10 +21,10 @@ from typing import Any
 import pytest
 from packaging.version import Version
 
-from docket.cli import _mcp
+from docket.interfaces.cli.commands import mcp as _mcp
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 
 class TestMissingSdkRealAbsence:

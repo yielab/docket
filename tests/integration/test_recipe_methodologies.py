@@ -16,18 +16,19 @@ from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod as _cli_pod
-from docket.core import archetypes as _arch
-from docket.core import dispatch as _dispatch
-from docket.core import orchestrator as _orch
-from docket.core import pipeline as _pipeline
-from docket.core import pod
-from docket.core import pod_apply as _pod_apply
-from docket.core import runtime_driver as _rd
-from docket.core import trace as _trace
+from docket.agent import ports as _rd
+from docket.interfaces.cli.commands import pod as _cli_pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.pipeline.domain import plan as _orch
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import pod
+from docket.teams import roles as _arch
+from docket.teams.apply import plan as _pod_apply
 
-SUBJECT = "docket.core.pod_apply"
+SUBJECT = "docket.teams.apply.plan"
 
 RECIPES_DIR = _templates.RECIPES_DIR
 RECIPE_NAMES = ("tdd", "spec-first", "reflexion", "dual-review", "frugal")
@@ -114,7 +115,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        roster = _dispatch.pod_full_roster(project)
+        roster = _queue.pod_full_roster(project)
         registry = _arch.load_registry(project)
         exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
@@ -155,7 +156,7 @@ def test_dual_review_plan_has_one_planned_group(tmp_path: Path) -> None:
         result = _pipeline.load_pipeline(text)
         assert result.spec is not None, result.errors
 
-        roster = _dispatch.pod_full_roster(project)
+        roster = _queue.pod_full_roster(project)
         registry = _arch.load_registry(project)
         exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
@@ -233,9 +234,9 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(tmp_path: Path)
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        _dispatch.enqueue_task_once(project, "harden the login handler", channel="cli")
+        _queue.enqueue_task_once(project, "harden the login handler", channel="cli")
         runner = _ReflexionRunner(project)
-        results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
+        results = _sweep.dispatch_pod(project, runner=runner, spec=result.spec)
 
         assert len(results) == 1
         outcome = results[0]

@@ -20,23 +20,22 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import agent_loop as _loop
-from docket.core import archetypes as _archetypes
-from docket.core import audit as _audit
-from docket.core import context as _context
-from docket.core import identity as _identity
-from docket.core.llm import (
-    ChatMessage,
-    ChatResponse,
-    TokenUsage,
-    ToolCall,
-    ToolSpec,
-    assistant,
+from docket.agent import context as _context
+from docket.agent import identity as _identity
+from docket.agent import loop as _loop
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolRegistry,
+    builtin_registry,
+    dispatch_tool,
 )
-from docket.core.tools import Tool, ToolContext, ToolRegistry, builtin_registry, dispatch_tool
-from docket.edges import store as _store
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
+from docket.platform import store as _store
+from docket.teams import roles as _archetypes
 
 SUBJECT = "docket.core"
 
@@ -759,7 +758,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert all(m.role != "system" for m in sent)
 
     def test_the_system_message_is_never_persisted_to_session_history(self, tmp_path: Path) -> None:
-        from docket.core.session import load_session
+        from docket.agent.session import load_session
 
         ws = _write_meta("history-agent")
         (ws / "SOUL.md").write_text("# SOUL.md\nsecret identity text\n")

@@ -15,12 +15,15 @@ from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _ScriptedLLMServer, _tool_call_response
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.edges import store as _store
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
 SUBJECT = "docket.core.dispatch"
 
@@ -84,7 +87,7 @@ def _seed_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
 
 
 def _queue_task(**fields: Any) -> str:
-    task = _dispatch.enqueue_task_once("demo", "write a file", channel="cli")[0]
+    task = _queue.enqueue_task_once("demo", "write a file", channel="cli")[0]
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:
         for entry in doc["tasks"]:
@@ -92,12 +95,12 @@ def _queue_task(**fields: Any) -> str:
                 entry.update(fields)
         return {"tasks": doc["tasks"]}
 
-    _store.read_modify_write(_dispatch.pod_task_list_path("demo"), _fn)
+    _store.read_modify_write(_settings.pod_task_list_path("demo"), _fn)
     return str(task["id"])
 
 
-def _run_one() -> _dispatch.TaskResult:
-    (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
+def _run_one() -> _task.TaskResult:
+    (result,) = _sweep.dispatch_pod("demo", max_tasks=1)
     return result
 
 
@@ -202,8 +205,8 @@ def test_the_jail_network_is_none_for_a_task_whatever_the_pod_records(
     tmp_path: Path, stub: Any
 ) -> None:
     """The computed hop network is cut by a task's none and open for the same pod without it."""
-    from docket.core import fleet as fleet
-    from docket.edges.adapters.docket_runtime import _resolve_network
+    from docket.agent.driver import _resolve_network
+    from docket.teams import fleet as fleet
 
     with _seed_pod(tmp_path, stub([_final_response("x")]).base_url):
         fleet.set_network_mode("open")
@@ -226,7 +229,7 @@ def test_a_task_max_tokens_stops_the_task_with_failure_kind_budget(
         assert result.status == "failed", result.reason
         assert result.failure_kind == "budget"
         assert len(server.requests) <= 1
-        (task,) = _dispatch.read_tasks("demo")
+        (task,) = _queue.read_tasks("demo")
         assert task["failureKind"] == "budget"
 
 
@@ -255,7 +258,7 @@ def test_each_hop_runs_with_what_the_cap_has_left(tmp_path: Path, stub: Any) -> 
     seen: list[str | None] = []
 
     def runner(*args: Any, **_: Any) -> Any:
-        from docket.core.runtime_driver import DOCKET_TURN_TOKEN_BUDGET, TurnResult
+        from docket.agent.ports import DOCKET_TURN_TOKEN_BUDGET, TurnResult
 
         seen.append((args[4] or {}).get(DOCKET_TURN_TOKEN_BUDGET))
         return TurnResult(True, "done", 0.0, {})
@@ -269,7 +272,7 @@ def test_each_hop_runs_with_what_the_cap_has_left(tmp_path: Path, stub: Any) -> 
         }
         _queue_task(maxTokens=1000, hops=[spent_hop])
 
-        (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (result,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert result.status == "done", result.reason
         assert seen == ["960"]

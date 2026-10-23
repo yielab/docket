@@ -12,9 +12,9 @@ from pathlib import Path
 
 from tests.pods import build_pod
 
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
+from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
+from docket.tasks.application import queue as _queue
 
 SUBJECT = "docket.kernel.home"
 
@@ -27,7 +27,7 @@ def _work(root: Path, task: str) -> None:
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
         build_pod(_PROJECT, ("lead", "implementer"), codebase=f"/src/{_PROJECT}")
-        _dispatch.enqueue_task_once(_PROJECT, task, channel="cli")
+        _queue.enqueue_task_once(_PROJECT, task, channel="cli")
         _audit.audit_log("test.two_homes", task)
 
 
@@ -51,7 +51,7 @@ def test_two_homes_in_one_process_write_disjoint_files(tmp_path: Path) -> None:
 
     for root, task, other in ((first, "first", "second"), (second, "second", "first")):
         with use_home(Home(root)):
-            queued = [t["description"] for t in _dispatch.read_tasks(_PROJECT)]
+            queued = [t["description"] for t in _queue.read_tasks(_PROJECT)]
             audited = current_home().audit_log.read_text(encoding="utf-8")
         assert [d for d in queued if task in d] == queued != []
         assert task in audited and other not in audited

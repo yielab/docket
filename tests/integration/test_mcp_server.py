@@ -23,15 +23,18 @@ import pytest
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _mcp
-from docket.cli import _pod as _pod_cli
-from docket.core import approval as _approval
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import runs as _runs
-from docket.core import runtime_driver as _rd
+from docket.agent import ports as _rd
+from docket.governance import approval as _approval
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import mcp as _mcp
+from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import runs as _runs
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
 SUBJECT = "docket.core"
 
@@ -99,9 +102,9 @@ def _seed_parked_task(tmp_path: Path, project: str = "demo") -> Iterator[dict[st
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     with _seed_pod(tmp_path, project=project):
         _bind_ask_pipeline(project)
-        _dispatch.enqueue_task_once(project, "needs a decision", channel="cli")
-        _dispatch.dispatch_pod(project, runner=FakeDriver())
-        yield _dispatch.read_tasks(project)[0]
+        _queue.enqueue_task_once(project, "needs a decision", channel="cli")
+        _sweep.dispatch_pod(project, runner=FakeDriver())
+        yield _queue.read_tasks(project)[0]
 
 
 def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -165,7 +168,7 @@ class TestToolCost:
     def test_the_snapshot_is_the_one_status_builds(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.cli import _status
+        from docket.interfaces.cli.commands import status as _status
 
         with _seed_pod(tmp_path):
             row = {"id": "demo-lead", "costUsd": 0.0}
@@ -250,7 +253,7 @@ class TestToolDelegate:
         re-implementing the queue write itself."""
         with _seed_pod(tmp_path, project="demo"):
             calls: list[tuple[str, str, str]] = []
-            real = _dispatch.enqueue_task_once
+            real = _queue.enqueue_task_once
 
             def _spy(
                 project: str, description: str, priority: str = "normal", *, channel: str
@@ -267,17 +270,17 @@ class TestToolDelegate:
 class TestToolQueue:
     def test_lists_queued_tasks(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "task one", channel="cli")
-            _dispatch.enqueue_task_once("demo", "task two", channel="cli")
+            _queue.enqueue_task_once("demo", "task one", channel="cli")
+            _queue.enqueue_task_once("demo", "task two", channel="cli")
             result = _mcp.tool_queue("demo")
             assert result["project"] == "demo"
             assert [t["description"] for t in result["tasks"]] == ["task one", "task two"]
 
     def test_retry_unblocks_a_blocked_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            task = _dispatch.enqueue_task_once("demo", "blocked task", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "blocked task", channel="cli")[0]
             # Hand-flip to blocked (mirrors how a budget cap would leave it).
-            path = _dispatch.pod_task_list_path("demo")
+            path = _settings.pod_task_list_path("demo")
             doc = json.loads(path.read_text())
             for t in doc["tasks"]:
                 if t["id"] == task["id"]:
@@ -309,12 +312,12 @@ class TestToolDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
+            _queue.enqueue_task_once("demo", "do the thing", channel="cli")
 
-            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-                return [_dispatch.TaskResult(task_id="task-x", status="done")]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
+                return [_task.TaskResult(task_id="task-x", status="done")]
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             result = _mcp.tool_dispatch("demo")
             assert result["ok"] is True
@@ -336,10 +339,10 @@ class TestToolDispatch:
         turn's outcome; the run registry is where a failure becomes visible."""
         with _seed_pod(tmp_path, project="demo"):
 
-            def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
                 raise RuntimeError("dispatch exploded")
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _boom)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
 
             result = _mcp.tool_dispatch("demo")
             assert result["ok"] is True
@@ -359,11 +362,11 @@ class TestToolDispatch:
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
 
-            def _slow(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _slow(proj: str, **kw: object) -> list[_task.TaskResult]:
                 time.sleep(0.05)
                 return []
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _slow)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _slow)
             result = _mcp.tool_dispatch("demo")
             # The audit entry exists right away — it does not wait for the
             # background pipeline thread to finish.
@@ -381,11 +384,11 @@ class TestToolDispatch:
         with _seed_pod(tmp_path, project="demo"):
             seen: dict[str, object] = {}
 
-            def _spy(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _spy(proj: str, **kw: object) -> list[_task.TaskResult]:
                 seen.update(kw)
                 return []
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _spy)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _spy)
             result = _mcp.tool_dispatch("demo", resume=True, timeout=45)
             _wait_for_terminal_run(result["run"])
             assert seen["resume"] is True
@@ -459,7 +462,7 @@ class TestToolTaskAnswer:
             result = _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ship it"})
 
             assert result == {"ok": True, "task": task["id"], "project": "demo", "action": "accept"}
-            after = _dispatch.read_tasks("demo")[0]
+            after = _queue.read_tasks("demo")[0]
             assert after["answers"][0]["content"] == {"answer": "ship it"}
             assert after["answers"][0]["channel"] == "mcp"
             assert after["answers"][0]["actor"] == "mcp"
@@ -476,7 +479,7 @@ class TestToolTaskAnswer:
 
     def test_a_task_not_waiting_input_raises(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            plain_task = _dispatch.enqueue_task_once("demo", "plain task", channel="cli")[0]
+            plain_task = _queue.enqueue_task_once("demo", "plain task", channel="cli")[0]
 
             with pytest.raises(_mcp.McpToolError):
                 _mcp.tool_task_answer("demo", plain_task["id"], "accept", {"answer": "x"})
@@ -485,7 +488,7 @@ class TestToolTaskAnswer:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_parked_task(tmp_path) as task:
-            from docket.core import policy as _policy
+            from docket.governance import policy as _policy
 
             monkeypatch.setattr(
                 _policy,
@@ -500,7 +503,7 @@ class TestToolTaskAnswer:
 class TestToolInbox:
     def test_returns_the_same_shape_docket_inbox_json_prints(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
+            _queue.enqueue_task_once("demo", "ship it", channel="cli")
             result = _mcp.tool_inbox()
             assert set(result.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
 
@@ -587,11 +590,13 @@ class TestEveryToolCallIsAudited:
             # Parked with the real `dispatch_pod` -- before it is stubbed below -- so
             # `tool_task_answer` has a genuine `waiting_input` task to resolve.
             _bind_ask_pipeline("demo")
-            _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
-            parked = next(t for t in _dispatch.read_tasks("demo") if t["status"] == "waiting_input")
+            _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            parked = next(t for t in _queue.read_tasks("demo") if t["status"] == "waiting_input")
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", lambda proj, **kw: [])
+            monkeypatch.setattr(
+                "docket.tasks.application.sweep.dispatch_pod", lambda proj, **kw: []
+            )
             token = _approval.approval_create("demo", "implementer", "deploy")
 
             _mcp.tool_status()
@@ -640,9 +645,9 @@ def _gate_then_get_token(tmp_path: Path, project: str = "demo") -> Iterator[str]
     test_approval_gated_dispatch.py's ``_gate``/``_gate_then_grant`` build."""
     with _seed_pod(tmp_path, project=project):
         _gate_implementer(project)
-        _dispatch.enqueue_task_once(project, "Ship it", channel="cli")
-        _dispatch.dispatch_pod(project, runner=_GateRunner())
-        task = _dispatch.read_tasks(project)[0]
+        _queue.enqueue_task_once(project, "Ship it", channel="cli")
+        _sweep.dispatch_pod(project, runner=_GateRunner())
+        task = _queue.read_tasks(project)[0]
         assert task["status"] == "waiting_approval"
         yield str(task["approvalToken"])
 
@@ -655,7 +660,7 @@ class TestApprovalsResumeDispatch:
         with _gate_then_get_token(tmp_path) as token:
             _mcp.tool_approvals_grant(token)
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "pending"
             assert task["approvalToken"] is None
             assert task["gateOverridePipelineIndex"] == 1
@@ -664,7 +669,7 @@ class TestApprovalsResumeDispatch:
         with _gate_then_get_token(tmp_path) as token:
             _mcp.tool_approvals_deny(token)
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "failed"
             assert task["failureKind"] == "approval_denied"
             assert task["approvalToken"] is None
@@ -679,7 +684,7 @@ class TestApprovalsResumeDispatch:
             with pytest.raises(_mcp.McpToolError):
                 _mcp.tool_approvals_grant(token)
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "pending"
             assert task["gateOverridePipelineIndex"] == 1
 
@@ -690,6 +695,6 @@ class TestApprovalsResumeDispatch:
             with pytest.raises(_mcp.McpToolError):
                 _mcp.tool_approvals_deny(token)
 
-            task = _dispatch.read_tasks("demo")[0]
+            task = _queue.read_tasks("demo")[0]
             assert task["status"] == "failed"
             assert task["failureKind"] == "approval_denied"

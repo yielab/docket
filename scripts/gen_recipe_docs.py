@@ -22,8 +22,8 @@ RECIPES_MD = ROOT / "docs" / "recipes.md"
 
 sys.path.insert(0, str(SRC))
 
-from docket.core import pod_apply as _pod_apply  # noqa: E402
 from docket.kernel import templates as _templates  # noqa: E402
+from docket.teams.apply import plan as _pod_apply  # noqa: E402
 
 HEADER = """# The recipe library
 

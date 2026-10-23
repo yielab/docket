@@ -18,11 +18,11 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.core.pipeline import MechanicalGate, load_pipeline
-from docket.edges.adapters import toolbox
+from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import Home, use_home
+from docket.pipeline.domain.spec import MechanicalGate, load_pipeline
 
-SUBJECT = "docket.core.pipeline"
+SUBJECT = "docket.pipeline.domain.spec"
 
 _SMOKE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "smoke_workflow.py"
 _SMOKE_SPEC = importlib.util.spec_from_file_location("docket_smoke_workflow", _SMOKE_PATH)
@@ -89,8 +89,8 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     from tests.conftest import record_isolation_off
     from typer.testing import CliRunner
 
-    from docket.cli import app
-    from docket.core import dispatch as _dispatch
+    from docket.interfaces.cli.app import app
+    from docket.tasks.application import queue as _queue
 
     home = tmp_path / ".docket"
     codebase = tmp_path / "codebase"
@@ -115,7 +115,7 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
         assert len(results) == 1
         result = results[0]
         assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
-        tasks = _dispatch.read_tasks("smoke")
+        tasks = _queue.read_tasks("smoke")
         assert len(tasks) == 1
         assert tasks[0]["description"] == _smoke._memory_task_description()
         assert len(tasks[0]["description"]) <= 500

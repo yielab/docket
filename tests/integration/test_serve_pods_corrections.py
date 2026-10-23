@@ -13,11 +13,11 @@ from urllib.parse import quote
 
 import pytest
 
-from docket.core import corrections as _corrections
-from docket.core import pod_provisioning as _pp
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.tasks.application import corrections as _corrections
+from docket.teams import pod_provisioning as _pp
 
 SUBJECT = "docket.serve"
 

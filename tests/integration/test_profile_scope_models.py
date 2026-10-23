@@ -15,10 +15,10 @@ import pytest
 from tests.conftest import register_local_provider
 from typer.testing import CliRunner
 
-from docket.cli import app as _app
+from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 _runner = CliRunner()
 

@@ -349,21 +349,21 @@ with `count=1`. A message handled outside a poll batch still audits its own refu
 
 Where the names above live today:
 
-- `src/docket/core/telegram.py`: `handle_message`, `poll_once`, `discover_wire_groups`,
+- `src/docket/interfaces/telegram/bot.py`: `handle_message`, `poll_once`, `discover_wire_groups`,
   `wire_discovery_configured`, `InboundMessage`, `TelegramActionResult`, `PollSummary`
-- `src/docket/edges/adapters/telegram.py`: `get_updates`, `send_message`, `TelegramUpdate`,
+- `src/docket/interfaces/telegram/client.py`: `get_updates`, `send_message`, `TelegramUpdate`,
   `GetUpdatesResult`, `API_ROOT` (the only module that knows the Bot API wire format)
-- `src/docket/edges/adapters/channels/telegram.py`: `deliver` (the outbound dialect; its
+- `src/docket/operator/adapters/telegram.py`: `deliver` (the outbound dialect; its
   requirements are `operator-loop.spec.md`'s)
-- `src/docket/cli/_setup_notify.py`: `docket setup notify` (`enable_telegram`, `bind`, `unbind`,
+- `src/docket/interfaces/cli/commands/setup_notify.py`: `docket setup notify` (`enable_telegram`, `bind`, `unbind`,
   `show`)
-- `src/docket/cli/_service.py`, `src/docket/serve.py`: `docket start --telegram` and its poll loop
+- `src/docket/interfaces/cli/commands/service.py`, `src/docket/serve.py`: `docket start --telegram` and its poll loop
   with the idle and error back-offs
 - `src/docket/kernel/home.py`: the `Home` members `telegram_bot_token_key`, `telegram_offset_file`,
   `telegram_poll_timeout_s`, `telegram_request_timeout_s`
-- `src/docket/core/fleet.py`: `find_binding`, `upsert_binding`, `remove_binding`
-- `src/docket/core/approval.py`, `src/docket/core/dispatch.py`, `src/docket/core/answers.py`,
-  `src/docket/core/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`
+- `src/docket/teams/fleet.py`: `find_binding`, `upsert_binding`, `remove_binding`
+- `src/docket/governance/approval.py`, `src/docket/core/dispatch.py`, `src/docket/tasks/application/answers.py`,
+  `src/docket/operator/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`
   and `enqueue_task_once`, `answer_task`, `build_inbox`
 - `src/docket/templates/channels/07-telegram.yaml`: the built-in `telegram` channel document
 - `tests/integration/test_telegram_channel.py`, `tests/integration/test_delete_bind_unbind.py`,

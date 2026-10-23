@@ -19,12 +19,15 @@ from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _ScriptedLLMServer
 from tests.pods import build_pod
 
-from docket import serve
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
+from docket.hops.application import record as _record
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http import server as _server
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
+from docket.tasks.application import queue as _queue
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import settings as _settings
 
 SUBJECT = "docket.serve"
 
@@ -125,9 +128,9 @@ def _wire(home: Path, server: _ScriptedLLMServer) -> None:
 
 
 def _write_tasks(tasks: list[dict[str, Any]]) -> None:
-    from docket.edges import store as _store
+    from docket.platform import store as _store
 
-    _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})
+    _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": tasks})
 
 
 def test_first_signal_finishes_only_the_running_task(
@@ -135,7 +138,7 @@ def test_first_signal_finishes_only_the_running_task(
 ) -> None:
     """With the stop set during the first hop, one task ends terminal and two stay pending."""
     stop = threading.Event()
-    monkeypatch.setattr(serve, "_sweep_stop", stop)
+    monkeypatch.setattr(_server, "_sweep_stop", stop)
     server = _ScriptedLLMServer([_final_response("done")], on_request=lambda _r: stop.set())
     try:
         _wire(sweep_home, server)
@@ -146,11 +149,11 @@ def test_first_signal_finishes_only_the_running_task(
             ]
         )
 
-        serve._sweep_one_pod("demo")
+        _server._sweep_one_pod("demo")
     finally:
         server.stop()
 
-    statuses = sorted(t["status"] for t in _dispatch.read_tasks("demo"))
+    statuses = sorted(t["status"] for t in _queue.read_tasks("demo"))
     assert statuses == ["done", "pending", "pending"]
     assert len(server.requests) == 1
 
@@ -159,11 +162,11 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
     sweep_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A running task with a dead claimant is settled stale and continued from hop two."""
-    monkeypatch.setattr(serve, "_sweep_stop", threading.Event())
+    monkeypatch.setattr(_server, "_sweep_stop", threading.Event())
     server = _ScriptedLLMServer([_final_response("done")])
     try:
         _wire(sweep_home, server)
-        hop = _dispatch.HopResult(
+        hop = _task.HopResult(
             role="lead", member_id="demo-lead", ok=True, output="plan", step_id="kickoff"
         )
         _write_tasks(
@@ -176,16 +179,16 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
                     "claimId": "c-1",
                     "claimPid": 2**22 + 12345,
                     "claimedAt": _clock.iso(),
-                    "hops": [_dispatch._hop_record(hop)],
+                    "hops": [_record._hop_record(hop)],
                 }
             ]
         )
 
-        serve._sweep_one_pod("demo")
+        _server._sweep_one_pod("demo")
     finally:
         server.stop()
 
-    task = _dispatch.read_tasks("demo")[0]
+    task = _queue.read_tasks("demo")[0]
     assert task["status"] == "done", task.get("reason")
     assert [h["stepId"] for h in task["hops"]] == ["kickoff", "assemble"]
     assert len(server.requests) == 1

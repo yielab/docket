@@ -15,10 +15,11 @@ from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _tool_call_response
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.core.dispatch"
 
@@ -79,10 +80,10 @@ def _run_pipeline(
         ]
     )
     with _seed_research_pod(tmp_path, server.base_url):
-        _dispatch.enqueue_task_once("demo", "research the topic", channel="cli")
-        (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
+        _queue.enqueue_task_once("demo", "research the topic", channel="cli")
+        (result,) = _sweep.dispatch_pod("demo", max_tasks=1)
         assert result.status == "done", result.reason
-        hops = _dispatch.read_tasks("demo")[0]["hops"]
+        hops = _queue.read_tasks("demo")[0]["hops"]
         yield server, hops
 
 

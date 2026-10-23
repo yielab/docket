@@ -16,14 +16,14 @@ from typing import Any
 
 import pytest
 
-from docket.core.channel import ChannelSpec
-from docket.core.llm import Endpoint
-from docket.core.operator_contract import make_event
-from docket.edges.adapters import llm
-from docket.edges.adapters.channels import ntfy, webhook
-from docket.edges.adapters.exporters import otlp_http
+from docket.agent.llm import Endpoint
+from docket.models.adapters import openai_http as llm
+from docket.observability.adapters import otlp_http
+from docket.operator.adapters import ntfy, webhook
+from docket.operator.channel import ChannelSpec
+from docket.operator.contract import make_event
 
-SUBJECT = "docket.edges.adapters.redirects"
+SUBJECT = "docket.platform.redirects"
 
 _MODELS = json.dumps({"data": [{"id": "served-model"}]}).encode()
 

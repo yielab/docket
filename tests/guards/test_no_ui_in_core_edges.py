@@ -25,14 +25,18 @@ def _imports_ui(path: Path) -> bool:
     tree = ast.parse(path.read_text(), filename=str(path))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            if any(alias.name in ("docket.ui", "docket.ui.py") for alias in node.names):
+            if any(
+                alias.name
+                in ("docket.interfaces.cli.render.ui", "docket.interfaces.cli.render.ui.py")
+                for alias in node.names
+            ):
                 return True
         elif isinstance(node, ast.ImportFrom):
             # `from docket import ui` (module == "docket", name "ui") or
             # `from docket.ui import ...` (module == "docket.ui").
             if node.module == "docket" and any(alias.name == "ui" for alias in node.names):
                 return True
-            if node.module == "docket.ui":
+            if node.module == "docket.interfaces.cli.render.ui":
                 return True
     return False
 

@@ -21,10 +21,10 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from docket.cli import app as _app
-from docket.core import provider as _prov
-from docket.edges.adapters.llm import ProbeResult
+from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, use_home
+from docket.models import catalog as _prov
+from docket.models.adapters.openai_http import ProbeResult
 
 SUBJECT = "docket.core"
 

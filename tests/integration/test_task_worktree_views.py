@@ -13,12 +13,14 @@ from tests.conftest import record_isolation_off
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod, app
-from docket.core import dispatch as _dispatch
-from docket.edges import store as _store
+from docket.interfaces.cli.app import app
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
+from docket.teams import settings as _settings
 
-SUBJECT = "docket.cli._task"
+SUBJECT = "docket.interfaces.cli.commands.task"
 
 _runner = CliRunner()
 
@@ -52,8 +54,8 @@ def seeded(tmp_path: Path) -> Iterator[dict[str, Any]]:
         wt = tmp_path / "wt"
         _git(repo, "worktree", "add", "-q", "-b", "docket/demo/t1", str(wt), base)
         (wt / "calc.py").write_text("x = 2\n")
-        task = _dispatch.enqueue_task_once("demo", "bump x", channel="cli")[0]
-        path = _dispatch.pod_task_list_path("demo")
+        task = _queue.enqueue_task_once("demo", "bump x", channel="cli")[0]
+        path = _settings.pod_task_list_path("demo")
         doc = _store.read_json(path)
         for t in doc["tasks"]:
             t["status"] = "done"
@@ -73,10 +75,10 @@ def test_task_diff_prints_the_branch_change_against_the_base(seeded: dict[str, A
 def test_task_diff_reads_the_recorded_repository_not_a_rewritten_git_file(
     seeded: dict[str, Any], tmp_path: Path
 ) -> None:
-    from docket.edges.adapters import system as _system
+    from docket.sandbox import landlock as _landlock
 
     wt = Path(seeded["wt"])
-    dirs = _system.worktree_git_dirs(str(wt))
+    dirs = _landlock.worktree_git_dirs(str(wt))
     assert dirs is not None
     other = tmp_path / "other"
     other.mkdir()
@@ -85,7 +87,7 @@ def test_task_diff_reads_the_recorded_repository_not_a_rewritten_git_file(
     (other / "calc.py").write_text("planted\n")
     _git(other, "add", ".")
     _git(other, "commit", "-qm", "planted")
-    path = _dispatch.pod_task_list_path("demo")
+    path = _settings.pod_task_list_path("demo")
     doc = _store.read_json(path)
     for t in doc["tasks"]:
         t["worktree"]["gitDir"], t["worktree"]["commonDir"] = dirs

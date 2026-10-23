@@ -8,9 +8,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from docket.core import pod_provisioning as _pp
+from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.core.pod_provisioning"
+SUBJECT = "docket.teams.pod_provisioning"
 
 
 def _git(repo: Path, *args: str) -> str:

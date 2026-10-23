@@ -10,11 +10,12 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import _contract, app
-from docket.core import fleet as _fleet
+from docket.interfaces.cli.app import app
+from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.home import Home, current_home, use_home
+from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.cli._agents"
+SUBJECT = "docket.interfaces.cli.commands.agents"
 
 runner = CliRunner()
 

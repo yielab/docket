@@ -28,16 +28,19 @@ import pytest
 import typer
 from tests.pods import build_pod
 
-import docket.serve as _serve
-from docket.cli import _pod, _run
-from docket.core import dispatch as _dispatch
-from docket.core import runs as _runs
-from docket.edges import store as _store
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import run as _run
+from docket.interfaces.http import server as _server
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
-from docket.serve import _DocketHandler
+from docket.pipeline.application import schedule as _schedule
+from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import runs as _runs
+from docket.tasks.domain import task as _task
 
-SUBJECT = "docket.core.runs"
+SUBJECT = "docket.tasks.application.runs"
 
 _TEST_TOKEN = "test-serve-token-r3-runs"
 
@@ -86,9 +89,9 @@ class TestReturnedResultFold:
                 trace_calls.append(args)
                 return "written"
 
-            monkeypatch.setattr("docket.core.trace.trace_event", _capture_trace)
+            monkeypatch.setattr("docket.observability.trace.trace_event", _capture_trace)
             record = _runs.create_run("cli", "demo")
-            task = _dispatch.TaskResult(
+            task = _task.TaskResult(
                 task_id="task-failed",
                 status="failed",
                 reason="turn budget exhausted",
@@ -113,12 +116,12 @@ class TestReturnedResultFold:
         with use_home(Home(home)):
             record = _runs.create_run("webhook", "demo")
             results = [
-                _dispatch.TaskResult(task_id="task-done", status="done"),
-                _dispatch.TaskResult(task_id="task-wait", status="waiting_approval"),
-                _dispatch.TaskResult(
+                _task.TaskResult(task_id="task-done", status="done"),
+                _task.TaskResult(task_id="task-wait", status="waiting_approval"),
+                _task.TaskResult(
                     task_id="task-failed", status="failed", reason="verify gate\nfailed"
                 ),
-                _dispatch.TaskResult(task_id="task-blocked", status="blocked"),
+                _task.TaskResult(task_id="task-blocked", status="blocked"),
             ]
 
             returned = _runs.execute(record["id"], lambda: results)
@@ -135,15 +138,15 @@ class TestReturnedResultFold:
         [
             [],
             [
-                _dispatch.TaskResult(task_id="task-done", status="done"),
-                _dispatch.TaskResult(task_id="task-blocked", status="blocked"),
+                _task.TaskResult(task_id="task-done", status="done"),
+                _task.TaskResult(task_id="task-blocked", status="blocked"),
             ],
         ],
     )
     def test_unparked_nonfailed_returned_statuses_keep_invocation_successful(
         self,
         tmp_path: Path,
-        results: list[_dispatch.TaskResult],
+        results: list[_task.TaskResult],
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
@@ -167,7 +170,7 @@ class TestReturnedResultFold:
         with use_home(Home(home)):
             record = _runs.create_run("cli", "demo")
             results = [
-                _dispatch.TaskResult(
+                _task.TaskResult(
                     task_id=f"task-{index}",
                     status="failed",
                     reason=f"reason {index} " + ("x" * 2_000) + " RAW_TAIL_SENTINEL",
@@ -175,7 +178,7 @@ class TestReturnedResultFold:
                 for index in range(20)
             ]
 
-            def _cancel_then_return() -> list[_dispatch.TaskResult]:
+            def _cancel_then_return() -> list[_task.TaskResult]:
                 _runs.cancel_run(record["id"])
                 return results
 
@@ -203,7 +206,7 @@ class TestReturnedResultFold:
         with use_home(Home(home)):
             record = _runs.create_run("cli", "demo")
 
-            class CountingResults(list[_dispatch.TaskResult]):
+            class CountingResults(list[_task.TaskResult]):
                 iterations = 0
 
                 def __iter__(self):  # type: ignore[no-untyped-def]
@@ -211,7 +214,7 @@ class TestReturnedResultFold:
                     return super().__iter__()
 
             results = CountingResults(
-                [_dispatch.TaskResult(task_id="task-failed", status="failed", reason="broken")]
+                [_task.TaskResult(task_id="task-failed", status="failed", reason="broken")]
             )
 
             _runs.execute(record["id"], lambda: results)
@@ -246,14 +249,14 @@ class TestReturnedResultFold:
             monkeypatch.setattr(_store, "read_modify_write", _inject_cancel_before_second_write)
             trace_calls: list[tuple[object, ...]] = []
             monkeypatch.setattr(
-                "docket.core.trace.trace_event",
+                "docket.observability.trace.trace_event",
                 lambda *args, **_kwargs: trace_calls.append(args) or "written",
             )
 
             returned = _runs.execute(
                 record["id"],
                 lambda: [
-                    _dispatch.TaskResult(
+                    _task.TaskResult(
                         task_id="task-failed", status="failed", reason="must lose to cancel"
                     )
                 ],
@@ -274,10 +277,10 @@ class TestReturnedResultFold:
             assert _runs.cancel_run(record["id"]).ok
             invoked = False
 
-            def _must_not_run() -> list[_dispatch.TaskResult]:
+            def _must_not_run() -> list[_task.TaskResult]:
                 nonlocal invoked
                 invoked = True
-                return [_dispatch.TaskResult(task_id="task-late", status="failed", reason="late")]
+                return [_task.TaskResult(task_id="task-late", status="failed", reason="late")]
 
             returned = _runs.execute(record["id"], _must_not_run)
 
@@ -297,12 +300,12 @@ class TestCliDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
+            _queue.enqueue_task_once("demo", "do the thing", channel="cli")
 
-            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-                return [_dispatch.TaskResult(task_id="task-x", status="done")]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
+                return [_task.TaskResult(task_id="task-x", status="done")]
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             _run._pod_dispatch("demo")
 
@@ -317,13 +320,13 @@ class TestCliDispatchPath:
     ) -> None:
         """A failed task exits 1, matching its failed run record, and prints its id and reason."""
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
+            _queue.enqueue_task_once("demo", "do the thing", channel="cli")
             reason = "reviewer hop failed: model wrote [/bold] then [red]stopped"
 
-            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-                return [_dispatch.TaskResult(task_id="task-x", status="failed", reason=reason)]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
+                return [_task.TaskResult(task_id="task-x", status="failed", reason=reason)]
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             with pytest.raises(typer.Exit) as excinfo:
                 _run._pod_dispatch("demo")
@@ -341,12 +344,12 @@ class TestCliDispatchPath:
     ) -> None:
         """Success and expected pauses exit 0 and keep the bracketed task id visible."""
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
+            _queue.enqueue_task_once("demo", "do the thing", channel="cli")
 
-            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-                return [_dispatch.TaskResult(task_id="task-x", status=status, reason="paused")]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
+                return [_task.TaskResult(task_id="task-x", status=status, reason="paused")]
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             _run._pod_dispatch("demo")
 
@@ -359,25 +362,25 @@ class TestCliDispatchPath:
         with _seed_pod(tmp_path, project="demo"):
             from typer.testing import CliRunner
 
-            from docket.cli import app
+            from docket.interfaces.cli.app import app
 
             result = CliRunner().invoke(
                 app, ["task", "add", "Fix [/bold] parsing in [red] mode", "--pod", "demo"]
             )
 
-            task_id = _dispatch.read_tasks("demo")[0]["id"]
+            task_id = _queue.read_tasks("demo")[0]["id"]
             assert f"[{task_id}] Fix [/bold] parsing in [red] mode" in result.output
 
     def test_exception_is_recorded_and_cli_exits_nonzero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
+            _queue.enqueue_task_once("demo", "do the thing", channel="cli")
 
-            def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
                 raise RuntimeError("daemon exploded")
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _boom)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
 
             with pytest.raises(typer.Exit) as excinfo:
                 _run._pod_dispatch("demo")
@@ -436,10 +439,10 @@ class TestWebhookDispatchPath:
     ) -> None:
         url, token = live_server
 
-        def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-            return [_dispatch.TaskResult(task_id="task-web", status="done")]
+        def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
+            return [_task.TaskResult(task_id="task-web", status="done")]
 
-        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
         status, body = _post(f"{url}/dispatch/myproject", token=token)
         assert status == 200
@@ -458,10 +461,10 @@ class TestWebhookDispatchPath:
     ) -> None:
         url, token = live_server
 
-        def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+        def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
             raise RuntimeError("webhook dispatch exploded")
 
-        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _boom)
+        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
 
         status, body = _post(f"{url}/dispatch/myproject", token=token)
         assert status == 200  # webhook still returns immediately
@@ -573,12 +576,12 @@ class TestScheduleDispatchPath:
                 json.dumps({"schedules": {"projA": "@every 1s"}})
             )
 
-            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-                return [_dispatch.TaskResult(task_id="task-sched", status="done")]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
+                return [_task.TaskResult(task_id="task-sched", status="done")]
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
-            _serve._check_schedules(time.time())
+            _schedule._check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -601,12 +604,12 @@ class TestScheduleDispatchPath:
                 json.dumps({"schedules": {"projB": "@every 1s"}})
             )
 
-            def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
                 raise RuntimeError("schedule dispatch exploded")
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _boom)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
 
-            _serve._check_schedules(time.time())
+            _schedule._check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -634,13 +637,13 @@ class TestSweepDispatchPath:
             ),
         ):
 
-            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
-                return [_dispatch.TaskResult(task_id="task-sweep", status="done")]
+            def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
+                return [_task.TaskResult(task_id="task-sweep", status="done")]
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
-            _serve._run_sweeps(dispatch=True)
-            assert _serve._drain_sweeps(timeout=10)
+            _server._run_sweeps(dispatch=True)
+            assert _server._drain_sweeps(timeout=10)
 
             records = _runs.list_runs("sweepdemo")
             assert len(records) == 1
@@ -659,15 +662,15 @@ class TestSweepDispatchPath:
                 dataclasses.replace(current_home(), approvals_dir_override=tmp_path / "approvals")
             ):
 
-                def _selective_boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+                def _selective_boom(proj: str, **kw: object) -> list[_task.TaskResult]:
                     if proj == "pod-a":
                         raise RuntimeError("pod-a exploded")
-                    return [_dispatch.TaskResult(task_id="task-b", status="done")]
+                    return [_task.TaskResult(task_id="task-b", status="done")]
 
-                monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _selective_boom)
+                monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _selective_boom)
 
-                _serve._run_sweeps(dispatch=True)
-                assert _serve._drain_sweeps(timeout=10)  # must not raise
+                _server._run_sweeps(dispatch=True)
+                assert _server._drain_sweeps(timeout=10)  # must not raise
 
                 a_records = _runs.list_runs("pod-a")
                 b_records = _runs.list_runs("pod-b")
@@ -685,7 +688,9 @@ class TestSweepWorkers:
         with _seed_pod(tmp_path, project="pod-a"):
             build_pod("pod-b", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/pod-b")
             monkeypatch.setattr(
-                "docket.core.dispatch.dispatchable_pods", lambda: ["pod-a", "pod-b"], raising=True
+                "docket.tasks.application.queue.dispatchable_pods",
+                lambda: ["pod-a", "pod-b"],
+                raising=True,
             )
             with use_home(
                 dataclasses.replace(current_home(), approvals_dir_override=tmp_path / "approvals")
@@ -699,21 +704,21 @@ class TestSweepWorkers:
             release = threading.Event()
             b_done = threading.Event()
 
-            def _fake(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _fake(proj: str, **kw: object) -> list[_task.TaskResult]:
                 if proj == "pod-a":
                     assert release.wait(10)
                 else:
                     b_done.set()
-                return [_dispatch.TaskResult(task_id=f"t-{proj}", status="done")]
+                return [_task.TaskResult(task_id=f"t-{proj}", status="done")]
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
             try:
-                _serve._run_sweeps(dispatch=True)
+                _server._run_sweeps(dispatch=True)
                 assert b_done.wait(10), "pod-b never ran while pod-a was blocked"
-                assert _serve._drain_sweeps(timeout=0.05) is False
+                assert _server._drain_sweeps(timeout=0.05) is False
             finally:
                 release.set()
-            assert _serve._drain_sweeps(timeout=10)
+            assert _server._drain_sweeps(timeout=10)
             assert _runs.list_runs("pod-a")[0]["state"] == "succeeded"
             assert _runs.list_runs("pod-b")[0]["state"] == "succeeded"
 
@@ -725,21 +730,21 @@ class TestSweepWorkers:
             started = threading.Event()
             calls: list[str] = []
 
-            def _fake(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _fake(proj: str, **kw: object) -> list[_task.TaskResult]:
                 calls.append(proj)
                 if proj == "pod-a":
                     started.set()
                     assert release.wait(10)
                 return []
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
             try:
-                _serve._run_sweeps(dispatch=True)
+                _server._run_sweeps(dispatch=True)
                 assert started.wait(10)
-                _serve._run_sweeps(dispatch=True)
+                _server._run_sweeps(dispatch=True)
             finally:
                 release.set()
-            assert _serve._drain_sweeps(timeout=10)
+            assert _server._drain_sweeps(timeout=10)
             assert calls.count("pod-a") == 1
             assert len(_runs.list_runs("pod-a")) == 1
 
@@ -752,22 +757,22 @@ class TestSweepWorkers:
             started: list[str] = []
             a_started = threading.Event()
 
-            def _fake(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _fake(proj: str, **kw: object) -> list[_task.TaskResult]:
                 started.append(proj)
                 if proj == "pod-a":
                     a_started.set()
                     assert release.wait(10)
                 return []
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
             try:
-                _serve._run_sweeps(dispatch=True)
+                _server._run_sweeps(dispatch=True)
                 assert a_started.wait(10)
-                assert _serve._drain_sweeps(timeout=0.2) is False
+                assert _server._drain_sweeps(timeout=0.2) is False
                 assert started == ["pod-a"]
             finally:
                 release.set()
-            assert _serve._drain_sweeps(timeout=10)
+            assert _server._drain_sweeps(timeout=10)
             assert started == ["pod-a", "pod-b"]
 
     def test_stop_waits_for_in_flight_sweeps(
@@ -778,17 +783,17 @@ class TestSweepWorkers:
             started = threading.Event()
             finished = threading.Event()
 
-            def _fake(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            def _fake(proj: str, **kw: object) -> list[_task.TaskResult]:
                 if proj == "pod-a":
                     started.set()
                     assert release.wait(10)
                     finished.set()
                 return []
 
-            monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake)
-            monkeypatch.setattr(_serve, "_check_schedules", lambda _now: None)
+            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
+            monkeypatch.setattr(_schedule, "_check_schedules", lambda _now: None)
             stop = threading.Event()
-            loop = new_thread(target=_serve._sweep_loop, args=(0.01, stop, True), daemon=True)
+            loop = new_thread(target=_server._sweep_loop, args=(0.01, stop, True), daemon=True)
             loop.start()
             try:
                 assert started.wait(10)

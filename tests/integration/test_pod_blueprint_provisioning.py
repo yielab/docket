@@ -22,13 +22,16 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _agents, _contract, _pod, _setup_check
-from docket.core import blueprints as _bp
-from docket.core import fleet as _fleet
-from docket.core import pod as _pod_core
+from docket.interfaces.cli.commands import agents as _agents
+from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.kernel.home import Home, current_home, use_home
+from docket.teams import blueprints as _bp
+from docket.teams import fleet as _fleet
+from docket.teams import pod as _pod_core
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 # ── hermetic helpers (mirrors test_pod_roles_from_archetypes.py / test_pod_resources.py) ──
 

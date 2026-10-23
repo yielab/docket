@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from docket.core import dispatch as _dispatch
+from docket.hops.application import compose as _compose
 
 SUBJECT = "docket.core.dispatch"
 
@@ -31,7 +31,7 @@ class TestTaskRootAndRepositoryMap:
         worktree = _repo_with_files(tmp_path / "wt")
         task = {**_TASK, "worktree": {"dir": str(worktree)}}
 
-        message, comp = _dispatch._hop_message(task, "implementer", [])
+        message, comp = _compose._hop_message(task, "implementer", [])
 
         assert f"Working directory: {worktree}" in message
         assert "src/ (2 files)" in message
@@ -40,13 +40,13 @@ class TestTaskRootAndRepositoryMap:
         assert comp.total_bytes == len(message.encode("utf-8"))
 
     def test_the_block_precedes_a_prior_artifact(self, tmp_path: Path) -> None:
-        from docket.core.dispatch import HopResult
+        from docket.tasks.domain.task import HopResult
 
         worktree = _repo_with_files(tmp_path / "wt")
         task = {**_TASK, "worktree": {"dir": str(worktree)}}
         hop = HopResult(role="lead", member_id="p-lead", ok=True, output="the plan")
 
-        message, _ = _dispatch._hop_message(task, "implementer", [hop])
+        message, _ = _compose._hop_message(task, "implementer", [hop])
 
         assert message.index("Working directory:") < message.index("--- lead output ---")
 
@@ -54,7 +54,7 @@ class TestTaskRootAndRepositoryMap:
         worktree = _repo_with_files(tmp_path / "wt")
         task = {**_TASK, "worktree": {"dir": str(worktree)}}
 
-        message, _ = _dispatch._hop_message(task, "lead", [])
+        message, _ = _compose._hop_message(task, "lead", [])
 
         assert (
             message
@@ -66,11 +66,11 @@ class TestTaskRootAndRepositoryMap:
         plain.mkdir()
         task = {**_TASK, "worktree": {"dir": str(plain)}}
 
-        message, _ = _dispatch._hop_message(task, "reviewer", [])
+        message, _ = _compose._hop_message(task, "reviewer", [])
 
         assert f"Working directory: {plain}" in message
         assert "Repository map" not in message
 
     def test_no_worktree_and_no_pod_adds_nothing(self) -> None:
-        message, _ = _dispatch._hop_message(_TASK, "implementer", [])
+        message, _ = _compose._hop_message(_TASK, "implementer", [])
         assert "Working directory" not in message

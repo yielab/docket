@@ -1,0 +1,563 @@
+"""Built-in tool implementations.
+
+The side-effecting half of docket's tool set: deliberately dumb, since every function assumes
+the decision to run it was already made by ``core/tools.py``'s chokepoint. **Nothing here
+consults a policy, an allowlist or an approval store** -- a second module that could decide to
+execute is a second place a gate can be forgotten. The one exception is containment, not policy:
+every path resolves against allowed roots and an escaping path raises, because this must hold no
+matter which caller arrives and needs the real filesystem (symlinks resolve, ``..`` collapses).
+Imports nothing from ``core/``; reports via ``ToolOutcome`` that ``core/tools.py`` wraps with
+what was *decided*. ``run_bash``'s ``sandbox`` is additive mechanism, never a substitute for
+``resolve_within``'s path-argument containment, which never inspects ``bash`` shell text -- see
+specs/functional/security-gates.spec.md."""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal
+
+from docket.kernel import clock as _clock
+from docket.kernel import text as _text
+from docket.kernel import threads as _threads
+from docket.kernel.errors import Refused
+from docket.kernel.home import current_home
+from docket.sandbox import docker as _docker
+from docket.sandbox import launch as _launch
+from docket.sandbox.launch import SandboxAvailability, SandboxBackend
+
+SandboxMode = Literal["off", "auto"]
+
+# Tool output is fed straight back into a model's context, so an unbounded
+# result is a context-budget failure waiting to happen (and, for `bash`, a way
+# to blow the window with one `find /`). Truncation is always announced in the
+# returned text — silently short output would be read as "that is all there is".
+# The ceiling is the current Home's tool_max_output_chars (DOCKET_TOOL_MAX_OUTPUT_CHARS) because
+# the usable ceiling depends on the endpoint's context window, not on this module.
+MAX_GREP_MATCHES = 200
+MAX_GLOB_RESULTS = 300
+# Vendored and generated trees that glob and grep never report (agent-loop requirement 80).
+SKIPPED_DIRS = frozenset(
+    {".git", "node_modules", ".venv", "dist", "build", "target", "vendor", "__pycache__"}
+)
+# The window `read` returns when no limit is given (agent-loop requirement 81).
+READ_DEFAULT_LINES = 400
+READ_DEFAULT_CHARS = 6000
+
+# How often `run_bash`'s cancellable wait loop re-checks the callback and the
+# overall deadline. Short enough that a separate process's cancellation
+# request is noticed well inside any caller's patience; long enough that
+# idle polling costs nothing measurable.
+_CANCEL_POLL_INTERVAL_S = 0.1
+
+
+class PathEscapeError(Refused):
+    """A tool was asked to touch a path outside every allowed root."""
+
+
+@dataclass
+class ToolOutcome:
+    """What happened when a tool ran. Not whether it was allowed to."""
+
+    ok: bool
+    content: str = ""
+    error: str = ""
+    refusal: str = ""
+
+
+def _truncate(text: str, limit: int | None = None) -> str:
+    # Resolved per call, not bound as a default argument, so the ceiling follows the
+    # current Home rather than whatever it was at import time.
+    limit = current_home().tool_max_output_chars if limit is None else limit
+    return _text.cut_output(text, limit)
+
+
+def resolve_within(roots: tuple[Path, ...], candidate: str) -> Path:
+    """Resolve *candidate* and confirm it lives under one of *roots*.
+
+    Relative paths resolve against the first root. ``resolve()`` is called on both sides, so
+    ``..`` traversal and symlinks out of the tree are caught. Raises ``PathEscapeError`` when
+    outside every root, and when *roots* is empty -- defaulting an unrooted call to "anywhere"
+    would be a security hole."""
+    if not roots:
+        raise PathEscapeError("no allowed roots configured for this tool call")
+    raw = Path(candidate).expanduser()
+    target = raw if raw.is_absolute() else roots[0] / raw
+    resolved = target.resolve()
+    for root in roots:
+        root_resolved = root.resolve()
+        if resolved == root_resolved or root_resolved in resolved.parents:
+            return resolved
+    allowed = ", ".join(str(r) for r in roots)
+    raise PathEscapeError(f"{candidate!r} resolves outside the allowed roots ({allowed})")
+
+
+# ── file tools ────────────────────────────────────────────────────────────────
+
+
+def text_outcome(text: str) -> ToolOutcome:
+    """A successful outcome carrying *text*, bounded like a ``read`` result."""
+    return ToolOutcome(True, content=_truncate(text))
+
+
+def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 0) -> ToolOutcome:
+    """Read a text file as numbered lines: from *offset* (1-indexed), *limit* lines or the default.
+
+    A footer names the window and the next ``offset`` whenever lines remain after it."""
+    try:
+        target = resolve_within(roots, path)
+    except PathEscapeError as ex:
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+    if not target.is_file():
+        return ToolOutcome(False, error=f"not a file: {path}")
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError as ex:
+        return ToolOutcome(False, error=f"cannot read {path}: {ex}")
+
+    lines = text.splitlines()
+    start = max(0, offset - 1)
+    rows = [
+        f"{n}\t{line}"
+        for n, line in enumerate(lines[start : start + (limit or READ_DEFAULT_LINES)], start + 1)
+    ]
+    if not limit:
+        rows = _within_chars(rows, READ_DEFAULT_CHARS)
+    body = "\n".join(rows)
+    shown_end = start + len(rows)
+    if shown_end < len(lines):
+        body += (
+            f"\n\n[lines {start + 1}-{shown_end} of {len(lines)}; "
+            f"call read with offset={shown_end + 1} for more]"
+        )
+    return text_outcome(body)
+
+
+def _within_chars(rows: list[str], budget: int) -> list[str]:
+    """The leading *rows* whose joined length fits *budget*; never fewer than one."""
+    size = 0
+    for count, row in enumerate(rows):
+        size += len(row) + (1 if count else 0)
+        if size > budget and count:
+            return rows[:count]
+    return rows
+
+
+def write_file(roots: tuple[Path, ...], path: str, content: str) -> ToolOutcome:
+    """Create or overwrite a text file, creating parent directories."""
+    try:
+        target = resolve_within(roots, path)
+    except PathEscapeError as ex:
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    except OSError as ex:
+        return ToolOutcome(False, error=f"cannot write {path}: {ex}")
+    return ToolOutcome(True, content=f"wrote {len(content)} characters to {target}")
+
+
+def edit_file(
+    roots: tuple[Path, ...],
+    path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool = False,
+) -> ToolOutcome:
+    """Replace *old_string* with *new_string* in a file.
+
+    A non-unique match fails rather than guessing which occurrence was meant: an edit applied to
+    the wrong occurrence is worse than one refused."""
+    try:
+        target = resolve_within(roots, path)
+    except PathEscapeError as ex:
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+    if not target.is_file():
+        return ToolOutcome(False, error=f"not a file: {path}")
+    if not old_string:
+        return ToolOutcome(False, error="old_string must not be empty")
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError as ex:
+        return ToolOutcome(False, error=f"cannot read {path}: {ex}")
+
+    occurrences = text.count(old_string)
+    if occurrences == 0:
+        return ToolOutcome(False, error=f"old_string not found in {path}")
+    if occurrences > 1 and not replace_all:
+        return ToolOutcome(
+            False,
+            error=(
+                f"old_string appears {occurrences} times in {path}; "
+                "pass replace_all or include more surrounding context"
+            ),
+        )
+    updated = (
+        text.replace(old_string, new_string)
+        if replace_all
+        else text.replace(old_string, new_string, 1)
+    )
+    try:
+        target.write_text(updated, encoding="utf-8")
+    except OSError as ex:
+        return ToolOutcome(False, error=f"cannot write {path}: {ex}")
+    replaced = occurrences if replace_all else 1
+    return ToolOutcome(True, content=f"replaced {replaced} occurrence(s) in {target}")
+
+
+def _resolves_within(roots: tuple[Path, ...], candidate: Path) -> bool:
+    """Whether *candidate*, every symlink on its path followed, lands inside a root."""
+    try:
+        resolve_within(roots, str(candidate))
+    except PathEscapeError:
+        return False
+    return True
+
+
+def _display_path(roots: tuple[Path, ...], found: Path) -> str:
+    """*found* relative to the first root that holds it, so output never repeats a root prefix."""
+    for root in roots:
+        try:
+            return str(found.relative_to(root.resolve()))
+        except ValueError:
+            continue
+    return str(found)
+
+
+def _under_skipped_dir(found: Path, base: Path) -> bool:
+    """Whether a directory between *base* and *found* is a vendored or generated tree."""
+    return any(part in SKIPPED_DIRS for part in found.relative_to(base).parts[:-1])
+
+
+def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOutcome:
+    """List files matching a glob *pattern*, sorted by their root-relative path."""
+    try:
+        base = resolve_within(roots, path) if path else roots[0].resolve()
+    except (PathEscapeError, IndexError) as ex:
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+    if not base.is_dir():
+        return ToolOutcome(False, error=f"not a directory: {path or base}")
+    try:
+        matches = [p for p in base.glob(pattern) if p.is_file() and not _under_skipped_dir(p, base)]
+    except (OSError, ValueError) as ex:
+        return ToolOutcome(False, error=f"bad glob {pattern!r}: {ex}")
+    shown_paths = sorted(_display_path(roots, p) for p in matches if _resolves_within(roots, p))
+    shown = shown_paths[:MAX_GLOB_RESULTS]
+    body = "\n".join(shown) or "(no matches)"
+    if len(shown_paths) > len(shown):
+        body += f"\n\n[truncated: {len(shown_paths) - len(shown)} more matches]"
+    return text_outcome(body)
+
+
+def grep_files(
+    roots: tuple[Path, ...], pattern: str, path: str = "", glob: str = "**/*"
+) -> ToolOutcome:
+    """Search file contents for a regex, returning root-relative ``path:line:text`` hits, sorted.
+
+    Pure Python, not a shell-out: no second exec path beside the gated one, and no per-machine answers."""
+    try:
+        base = resolve_within(roots, path) if path else roots[0].resolve()
+    except (PathEscapeError, IndexError) as ex:
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
+    try:
+        regex = re.compile(pattern)
+    except re.error as ex:
+        return ToolOutcome(False, error=f"bad regex {pattern!r}: {ex}")
+
+    hits: list[str] = []
+    truncated = False
+    for candidate in sorted(base.glob(glob)):
+        if not candidate.is_file() or _under_skipped_dir(candidate, base):
+            continue
+        if not _resolves_within(roots, candidate):
+            continue
+        try:
+            text = candidate.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        shown = _display_path(roots, candidate)
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if regex.search(line):
+                hits.append(f"{shown}:{lineno}:{line.strip()[:300]}")
+                if len(hits) >= MAX_GREP_MATCHES:
+                    truncated = True
+                    break
+        if truncated:
+            break
+
+    body = "\n".join(hits) or "(no matches)"
+    if truncated:
+        body += f"\n\n[truncated at {MAX_GREP_MATCHES} matches]"
+    return text_outcome(body)
+
+
+# ── exec ──────────────────────────────────────────────────────────────────────
+
+
+# Exit 126 is the shell's "found but cannot execute"; in a jail that is usually a binary or a
+# library outside the granted paths, which no retry fixes.
+_CANNOT_EXECUTE = 126
+_CANNOT_EXECUTE_HINT = (
+    "; the jail could not execute it, most likely a file outside its granted paths, so a retry "
+    "will not help: report it (the operator grants a toolchain with "
+    "`docket setup sandbox read add <path>`)"
+)
+
+
+def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None) -> str:
+    """The honest, per-call answer to "was this actually sandboxed, and by what": ``""`` when
+    nobody asked (default ``sandbox="off"``, behaviour untouched byte for byte). When asked
+    (``"auto"``), always says what really happened, including ``"none (...)"`` when neither
+    backend panned out -- a jailed-looking result that was not actually jailed must never stay
+    silent."""
+    if sandbox != "auto" or availability is None:
+        return ""
+    if availability.backend != "none":
+        return f"sandbox: {availability.backend}"
+    reasons = [
+        reason
+        for ok, reason in (
+            (
+                (availability.seatbelt, "seatbelt unavailable")
+                if sys.platform == "darwin"
+                else (availability.landlock, "landlock unavailable")
+            ),
+            (availability.docker, "docker not chosen or unreachable"),
+        )
+        if not ok
+    ]
+    if not reasons:
+        # Every backend actually checked out usable -- "none" here can only
+        # mean DOCKET_SANDBOX_BACKEND=none forced it. Say that plainly rather
+        # than print an empty, unexplained "()".
+        reasons = ["forced off via DOCKET_SANDBOX_BACKEND"]
+    return f"sandbox: none ({', '.join(reasons)})"
+
+
+def run_bash(
+    roots: tuple[Path, ...],
+    command: str,
+    timeout: int = 120,
+    env: dict[str, str] | None = None,
+    sandbox: SandboxMode = "off",
+    cancelled: Callable[[], bool] | None = None,
+    on_process: Callable[[str, dict[str, Any]], None] | None = None,
+    network: bool = True,
+    cache_dir: Path | None = None,
+    read_only: tuple[Path, ...] = (),
+) -> ToolOutcome:
+    """Run *command* in a shell, rooted at the first allowed root.
+
+    **Performs no gating.** Reached only after ``core/tools.py`` has classified the command and,
+    where required, obtained approval. Runs in its own session so a timeout can kill the whole
+    process group -- a spawned child that hangs is the normal case, and killing only the shell
+    orphans it.
+
+    ``sandbox`` defaults to ``"off"`` (behaviour unchanged, byte for byte); ``"auto"`` asks for
+    the strongest exec jail available right now (resolved fresh per call) and reports what it
+    got, including ``"none"``, as a trailing marker. **Never decides whether to jail, only
+    reports what happened once asked**; ``"auto"`` with no usable backend runs nothing, and a jail
+    that fails to start is reported as a failure, never silently retried unsandboxed. See specs/functional/security-gates.spec.md.
+
+    ``network=False`` cuts the jail's network (both backends); it has no effect unsandboxed.
+
+    ``cancelled`` lets a separate process interrupt this command mid-run -- the one handler
+    amended for it, since every other handler runs to completion once started (a Python thread
+    cannot be killed safely, a subprocess can). Left ``None``, behaviour is unchanged, byte for
+    byte. Given a callback, a bounded poll checks it between waits and kills the process group
+    exactly as a timeout does, returning a complete cancelled ``ToolOutcome``. See
+    specs/functional/agent-loop.spec.md item 65.
+
+    ``on_process`` reports this call's real OS process group lifecycle -- ``("started", {"pgid":
+    proc.pid})`` once a process actually exists (never for a `Popen` that raises ``OSError`` --
+    there is no process to report), then exactly one ``("exited", {"pgid": ..., ...})`` on
+    whichever single return path this call takes, carrying ``exitCode`` (int) on a normal (or
+    non-zero) completion or ``signal="SIGKILL"`` when this function itself killed the group
+    (timeout or cancellation). Left ``None``, behaviour is unchanged, byte for byte -- no
+    callback is ever invoked. See specs/functional/trace-store.spec.md "Process lifecycle
+    events"."""
+    if not roots:
+        return ToolOutcome(False, error="no working directory configured")
+    cwd = roots[0].resolve()
+
+    availability = _launch.sandbox_availability() if sandbox == "auto" else None
+    backend: SandboxBackend = availability.backend if availability else "none"
+    tag = _sandbox_tag(sandbox, availability)
+    if sandbox == "auto" and backend == "none":
+        return ToolOutcome(False, error=f"not run: no sandbox backend is usable [{tag}]")
+
+    popen_env: dict[str, str] | None
+    container_name = ""
+    if backend in ("docker", "landlock", "seatbelt"):
+        launch = _launch.jail_launch(
+            roots,
+            command,
+            backend,
+            network=network,
+            env=env,
+            cache_dir=cache_dir,
+            read_only=read_only,
+        )
+        popen_arg: str | list[str] = launch.argv
+        shell = False
+        popen_env = launch.env
+        container_name = launch.container
+    else:
+        popen_arg = command
+        shell = True
+        popen_env = _launch.task_environment(env)
+
+    try:
+        proc = subprocess.Popen(
+            popen_arg,
+            shell=shell,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=popen_env,
+            start_new_session=True,
+        )
+    except OSError as ex:
+        if backend != "none":
+            return ToolOutcome(False, error=f"sandbox ({backend}) failed to start: {ex}")
+        return ToolOutcome(False, error=f"cannot start command: {ex}")
+
+    # `start_new_session=True` makes this child the leader of a brand-new session, so its
+    # pid doubles as its own process group id -- the same identity `_kill_group` and
+    # `core.runs.add_hop_pid` already rely on, with no extra syscall to confirm it.
+    pgid = proc.pid
+    if on_process is not None:
+        on_process("started", {"pgid": pgid})
+
+    # A `dict` built up on every path and reported exactly once, from the one `finally`
+    # below, is what makes "exactly one `exited` per `started`" hold regardless of which
+    # of this function's several return statements actually fires.
+    exit_payload: dict[str, Any] = {"pgid": pgid}
+    try:
+        if cancelled is None:
+            try:
+                out, _ = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                if backend == "docker":
+                    _docker.docker_kill(container_name)
+                _kill_group(proc)
+                exit_payload["signal"] = "SIGKILL"
+                message = f"command timed out after {timeout}s"
+                return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+        else:
+            timed_out, was_cancelled, out = _wait_cancellable(proc, timeout, cancelled)
+            if timed_out or was_cancelled:
+                if backend == "docker":
+                    _docker.docker_kill(container_name)
+                _kill_group(proc)
+                exit_payload["signal"] = "SIGKILL"
+                message = (
+                    "cancelled before completion"
+                    if was_cancelled
+                    else f"command timed out after {timeout}s"
+                )
+                return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+
+        body = _truncate((out or "").strip())
+        exit_payload["exitCode"] = proc.returncode
+        if proc.returncode != 0:
+            message = f"command exited {proc.returncode}"
+            if tag and proc.returncode == _CANNOT_EXECUTE:
+                message += _CANNOT_EXECUTE_HINT
+            return ToolOutcome(
+                False,
+                content=body,
+                error=f"{message} [{tag}]" if tag else message,
+            )
+        content = body or "(no output)"
+        return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
+    except Exception as ex:
+        _settle_unreadable(proc, container_name, exit_payload)
+        message = f"command output could not be read: {ex}"
+        return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+    finally:
+        if on_process is not None:
+            on_process("exited", exit_payload)
+
+
+# A bare `proc.wait()` never drains stdout, so a command that writes more
+# than the OS pipe buffer (commonly 64KB) blocks on its own next write and
+# never actually exits -- indistinguishable from a hang to a poll loop that
+# only checks exit status. A background reader draining the pipe in parallel
+# is what `communicate()` already does internally; this must keep doing it
+# too, or a real build/test/verbose command loses its output to a false
+# timeout the instant a cancellation callback is merely present, whether or
+# not it ever fires.
+def _wait_cancellable(
+    proc: subprocess.Popen[str], timeout: int, cancelled: Callable[[], bool]
+) -> tuple[bool, bool, str]:
+    """Wait for *proc* to exit, checking *cancelled* between short polls.
+
+    Returns ``(timed_out, was_cancelled, output)`` — at most one of the first two is true."""
+    assert proc.stdout is not None
+    drained: list[str] = []
+
+    def _drain() -> None:
+        import contextlib
+
+        with contextlib.suppress(OSError, ValueError):
+            drained.append(proc.stdout.read())  # type: ignore[union-attr]
+
+    reader = _threads.start_thread(_drain)
+
+    deadline = _clock.monotonic() + timeout
+    while True:
+        # Checked before `reader.is_alive()`: an external kill (e.g. `docket task cancel`
+        # signalling this same process group directly) can make the reader see EOF and
+        # finish in the same instant the cancellation flag it set becomes visible here.
+        # `cancel_run` always persists that flag *before* signalling, so a poll tick that
+        # observes it must still report `was_cancelled`, not a plain finish -- otherwise a
+        # cancelled run's own exit callback would misreport it as a normal exit.
+        if cancelled():
+            return False, True, ""
+        if not reader.is_alive():
+            reader.join()
+            proc.wait()
+            return False, False, drained[0] if drained else ""
+        remaining = deadline - _clock.monotonic()
+        if remaining <= 0:
+            return True, False, ""
+        time.sleep(max(0.0, min(_CANCEL_POLL_INTERVAL_S, remaining)))
+
+
+def _settle_unreadable(
+    proc: subprocess.Popen[str], container_name: str, exit_payload: dict[str, Any]
+) -> None:
+    """Record how a command ended when reading its output failed: its real exit status if it
+    had already exited, else kill the group (and the container, if any) and report SIGKILL."""
+    if proc.poll() is not None:
+        exit_payload["exitCode"] = proc.returncode
+        return
+    if container_name:
+        _docker.docker_kill(container_name)
+    _kill_group(proc)
+    exit_payload["signal"] = "SIGKILL"
+
+
+def _kill_group(proc: subprocess.Popen[str]) -> None:
+    """Kill a timed-out command's whole process group, then reap it.
+
+    Holds under every in-process sandbox backend: the jailed process stays in the same process
+    group (``start_new_session=True``), so this reaches it and everything it forked. Docker is the one shape not covered on its own -- ``docker run``'s CLI is a thin
+    client the daemon runs the container under, so killing its process group alone leaves the
+    container running; ``run_bash``'s timeout handler calls ``system.docker_kill`` first for
+    that reason."""
+    import contextlib
+    import signal
+
+    with contextlib.suppress(OSError, ProcessLookupError):
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    with contextlib.suppress(subprocess.SubprocessError, OSError, ValueError):
+        proc.communicate(timeout=5)

@@ -20,12 +20,12 @@ from pathlib import Path
 
 import pytest
 
-import docket.core.memory as _mem
-from docket.core.models import AgentMeta
-from docket.core.pod import PodMember
-from docket.core.pod_provisioning import provision_member
-from docket.edges.adapters.docket_runtime import _resolve_roots
+import docket.agent.memory as _mem
+from docket.agent.driver import _resolve_roots
 from docket.kernel.home import current_home
+from docket.teams.models import AgentMeta
+from docket.teams.pod import PodMember
+from docket.teams.pod_provisioning import provision_member
 
 _MODEL = "anthropic/claude-haiku-4-5-20251001"
 
@@ -111,7 +111,7 @@ def test_soul_and_agents_name_no_path(repo: Path) -> None:
 @pytest.mark.parametrize("role", ["lead", "implementer", "reviewer", "tester"])
 def test_the_task_message_names_a_path_inside_the_members_roots(repo: Path, role: str) -> None:
     """The hop message's `Working directory` is a root the tools will accept."""
-    from docket.core import repo_map
+    from docket.hops.workspace import repo_map
 
     member = _make_member(role)
     _provision(member, repo)
@@ -183,7 +183,7 @@ def test_other_roles_are_told_the_codebase(repo: Path, role: str) -> None:
 
 def test_doctor_contract_heal_keeps_the_member_inside_its_roots(repo: Path) -> None:
     """Healing a stale contract must keep the member inside its roots."""
-    from docket.cli._setup_check import _check_runtime_contract
+    from docket.interfaces.cli.commands.setup_check import _check_runtime_contract
 
     member = _make_member("implementer")
     _provision(member, repo)

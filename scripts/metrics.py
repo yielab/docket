@@ -77,7 +77,7 @@ def count_commands() -> int:
     sys.path.insert(0, str(ROOT / "src"))
     import typer.main
 
-    from docket.cli import app
+    from docket.interfaces.cli.app import app
 
     click_command = typer.main.get_command(app)
     commands = getattr(click_command, "commands", {})

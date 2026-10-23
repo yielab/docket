@@ -103,7 +103,7 @@ Requirements:
    `SUBJECT` verbatim. Every `src/` module over 150 lines has such a file unless it is listed in a
    committed baseline that may only shrink. Every `integration/**/test_*.py` also declares
    `SUBJECT`, naming the most specific importable `docket` module or package the file exercises; a
-   cross-module or process-boundary file may name a package (`docket.core`, `docket.cli`, or the
+   cross-module or process-boundary file may name a package (`docket.core`, `docket.interfaces.cli.app`, or the
    top-level `docket` package for a whole-envelope test). Unlike the unit rule, a mismatch with
    the file's own name is not an error there: the guard requires only importability, and reports
    every offender in one assertion. **Convention** (no guard): a file over 800 lines splits as
@@ -533,12 +533,12 @@ the skip reason names the missing capability.
 
 Where the names used above live today.
 
-- `src/docket/cli/__init__.py`: the CLI registry (rule 9); `src/docket/cli/_task.py`: the
+- `src/docket/interfaces/cli/app/__init__.py`: the CLI registry (rule 9); `src/docket/interfaces/cli/commands/task.py`: the
   500-character task description ceiling.
 - `src/docket/kernel/home.py`: `Home`, `current_home`, `use_home`, which the autouse fixture and
   every test home go through.
-- `src/docket/core/llm.py`: `ChatBackend`; `src/docket/core/runtime_driver.py`: `RuntimeDriver`;
-  `src/docket/core/tools.py`: `dispatch_tool`.
+- `src/docket/agent/llm.py`: `ChatBackend`; `src/docket/agent/ports.py`: `RuntimeDriver`;
+  `src/docket/agent/tools/registry.py`: `dispatch_tool`.
 - `src/docket/edges/adapters/system.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.
 - `tests/conftest.py`: the autouse home fixture,
   `register_local_provider`, `record_isolation_off`, `record_isolation_on`, the lane duration guard.
@@ -559,7 +559,7 @@ Where the names used above live today.
   `test_no_suppressed_dispatch.py`, `test_workspace_root_agreement.py`,
   `test_no_hardcoded_telegram_ids.py`, `test_no_external_daemon_coupling.py`.
 - `tests/unit/test_store_writer.py`: the store single-writer guard;
-  `tests/unit/core/test_tools.py`: the tool-chokepoint import guard.
+  `tests/unit/agent/tools/test_registry.py`: the tool-chokepoint import guard.
 - `tests/integration/test_console_script_entry_point.py`: retired names are unknown commands;
   `tests/integration/test_workflow_smoke.py`: the smoke wrapper;
   `tests/integration/test_escape_matrix.py`: the escape matrix.

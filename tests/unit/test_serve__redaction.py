@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import approval as _ap
-from docket.core import trace as _trace
+from docket.governance import approval as _ap
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
 
 SUBJECT = "docket.serve"
 

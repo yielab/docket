@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from docket.core import pod
-from docket.core import pod_provisioning as _pp
+from docket.teams import pod
+from docket.teams import pod_provisioning as _pp
 
 SUBJECT = "docket.core"
 

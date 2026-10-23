@@ -18,12 +18,13 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod, _setup_check
-from docket.core import dispatch as _dispatch
-from docket.core import memory as _mem
+from docket.agent import memory as _mem
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.kernel.home import Home, current_home, use_home
+from docket.tasks.application import queue as _queue
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 # ── hermetic pod fixture (mirrors test_dispatch.py's _seed_pod) ─────────────────
 
@@ -51,8 +52,8 @@ def _claim_a_task(project: str = "demo") -> str:
     """Enqueue + claim a task via the real dispatch state machine (so
     TASK_LIST.json ends up in a genuine 'running' state, ledger written by
     dispatch itself); returns the task id."""
-    _dispatch.enqueue_task_once(project, "some work", channel="cli")
-    claim = _dispatch._claim_next_task(project, resume=False)
+    _queue.enqueue_task_once(project, "some work", channel="cli")
+    claim = _queue._claim_next_task(project, resume=False)
     assert claim is not None
     return str(claim[0]["id"])
 

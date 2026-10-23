@@ -20,14 +20,16 @@ import pytest
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod, _setup_sandbox, app
-from docket.core import approval as _ap
-from docket.core import policy as _policy
-from docket.core import security as _sec
-from docket.core.audit import read_audit
+from docket.governance import approval as _ap
+from docket.governance import policy as _policy
+from docket.governance import security as _sec
+from docket.governance.audit import read_audit
+from docket.interfaces.cli.app import app
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.cli"
+SUBJECT = "docket.interfaces.cli.app"
 
 # Agent registration + channel bindings + gates/isolation flags live in
 # fleet.json.

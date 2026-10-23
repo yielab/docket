@@ -21,12 +21,12 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.core import archetypes as _arch
-from docket.core import fleet as _fleet
-from docket.core import models_policy as _mp
-from docket.core import pod
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.models import selection as _mp
+from docket.teams import fleet as _fleet
+from docket.teams import pod
+from docket.teams import roles as _arch
 
 SUBJECT = "docket.core"
 

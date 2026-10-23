@@ -371,28 +371,28 @@ x Tamper check FAILED at line 1 of 6: chain claims continuation from seq=214, bu
 
 ## Implementation
 
-- `src/docket/core/audit.py`: `audit_log`, `AuditWriteResult`, `read_audit`, `read_audit_text`,
+- `src/docket/governance/audit.py`: `audit_log`, `AuditWriteResult`, `read_audit`, `read_audit_text`,
   `verify_chain`, `VerifyResult`, `ChainBreak`, `GENESIS_HASH`, the head sidecar and rotation.
-- `src/docket/cli/_log.py`: `docket log [N]`, `--json`, `verify`.
+- `src/docket/interfaces/cli/commands/log.py`: `docket log [N]`, `--json`, `verify`.
 - `src/docket/kernel/home.py`: the `Home` members `audit_log`, `audit_log_max_bytes`,
   `trace_retention_s`
-- `src/docket/core/approval.py`: `approval.*` entries and the 512-character bound.
-- `src/docket/core/tools.py`: `tool.*`, `fetch.result_*`, `skills.body_*` entries.
-- `src/docket/core/mcp_tools.py`: `mcp_client.*` entries. `src/docket/cli/_mcp.py`: `mcp.<tool>`.
-- `src/docket/core/telegram.py`: `telegram.*` entries.
+- `src/docket/governance/approval.py`: `approval.*` entries and the 512-character bound.
+- `src/docket/agent/tools/registry.py`: `tool.*`, `fetch.result_*`, `skills.body_*` entries.
+- `src/docket/agent/tools/mcp_tools.py`: `mcp_client.*` entries. `src/docket/interfaces/cli/commands/mcp.py`: `mcp.<tool>`.
+- `src/docket/interfaces/telegram/bot.py`: `telegram.*` entries.
 - `src/docket/core/dispatch.py`: `task.*`, `profile.refused`, `gate.reasons_*` entries.
-- `src/docket/core/runs.py`: `runs.cancel`. `src/docket/serve.py`: `run.dispatch`.
-- `src/docket/core/pod_provisioning.py`, `src/docket/core/pod_apply.py`,
-  `src/docket/core/pod_memory.py`, `src/docket/cli/_pod.py`, `src/docket/cli/_pod_config.py`,
-  `src/docket/cli/_agents.py`: `agent.add`, `pod.*` entries.
-- `src/docket/cli/_setup_sandbox.py`, `src/docket/cli/_setup_model.py`,
-  `src/docket/cli/_setup_notify.py`, `src/docket/cli/_setup_mcp.py`,
-  `src/docket/cli/_setup_export.py`: `gates.*`, `keys.*`, `models.*`, `channel.*`, `mcp_servers.*`,
-  `exporter.*` entries. `src/docket/cli/_run.py`: `run.resume`.
-- `src/docket/core/channel.py`, `src/docket/core/exporter.py`, `src/docket/core/provider.py`,
-  `src/docket/core/identity.py`, `src/docket/core/skills.py`, `src/docket/core/plugins.py`,
-  `src/docket/core/answers.py`, `src/docket/core/reviewed_repos.py`: the remaining entries of
+- `src/docket/tasks/application/runs.py`: `runs.cancel`. `src/docket/serve.py`: `run.dispatch`.
+- `src/docket/teams/pod_provisioning.py`, `src/docket/teams/apply/plan.py`,
+  `src/docket/teams/memory.py`, `src/docket/interfaces/cli/commands/pod.py`, `src/docket/interfaces/cli/commands/pod_config.py`,
+  `src/docket/interfaces/cli/commands/agents.py`: `agent.add`, `pod.*` entries.
+- `src/docket/interfaces/cli/commands/setup_sandbox.py`, `src/docket/interfaces/cli/commands/setup_model.py`,
+  `src/docket/interfaces/cli/commands/setup_notify.py`, `src/docket/interfaces/cli/commands/setup_mcp.py`,
+  `src/docket/interfaces/cli/commands/setup_export.py`: `gates.*`, `keys.*`, `models.*`, `channel.*`, `mcp_servers.*`,
+  `exporter.*` entries. `src/docket/interfaces/cli/commands/run.py`: `run.resume`.
+- `src/docket/operator/channel.py`, `src/docket/observability/exporter.py`, `src/docket/models/catalog.py`,
+  `src/docket/agent/identity.py`, `src/docket/agent/skills.py`, `src/docket/governance/plugins.py`,
+  `src/docket/tasks/application/answers.py`, `src/docket/governance/review.py`: the remaining entries of
   Requirement 1.
-- `src/docket/edges/adapters/docket_runtime.py`: `isolation.refused`, `network.refused`.
-- `src/docket/core/trace.py`: `trace_event` and its `"written"` / `"rejected"` / `"suppressed"`
+- `src/docket/agent/driver.py`: `isolation.refused`, `network.refused`.
+- `src/docket/observability/trace.py`: `trace_event` and its `"written"` / `"rejected"` / `"suppressed"`
   result.

@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import provider as _provider
-from docket.core import secrets as _secrets
-from docket.edges.adapters import system as _system
-from docket.edges.adapters import toolbox as _toolbox
+from docket.agent.tools.builtins import toolbox as _toolbox
+from docket.governance import secrets as _secrets
 from docket.kernel.home import Home, use_home
+from docket.models import catalog as _provider
+from docket.sandbox import launch as _launch
 
 SUBJECT = "docket.edges.adapters.system"
 
@@ -43,13 +43,13 @@ def _assert_scrubbed(out: str) -> None:
 
 
 def test_verify_cmd_env_has_no_credentials(exported: None, tmp_path: Path) -> None:
-    code, out = _system.run_command(_ENV_CMD, str(tmp_path))
+    code, out = _launch.run_command(_ENV_CMD, str(tmp_path))
     assert code == 0
     _assert_scrubbed(out)
 
 
 def test_verify_cmd_overlay_still_arrives(exported: None, tmp_path: Path) -> None:
-    code, out = _system.run_command(_ENV_CMD, str(tmp_path), env={"DOCKET_TASK_ID": "t-1"})
+    code, out = _launch.run_command(_ENV_CMD, str(tmp_path), env={"DOCKET_TASK_ID": "t-1"})
     assert code == 0
     assert "DOCKET_TASK_ID=t-1" in out
     _assert_scrubbed(out)
@@ -67,7 +67,7 @@ def test_catalog_declared_credential_is_stripped(
     spec = next(s for s in _provider.load_catalog().entries.values() if s.auth.credentials)
     monkeypatch.setenv(spec.auth.credentials[0], "catalog-canary")
     monkeypatch.setenv("CATALOG_CONTROL", "control-canary")
-    code, out = _system.run_command(f"{_ENV_CMD}; env | grep catalog-canary; true", str(tmp_path))
+    code, out = _launch.run_command(f"{_ENV_CMD}; env | grep catalog-canary; true", str(tmp_path))
     assert code == 0
     assert "catalog-canary" not in out
     assert "control-canary" in out
@@ -76,5 +76,5 @@ def test_catalog_declared_credential_is_stripped(
 def test_reading_the_secret_store_does_not_create_home(tmp_path: Path) -> None:
     home = tmp_path / "absent-home"
     with use_home(Home(home)):
-        assert "PATH" in _system.task_environment()
+        assert "PATH" in _launch.task_environment()
         assert not home.exists()

@@ -18,12 +18,12 @@ from typing import Any
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _mcp
-from docket.cli import _pod as _pod_cli
-from docket.core import approval as _approval
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
+from docket.governance import approval as _approval
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import mcp as _mcp
+from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import queue as _queue
 
 SUBJECT = "docket.core"
 
@@ -218,7 +218,7 @@ class TestNoBypassThroughRealTransport:
             assert result.is_error is False
             assert result.structured_content["description"] == "ship the migration"
 
-            tasks = _dispatch.read_tasks("demo")
+            tasks = _queue.read_tasks("demo")
             assert [t["description"] for t in tasks] == ["ship the migration"]
 
     def test_approvals_grant_through_the_real_sdk_calls_the_same_core_function(
@@ -258,5 +258,8 @@ class TestNoUiImportEvenWithTheSdkInstalled:
             for ln in Path(_mcp.__file__).read_text().splitlines()
             if ln.strip().startswith(("import ", "from "))
         ]
-        assert not any("docket.ui" in ln or "docket import ui" in ln for ln in import_lines)
+        assert not any(
+            "docket.interfaces.cli.render.ui" in ln or "docket import ui" in ln
+            for ln in import_lines
+        )
         assert "ui" not in dir(_mcp)

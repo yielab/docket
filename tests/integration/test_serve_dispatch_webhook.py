@@ -11,12 +11,12 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import fleet as _fleet
-from docket.core import runs as _runs
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
+from docket.tasks.application import runs as _runs
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.serve"
 

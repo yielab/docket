@@ -24,26 +24,28 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off
 
-from docket.cli import _setup_model, _setup_sandbox
-from docket.core import approval as _approval
-from docket.core import fleet as _fleet
-from docket.core import memory as _memory
-from docket.core import secrets as _secrets
-from docket.core import session as _session
-from docket.core.audit import read_audit
-from docket.core.dispatch import DispatchError
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.core.runtime_driver import DOCKET_APPROVAL_MODE, PIPELINE_WORKTREE_ENV
-from docket.core.session import load_session
-from docket.core.tools import Tool, ToolContext, ToolRegistry
-from docket.edges import store as _store
-from docket.edges.adapters import docket_runtime as _docket_runtime
-from docket.edges.adapters import llm as _llm_adapter
-from docket.edges.adapters import system as _system
-from docket.edges.adapters.docket_runtime import DocketDriver
-from docket.edges.adapters.system import SandboxAvailability
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.agent import driver as _docket_runtime
+from docket.agent import memory as _memory
+from docket.agent import session as _session
+from docket.agent.driver import DocketDriver
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.ports import DOCKET_APPROVAL_MODE, PIPELINE_WORKTREE_ENV
+from docket.agent.session import load_session
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
+from docket.governance import approval as _approval
+from docket.governance import secrets as _secrets
+from docket.governance.audit import read_audit
+from docket.interfaces.cli.commands import setup_model as _setup_model
+from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
+from docket.models.adapters import openai_http as _llm_adapter
+from docket.platform import store as _store
+from docket.sandbox import docker as _docker
+from docket.sandbox import launch as _launch
+from docket.sandbox.launch import SandboxAvailability
+from docket.tasks.domain.task import DispatchError
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.core"
 
@@ -164,7 +166,7 @@ class TestRunTurn:
     ) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         with use_home(Home(tmp_path)):
             record_isolation_off(tmp_path)
@@ -1698,7 +1700,7 @@ class TestIsolationWiring:
         def no_probe() -> SandboxAvailability:
             raise AssertionError("probed a sandbox backend with isolation off")
 
-        monkeypatch.setattr(_system, "sandbox_availability", no_probe)
+        monkeypatch.setattr(_launch, "sandbox_availability", no_probe)
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
             backend_factory=lambda model: backend, registry_factory=_probe_registry
@@ -1732,7 +1734,7 @@ class TestIsolationWiring:
     ) -> None:
         _write_meta("solo-agent")
         monkeypatch.setattr(
-            _system,
+            _launch,
             "sandbox_availability",
             lambda: SandboxAvailability(backend="docker", docker=True),
         )
@@ -1758,7 +1760,7 @@ class TestIsolationWiring:
         # if it is).
         _write_meta("solo-agent")
         monkeypatch.setattr(
-            _system,
+            _launch,
             "sandbox_availability",
             lambda: SandboxAvailability(backend="none", docker=False),
         )
@@ -1786,7 +1788,7 @@ class TestIsolationWiring:
         # (`system.sandbox_availability`), so the override must still be the
         # last word, exactly as it already is for `toolbox.run_bash`.
         _write_meta("solo-agent")
-        monkeypatch.setattr(_system, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
@@ -1803,7 +1805,7 @@ class TestIsolationWiring:
         # exactly the flag it wrote.
         _write_meta("solo-agent")
         monkeypatch.setattr(
-            _system,
+            _launch,
             "sandbox_availability",
             lambda: SandboxAvailability(backend="landlock", docker=False, landlock=True),
         )
@@ -1919,7 +1921,7 @@ class TestApprovalModeWiring:
         real driver, denies in well under the 120s `TOOL_APPROVAL_TIMEOUT`
         instead of waiting -- the defect this wire exists to close."""
         with use_home(dataclasses.replace(current_home(), tool_approval_timeout=5)):
-            from docket.core.policy import install_policies
+            from docket.governance.policy import install_policies
 
             install_policies()
             _write_meta("refuse-real-agent")
@@ -2035,7 +2037,7 @@ class TestAllowCommandsWiring:
         # jail can enforce: turn isolation on with a (stubbed) backend.
         _fleet.set_sandbox_isolation(mode="non-main")
         monkeypatch.setattr(
-            _system,
+            _launch,
             "sandbox_availability",
             lambda: SandboxAvailability(backend="landlock", docker=False, landlock=True),
         )
@@ -2184,8 +2186,8 @@ class TestConsultBudgetReachesTheTurn:
         assert resolve("solo-x", None) == 3
 
     def test_a_pod_member_reads_the_pods_setting(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from docket.core import pod as _pod
-        from docket.core.pod import PodSettings
+        from docket.teams import pod as _pod
+        from docket.teams.pod import PodSettings
 
         monkeypatch.setattr(_pod, "pod_of", lambda agent_id: "shop")
         monkeypatch.setattr(

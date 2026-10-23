@@ -24,21 +24,22 @@ from tests.pods import build_pod
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
-from docket.cli import _pod
-from docket.core import archetypes as _arch
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import orchestrator as _orch
-from docket.core import pipeline as _pipeline
-from docket.core import pod
-from docket.core import pod_apply as _pod_apply
-from docket.core import policy as _policy
-from docket.core import runtime_driver as _rd
-from docket.core import tools as _tools
-from docket.core import trace as _trace
+from docket.agent import ports as _rd
+from docket.agent.tools import registry as _tools
+from docket.governance import audit as _audit
+from docket.governance import policy as _policy
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.pipeline.domain import plan as _orch
+from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import pod
+from docket.teams import roles as _arch
+from docket.teams.apply import plan as _pod_apply
 
-SUBJECT = "docket.core.pod_apply"
+SUBJECT = "docket.teams.apply.plan"
 
 RECIPES_DIR = _templates.RECIPES_DIR
 
@@ -156,7 +157,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(recipe_dir: Path, tmp_path: Pat
         result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        roster = _dispatch.pod_full_roster(project)
+        roster = _queue.pod_full_roster(project)
         registry = _arch.load_registry(project)
         plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
@@ -174,7 +175,7 @@ def test_pod_apply_resolves_a_shipped_recipe_by_name(tmp_path: Path) -> None:
     with _seed_fixture_pod(tmp_path, project):
         assert _pod_cli("update", "secure-build", "--pod", project).exit_code == 0
 
-        assert "security-vetter" in _dispatch.pod_full_roster(project)
+        assert "security-vetter" in _queue.pod_full_roster(project)
 
 
 def test_apply_with_an_invalid_setting_writes_nothing(tmp_path: Path) -> None:
@@ -417,9 +418,9 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        _dispatch.enqueue_task_once(project, "add a login endpoint", channel="cli")
+        _queue.enqueue_task_once(project, "add a login endpoint", channel="cli")
         runner = _SecureBuildRunner(project)
-        results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
+        results = _sweep.dispatch_pod(project, runner=runner, spec=result.spec)
 
         assert len(results) == 1
         outcome = results[0]
@@ -715,7 +716,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
 
         _pod_apply.apply(_pod_apply.plan_apply(project, _templates.RECIPES_DIR / "secure-build"))
 
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         assert _fleet.meta_get(pod.member_id(project, "security-vetter"), "model", "") == "local/x"
 

@@ -25,9 +25,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from docket.cli import app
-from docket.core import audit as _audit
-from docket.core import mcp_tools as _mt
+from docket.agent.tools import mcp_tools as _mt
+from docket.governance import audit as _audit
+from docket.interfaces.cli.app import app
 from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.core"
@@ -254,7 +254,7 @@ class TestServersCliNeverReachesTheToolboxOrCoreTools:
     `core.tools` or any toolbox handler function -- a stricter bar than the public
     Tool/ToolRegistry.register API the MCP client itself uses."""
 
-    FILE = "src/docket/cli/_setup_mcp.py"
+    FILE = "src/docket/interfaces/cli/commands/setup_mcp.py"
 
     def test_no_core_tools_import(self) -> None:
         path = REPO_ROOT / self.FILE
@@ -265,7 +265,9 @@ class TestServersCliNeverReachesTheToolboxOrCoreTools:
                 modules.add(node.module)
             if isinstance(node, ast.Import):
                 modules.update(alias.name for alias in node.names)
-        offenders = {m for m in modules if m == "docket.core.tools" or m.endswith(".core.tools")}
+        offenders = {
+            m for m in modules if m == "docket.agent.tools.registry" or m.endswith(".core.tools")
+        }
         assert not offenders, f"{self.FILE} must never import core.tools: {offenders}"
 
     def test_no_toolbox_handler_import(self) -> None:

@@ -16,17 +16,17 @@ from typing import Any
 
 import pytest
 
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pipeline as _pipeline
-from docket.core import runtime_driver as _rd
-from docket.edges.adapters import system as _sys
+from docket.agent import ports as _rd
 from docket.kernel.home import Home, current_home, use_home
+from docket.pipeline.application import executor as _executor
+from docket.pipeline.domain import spec as _pipeline
+from docket.sandbox import landlock as _landlock
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.core.dispatch"
 
 needs_landlock = pytest.mark.skipif(
-    not _sys.landlock_available(), reason="Landlock not available on this kernel"
+    not _landlock.landlock_available(), reason="Landlock not available on this kernel"
 )
 
 
@@ -112,7 +112,7 @@ def test_verify_writing_outside_the_worktree_fails(
     tmp_path: Path, outside: Path, isolation_on: None
 ) -> None:
     task = _verify_task(tmp_path, f"touch {outside}/escaped")
-    res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+    res = _executor.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "failed"
     assert not (outside / "escaped").exists()
 
@@ -120,7 +120,7 @@ def test_verify_writing_outside_the_worktree_fails(
 @needs_landlock
 def test_verify_writing_inside_the_worktree_passes(tmp_path: Path, isolation_on: None) -> None:
     task = _verify_task(tmp_path, "touch inside && test -f inside")
-    res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+    res = _executor.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "done", res.reason
     assert (tmp_path / "worktree" / "inside").exists()
 
@@ -136,7 +136,7 @@ def test_run_step_writing_outside_the_worktree_fails(
         "status": "pending",
         "worktree": {"dir": str(_worktree(tmp_path)), "branch": "b", "baseCommit": ""},
     }
-    res = _dispatch.dispatch_task(
+    res = _executor.dispatch_task(
         "myapp", task, runner=_runner, spec=_run_step_spec(f"touch {outside}/escaped")
     )
     assert res.status == "failed"
@@ -149,14 +149,14 @@ def test_isolation_on_with_no_backend_runs_nothing(
     _fleet.set_sandbox_isolation("on")
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
     task = _verify_task(tmp_path, f"touch {outside}/escaped")
-    res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+    res = _executor.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "failed"
     assert not (outside / "escaped").exists()
 
 
 def test_isolation_off_runs_on_the_host(tmp_path: Path, outside: Path) -> None:
     task = _verify_task(tmp_path, f"touch {outside}/host")
-    res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+    res = _executor.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "done", res.reason
     assert (outside / "host").exists()
 
@@ -166,7 +166,7 @@ def test_a_jailed_verify_writes_its_home_under_the_pod_cache(
     tmp_path: Path, isolation_on: None
 ) -> None:
     task = _verify_task(tmp_path, 'touch "$HOME/probe" && test "$UV_CACHE_DIR" = "$HOME"')
-    res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+    res = _executor.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "done", res.reason
     assert (current_home().pod_cache_dir("myapp") / "probe").exists()
 
@@ -180,13 +180,13 @@ def test_a_jailed_verify_reads_a_granted_toolchain_and_cannot_write_it(
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()
     second.mkdir()
-    denied = _dispatch.dispatch_task("myapp", _verify_task(first, reads), runner=_runner)
+    denied = _executor.dispatch_task("myapp", _verify_task(first, reads), runner=_runner)
     assert denied.status == "failed"
 
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     _fleet.add_read_only(str(outside))
     task = _verify_task(second, f"{reads} && ! touch {outside}/written")
     task["id"] = "e3"
-    res = _dispatch.dispatch_task("myapp", task, runner=_runner)
+    res = _executor.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "done", res.reason
     assert not (outside / "written").exists()

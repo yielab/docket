@@ -441,14 +441,14 @@ on a threshold.
 
 Where the names above live today. Phase 46 rewrites this section and nothing else.
 
-- `src/docket/cli/_status.py`: `docket status` (tokens, estimate label, `--history`)
-- `src/docket/cli/_pod.py`: `docket pod` verbs (`show`, `add`, `remove`, `reset`, `delete`, `set`, `check`)
-- `src/docket/cli/_agents.py`: `docket init`
-- `src/docket/cli/_task.py`, `src/docket/cli/_run.py`: `docket task`, `docket run`
-- `src/docket/cli/_setup.py`, `src/docket/cli/_setup_check.py`: `docket setup`, `docket setup --fix`
+- `src/docket/interfaces/cli/commands/status.py`: `docket status` (tokens, estimate label, `--history`)
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod` verbs (`show`, `add`, `remove`, `reset`, `delete`, `set`, `check`)
+- `src/docket/interfaces/cli/commands/agents.py`: `docket init`
+- `src/docket/interfaces/cli/commands/task.py`, `src/docket/interfaces/cli/commands/run.py`: `docket task`, `docket run`
+- `src/docket/interfaces/cli/commands/setup.py`, `src/docket/interfaces/cli/commands/setup_check.py`: `docket setup`, `docket setup --fix`
 - `src/docket/core/dispatch.py`: pod dispatch, budget gate, `unblock_pod`, `retry_task`
-- `src/docket/core/telegram.py`: the Telegram bot commands
-- `src/docket/templates/policies/block-destructive.yaml`, `src/docket/core/security.py`: the default
+- `src/docket/interfaces/telegram/bot.py`: the Telegram bot commands
+- `src/docket/templates/policies/block-destructive.yaml`, `src/docket/governance/security.py`: the default
   gates (`HIGH_RISK_PATTERNS`, `classify_command`)
 - `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`
 
@@ -461,7 +461,7 @@ Tests cited by name above:
 - `tests/integration/test_audit_approval_parity.py`, `tests/integration/test_telegram_channel.py`,
   `tests/integration/test_install.py`, `tests/integration/test_escape_matrix.py`,
   `tests/integration/test_pre_tool_call_policy.py`
-- `tests/unit/cli/test__status.py`, `tests/unit/cli/test__task.py`, `tests/unit/cli/test__run.py`,
-  `tests/unit/cli/test__setup_check.py`, `tests/unit/cli/test__inbox.py`, `tests/unit/core/test_tools.py`,
+- `tests/unit/interfaces/cli/commands/test_status.py`, `tests/unit/interfaces/cli/commands/test_task.py`, `tests/unit/interfaces/cli/commands/test_run.py`,
+  `tests/unit/interfaces/cli/commands/test_setup_check.py`, `tests/unit/interfaces/cli/commands/test_inbox.py`, `tests/unit/agent/tools/test_registry.py`,
   `tests/integration/test_guardrail_metrics.py`,
-  `tests/unit/core/test_pipeline__spec.py`, `tests/unit/edges/adapters/test_telegram.py`
+  `tests/unit/pipeline/domain/test_spec__spec.py`, `tests/unit/interfaces/telegram/test_client.py`

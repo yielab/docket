@@ -23,11 +23,9 @@ from typing import Any
 
 import pytest
 
-from docket.core import approval as _approval
-from docket.core import audit as _audit
-from docket.core.llm import ToolCall
-from docket.core.policy import install_policies
-from docket.core.tools import (
+from docket.agent.llm import ToolCall
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import (
     Tool,
     ToolContext,
     ToolRegistry,
@@ -36,10 +34,12 @@ from docket.core.tools import (
     evaluate_tool_call,
     render_tool_call,
 )
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.governance import approval as _approval
+from docket.governance import audit as _audit
+from docket.governance.policy import install_policies
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.core.tools"
+SUBJECT = "docket.agent.tools.registry"
 
 
 @pytest.fixture(autouse=True)

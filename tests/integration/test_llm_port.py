@@ -23,9 +23,8 @@ from typing import Any
 
 import pytest
 
-from docket.core import llm
-from docket.core.dispatch import _RETRYABLE_FAILURE_KINDS
-from docket.core.llm import (
+from docket.agent import llm
+from docket.agent.llm import (
     ChatBackend,
     ChatMessage,
     Endpoint,
@@ -34,8 +33,9 @@ from docket.core.llm import (
     ToolCallArgumentsError,
     ToolSpec,
 )
-from docket.edges.adapters import llm as adapter
+from docket.hops.application.runner import _RETRYABLE_FAILURE_KINDS
 from docket.kernel.home import Home, use_home
+from docket.models.adapters import openai_http as adapter
 
 SUBJECT = "docket.core"
 
@@ -475,7 +475,7 @@ class TestTransport:
     ) -> None:
         """Azure-style ``api-key`` header auth plus a static header, resolved from a
         catalog document end to end -- no ``Authorization`` header is sent."""
-        from docket.core import provider as _prov
+        from docket.models import catalog as _prov
 
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
@@ -651,7 +651,7 @@ def _register_provider(
 ) -> None:
     """Write *name* into the isolated global provider catalog (docket-providers.json),
     the document-shaped replacement for monkeypatching ``fleet.get_local_provider``."""
-    from docket.core import provider as _prov
+    from docket.models import catalog as _prov
 
     spec = _prov.ProviderSpec(
         name=name,
@@ -673,7 +673,7 @@ class TestEndpointResolution:
         monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
         monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
 
-        from docket.cli import _setup_model
+        from docket.interfaces.cli.commands import setup_model as _setup_model
 
         with use_home(Home(tmp_path)):
             monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
@@ -823,7 +823,7 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env")
-        from docket.core import secrets as _secrets
+        from docket.governance import secrets as _secrets
 
         with use_home(Home(tmp_path)):
             _secrets.save_secrets({"OPENROUTER_API_KEY": "sk-or-stored"})

@@ -890,7 +890,7 @@ and then from `docket setup provider add`. Nothing is sent until you run `docket
 present credential never turns an exporter on by itself.
 
 Every turn docket runs (a dispatch hop, a `docket start --dispatch` sweep) hands
-the records it writes to the local trace, already redacted, to `core/telemetry.py`, which turns
+the records it writes to the local trace, already redacted, to `observability/telemetry.py`, which turns
 each session into spans: a `docket.session` root with `gen_ai.chat` and `execute_tool` children,
 their ids derived from the session id so a re-send lands on the same trace. A pod dispatch runs
 every hop in one session, so its lead, implementer, reviewer and tester appear as one trace, each

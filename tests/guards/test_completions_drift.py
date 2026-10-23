@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from docket.cli import _setup_shell
+from docket.interfaces.cli.commands import setup_shell as _setup_shell
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,7 +24,7 @@ def _registry() -> dict[str, tuple[list[str], list[str], bool]]:
     from typer.core import TyperGroup
     from typer.main import get_command
 
-    from docket.cli import app
+    from docket.interfaces.cli.app import app
 
     out: dict[str, tuple[list[str], list[str], bool]] = {}
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from docket.core.runtime_driver import (
+from docket.agent.ports import (
     DriverCapabilities,
     FailureKind,
     SessionSummary,

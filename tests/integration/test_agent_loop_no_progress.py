@@ -15,21 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import agent_loop as _loop
-from docket.core.llm import (
-    ChatMessage,
-    ChatResponse,
-    TokenUsage,
-    ToolCall,
-    ToolSpec,
-    assistant,
-)
-from docket.core.tools import Tool as _Tool
-from docket.core.tools import ToolContext, ToolRegistry
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.agent import loop as _loop
+from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import Tool as _Tool
+from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.core.agent_loop"
+SUBJECT = "docket.agent.loop"
 
 
 class _Backend:

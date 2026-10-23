@@ -21,13 +21,16 @@ from typing import Any
 import pytest
 
 import docket.kernel.templates as _templates
-from docket.core import approval as _ap
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import policy as _policy
-from docket.core import runtime_driver as _rd
-from docket.core import trace as _trace
+from docket.agent import ports as _rd
+from docket.governance import approval as _ap
+from docket.governance import policy as _policy
 from docket.kernel.home import Home, current_home, use_home
+from docket.observability import trace as _trace
+from docket.tasks.application import actions as _actions
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.core"
 
@@ -220,16 +223,16 @@ class TestPolicyEvalDetail:
 class TestEnqueuePreInputGate:
     def test_allows_when_no_policies_installed(self) -> None:
         _seed_lean_pod()
-        task = _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")[0]
+        task = _queue.enqueue_task_once("myapp", "Ship it", channel="cli")[0]
         assert task["status"] == "pending"
-        assert _dispatch.read_tasks("myapp")[0]["id"] == task["id"]
+        assert _queue.read_tasks("myapp")[0]["id"] == task["id"]
 
     def test_block_rejects_before_the_task_is_ever_queued(self) -> None:
         _seed_lean_pod()
         _write_policy("no-wipes", "pre_input", "wipe prod db", "block", message="absolutely not")
-        with pytest.raises(_dispatch.DispatchError, match="no-wipes"):
-            _dispatch.enqueue_task_once("myapp", "please wipe prod db tonight", channel="cli")
-        assert _dispatch.read_tasks("myapp") == []
+        with pytest.raises(_task.DispatchError, match="no-wipes"):
+            _queue.enqueue_task_once("myapp", "please wipe prod db tonight", channel="cli")
+        assert _queue.read_tasks("myapp") == []
 
     def test_block_emits_a_self_contained_terminal_session(self) -> None:
         """A rejected task is never dispatched, so nothing else will ever close
@@ -237,8 +240,8 @@ class TestEnqueuePreInputGate:
         guardrail_block event is invisible to `docket status`."""
         _seed_lean_pod()
         _write_policy("no-wipes", "pre_input", "wipe prod db", "block")
-        with pytest.raises(_dispatch.DispatchError):
-            _dispatch.enqueue_task_once("myapp", "please wipe prod db tonight", channel="cli")
+        with pytest.raises(_task.DispatchError):
+            _queue.enqueue_task_once("myapp", "please wipe prod db tonight", channel="cli")
 
         events = _trace_events("myapp")
         types = [e["event_type"] for e in events]
@@ -255,14 +258,12 @@ class TestEnqueuePreInputGate:
     def test_require_approval_persists_waiting_approval_with_real_token(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[
-            0
-        ]
+        task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
 
         assert task["status"] == "waiting_approval"
         assert task["approvalToken"].startswith("apr-")
         assert task["pendingApprovalIndex"] == 0
-        stored = _dispatch.read_tasks("myapp")[0]
+        stored = _queue.read_tasks("myapp")[0]
         assert stored["status"] == "waiting_approval"
         assert stored["approvalToken"] == task["approvalToken"]
 
@@ -281,30 +282,28 @@ class TestEnqueuePreInputGate:
     def test_require_approval_task_is_not_claimable_until_granted(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")
+        _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")
 
         runner = _RecordingRunner()
-        results = _dispatch.dispatch_pod("myapp", runner=runner)
+        results = _sweep.dispatch_pod("myapp", runner=runner)
         assert results == []
         assert runner.calls == []
 
     def test_require_approval_grant_resumes_and_runs_the_pipeline(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[
-            0
-        ]
+        task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
         token = task["approvalToken"]
 
         _ap.approval_grant(token)
-        assert _dispatch.resolve_waiting_approval(token, "granted") is True
+        assert _actions.resolve_waiting_approval(token, "granted") is True
 
-        resumed = _dispatch.read_tasks("myapp")[0]
+        resumed = _queue.read_tasks("myapp")[0]
         assert resumed["status"] == "pending"
         assert resumed["gateOverridePipelineIndex"] == 0
 
         runner = _RecordingRunner()
-        results = _dispatch.dispatch_pod("myapp", runner=runner)
+        results = _sweep.dispatch_pod("myapp", runner=runner)
         assert len(results) == 1
         assert results[0].status == "done"
         assert runner.calls == ["lead", "implementer"]
@@ -312,15 +311,13 @@ class TestEnqueuePreInputGate:
     def test_require_approval_deny_fails_task_terminally(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[
-            0
-        ]
+        task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
         token = task["approvalToken"]
 
         _ap.approval_deny(token)
-        assert _dispatch.resolve_waiting_approval(token, "denied") is True
+        assert _actions.resolve_waiting_approval(token, "denied") is True
 
-        failed = _dispatch.read_tasks("myapp")[0]
+        failed = _queue.read_tasks("myapp")[0]
         assert failed["status"] == "failed"
         assert failed["failureKind"] == "approval_denied"
 
@@ -332,20 +329,18 @@ class TestEnqueuePreInputGate:
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
             "redact",
         )
-        task = _dispatch.enqueue_task_once(
+        task = _queue.enqueue_task_once(
             "myapp", "loop in leaky@example.com before shipping", channel="cli"
         )[0]
         assert "leaky@example.com" not in task["description"]
         assert "[REDACTED]" in task["description"]
-        stored = _dispatch.read_tasks("myapp")[0]
+        stored = _queue.read_tasks("myapp")[0]
         assert "leaky@example.com" not in stored["description"]
 
     def test_warn_does_not_change_status_or_description(self) -> None:
         _seed_lean_pod()
         _write_policy("fyi-only", "pre_input", "heads up", "warn")
-        task = _dispatch.enqueue_task_once("myapp", "heads up, this one is tricky", channel="cli")[
-            0
-        ]
+        task = _queue.enqueue_task_once("myapp", "heads up, this one is tricky", channel="cli")[0]
         assert task["status"] == "pending"
         assert task["description"] == "heads up, this one is tricky"
         events = _trace_events("myapp")
@@ -365,9 +360,9 @@ class TestPreOutputGate:
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
             "redact",
         )
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "reach me at leaky@example.com for questions"})
-        results = _dispatch.dispatch_pod("myapp", runner=runner)
+        results = _sweep.dispatch_pod("myapp", runner=runner)
 
         assert len(results) == 1
         assert results[0].status == "done"
@@ -379,9 +374,9 @@ class TestPreOutputGate:
     def test_block_fails_the_hop_and_stops_the_pipeline(self) -> None:
         _seed_lean_pod()
         _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "here is a FORBIDDEN_TOKEN in my output"})
-        results = _dispatch.dispatch_pod("myapp", runner=runner)
+        results = _sweep.dispatch_pod("myapp", runner=runner)
 
         assert len(results) == 1
         assert results[0].status == "failed"
@@ -394,9 +389,9 @@ class TestPreOutputGate:
     def test_warn_leaves_output_unchanged_and_task_continues(self) -> None:
         _seed_lean_pod()
         _write_policy("fyi-output", "pre_output", "heads up", "warn")
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "heads up: nothing to see here"})
-        results = _dispatch.dispatch_pod("myapp", runner=runner)
+        results = _sweep.dispatch_pod("myapp", runner=runner)
 
         assert results[0].status == "done"
         lead_hop = next(h for h in results[0].hops if h.role == "lead")
@@ -410,14 +405,14 @@ class TestPreOutputGate:
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
             "redact",
         )
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner(
             {
                 "lead": "lead contact: lead@example.com",
                 "implementer": "impl contact: impl@example.com",
             }
         )
-        results = _dispatch.dispatch_pod("myapp", runner=runner)
+        results = _sweep.dispatch_pod("myapp", runner=runner)
 
         assert results[0].status == "done"
         by_role = {h.role: h for h in results[0].hops}
@@ -429,9 +424,9 @@ class TestPreOutputGate:
         field/value `cli/_metrics.py`'s reader tallies "Guardrail trips" by."""
         _seed_lean_pod()
         _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "FORBIDDEN_TOKEN in the output"})
-        _dispatch.dispatch_pod("myapp", runner=runner)
+        _sweep.dispatch_pod("myapp", runner=runner)
 
         events = _trace_events("myapp")
         block_events = [e for e in events if e["event_type"] == "guardrail_block"]
@@ -442,9 +437,9 @@ class TestPreOutputGate:
 
     def test_allow_is_silent_no_guardrail_trace_at_all(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "nothing interesting here"})
-        _dispatch.dispatch_pod("myapp", runner=runner)
+        _sweep.dispatch_pod("myapp", runner=runner)
 
         events = _trace_events("myapp")
         assert not any(e["event_type"] in ("guardrail_check", "guardrail_block") for e in events)

@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.serve import _DocketHandler
 
 SUBJECT = "docket.serve"
 

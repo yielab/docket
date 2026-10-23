@@ -12,12 +12,13 @@ import typer
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _agents, _pod
-from docket.core import audit as _audit
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pod_provisioning as _pp
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import agents as _agents
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import queue as _queue
+from docket.teams import fleet as _fleet
+from docket.teams import pod_provisioning as _pp
 
 SUBJECT = "docket"
 
@@ -75,7 +76,7 @@ class TestBuildPod:
                 # Pod-member meta must round-trip through the AgentMeta model — a
                 # regression for templateVersion being written as an int (which made
                 # the first metadata write after provisioning raise ValidationError).
-                from docket.core.models import AgentMeta
+                from docket.teams.models import AgentMeta
 
                 assert AgentMeta.model_validate(m).template_version == str(_pp.POD_TEMPLATE_VERSION)
 
@@ -588,7 +589,7 @@ class TestInitReadsRepoConfig:
             rc = _agents.run_init(_agents.InitRequest(location=str(codebase), name="demo"))
 
             assert rc == 0
-            assert "reviewer" in _dispatch.pod_full_roster("demo")
+            assert "reviewer" in _queue.pod_full_roster("demo")
             assert len([e for e in _audit.read_audit() if e["action"] == "pod.apply"]) == 1
 
     def test_invalid_docket_dir_provisions_nothing(self, tmp_path: Path) -> None:
@@ -613,7 +614,7 @@ class TestInitReadsRepoConfig:
             )
 
             assert rc == 0
-            assert "security-vetter" in _dispatch.pod_full_roster("demo")
+            assert "security-vetter" in _queue.pod_full_roster("demo")
 
     def test_created_summary_counts_the_members_the_recipe_added(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -647,15 +648,15 @@ class TestInitReadsRepoConfig:
     ) -> None:
         import builtins
 
-        from docket.cli import _setup_notify
-        from docket.core import channel as _channel
-        from docket.edges.adapters import system as _sys
+        from docket.interfaces.cli.commands import setup_notify as _setup_notify
+        from docket.operator import channel as _channel
+        from docket.platform import process as _process
 
         with _seed(tmp_path):
             monkeypatch.setattr(
                 "sys.stdin", type("Tty", (), {"isatty": staticmethod(lambda: True)})()
             )
-            monkeypatch.setattr(_sys, "desktop_notifications_available", lambda: True)
+            monkeypatch.setattr(_process, "desktop_notifications_available", lambda: True)
             monkeypatch.setattr(builtins, "input", lambda _prompt="": "")
             sent: list[str] = []
             monkeypatch.setattr(_setup_notify, "send_test", lambda name: sent.append(name) or 0)
@@ -675,14 +676,14 @@ class TestInitReadsRepoConfig:
     ) -> None:
         import builtins
 
-        from docket.core import channel as _channel
-        from docket.edges.adapters import system as _sys
+        from docket.operator import channel as _channel
+        from docket.platform import process as _process
 
         with _seed(tmp_path):
             monkeypatch.setattr(
                 "sys.stdin", type("Tty", (), {"isatty": staticmethod(lambda: True)})()
             )
-            monkeypatch.setattr(_sys, "desktop_notifications_available", lambda: True)
+            monkeypatch.setattr(_process, "desktop_notifications_available", lambda: True)
             monkeypatch.setattr(builtins, "input", lambda _prompt="": "n")
 
             rc = _agents.run_init(
@@ -695,7 +696,7 @@ class TestInitReadsRepoConfig:
     def test_created_summary_is_quiet_once_a_channel_delivers(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.core import channel as _channel
+        from docket.operator import channel as _channel
 
         with _seed(tmp_path):
             _channel.enable_channel("desktop")
@@ -735,5 +736,5 @@ class TestInitReadsRepoConfig:
             )
 
             assert rc == 0
-            assert "reviewer" not in _dispatch.pod_full_roster("demo")
+            assert "reviewer" not in _queue.pod_full_roster("demo")
             assert not [e for e in _audit.read_audit() if e["action"] == "pod.apply"]

@@ -692,41 +692,41 @@ $ docket pod update secure-build --dry-run
 
 Where the names above live today. This is the only section that names paths.
 
-- `src/docket/core/blueprints.py`: `PodBlueprint`, `BlueprintError`, `BUILTIN_BLUEPRINTS`,
+- `src/docket/teams/blueprints.py`: `PodBlueprint`, `BlueprintError`, `BUILTIN_BLUEPRINTS`,
   `DEFAULT_BLUEPRINT`, `WORKSPACE_KINDS`, `get_blueprint`, `load_registry`
-- `src/docket/core/pod.py`: `DEFAULT_POD_ROLES`, `FULL_POD_ROLES`, `PodSettings` (`KEYS`,
+- `src/docket/teams/pod.py`: `DEFAULT_POD_ROLES`, `FULL_POD_ROLES`, `PodSettings` (`KEYS`,
   `RECORDED_KEYS`, `coerce`, `load_for`, `value_and_source`), `plan_pod`, `normalize_role`,
   `bound_pipeline_path`, `member_id`
-- `src/docket/core/pod_provisioning.py`: `provision_pod`, `provision_members`,
+- `src/docket/teams/pod_provisioning.py`: `provision_pod`, `provision_members`,
   `validate_verify_cmd`, `parse_budget_usd`
-- `src/docket/core/pod_apply.py`: `plan_apply`, `apply`, `apply_directory`, `export_pod`,
+- `src/docket/teams/apply/plan.py`: `plan_apply`, `apply`, `apply_directory`, `export_pod`,
   `resolve_recipe`, `summarize_recipe`, `RecipeSummary`, `list_recipes`, `RecipeInfo`,
   `directory_digest`, `classify_directory`, `review_decision`, `repo_changes`, `runs_changed`,
   `repo_config_dir`, `repo_root`, `is_shipped_recipe`, `PodApplyError`, `REPO_REFUSED_COMMANDS`
   (the manifest key set is `_MANIFEST_KEYS`)
-- `src/docket/core/reviewed_repos.py`: the remembered review (`remember`, `lookup`,
+- `src/docket/governance/review.py`: the remembered review (`remember`, `lookup`,
   `is_reviewed`, `review_code`)
-- `src/docket/core/config_docs.py`: `discover_config_paths`, `validate_directory`, the `pod`
+- `src/docket/teams/config_docs.py`: `discover_config_paths`, `validate_directory`, the `pod`
   document model
 - `src/docket/core/dispatch.py`: `effective_pipeline`, `pod_full_roster`, `TASK_PIPELINE_NAME`
-- `src/docket/core/pipeline.py`: `default_pipeline`; `src/docket/core/orchestrator.py`:
+- `src/docket/pipeline/domain/spec.py`: `default_pipeline`; `src/docket/pipeline/domain/plan.py`:
   `resolve_plan`
-- `src/docket/core/policy.py`: `validate_policy`, `read_policy`, `to_short_policy`;
-  `src/docket/core/archetypes.py`: `load_registry`, `add_user_archetype`, `to_short_role`
-- `src/docket/core/exporter.py`: `load_catalog`, `activation_state`;
-  `src/docket/core/mcp_tools.py`: `load_pod_mcp_servers`, `write_pod_mcp_servers`
-- `src/docket/core/memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` and `MEMORY.md` text)
+- `src/docket/governance/policy.py`: `validate_policy`, `read_policy`, `to_short_policy`;
+  `src/docket/teams/roles.py`: `load_registry`, `add_user_archetype`, `to_short_role`
+- `src/docket/observability/exporter.py`: `load_catalog`, `activation_state`;
+  `src/docket/agent/tools/mcp_tools.py`: `load_pod_mcp_servers`, `write_pod_mcp_servers`
+- `src/docket/agent/memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` and `MEMORY.md` text)
 - `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`, `pod_work_dir`,
   `pod_scratch_dir`, `user_recipes_dir`, `reviewed_repos_file`
 - `src/docket/kernel/templates.py`: `RECIPES_DIR`, `CONFIG_SCHEMAS_DIR`
-- `src/docket/cli/_agents.py`: `cmd_init`, `run_init`, `review_repo_source`, the `--from` path
-- `src/docket/cli/_pod.py`: `build_pod_from_blueprint`, `set_setting`, `unset_setting`,
+- `src/docket/interfaces/cli/commands/agents.py`: `cmd_init`, `run_init`, `review_repo_source`, the `--from` path
+- `src/docket/interfaces/cli/commands/pod.py`: `build_pod_from_blueprint`, `set_setting`, `unset_setting`,
   `add_members`
-- `src/docket/cli/_pod_config.py`: `cmd_update`, `cmd_export`, `cmd_validate`, `cmd_recipes`
-- `src/docket/cli/_run.py`: the change pickup before a dispatch;
-  `src/docket/cli/_setup_check.py`: the workspace-file check
+- `src/docket/interfaces/cli/commands/pod_config.py`: `cmd_update`, `cmd_export`, `cmd_validate`, `cmd_recipes`
+- `src/docket/interfaces/cli/commands/run.py`: the change pickup before a dispatch;
+  `src/docket/interfaces/cli/commands/setup_check.py`: the workspace-file check
 - `src/docket/serve.py`: `POST /pods`, `POST /pods/<p>/apply`
 - `src/docket/templates/recipes/<name>/`: the shipped recipes
-- Tests: `tests/unit/core/test_blueprints.py` (including `TestPipelineGateFidelity`),
+- Tests: `tests/unit/teams/test_blueprints.py` (including `TestPipelineGateFidelity`),
   `tests/integration/test_provisioning_contract.py` (`TestSeedContractWorkdir`),
-  `tests/unit/core/test_pod_apply.py`, `tests/integration/test_recipes.py`
+  `tests/unit/teams/apply/test_plan.py`, `tests/integration/test_recipes.py`

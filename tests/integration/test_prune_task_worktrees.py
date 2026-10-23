@@ -10,10 +10,10 @@ from typing import Any
 
 import pytest
 
-from docket.core import pod_provisioning as pp
 from docket.kernel.home import Home, current_home, use_home
+from docket.teams import pod_provisioning as pp
 
-SUBJECT = "docket.core.pod_provisioning"
+SUBJECT = "docket.teams.pod_provisioning"
 
 PROJECT = "myapp"
 IMPL = "myapp-implementer"
@@ -176,7 +176,7 @@ def test_dir_outside_member_tasks_dir_is_never_removed(env: dict[str, Any], tmp_
 def test_cli_verb_prints_and_rejects_bad_usage(env: dict[str, Any]) -> None:
     from typer.testing import CliRunner
 
-    from docket.cli import app
+    from docket.interfaces.cli.app import app
 
     rec = _add_task(env, "t-merged", "done")
     runner = CliRunner()

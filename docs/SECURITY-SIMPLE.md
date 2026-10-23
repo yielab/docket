@@ -2,8 +2,8 @@
 
 **Philosophy:** Security comes from layered defaults — an always-on tool-call gate, agent instructions, an optional read-only reviewer role, and human git review — so that the common cases are covered without extra commands, and nothing about a run leaves the host until you choose what may.
 
-> **Status / honesty note.** docket runs the agent turn itself (`core/agent_loop.py`), and every
-> tool call an agent makes passes through one chokepoint (`core/tools.py`'s `dispatch_tool`) before
+> **Status / honesty note.** docket runs the agent turn itself (`agent/loop.py`), and every
+> tool call an agent makes passes through one chokepoint (`agent/tools/registry.py`'s `dispatch_tool`) before
 > it executes — there is no external daemon in the loop any more, and nothing to bypass it. That
 > chokepoint is **always active**: an argument-aware command classifier plus the `pre_tool_call`
 > policy hook decide `allow`/`ask`/`deny` for every call; no flag or command turns it off. With
@@ -182,7 +182,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - A small, built-in list of especially consequential command patterns: money-movement,
   prod-deploy, secret-access (`docket setup sandbox classes` prints all of them).
 - **Wired onto every `bash` call docket dispatches**, not just a pod's `verifyCmd`. Since docket
-  runs the turn loop itself, `core/tools.py`'s `dispatch_tool` classifies the *whole command
+  runs the turn loop itself, `agent/tools/registry.py`'s `dispatch_tool` classifies the *whole command
   line* — including every segment behind a `;`/`&&`/`||`/pipe — before a call is allowed to run.
   `git status` is allowed; `git push origin production` asks, because the classifier reads the
   arguments, not just the binary name. A pod's `verifyCmd` still refuses outright on a match
@@ -233,7 +233,7 @@ built into the operating system; nothing needs installing:
 
 | Host | Backend | What it needs |
 | --- | --- | --- |
-| Linux | Landlock + seccomp (`python -m docket.jail`) | a kernel with Landlock (>= 5.13) |
+| Linux | Landlock + seccomp (`python -m docket.sandbox.jail`) | a kernel with Landlock (>= 5.13) |
 | macOS | seatbelt (`sandbox-exec`) | nothing; it ships with macOS |
 | Linux or macOS | Docker, only when chosen with `docket setup sandbox backend docker` | a running Docker daemon (Docker Desktop, Colima or OrbStack on macOS) |
 
@@ -356,7 +356,7 @@ docket status                          # Profile: lights-out, all requirements m
   restarts. A one-shot `docket run` picks it up at once. `DOCKET_NO_EXPORT=1`
   turns export off for one process.
 - **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
-  stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24's cut of the OpenTelemetry SDK stands
+  stdlib (`observability/adapters/otlp_http.py`) — D-24's cut of the OpenTelemetry SDK stands
   (D-48), and export stays a zero-dependency projection of docket's own trace events, never a
   second source of truth.
 - **Never blocks a turn.** The export pipeline is a bounded queue drained by a background
@@ -394,7 +394,7 @@ docket status                          # Profile: lights-out, all requirements m
   audited command shape as `docket setup export privacy`: `docket setup notify privacy <name> <level>`
   lists what starts showing up and asks, refusing off a TTY without `--yes`; narrowing never
   asks.
-- **Telegram's push is not the inbound bot talking to itself.** `core/telegram.py`'s bot is still
+- **Telegram's push is not the inbound bot talking to itself.** `interfaces/telegram/bot.py`'s bot is still
   exactly what "It isn't a chat" above describes: inbound-only, five verbs now (`/approve`,
   `/deny`, `/status`, `/delegate`, and `/answer <task-id> <text>` for a parked question), and it
   never sends anything it wasn't asked to. The `telegram` *channel* (`docket setup notify enable

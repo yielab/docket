@@ -27,12 +27,20 @@ from typing import Any
 import pytest
 
 from docket.core import dispatch as _dispatch
-from docket.core import pod_provisioning as _pp
-from docket.core import prepare as _prepare
 from docket.edges.adapters import system
+from docket.hops.gates import post_hop as _post_hop
+from docket.hops.workspace import prepare as _prepare
+from docket.hops.workspace import worktree as _worktree
 from docket.kernel.home import current_home, use_home
+from docket.platform import git as _platform_git
+from docket.sandbox import docker as _docker
+from docket.sandbox import landlock as _landlock
+from docket.sandbox import launch as _launch
+from docket.sandbox import seatbelt as _seatbelt
+from docket.tasks.application import queue as _queue
+from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.jail"
+SUBJECT = "docket.sandbox.jail"
 
 SECRET = "ESCAPE-MATRIX-SECRET-7f3a"
 SEED_KEY = "ESCAPE_MATRIX_PARENT_SEED"
@@ -59,19 +67,19 @@ def _git_image_or_skip() -> str:
         pytest.param(
             "landlock",
             marks=pytest.mark.skipif(
-                not system.landlock_available(), reason="landlock is not available on this host"
+                not _landlock.landlock_available(), reason="landlock is not available on this host"
             ),
         ),
         pytest.param(
             "docker",
             marks=pytest.mark.skipif(
-                not system.docker_daemon_reachable(), reason="no docker daemon on this host"
+                not _docker.docker_daemon_reachable(), reason="no docker daemon on this host"
             ),
         ),
         pytest.param(
             "seatbelt",
             marks=pytest.mark.skipif(
-                not system.seatbelt_available(), reason="seatbelt is not available on this host"
+                not _seatbelt.seatbelt_available(), reason="seatbelt is not available on this host"
             ),
         ),
     ]
@@ -97,7 +105,7 @@ def arena(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         shutil.rmtree(base)
         pytest.fail(f"the arena {real} is under a granted temp dir; rows would prove nothing")
     # A commit inside the jail needs an identity; a CI runner has no user.name.
-    for var in system._GIT_IDENTITY_VARS:
+    for var in _platform_git._GIT_IDENTITY_VARS:
         monkeypatch.setenv(var, "t" if var.endswith("NAME") else "t@t")
     try:
         with use_home(dataclasses.replace(current_home(), root=base)):
@@ -144,7 +152,7 @@ def _run(
     marker = root / f".ran-{uuid.uuid4().hex[:8]}"
     body = f"touch {marker}; {command}"
     if jailed:
-        launch = system.jail_launch(
+        launch = _launch.jail_launch(
             (root,),
             body,
             backend,
@@ -367,8 +375,8 @@ def test_a_worktree_config_cannot_make_host_git_execute_code(
     attack = f"printf '[core]\\n\\tfsmonitor = {script}\\n' > {gitdir}/config.worktree"
     _run(backend, wt, attack)
     task = task_tree.task
-    _dispatch._task_worktree_dir(task)
-    _dispatch._hop_diff_probe("proj-implementer-1", "implementer", task)
+    _worktree._task_worktree_dir(task)
+    _worktree._hop_diff_probe("proj-implementer-1", "implementer", task)
     assert not ran.exists(), "host git ran a core.fsmonitor the jail wrote into config.worktree"
     (gitdir / "config.worktree").write_text(f"[core]\n\tfsmonitor = {script}\n")
     subprocess.run(["git", "-C", str(wt), "status"], capture_output=True, timeout=30)
@@ -388,19 +396,19 @@ def test_a_rewritten_dot_git_file_never_makes_dispatch_execute_anything(
         f"printf 'gitdir: {evil}\\n' > {wt}/.git"
     )
     task = task_tree.task
-    _dispatch._task_worktree_dir(task)
+    _worktree._task_worktree_dir(task)
     _run(backend, wt, attack)
     dotgit = (wt / ".git").read_text()
     rewritten = str(evil) in dotgit
     if backend == "docker" or backend == "seatbelt":
         assert not rewritten, "the .git pointer file must be read-only in this backend"
-    _dispatch._task_worktree_dir(task)
-    _files, _ref, evidence, _diff = _dispatch._hop_diff_probe(
+    _worktree._task_worktree_dir(task)
+    _files, _ref, evidence, _diff = _worktree._hop_diff_probe(
         "proj-implementer-1", "implementer", task
     )
     assert not ran.exists(), "dispatch's host-side git executed what the jail wrote"
     assert evidence is not None
-    assert [str(p) for p in system.git_dirs(wt)] == [
+    assert [str(p) for p in _landlock.git_dirs(wt)] == [
         str(task_tree.gitdir),
         str(task_tree.common),
     ], "the next jail would mount the agent's gitdir"
@@ -487,15 +495,15 @@ def test_a_verify_command_cannot_write_outside_the_worktree(
 ) -> None:
     wt = task_tree.wt
     target = arena / "verify-escape.txt"
-    jail = system.JailPolicy(network=True)
+    jail = _launch.JailPolicy(network=True)
     monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (jail, None))
     cmd = f"touch inside-verify && echo escaped > {target}"
-    code, output = _dispatch._run_in_envelope("proj", "verify", cmd, str(wt), 60)
+    code, output = _post_hop._run_in_envelope("proj", "verify", cmd, str(wt), 60)
     assert (wt / "inside-verify").exists(), f"the verify command never ran: {output}"
     assert not target.exists(), "a verifyCmd wrote outside its worktree"
     assert code != 0
     monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (None, None))
-    host_code, _ = _dispatch._run_in_envelope("proj", "verify", cmd, str(wt), 60)
+    host_code, _ = _post_hop._run_in_envelope("proj", "verify", cmd, str(wt), 60)
     assert host_code == 0 and target.exists()
 
 
@@ -511,10 +519,10 @@ def test_a_rewritten_commondir_never_makes_dispatch_execute_anything(
         f"printf '[core]\\n\\tfsmonitor = {script}\\n' >> {evil}/config && "
         f"printf '{evil}\\n' > {gitdir}/commondir"
     )
-    _dispatch._task_worktree_dir(task_tree.task)
+    _worktree._task_worktree_dir(task_tree.task)
     _run(backend, wt, attack)
     rewritten = (gitdir / "commondir").read_text().strip() == str(evil)
-    _dispatch._hop_diff_probe("proj-implementer-1", "implementer", task_tree.task)
+    _worktree._hop_diff_probe("proj-implementer-1", "implementer", task_tree.task)
     assert not ran.exists(), "dispatch's host-side git followed a commondir the jail rewrote"
     if rewritten:
         subprocess.run(["git", "-C", str(wt), "status"], capture_output=True, timeout=30)
@@ -564,13 +572,13 @@ def test_a_prepared_cache_entry_is_readable_but_not_writable_to_a_jailed_gate(
 ) -> None:
     entry = _install_into(task_tree.wt, task_tree.main)
     cmd = "cat node_modules/tool > read.txt; echo planted > node_modules/planted"
-    jail = system.JailPolicy(network=True)
+    jail = _launch.JailPolicy(network=True)
     monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (jail, None))
-    _dispatch._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
+    _post_hop._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
     assert (task_tree.wt / "read.txt").read_text() == "installed\n", "the entry was unreadable"
     assert not (entry / "node_modules" / "planted").exists(), "a gate wrote the cache entry"
     monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (None, None))
-    _dispatch._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
+    _post_hop._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
     assert (entry / "node_modules" / "planted").exists(), "control: unjailed can write"
 
 
@@ -587,19 +595,19 @@ def test_the_prepare_launch_has_the_network_a_gate_under_network_none_lacks(
             f"python3 -c \"import socket; s = socket.create_connection(('{dial}', {port}), 2); "
             "s.sendall(b'hello')\""
         )
-    pods_jail = system.JailPolicy(network=False)
+    pods_jail = _launch.JailPolicy(network=False)
     monkeypatch.setattr(
         _dispatch._dr, "resolve_command_jail", lambda project, label: (pods_jail, None)
     )
     try:
-        _dispatch._run_prepare_command("proj", attack, str(task_tree.wt))
+        _queue._run_prepare_command("proj", attack, str(task_tree.wt))
         for _ in range(50):
             if got:
                 break
             threading.Event().wait(0.1)
         assert got == [b"hello"], "the install launch must reach the network"
         got.clear()
-        _dispatch._run_in_envelope("proj", "verify", attack, str(task_tree.wt), 60)
+        _post_hop._run_in_envelope("proj", "verify", attack, str(task_tree.wt), 60)
         threading.Event().wait(1)
         assert got == [], "a gate reached the network under the pod's network none"
     finally:

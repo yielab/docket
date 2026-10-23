@@ -104,9 +104,9 @@ def test_a_path_only_change_to_a_spec_passes(scratch: Path) -> None:
     spec = scratch / "specs" / "functional" / "a.spec.md"
     spec.write_text(
         spec.read_text()
-        .replace("src/docket/core/trace.py", "src/docket/observe/trace.py")
+        .replace("src/docket/observability/trace.py", "src/docket/observe/trace.py")
         .replace("`core/trace.py`", "`observe/trace.py`")
-        .replace("docket.core.trace.EVENTS", "docket.observe.trace.EVENTS")
+        .replace("docket.observability.trace.EVENTS", "docket.observe.trace.EVENTS")
     )
     result = _gate(scratch, "--only", "specs-diff")
     assert result.returncode == 0, result.stderr

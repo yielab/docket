@@ -22,13 +22,17 @@ import pytest
 from tests.fakes import FakeDriver
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import conversations as _conv
-from docket.core import dispatch as _dispatch
-from docket.core import memory as _mem
-from docket.core import runtime_driver as _rd
+from docket.agent import conversations as _conv
+from docket.agent import memory as _mem
+from docket.agent import ports as _rd
+from docket.hops.application import record as _record
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.tasks.domain import task as _task
+from docket.teams import settings as _settings
 
 SUBJECT = "docket.core"
 
@@ -64,7 +68,7 @@ def _lead_ws(project: str = "demo") -> Path:
 class TestHeartbeatLedgerLifecycle:
     def test_entry_written_before_first_hop_and_cleared_after_success(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task_once("demo", "Track me", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "Track me", channel="cli")[0]
             ws = _lead_ws()
             seen_mid_flight: list[list[str]] = []
 
@@ -74,16 +78,16 @@ class TestHeartbeatLedgerLifecycle:
                 seen_mid_flight.append(_mem.read_dispatch_task_ids(ws))
                 return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {})
 
-            _dispatch.dispatch_pod("demo", runner=runner)
+            _sweep.dispatch_pod("demo", runner=runner)
 
             assert seen_mid_flight[0] == [task["id"]]  # present before the very first hop
             assert _mem.read_dispatch_task_ids(ws) == []  # cleared once the task finished
 
     def test_entry_cleared_after_failure_too(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
-            _dispatch.enqueue_task_once("demo", "Will fail", channel="cli")
+            _queue.enqueue_task_once("demo", "Will fail", channel="cli")
             ws = _lead_ws()
-            res = _dispatch.dispatch_pod("demo", runner=FakeDriver(fail_role="implementer"))[0]
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver(fail_role="implementer"))[0]
             assert res.status == "failed"
             assert _mem.read_dispatch_task_ids(ws) == []
 
@@ -91,11 +95,11 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
-            monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+            _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
             ws = _lead_ws()
-            res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
             assert res.status == "blocked"
             # No hop ever ran (claimed -> immediately finalized as blocked), so the
             # ledger should show nothing in flight.
@@ -103,7 +107,7 @@ class TestHeartbeatLedgerLifecycle:
 
     def test_hop_count_increments_between_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
-            _dispatch.enqueue_task_once("demo", "multi hop task", channel="cli")
+            _queue.enqueue_task_once("demo", "multi hop task", channel="cli")
             ws = _lead_ws()
             seen: list[str] = []
 
@@ -118,7 +122,7 @@ class TestHeartbeatLedgerLifecycle:
                     return _rd.TurnResult(True, "PASS all good", 0.0, {})
                 return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {})
 
-            res = _dispatch.dispatch_pod("demo", runner=runner)[0]
+            res = _sweep.dispatch_pod("demo", runner=runner)[0]
             assert res.status == "done"
             assert len(seen) == 4
             assert "0 hops run" in seen[0]  # before lead's hop, nothing persisted yet
@@ -129,15 +133,15 @@ class TestHeartbeatLedgerLifecycle:
 
     def test_touch_claim_keeps_the_entry_and_refreshes_it(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "retry me", channel="cli")
-            claim = _dispatch._claim_next_task("demo", resume=False)
+            _queue.enqueue_task_once("demo", "retry me", channel="cli")
+            claim = _queue._claim_next_task("demo", resume=False)
             assert claim is not None
             task, _hops = claim
             ws = _lead_ws()
             before = (ws / _mem.HEARTBEAT_FILE).read_text(encoding="utf-8")
             assert task["id"] in before
 
-            _dispatch._touch_claim("demo", task["id"])
+            _queue._touch_claim("demo", task["id"])
             after = (ws / _mem.HEARTBEAT_FILE).read_text(encoding="utf-8")
             assert task["id"] in after
 
@@ -145,11 +149,11 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "never claimed", channel="cli")
+            _queue.enqueue_task_once("demo", "never claimed", channel="cli")
             ws = _lead_ws()
             # Task is still 'pending' -- never claimed -- so touching an unrelated
             # id must not put anything in the ledger.
-            _dispatch._touch_claim("demo", "task-does-not-exist")
+            _queue._touch_claim("demo", "task-does-not-exist")
             assert _mem.read_dispatch_task_ids(ws) == []
 
     def test_two_concurrently_running_tasks_both_appear(self, tmp_path: Path) -> None:
@@ -157,10 +161,10 @@ class TestHeartbeatLedgerLifecycle:
         calls) at once; the ledger must show both, not just the most recently
         claimed one."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task_once("demo", "first", channel="cli")
-            _dispatch.enqueue_task_once("demo", "second", channel="cli")
-            claim1 = _dispatch._claim_next_task("demo", resume=False)
-            claim2 = _dispatch._claim_next_task("demo", resume=False)
+            _queue.enqueue_task_once("demo", "first", channel="cli")
+            _queue.enqueue_task_once("demo", "second", channel="cli")
+            claim1 = _queue._claim_next_task("demo", resume=False)
+            claim2 = _queue._claim_next_task("demo", resume=False)
             assert claim1 is not None and claim2 is not None
             ids = {claim1[0]["id"], claim2[0]["id"]}
             ws = _lead_ws()
@@ -178,8 +182,8 @@ class TestHeartbeatLedgerLifecycle:
             )
             hb.write_text(text, encoding="utf-8")
 
-            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
 
             final = hb.read_text(encoding="utf-8")
             assert "The human asked us to prioritize billing work." in final
@@ -195,9 +199,9 @@ class TestConversationAutoPopulation:
     def test_hop_updates_last_message_and_task_ref(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             self._seed_conversation("demo-lead")
-            task = _dispatch.enqueue_task_once("demo", "Update my conversation", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "Update my conversation", channel="cli")[0]
 
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
 
             reg = _conv.load()
             conv = _conv.get(reg, _conv.make_id("demo-lead", "-100"))
@@ -210,9 +214,9 @@ class TestConversationAutoPopulation:
         with _seed_pod(tmp_path):
             self._seed_conversation("demo-lead")
             self._seed_conversation("demo-implementer", peer_id="-200")
-            task = _dispatch.enqueue_task_once("demo", "two wired members", channel="cli")[0]
+            task = _queue.enqueue_task_once("demo", "two wired members", channel="cli")[0]
 
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
 
             reg = _conv.load()
             lead_conv = _conv.get(reg, _conv.make_id("demo-lead", "-100"))
@@ -230,7 +234,7 @@ class TestConversationAutoPopulation:
         with _seed_pod(tmp_path):
             self._seed_conversation("demo-lead")
             self._seed_conversation("demo-implementer", peer_id="-200")
-            task = _dispatch.enqueue_task_once(
+            task = _queue.enqueue_task_once(
                 "demo", "concurrent conversation updates", channel="cli"
             )[0]
 
@@ -244,11 +248,11 @@ class TestConversationAutoPopulation:
 
             monkeypatch.setattr(_conv, "load", synchronized_load)
             hops = (
-                _dispatch.HopResult("lead", "demo-lead", True, output="lead preview"),
-                _dispatch.HopResult("implementer", "demo-implementer", True, output="impl preview"),
+                _task.HopResult("lead", "demo-lead", True, output="lead preview"),
+                _task.HopResult("implementer", "demo-implementer", True, output="impl preview"),
             )
             threads = [
-                new_thread(target=_dispatch._persist_hop, args=("demo", task["id"], hop))
+                new_thread(target=_record._persist_hop, args=("demo", task["id"], hop))
                 for hop in hops
             ]
             for thread in threads:
@@ -267,16 +271,16 @@ class TestConversationAutoPopulation:
     def test_unwired_member_never_gets_a_fabricated_conversation(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             # No conversation seeded for anyone.
-            _dispatch.enqueue_task_once("demo", "nobody is watching", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _queue.enqueue_task_once("demo", "nobody is watching", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
             reg = _conv.load()
             assert reg.conversations == []
 
     def test_only_the_wired_agent_is_touched_not_every_pod_member(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             self._seed_conversation("demo-lead")
-            _dispatch.enqueue_task_once("demo", "only lead is wired", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _queue.enqueue_task_once("demo", "only lead is wired", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
             reg = _conv.load()
             assert [c.agent_id for c in reg.conversations] == ["demo-lead"]
 
@@ -290,8 +294,8 @@ class TestConversationAutoPopulation:
                 status=_conv.ConversationStatus.waiting,
             )
 
-            _dispatch.enqueue_task_once("demo", "keep my topic", channel="cli")
-            _dispatch.dispatch_pod("demo", runner=FakeDriver())
+            _queue.enqueue_task_once("demo", "keep my topic", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
 
             reg2 = _conv.load()
             conv = _conv.get(reg2, _conv.make_id("demo-lead", "-100"))

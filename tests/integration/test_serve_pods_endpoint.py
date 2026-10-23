@@ -23,15 +23,15 @@ from typing import Any
 
 import pytest
 
-from docket.cli import _pod
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import pod_provisioning as _pp
-from docket.core import pod_report as _pod_report
-from docket.edges import store as _store
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
-from docket.serve import _DocketHandler
+from docket.pipeline.application import steps as _steps
+from docket.platform import store as _store
+from docket.teams import fleet as _fleet
+from docket.teams import pod_provisioning as _pp
+from docket.teams import report as _pod_report
 
 SUBJECT = "docket.core"
 
@@ -583,7 +583,7 @@ class TestReadPods:
         assert status == 200
         assert set(_pod_report.pod_report("demo")) <= set(body)
         assert body["profile"] == {"name": "attended", "violations": []}
-        assert body["pipelineSource"] == _dispatch.effective_pipeline_source("demo")
+        assert body["pipelineSource"] == _steps.effective_pipeline_source("demo")
         assert body["repoConfigDir"] == "/src/demo/.docket"
 
     def test_repo_config_dir_names_the_pods_team_dir(
@@ -600,7 +600,7 @@ class TestReadPods:
         self, live_server: tuple[str, str], tmp_path: Path
     ) -> None:
         """`readOnly` is the machine's grants the pod keeps; `settings.readOnly` its choice."""
-        from docket.core import fleet as _fleet
+        from docket.teams import fleet as _fleet
 
         url, token = live_server
         node, py = tmp_path / "node", tmp_path / "py"

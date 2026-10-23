@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-SUBJECT = "docket.core.orchestrator"
+SUBJECT = "docket.pipeline.domain.plan"
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "maint" / "context_replay.py"

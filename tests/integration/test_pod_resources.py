@@ -18,12 +18,12 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import pod_provisioning as _pp
-from docket.core import resources as _res
-from docket.edges import store as _store
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.platform import store as _store
+from docket.teams import pod_provisioning as _pp
+from docket.teams import resources as _res
 
 SUBJECT = "docket.core"
 

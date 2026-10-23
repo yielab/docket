@@ -320,21 +320,21 @@ Where the names above live today; the only section that names source paths.
   `pod_memory_render_max_bytes`
 - `src/docket/kernel/templates.py`: `POLICY_TEMPLATES_DIR`, `RECIPES_DIR`, `PROVIDER_TEMPLATES_DIR`,
   `EXPORTER_TEMPLATES_DIR`, `CHANNEL_TEMPLATES_DIR`
-- `src/docket/core/pod_provisioning.py`: `provision_member`, `rendered_member_files`,
+- `src/docket/teams/pod_provisioning.py`: `provision_member`, `rendered_member_files`,
   `member_sync_status`, `resync_member`, `POD_TEMPLATE_VERSION`, `TASK_WORKTREES_DIRNAME`
-- `src/docket/core/memory.py`: `seed_contract`, `contract_ok`, `CONTRACT_VERSION`,
+- `src/docket/agent/memory.py`: `seed_contract`, `contract_ok`, `CONTRACT_VERSION`,
   `DISPATCH_BLOCK_BEGIN`, `DISPATCH_BLOCK_END`, `sync_dispatch_tasks`, `heartbeat_seed`
-- `src/docket/core/pod_memory.py`: `record_task_memory`, `parse_memory_section`, `list_entries`,
+- `src/docket/teams/memory.py`: `record_task_memory`, `parse_memory_section`, `list_entries`,
   `approve`, `refuse`, `revert`, `reset`, `render_entries`, `PodMemoryError`, `KINDS`
-- `src/docket/core/identity.py`: `compose_agent_prompt`, `POD_MEMORY_FRAME`, `POD_MEMORY_LABEL`,
+- `src/docket/agent/identity.py`: `compose_agent_prompt`, `POD_MEMORY_FRAME`, `POD_MEMORY_LABEL`,
   `INSTRUCTIONS_FILE`
 - `src/docket/core/dispatch.py`: `pod_task_list_path`; `_finalize_task` calls `record_task_memory`
-- `src/docket/core/pod_apply.py`: `resolve_recipe`
-- `src/docket/core/policy.py`: `install_policies`
-- `src/docket/core/utils.py`: `project_ids`
-- `src/docket/cli/_pod.py`: `reset_member`, the `memory` sub-group, `_regenerate_member_tools`
-- `src/docket/cli/_pod_config.py`: `cmd_update`, `_sync`
-- `src/docket/cli/_setup.py` and `src/docket/cli/_setup_check.py`: `docket setup --fix`
+- `src/docket/teams/apply/plan.py`: `resolve_recipe`
+- `src/docket/governance/policy.py`: `install_policies`
+- `src/docket/teams/utils.py`: `project_ids`
+- `src/docket/interfaces/cli/commands/pod.py`: `reset_member`, the `memory` sub-group, `_regenerate_member_tools`
+- `src/docket/interfaces/cli/commands/pod_config.py`: `cmd_update`, `_sync`
+- `src/docket/interfaces/cli/commands/setup.py` and `src/docket/interfaces/cli/commands/setup_check.py`: `docket setup --fix`
   (`run_check`, `_check_project_agents`, `_check_pod_sync`, `_check_runtime_contract`)
-- `src/docket/cli/_agents.py`: `cmd_init`
-- `src/docket/edges/store.py`: the atomic JSON writer
+- `src/docket/interfaces/cli/commands/agents.py`: `cmd_init`
+- `src/docket/platform/store.py`: the atomic JSON writer

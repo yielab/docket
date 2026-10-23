@@ -289,13 +289,13 @@ stand as written; these change when the cards land.
 
 ## Implementation
 
-- `src/docket/core/models.py`: `AgentMeta` (`coerce_paused`), `AgentKind`, `AgentScope`, `WorkspaceKind`
-- `src/docket/core/fleet.py`: `meta_get`, `meta_set`, `set_model_both`
-- `src/docket/core/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`, `value_and_source`), `PodSettingsError`, `pod_of`, `member_id`, `bound_pipeline_path`
-- `src/docket/core/pod_provisioning.py`: pod-member provisioning, `POD_TEMPLATE_VERSION`, `validate_verify_cmd`, `parse_budget_usd`
-- `src/docket/cli/_agents.py`: `docket init`, `docket init --from`
-- `src/docket/cli/_pod.py`: `docket pod set` / `unset` / `add`, `verifyCmd` setters
-- `src/docket/cli/_run.py`: `docket run --resume` (clears the pause)
+- `src/docket/teams/models.py`: `AgentMeta` (`coerce_paused`), `AgentKind`, `AgentScope`, `WorkspaceKind`
+- `src/docket/teams/fleet.py`: `meta_get`, `meta_set`, `set_model_both`
+- `src/docket/teams/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`, `value_and_source`), `PodSettingsError`, `pod_of`, `member_id`, `bound_pipeline_path`
+- `src/docket/teams/pod_provisioning.py`: pod-member provisioning, `POD_TEMPLATE_VERSION`, `validate_verify_cmd`, `parse_budget_usd`
+- `src/docket/interfaces/cli/commands/agents.py`: `docket init`, `docket init --from`
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod set` / `unset` / `add`, `verifyCmd` setters
+- `src/docket/interfaces/cli/commands/run.py`: `docket run --resume` (clears the pause)
 - `src/docket/core/dispatch.py`: pod-settings readers, the budget gate, `hop_env` (port and scratch injection)
-- `src/docket/core/models_policy.py`: model re-resolution (`docket setup model`)
-- `src/docket/edges/store.py`: atomic JSON read and write
+- `src/docket/models/selection.py`: model re-resolution (`docket setup model`)
+- `src/docket/platform/store.py`: atomic JSON read and write

@@ -17,13 +17,16 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import approval as _ap
-from docket.core import audit as _audit
+from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.governance import approval as _ap
+from docket.governance import audit as _audit
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import actions as _actions
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.core.dispatch"
 
@@ -100,7 +103,7 @@ class _Editor:
 
 
 def _only_task() -> dict[str, object]:
-    (task,) = _dispatch.read_tasks("demo")
+    (task,) = _queue.read_tasks("demo")
     return task
 
 
@@ -109,7 +112,7 @@ def _resolve(token: str, decision: str) -> None:
         _ap.approval_grant(token, channel="cli")
     else:
         _ap.approval_deny(token, channel="cli", reason="not now")
-    _dispatch.resolve_waiting_approval_detail(token, decision, channel="cli", reason="not now")
+    _actions.resolve_waiting_approval_detail(token, decision, channel="cli", reason="not now")
 
 
 def _lights_out(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,11 +127,9 @@ def test_a_lights_out_task_that_edits_package_json_parks_naming_it(
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _lights_out(monkeypatch)
-        _dispatch.enqueue_task_once("demo", "bump", channel="cli")
+        _queue.enqueue_task_once("demo", "bump", channel="cli")
 
-        (res,) = _dispatch.dispatch_pod(
-            "demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=1
-        )
+        (res,) = _sweep.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=1)
 
         task = _only_task()
         assert (res.status, task["status"]) == ("waiting_approval", "waiting_approval")
@@ -145,16 +146,16 @@ def test_a_grant_ends_the_parked_task_done_and_a_deny_fails_it_check_changed(
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task_once("demo", "bump one", channel="cli")
-        _dispatch.enqueue_task_once("demo", "bump two", channel="cli")
+        _queue.enqueue_task_once("demo", "bump one", channel="cli")
+        _queue.enqueue_task_once("demo", "bump two", channel="cli")
 
-        _dispatch.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=2)
+        _sweep.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=2)
 
-        first, second = _dispatch.read_tasks("demo")
+        first, second = _queue.read_tasks("demo")
         tokens = [str(first["approvalToken"]), str(second["approvalToken"])]
         _resolve(tokens[0], "granted")
         _resolve(tokens[1], "denied")
-        granted, denied = _dispatch.read_tasks("demo")
+        granted, denied = _queue.read_tasks("demo")
         assert granted["status"] == "done" and "failureKind" not in granted
         assert granted["checkChanged"] == ["package.json"] and not granted.get("approvalToken")
         assert (denied["status"], denied["failureKind"]) == ("failed", "check_changed")
@@ -171,9 +172,9 @@ def test_a_task_that_edits_the_script_its_gate_runs_parks(tmp_path: Path) -> Non
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo, _GATED_PIPELINE):
-        _dispatch.enqueue_task_once("demo", "loosen", channel="cli")
+        _queue.enqueue_task_once("demo", "loosen", channel="cli")
 
-        _dispatch.dispatch_pod(
+        _sweep.dispatch_pod(
             "demo", runner=_Editor({"scripts/check.sh": "# nothing to see\nexit 0\n"}), max_tasks=1
         )
 
@@ -186,9 +187,9 @@ def test_a_task_that_edits_only_src_ends_done(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo, _GATED_PIPELINE):
-        _dispatch.enqueue_task_once("demo", "feature", channel="cli")
+        _queue.enqueue_task_once("demo", "feature", channel="cli")
 
-        (res,) = _dispatch.dispatch_pod(
+        (res,) = _sweep.dispatch_pod(
             "demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1
         )
 
@@ -202,10 +203,8 @@ def test_a_team_pattern_protects_a_path_the_defaults_do_not(tmp_path: Path) -> N
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _fleet.meta_set("demo-lead", "protects", "src/*.js")
-        _dispatch.enqueue_task_once("demo", "feature", channel="cli")
+        _queue.enqueue_task_once("demo", "feature", channel="cli")
 
-        _dispatch.dispatch_pod(
-            "demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1
-        )
+        _sweep.dispatch_pod("demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1)
 
         assert _only_task()["checkChanged"] == ["src/app.js"]

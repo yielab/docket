@@ -1,0 +1,1097 @@
+"""docket-native pipeline spec: the format only. ``core/orchestrator.py`` is the executor.
+See specs/functional/pipeline-format.spec.md for the document shape, gate kinds, rework
+edges, and parallel-group contract this module implements.
+
+Zero-migration: ``load_pipeline(None)`` returns :func:`default_pipeline`, byte-equivalent to
+``core/dispatch.py``'s hardcoded pipeline (drift-guarded by test, not hand-copied). This module
+does not import ``dispatch`` itself, to stay decoupled from its heavier import chain -- the same
+reason a step's ``archetype`` field validates only slug shape, never existence against the
+archetype registry.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from docket.kernel.errors import InvalidInput
+
+_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# `Step.model`'s two rank words (see model-profiles.spec.md); any other shape-valid value is
+# a `<provider>/<id>` literal, whose *existence* against the provider catalog is a
+# plan/dispatch-time concern, never this format's -- the same posture `archetype` takes.
+_MODEL_RANKS = frozenset({"cheap", "strong"})
+
+
+def _is_slug(value: str) -> bool:
+    return bool(_SLUG_RE.match(value))
+
+
+def _is_model_literal(value: str) -> bool:
+    provider, _sep, model_id = value.partition("/")
+    return bool(provider) and bool(model_id)
+
+
+# ── Gates ──────────────────────────────────────────────────────────────────────
+
+
+class ReworkEdge(BaseModel):
+    """A bounded backward edge from a verdict gate to an earlier step. See
+    specs/functional/pipeline-format.spec.md ("Rework edges") for the ``when``-not-``on``
+    Norway-problem rationale and ``max_cycles: 0`` disabled-edge semantics."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    to: str
+    when: list[str] = Field(default_factory=lambda: ["request-changes"])
+    max_cycles: int = Field(1, alias="maxCycles", ge=0)
+
+    @model_validator(mode="after")
+    def _check(self) -> ReworkEdge:
+        if not self.to.strip():
+            raise InvalidInput("rework edge 'to' must name a step id")
+        if not self.when:
+            raise InvalidInput("rework edge 'when' must list at least one triggering verdict value")
+        return self
+
+
+class MechanicalGate(BaseModel):
+    """Run a command; a nonzero exit fails the step. ``command: None`` defers to the target
+    agent's own ``verifyCmd`` check instead of a literal command; see
+    specs/functional/pipeline-format.spec.md ("Gates")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["mechanical"] = "mechanical"
+    command: str | None = None
+    timeout: int | None = Field(None, gt=0)
+
+
+class VerdictGate(BaseModel):
+    """One distinct line-anchored marker matching ``pattern`` decides the step's outcome. See
+    specs/functional/pipeline-format.spec.md ("Gates", the ``verdict`` kind) for the
+    match/pass/rework/unparseable-fail rules."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: Literal["verdict"] = "verdict"
+    pattern: str
+    pass_values: list[str] = Field(alias="passValues")
+    case_sensitive: bool = Field(False, alias="caseSensitive")
+    rework: ReworkEdge | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> VerdictGate:
+        if not self.pattern.strip():
+            raise InvalidInput("verdict gate 'pattern' must not be empty")
+        try:
+            re.compile(self.pattern)
+        except re.error as exc:
+            raise InvalidInput(f"verdict gate 'pattern' is not a valid regex: {exc}") from exc
+        if not self.pass_values:
+            raise InvalidInput("verdict gate 'passValues' must list at least one passing value")
+        norm = {v if self.case_sensitive else v.lower() for v in self.pass_values}
+        if self.rework is not None:
+            rework_when = {v if self.case_sensitive else v.lower() for v in self.rework.when}
+            overlap = norm & rework_when
+            if overlap:
+                raise InvalidInput(
+                    "verdict gate values cannot be both passing and rework-triggering: "
+                    f"{sorted(overlap)}"
+                )
+        return self
+
+
+class ApprovalGate(BaseModel):
+    """The step must not proceed until an operator grants approval. Carries no
+    token/timeout/resolution state -- ``core/dispatch.py`` wires it to a real
+    ``core/approval.py`` record; see specs/functional/pipeline-format.spec.md ("Gates")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["approval"] = "approval"
+    message: str = ""
+
+
+_EXTERNAL_LABELS = ("pass", "fail", "needs_human")
+EXTERNAL_OUTCOMES = frozenset({"pass", "fail", "needs_human", "error"})
+
+
+def _default_exit_map() -> dict[str, list[int]]:
+    return {"pass": [0], "fail": [1], "needs_human": [2]}
+
+
+class ExternalGate(BaseModel):
+    """Run an operator command after the step's hop and map its exit code to ``pass``, ``fail``
+    or ``needs_human`` (anything unmapped, a timeout, a jail refusal: ``error``). The member's
+    ``verifyCmd`` is not run; see specs/functional/pipeline-format.spec.md ("Gates" item 5)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: Literal["external"] = "external"
+    command: str
+    timeout: int | None = Field(None, gt=0)
+    exit_map: dict[str, list[int]] = Field(default_factory=_default_exit_map, alias="exitMap")
+
+    @model_validator(mode="after")
+    def _check(self) -> ExternalGate:
+        if not self.command.strip():
+            raise InvalidInput("external gate 'command' must not be empty")
+        if set(self.exit_map) != set(_EXTERNAL_LABELS):
+            raise InvalidInput(
+                f"external gate 'exitMap' must name exactly {list(_EXTERNAL_LABELS)}"
+            )
+        seen: dict[int, str] = {}
+        for label in _EXTERNAL_LABELS:
+            codes = self.exit_map[label]
+            if not codes:
+                raise InvalidInput(f"external gate 'exitMap' {label!r} must list at least one code")
+            for code in codes:
+                if code in seen:
+                    raise InvalidInput(
+                        f"external gate 'exitMap' code {code} is in both {seen[code]!r} "
+                        f"and {label!r}"
+                    )
+                seen[code] = label
+        return self
+
+    def label_for(self, code: int) -> str:
+        """The label *code* maps to, ``error`` when no list holds it."""
+        for label in _EXTERNAL_LABELS:
+            if code in self.exit_map[label]:
+                return label
+        return "error"
+
+
+Gate = Annotated[
+    MechanicalGate | VerdictGate | ApprovalGate | ExternalGate,
+    Field(discriminator="type"),
+]
+
+
+# ── Steps ──────────────────────────────────────────────────────────────────────
+
+
+class When(BaseModel):
+    """A step's closed conditional-skip predicate vocabulary: ``changed``, ``var``/``is``,
+    ``memberPresent``, ANDed together -- see specs/functional/pipeline-format.spec.md
+    ("Conditional steps and command steps")."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    changed: str | None = None
+    var: str | None = None
+    is_: str | None = Field(None, alias="is")
+    member_present: str | None = Field(None, alias="memberPresent")
+
+    @model_validator(mode="after")
+    def _check(self) -> When:
+        if (self.var is None) != (self.is_ is None):
+            raise InvalidInput("'when.var' and 'when.is' must be set together")
+        if self.changed is None and self.var is None and self.member_present is None:
+            raise InvalidInput(
+                "'when' must set at least one of 'changed', 'var'+'is', 'memberPresent'"
+            )
+        return self
+
+
+class InputSpec(BaseModel):
+    """An operator-input step: the pipeline pauses and asks the operator a question."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    message: str = ""
+    expires_hours: int | None = Field(None, alias="expiresHours", gt=0)
+
+
+_ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_ENV_RESERVED = frozenset({"PATH", "BASH_ENV", "ENV"})
+_ENV_RESERVED_PREFIXES = ("LD_", "PYTHON", "DOCKET_")
+
+
+def _check_env(step_id: str, env: dict[str, str]) -> None:
+    """Refuse an ``env`` entry that is malformed, loader/interpreter-controlling, a docket
+    coordinate, or a name ``system.credential_names`` treats as a credential."""
+    from docket.sandbox import launch as _launch
+
+    credentials = _launch.credential_names()
+    for name, value in env.items():
+        if not _ENV_NAME.match(name):
+            raise InvalidInput(f"step {step_id!r}: env name {name!r} must match ^[A-Z][A-Z0-9_]*$")
+        if name in _ENV_RESERVED or name.startswith(_ENV_RESERVED_PREFIXES):
+            raise InvalidInput(f"step {step_id!r}: env name {name!r} is reserved and cannot be set")
+        if name in credentials:
+            raise InvalidInput(
+                f"step {step_id!r}: env name {name!r} is a credential and cannot be set"
+            )
+        if not isinstance(value, str):
+            raise InvalidInput(f"step {step_id!r}: env {name!r} must be a string")
+
+
+class Step(BaseModel):
+    """One node in the pipeline: a unit step (``role`` xor ``agent`` xor ``run`` xor ``input``)
+    or a parallel group (unit-step children, one level deep). See
+    specs/functional/pipeline-format.spec.md ("Steps", "Parallel groups", "Operator input")."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    role: str | None = None
+    agent: str | None = None
+    archetype: str | None = None
+    retries: int | None = Field(None, ge=0)
+    timeout: int | None = Field(None, gt=0)
+    gate: Gate | None = None
+    # Overrides the target role's own hop instruction for this step only (its
+    # archetype's `hopInstruction`/generated fallback, or a built-in role's
+    # hardcoded text -- see role-archetypes.spec.md "Hop instructions"). May
+    # reference `${var}`-style pipeline variables, resolved at dispatch time
+    # (see "Variables" below); `None` means "defer to the role", not "no
+    # instruction at all".
+    instructions: str | None = None
+    # Overrides the model this hop runs on, for this hop only -- `cheap`/`strong` (resolved
+    # against the live rank anchors) or a `<provider>/<id>` literal. Never persisted to the
+    # target agent's `.docket-meta.json`; see pod-dispatch.spec.md "Per-hop execution" and
+    # model-profiles.spec.md "Where a member's model comes from". `None` means "defer to the target's
+    # own policy/pin resolution", not "no model".
+    model: str | None = None
+    # Skips this step on a closed predicate vocabulary (see `When`) -- applies to any
+    # step kind, including a `run` command step. `None` means "always run".
+    when: When | None = None
+    # A command step's shell command, run directly with no agent turn, exclusive of
+    # `role`/`agent` -- see the class docstring and "Conditional steps and command steps".
+    run: str | None = None
+    # Extra environment for a `run` step only (see `_check_env`); coordinates win over it.
+    env: dict[str, str] | None = None
+    # An operator-input step: pauses and asks for input, exclusive of role/agent/run.
+    input: InputSpec | None = None
+    parallel: list[Step] | None = None
+    # Outcome routing: each key is a gate outcome label (a verdict marker, or
+    # "pass"/"fail" for a mechanical gate), compared case-insensitively at
+    # execution time. A value is either a mapping {"goto": <step id>, "max":
+    # <int>=1} (mandatory "max" when the target is at or before this step) or
+    # one of the literal strings "fail" | "stop" | "<step id>" (a bare forward
+    # target). See specs/functional/pipeline-format.spec.md ("Outcome routing").
+    on: dict[str, Any] | None = None
+
+    @field_validator("gate", mode="before")
+    @classmethod
+    def _external_sugar(cls, value: Any) -> Any:
+        """``gate: {external: CMD}`` is the short spelling of ``{type: external, command: CMD}``."""
+        if isinstance(value, dict) and "external" in value:
+            if set(value) != {"external"}:
+                raise InvalidInput("'gate: {external: CMD}' takes no other key")
+            return {"type": "external", "command": value["external"]}
+        return value
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> Step:
+        if not self.id.strip():
+            raise InvalidInput("step 'id' must not be empty")
+        if self.archetype is not None and not _is_slug(self.archetype):
+            raise InvalidInput(
+                f"step {self.id!r}: 'archetype' must be a lowercase slug (got {self.archetype!r})"
+            )
+
+        if self.parallel is not None:
+            if self.role is not None or self.agent is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group targets no role/agent of its own"
+                )
+            if self.gate is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no gate of its own"
+                )
+            if self.retries is not None or self.timeout is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no retries/timeout of its own"
+                )
+            if self.instructions is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no instructions of its own"
+                )
+            if self.model is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no model of its own"
+                )
+            if self.on is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no outcome routing of its own"
+                )
+            if self.env is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no env of its own"
+                )
+            for group_field, group_value in (
+                ("run", self.run),
+                ("input", self.input),
+                ("when", self.when),
+                ("archetype", self.archetype),
+            ):
+                if group_value is not None:
+                    raise InvalidInput(
+                        f"step {self.id!r}: a 'parallel' group carries no {group_field!r} of its own"
+                    )
+            if not self.parallel:
+                raise InvalidInput(f"step {self.id!r}: 'parallel' must list at least one step")
+            for child in self.parallel:
+                for child_field, child_value in (
+                    ("run", child.run),
+                    ("input", child.input),
+                    ("when", child.when),
+                    ("on", child.on),
+                ):
+                    if child_value is not None:
+                        raise InvalidInput(
+                            f"step {child.id!r}: a 'parallel' child carries no {child_field!r} "
+                            "(a group runs its children as plain role/agent hops)"
+                        )
+                if child.parallel is not None:
+                    raise InvalidInput(
+                        f"step {self.id!r}: nested 'parallel' groups are not supported "
+                        f"(child {child.id!r} declares its own 'parallel')"
+                    )
+            return self
+
+        if self.run is not None:
+            if not self.run.strip():
+                raise InvalidInput(f"step {self.id!r}: 'run' must not be empty")
+            if self.input is not None:
+                raise InvalidInput(f"step {self.id!r}: 'run' and 'input' are mutually exclusive")
+            if self.env is not None:
+                _check_env(self.id, self.env)
+            if self.role is not None or self.agent is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: 'run' is exclusive of 'role'/'agent' "
+                    "(a command step targets no member)"
+                )
+            for field_name, value in (
+                ("gate", self.gate),
+                ("instructions", self.instructions),
+                ("retries", self.retries),
+                ("archetype", self.archetype),
+                ("model", self.model),
+            ):
+                if value is not None:
+                    raise InvalidInput(
+                        f"step {self.id!r}: a 'run' (command) step carries no {field_name!r}"
+                    )
+            return self
+
+        if self.input is not None:
+            if self.env is not None:
+                raise InvalidInput(f"step {self.id!r}: an 'input' step carries no 'env'")
+            for field_name, value in (
+                ("role", self.role),
+                ("agent", self.agent),
+                ("run", self.run),
+                ("parallel", self.parallel),
+                ("gate", self.gate),
+                ("retries", self.retries),
+                ("timeout", self.timeout),
+                ("instructions", self.instructions),
+                ("model", self.model),
+            ):
+                if value is not None:
+                    raise InvalidInput(
+                        f"step {self.id!r}: an 'input' step carries no {field_name!r}"
+                    )
+            return self
+
+        if self.env is not None:
+            raise InvalidInput(f"step {self.id!r}: only a 'run' (command) step carries 'env'")
+        if self.role is None and self.agent is None:
+            raise InvalidInput(f"step {self.id!r}: must target exactly one of 'role' or 'agent'")
+        if self.role is not None and self.agent is not None:
+            raise InvalidInput(f"step {self.id!r}: 'role' and 'agent' are mutually exclusive")
+        if self.role is not None and not _is_slug(self.role):
+            raise InvalidInput(
+                f"step {self.id!r}: 'role' must be a lowercase slug (got {self.role!r})"
+            )
+        if self.agent is not None and not self.agent.strip():
+            raise InvalidInput(f"step {self.id!r}: 'agent' must not be empty")
+        if (
+            self.model is not None
+            and self.model not in _MODEL_RANKS
+            and not _is_model_literal(self.model)
+        ):
+            raise InvalidInput(
+                f"step {self.id!r}: 'model' must be 'cheap', 'strong', or a "
+                f"'<provider>/<id>' literal (got {self.model!r})"
+            )
+        if isinstance(self.gate, ExternalGate) and self.on:
+            invalid = {str(k).lower() for k in self.on} - EXTERNAL_OUTCOMES
+            if invalid:
+                raise InvalidInput(
+                    f"step {self.id!r}: an external gate's 'on' keys must be a subset of "
+                    f"{sorted(EXTERNAL_OUTCOMES)}; got invalid key(s): {sorted(invalid)}"
+                )
+        return self
+
+
+Step.model_rebuild()
+
+
+# ── Variables ──────────────────────────────────────────────────────────────────
+
+
+class Variable(BaseModel):
+    """A pipeline variable: a default, or ``required`` for a value supplied at dispatch time
+    (see :func:`resolve_variables`). No interpolation engine exists here -- this only
+    declares the variable's shape; that stays an executor concern."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default: Any = None
+    description: str = ""
+    required: bool = False
+
+    @model_validator(mode="after")
+    def _check(self) -> Variable:
+        if self.required and self.default is not None:
+            raise InvalidInput("a required variable must not declare a default")
+        return self
+
+
+class VariableError(InvalidInput):
+    """Raised by :func:`resolve_variables` when a required variable has no value at all --
+    neither a caller-supplied one nor a default, since a required variable is defined to
+    have no default (see ``Variable._check``)."""
+
+
+def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Resolve *spec*'s variables against caller-supplied *provided*: present wins outright
+    (even ``None``), else the ``default``; a missing ``required`` raises :class:`VariableError`
+    naming every missing name at once. See specs/functional/pipeline-format.spec.md (Req. 4)."""
+    values: dict[str, Any] = dict(provided or {})
+    missing = sorted(
+        name for name, var in spec.variables.items() if var.required and name not in values
+    )
+    if missing:
+        raise VariableError("missing required pipeline variable(s): " + ", ".join(missing))
+    for name, var in spec.variables.items():
+        if name not in values:
+            values[name] = var.default
+    return values
+
+
+# ── Step instruction interpolation ──────────────────────────────────────────
+#
+# A step's own `instructions` (see the Step docstring) may reference
+# `${var}`-style placeholders resolved from the run's variable namespace
+# (`resolve_variables`'s own output, not this format's declared `variables`
+# alone -- a caller-supplied name absent from `variables` still resolves).
+# This is deliberately its own regex, not `string.Template`, so a literal `$`
+# in prose (e.g. a dollar amount) is never mistaken for a placeholder --
+# only the exact `${name}` spelling is ever substituted.
+
+_STEP_VAR_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _iter_step_instructions(steps: list[Step]) -> list[tuple[str, str]]:
+    """(step_id, instructions) for every step (including parallel children)
+    that declares one; a step with none is simply absent."""
+    out: list[tuple[str, str]] = []
+    for s in steps:
+        if s.parallel:
+            out.extend(_iter_step_instructions(s.parallel))
+        elif s.instructions:
+            out.append((s.id, s.instructions))
+    return out
+
+
+def step_instructions_by_id(spec: PipelineSpec) -> dict[str, str]:
+    """Every step id (including parallel children) mapped to its own declared,
+    not-yet-interpolated ``instructions`` text."""
+    return dict(_iter_step_instructions(spec.steps))
+
+
+def unresolved_step_variables(spec: PipelineSpec, variables: dict[str, Any]) -> list[str]:
+    """Every ``${name}`` referenced in any step's ``instructions`` that *variables* does
+    not resolve, deduplicated and sorted -- see specs/functional/pipeline-format.spec.md."""
+    # The dispatch executor calls this once, up front, against the run's fully
+    # resolved variable namespace, refusing the whole run before any hop when
+    # the result is non-empty.
+    missing: set[str] = set()
+    for _step_id, text in _iter_step_instructions(spec.steps):
+        for name in _STEP_VAR_REF_RE.findall(text):
+            if name not in variables:
+                missing.add(name)
+    return sorted(missing)
+
+
+def interpolate_instructions(text: str, variables: dict[str, Any]) -> str:
+    """Substitute every ``${name}`` reference in *text* from *variables* (stringified).
+    A reference *variables* does not resolve is left literal -- callers refuse the run up
+    front via :func:`unresolved_step_variables` instead of relying on this to raise."""
+
+    def _sub(match: re.Match[str]) -> str:
+        name = match.group(1)
+        return str(variables[name]) if name in variables else match.group(0)
+
+    return _STEP_VAR_REF_RE.sub(_sub, text)
+
+
+def _default_edge_reachable(step: Step) -> bool:
+    """Whether *step*'s plain default-advance edge can still fire, i.e. its ``on`` map
+    (if any) does not already name every one of its gate's own passing outcomes."""
+    if not step.on:
+        return True
+    on_labels = {str(k).lower() for k in step.on}
+    gate = step.gate
+    if isinstance(gate, MechanicalGate):
+        return not {"pass", "fail"} <= on_labels
+    if isinstance(gate, VerdictGate):
+        pass_labels = {v.lower() for v in gate.pass_values}
+        return not pass_labels <= on_labels
+    if isinstance(gate, ExternalGate):
+        return "pass" not in on_labels
+    return True
+
+
+def _route_shape(step_id: str, label: str, route: Any) -> tuple[str, Any, bool]:
+    """(target, max, has_max) for one ``on:`` entry -- *target* is ``"fail"``/``"stop"``/a
+    step id; *route* is a bare target string or a ``{"goto": ..., "max": ...}`` mapping."""
+    if isinstance(route, str):
+        return route, None, False
+    if (
+        isinstance(route, dict)
+        and isinstance(route.get("goto"), str)
+        and not (set(route) - {"goto", "max"})
+    ):
+        return route["goto"], route.get("max"), "max" in route
+    raise InvalidInput(f"step {step_id!r}: 'on' entry {label!r} is malformed")
+
+
+def _check_input_from(step: Step, index: int, top_index: dict[str, int]) -> None:
+    """Refuse an ``input`` step whose ``from`` is not a top-level step before *index*."""
+    assert step.input is not None
+    source = step.input.from_
+    if source not in top_index:
+        raise InvalidInput(f"step {step.id!r}: input 'from' references {source!r}, not a step id")
+    if top_index[source] >= index:
+        raise InvalidInput(f"step {step.id!r}: input 'from' {source!r} must be an earlier step")
+
+
+def _check_input_keys(step: Step) -> None:
+    valid_keys = frozenset({"answered", "declined"})
+    invalid = {str(k).lower() for k in step.on or {}} - valid_keys
+    if invalid:
+        raise InvalidInput(
+            f"step {step.id!r}: input step 'on' keys must be a subset of "
+            f"{sorted(valid_keys)}; got invalid key(s): {sorted(invalid)}"
+        )
+
+
+def _check_routes(step: Step, index: int, top_index: dict[str, int]) -> None:
+    """Validate every ``on`` entry of the top-level *step* at position *index*: the target,
+    and ``max`` wherever it is written, an integer ``>= 1`` and required when the target is
+    not ahead."""
+    for label, route in (step.on or {}).items():
+        target, max_value, has_max = _route_shape(step.id, label, route)
+        valid_max = (
+            isinstance(max_value, int) and not isinstance(max_value, bool) and max_value >= 1
+        )
+        if has_max and not valid_max:
+            raise InvalidInput(
+                f"step {step.id!r}: 'on' entry {label!r} has an invalid 'max' "
+                f"{max_value!r} (an integer >= 1)"
+            )
+        if target in ("fail", "stop"):
+            continue
+        if target not in top_index:
+            raise InvalidInput(f"step {step.id!r}: 'on' target {target!r} is not a step id")
+        if top_index[target] <= index and not has_max:
+            raise InvalidInput(
+                f"step {step.id!r}: backward or self route to {target!r} requires 'max' >= 1"
+            )
+
+
+# ── Pipeline ───────────────────────────────────────────────────────────────────
+
+
+class PipelineSpec(BaseModel):
+    """The docket-native pipeline format: ``extra="forbid"`` at every level makes an unknown
+    key anywhere a validation error, never silently ignored. See
+    specs/functional/pipeline-format.spec.md ("Purpose", Requirement 1) for why."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    description: str = ""
+    variables: dict[str, Variable] = Field(default_factory=dict)
+    steps: list[Step]
+
+    @model_validator(mode="after")
+    def _check(self) -> PipelineSpec:
+        if not self.name.strip():
+            raise InvalidInput("pipeline 'name' must not be empty")
+        if not self.steps:
+            raise InvalidInput("pipeline 'steps' must not be empty")
+
+        for var_name in self.variables:
+            if not _VAR_NAME_RE.match(var_name):
+                raise InvalidInput(f"variable {var_name!r} is not a valid identifier")
+
+        all_ids: list[str] = []
+        for s in self.steps:
+            all_ids.append(s.id)
+            if s.parallel:
+                all_ids.extend(c.id for c in s.parallel)
+        seen: set[str] = set()
+        for sid in all_ids:
+            if sid in seen:
+                raise InvalidInput(f"duplicate step id {sid!r}")
+            seen.add(sid)
+
+        top_index = {s.id: i for i, s in enumerate(self.steps)}
+        for i, s in enumerate(self.steps):
+            if s.parallel:
+                for child in s.parallel:
+                    if isinstance(child.gate, VerdictGate) and child.gate.rework is not None:
+                        raise InvalidInput(
+                            f"step {child.id!r}: a rework edge inside a 'parallel' group "
+                            "is not supported (target a top-level step instead)"
+                        )
+                continue
+            if s.input is not None:
+                _check_input_from(s, i, top_index)
+                _check_input_keys(s)
+                continue
+            if not isinstance(s.gate, VerdictGate) or s.gate.rework is None:
+                continue
+            rework = s.gate.rework
+            if rework.to not in top_index:
+                raise InvalidInput(
+                    f"step {s.id!r}: rework target {rework.to!r} is not a top-level step id"
+                )
+            if top_index[rework.to] >= i:
+                raise InvalidInput(
+                    f"step {s.id!r}: rework target {rework.to!r} must be an earlier step"
+                )
+
+        for i, s in enumerate(self.steps):
+            if s.parallel or not s.on:
+                continue
+            _check_routes(s, i, top_index)
+            for label, route in s.on.items():
+                target, _max_value, _has_max = _route_shape(s.id, label, route)
+                if target in ("fail", "stop"):
+                    continue
+                nxt = self.steps[i + 1] if i + 1 < len(self.steps) else None
+                # Only where `pass` is the gate's ordinary success; a verdict gate names its
+                # passing values itself and may route every real one.
+                if (
+                    nxt is not None
+                    and nxt.input is not None
+                    and target == nxt.id
+                    and isinstance(s.gate, (MechanicalGate, ExternalGate))
+                    and "pass" not in {str(k).lower() for k in s.on}
+                ):
+                    raise InvalidInput(
+                        f"step {s.id!r} routes {label!r} to the input step {target!r} right after "
+                        "it, so a passing outcome would enter it too; route 'pass' explicitly "
+                        "(for example 'pass: stop', or the step that should follow)"
+                    )
+
+        reachable = {0}
+        frontier = [0]
+        while frontier:
+            i = frontier.pop()
+            targets: set[int] = set()
+            step = self.steps[i]
+            if i + 1 < len(self.steps) and _default_edge_reachable(step):
+                targets.add(i + 1)
+            if not step.parallel and step.on:
+                for label, route in step.on.items():
+                    target, _max_value, _has_max = _route_shape(step.id, label, route)
+                    if target in top_index:
+                        targets.add(top_index[target])
+            for t in targets:
+                if t not in reachable:
+                    reachable.add(t)
+                    frontier.append(t)
+        for i, s in enumerate(self.steps):
+            if i not in reachable:
+                raise InvalidInput(f"step {s.id!r} is not reachable")
+        return self
+
+
+# ── Loading ────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class PipelineLoadResult:
+    """Outcome of :func:`load_pipeline`: exactly one of ``spec``/``errors`` is meaningful --
+    ``errors == []`` on success, ``spec is None`` on failure."""
+
+    spec: PipelineSpec | None
+    errors: list[str] = field(default_factory=list)
+    source: str = "file"  # "file" | "builtin"
+
+    @property
+    def ok(self) -> bool:
+        return self.spec is not None and not self.errors
+
+
+def _load_yaml_text(text: str) -> tuple[dict[str, Any] | None, str]:
+    """Parse YAML text; returns (doc, error), error == "" on success. Import stays guarded
+    despite PyYAML being a declared dependency, so a stripped-down environment gets an
+    actionable message instead of an unguarded traceback."""
+    try:
+        import yaml as _yaml  # type: ignore[import-untyped]
+    except ImportError:
+        return None, "PyYAML not installed — run: pip install pyyaml"
+    try:
+        doc = _yaml.safe_load(text)
+    except Exception as exc:
+        return None, f"YAML parse error: {exc}"
+    if doc is None:
+        return None, "pipeline document is empty"
+    if not isinstance(doc, dict):
+        return None, f"pipeline document must be a mapping (got {type(doc).__name__})"
+    return doc, ""
+
+
+def _format_validation_error(exc: ValidationError) -> list[str]:
+    out: list[str] = []
+    for e in exc.errors():
+        loc = ".".join(str(p) for p in e["loc"]) if e["loc"] else "<root>"
+        out.append(f"{loc}: {e['msg']}")
+    return out
+
+
+# ── Short form ─────────────────────────────────────────────────────────────────
+#
+# Sugar over the canonical shape above: a step written as `<id>: <role-or-agent>`
+# plus optional `verify`/`verdict`/`approval`/`instructions`/`timeout`/`retries`/`model`/`on`/
+# `until`/`max` keys. See specs/functional/pipeline-format.spec.md ("Short form",
+# "Outcome routing").
+
+_STEP_SUGAR_KEYS = frozenset(
+    {
+        "verify",
+        "verdict",
+        "approval",
+        "gate",
+        "instructions",
+        "timeout",
+        "retries",
+        "model",
+        "on",
+        "until",
+        "max",
+        "input",
+    }
+)
+_BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
+_NO_ON = object()
+
+
+class _ShortFormError(ValueError):
+    """Raised for an ``on:`` shape the executor cannot run yet; ``load_pipeline`` turns
+    this into an ordinary entry in its ``errors`` list, same as any other load error."""
+
+
+def _get_on(entry: dict[Any, Any]) -> Any:
+    # PyYAML's default resolver reads an unquoted `on:` key as the boolean `True`
+    # (the same implicit-boolean "Norway problem" `rework.when`'s own name avoids) --
+    # a quoted `"on":` key stays the string "on", so both are accepted here.
+    if "on" in entry:
+        return entry["on"]
+    if True in entry:
+        return entry[True]
+    return _NO_ON
+
+
+def _looks_like_member_id(value: str) -> bool:
+    # Shape check for a `pod.parse_member_id`-style id (e.g. "myshop-implementer" or
+    # "myshop-implementer-2") without importing `pod`, mirroring the slug-shape check
+    # this module already applies to `archetype`.
+    parts = value.split("-")
+    if len(parts) < 2:
+        return False
+    tail = parts[-1]
+    if tail.isdigit():
+        return len(parts) >= 3 and parts[-2] in _BASE_ROLES
+    return tail in _BASE_ROLES
+
+
+def _assign_target(step: dict[str, Any], value: str) -> None:
+    if value in _BASE_ROLES or not _looks_like_member_id(value):
+        step["role"] = value
+    else:
+        step["agent"] = value
+
+
+def _escape_marker(value: str) -> str:
+    # re.escape is deliberately over-cautious outside character classes (it escapes
+    # "-", which is never special there); undo that so a plain marker list round-trips
+    # to the exact hand-written pattern text an author would otherwise type.
+    return re.escape(value).replace("\\-", "-")
+
+
+def _build_verdict_gate(markers: Any) -> dict[str, Any]:
+    if not isinstance(markers, list) or not markers:
+        return {"type": "verdict", "pattern": "", "passValues": []}
+    values = [str(m) for m in markers]
+    pattern = r"^\s*(" + "|".join(_escape_marker(v) for v in values) + r")\b"
+    return {"type": "verdict", "pattern": pattern, "passValues": [values[0].lower()]}
+
+
+def _build_mechanical_gate(verify: Any) -> dict[str, Any]:
+    return (
+        {"type": "mechanical", "command": verify}
+        if isinstance(verify, str)
+        else {"type": "mechanical"}
+    )
+
+
+def _build_approval_gate(approval: Any) -> dict[str, Any]:
+    return (
+        {"type": "approval", "message": approval}
+        if isinstance(approval, str)
+        else {"type": "approval"}
+    )
+
+
+def _build_external_gate(step_id: str, gate: Any) -> dict[str, Any]:
+    if not isinstance(gate, dict) or set(gate) != {"external"}:
+        raise _ShortFormError(f"step {step_id!r}: 'gate' must be '{{external: <command>}}'")
+    return {"type": "external", "command": gate["external"]}
+
+
+def _try_build_rework(step_id: str, on: Any, seen_ids: list[str]) -> dict[str, Any] | None:
+    """The canonical ``rework:`` mapping for the one recognized single-bounded-backward
+    shorthand, else ``None`` (meaning *on* becomes the step's own canonical ``on`` field
+    instead). A backward goto missing ``max`` keeps its own actionable error."""
+    if not isinstance(on, dict) or len(on) != 1:
+        return None
+    label, action = next(iter(on.items()))
+    if not isinstance(action, dict) or "goto" not in action or set(action) - {"goto", "max"}:
+        return None
+    goto = action["goto"]
+    if not isinstance(goto, str) or goto not in seen_ids:
+        return None
+    if "max" not in action:
+        raise _ShortFormError(f"step {step_id!r}: rework to {goto!r} requires 'max'")
+    return {"to": goto, "when": [str(label).lower()], "maxCycles": action["max"]}
+
+
+def _build_gate(
+    step_id: str, entry: dict[Any, Any], seen_ids: list[str]
+) -> tuple[dict[str, Any] | None, Any]:
+    on = _get_on(entry)
+    gate_keys = [key for key in ("verdict", "verify", "approval", "gate") if key in entry]
+    if len(gate_keys) > 1:
+        raise _ShortFormError(f"step {step_id!r}: one gate per step (got {', '.join(gate_keys)})")
+    if "verdict" in entry:
+        gate = _build_verdict_gate(entry["verdict"])
+        if on is not _NO_ON:
+            rework = _try_build_rework(step_id, on, seen_ids)
+            if rework is not None:
+                gate["rework"] = rework
+                on = _NO_ON
+        return gate, on
+    if "verify" in entry:
+        return _build_mechanical_gate(entry["verify"]), on
+    if "approval" in entry:
+        return _build_approval_gate(entry["approval"]), on
+    if "gate" in entry:
+        return _build_external_gate(step_id, entry["gate"]), on
+    return None, on
+
+
+def _build_until_route(
+    step_id: str, entry: dict[Any, Any], gate: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """``until: verify`` + ``max`` sugar, rewritten to ``on: {fail: {goto: <self>,
+    max}}`` -- this format's short-form-only repeat-until-mechanical-pass shorthand;
+    the canonical form never carries ``until``. See "Outcome routing"."""
+    if "until" not in entry:
+        return None
+    until = entry["until"]
+    if until != "verify":
+        raise _ShortFormError(f"step {step_id!r}: 'until' must be 'verify' (got {until!r})")
+    if gate is None or gate.get("type") != "mechanical":
+        raise _ShortFormError(f"step {step_id!r}: 'until: verify' requires a mechanical gate")
+    if "max" not in entry:
+        raise _ShortFormError(f"step {step_id!r}: 'until: verify' requires 'max'")
+    return {"fail": {"goto": step_id, "max": entry["max"]}}
+
+
+def _normalize_command_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
+    # `- lint: {run: "ruff check ."}` -- a one-key mapping whose value is itself a
+    # mapping carrying `run`. Its own `timeout`/`when` sugar lives inside *target*,
+    # not alongside `step_id` at the entry level (unlike a role/agent short step).
+    step: dict[str, Any] = {"id": step_id, "run": target["run"]}
+    for key in ("timeout", "when", "env"):
+        if key in target:
+            step[key] = target[key]
+    return step
+
+
+def _normalize_input_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
+    # `- ask: {input: {from: triage}}` -- a one-key mapping whose value is itself a
+    # mapping carrying `input`. Like command steps, its sugar lives inside *target*.
+    step: dict[str, Any] = {"id": step_id, "input": target["input"]}
+    on = _get_on(target)
+    if on is not _NO_ON:
+        step["on"] = on
+    return step
+
+
+def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any]:
+    id_keys = [k for k in entry if k not in _STEP_SUGAR_KEYS and k is not True]
+    if len(id_keys) != 1:
+        return entry
+    step_id: str = id_keys[0]
+    target = entry[step_id]
+    if isinstance(target, dict) and "run" in target:
+        return _normalize_command_short_step(step_id, target)
+    if isinstance(target, dict) and "input" in target:
+        return _normalize_input_short_step(step_id, target)
+    if not isinstance(target, str):
+        return entry
+    step: dict[str, Any] = {"id": step_id}
+    _assign_target(step, target)
+    for key in ("instructions", "timeout", "retries", "model"):
+        if key in entry:
+            step[key] = entry[key]
+    gate, on = _build_gate(step_id, entry, seen_ids)
+    if gate is not None:
+        step["gate"] = gate
+    if "max" in entry and "until" not in entry:
+        raise _ShortFormError(f"step {step_id!r}: 'max' requires 'until'")
+    until_on = _build_until_route(step_id, entry, gate)
+    if until_on is not None:
+        if on is not _NO_ON:
+            raise _ShortFormError(f"step {step_id!r}: 'until' cannot combine with 'on'")
+        on = until_on
+    if on is not _NO_ON:
+        step["on"] = on
+    return step
+
+
+def _fix_on_key(entry: dict[Any, Any]) -> dict[Any, Any]:
+    """A canonical step's bare ``on:`` key parses as the boolean ``True`` (the same
+    quirk short-form ``on:`` sugar already works around); restore it to ``"on"``."""
+    if True in entry and "on" not in entry:
+        entry = dict(entry)
+        entry["on"] = entry.pop(True)
+    return entry
+
+
+def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
+    if not isinstance(entry, dict):
+        return entry
+    if "id" in entry:
+        if isinstance(entry["id"], str):
+            seen_ids.append(entry["id"])
+        fixed = _fix_on_key(entry)
+        children = fixed.get("parallel")
+        if isinstance(children, list):
+            fixed = {
+                **fixed,
+                "parallel": [_fix_on_key(c) if isinstance(c, dict) else c for c in children],
+            }
+        return fixed
+    normalized = _normalize_short_step(entry, seen_ids)
+    if isinstance(normalized.get("id"), str):
+        seen_ids.append(normalized["id"])
+    return normalized
+
+
+def normalize_pipeline(doc: dict[str, Any]) -> dict[str, Any]:
+    """Expand the short-form sugar in *doc* into the canonical mapping
+    :class:`PipelineSpec` already validates; a document with none is returned
+    unchanged. Pure -- never mutates *doc*, never touches the filesystem."""
+    doc = dict(doc)
+    steps = doc.get("steps")
+    if isinstance(steps, list):
+        seen_ids: list[str] = []
+        doc["steps"] = [_normalize_top_step(s, seen_ids) for s in steps]
+    return doc
+
+
+def load_pipeline(text: str | None) -> PipelineLoadResult:
+    """Load a pipeline spec from YAML text. ``text is None`` is zero-migration (returns
+    :func:`default_pipeline`); ``""`` is a real validation error, not zero-migration. See
+    specs/functional/pipeline-format.spec.md ("Zero migration")."""
+    if text is None:
+        return PipelineLoadResult(spec=default_pipeline(), errors=[], source="builtin")
+
+    doc, err = _load_yaml_text(text)
+    if err:
+        return PipelineLoadResult(spec=None, errors=[err], source="file")
+    assert doc is not None
+    if "kind" in doc:
+        kind = doc["kind"]
+        if kind != "pipeline":
+            return PipelineLoadResult(
+                spec=None,
+                errors=[f"pipeline document: 'kind' must be 'pipeline' (got {kind!r})"],
+                source="file",
+            )
+        doc = {k: v for k, v in doc.items() if k != "kind"}
+    try:
+        doc = normalize_pipeline(doc)
+    except _ShortFormError as exc:
+        return PipelineLoadResult(spec=None, errors=[str(exc)], source="file")
+    try:
+        spec = PipelineSpec.model_validate(doc)
+    except ValidationError as exc:
+        return PipelineLoadResult(spec=None, errors=_format_validation_error(exc), source="file")
+    return PipelineLoadResult(spec=spec, errors=[], source="file")
+
+
+# Mirrors core/dispatch.py's Reviewer/Tester verdict conventions exactly —
+# ``tests/unit/core/test_pipeline__spec.py`` cross-checks these two patterns
+# and the role order below directly against ``dispatch.py``'s own constants,
+# so this module's hardcoding one drift-guarded copy (rather than importing
+# dispatch.py at runtime) is a deliberate, tested tradeoff — see the module
+# docstring.
+_REVIEWER_PATTERN = r"^\s*(APPROVE|REQUEST-CHANGES)\b"
+_TESTER_PATTERN = r"^\s*(PASS|FAIL)\b"
+
+# The literal default dispatch.py's pod_max_rework_cycles() falls back to
+# when a pod's Lead has no maxReworkCycles meta set.
+_DEFAULT_MAX_REWORK_CYCLES = 1
+
+
+def default_pipeline() -> PipelineSpec:
+    """The built-in zero-migration pipeline, equivalent to ``core/dispatch.py``'s hardcoded
+    ``PIPELINE_ORDER``: lead -> implementer -> reviewer -> tester. See
+    specs/functional/pipeline-format.spec.md ("Zero migration") for the exact gates/rework bound."""
+    return PipelineSpec(
+        name="default",
+        description="Built-in lead -> implementer -> reviewer -> tester pipeline (zero migration).",
+        steps=[
+            Step(id="lead", role="lead"),
+            Step(id="implementer", role="implementer", gate=MechanicalGate(command=None)),
+            Step(
+                id="reviewer",
+                role="reviewer",
+                gate=VerdictGate(
+                    pattern=_REVIEWER_PATTERN,
+                    pass_values=["approve"],
+                    rework=ReworkEdge(
+                        to="implementer",
+                        when=["request-changes"],
+                        max_cycles=_DEFAULT_MAX_REWORK_CYCLES,
+                    ),
+                ),
+            ),
+            Step(
+                id="tester",
+                role="tester",
+                gate=VerdictGate(pattern=_TESTER_PATTERN, pass_values=["pass"]),
+            ),
+        ],
+    )

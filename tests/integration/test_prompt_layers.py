@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 from tests.pods import build_pod
 
-from docket.cli import _pod
-from docket.core import archetypes as _arch
-from docket.core import identity as _identity
-from docket.core import tools as _tools
+from docket.agent import identity as _identity
+from docket.agent.tools import registry as _tools
+from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.teams import roles as _arch
 
-SUBJECT = "docket.core.identity"
+SUBJECT = "docket.agent.identity"
 
 _MEMBER = "demo-implementer"
 
@@ -111,16 +111,16 @@ def test_a_fresh_member_composes_no_memory_section(tmp_path: Path, pod_home: Pat
 
 
 def test_each_role_is_told_the_root_its_tools_use(tmp_path: Path, pod_home: Path) -> None:
-    from docket.core import dispatch as _dispatch
+    from docket.hops.application import compose as _compose
 
     origin = str(tmp_path / "origin")
     worktree = _checkout(tmp_path / "wt")
     in_place = {"description": "do it"}
     claimed = {"description": "do it", "worktree": {"dir": str(worktree)}}
 
-    lead, _ = _dispatch._hop_message(claimed, "lead", [], project="demo")
-    implementer, _ = _dispatch._hop_message(claimed, "implementer", [], project="demo")
-    in_place_implementer, _ = _dispatch._hop_message(in_place, "implementer", [], project="demo")
+    lead, _ = _compose._hop_message(claimed, "lead", [], project="demo")
+    implementer, _ = _compose._hop_message(claimed, "implementer", [], project="demo")
+    in_place_implementer, _ = _compose._hop_message(in_place, "implementer", [], project="demo")
 
     assert f"Working directory: {origin}" in lead and str(worktree) not in lead
     assert f"Working directory: {worktree}" in implementer and origin not in implementer

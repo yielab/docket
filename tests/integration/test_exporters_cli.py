@@ -21,12 +21,12 @@ import pytest
 from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import app as _app
-from docket.core import secrets as _secrets
-from docket.core.audit import read_audit
+from docket.governance import secrets as _secrets
+from docket.governance.audit import read_audit
+from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.core.exporter"
+SUBJECT = "docket.observability.exporter"
 
 _runner = CliRunner()
 
@@ -183,7 +183,7 @@ class TestPodShowExporters:
     def test_pod_show_json_reports_enabled_state(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.cli import _pod as _pod_cli
+        from docket.interfaces.cli.commands import pod as _pod_cli
 
         with _seed(tmp_path):
             (current_home().root / "workspaces" / "projects").mkdir(parents=True)
@@ -279,7 +279,7 @@ class TestDoctorExporterHealth:
     def test_doctor_warns_naming_exporters_test_on_recorded_failures(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.cli._setup_check import run_check
+        from docket.interfaces.cli.commands.setup_check import run_check
 
         with _seed(tmp_path):
             _store_langfuse_keys()
@@ -408,11 +408,11 @@ class TestPreview:
     def test_json_output_equals_otlp_http_encode_of_the_same_projection(
         self, tmp_path: Path
     ) -> None:
-        from docket.core import exporter as _exp
-        from docket.core import privacy as _privacy
-        from docket.core import telemetry as _telemetry
-        from docket.core import trace as _trace
-        from docket.edges.adapters.exporters import otlp_http as _otlp_http
+        from docket.governance import privacy as _privacy
+        from docket.observability import exporter as _exp
+        from docket.observability import telemetry as _telemetry
+        from docket.observability import trace as _trace
+        from docket.observability.adapters import otlp_http as _otlp_http
 
         with _seed(tmp_path) as home:
             session_id = _seed_session(home)

@@ -16,20 +16,21 @@ from pathlib import Path
 import pytest
 from tests.conftest import record_isolation_off
 
-from docket.cli import _setup_sandbox
-from docket.core import fleet as _fleet
-from docket.core import pod as _pod
-from docket.core.audit import read_audit
-from docket.core.dispatch import DispatchError
-from docket.edges import store as _store
-from docket.edges.adapters import system, toolbox
-from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.agent.driver import DocketDriver
+from docket.agent.tools.builtins import toolbox
+from docket.governance.audit import read_audit
+from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
+from docket.platform import store as _store
+from docket.sandbox import docker, landlock
+from docket.tasks.domain.task import DispatchError
+from docket.teams import fleet as _fleet
+from docket.teams import pod as _pod
 
 SUBJECT = "docket.edges.adapters.system"
 
 needs_landlock = pytest.mark.skipif(
-    not system.landlock_available(), reason="landlock is not available on this host"
+    not landlock.landlock_available(), reason="landlock is not available on this host"
 )
 
 # Prints the errno name when the connect fails at the network layer; never needs a real peer.
@@ -52,16 +53,16 @@ def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 class TestArgv:
     def test_landlock_default_is_open_and_none_is_explicit(self, tmp_path: Path) -> None:
-        open_argv = system.landlock_argv((tmp_path,), "true")
-        none_argv = system.landlock_argv((tmp_path,), "true", network=False)
+        open_argv = landlock.landlock_argv((tmp_path,), "true")
+        none_argv = landlock.landlock_argv((tmp_path,), "true", network=False)
         assert open_argv[open_argv.index("--net") + 1] == "open"
         assert none_argv[none_argv.index("--net") + 1] == "none"
 
     def test_docker_default_has_no_network_flag(self, tmp_path: Path) -> None:
-        assert "--network" not in system.docker_run_argv("c", (tmp_path,), "true", None)
+        assert "--network" not in docker.docker_run_argv("c", (tmp_path,), "true", None)
 
     def test_docker_none_adds_network_none(self, tmp_path: Path) -> None:
-        argv = system.docker_run_argv("c", (tmp_path,), "true", None, network=False)
+        argv = docker.docker_run_argv("c", (tmp_path,), "true", None, network=False)
         i = argv.index("--network")
         assert argv[i + 1] == "none"
         assert i < argv.index("sh")
@@ -147,7 +148,7 @@ class TestGatesCommand:
     def test_bad_value_is_usage_error(self) -> None:
         from typer.testing import CliRunner
 
-        from docket.cli import app
+        from docket.interfaces.cli.app import app
 
         result = CliRunner().invoke(app, ["setup", "sandbox", "network", "sideways"])
         assert result.exit_code == 2
@@ -160,7 +161,7 @@ class TestGatesCommand:
 
 class TestRefusal:
     def test_the_unrecorded_default_is_not_refused_without_a_jail(self) -> None:
-        from docket.edges.adapters.docket_runtime import _resolve_network
+        from docket.agent.driver import _resolve_network
 
         assert _fleet.get_network_mode() == "none"
         assert _resolve_network("solo-agent", "implementer", False) == (True, None)
@@ -212,7 +213,7 @@ def _docker_bridge_gateway() -> str | None:
 @pytest.fixture
 def host_listener() -> Iterator[tuple[str, int]]:
     """A listener on the docker bridge gateway, so a container can reach it only with a network."""
-    if not system.docker_daemon_reachable():
+    if not docker.docker_daemon_reachable():
         pytest.skip("docker not installed or its daemon is not reachable on this host")
     ip = _docker_bridge_gateway()
     if not ip:

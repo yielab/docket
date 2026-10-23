@@ -32,7 +32,7 @@ sys.path.insert(0, str(SRC))
 def _load_click_group():
     import typer.main
 
-    from docket.cli import app
+    from docket.interfaces.cli.app import app
 
     return typer.main.get_command(app)
 
@@ -284,7 +284,7 @@ def _dispatch_retry_role_names() -> set[str]:
 def _provider_credential_names() -> set[str]:
     """Provider API-key env var names, read from the provider catalog (core/provider.py)
     instead of re-typing them."""
-    from docket.core.provider import load_catalog
+    from docket.models.catalog import load_catalog
 
     names: set[str] = set()
     for spec in load_catalog().entries.values():

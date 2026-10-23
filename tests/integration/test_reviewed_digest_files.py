@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from docket.core import pod_apply as _pod_apply
-from docket.core import reviewed_repos as _reviewed
-from docket.core.pod_apply import RunItem
+from docket.governance import review as _reviewed
+from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply.plan import RunItem
 
-SUBJECT = "docket.core.reviewed_repos"
+SUBJECT = "docket.governance.review"
 
 GATE = RunItem("pipeline-step", "verify", "bash scripts/check.sh")
 PLAIN = RunItem("pipeline-step", "echo", "echo hi")
