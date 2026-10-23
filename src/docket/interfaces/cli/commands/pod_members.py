@@ -5,6 +5,7 @@ from typing import Any
 
 import typer
 
+from docket.agent import conversations as _conv
 from docket.agent import memory as _mem
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
@@ -170,7 +171,6 @@ def reset_member(project: str, member_id: str, *, yes: bool) -> None:
 
 def _delete_pod(project: str, members: list[str]) -> int:
     """Tear down every member of a pod, its resources, history and bindings."""
-    from docket.agent import conversations as _conv
 
     for mid in members:
         if _fleet.get_binding(mid):

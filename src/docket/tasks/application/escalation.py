@@ -11,11 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.tasks.application import queue as _queue
+from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
 __all__ = ["EscalationMetrics", "count_escalation_metrics"]
@@ -102,7 +104,6 @@ def count_escalation_metrics() -> EscalationMetrics:
 
 def _all_projects() -> list[str]:
     """Every project with at least one registered pod member."""
-    from docket.teams import fleet as _fleet
 
     all_ids = [a.id for a in _fleet.list_agents()]
     return sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
@@ -142,7 +143,6 @@ def _count_tasks_started() -> int:
 def _add_approval_metrics(questions: dict[tuple[str, str], int]) -> None:
     """Add approvals to questions_total with kind='approval': resolutions from the audit log's
     ``approval.grant``/``approval.deny`` entries, plus the ones still pending."""
-    from docket.governance import approval as _approval
 
     outcomes = {"approval.grant": "granted", "approval.deny": "denied"}
     for entry in _audit.read_audit():

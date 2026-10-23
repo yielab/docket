@@ -8,19 +8,25 @@ from typing import Any, Literal
 import typer
 from rich.markup import escape
 
+from docket.governance import review as _reviewed
 from docket.governance.audit import audit_log
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands.pod_config import run_item_label
 from docket.interfaces.cli.commands.setup import readiness
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import progress as _progress
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
+from docket.operator import adapters as _channels
+from docket.operator import channel as _channel
+from docket.operator import notify as _notify
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import runs as _runs
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
@@ -34,6 +40,7 @@ from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import review as _review
 from docket.teams.apply import write as _write
+from docket.teams.utils import aggregate_cost
 
 
 def _repo_dir(project: str) -> Path | None:
@@ -44,7 +51,6 @@ def _repo_dir(project: str) -> Path | None:
 
 def _ask_changed_commands(changes: _pod_apply.RepoChanges) -> bool:
     """Show before/now for each changed command and ask; off a terminal warn and say no."""
-    from docket.interfaces.cli.commands.pod_config import run_item_label
 
     when = f" on {changes.allowed_on}" if changes.allowed_on else ""
     if not _contract.is_tty():
@@ -67,7 +73,6 @@ def _ask_changed_commands(changes: _pod_apply.RepoChanges) -> bool:
 def _pick_up_repository(project: str) -> None:
     """Apply what the pod's repository changed in ``.docket/`` since the last apply; a changed
     command needs the operator's OK, else the pod keeps the version it has."""
-    from docket.governance import review as _reviewed
 
     directory = _repo_dir(project)
     if directory is None:
@@ -137,7 +142,6 @@ def _plan_roles(plan: _orch.ExecutionPlan) -> str:
 
 def _pod_tokens(project: str) -> tuple[int, float]:
     """The pod's measured tokens so far and its labelled cost estimate."""
-    from docket.teams.utils import aggregate_cost
 
     ids = [a.id for a in _fleet.list_agents()]
     tokens = 0
@@ -168,9 +172,6 @@ def _flush_notify_after_dispatch() -> None:
     """One notify flush over every channel after the run summary.
 
     Silent unless a delivery failed or nothing beyond the console delivers."""
-    from docket.operator import adapters as _channels
-    from docket.operator import channel as _channel
-    from docket.operator import notify as _notify
 
     now = _clock.stamp()
     report = _notify.flush(
@@ -237,7 +238,6 @@ def _pod_dispatch(
     """Drive the pod's pending tasks through the pipeline, one real turn per hop.
 
     Recorded in the run registry (source ``cli``), so a failure shows in ``docket log``."""
-    from docket.tasks.application import runs as _runs
 
     try:
         _steps.pod_pipeline(project)

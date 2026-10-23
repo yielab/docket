@@ -58,9 +58,14 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.models import selection as _mp
 from docket.operator import channel as _channel
+from docket.pipeline.application import schedule as _sched
 from docket.platform import store
 from docket.sandbox import launch as _launch
+from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import pod as _pod
+from docket.teams import pod as _pod_ledger_mod
+from docket.teams import pod as _pod_mod
 from docket.teams.utils import project_ids
 
 
@@ -81,7 +86,6 @@ def _check_dependencies() -> int:
 
 def _pod_of(aid: str) -> str:
     """The pod *aid* is a member of, or ``""`` for a standalone agent."""
-    from docket.teams import pod as _pod
 
     return _pod.pod_of(aid) or ""
 
@@ -144,7 +148,6 @@ def _check_schedule_config() -> int:
     """Flag every ``docket-schedules.json`` entry ``is_schedule_due`` would silently treat
     as never-due -- naming the file, project key, and reason. Read-only:
     never edits the schedules file (use ``docket pod set|unset schedule``)."""
-    from docket.pipeline.application import schedule as _sched
 
     ui.section("Schedules (docket-schedules.json):")
     problems = _sched.find_schedule_problems(current_home().schedule_file)
@@ -210,8 +213,6 @@ def _check_json_agents(
 
 def _check_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
     """TASK_LIST.json vs. HEARTBEAT.md ledger agreement, JSON shape of `_check_dispatch_ledger`."""
-    from docket.tasks.application import queue as _queue
-    from docket.teams import pod as _pod_ledger_mod
 
     issues = 0
     dispatch_ledger_results: list[dict[str, Any]] = []
@@ -317,7 +318,6 @@ def _check_json_provider_catalog() -> tuple[int, list[dict[str, str]]]:
 def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
     """Template/prompt version drift, JSON shape of `_check_template_version`.
     Advisory — never contributes to the issue count."""
-    from docket.teams import pod as _pod_mod
 
     tmpl_results: list[dict[str, Any]] = []
     for aid in ids:
@@ -340,7 +340,6 @@ def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
 def _check_json_config_files(ids: list[str]) -> tuple[int, dict[str, Any]]:
     """Registry, schedule, policy and pod-overlay problems: JSON shape of the text
     checks of the same names. Returns the issue count and the keys to merge under `checks`."""
-    from docket.pipeline.application import schedule as _sched
 
     registry = _mp.find_registry_problems()
     schedules = _sched.find_schedule_problems(current_home().schedule_file)

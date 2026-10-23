@@ -4,17 +4,20 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
+from docket.operator import inbox as _inbox
+from docket.platform import store
+from docket.tasks.application import escalation as _escalation
 from docket.teams import utils
 
 
 def _cost_json() -> dict[str, Any]:
     """Per-project cost payload: {agents:[{id,model,costUsd,turns}], totalUsd}."""
-    from docket.platform import store
 
     agents: list[dict[str, Any]] = []
     total = 0.0
@@ -169,7 +172,6 @@ def _loop_metrics() -> LoopMetrics:
 
 def _escalation_metrics_lines() -> list[str]:
     """Render escalation metrics (task claims, questions, latency) as Prometheus lines."""
-    from docket.tasks.application import escalation as _escalation
 
     esc = _escalation.count_escalation_metrics()
 
@@ -227,7 +229,6 @@ def render_metrics() -> str:
             + '"} '
             + str(a.get("turns", 0))
         )
-    from docket.governance import approval as _approval
 
     pending = len(_approval.list_pending())
     lines += [
@@ -238,8 +239,6 @@ def render_metrics() -> str:
         "# TYPE docket_approvals_pending_total gauge",
         "docket_approvals_pending_total " + str(pending),
     ]
-
-    from docket.operator import inbox as _inbox
 
     inbox_view = _inbox.build_inbox(now=_clock.stamp())
     lines += [

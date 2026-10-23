@@ -57,8 +57,10 @@ from docket.observability.adapters import sinks as _exporters
 from docket.platform import git as _git
 from docket.platform import process as _process
 from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.consult import DEFAULT_MAX_CONSULTATIONS
+from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
@@ -110,8 +112,6 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
     try:
         coerced = _pod_settings.PodSettings.coerce("mcpServers", raw, project=project)
     except _pod_settings.PodSettingsError as exc:
-        from docket.tasks.domain.task import DispatchError
-
         raise DispatchError(str(exc)) from exc
     return tuple(str(coerced).split(","))
 
@@ -205,7 +205,6 @@ def _base_commit_view(
     could not be kept off the worktree's own agent-writable ``.git`` file."""
     if not pipeline_worktree or not task_id:
         return None
-    from docket.tasks.application import queue as _queue
 
     try:
         tasks = _queue.read_tasks(project)
@@ -300,7 +299,6 @@ def _task_policy_documents(
 ) -> list[dict[str, Any]]:
     """The turn's task-restriction policy documents: one block document for the denied tools
     (closed by kind, like ``registry_for_role``) plus the task's own, already-checked documents."""
-    from docket.tasks.domain.task import DispatchError
 
     documents: list[dict[str, Any]] = []
     try:

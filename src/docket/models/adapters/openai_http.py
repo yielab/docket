@@ -49,6 +49,9 @@ from docket.platform.redirects import open_same_origin
 
 if TYPE_CHECKING:
     from docket.models.catalog import ProviderSpec
+from docket.governance import secrets as _secrets
+from docket.models import catalog as _prov
+
 _PROTOCOL_OVERHEAD_TOKENS = 16
 
 
@@ -370,13 +373,9 @@ def resolve_endpoint(model: str) -> Endpoint | None:
 
     spec = None
     if provider and not env_base:
-        from docket.models import catalog as _prov
-
         spec = _prov.load_catalog().get(provider)
 
     if spec is not None:
-        from docket.models import catalog as _prov
-
         api_key, _source = _prov.resolve_credential(spec)
         return endpoint_from_spec(spec, provider, model_id, api_key)
 
@@ -391,8 +390,6 @@ def resolve_endpoint(model: str) -> Endpoint | None:
         credential_name = f"{provider.upper().replace('-', '_')}_API_KEY"
         api_key = os.environ.get(credential_name, "").strip()
         if not api_key:
-            from docket.governance import secrets as _secrets
-
             api_key = _secrets.secret_value(credential_name) or ""
 
     return Endpoint(
@@ -408,7 +405,6 @@ def resolve_endpoint(model: str) -> Endpoint | None:
 def endpoint_from_spec(spec: ProviderSpec, provider: str, model_id: str, api_key: str) -> Endpoint:
     """The endpoint catalog entry *spec* (named *provider*) gives *model_id*, with *api_key*
     already resolved; each limit is declared, else observed, else unknown."""
-    from docket.models import catalog as _prov
 
     limits = _prov.resolve_limits(spec, model_id)
     return Endpoint(
@@ -443,8 +439,6 @@ def client_for(model: str) -> OpenAIChatClient | None:
         return None
     dialect = "openai-chat"
     if endpoint.provider:
-        from docket.models import catalog as _prov
-
         spec = _prov.load_catalog().get(endpoint.provider)
         if spec is not None:
             dialect = spec.dialect

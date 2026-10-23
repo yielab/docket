@@ -11,9 +11,12 @@ from pathlib import Path
 import typer
 
 from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import mcp as _mcp
 from docket.interfaces.cli.render import ui
+from docket.interfaces.http import server as _server
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.platform import process as _process
 
 _GRACE_S = 15
 _ABANDON_S = 5
@@ -92,31 +95,27 @@ def cmd_start(
 
     Example: docket start --dispatch
     """
-    from docket.platform.process import make_non_dumpable
 
-    make_non_dumpable()
+    _process.make_non_dumpable()
     if mcp:
         if dispatch or telegram or token_file is not None:
             ui.error(
                 "--mcp serves stdio on its own", "Drop --dispatch, --telegram and --token-file"
             )
             raise typer.Exit(2)
-        from docket.interfaces.cli.commands.mcp import serve_stdio
 
-        raise typer.Exit(serve_stdio())
+        raise typer.Exit(_mcp.serve_stdio())
 
     existing = running_pid()
     if existing is not None:
         ui.error(f"docket is already running (pid {existing})", "Run `docket stop` first")
         raise typer.Exit(1)
 
-    from docket.interfaces.http.server import run_serve
-
     pid_file = current_home().serve_pid_file
     pid_file.parent.mkdir(parents=True, exist_ok=True)
     pid_file.write_text(f"{os.getpid()}\n", encoding="utf-8")
     try:
-        run_serve(
+        _server.run_serve(
             port=port,
             bind=bind,
             interval=interval,

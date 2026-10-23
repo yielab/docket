@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 
+from docket.interfaces.telegram import bot as _telegram
+
 # The Telegram long-poll loop. `interfaces.telegram.bot.poll_once` never raises for an
 # unconfigured bot or a network failure (it returns a typed summary) -- the
 # `except Exception` below is a last-resort backstop for a genuinely
@@ -22,7 +24,6 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
     up) or a transport failure, so neither case busy-loops. A resolved-timeout misconfiguration
     warning prints once, not every poll -- the underlying env var cannot change without a
     restart."""
-    from docket.interfaces.telegram import bot as _telegram
 
     printed_unconfigured = False
     printed_timeout_warning = False

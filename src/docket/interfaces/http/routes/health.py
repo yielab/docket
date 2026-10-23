@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.platform import store
 from docket.teams import fleet, utils
 
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
@@ -16,7 +18,6 @@ SERVE_API_VERSION = "6"
 
 def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
     """*task* plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
-    from docket.hops.gates import pre_hop as _pre_hop
 
     left = _pre_hop._task_token_budget(task)
     return {
@@ -32,8 +33,6 @@ def _last_activity_or_never(agent_id: str) -> str:
 
 
 def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
-    from docket.platform import store
-
     meta_path = current_home().meta_path(agent_id)
     meta: dict[str, Any] = store.read_json(meta_path) if meta_path.exists() else {}
     cost = round(utils.aggregate_cost(agent_id).cost_usd, 6)

@@ -78,6 +78,7 @@ from docket.governance import approval as _approval
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
+from docket.interfaces.telegram import client as _client
 from docket.interfaces.telegram.client import GetUpdatesResult
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
@@ -489,14 +490,10 @@ SendMessageFn = Callable[..., bool]
 
 
 def _default_get_updates() -> GetUpdatesFn:
-    from docket.interfaces.telegram import client as _client
-
     return _client.get_updates
 
 
 def _default_send_message() -> SendMessageFn:
-    from docket.interfaces.telegram import client as _client
-
     return _client.send_message
 
 

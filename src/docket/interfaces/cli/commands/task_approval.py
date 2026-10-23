@@ -7,6 +7,7 @@ import typer
 from rich.markup import escape
 
 from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import service as _service
 from docket.interfaces.cli.render import ui
 
 _TYPE_COERCERS: dict[str, Any] = {
@@ -25,7 +26,6 @@ def _actor() -> str:
 
 def _resume_hint(project: str) -> None:
     """After a state change: say who picks the task up, or name the command that does."""
-    from docket.interfaces.cli.commands import service as _service
 
     if _service.is_running():
         ui.dim("docket is running and will pick it up")

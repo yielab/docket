@@ -4,6 +4,8 @@ from docket.agent import memory as _mem
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import store
+from docket.tasks.application import queue as _queue
+from docket.teams import pod as _pod
 from docket.teams.utils import aggregate_cost, gating_cost
 
 
@@ -101,8 +103,6 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
     specs/functional/pod-dispatch.spec.md, "Mechanical HEARTBEAT ledger". ``--fix`` re-syncs the
     ledger to exactly what TASK_LIST.json says now — always safe, since the ledger's dispatch
     region is entirely docket-owned and TASK_LIST.json is dispatch's own source of truth."""
-    from docket.tasks.application import queue as _queue
-    from docket.teams import pod as _pod
 
     pods = _queue.dispatchable_pods()
     if not pods:

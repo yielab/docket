@@ -53,6 +53,7 @@ from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
+from docket.observability import trace as _trace
 from docket.platform import process as _process
 from docket.platform import store as _store
 from docket.tasks.application.run_cancellation import (
@@ -492,8 +493,6 @@ def _emit_error_trace(project: str, run_id: str, source: str, error_text: str) -
     never break run recording (mirrors ``governance/approval.py``'s ``_emit_trace``)."""
     try:
         import json as _json
-
-        from docket.observability import trace as _trace
 
         _trace.trace_event(
             project,

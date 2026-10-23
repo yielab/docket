@@ -12,11 +12,20 @@ import typer
 
 from docket.governance import policy as _policy
 from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import setup_check as _setup_check
+from docket.interfaces.cli.commands import setup_model_provider as _setup_model_provider
+from docket.interfaces.cli.commands import setup_notify as _setup_notify
+from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
+from docket.models import catalog as _prov
+from docket.models import provider_lifecycle as _provider_lifecycle
+from docket.models import selection as _mp
+from docket.operator import channel as _channel
 from docket.platform import git as _git
 from docket.platform import process as _process
 from docket.sandbox import launch as _launch
+from docket.teams import fleet as _fleet
 
 setup_app = typer.Typer(
     name="setup",
@@ -58,9 +67,6 @@ class Readiness:
 
 
 def _endpoint_piece() -> Piece:
-    from docket.models import provider_lifecycle as _provider_lifecycle
-    from docket.models import selection as _mp
-
     resolved: list[str] = []
     for role in ("lead", "implementer"):
         try:
@@ -76,8 +82,6 @@ def _endpoint_piece() -> Piece:
 
 
 def _notify_piece() -> Piece:
-    from docket.operator import channel as _channel
-
     delivering = _channel.load_catalog().delivering()
     if _channel.unreached_warning(delivering) is None:
         return Piece("notifications", True, ", ".join(delivering), "")
@@ -90,8 +94,6 @@ def _backend_found() -> str:
 
 
 def _sandbox_piece() -> Piece:
-    from docket.teams import fleet as _fleet
-
     backend = _backend_found()
     if _fleet.get_isolation_enabled():
         return Piece("sandbox", True, f"on ({backend})", "")
@@ -246,9 +248,6 @@ def _ran(command: str) -> None:
 
 
 def _ask_endpoint() -> int:
-    from docket.interfaces.cli.commands import setup_model_provider as _setup_model_provider
-    from docket.models import catalog as _prov
-
     catalog = _prov.load_catalog()
     names = sorted(catalog.entries)
     ui.console.print("Providers: " + ", ".join(names), markup=False)
@@ -270,8 +269,6 @@ def _ask_telegram() -> None:
     """The wizard's Telegram step: the same one-operation connect `setup notify enable` does."""
     import getpass
 
-    from docket.interfaces.cli.commands import setup_notify as _setup_notify
-
     chat = input("Telegram chat id: ").strip()
     if not chat:
         ui.warn("Skipped: no chat id")
@@ -287,12 +284,8 @@ def _ask_telegram() -> None:
 
 
 def _ask_optional(r: Readiness) -> None:
-    from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
-
     desktop = not r.notify.ok and _process.desktop_notifications_available()
     if desktop and _ask("Enable desktop notifications?"):
-        from docket.operator import channel as _channel
-
         _ran(_NOTIFY_COMMAND)
         _channel.enable_channel("desktop")
         ui.success("Channel enabled: desktop")
@@ -354,11 +347,9 @@ def setup_callback(
     if ctx.invoked_subcommand is not None:
         return
     if fix:
-        from docket.interfaces.cli.commands.setup_check import run_check
-
         # Under --json the repair lines go to stderr, so stdout is only the report.
         with contextlib.redirect_stdout(sys.stderr) if json_out else contextlib.nullcontext():
             step_security()
             step_policies()
-        raise typer.Exit(run_check(json_out=json_out, do_fix=True))
+        raise typer.Exit(_setup_check.run_check(json_out=json_out, do_fix=True))
     raise typer.Exit(run_flow(json_out))

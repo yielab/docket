@@ -16,10 +16,24 @@ import typer
 from rich.markup import escape
 
 from docket.governance import policy as _policy
+from docket.governance import review as _reviewed
 from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.cli.commands import setup as _setup
+from docket.interfaces.cli.commands import setup_notify as _setup_notify
+from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
+from docket.interfaces.cli.commands.pod_config import (
+    render_apply_header,
+    render_apply_plan,
+    render_review,
+    render_run_items,
+    run_item_label,
+)
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
+from docket.operator import channel as _channel
+from docket.platform import process as _process
 from docket.platform import store
 from docket.teams import blueprints as _bp
 from docket.teams import config_docs as _config_docs
@@ -147,8 +161,6 @@ def _changed_since_review(
     review: _review.PlanReview,
     command: str = "docket init",
 ) -> int:
-    from docket.governance import review as _reviewed
-
     if req.json_out:
         before = _reviewed.lookup(root, project)
         was = {(i.kind, i.name): i.runs for i in before.items} if before else {}
@@ -185,16 +197,12 @@ def _stopped(command: str) -> str:
 
 
 def _label(item: _review.RunItem) -> str:
-    from docket.interfaces.cli.commands.pod_config import run_item_label
-
     return run_item_label(item)
 
 
 def _needs_review(
     req: InitRequest, review: _review.PlanReview, code: str, command: str = "docket init"
 ) -> int:
-    from docket.interfaces.cli.commands.pod_config import render_run_items
-
     if req.json_out:
         ui.console.print_json(
             _json.dumps({"status": "needs_review", "reviewCode": code, "items": _items(review)})
@@ -224,8 +232,6 @@ def review_repo_source(
 ) -> int:
     """The operator's OK for what *apply_source* runs on this machine, asked before anything is
     created. 0 means go on; 2 means stop (already printed). Shipped recipes are exempt."""
-    from docket.governance import review as _reviewed
-    from docket.interfaces.cli.commands.pod_config import render_review
 
     decision = _review.review_decision(loc_path, project, apply_source, req.accept)
     review = decision.review
@@ -265,7 +271,6 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     except _model.PodApplyError as exc:
         ui.error(str(exc))
         return 1
-    from docket.interfaces.cli.commands.pod_config import render_apply_header, render_apply_plan
 
     render_apply_header(aid, apply_source, _recipes.summarize_recipe(apply_source))
     render_apply_plan(plan)
@@ -288,8 +293,6 @@ def run_init(req: InitRequest) -> int:
 
     if req.from_file is not None:
         return _cmd_add_declarative(req.from_file)
-
-    from docket.teams import blueprints as _bp
 
     blueprint_name = req.blueprint or _bp.DEFAULT_BLUEPRINT
     try:
@@ -339,8 +342,6 @@ def run_init(req: InitRequest) -> int:
     stack = detected_stack or ("" if is_workdir else "unknown")
     description = ""
 
-    from docket.interfaces.cli.commands import pod as _pod
-
     # --pod full / --with only make sense against the `software` roster —
     # any other blueprint provisions its own fixed roster as-is.
     if blueprint.name == "software":
@@ -385,13 +386,10 @@ def run_init(req: InitRequest) -> int:
     ui.console.print("  docket pod show        # inspect the pod")
     ui.console.print("  docket pod add reviewer # add a role")
     _offer_desktop_channel()
-    from docket.interfaces.cli.commands import contract as _contract
-    from docket.interfaces.cli.commands import setup as _setup
-    from docket.interfaces.cli.commands.setup_sandbox import print_sandbox_block
 
     ui.console.print()
     ui.console.print("This machine")
-    print_sandbox_block()
+    _setup_sandbox.print_sandbox_block()
 
     if not _setup.readiness().endpoint.ok:
         ui.warn("No model endpoint yet")
@@ -403,9 +401,6 @@ def _offer_desktop_channel() -> None:
     """After the created summary: say so when nothing delivers beyond the console and, on a TTY
     with a desktop session, offer to turn `desktop` on now and send one test notification so
     the operator sees it work before a parked task needs it. Off a TTY only the warning prints."""
-    from docket.interfaces.cli.commands.setup_notify import send_test
-    from docket.operator import channel as _channel
-    from docket.platform import process as _process
 
     unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
     if unreached is None:
@@ -419,7 +414,7 @@ def _offer_desktop_channel() -> None:
         return
     _channel.enable_channel("desktop")
     ui.success("Channel enabled: desktop -- sending one test notification, you should see it now.")
-    send_test("desktop")
+    _setup_notify.send_test("desktop")
 
 
 def _provision_pod_from_spec(
@@ -428,7 +423,6 @@ def _provision_pod_from_spec(
     """Provision one pod from a `blueprint`-bearing `--from` entry through
     `interfaces.cli.commands.pod.build_pod_from_blueprint`, the path `docket init` and `POST /pods` share.
     ``None`` (already warned) means the pod exists or the blueprint is unknown: a skip."""
-    from docket.interfaces.cli.commands import pod as _pod
 
     _prov.validate_project_id(aid)
     try:

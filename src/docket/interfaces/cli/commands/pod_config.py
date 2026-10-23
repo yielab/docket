@@ -18,6 +18,7 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
+from docket.observability import exporter as _exporter
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -25,6 +26,7 @@ from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
+from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
@@ -59,8 +61,6 @@ def _default_dir(project: str, *, create: bool = False) -> Path:
 
 
 def _codebase(project: str) -> Path:
-    from docket.teams import fleet as _fleet
-
     return Path(_fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", ""))
 
 
@@ -127,7 +127,6 @@ def render_exporter_states(names: tuple[str, ...]) -> None:
     """Print each exporter's state and, unless enabled, the command that enables it."""
     if not names:
         return
-    from docket.observability import exporter as _exporter
 
     catalog = _exporter.load_catalog()
     for name in names:

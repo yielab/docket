@@ -37,6 +37,7 @@ from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.platform import store as _store
 from docket.tasks.application import consult as _consult
+from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
@@ -362,8 +363,6 @@ def answer_task(
 
     # Record declined answers to the corrections ledger
     if result.action == "decline":
-        from docket.tasks.application import corrections as _corrections
-
         _corrections.record(
             project,
             "declined_answer",

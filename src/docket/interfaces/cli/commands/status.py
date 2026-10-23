@@ -10,6 +10,7 @@ import typer
 from docket.agent.ports import UsageDay
 from docket.governance import network_posture as _np
 from docket.governance import profile as _profile
+from docket.governance import review as _reviewed
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.setup_sandbox import (
     _off_label,
@@ -29,6 +30,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import report as _pod_report
+from docket.teams.apply import review as _review
 from docket.teams.models import AgentMeta
 from docket.teams.report import unpriced_text
 from docket.teams.utils import (
@@ -111,8 +113,6 @@ def _last_run(project: str) -> dict[str, Any] | None:
 def _commands(root: str, project: str) -> dict[str, Any] | None:
     """The commands the operator allowed for the repository at *root* and how many of its
     ``.docket/`` run items now differ; None when nothing was ever allowed."""
-    from docket.governance import review as _reviewed
-    from docket.teams.apply import review as _review
 
     found = _reviewed.lookup(Path(root), project) if root else None
     if found is None:

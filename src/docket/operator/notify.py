@@ -17,8 +17,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.operator import channel as _channel
+from docket.operator import inbox as _inbox
+from docket.operator import notify as _notify
 from docket.operator.contract import (
     ApprovalView,
     CloudEvent,
@@ -337,7 +341,6 @@ def resolve_secret(spec: Any) -> str | None:
     name = getattr(spec, "secret", None)
     if not name:
         return None
-    from docket.governance import secrets as _secrets
 
     return _secrets.secret_value(name)
 
@@ -401,8 +404,6 @@ def _flush(
     now: str,
     sleep: Callable[[float], None],
 ) -> FlushReport:
-    from docket.operator import inbox as _inbox
-
     prev = read_state()
     inbox_view = _inbox.build_inbox(now=now)
     events, snapshot = diff_events(prev, inbox_view, now)
@@ -464,8 +465,6 @@ def _flush_notify_channels() -> None:
     """One `operator.notify.flush` call over every catalog channel -- the periodic half of
     delivery; `interfaces/cli/commands/pod.py::_pod_dispatch` runs the other, foreground half."""
     from docket.operator import adapters as _channels
-    from docket.operator import channel as _channel
-    from docket.operator import notify as _notify
 
     _notify.flush(
         list(_channel.load_catalog().entries.values()), _channels.sink_for, now=_clock.stamp()

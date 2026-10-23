@@ -30,6 +30,7 @@ from pydantic import (
 )
 
 import docket.kernel.templates as _templates
+from docket.governance import audit as _audit
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
@@ -413,8 +414,6 @@ def enable_channel(name: str, overrides: dict[str, Any] | None = None) -> Channe
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
-    from docket.governance import audit as _audit
-
     _audit.audit_log(
         "channel.enable", f"name={spec.name} dialect={spec.dialect} content={spec.content}"
     )
@@ -445,8 +444,6 @@ def disable_channel(name: str) -> ChannelSpec:
     _store.read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
-
-    from docket.governance import audit as _audit
 
     _audit.audit_log("channel.disable", f"name={spec.name} dialect={spec.dialect}")
     return spec
@@ -493,8 +490,6 @@ def set_content(name: str, level: str) -> ChannelSpec:
     _store.read_modify_write(current_home().channels_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
-
-    from docket.governance import audit as _audit
 
     _audit.audit_log("channel.content", f"name={spec.name} from={old_level} to={level}")
     return spec

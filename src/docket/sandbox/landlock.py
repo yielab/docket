@@ -20,6 +20,7 @@ from pathlib import Path
 from docket.kernel.errors import Unavailable
 from docket.platform.git import _git_plain
 from docket.platform.process import _SANDBOX_PROBE_TIMEOUT, _TRUSTED_TREES
+from docket.sandbox import landlock
 
 SYS_LANDLOCK_CREATE_RULESET = 444
 SYS_LANDLOCK_ADD_RULE = 445
@@ -254,7 +255,6 @@ def landlock_available() -> bool:
     nothing). ``DOCKET_SANDBOX_PROBE=none`` reports false, as a host without the kernel feature."""
     if os.environ.get("DOCKET_SANDBOX_PROBE") == "none":
         return False
-    from docket.sandbox import landlock
 
     return landlock.abi_version() >= 1
 

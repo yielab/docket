@@ -21,7 +21,9 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import docket.kernel.templates as _templates
+from docket.governance import audit as _audit
 from docket.governance import privacy as _privacy
+from docket.governance import secrets as _secrets
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
@@ -381,8 +383,6 @@ def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> Expor
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
-    from docket.governance import audit as _audit
-
     _audit.audit_log(
         "exporter.enabled",
         f"name={spec.name} privacy={spec.privacy_label} endpoint={spec.endpoint}",
@@ -414,8 +414,6 @@ def disable_exporter(name: str) -> ExporterSpec:
     _store.read_modify_write(current_home().exporters_file, _update)
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
-
-    from docket.governance import audit as _audit
 
     _audit.audit_log(
         "exporter.disabled",
@@ -485,8 +483,6 @@ def set_privacy(
     spec = load_catalog().get(name)
     assert spec is not None  # just written above
 
-    from docket.governance import audit as _audit
-
     host = urlsplit(spec.endpoint).hostname or spec.endpoint
     _audit.audit_log(
         "exporter.privacy", f"name={spec.name} from={old_label} to={new_label} host={host}"
@@ -500,8 +496,6 @@ def resolve_credentials(spec: ExporterSpec) -> tuple[list[str], str]:
     ``"env"``/``"store"``/``"mixed"``/``"none"``."""
     if not spec.auth.credentials:
         return [], "none"
-
-    from docket.governance import secrets as _secrets
 
     values: list[str] = []
     sources: set[str] = set()

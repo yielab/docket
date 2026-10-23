@@ -11,6 +11,8 @@ from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.platform import store as _store
 from docket.teams import builtin_roles as _builtin_roles
+from docket.teams import fleet as _fleet
+from docket.teams import pod as _pod
 from docket.teams import roles as _arch
 
 ALL_ROLES: tuple[str, ...] = (
@@ -276,7 +278,6 @@ def is_role(role: str) -> bool:
 
 def agent_role(agent_id: str) -> str:
     """Policy role for an agent: its pod-member archetype name, else ``REPO_AGENT_ROLE``."""
-    from docket.teams import fleet as _fleet
 
     return _fleet.meta_get(agent_id, "role", "") or REPO_AGENT_ROLE
 
@@ -352,8 +353,6 @@ class RoleRepoint(NamedTuple):
 
 def reapply_role_policy() -> list[RoleRepoint]:
     """Re-resolve every agent against the live role policy; returns each agent it moved."""
-    from docket.teams import fleet as _fleet
-    from docket.teams import pod as _pod
 
     role_models, _, _ = load_registry()
     changed: list[RoleRepoint] = []

@@ -11,6 +11,7 @@ from rich.markup import escape
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import setup as _setup
 from docket.interfaces.cli.commands.setup_model_credentials import (
     _read_hidden,
     _validate_key_format,
@@ -281,7 +282,6 @@ def _register(
     ui.success(
         f"Provider {spec.name}: {spec.base_url}{note}" + ("" if reg.changed else " (unchanged)")
     )
-    from docket.interfaces.cli.commands import setup as _setup
 
     _setup.step_security()
     _setup.step_policies()

@@ -12,10 +12,12 @@ from typing import Any
 
 from docket.agent.tools import mcp_tools as _mcp
 from docket.governance import secrets as _secrets
+from docket.hops.application import record as _record
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.sandbox import launch as _launch
+from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
 
@@ -112,8 +114,6 @@ def _is_implementer(unit: _orch.PlannedUnit) -> bool:
 
 
 def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
-    from docket.hops.application import record as _record
-
     names: set[str] = set()
     for unit in _walk(nodes):
         if _is_implementer(unit) and unit.member_id:
@@ -180,7 +180,6 @@ def fleet_violations() -> list[Violation]:
 def lights_out_report() -> dict[str, list[Violation]]:
     """Every dispatchable pod whose effective profile is ``lights-out``, with its violations; empty
     on a fleet that records nothing (the usual case)."""
-    from docket.tasks.application import queue as _queue
 
     report: dict[str, list[Violation]] = {}
     for project in _queue.dispatchable_pods():

@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from docket.agent import skills as _skills
+from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.builtins.toolbox import ToolOutcome as ToolOutcome
 from docket.agent.tools.registry import (
     _CONSULT_TOOL,
@@ -15,6 +16,7 @@ from docket.agent.tools.registry import (
     screen_tool_result,
 )
 from docket.kernel.home import current_home
+from docket.platform import fetch as _fetch
 from docket.tasks.application import consult as _consult
 
 
@@ -42,7 +44,6 @@ def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     """Handler for the ``skill`` built-in: resolve ``name`` and read ``path`` (default
     ``SKILL.md``) from within that skill's own directory. An unknown name is a failed call
     naming the known names, never a raise."""
-    from docket.agent.tools.builtins import toolbox
 
     name = _str_arg(args, "name")
     discovered = _skills.discover_skills(ctx.project, ctx.roots[0] if ctx.roots else None)
@@ -201,8 +202,6 @@ def _register_all(registry: ToolRegistry, *tools: Tool) -> None:
 
 
 def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
-    from docket.agent.tools.builtins import toolbox
-
     return toolbox.run_bash(
         ctx.roots,
         _str_arg(args, "command"),
@@ -236,7 +235,6 @@ _GREP_DESCRIPTION = (
 
 def _offered_fetch() -> list[Tool]:
     """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
-    from docket.platform import fetch as _fetch
 
     return [_fetch_tool(_fetch.fetch_url)] if current_home().fetch_allowed_domains else []
 
@@ -246,7 +244,6 @@ def builtin_registry() -> ToolRegistry:
     with an allowlist). Handlers are imported here, not at module scope, so this module stays
     importable without the filesystem/subprocess layer. Core reaches out to edges for I/O here.
     """
-    from docket.agent.tools.builtins import toolbox
 
     registry = ToolRegistry()
 

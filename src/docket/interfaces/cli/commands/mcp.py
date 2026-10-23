@@ -15,9 +15,11 @@ from typing import Any
 from docket.governance import approval as _approval
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import status as _status
+from docket.interfaces.http.routes import health as _health
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.errors import InvalidInput
+from docket.operator import inbox as _inbox
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import interruptions as _interruptions
@@ -75,7 +77,6 @@ def tool_status() -> dict[str, Any]:
     model/registration/cost, and total recorded spend. Identical shape to
     `docket start`'s `GET /status.json` (see serve-read-api.spec.md)."""
     _audit("status")
-    from docket.interfaces.http.routes import health as _health
 
     return _health.build_status()
 
@@ -233,7 +234,6 @@ def tool_inbox(since: str | None = None) -> dict[str, Any]:
     """The derived operator inbox: every pod's tasks needing a human, plus pending approvals,
     failed/done/running context, and a cursor. Identical shape to `docket start`'s `GET /inbox`."""
     _audit("inbox", f"since={since or ''}")
-    from docket.operator import inbox as _inbox
 
     view = _inbox.build_inbox(now=_clock.iso(), since=since)
     return view.model_dump(by_alias=True, mode="json")

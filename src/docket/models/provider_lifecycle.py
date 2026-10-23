@@ -22,6 +22,10 @@ from docket.platform import store as _store
 
 if TYPE_CHECKING:
     from docket.models.adapters.openai_http import ProbeResult
+from docket.agent.llm import Endpoint
+from docket.governance import audit as _audit
+from docket.governance import secrets as _secrets
+from docket.models.adapters import openai_http as _llm
 
 
 def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
@@ -142,8 +146,6 @@ def probe_spec(spec: ProviderSpec, *, credential: str | None = None) -> ProbeRes
     """Probe *spec*'s ``/models`` with its resolved credential, or with *credential* when the
     caller holds a value it has not stored yet (``DOCKET_LLM_API_KEY`` still wins); nothing is
     saved."""
-    from docket.agent.llm import Endpoint
-    from docket.models.adapters.openai_http import probe_models
 
     credential_value, source = resolve_credential(spec)
     if credential and source != "override":
@@ -157,7 +159,7 @@ def probe_spec(spec: ProviderSpec, *, credential: str | None = None) -> ProbeRes
         auth_header=spec.auth.header,
         headers=tuple(spec.headers.items()),
     )
-    return probe_models(endpoint)
+    return _llm.probe_models(endpoint)
 
 
 def register_provider(spec: ProviderSpec, *, probe: ProbeResult | None = None) -> Registration:
@@ -177,8 +179,6 @@ def register_provider(spec: ProviderSpec, *, probe: ProbeResult | None = None) -
     changed = existing != desired
     save_provider(spec)
     record_observed_models(spec, probe)
-
-    from docket.governance import audit as _audit
 
     status_label = str(verification.status) if verification.status is not None else "unreachable"
     _audit.audit_log("provider.add", f"name={spec.name} scope=global status={status_label}")
@@ -200,8 +200,6 @@ def remove_provider(name: str) -> None:
         raise ProviderError(
             current_home().providers_file, "name", f"'{name}' is not in the provider catalog"
         )
-
-    from docket.governance import audit as _audit
 
     _audit.audit_log("provider.remove", f"name={name}")
 
@@ -252,8 +250,6 @@ def model_readiness(model: str) -> ModelReadiness:
     reachability is established at registration time; the deterministic driver test owns actual
     Chat Completions/tool-wire capability.
     """
-    from docket.governance import secrets as _secrets
-    from docket.models.adapters import openai_http as _llm
 
     provider, _, _model_id = model.partition("/")
     spec = load_catalog().get(provider)

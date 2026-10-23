@@ -34,6 +34,7 @@ _RUNTIME_FILES = (
     "governance/plugin_api.py",
     "governance/plugins.py",
     "governance/policy.py",
+    "governance/secrets.py",
     "governance/security.py",
     "hops/__init__.py",
     "hops/workspace/__init__.py",

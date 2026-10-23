@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.platform import process as _process
@@ -145,12 +146,8 @@ def _stored_secret_values() -> list[str]:
     credential-shaped variable in this process's environment, since a key exported in the shell
     never rests in the store. Best-effort, so redaction never fails a trace write."""
     values: list[str] = []
-    try:
-        from docket.governance import secrets as _secrets
-
+    with contextlib.suppress(Exception):
         values.extend(v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8)
-    except Exception:
-        pass
     values.extend(
         v
         for v in _process.credential_env_values(_ENV_CREDENTIAL_NAMES, _ENV_CREDENTIAL_SUFFIXES)

@@ -23,6 +23,8 @@ import sys
 import threading
 from pathlib import Path
 
+from docket.agent import conversations
+from docket.governance import approval
 from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.auth import authorize
 from docket.interfaces.http.exchange import HttpExchange
@@ -40,7 +42,14 @@ from docket.interfaces.telegram.poll import _telegram_poll_loop
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
+from docket.models import provider_lifecycle as _provider_lifecycle
+from docket.observability import trace
+from docket.operator import channel as _channel
 from docket.operator.notify import _flush_notify_channels
+from docket.tasks.application import answers
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import runs as _runs
+from docket.tasks.application import sweep as _sweep
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
@@ -72,8 +81,6 @@ def _sweep_one_pod(project: str) -> None:
 
     An unset pod `approvalMode` resolves to "park" here (ADR 0016 SS2): a hop that would
     otherwise block on nobody for TOOL_APPROVAL_TIMEOUT parks instead of holding its worker."""
-    from docket.tasks.application import runs as _runs
-    from docket.tasks.application import sweep as _sweep
 
     try:
         record = _runs.create_run("sweep", project)
@@ -126,7 +133,6 @@ def _submit_pod_sweep(project: str) -> bool:
 def _abandon_sweeps(wait_s: float = SWEEP_ABANDON_WAIT_S) -> bool:
     """Request cancellation of every in-flight sweep run, drop queued sweeps, and wait up to
     *wait_s* for the running ones to settle; True when none remain."""
-    from docket.tasks.application import runs as _runs
 
     with _SWEEP_LOCK:
         run_ids = list(_sweeps._sweep_run_ids.values())
@@ -162,12 +168,6 @@ def _run_sweeps(dispatch: bool = False) -> None:
     ``DISPATCH_SWEEP_WORKERS`` at once) and a pod whose previous sweep is still running is
     skipped, so this returns without waiting for the turns; ``_drain_sweeps`` waits."""
 
-    from docket.agent import conversations
-    from docket.governance import approval
-    from docket.observability import trace
-    from docket.tasks.application import answers
-    from docket.tasks.application import runs as _runs
-
     with contextlib.suppress(Exception):
         trace.sweep_all()
     with contextlib.suppress(Exception):
@@ -183,9 +183,6 @@ def _run_sweeps(dispatch: bool = False) -> None:
     with contextlib.suppress(Exception):
         conversations.prune_closed_durable()
     if dispatch:
-        from docket.models import provider_lifecycle as _provider_lifecycle
-        from docket.tasks.application import queue as _queue
-
         with contextlib.suppress(Exception):
             _provider_lifecycle.refresh_observed_models_due()
         try:
@@ -315,8 +312,6 @@ def run_serve(
     bind_note = "loopback-only" if loopback else "WARNING: not loopback — reachable off this host"
     print(f"Bind: {bind}  ({bind_note})")
     if dispatch:
-        from docket.operator import channel as _channel
-
         unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
         if unreached:
             print(f"WARNING: {unreached}")

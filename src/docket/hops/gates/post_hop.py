@@ -8,6 +8,7 @@ from typing import Any
 
 from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import ports as _rd
+from docket.agent.tools import registry as _tools
 from docket.governance import policy as _policy
 from docket.governance import security as _sec
 from docket.hops.application.record import (
@@ -24,6 +25,7 @@ from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.sandbox import launch as _launch
+from docket.tasks.application import corrections as _corrections
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -260,7 +262,6 @@ def _external_failure_kind(outcome: _UnitOutcome) -> str:
 def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
     """*text* as untrusted ``pre_input`` content, the way an MCP result is screened
     (``tools.screen_tool_result``), then redacted; ``None`` when policy blocks it."""
-    from docket.agent.tools import registry as _tools
 
     screened = _tools.screen_tool_result(
         role,
@@ -420,8 +421,6 @@ def _evaluate_verdict_gate(
 
                 # Record REQUEST-CHANGES to the corrections ledger
                 if verdict and verdict.lower() == "request-changes":
-                    from docket.tasks.application import corrections as _corrections
-
                     _corrections.record(
                         ctx.project,
                         "request_changes",

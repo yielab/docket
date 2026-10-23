@@ -8,7 +8,11 @@ from docket.governance import profile as _profile
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import store
+from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import member_workspace as _member_workspace
+from docket.teams import pod as _pod
+from docket.teams import roles as _arch
 
 _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
 
@@ -27,7 +31,6 @@ def _provisioned_tools_md(aid: str) -> bool:
 def _required_workspace_files(aid: str) -> tuple[str, ...]:
     """Workspace files ``aid`` must have; a pod member needs TOOLS.md only when provisioning
     writes one (workspace-structure.spec.md requirement 1)."""
-    from docket.teams import pod as _pod
 
     if _pod.pod_of(aid) is not None and not _provisioned_tools_md(aid):
         return tuple(f for f in _WORKSPACE_FILES if f != "TOOLS.md")
@@ -78,8 +81,6 @@ def _check_policies() -> int:
 def _pod_overlay_problems() -> list[tuple[str, str, str, str]]:
     """(pod, kind, name, reason) for each malformed pod role overlay or invalid pod policy file,
     excluding problems already reported for the global policy files."""
-    from docket.tasks.application import queue as _queue
-    from docket.teams import roles as _arch
 
     global_policy_files = set(_pol.policy_files())
     found: list[tuple[str, str, str, str]] = []
@@ -96,7 +97,6 @@ def _check_pod_config_overlays() -> int:
     """Every pod's own config overlay (``<pod>/config/``) -- the layer
     ``_check_policies`` never looks at. Names the pod plus
     the role/file and reason for a malformed role overlay or invalid policy file."""
-    from docket.tasks.application import queue as _queue
 
     ui.section("Pod config overlays (<pod>/config/):")
     if not _queue.dispatchable_pods():
@@ -118,7 +118,6 @@ def _check_template_version(ids: list[str]) -> int:
     ui.console.print(
         f"[bold]Template version (current: v{current_home().template_version}):[/bold]"
     )
-    from docket.teams import pod as _pod
 
     drift = 0
     for aid in ids:
@@ -141,8 +140,6 @@ def _check_template_version(ids: list[str]) -> int:
 
 def _pod_member_sync(ids: list[str]) -> list[tuple[str, Any]]:
     """(member id, sync status) for each pod member whose status can be read."""
-    from docket.teams import member_workspace as _member_workspace
-    from docket.teams import pod as _pod
 
     out: list[tuple[str, Any]] = []
     for aid in ids:
@@ -158,8 +155,6 @@ def _check_pod_sync(ids: list[str]) -> int:
     """Flag pod members whose managed files drifted from the current archetype +
     metadata -- the pod counterpart of ``_check_template_version``, which skips pod
     members outright. Advisory; ``docket pod update`` re-renders."""
-    from docket.teams import member_workspace as _member_workspace
-    from docket.teams import pod as _pod
 
     if not any(_pod.pod_of(aid) is not None for aid in ids):
         return 0
@@ -209,6 +204,4 @@ def _check_runtime_contract(ids: list[str]) -> int:
 
 
 def _pp_version() -> int:
-    from docket.teams import member_workspace as _member_workspace
-
     return int(_member_workspace.POD_TEMPLATE_VERSION)

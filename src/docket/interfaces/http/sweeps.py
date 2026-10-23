@@ -8,6 +8,9 @@ from typing import Any
 
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
+from docket.pipeline.application import schedule as _sched
+from docket.tasks.application import runs as _runs
+from docket.tasks.application import sweep as _sweep
 
 _SWEEP_LOCK = threading.Lock()
 _sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}
@@ -23,9 +26,6 @@ def _check_schedules(now_ts: float) -> None:
     in-memory dict, so a restart does not re-fire every schedule on its first sweep. Each due
     project's run record is created before its daemon-thread dispatch starts, so the sweep loop
     is never blocked and no outcome is silently discarded."""
-    from docket.pipeline.application import schedule as _sched
-    from docket.tasks.application import runs as _runs
-    from docket.tasks.application import sweep as _sweep
 
     schedules = _sched.load_schedules(current_home().schedule_file)
     last_run_map = _sched.load_last_run(current_home().schedule_file)

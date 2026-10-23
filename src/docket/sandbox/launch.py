@@ -7,14 +7,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from docket.governance import secrets as _secrets
 from docket.governance import security as _sec
 from docket.kernel import ids as _ids
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
+from docket.models import catalog as _provider
 from docket.platform.git import git_identity_env
 from docket.sandbox.docker import docker_daemon_reachable, docker_kill, docker_run_argv
 from docket.sandbox.landlock import landlock_argv, landlock_available
 from docket.sandbox.seatbelt import seatbelt_argv, seatbelt_available
+from docket.teams import fleet as _fleet
 
 # ── exec sandbox ─────────────────────────────────────────────────────────────
 #
@@ -49,8 +52,6 @@ def sandbox_availability(choice: str | None = None) -> SandboxAvailability:
     defaults to the fleet's recorded ``sandboxBackend``. ``DOCKET_SANDBOX_BACKEND`` forces a
     backend for tests or an operator."""
     if choice is None:
-        from docket.teams import fleet as _fleet
-
         choice = _fleet.get_sandbox_backend()
     override = os.environ.get("DOCKET_SANDBOX_BACKEND")
     landlock_ok = landlock_available()
@@ -79,8 +80,6 @@ def credential_names() -> set[str]:
     """Every environment name docket treats as a credential: ``DOCKET_LLM_API_KEY``,
     ``TELEGRAM_BOT_TOKEN``, each name the provider catalog declares and each in the secret store.
     Reads files only; never creates the home."""
-    from docket.governance import secrets as _secrets
-    from docket.models import catalog as _provider
 
     names = {"DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN"}
     names.update(_secrets.secrets_keys())

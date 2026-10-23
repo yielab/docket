@@ -7,6 +7,7 @@ from docket.governance.audit import audit_log
 from docket.hops.workspace import prepare as _prepare
 from docket.kernel.home import current_home
 from docket.sandbox import launch as _launch
+from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
@@ -120,7 +121,6 @@ def _resolve_posture(
 ) -> tuple[bool, bool]:
     """``(want_sandbox, network_allowed)``: the isolation go/no-go, then the network's; *env*'s
     task network coordinate can only cut it. A refused posture raises ``DispatchError``."""
-    from docket.tasks.domain.task import DispatchError
 
     task_none = (env or {}).get(DOCKET_TASK_NETWORK) == "none"
 

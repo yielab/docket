@@ -6,6 +6,8 @@ from docket.governance import secrets as _secrets
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.models import catalog as _prov
+from docket.models.catalog import ProviderSpec
 from docket.platform import process as _process
 from docket.platform import store
 from docket.teams import fleet as _fleet
@@ -15,7 +17,6 @@ def _expected_credential(provider: str) -> str:
     """The provider's first credential name from the catalog, or ``""`` when *provider* is
     unknown or needs none -- the single reader both `_check_provider_coverage` and its JSON
     twin use, replacing the old hand-kept ``_PROVIDER_KEY`` table."""
-    from docket.models import catalog as _prov
 
     spec = _prov.load_catalog().get(provider)
     if spec is None or not spec.auth.credentials:
@@ -88,8 +89,6 @@ def _provider_catalog_problems() -> list[tuple[str, str]]:
     validation -- `load_catalog` silently skips these at read time. Returns
     (name, "field: message") pairs. Read-only: never edits the catalog."""
     from pydantic import ValidationError
-
-    from docket.models.catalog import ProviderSpec
 
     raw = store.read_json(current_home().providers_file)
     providers = raw.get("providers") if isinstance(raw, dict) else None

@@ -36,6 +36,7 @@ from docket.platform import store as _store
 
 if TYPE_CHECKING:
     pass
+from docket.governance import secrets as _secrets
 
 _RANK_RE = re.compile(r"^(economy|standard|premium)$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -412,7 +413,6 @@ def resolve_credential(spec: ProviderSpec) -> tuple[str, str]:
         value = _process.env_value(name)
         if value:
             return value, "env"
-    from docket.governance import secrets as _secrets
 
     for name in spec.auth.credentials:
         value = _secrets.secret_value(name) or ""

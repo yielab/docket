@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from docket.agent.tools import mcp_tools as _mcp_tools
 from docket.governance import policy as _policy
+from docket.governance import review as _reviewed
 from docket.hops.workspace import protected_paths as _protected
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
@@ -30,6 +31,7 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
+from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
@@ -98,7 +100,6 @@ def _plan_roles(
     roles_dir = directory / "roles"
     if not roles_dir.is_dir():
         return items, writes, merged
-    from docket.teams import config_docs as _config_docs
 
     for role_file in sorted(_config_glob(roles_dir)):
         try:
@@ -465,8 +466,6 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     except _task.DispatchError as exc:
         raise PodApplyError(str(exc)) from exc
 
-    from docket.teams import config_docs as _config_docs
-
     manifest_file = directory / "pod.yaml"
     if manifest_file.is_file():
         try:
@@ -556,7 +555,6 @@ def apply_directory(
 ) -> DirectoryOutcome:
     """Off-terminal ``pod update``: plan, enforce the review rule against *root*, apply.
     Raises PodApplyError when the directory cannot be planned."""
-    from docket.governance import review as _reviewed
 
     plan = plan_apply(project, directory)
     if dry_run:
@@ -591,7 +589,6 @@ class RepoChanges:
 def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
     """Compare *repo_dir* with what was last applied to *project*; None when it is not the
     pod's recorded configuration of record or has not changed. Read-only."""
-    from docket.governance import review as _reviewed
 
     lead = pod.member_id(project, "lead")
     source = _fleet.meta_get(lead, "configSource", "")

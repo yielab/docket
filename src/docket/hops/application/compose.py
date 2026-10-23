@@ -5,6 +5,7 @@ import json as _json
 from dataclasses import dataclass, field
 from typing import Any
 
+from docket.agent import context as _ctx
 from docket.agent import handoff as _handoff
 from docket.agent import ports as _rd
 from docket.hops.application.record import (
@@ -121,7 +122,6 @@ def _compose_gate_failed(
     its ``verify.outputTail`` (never raw output), fit to *budget_tokens* and recorded in *comp*
     as role ``gate_failed``. Unlike a verdict rework hop, *hop* stays in the generic carryover
     loop: its own output is still prior context and only the gate's failure is new."""
-    from docket.agent import context as _ctx
 
     assert hop.verify is not None
     reasons = hop.verify.get("reasons")
@@ -176,7 +176,6 @@ def _hop_message(
     target role would otherwise carry, for every role including the Lead (a built-in's own
     instruction text, or a custom role's own ``hopInstruction``/generated fallback, see
     role-archetypes.spec.md)."""
-    from docket.agent import context as _ctx
 
     desc = str(task.get("description", "")).strip()
     worktree = "" if role == "lead" else _task_worktree_dir(task)
@@ -343,7 +342,6 @@ def _render_operator_answers(task: dict[str, Any]) -> str:
     ]
     if not blocks:
         return ""
-    from docket.agent import context as _ctx
 
     text = "\n\n".join(blocks)
     budget_tokens = _ANSWERS_CHAR_BUDGET // current_home().context_bytes_per_token

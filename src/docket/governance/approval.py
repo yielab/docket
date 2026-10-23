@@ -24,11 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import NotFound
 from docket.kernel.home import current_home
+from docket.observability import trace as _trace
+from docket.operator.contract import Option
 from docket.platform import store as _store
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
@@ -50,7 +53,6 @@ APPROVAL_OPTION_IDS: frozenset[str] = frozenset(o[0] for o in _PACK_OPTIONS)
 
 def approval_options() -> list[dict[str, Any]]:
     """The three pack options, built through the operator-v1.1 ``Option`` model."""
-    from docket.operator.contract import Option
 
     return [
         Option(id=i, label=label, description=desc).model_dump(by_alias=True, exclude_none=True)
@@ -64,7 +66,6 @@ def screen_rationale(text: str, project: str = "") -> tuple[str, bool]:
     text = (text or "").strip()
     if not text:
         return "", False
-    from docket.governance import policy as _policy
 
     hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
     if hit.action == "block":
@@ -106,8 +107,6 @@ def _redact(text: str) -> str:
     never break approval, so any error returns the original text unchanged; the local
     import avoids a cycle with trace."""
     try:
-        from docket.observability import trace as _trace
-
         return _trace.redact(text)
     except Exception:
         return text
@@ -132,8 +131,6 @@ def _emit_trace(
     """Best-effort trace hook to docket.observability.trace.trace_event; any failure is swallowed
     so a trace problem never breaks the approval. Local import avoids a cycle."""
     try:
-        from docket.observability import trace as _trace
-
         _trace.trace_event(project, session, role, event_type, json.dumps(payload))
     except Exception:
         return None
@@ -300,8 +297,6 @@ def approval_grant(
     blocked reasons raise ApprovalError before resolving. See approval_deny for details."""
     # Screen the reason against pre_input policies if non-empty
     if reason:
-        from docket.governance import policy as _policy
-
         hit = _policy.policy_eval_detail(
             "lead", "pre_input", reason, trusted=False, project=_record_project(token)
         )
@@ -337,8 +332,6 @@ def approval_deny(
     blocked reasons raise ApprovalError before resolving."""
     # Screen the reason against pre_input policies if non-empty
     if reason:
-        from docket.governance import policy as _policy
-
         hit = _policy.policy_eval_detail(
             "lead", "pre_input", reason, trusted=False, project=_record_project(token)
         )
@@ -369,11 +362,11 @@ def approval_deny(
     # The denial reason joins the corrections ledger under the task the gate named (dispatch
     # stores it in the record's context); an approval no task carries is keyed empty.
     if reason and project != "operator":
-        from docket.tasks.application import corrections as _corrections
-
         raw_context = data.get("context")
         context: dict[str, Any] = raw_context if isinstance(raw_context, dict) else {}
         task_id = str(data.get("taskId") or context.get("taskId") or "")
+        from docket.tasks.application import corrections as _corrections
+
         _corrections.record(
             project,
             "deny_reason",

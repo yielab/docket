@@ -4,6 +4,8 @@ import datetime as _dt
 from dataclasses import dataclass, field
 from typing import Any
 
+from docket.observability import trace as _trace
+
 _CANCELLATION_REASON = "operator request"
 _CANCELLATION_SOURCE = "cli"
 _CANCELLATION_REASON_CHARS = 200
@@ -112,8 +114,6 @@ def _emit_cancellation_trace(project: str, run_id: str, source: str, event_type:
     """Best-effort bounded trace for one monotonic cancellation lifecycle edge."""
     try:
         import json as _json
-
-        from docket.observability import trace as _trace
 
         _trace.trace_event(
             project,

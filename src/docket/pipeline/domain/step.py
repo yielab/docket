@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from docket.kernel.errors import InvalidInput
 from docket.pipeline.domain.gates import EXTERNAL_OUTCOMES, ExternalGate, Gate
+from docket.sandbox import launch as _launch
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 
@@ -69,7 +70,6 @@ _ENV_RESERVED_PREFIXES = ("LD_", "PYTHON", "DOCKET_")
 def _check_env(step_id: str, env: dict[str, str]) -> None:
     """Refuse an ``env`` entry that is malformed, loader/interpreter-controlling, a docket
     coordinate, or a name ``system.credential_names`` treats as a credential."""
-    from docket.sandbox import launch as _launch
 
     credentials = _launch.credential_names()
     for name, value in env.items():
