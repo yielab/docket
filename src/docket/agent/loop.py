@@ -568,7 +568,7 @@ def run_agent_turn(
 
     ``session_key`` is the durable-history key (``agent/session.py``). The
     optional trace coordinates select only where events are written and default
-    to ``ctx.project``/``session_key`` for backward compatibility. ``ctx`` also
+    to ``ctx.project``/``session_key``. ``ctx`` also
     carries the tool containment boundary (``ctx.roots``) that
     ``dispatch_tool`` enforces — this function never inspects or widens it.
 
