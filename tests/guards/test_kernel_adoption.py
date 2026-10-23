@@ -56,7 +56,10 @@ def test_count_equals_the_baseline(rule: str) -> None:
 
 
 def test_kernel_is_never_scanned() -> None:
-    assert not [h for rule in _MEASURE.RULES for h in _MEASURE.scan(rule) if "/kernel/" in h[0]]
+    # Every rule reads its modules through `_parsed`, the one place `kernel/` is left out, so
+    # checking what it returns covers every rule without running the detectors a second time.
+    parsed = {(root, needle) for _, root, needle in _MEASURE.RULES.values()}
+    assert not [rel for key in parsed for rel, _ in _MEASURE._parsed(*key) if "/kernel/" in rel]
 
 
 # Each rule must see the shapes it exists for, through any import spelling, and stay quiet on
