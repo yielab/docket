@@ -124,7 +124,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 |---|---|---|
 | `docket_agents_total` | gauge | Number of project agents. |
 | `docket_agent_cost_usd{agent,model}` | gauge | Per-agent dollar cost as the runtime driver reports it (`0` with the shipped driver; see `costUsd` above). |
-| `docket_agent_turns_total{agent}` | gauge | Total turns per agent. |
+| `docket_agent_turns_total{agent}` | gauge | Total turns per agent. Its samples follow all of `docket_agent_cost_usd`'s, under their own `# HELP`/`# TYPE`. |
 | `docket_cost_usd_total` | gauge | Sum of `docket_agent_cost_usd`. |
 | `docket_approvals_pending_total` | gauge | Pending approvals awaiting a human decision. |
 | `docket_inbox_items{section}` | gauge | Items in the derived operator inbox (`GET /inbox`), by section (`needsYou`\|`failed`\|`doneSince`\|`running`). Computed fresh on every scrape with no `since`, so `doneSince` here is every terminal task, not scoped to any consumer's cursor. |
@@ -270,7 +270,8 @@ cancelled while queued, and a concurrent cancellation that wins before the termi
 `cancelled` rather than being overwritten.
 
 A second SIGINT/SIGTERM to `docket start` requests cancellation of every in-flight sweep run
-through this same lifecycle (see pod-dispatch "Sweep workers" 4-5): `requestedAt` is persisted
+through this same lifecycle (see pod-dispatch "Sweep workers" 4-5), recording `source: "serve"`
+(a cancel from `docket task cancel` records `"cli"`): `requestedAt` is persisted
 at once, and the run reaches `cancelled` only when its body observes the request.
 
 ### GET /runs/&lt;id&gt;
@@ -688,7 +689,9 @@ through any other surface.
 - `agents[*].scope` MUST be `"project"`; `agents[*].kind` MUST be `"project"`.
 - `agents[*].budgetUsd` MUST be a float or `null`.
 - `agents[*].lastActivity` MUST be an ISO date string (`YYYY-MM-DD`) or `"never"`.
-- `/metrics` MUST conform to Prometheus text format 0.0.4.
+- `/metrics` MUST conform to Prometheus text format 0.0.4: each metric family appears once, its
+  `# HELP` then `# TYPE` line before its first sample, and all of its samples together, with
+  every agent's `docket_agent_turns_total` sample under that one header.
 - `/approvals`, `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer
   token with `401`, before touching the approval records or the run registry.
 - `/inbox` MUST reject a request with no (or an invalid) Bearer token with `401` before building

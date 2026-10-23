@@ -614,6 +614,18 @@ class TestReadPods:
         assert body["readOnly"] == [str(py.resolve())]
         assert body["settings"]["readOnly"]["value"] == str(py.resolve())
 
+    def test_a_pod_with_invalid_settings_answers_with_the_json_error(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        """Stored settings that no longer validate are the pod's fault, not a dropped socket."""
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        _fleet.meta_set("demo-lead", "approvalMode", "sometimes")
+        status, body = _get(f"{url}/pods/demo", token)
+        assert status == 500
+        assert body["ok"] is False
+        assert "approvalMode" in body["error"]
+
     def test_unknown_pod_returns_404(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, body = _get(f"{url}/pods/nope", token)

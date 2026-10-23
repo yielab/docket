@@ -152,6 +152,17 @@ def test_bad_requests(server: str, tmp_path: Path) -> None:
     assert _post(f"{server}/pods/demo/apply", {"directory": str(directory)}, token="bad")[0] == 401
 
 
+def test_an_unknown_pod_is_404_before_the_body_is_read(server: str) -> None:
+    """The pod is looked up before the body is parsed: a bad body to a pod that is not there is
+    the pod's 404, not the body's 400."""
+    req = urllib.request.Request(f"{server}/pods/ghost/apply", data=b"{not json", method="POST")
+    req.add_header("Authorization", f"Bearer {_TOKEN}")
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(req, timeout=10)
+    assert caught.value.code == 404
+    assert json.loads(caught.value.read())["error"] == "Unknown pod: ghost"
+
+
 def test_the_default_directory_is_the_pods_team_dir(server: str, tmp_path: Path) -> None:
     """Without `directory`, apply reads `.docket/teams/<pod>/` when the repository keeps teams."""
     _directory(tmp_path / "codebase" / ".docket" / "teams", "demo", _ROLE)

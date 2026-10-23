@@ -527,13 +527,12 @@ def remove_hop_pid(run_id: str, pid: int) -> None:
     _store.read_modify_write(runs_path(), _fn)
 
 
-def cancel_run(run_id: str) -> CancelOutcome:
-    """Cancel an in-flight dispatch run (``docket task cancel <ref>``). One
-    locked transition picks request-vs-terminal winner, captures and clears
-    every in-flight pid, and persists the request before signalling. Queued
-    work stops in that transition; running work stays nonterminal until
-    :func:`execute` returns. Repeated/terminal/unknown/malformed requests
-    are stable no-ops."""
+def cancel_run(run_id: str, *, source: str = _CANCELLATION_SOURCE) -> CancelOutcome:
+    """Cancel an in-flight dispatch run (``docket task cancel <ref>``); *source* names who asked.
+    One locked transition picks request-vs-terminal winner, captures and clears every in-flight
+    pid, and persists the request before signalling. Queued work stops in that transition;
+    running work stays nonterminal until :func:`execute` returns. Repeated, terminal, unknown
+    and malformed requests are stable no-ops."""
     decision = "unknown"
     prior_state = ""
     project = ""
@@ -572,7 +571,7 @@ def cancel_run(run_id: str) -> CancelOutcome:
                     observed_at=stopped_at,
                     stopped_at=stopped_at,
                     reason=_CANCELLATION_REASON,
-                    source=_CANCELLATION_SOURCE,
+                    source=source,
                 ),
             )
             rec["pids"] = []
@@ -595,8 +594,8 @@ def cancel_run(run_id: str) -> CancelOutcome:
         return CancelOutcome(ok=False, message=f"run {run_id} has invalid cancellation state")
 
     if prior_state == "queued":
-        _emit_cancellation_trace(project, run_id, _CANCELLATION_SOURCE, "run_cancellation_observed")
-        _emit_cancellation_trace(project, run_id, _CANCELLATION_SOURCE, "run_cancelled")
+        _emit_cancellation_trace(project, run_id, source, "run_cancellation_observed")
+        _emit_cancellation_trace(project, run_id, source, "run_cancelled")
 
     killed = [pid for pid in pids if _sys.kill_process_group(pid)]
     message = (

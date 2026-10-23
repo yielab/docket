@@ -64,7 +64,7 @@ class TestAbandonSweeps:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         cancelled: list[str] = []
-        monkeypatch.setattr(_runs, "cancel_run", lambda rid: cancelled.append(rid))
+        monkeypatch.setattr(_runs, "cancel_run", lambda rid, **_: cancelled.append(rid))
         monkeypatch.setattr(_serve, "_sweep_run_ids", {"pod-a": "run-a", "pod-b": "run-b"})
         monkeypatch.setattr(_serve, "_sweep_inflight", {})
         monkeypatch.setattr(_serve, "_sweep_pool", None)
