@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 3.0.1
+**Version**: 3.0.2
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-23

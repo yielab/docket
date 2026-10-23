@@ -40,6 +40,8 @@ counts as low as the evidence allows and lowers the baseline.
    `core/inbox.py`, `core/notify.py`); `_no_reserved_headers` (`core/exporter.py`,
    `core/provider.py`). Look for near-copies the measure cannot see (same body with one constant
    different): `rg` the ISO parsing and timestamp helpers across `src/` and fold them too.
+   `kernel/templates.py` mixes three constants with three functions that return a constant:
+   one shape (constants), callers updated.
    `use_clock`/`use_home` are structurally alike but set different ContextVars: fold them only
    if one generic kernel helper makes both shorter; otherwise leave them and say so.
 4. **Leftovers kept for the past (D-57).** A canonical document without `kind:` still loads with

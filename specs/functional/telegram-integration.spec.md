@@ -1,6 +1,6 @@
 # Telegram Integration Specification
 
-**Version**: 4.0.0
+**Version**: 4.0.1
 **Status**: Implemented. `docket setup notify enable telegram --chat <id>` connects the channel in
 one operation, `bind`/`unbind` handle the per-pod exception, and `docket start --telegram`
 long-polls the Bot API and routes five verbs through docket's own approval, answer and dispatch

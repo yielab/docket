@@ -1,10 +1,10 @@
 # MCP Client Specification
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Implemented and on the live turn path: configured servers' tools load into the turn's
 registry before per-role narrowing, so a role that denies a capability loses them like a built-in.
 Stdio transport only; each turn re-spawns every configured server (no listing cache).
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 3.0.1
+**Version**: 3.0.2
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.

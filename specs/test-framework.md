@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Active
 **Last Updated**: 2026-10-23
 
