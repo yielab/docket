@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.fakes import FakeJail
 from tests.support.pods import build_pod
 from tests.support.trace import trace_events as _trace_events
 
@@ -26,9 +27,9 @@ from docket.hops.application import runner as _application_runner
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home, use_home
+from docket.kernel.jail import jail as _jail
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.application import steps as _steps_c
-from docket.sandbox import launch as _launch
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
@@ -394,7 +395,9 @@ class TestTimeoutResolution:
         with pytest.raises(_task.DispatchError, match="turnTimeoutS"):
             _settings.pod_turn_timeout("myapp")
 
-    def test_turn_and_verify_timeouts_independently_applied_to_calls(self, tmp_path: Path) -> None:
+    def test_turn_and_verify_timeouts_independently_applied_to_calls(
+        self, tmp_path: Path, fake_jail: FakeJail
+    ) -> None:
         """End-to-end through dispatch_task: the agent-turn call gets
         turn_timeout, the verifyCmd call gets verify_timeout — never each
         other's value, even when both are configured."""
@@ -414,7 +417,7 @@ class TestTimeoutResolution:
             return _rd.TurnResult(True, "done", 0.0, {})
 
         seen_verify_timeouts: list[int] = []
-        real_run_command = _launch.run_command
+        real_run_command = _jail.run_command
 
         def _spy_run_command(cmd: str, cwd: str, timeout: int) -> tuple[int | None, str]:
             seen_verify_timeouts.append(timeout)
@@ -424,7 +427,7 @@ class TestTimeoutResolution:
 
         mp = _pytest.MonkeyPatch()
         try:
-            mp.setattr(_launch, "run_command", _spy_run_command)
+            fake_jail.run_command = _spy_run_command
             task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
             res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         finally:

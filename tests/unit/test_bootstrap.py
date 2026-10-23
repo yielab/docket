@@ -5,11 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.support.fakes import FakeJail
 
 from docket import bootstrap
 from docket.agent import driver as _driver
 from docket.kernel.home import Home
-from docket.sandbox import launch as _launch
+from docket.kernel.jail import SandboxAvailability
 
 SUBJECT = "docket.bootstrap"
 
@@ -28,12 +29,10 @@ def test_build_store_reads_and_writes_through_the_store_module(home: Home, tmp_p
     assert store.home is home
 
 
-def test_build_sandbox_probes_only_when_asked(home: Home, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_sandbox_probes_only_when_asked(home: Home, fake_jail: FakeJail) -> None:
     probes: list[str | None] = []
-    fake = _launch.SandboxAvailability(backend="none", docker=False)
-    monkeypatch.setattr(
-        _launch, "sandbox_availability", lambda choice=None: probes.append(choice) or fake
-    )
+    fake = SandboxAvailability(backend="none", docker=False)
+    fake_jail.sandbox_availability = lambda choice=None: probes.append(choice) or fake
     sandbox = bootstrap.build_sandbox(home)
     assert probes == []
     assert sandbox.availability("auto") is fake

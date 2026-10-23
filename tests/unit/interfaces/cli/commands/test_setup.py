@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.support.fakes import FakeGit
 from tests.support.home import home as _home
 from typer.testing import CliRunner
 
@@ -18,7 +19,6 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import setup as _setup
 from docket.kernel.home import current_home
 from docket.models.adapters import openai_http as _llm
-from docket.platform import git as _git
 
 SUBJECT = "docket.interfaces.cli.commands.setup"
 
@@ -56,32 +56,32 @@ class TestResolveVersion:
         assert _setup._resolve_version() == "0.2.0b4"
 
     def test_a_git_checkout_appends_the_commit(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         (tmp_path / ".git").mkdir()
         monkeypatch.setattr(_setup, "_source_root", lambda: tmp_path)
         monkeypatch.setattr(_setup, "_package_version", lambda: "0.2.0b4")
-        monkeypatch.setattr(_git, "git_head_sha", lambda cwd: "2359189412ab" + "0" * 28)
-        monkeypatch.setattr(_git, "git_worktree_changes", lambda cwd: [])
+        fake_git.git_head_sha = lambda cwd: "2359189412ab" + "0" * 28
+        fake_git.git_worktree_changes = lambda cwd: []
         assert _setup._resolve_version() == "0.2.0b4 (git 23591894)"
 
     def test_uncommitted_changes_are_marked_dirty(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         (tmp_path / ".git").mkdir()
         monkeypatch.setattr(_setup, "_source_root", lambda: tmp_path)
         monkeypatch.setattr(_setup, "_package_version", lambda: "0.2.0b4")
-        monkeypatch.setattr(_git, "git_head_sha", lambda cwd: "2359189412ab" + "0" * 28)
-        monkeypatch.setattr(_git, "git_worktree_changes", lambda cwd: [("M", "/x/a.py")])
+        fake_git.git_head_sha = lambda cwd: "2359189412ab" + "0" * 28
+        fake_git.git_worktree_changes = lambda cwd: [("M", "/x/a.py")]
         assert _setup._resolve_version() == "0.2.0b4 (git 23591894, dirty)"
 
     def test_a_checkout_without_git_on_the_path_prints_the_bare_version(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         (tmp_path / ".git").mkdir()
         monkeypatch.setattr(_setup, "_source_root", lambda: tmp_path)
         monkeypatch.setattr(_setup, "_package_version", lambda: "0.2.0b4")
-        monkeypatch.setattr(_git, "git_head_sha", lambda cwd: None)
+        fake_git.git_head_sha = lambda cwd: None
         assert _setup._resolve_version() == "0.2.0b4"
 
 

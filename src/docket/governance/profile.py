@@ -13,10 +13,10 @@ from typing import Any
 from docket.agent.tools import mcp_tools as _mcp
 from docket.governance import secrets as _secrets
 from docket.hops.application import record as _record
+from docket.kernel.jail import jail as _jail
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.sandbox import launch as _launch
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
@@ -146,7 +146,7 @@ def gather_facts(
     stored = _secrets.secrets_keys()
     return Facts(
         isolation_on=_fleet.get_isolation_enabled(),
-        backend=_launch.sandbox_availability().backend,
+        backend=_jail.sandbox_availability().backend,
         network_mode=mode,
         network_scope=scope,
         ungated_implementers=ungated,
@@ -168,7 +168,7 @@ def fleet_violations() -> list[Violation]:
     mode, scope = _pod_settings.effective_network(None)
     facts = Facts(
         isolation_on=_fleet.get_isolation_enabled(),
-        backend=_launch.sandbox_availability().backend,
+        backend=_jail.sandbox_availability().backend,
         network_mode=mode,
         network_scope=scope,
         ungated_implementers=(),

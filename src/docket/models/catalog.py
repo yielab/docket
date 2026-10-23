@@ -30,8 +30,8 @@ import docket.kernel.templates as _templates
 from docket.agent.llm import ModelLimits
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
+from docket.kernel.process import process as _process
 from docket.models import document_fields as _documents
-from docket.platform import process as _process
 from docket.platform import read_json, read_modify_write
 
 if TYPE_CHECKING:

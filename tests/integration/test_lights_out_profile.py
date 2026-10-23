@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.support.fakes import FakeDriver
+from tests.support.fakes import FakeDriver, FakeJail
 from tests.support.home import record_isolation_off, record_isolation_on
 from tests.support.pods import build_pod
 from tests.support.pods import spec as _spec
@@ -22,7 +22,7 @@ from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.sandbox import launch as _launch
+from docket.kernel.jail import SandboxAvailability
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
@@ -50,8 +50,8 @@ steps:
     role: implementer
 """
 
-_USABLE = _launch.SandboxAvailability(backend="landlock", docker=False, landlock=True)
-_NONE = _launch.SandboxAvailability(backend="none", docker=False)
+_USABLE = SandboxAvailability(backend="landlock", docker=False, landlock=True)
+_NONE = SandboxAvailability(backend="none", docker=False)
 
 
 @pytest.fixture
@@ -66,9 +66,9 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         yield root
 
 
-def _meet_everything(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _meet_everything(root: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail) -> None:
     record_isolation_on(root)
-    monkeypatch.setattr(_launch, "sandbox_availability", lambda *a, **k: _USABLE)
+    fake_jail.sandbox_availability = lambda *a, **k: _USABLE
     _fleet.set_network_mode("none")
     _fleet.set_profile("lights-out")
 
@@ -92,8 +92,10 @@ def _refused(res: _task.TaskResult, driver: FakeDriver, requirement: str) -> Non
 
 
 class TestRefusals:
-    def test_isolation_off_refuses(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _meet_everything(home, monkeypatch)
+    def test_isolation_off_refuses(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
 
         res, driver = _dispatch_one(_GATED)
@@ -102,17 +104,19 @@ class TestRefusals:
         assert "docket setup sandbox on" in (res.reason or "")
 
     def test_isolation_without_a_backend_refuses(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
-        monkeypatch.setattr(_launch, "sandbox_availability", lambda *a, **k: _NONE)
+        _meet_everything(home, monkeypatch, fake_jail)
+        fake_jail.sandbox_availability = lambda *a, **k: _NONE
 
         res, driver = _dispatch_one(_GATED)
 
         _refused(res, driver, "isolation")
 
-    def test_open_network_refuses(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _meet_everything(home, monkeypatch)
+    def test_open_network_refuses(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
         _fleet.set_network_mode("open")
 
         res, driver = _dispatch_one(_GATED)
@@ -120,9 +124,9 @@ class TestRefusals:
         _refused(res, driver, "network")
 
     def test_an_unrecorded_network_none_refuses(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
         data = json.loads((home / "fleet.json").read_text())
         data["security"]["networkMode"] = "unset"
         (home / "fleet.json").write_text(json.dumps(data))
@@ -132,9 +136,9 @@ class TestRefusals:
         _refused(res, driver, "network")
 
     def test_a_pod_level_network_none_satisfies_it(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
         _fleet.set_network_mode("open")
         _fleet.meta_set("demo-lead", "network", "none")
 
@@ -144,9 +148,9 @@ class TestRefusals:
         assert driver.calls
 
     def test_an_implementer_step_without_an_external_gate_refuses(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
 
         res, driver = _dispatch_one(_UNGATED)
 
@@ -154,9 +158,9 @@ class TestRefusals:
         assert "build" in (res.reason or "")
 
     def test_an_injected_variable_named_in_the_secret_store_refuses(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
         _secrets.save_secrets({"MY_TOKEN": "x"})
         _mcp.write_pod_mcp_servers(
             "demo", [_mcp.McpServerConfig(name="s", command="true", env={"MY_TOKEN": "y"})]
@@ -167,16 +171,18 @@ class TestRefusals:
         _refused(res, driver, "secrets")
         assert "MY_TOKEN" in (res.reason or "")
 
-    def test_the_refusal_is_resumable(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _meet_everything(home, monkeypatch)
+    def test_the_refusal_is_resumable(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
         res, _driver = _dispatch_one(_GATED)
         assert res.failure_kind in _queue.RESUMABLE_FAILURE_KINDS
 
     def test_a_resuming_sweep_refuses_a_task_once_per_run(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
         _queue.enqueue_task_once("demo", "Ship it", channel="cli")
 
@@ -191,9 +197,9 @@ class TestRefusals:
         assert results[0].failure_kind == "dispatch_refused"
 
     def test_a_resuming_sweep_still_reaches_the_next_task(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
         first = _queue.enqueue_task_once("demo", "First", channel="cli")[0]["id"]
         second = _queue.enqueue_task_once("demo", "Second", channel="cli")[0]["id"]
@@ -211,9 +217,9 @@ class TestRefusals:
 
 class TestPositive:
     def test_every_requirement_met_runs_the_task(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
 
         res, driver = _dispatch_one(_GATED)
 
@@ -286,13 +292,13 @@ class TestSetupProfile:
 
 class TestStatusAndDoctor:
     def test_status_and_doctor_show_the_same_violations(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         from docket.governance import profile as _profile
         from docket.interfaces.cli.commands import setup_check as _setup_check
         from docket.interfaces.cli.commands import status as _status
 
-        _meet_everything(home, monkeypatch)
+        _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
 
         expected = [v.requirement for v in _profile.project_violations("demo")]

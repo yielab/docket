@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from tests.support.cli import add as _add
 from tests.support.cli import reachable as _reachable
+from tests.support.fakes import FakeProcess
 from tests.support.home import global_providers as _global_providers
 from tests.support.home import home as _home
 from typer.testing import CliRunner
@@ -24,7 +25,6 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.kernel.home import current_home
-from docket.platform import process as _process
 
 SUBJECT = "docket.interfaces.cli.commands.setup_model_credentials"
 
@@ -84,33 +84,33 @@ class TestNoEnvSync:
 # ── keyring backend: add/rotate actually store, not just look up ────────────────
 
 
+def _stored(fake_process: FakeProcess) -> dict[str, str]:
+    """What the keyring holds, by key."""
+    return {key: value for (_service, key), value in fake_process.secrets.items()}
+
+
 class TestKeyringBackendStores:
+    @pytest.fixture(autouse=True)
+    def _keyring_host(self, fake_process: FakeProcess) -> None:
+        fake_process.env["DOCKET_SECRETS_BACKEND"] = "keyring"
+        fake_process.binaries = {"secret-tool"}
+
     def test_add_stores_through_secret_tool_not_secrets_json(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, fake_process: FakeProcess
     ) -> None:
         with _home(tmp_path):
-            monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
-            monkeypatch.setattr(_process, "secret_tool_available", lambda: True)
-            stored: dict[str, str] = {}
-            monkeypatch.setattr(
-                _process,
-                "secret_tool_store",
-                lambda service, key, value: stored.setdefault(key, value) or True,
-            )
             ok = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
             assert ok is True
-            assert stored == {"ANTHROPIC_API_KEY": "fake-ant-realvalue0000000"}
+            assert _stored(fake_process) == {"ANTHROPIC_API_KEY": "fake-ant-realvalue0000000"}
             on_disk = json.loads(current_home().secrets_file.read_text())
             assert on_disk["ANTHROPIC_API_KEY"] == ""
 
     def test_add_fails_closed_when_secret_tool_store_fails(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, fake_process: FakeProcess
     ) -> None:
         with _home(tmp_path):
-            monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
-            monkeypatch.setattr(_process, "secret_tool_available", lambda: True)
-            monkeypatch.setattr(_process, "secret_tool_store", lambda *a, **k: False)
+            fake_process.secret_tool_store = lambda *a, **k: False
             ok = _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
 
             assert ok is False
@@ -121,48 +121,34 @@ class TestKeyringBackendStores:
             )
 
     def test_rotate_stores_through_secret_tool(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_process: FakeProcess
     ) -> None:
         with _home(tmp_path):
             # First add under the file backend so the key exists to rotate.
+            fake_process.env["DOCKET_SECRETS_BACKEND"] = "file"
             _add("ANTHROPIC_API_KEY", "fake-ant-original00000000")
-
-            monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
-            monkeypatch.setattr(_process, "secret_tool_available", lambda: True)
-            stored: dict[str, str] = {}
-            monkeypatch.setattr(
-                _process,
-                "secret_tool_store",
-                lambda service, key, value: stored.setdefault(key, value) or True,
-            )
+            fake_process.env["DOCKET_SECRETS_BACKEND"] = "keyring"
             monkeypatch.setattr(getpass, "getpass", lambda *a, **k: "fake-ant-rotated000000000")
 
             rc = _setup_model_credentials.credential_rotate("ANTHROPIC_API_KEY")
 
             assert rc == 0
-            assert stored == {"ANTHROPIC_API_KEY": "fake-ant-rotated000000000"}
+            assert _stored(fake_process) == {"ANTHROPIC_API_KEY": "fake-ant-rotated000000000"}
             on_disk = json.loads(current_home().secrets_file.read_text())
             assert on_disk["ANTHROPIC_API_KEY"] == ""
 
     def test_remove_clears_the_keyring_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_process: FakeProcess
     ) -> None:
         with _home(tmp_path):
-            monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
-            monkeypatch.setattr(_process, "secret_tool_available", lambda: True)
-            monkeypatch.setattr(_process, "secret_tool_store", lambda *a, **k: True)
             _add("ANTHROPIC_API_KEY", "fake-ant-realvalue0000000")
-
-            cleared: list[str] = []
-            monkeypatch.setattr(
-                _process, "secret_tool_clear", lambda service, key: cleared.append(key) or True
-            )
+            assert _stored(fake_process) != {}
             monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
             rc = _setup_model_credentials.credential_remove("ANTHROPIC_API_KEY")
 
             assert rc == 0
-            assert cleared == ["ANTHROPIC_API_KEY"]
+            assert _stored(fake_process) == {}
             assert "ANTHROPIC_API_KEY" not in json.loads(current_home().secrets_file.read_text())
 
 

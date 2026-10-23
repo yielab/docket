@@ -24,7 +24,7 @@ from tests.support.pods import write_policy as _write_policy
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
-from docket.sandbox import launch as _launch
+from docket.kernel.jail import jail as _jail
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 
@@ -43,7 +43,7 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        code, output = _launch.run_command("stripe charge customer --amount 500", str(tmp_path))
+        code, output = _jail.run_command("stripe charge customer --amount 500", str(tmp_path))
         assert code is None
         assert "money-movement" in output
         assert "docket setup sandbox classes" in output
@@ -55,7 +55,7 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        code, output = _launch.run_command("git push origin production", str(tmp_path))
+        code, output = _jail.run_command("git push origin production", str(tmp_path))
         assert code is None
         assert "prod-deploy" in output
 
@@ -66,15 +66,13 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        code, output = _launch.run_command("ssh-keygen -t ed25519 -N ''", str(tmp_path))
+        code, output = _jail.run_command("ssh-keygen -t ed25519 -N ''", str(tmp_path))
         assert code is None
         assert "secret-access" in output
 
     def test_ordinary_verify_pipeline_is_unaffected(self, tmp_path: Path) -> None:
         """A realistic multi-command verify pipeline is not a false positive."""
-        code, output = _launch.run_command(
-            "echo building; echo testing && echo done", str(tmp_path)
-        )
+        code, output = _jail.run_command("echo building; echo testing && echo done", str(tmp_path))
         assert code == 0
         assert "done" in output
 

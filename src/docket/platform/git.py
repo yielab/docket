@@ -14,7 +14,10 @@ import tempfile
 from pathlib import Path
 from stat import S_ISREG
 
-from docket.platform.process import _QUERY_TIMEOUT, _SANDBOX_PROBE_TIMEOUT, _TRUSTED_TREES, _which
+from docket.kernel.process import PROBE_TIMEOUT_S
+from docket.platform import process as _process
+
+_TRUSTED_TREES: dict[str, tuple[str, str]] = {}
 
 
 def trust_worktree(path: str, git_dir: str, common_dir: str) -> None:
@@ -25,13 +28,15 @@ def trust_worktree(path: str, git_dir: str, common_dir: str) -> None:
         _TRUSTED_TREES[os.path.realpath(path)] = (git_dir, common_dir)
 
 
-def _git_plain(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
+def trusted_dirs(path: str) -> tuple[str, str] | None:
+    """The ``(git dir, common dir)`` docket recorded for the worktree at *path*, else ``None``."""
+    return _TRUSTED_TREES.get(os.path.realpath(path))
+
+
+def git_plain(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
-            ["git", "-C", cwd, *args],
-            capture_output=True,
-            text=True,
-            timeout=_SANDBOX_PROBE_TIMEOUT,
+            ["git", "-C", cwd, *args], capture_output=True, text=True, timeout=PROBE_TIMEOUT_S
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
@@ -58,7 +63,7 @@ def _trusted_git_env(
     """The environment for host-side git in *cwd*, and a refusal reason or ``None``. In a worktree
     docket recorded, the git dir, common dir and work tree are named through the environment, so
     nothing the agent wrote at ``.git`` is read; a poisoned per-worktree config is refused."""
-    trusted = _TRUSTED_TREES.get(os.path.realpath(cwd))
+    trusted = trusted_dirs(cwd)
     if trusted is None:
         return env, None
     git_dir, common_dir = trusted
@@ -111,7 +116,7 @@ def git_identity_env(root: Path) -> dict[str, str]:
     resolved: dict[str, str] = {}
     for key in ("name", "email"):
         try:
-            out = _git_run(str(root), ["config", "--get", f"user.{key}"], _QUERY_TIMEOUT)
+            out = _git_run(str(root), ["config", "--get", f"user.{key}"], PROBE_TIMEOUT_S)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if out.returncode == 0 and out.stdout.strip():
@@ -125,7 +130,7 @@ def git_identity_env(root: Path) -> dict[str, str]:
 
 def git_available() -> bool:
     """Return True if a git binary is on PATH."""
-    return _which("git")
+    return _process.which("git")
 
 
 def git_current_branch(cwd: str) -> str:
@@ -135,7 +140,7 @@ def git_current_branch(cwd: str) -> str:
     if not git_available():
         return ""
     try:
-        result = _git_run(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], _QUERY_TIMEOUT)
+        result = _git_run(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return ""
     if result.returncode != 0:
@@ -148,7 +153,7 @@ def git_is_repo(cwd: str) -> bool:
     if not git_available():
         return False
     try:
-        result = _git_run(cwd, ["rev-parse", "--git-dir"], _QUERY_TIMEOUT)
+        result = _git_run(cwd, ["rev-parse", "--git-dir"], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
     return result.returncode == 0
@@ -167,7 +172,7 @@ def git_changed_files(cwd: str, *, all_untracked: bool = False) -> list[str]:
         return []
     try:
         args = ["status", "--porcelain", *(["--untracked-files=all"] if all_untracked else [])]
-        result = _git_run(cwd, args, _QUERY_TIMEOUT)
+        result = _git_run(cwd, args, PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
     if result.returncode != 0:
@@ -192,9 +197,9 @@ def git_worktree_changes(cwd: str) -> list[tuple[str, str]]:
     if not git_available():
         return []
     try:
-        top = _git_run(cwd, ["rev-parse", "--show-toplevel"], _QUERY_TIMEOUT)
+        top = _git_run(cwd, ["rev-parse", "--show-toplevel"], PROBE_TIMEOUT_S)
         status = _git_run(
-            cwd, ["status", "--porcelain", "-z", "--untracked-files=all"], _QUERY_TIMEOUT
+            cwd, ["status", "--porcelain", "-z", "--untracked-files=all"], PROBE_TIMEOUT_S
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
@@ -287,7 +292,7 @@ def git_worktree_prune(repo_dir: str) -> None:
             ["git", "-C", repo_dir, "worktree", "prune"],
             capture_output=True,
             text=True,
-            timeout=_QUERY_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
         )
 
 
@@ -301,7 +306,7 @@ def git_branch_merged(repo_dir: str, branch: str, into: str) -> bool:
             ["git", "-C", repo_dir, "branch", "--merged", into],
             capture_output=True,
             text=True,
-            timeout=_QUERY_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
@@ -322,7 +327,7 @@ def git_branch_delete(repo_dir: str, branch: str) -> tuple[bool, str]:
             ["git", "-C", repo_dir, "branch", "-d", branch],
             capture_output=True,
             text=True,
-            timeout=_QUERY_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
         return False, str(exc)
@@ -338,7 +343,7 @@ def git_head_sha(cwd: str) -> str | None:
     if not git_available():
         return None
     try:
-        result = _git_run(cwd, ["rev-parse", "HEAD"], _QUERY_TIMEOUT)
+        result = _git_run(cwd, ["rev-parse", "HEAD"], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     if result.returncode != 0:
@@ -367,7 +372,7 @@ def git_read_blob(cwd: str, rev: str, rel: str) -> bytes | None:
         result = subprocess.run(
             ["git", "-C", cwd, "cat-file", "blob", f"{rev}:{rel}"],
             capture_output=True,
-            timeout=_QUERY_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
             env=env,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -388,7 +393,7 @@ def git_path_exists_at(cwd: str, rev: str, rel: str) -> bool:
         result = subprocess.run(
             ["git", "-C", cwd, "cat-file", "-e", f"{rev}:{rel}"],
             capture_output=True,
-            timeout=_QUERY_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
             env=env,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -408,7 +413,7 @@ def git_list_tree_dirs(cwd: str, rev: str, rel: str) -> list[str] | None:
         result = subprocess.run(
             ["git", "-C", cwd, "ls-tree", "-d", "--name-only", "-z", f"{rev}:{rel}"],
             capture_output=True,
-            timeout=_QUERY_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
             env=env,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -425,7 +430,7 @@ def git_merge_base(cwd: str, other_branch: str) -> str | None:
     if not git_available():
         return None
     try:
-        result = _git_run(cwd, ["merge-base", "HEAD", other_branch], _QUERY_TIMEOUT)
+        result = _git_run(cwd, ["merge-base", "HEAD", other_branch], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     if result.returncode != 0:
@@ -446,7 +451,7 @@ def git_diff_stat(cwd: str, base: str, head: str | None = None) -> dict[str, int
         return None
     try:
         result = _git_run(
-            cwd, ["diff", "--shortstat", base, *([head] if head else [])], _QUERY_TIMEOUT
+            cwd, ["diff", "--shortstat", base, *([head] if head else [])], PROBE_TIMEOUT_S
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
@@ -469,7 +474,7 @@ def git_diff(path: str, base: str) -> str | None:
     if not git_available():
         return None
     try:
-        result = _git_run(path, ["diff", base], _QUERY_TIMEOUT)
+        result = _git_run(path, ["diff", base], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     return result.stdout if result.returncode == 0 else None
@@ -532,7 +537,7 @@ def git_ls_files(cwd: str) -> list[str] | None:
     if not git_available():
         return None
     try:
-        result = _git_run(cwd, ["ls-files", "-z"], _QUERY_TIMEOUT)
+        result = _git_run(cwd, ["ls-files", "-z"], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     if result.returncode != 0:
@@ -547,7 +552,7 @@ def git_untracked(worktree: str) -> list[str]:
         return []
     try:
         result = _git_run(
-            worktree, ["status", "--porcelain", "--untracked-files=all"], _QUERY_TIMEOUT
+            worktree, ["status", "--porcelain", "--untracked-files=all"], PROBE_TIMEOUT_S
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
@@ -562,7 +567,7 @@ def git_rev_parse(cwd: str, ref: str) -> str | None:
         return None
     try:
         result = _git_run(
-            cwd, ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], _QUERY_TIMEOUT
+            cwd, ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], PROBE_TIMEOUT_S
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
@@ -575,7 +580,7 @@ def git_diff_names(cwd: str, base: str, head: str) -> list[str]:
     if not git_available():
         return []
     try:
-        result = _git_run(cwd, ["diff", "--name-only", base, head], _QUERY_TIMEOUT)
+        result = _git_run(cwd, ["diff", "--name-only", base, head], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
     if result.returncode != 0:
@@ -589,7 +594,7 @@ def git_tracked_files(cwd: str) -> list[str]:
     if not git_available():
         return []
     try:
-        result = _git_run(cwd, ["ls-files", "-z"], _QUERY_TIMEOUT)
+        result = _git_run(cwd, ["ls-files", "-z"], PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
     if result.returncode != 0:
@@ -607,7 +612,7 @@ def git_blob_ids(cwd: str, paths: list[str]) -> dict[str, str]:
         if not _repo_rel_path_ok(rel):
             continue
         try:
-            result = _git_run(cwd, ["hash-object", "--", rel], _QUERY_TIMEOUT)
+            result = _git_run(cwd, ["hash-object", "--", rel], PROBE_TIMEOUT_S)
         except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             return {}
         if result.returncode == 0 and result.stdout.strip():

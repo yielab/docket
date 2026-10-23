@@ -21,10 +21,10 @@ from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.jail import jail as _jail
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.sandbox import launch as _launch
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
@@ -599,7 +599,7 @@ def _run_in_envelope(
     if jail is not None:
         linked = _prepare.linked_entries(cwd)
         jail = replace(jail, read_only=(*jail.read_only, *linked)) if linked else jail
-        return _launch.run_command(cmd, cwd, timeout, env=env, jail=jail)
+        return _jail.run_command(cmd, cwd, timeout, env=env, jail=jail)
     if env is None:
-        return _launch.run_command(cmd, cwd, timeout)
-    return _launch.run_command(cmd, cwd, timeout, env=env)
+        return _jail.run_command(cmd, cwd, timeout)
+    return _jail.run_command(cmd, cwd, timeout, env=env)

@@ -17,6 +17,7 @@ from typing import Any, Protocol
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
+from docket.kernel.process import process as _process
 from docket.observability import exporter as _exporter
 from docket.observability import trace
 from docket.observability.projection import DEFAULT_EVENTS, flush_open, flush_turn, project
@@ -25,7 +26,6 @@ from docket.observability.spans import (
     ProjectionState,
     Span,
 )
-from docket.platform import process as _process
 
 # ── Export pipeline: bounded queue, background sender, module registry ──
 #

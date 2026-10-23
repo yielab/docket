@@ -6,8 +6,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from docket.kernel.errors import InvalidInput
+from docket.kernel.jail import jail as _jail
 from docket.pipeline.domain.gates import EXTERNAL_OUTCOMES, ExternalGate, Gate
-from docket.sandbox import launch as _launch
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 
@@ -71,7 +71,7 @@ def _check_env(step_id: str, env: dict[str, str]) -> None:
     """Refuse an ``env`` entry that is malformed, loader/interpreter-controlling, a docket
     coordinate, or a name ``system.credential_names`` treats as a credential."""
 
-    credentials = _launch.credential_names()
+    credentials = _jail.credential_names()
     for name, value in env.items():
         if not _ENV_NAME.match(name):
             raise InvalidInput(f"step {step_id!r}: env name {name!r} must match ^[A-Z][A-Z0-9_]*$")

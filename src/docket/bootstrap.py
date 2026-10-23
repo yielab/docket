@@ -17,13 +17,44 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent import driver as _driver
+from docket.governance import secrets as _secrets
+from docket.governance import security as _security
+from docket.kernel.git import bind_git
 from docket.kernel.home import Home
+from docket.kernel.jail import SandboxAvailability, bind_jail
+from docket.kernel.jail import jail as _jail
+from docket.kernel.process import bind_process
+from docket.models import catalog as _catalog
 from docket.operator import channel as _channel
+from docket.platform import git as _git_adapter
+from docket.platform import process as _process_adapter
 from docket.platform import store as _store
-from docket.sandbox import launch as _launch
+from docket.sandbox.launch import Launcher
+from docket.teams import fleet as _fleet
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
+
+
+def _credential_sources() -> set[str]:
+    """The credential names the secret store and the provider catalog add to the built-in two."""
+    names = set(_secrets.secrets_keys())
+    for spec in _catalog.load_catalog().entries.values():
+        names.update(spec.auth.credentials)
+    return names
+
+
+def bind_adapters() -> None:
+    """Bind the real git, process and jail adapters; every entry calls this before it runs."""
+    bind_git(_git_adapter)
+    bind_process(_process_adapter)
+    bind_jail(
+        Launcher(
+            recorded_backend=_fleet.get_sandbox_backend,
+            credential_source=_credential_sources,
+            high_risk=_security.match_high_risk,
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -50,8 +81,8 @@ class Sandbox:
 
     home: Home
 
-    def availability(self, choice: str | None = None) -> _launch.SandboxAvailability:
-        return _launch.sandbox_availability(choice)
+    def availability(self, choice: str | None = None) -> SandboxAvailability:
+        return _jail.sandbox_availability(choice)
 
 
 @dataclass(frozen=True)
@@ -114,6 +145,7 @@ def build_channels(home: Home) -> Channels:
 
 
 def build_app(home: Home) -> App:
+    bind_adapters()
     return App(
         home=home,
         store=build_store(home),
@@ -134,6 +166,7 @@ def build_server(
     token_file: str | None = None,
 ) -> ServerPlan:
     """The bearer token is ``DOCKET_SERVE_TOKEN`` when set, else a fresh random one."""
+    bind_adapters()
     token = os.environ.get("DOCKET_SERVE_TOKEN") or secrets.token_urlsafe(32)
     return ServerPlan(
         home=home,

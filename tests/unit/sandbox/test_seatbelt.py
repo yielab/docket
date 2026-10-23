@@ -11,10 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.support.fakes import launcher_with
 
-from docket.sandbox import docker as _docker
 from docket.sandbox import landlock as _landlock
-from docket.sandbox import launch as _launch
 from docket.sandbox import seatbelt as _seatbelt
 
 SUBJECT = "docket.sandbox.seatbelt"
@@ -128,16 +127,14 @@ class TestSeatbeltBackend:
         monkeypatch.delenv("DOCKET_SANDBOX_PROBE", raising=False)
         monkeypatch.setattr(_seatbelt.sys, "platform", "darwin")
         monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
-        monkeypatch.setattr(_launch, "landlock_available", lambda: False)
-        monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: True)
-        availability = _launch.sandbox_availability("auto")
+        host = launcher_with(landlock=False, docker=True)
+        availability = host.sandbox_availability("auto")
         assert availability.backend == "seatbelt"
         assert availability.landlock is False
         monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: False)
-        assert _launch.sandbox_availability("auto").backend == "none"
+        assert host.sandbox_availability("auto").backend == "none"
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "seatbelt")
-        assert _launch.sandbox_availability().backend == "seatbelt"
+        assert host.sandbox_availability().backend == "seatbelt"
 
 
 class TestRefNarrowingOnSeatbelt:

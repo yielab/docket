@@ -7,8 +7,8 @@ from docket.governance.audit import audit_log
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
+from docket.kernel.process import process as _process
 from docket.models import catalog as _prov
-from docket.platform import process as _process
 
 # -- credentials ---------------------------------------------------------------------------
 

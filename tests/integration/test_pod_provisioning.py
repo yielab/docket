@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from tests.support.fakes import FakeProcess
 from tests.support.pods import build_pod
 from tests.support.pods import meta_2 as _meta
 from typer.testing import CliRunner
@@ -646,19 +647,22 @@ class TestInitReadsRepoConfig:
             assert "docket setup notify enable desktop" in out
 
     def test_tty_with_a_desktop_session_offers_desktop_and_enables_on_yes(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        fake_process: FakeProcess,
     ) -> None:
         import builtins
 
         from docket.interfaces.cli.commands import setup_notify as _setup_notify
         from docket.operator import channel as _channel
-        from docket.platform import process as _process
 
         with _seed(tmp_path):
             monkeypatch.setattr(
                 "sys.stdin", type("Tty", (), {"isatty": staticmethod(lambda: True)})()
             )
-            monkeypatch.setattr(_process, "desktop_notifications_available", lambda: True)
+            fake_process.desktop_notifications_available = lambda: True
             monkeypatch.setattr(builtins, "input", lambda _prompt="": "")
             sent: list[str] = []
             monkeypatch.setattr(_setup_notify, "send_test", lambda name: sent.append(name) or 0)
@@ -674,18 +678,17 @@ class TestInitReadsRepoConfig:
             assert "Channel enabled: desktop" in out
 
     def test_tty_offer_declined_enables_nothing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_process: FakeProcess
     ) -> None:
         import builtins
 
         from docket.operator import channel as _channel
-        from docket.platform import process as _process
 
         with _seed(tmp_path):
             monkeypatch.setattr(
                 "sys.stdin", type("Tty", (), {"isatty": staticmethod(lambda: True)})()
             )
-            monkeypatch.setattr(_process, "desktop_notifications_available", lambda: True)
+            fake_process.desktop_notifications_available = lambda: True
             monkeypatch.setattr(builtins, "input", lambda _prompt="": "n")
 
             rc = _agents.run_init(

@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.support.fakes import launcher_with
 
 from docket.sandbox import landlock
-from docket.sandbox import launch as _launch
 
 SUBJECT = "docket.sandbox.landlock"
 
@@ -131,14 +131,12 @@ class TestLandlockBackend:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(_launch, "landlock_available", lambda: True)
-        monkeypatch.setattr(_launch, "seatbelt_available", lambda: False)
-        monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: True)
-        assert _launch.sandbox_availability("auto").backend == "landlock"
-        monkeypatch.setattr(_launch, "landlock_available", lambda: False)
-        assert _launch.sandbox_availability("auto").backend == "none"
+        host = launcher_with(landlock=True, seatbelt=False, docker=True)
+        assert host.sandbox_availability("auto").backend == "landlock"
+        no_landlock = launcher_with(landlock=False, seatbelt=False, docker=True)
+        assert no_landlock.sandbox_availability("auto").backend == "none"
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
-        assert _launch.sandbox_availability().backend == "landlock"
+        assert no_landlock.sandbox_availability().backend == "landlock"
 
     def test_availability_follows_the_abi_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from docket.sandbox import landlock

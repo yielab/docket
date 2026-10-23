@@ -2,9 +2,9 @@
 and the environment switches read live.
 
 Every subprocess call catches FileNotFoundError / TimeoutExpired / OSError and degrades gracefully
-so a missing binary never crashes a command. Functions are module-level and typed so callers can
-monkeypatch them. The git wrappers live in ``platform/git.py`` and the sandbox mechanism in
-``sandbox/``; ``specs/functional/security-gates.spec.md`` covers the scoping rationale.
+so a missing binary never crashes a command. This module is the real adapter of
+``kernel.process.Process`` (bound by ``bootstrap``; a test binds a fake).
+The git wrappers live in ``platform/git.py`` and the sandbox mechanism in ``sandbox/``; ``specs/functional/security-gates.spec.md`` covers the scoping rationale.
 """
 
 from __future__ import annotations
@@ -16,18 +16,16 @@ import sys
 import time
 
 from docket.kernel import clock as _clock
-
-# Kept short so a hung subprocess never blocks a CLI command.
-_QUERY_TIMEOUT = 5
+from docket.kernel.process import PROBE_TIMEOUT_S
 
 
-def _which(binary: str) -> bool:
+def which(binary: str) -> bool:
     """Return True if `binary` resolves on PATH (degrades to False on error)."""
     try:
         result = subprocess.run(
             ["command", "-v", binary],
             capture_output=True,
-            timeout=_QUERY_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
         )
         if result.returncode == 0:
             return True
@@ -44,16 +42,16 @@ def _which(binary: str) -> bool:
 
 def secret_tool_available() -> bool:
     """Return True if the `secret-tool` (libsecret) binary is on PATH."""
-    return _which("secret-tool")
+    return which("secret-tool")
 
 
 def desktop_notifications_available() -> bool:
     """True when the `desktop` channel dialect could deliver here: `osascript` on macOS, or a
     graphical session (`DISPLAY`/`WAYLAND_DISPLAY`) plus `notify-send` elsewhere."""
     if sys.platform == "darwin":
-        return _which("osascript")
+        return which("osascript")
     has_session = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-    return has_session and _which("notify-send")
+    return has_session and which("notify-send")
 
 
 def secret_tool_lookup(service: str, key: str) -> str | None:
@@ -103,14 +101,6 @@ def secret_tool_clear(service: str, key: str) -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
     return result.returncode == 0
-
-
-# Detection probes must be fast (they run on every "auto" call) and must
-# never hang a tool call over a jail that turns out to be unusable.
-_SANDBOX_PROBE_TIMEOUT = 5
-
-
-_TRUSTED_TREES: dict[str, tuple[str, str]] = {}
 
 
 def make_non_dumpable() -> None:

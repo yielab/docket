@@ -7,12 +7,30 @@ docket-owned secrets) by running each test in a ``use_home`` block.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
 
+from docket import bootstrap
+from docket.kernel.git import use_git
 from docket.kernel.home import Home, use_home
+from docket.kernel.jail import use_jail
+from docket.kernel.process import use_process
+from docket.platform import process as _process_adapter
+from docket.sandbox.launch import Launcher
+from tests.support.fakes import (
+    FakeGit,
+    FakeJail,
+    FakeProcess,
+    RealProcessExceptDumpable,
+    launcher_with,
+)
+
+# The real git, process and jail adapters are the default of every test; a test that wants a
+# fake asks for the ``fake_git``, ``fake_process`` or ``fake_jail`` fixture below.
+bootstrap.bind_adapters()
 
 _LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 2.0, "integration": 10.0}
 
@@ -52,12 +70,46 @@ def _plain_typer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _keep_pytest_dumpable(monkeypatch: pytest.MonkeyPatch) -> None:
+def _keep_pytest_dumpable() -> Iterator[None]:
     """An in-process turn must not make the pytest process non-dumpable for every later test;
     the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
-    from docket.platform import process as _process
+    with use_process(RealProcessExceptDumpable(_process_adapter)):
+        yield
 
-    monkeypatch.setattr(_process, "make_non_dumpable", lambda: None, raising=True)
+
+@pytest.fixture
+def fake_git() -> Iterator[FakeGit]:
+    fake = FakeGit()
+    with use_git(fake):
+        yield fake
+
+
+@pytest.fixture
+def fake_process() -> Iterator[FakeProcess]:
+    fake = FakeProcess()
+    with use_process(fake):
+        yield fake
+
+
+@pytest.fixture
+def fake_jail() -> Iterator[FakeJail]:
+    fake = FakeJail()
+    with use_jail(fake):
+        yield fake
+
+
+@pytest.fixture
+def bind_launcher() -> Iterator[Callable[..., Launcher]]:
+    """``bind_launcher(landlock=True, docker=False)`` binds the real jail adapter on a host whose
+    backend probes answer so, for the rest of the test."""
+    with ExitStack() as stack:
+
+        def bind(**probes: bool) -> Launcher:
+            launcher = launcher_with(**probes)
+            stack.enter_context(use_jail(launcher))
+            return launcher
+
+        yield bind
 
 
 @pytest.fixture(autouse=True)

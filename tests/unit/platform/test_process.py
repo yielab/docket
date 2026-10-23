@@ -1,44 +1,49 @@
-"""Real git evidence helpers (`git_head_sha`, `git_merge_base`, `git_diff_stat`).
-
-Each degrades to `None` rather than raising -- the same convention `git_current_branch`/
-`git_changed_files` already use -- on a missing binary, a non-repository directory, or an
-unresolvable ref. `subprocess.run` is monkeypatched throughout, mirroring
-`tests/integration/test_system_adapter.py`'s pattern; no real git process ever runs here.
-"""
+"""The real process adapter: what the desktop-notification probe needs and the environment
+switches it reads live."""
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
-from docket.platform import git as _git_c
 from docket.platform import process as _process
-from docket.sandbox import docker as _docker_c
 
 SUBJECT = "docket.platform.process"
 
 
+def _path_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *binaries: str) -> None:
+    """A PATH holding only an executable stub for each of *binaries*."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name in binaries:
+        stub = bin_dir / name
+        stub.write_text("#!/bin/sh\n")
+        stub.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+
 class TestDesktopNotificationsAvailable:
-    def test_linux_needs_a_session_and_notify_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_process.sys, "platform", "linux")
-        monkeypatch.setattr(_process, "_which", lambda binary: binary == "notify-send")
-        monkeypatch.setattr(_git_c, "_which", lambda binary: binary == "notify-send")
-        monkeypatch.setattr(_docker_c, "_which", lambda binary: binary == "notify-send")
+    def test_linux_needs_a_session_and_notify_send(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "platform", "linux")
+        _path_with(tmp_path, monkeypatch, "notify-send")
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
         assert _process.desktop_notifications_available() is False
         monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
         assert _process.desktop_notifications_available() is True
-        monkeypatch.setattr(_process, "_which", lambda binary: False)
-        monkeypatch.setattr(_git_c, "_which", lambda binary: False)
-        monkeypatch.setattr(_docker_c, "_which", lambda binary: False)
+        monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
         assert _process.desktop_notifications_available() is False
 
-    def test_macos_needs_only_osascript(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_process.sys, "platform", "darwin")
+    def test_macos_needs_only_osascript(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "platform", "darwin")
         monkeypatch.delenv("DISPLAY", raising=False)
-        monkeypatch.setattr(_process, "_which", lambda binary: binary == "osascript")
-        monkeypatch.setattr(_git_c, "_which", lambda binary: binary == "osascript")
-        monkeypatch.setattr(_docker_c, "_which", lambda binary: binary == "osascript")
+        _path_with(tmp_path, monkeypatch, "osascript")
         assert _process.desktop_notifications_available() is True
 
 

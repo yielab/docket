@@ -20,10 +20,10 @@ from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.home import current_home
+from docket.kernel.jail import jail as _jail
 from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.platform import read_json, read_modify_write
-from docket.sandbox import launch as _launch
 from docket.tasks.domain import options as _task_options
 from docket.tasks.domain.task import (
     DispatchError,
@@ -297,8 +297,8 @@ def _run_prepare_command(project: str, cmd: str, cwd: str) -> tuple[int | None, 
     if refusal is not None:
         return None, f"[prepare not run: {refusal}]"
     if jail is None:
-        return _launch.run_command(cmd, cwd, current_home().prepare_timeout_s)
-    return _launch.run_command(
+        return _jail.run_command(cmd, cwd, current_home().prepare_timeout_s)
+    return _jail.run_command(
         cmd, cwd, current_home().prepare_timeout_s, jail=replace(jail, network=True)
     )
 

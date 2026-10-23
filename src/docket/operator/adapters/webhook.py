@@ -21,7 +21,7 @@ from typing import Any
 from docket.kernel import clock as _clock
 from docket.operator.channel import ChannelSpec
 from docket.operator.contract import CloudEvent
-from docket.platform.redirects import open_same_origin
+from docket.platform import open_same_origin
 
 
 @dataclass(frozen=True)

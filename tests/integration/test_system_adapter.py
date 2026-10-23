@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.fakes import FakeProcess
 
-from docket.platform import git, process
+from docket.platform import git
 from docket.sandbox import docker
 
 SUBJECT = "docket.platform.git"
@@ -30,17 +31,12 @@ class _FakeCompleted:
 # ── docker ──────────────────────────────────────────────────────────────────────
 
 
-def test_docker_available_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(process, "_which", lambda b: b == "docker")
-    monkeypatch.setattr(git, "_which", lambda b: b == "docker")
-    monkeypatch.setattr(docker, "_which", lambda b: b == "docker")
+def test_docker_available_true(fake_process: FakeProcess) -> None:
+    fake_process.binaries = {"docker"}
     assert docker.docker_available() is True
 
 
-def test_docker_available_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(process, "_which", lambda b: False)
-    monkeypatch.setattr(git, "_which", lambda b: False)
-    monkeypatch.setattr(docker, "_which", lambda b: False)
+def test_docker_available_false(fake_process: FakeProcess) -> None:
     assert docker.docker_available() is False
 
 

@@ -21,13 +21,13 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.fakes import FakeGit
 from tests.support.pods import build_pod
 
 from docket.hops.workspace import worktree as _worktree
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.pipeline.application import executor as _executor
-from docket.platform import git as _git
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
@@ -41,72 +41,74 @@ SUBJECT = "docket.tasks"
 
 class TestHopDiffProbeUnit:
     def test_non_implementer_role_on_a_non_repo_gets_nothing(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: False)
+        fake_git.git_available = lambda: True
+        fake_git.git_is_repo = lambda _cwd: False
         assert _worktree._hop_diff_probe("demo-lead", "lead", {}) == ([], None, None, "")
         assert _worktree._hop_diff_probe("demo-reviewer", "reviewer", {}) == ([], None, None, "")
 
     def test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: True)
-        monkeypatch.setattr(_git, "git_changed_files", lambda _cwd: ["notes/"])
-        monkeypatch.setattr(_git, "git_diff", lambda _cwd, _base: "")
-        monkeypatch.setattr(_git, "git_new_files_text", lambda _cwd, _limit: "--- new file: n\nx\n")
+        fake_git.git_available = lambda: True
+        fake_git.git_is_repo = lambda _cwd: True
+        fake_git.git_changed_files = lambda _cwd: ["notes/"]
+        fake_git.git_diff = lambda _cwd, _base: ""
+        fake_git.git_new_files_text = lambda _cwd, _limit: "--- new file: n\nx\n"
         result = _worktree._hop_diff_probe("demo-researcher", "researcher", {})
         assert result == (["notes/"], None, None, "--- new file: n\nx\n")
         same = _worktree._hop_diff_probe("demo-critic", "critic", {}, "--- new file: n\nx\n")
         assert same == ([], None, None, "")
 
     def test_missing_git_binary_degrades_without_probing_further(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_git, "git_available", lambda: False)
+        fake_git.git_available = lambda: False
 
         def boom(*_a: Any, **_k: Any) -> Any:
             raise AssertionError("must not call git_is_repo when git is unavailable")
 
-        monkeypatch.setattr(_git, "git_is_repo", boom)
+        fake_git.git_is_repo = boom
         result = _worktree._hop_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
     def test_non_repo_cwd_degrades_without_probing_further(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
-        monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: False)
+        fake_git.git_available = lambda: True
+        fake_git.git_is_repo = lambda _cwd: False
 
         def boom(*_a: Any, **_k: Any) -> Any:
             raise AssertionError("must not call git_changed_files on a non-repo cwd")
 
-        monkeypatch.setattr(_git, "git_changed_files", boom)
-        monkeypatch.setattr(_git, "git_current_branch", boom)
+        fake_git.git_changed_files = boom
+        fake_git.git_current_branch = boom
         result = _worktree._hop_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
-    def test_real_probe_resolves_task_worktree_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_real_probe_resolves_task_worktree_first(
+        self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
+    ) -> None:
         meta = {"codebase": "/src/demo"}
         task = {"worktree": {"dir": "/wt/demo-implementer", "branch": "b", "baseCommit": "abc"}}
         monkeypatch.setattr(
             _fleet, "meta_get", lambda _id, field, default="": meta.get(field, default)
         )
-        monkeypatch.setattr(_git, "git_available", lambda: True)
+        fake_git.git_available = lambda: True
         seen_cwds: list[str] = []
 
         def fake_is_repo(cwd: str) -> bool:
             seen_cwds.append(cwd)
             return True
 
-        monkeypatch.setattr(_git, "git_is_repo", fake_is_repo)
-        monkeypatch.setattr(_git, "git_changed_files", lambda cwd: ["a.py", "b.py"])
-        monkeypatch.setattr(_git, "git_current_branch", lambda cwd: "pc/demo-implementer")
+        fake_git.git_is_repo = fake_is_repo
+        fake_git.git_changed_files = lambda cwd: ["a.py", "b.py"]
+        fake_git.git_current_branch = lambda cwd: "pc/demo-implementer"
 
         result = _worktree._hop_diff_probe("demo-implementer", "implementer", task)
         files_changed, diff_ref, evidence, _diff = result
@@ -118,17 +120,17 @@ class TestHopDiffProbeUnit:
         assert seen_cwds == ["/wt/demo-implementer"]
 
     def test_detached_head_reports_diff_ref_as_none_not_empty_string(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         monkeypatch.setattr(
             _fleet,
             "meta_get",
             lambda _id, field, default="": {"codebase": "/src/demo"}.get(field, default),
         )
-        monkeypatch.setattr(_git, "git_available", lambda: True)
-        monkeypatch.setattr(_git, "git_is_repo", lambda _cwd: True)
-        monkeypatch.setattr(_git, "git_changed_files", lambda _cwd: [])
-        monkeypatch.setattr(_git, "git_current_branch", lambda _cwd: "")
+        fake_git.git_available = lambda: True
+        fake_git.git_is_repo = lambda _cwd: True
+        fake_git.git_changed_files = lambda _cwd: []
+        fake_git.git_current_branch = lambda _cwd: ""
         result = _worktree._hop_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
@@ -317,7 +319,7 @@ class TestDegradePaths:
             }
 
     def test_missing_git_binary_degrades_to_empty_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         """Even against a real git repo with real uncommitted changes, a host
         with no `git` binary on PATH at dispatch time must degrade cleanly --
@@ -327,7 +329,7 @@ class TestDegradePaths:
         with _seed_pod(tmp_path, "gitless", codebase=str(repo_dir)):
             # Simulate "no git binary" only for the dispatch call itself -- the
             # pod was already provisioned (with real git) above.
-            monkeypatch.setattr(_git, "git_available", lambda: False)
+            fake_git.git_available = lambda: False
 
             _queue.enqueue_task_once("gitless", "work", channel="cli")
             (res,) = _sweep.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)

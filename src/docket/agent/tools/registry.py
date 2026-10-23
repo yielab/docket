@@ -30,9 +30,9 @@ from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.governance.security import classify_command
+from docket.kernel.git import git as _git
 from docket.observability.trace import redact as _redact
 from docket.operator.contract import canonical_args_digest
-from docket.platform import git as _git
 from docket.tasks.application import consult as _consult
 
 ToolKind = Literal["read", "write", "exec"]

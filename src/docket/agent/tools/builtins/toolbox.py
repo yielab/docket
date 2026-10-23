@@ -28,9 +28,8 @@ from docket.kernel import text as _text
 from docket.kernel import threads as _threads
 from docket.kernel.errors import Refused
 from docket.kernel.home import current_home
-from docket.sandbox import docker as _docker
-from docket.sandbox import launch as _launch
-from docket.sandbox.launch import SandboxAvailability, SandboxBackend
+from docket.kernel.jail import SandboxAvailability, SandboxBackend
+from docket.kernel.jail import jail as _jail
 
 SandboxMode = Literal["off", "auto"]
 
@@ -386,7 +385,7 @@ def run_bash(
         return ToolOutcome(False, error="no working directory configured")
     cwd = roots[0].resolve()
 
-    availability = _launch.sandbox_availability() if sandbox == "auto" else None
+    availability = _jail.sandbox_availability() if sandbox == "auto" else None
     backend: SandboxBackend = availability.backend if availability else "none"
     tag = _sandbox_tag(sandbox, availability)
     if sandbox == "auto" and backend == "none":
@@ -395,7 +394,7 @@ def run_bash(
     popen_env: dict[str, str] | None
     container_name = ""
     if backend in ("docker", "landlock", "seatbelt"):
-        launch = _launch.jail_launch(
+        launch = _jail.jail_launch(
             roots,
             command,
             backend,
@@ -411,7 +410,7 @@ def run_bash(
     else:
         popen_arg = command
         shell = True
-        popen_env = _launch.task_environment(env)
+        popen_env = _jail.task_environment(env)
 
     try:
         proc = subprocess.Popen(
@@ -446,7 +445,7 @@ def run_bash(
                 out, _ = proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 if backend == "docker":
-                    _docker.docker_kill(container_name)
+                    _jail.docker_kill(container_name)
                 _kill_group(proc)
                 exit_payload["signal"] = "SIGKILL"
                 message = f"command timed out after {timeout}s"
@@ -455,7 +454,7 @@ def run_bash(
             timed_out, was_cancelled, out = _wait_cancellable(proc, timeout, cancelled)
             if timed_out or was_cancelled:
                 if backend == "docker":
-                    _docker.docker_kill(container_name)
+                    _jail.docker_kill(container_name)
                 _kill_group(proc)
                 exit_payload["signal"] = "SIGKILL"
                 message = (
@@ -541,7 +540,7 @@ def _settle_unreadable(
         exit_payload["exitCode"] = proc.returncode
         return
     if container_name:
-        _docker.docker_kill(container_name)
+        _jail.docker_kill(container_name)
     _kill_group(proc)
     exit_payload["signal"] = "SIGKILL"
 

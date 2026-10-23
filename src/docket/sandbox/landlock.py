@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from docket.kernel.errors import Unavailable
-from docket.platform.git import _git_plain
-from docket.platform.process import _SANDBOX_PROBE_TIMEOUT, _TRUSTED_TREES
+from docket.kernel.git import git as _git
+from docket.kernel.process import PROBE_TIMEOUT_S
 from docket.sandbox import landlock
 
 SYS_LANDLOCK_CREATE_RULESET = 444
@@ -262,7 +262,7 @@ def landlock_available() -> bool:
 def worktree_git_dirs(path: str) -> tuple[str, str] | None:
     """``(git dir, common dir)`` of the worktree at *path* straight from git, for the record
     taken at provisioning; ``None`` when *path* is not a git checkout."""
-    result = _git_plain(path, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
+    result = _git.git_plain(path, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
     lines = result.stdout.split() if result is not None and result.returncode == 0 else []
     if len(lines) != 2:
         return None
@@ -275,7 +275,7 @@ def worktree_git_dirs(path: str) -> tuple[str, str] | None:
 def git_dirs(root: Path) -> list[Path]:
     """The repository dirs of *root* (per-worktree dir first, then the common dir), else []. A
     worktree docket recorded answers from the record, never from its ``.git`` file."""
-    trusted = _TRUSTED_TREES.get(os.path.realpath(root))
+    trusted = _git.trusted_dirs(str(root))
     if trusted is not None:
         git_dir, common = (Path(p).resolve() for p in trusted)
         return [git_dir] if git_dir == common else [git_dir, common]
@@ -284,7 +284,7 @@ def git_dirs(root: Path) -> list[Path]:
             ["git", "-C", str(root), "rev-parse", "--absolute-git-dir", "--git-common-dir"],
             capture_output=True,
             text=True,
-            timeout=_SANDBOX_PROBE_TIMEOUT,
+            timeout=PROBE_TIMEOUT_S,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
