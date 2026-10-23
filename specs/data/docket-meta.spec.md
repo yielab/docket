@@ -1,9 +1,9 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

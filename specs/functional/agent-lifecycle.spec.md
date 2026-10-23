@@ -1,10 +1,10 @@
 # Agent Lifecycle Specification
 
-**Version**: 3.0.0
+**Version**: 4.0.0
 **Status**: Complete. Pods and their members are created, shown, added to, reset, removed and
 deleted as described below; `docket init --from` provisions pods from a spec file (see
 Declarative Provisioning).
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

@@ -1,8 +1,8 @@
 # Session Scoping Specification
 
-**Version**: 4.0.0
+**Version**: 4.0.1
 **Status**: Complete
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

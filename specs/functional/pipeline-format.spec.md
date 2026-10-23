@@ -1,10 +1,10 @@
 # Pipeline Format Specification
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
 operator-input steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 

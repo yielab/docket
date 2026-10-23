@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 4.0.0
+**Version**: 5.0.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-10-22
+**Last Updated**: 2026-10-23
 
 ## Purpose
 
