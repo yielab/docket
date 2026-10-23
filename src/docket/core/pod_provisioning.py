@@ -48,7 +48,7 @@ POD_TEMPLATE_VERSION = 5
 TASK_WORKTREES_DIRNAME = "tasks"
 
 # A verify command is stored and later run with shell=True (system.py's
-# run_verify_cmd) because real verify pipelines legitimately use `&&`/pipes/
+# run_command) because real verify pipelines legitimately use `&&`/pipes/
 # redirects. This cap only bounds what gets persisted to .docket-meta.json and
 # executed — it is generous for any realistic single-line pipeline, not an
 # accommodation for arbitrary scripts (write a script file and call *that*
@@ -93,7 +93,7 @@ class PodProvisionResult:
 def validate_verify_cmd(cmd: str) -> str:
     """Validate a verify command before it is persisted to ``.docket-meta.json``.
 
-    Trust boundary: ``run_verify_cmd`` keeps ``shell=True`` (a real verify
+    Trust boundary: ``run_command`` keeps ``shell=True`` (a real verify
     pipeline needs ``&&``/pipes) because this string is operator-owned -- it
     only reaches docket via an interactive `pod set verify`/`--verify` call (or the
     equivalent `POST /pods` field) and runs as the operator, never as agent or
@@ -210,7 +210,7 @@ def _member_soul(
 ) -> str:
     """Render a pod member's SOUL.md from its archetype's `soulTemplate`.
 
-    Byte-identical to legacy output (role-archetypes.spec.md); no role-specific branching."""
+    No role-specific branching (role-archetypes.spec.md)."""
     arch = _arch.load_registry(project).get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")

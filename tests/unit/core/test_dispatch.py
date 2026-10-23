@@ -3,9 +3,9 @@
 See specs/data/serve-read-api.spec.md ("POST /tasks/<project>") for the
 endpoint contract this suite pins. Test classes: TestAuth (Bearer-gated
 like ``/dispatch/`` and ``/runs``), TestBadRequests (malformed/invalid
-bodies are 400 before ``enqueue_task`` runs), TestMissingPod (no pod is
+bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 404, not 500), TestPolicyGates (``pre_input`` gate behaves as the CLI
-path does, since this route calls the same ``enqueue_task``),
+path does, since this route calls the same ``enqueue_task_once``),
 TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
 and two extracted phases, called directly with a hand-built
 ``_UnitContext``/``PlannedUnit``).
@@ -25,8 +25,8 @@ from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
-from docket.cli import _pod as _cli_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import orchestrator as _orch
@@ -51,7 +51,7 @@ _TEST_TOKEN = "test-serve-token-tasks-post-9f2c"
 
 @pytest.fixture()
 def pod_home(tmp_path: Path) -> Iterator[Path]:
-    """A hermetic DOCKET_HOME with the directories enqueue_task touches."""
+    """A hermetic DOCKET_HOME with the directories enqueue_task_once touches."""
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -278,7 +278,7 @@ class TestPolicyGates:
 
 class TestTrustedFlag:
     """core.policy._INJECTION_IDS ("prompt-injection") is skipped exactly when
-    trusted=True -- matching the CLI/MCP callers, since enqueue_task's
+    trusted=True -- matching the CLI/MCP callers, since enqueue_task_once's
     default (no `trusted` in the request body) preserves trusted=True."""
 
     def test_omitted_trusted_defaults_to_the_cli_behaviour(
@@ -343,9 +343,9 @@ class TestEnqueueAddressableOptions:
     def test_fields_are_stored_verbatim_and_unset_ones_are_absent(self, pod_home: Path) -> None:
         _seed_lean_pod()
 
-        task = _dispatch.enqueue_task(
+        task = _dispatch.enqueue_task_once(
             "myapp", "x", channel="cli", external_ref="A-1", max_tokens=10, base_ref="main"
-        )
+        )[0]
 
         assert (task["externalRef"], task["maxTokens"], task["baseRef"]) == ("A-1", 10, "main")
         assert not {"idempotencyKey", "pipeline", "gate", "restrictions"} & set(task)
@@ -373,9 +373,11 @@ class TestEnqueueAddressableOptions:
         _seed_lean_pod()
 
         with pytest.raises(_dispatch.TaskRestrictionError):
-            _dispatch.enqueue_task("myapp", "x", channel="cli", restrictions={"network": "open"})
+            _dispatch.enqueue_task_once(
+                "myapp", "x", channel="cli", restrictions={"network": "open"}
+            )
         with pytest.raises(_dispatch.DispatchError) as shape:
-            _dispatch.enqueue_task("myapp", "x", channel="cli", max_tokens=0)
+            _dispatch.enqueue_task_once("myapp", "x", channel="cli", max_tokens=0)
 
         assert not isinstance(shape.value, _dispatch.TaskRestrictionError)
         assert _dispatch.read_tasks("myapp") == []
@@ -655,8 +657,8 @@ class TestBaseRefRefusedAtClaim:
 
     def test_an_unhonourable_base_ref_fails_the_task_with_no_hop(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
-        _dispatch.enqueue_task("myapp", "needs a base", channel="cli")
-        _dispatch.enqueue_task("myapp", "plain", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "needs a base", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "plain", channel="cli")
         queue = _dispatch.read_tasks("myapp")
         queue[0]["baseRef"] = "nope"
         from docket.edges import store as _store
@@ -683,7 +685,7 @@ class TestBaseRefRefusedAtClaim:
     ) -> None:
         monkeypatch.setenv("DOCKET_NO_TRACE", "0")
         _seed_lean_pod("myapp")
-        _dispatch.enqueue_task("myapp", "needs a base", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "needs a base", channel="cli")
         queue = _dispatch.read_tasks("myapp")
         queue[0]["baseRef"] = "nope"
         from docket.edges import store as _store
@@ -878,7 +880,7 @@ class TestEffectivePipelineBlueprint:
         ) -> _rd.TurnResult:
             return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
 
-        _dispatch.enqueue_task("myapp", "roll it out", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "roll it out", channel="cli")
         results = _dispatch.dispatch_pod("myapp", runner=_run, spec=None)
 
         assert len(results) == 1
@@ -942,7 +944,7 @@ class TestBoundPipeline:
         ) -> _rd.TurnResult:
             return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
 
-        _dispatch.enqueue_task("myapp", "ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "ship it", channel="cli")
         results = _dispatch.dispatch_pod("myapp", runner=_run, spec=None)
 
         assert len(results) == 1
@@ -1526,12 +1528,12 @@ class TestHopEvents:
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             record_isolation_off(home)
-            _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
             monkeypatch.setenv("DOCKET_NO_TRACE", "0")
             backend = _ScriptedBackend(["lead plan", "implementer done"])
             driver = _drt.DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_drt, "default_driver", lambda: driver)
-            task = _dispatch.enqueue_task("demo", "two hops", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "two hops", channel="cli")[0]
             assert _dispatch.dispatch_pod("demo")[0].status == "done"
 
             events = [e for e in _trace_events("demo") if e["event_type"].startswith("hop_")]
@@ -1581,8 +1583,8 @@ class TestHopEvents:
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             record_isolation_off(home)
-            _cli_pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
-            task = _dispatch.enqueue_task("demo", "usage", channel="cli")
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            task = _dispatch.enqueue_task_once("demo", "usage", channel="cli")[0]
             task_id = str(task["id"])
             hops = [
                 _dispatch.HopResult(
@@ -1643,7 +1645,7 @@ def _trace_events(project: str) -> list[dict[str, Any]]:
 class TestCancelTask:
     def _seed(self, status: str, **fields: Any) -> str:
         _seed_lean_pod()
-        task = _dispatch.enqueue_task("myapp", "work", channel="cli")
+        task = _dispatch.enqueue_task_once("myapp", "work", channel="cli")[0]
         from docket.edges import store as _store
 
         def _fn(doc: dict[str, Any]) -> dict[str, Any]:

@@ -21,6 +21,7 @@ from typing import Any, ClassVar
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.cli import _pod
@@ -60,7 +61,7 @@ def _seed_pod(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        build_pod(project, roles, codebase=f"/src/{project}")
         yield home
 
 
@@ -119,7 +120,7 @@ class TestHttpGrantConsumesThePregrant:
             driver = DocketDriver(backend_factory=lambda model: park_backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
             parked = _dispatch.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
@@ -318,7 +319,7 @@ def _bind_pipeline(project: str, text: str) -> None:
 
 
 def _bind_intake_pipeline(project: str) -> None:
-    text = (_templates.recipes_dir() / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
+    text = (_templates.RECIPES_DIR / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
     result = _pipeline.load_pipeline(text)
     assert result.spec is not None, result.errors
     _bind_pipeline(project, text)
@@ -378,7 +379,7 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
         message must contain `## Operator answers` with both exact values."""
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            task = _dispatch.enqueue_task("demo", "build the widget", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "build the widget", channel="cli")[0]
             runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
             first = _dispatch.dispatch_pod("demo", runner=runner)

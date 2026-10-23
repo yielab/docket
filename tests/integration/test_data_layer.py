@@ -378,14 +378,6 @@ class TestFleet:
         val = _fleet.meta_get("myshop", "nonexistent", "fallback")
         assert val == "fallback"
 
-    def test_meta_read(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
-        from docket.core.models import AgentKind
-
-        meta = _fleet.meta_read("myshop")
-        assert meta.kind == AgentKind.project
-        assert meta.name == "My Shop"
-
     def test_set_model_both(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet
 

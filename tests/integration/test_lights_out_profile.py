@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from tests.conftest import record_isolation_off, record_isolation_on
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod
@@ -65,7 +66,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         yield root
 
@@ -78,7 +79,7 @@ def _meet_everything(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _dispatch_one(spec_text: str) -> tuple[_dispatch.TaskResult, FakeDriver]:
-    _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+    _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
     driver = FakeDriver()
     res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(spec_text))[0]
     return res, driver

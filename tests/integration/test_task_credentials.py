@@ -1,6 +1,6 @@
 """A task's processes never see docket's credentials.
 
-Drives the real ``run_verify_cmd`` and the unjailed ``run_bash`` with credentials exported into
+Drives the real ``run_command`` and the unjailed ``run_bash`` with credentials exported into
 the host environment and a stored secret, then reads what the child process actually received.
 See specs/functional/security-gates.spec.md, "Credentials in task processes".
 """
@@ -43,14 +43,14 @@ def _assert_scrubbed(out: str) -> None:
 
 
 def test_verify_cmd_env_has_no_credentials(exported: None, tmp_path: Path) -> None:
-    ok, out = _system.run_verify_cmd(_ENV_CMD, str(tmp_path))
-    assert ok
+    code, out = _system.run_command(_ENV_CMD, str(tmp_path))
+    assert code == 0
     _assert_scrubbed(out)
 
 
 def test_verify_cmd_overlay_still_arrives(exported: None, tmp_path: Path) -> None:
-    ok, out = _system.run_verify_cmd(_ENV_CMD, str(tmp_path), env={"DOCKET_TASK_ID": "t-1"})
-    assert ok
+    code, out = _system.run_command(_ENV_CMD, str(tmp_path), env={"DOCKET_TASK_ID": "t-1"})
+    assert code == 0
     assert "DOCKET_TASK_ID=t-1" in out
     _assert_scrubbed(out)
 
@@ -67,8 +67,8 @@ def test_catalog_declared_credential_is_stripped(
     spec = next(s for s in _provider.load_catalog().entries.values() if s.auth.credentials)
     monkeypatch.setenv(spec.auth.credentials[0], "catalog-canary")
     monkeypatch.setenv("CATALOG_CONTROL", "control-canary")
-    ok, out = _system.run_verify_cmd(f"{_ENV_CMD}; env | grep catalog-canary; true", str(tmp_path))
-    assert ok
+    code, out = _system.run_command(f"{_ENV_CMD}; env | grep catalog-canary; true", str(tmp_path))
+    assert code == 0
     assert "catalog-canary" not in out
     assert "control-canary" in out
 

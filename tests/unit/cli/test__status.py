@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod, _status
+from docket.cli import _status
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
 from docket.edges import store as _store
@@ -28,7 +29,7 @@ def _seed(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
+        build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
         yield home
 
 

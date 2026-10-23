@@ -12,7 +12,6 @@ is the one function that owns the threads.
 
 from __future__ import annotations
 
-import datetime as _dt
 import queue as _queue
 import sys
 from collections.abc import Callable
@@ -58,20 +57,12 @@ def should_prompt(
     return render and not no_prompt_flag and stdin_isatty()
 
 
-def _epoch(ts: str) -> float | None:
-    try:
-        dt = _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
-    except (ValueError, IndexError):
-        return None
-    return dt.replace(tzinfo=_dt.UTC).timestamp()
-
-
 def _seconds_remaining(record: dict[str, Any], *, now: float | None = None) -> int:
     """``TOOL_APPROVAL_TIMEOUT`` minus the elapsed wall-clock time since
     *record*'s ``ts``, floored at 0 so a slow render never prints a negative
     countdown."""
     elapsed = 0.0
-    parsed = _epoch(str(record.get("ts", "")))
+    parsed = _clock.parse_epoch(record.get("ts"))
     if parsed is not None:
         elapsed = max(0.0, (now if now is not None else _clock.epoch()) - parsed)
     return max(0, int(current_home().tool_approval_timeout - elapsed))

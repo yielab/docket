@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 import docket.serve as serve
 from docket.kernel.home import Home, use_home
@@ -240,12 +241,11 @@ class TestInboxEndpoint:
         assert body["ok"] is False
 
     def test_authenticated_call_matches_build_inbox(self, inbox_live_server: str) -> None:
-        from docket.cli import _pod
 
-        _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
         from docket.core import dispatch as _dispatch
 
-        _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
 
         status, body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
 
@@ -253,12 +253,11 @@ class TestInboxEndpoint:
         assert set(body.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
 
     def test_matches_docket_inbox_json_for_the_same_state(self, inbox_live_server: str) -> None:
-        from docket.cli import _pod
 
-        _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
         from docket.core import dispatch as _dispatch
 
-        _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
 
         status, http_body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
         assert status == 200

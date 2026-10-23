@@ -21,17 +21,13 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import docket.kernel.templates as _templates
+from docket.core import document_fields as _documents
 from docket.core import privacy as _privacy
 from docket.core.trace import EVENT_TYPES
 from docket.edges import store as _store
 from docket.edges.adapters import system as _system
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
-
-_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-_CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-_CREDENTIAL_VALUE_RE = re.compile(r"^[A-Za-z0-9/_\-+.]{20,}$")
-_RESERVED_HEADERS = frozenset({"authorization", "content-type", "accept"})
 
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
 
@@ -42,14 +38,7 @@ class ExporterError(DocumentError):
 
 def _validate_credential_names(value: list[str]) -> list[str]:
     for name in value:
-        if _CREDENTIAL_NAME_RE.match(name):
-            continue
-        if _CREDENTIAL_VALUE_RE.match(name):
-            raise InvalidInput(
-                f"'{name}' looks like a credential VALUE, not a name -- "
-                "auth.credentials names a stored secret, it never carries one"
-            )
-        raise InvalidInput(f"'{name}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
+        _documents.check_credential_name(name, "auth.credentials")
     return value
 
 
@@ -137,27 +126,17 @@ class ExporterSpec(BaseModel):
     @field_validator("name")
     @classmethod
     def _valid_name(cls, value: str) -> str:
-        if not _NAME_RE.match(value):
-            raise InvalidInput(f"'{value}' is not a valid exporter name (^[a-z0-9][a-z0-9-]*$)")
-        return value
+        return _documents.check_name(value, "exporter")
 
     @field_validator("endpoint")
     @classmethod
     def _valid_endpoint(cls, value: str) -> str:
-        if not (value.startswith("http://") or value.startswith("https://")):
-            raise InvalidInput(f"'{value}' must be an http:// or https:// URL")
-        return value
+        return _documents.check_http_url(value)
 
     @field_validator("headers")
     @classmethod
     def _no_reserved_headers(cls, value: dict[str, str]) -> dict[str, str]:
-        for key in value:
-            if key.strip().lower() in _RESERVED_HEADERS:
-                raise InvalidInput(
-                    f"'{key}' is a reserved header name "
-                    "(authorization, content-type, accept are sent by docket itself)"
-                )
-        return value
+        return _documents.reject_reserved_headers(value)
 
     @field_validator("events")
     @classmethod

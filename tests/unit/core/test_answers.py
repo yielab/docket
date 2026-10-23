@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import answers as _answers
@@ -54,9 +55,9 @@ def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     """A real pod with a real ``waiting_input`` task, reached by actually dispatching
     through an ``input`` step -- not hand-built, so its persisted ``question`` and pipeline
     position are exactly what ``answer_task`` expects."""
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task(project, "needs a decision", channel="cli")
+    _dispatch.enqueue_task_once(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
     return _dispatch.read_tasks(project)[0]
 
@@ -81,8 +82,8 @@ class TestAnswerTaskValidation:
             )
 
     def test_answering_a_task_that_is_not_waiting_input_raises(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        task = _dispatch.enqueue_task_once("demo", "plain task", channel="cli")[0]
 
         with pytest.raises(_answers.AnswerError):
             _answers.answer_task(
@@ -147,11 +148,11 @@ class TestAnswerTaskPlacement:
     def test_a_task_parked_in_its_own_named_pipeline_is_answered_against_that_pipeline(
         self,
     ) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         pipelines = current_home().pod_config_dir("demo") / "pipelines"
         pipelines.mkdir(parents=True)
         (pipelines / "ask.yaml").write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
-        _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
         path = _dispatch.pod_task_list_path("demo")
         doc = _store.read_json(path)
         doc["tasks"][0]["pipeline"] = "ask"
@@ -201,7 +202,7 @@ class TestSweepExpiredQuestions:
         _store.write_json(path, {"tasks": tasks})
 
     def test_an_expired_question_blocks_the_task_never_fails_it(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         self._seed_task(
             "demo",
             "t1",
@@ -222,7 +223,7 @@ class TestSweepExpiredQuestions:
         assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
 
     def test_a_question_not_yet_expired_is_left_alone(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         self._seed_task(
             "demo",
             "t1",
@@ -236,7 +237,7 @@ class TestSweepExpiredQuestions:
         assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
 
     def test_a_question_with_no_expiry_is_never_swept(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         self._seed_task("demo", "t1", status="waiting_input", question={"id": "q-1"})
 
         count = _answers.sweep_expired_questions(now="2099-01-01T00:00:00+00:00")
@@ -245,7 +246,7 @@ class TestSweepExpiredQuestions:
         assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
 
     def test_only_waiting_input_tasks_are_considered(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         self._seed_task("demo", "t1", status="pending")
         self._seed_task("demo", "t2", status="done")
 

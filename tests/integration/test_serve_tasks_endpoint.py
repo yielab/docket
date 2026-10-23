@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -43,7 +44,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -126,8 +127,8 @@ class TestNoPodIsEmptyList:
 class TestQueueShapeMatchesReadTasks:
     def test_http_response_matches_read_tasks_directly(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "Ship the read API", channel="cli")
-            _dispatch.enqueue_task("demo", "Add a second task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Ship the read API", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Add a second task", channel="cli")
 
             expected = _dispatch.read_tasks("demo")
             assert len(expected) == 2

@@ -208,18 +208,6 @@ class LoopMetrics:
     turn_duration_seconds_count: int = 0
 
 
-def _epoch_seconds(ts: Any) -> float | None:
-    """Parse a leading 'YYYY-MM-DDTHH:MM:SS' trace timestamp as a UTC epoch."""
-    if not isinstance(ts, str) or len(ts) < 19:
-        return None
-    try:
-        return (
-            _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_dt.UTC).timestamp()
-        )
-    except ValueError:
-        return None
-
-
 def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
     """Fold every project's trace JSONL into *m*. Mirrors
     ``core.trace.sweep_all``'s ``*/*.jsonl`` glob -- every project, not one.
@@ -250,7 +238,7 @@ def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
             elif etype == "session_end":
                 end_ts = rec.get("ts")
         if start_ts and end_ts:
-            s, e = _epoch_seconds(start_ts), _epoch_seconds(end_ts)
+            s, e = _clock.parse_epoch(start_ts), _clock.parse_epoch(end_ts)
             if s is not None and e is not None and e >= s:
                 m.turn_duration_seconds_sum += e - s
                 m.turn_duration_seconds_count += 1
@@ -746,7 +734,7 @@ def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) ->
 # `except Exception` below is a last-resort backstop for a genuinely
 # unexpected bug in that call chain, and it prints rather than swallows
 # (a bare `contextlib.suppress(Exception)` around dispatch is banned; a
-# delegate action reaching `core.dispatch.enqueue_task` is exactly that
+# delegate action reaching `core.dispatch.enqueue_task_once` is exactly that
 # "dispatch" this loop must not hide a failure from).
 _TELEGRAM_UNCONFIGURED_BACKOFF_S = 30
 _TELEGRAM_ERROR_BACKOFF_S = 5
@@ -943,7 +931,7 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
 MAX_POST_BODY_BYTES = 1024 * 1024
 
 
-# POST /tasks body name -> enqueue_task option, for the addressable-task fields.
+# POST /tasks body name -> enqueue_task_once option, for the addressable-task fields.
 _TASK_OPTION_FIELDS: tuple[tuple[str, str], ...] = (
     ("external_ref", "externalRef"),
     ("idempotency_key", "idempotencyKey"),
@@ -1374,7 +1362,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         priority_raw = task_body.get("priority", "normal")
         priority = str(priority_raw) if priority_raw else "normal"
         # `trusted` (optional) overrides the `pre_input` policy check's trust
-        # flag for this enqueue only — see core.dispatch.enqueue_task. Absent
+        # flag for this enqueue only — see core.dispatch.enqueue_task_once. Absent
         # (None) leaves every existing caller's behaviour byte-for-byte
         # unchanged; this is the only place that field is threaded through.
         trusted_raw = task_body.get("trusted")
@@ -1433,7 +1421,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         }
         # A `require_approval` pre_input verdict leaves the task itself
         # created but gated — surface its real status and token rather than
-        # a 200 that implies it is queued to run (see enqueue_task, which
+        # a 200 that implies it is queued to run (see enqueue_task_once, which
         # already sets both on the returned dict for this case).
         if task["status"] == "waiting_approval":
             task_resp["approvalToken"] = task.get("approvalToken", "")

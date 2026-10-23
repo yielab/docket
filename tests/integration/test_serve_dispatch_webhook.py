@@ -9,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import fleet as _fleet
@@ -51,7 +52,7 @@ def _post(url: str) -> tuple[int, dict]:  # type: ignore[type-arg]
 
 
 def test_a_missing_bound_pipeline_copy_is_a_400_and_creates_no_run(server: str) -> None:
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+    build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
     _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", "a" * 64)
     status, body = _post(f"{server}/dispatch/demo")
     assert status == 400

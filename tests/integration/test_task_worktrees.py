@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import answers as _answers
@@ -104,7 +105,7 @@ def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         yield
 
 
@@ -194,7 +195,7 @@ def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(tmp_path
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        first = _dispatch.enqueue_task("demo", "first", channel="cli")
+        first = _dispatch.enqueue_task_once("demo", "first", channel="cli")[0]
         runner_one = _Runner("one.txt")
         (res_one,) = _dispatch.dispatch_pod("demo", runner=runner_one, max_tasks=1)
         assert res_one.status == "done", res_one.reason
@@ -205,7 +206,7 @@ def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(tmp_path
         _git(repo, "commit", "-m", "later")
         head_at_task_two = _git(repo, "rev-parse", "HEAD")
 
-        second = _dispatch.enqueue_task("demo", "second", channel="cli")
+        second = _dispatch.enqueue_task_once("demo", "second", channel="cli")[0]
         runner_two = _Runner("two.txt")
         (res_two,) = _dispatch.dispatch_pod("demo", runner=runner_two, max_tasks=1)
         assert res_two.status == "done", res_two.reason
@@ -241,7 +242,7 @@ def test_a_parked_then_answered_task_resumes_in_the_same_worktree(tmp_path: Path
         path.write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
         _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
 
-        queued = _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        queued = _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
         runner = _Runner("answer.txt")
         (parked,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
         assert parked.status == "waiting_input"
@@ -264,8 +265,8 @@ def test_removing_the_member_leaves_no_task_worktree(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "first", channel="cli")
-        _dispatch.enqueue_task("demo", "second", channel="cli")
+        _dispatch.enqueue_task_once("demo", "first", channel="cli")
+        _dispatch.enqueue_task_once("demo", "second", channel="cli")
         _dispatch.dispatch_pod("demo", runner=_Runner("a.txt"), max_tasks=1)
         _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
         assert len([p for p in _worktree_paths(repo) if "/tasks/" in p]) == 2
@@ -296,7 +297,7 @@ def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
             seen.append((agent_id, env))
             return TurnResult(True, "done", 0.0, {})
 
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
@@ -310,7 +311,7 @@ def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
 def _enqueue_with_base_ref(base_ref: str) -> None:
     from docket.edges import store as _store
 
-    _dispatch.enqueue_task("demo", "continue the work", channel="cli")
+    _dispatch.enqueue_task_once("demo", "continue the work", channel="cli")
     queue = _dispatch.read_tasks("demo")
     queue[0]["baseRef"] = base_ref
     _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": queue})
@@ -379,7 +380,7 @@ def test_a_command_step_gets_the_task_id_and_the_evidence_commits(tmp_path: Path
     with _seed_pod(tmp_path, repo):
         _bind_pipeline(_COORDINATES_PIPELINE_YAML)
 
-        queued = _dispatch.enqueue_task("demo", "work", channel="cli")
+        queued = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
         (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("work.txt"), max_tasks=1)
 
         assert res.status == "done", res.reason
@@ -399,7 +400,7 @@ def test_a_command_step_without_an_implementer_hop_gets_empty_commits(tmp_path: 
     with _seed_pod(tmp_path, repo):
         _bind_pipeline(_NO_IMPLEMENTER_PIPELINE_YAML)
 
-        queued = _dispatch.enqueue_task("demo", "work", channel="cli")
+        queued = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
         (res,) = _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
 
         assert res.status == "done", res.reason
@@ -413,7 +414,7 @@ def test_uncommitted_work_is_committed_on_the_task_branch(tmp_path: Path) -> Non
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "Add the notes file", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Add the notes file", channel="cli")
 
         runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
@@ -457,7 +458,7 @@ def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(tmp_p
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _bind_pipeline("name: write\nsteps:\n  - id: lead\n    role: lead\n")
-        _dispatch.enqueue_task("demo", "Write the notes", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Write the notes", channel="cli")
 
         (res,) = _dispatch.dispatch_pod("demo", runner=_LeadWritesRunner(), max_tasks=1)
 
@@ -478,7 +479,7 @@ def test_an_unmerged_pinned_task_survives_prune_without_force(tmp_path: Path) ->
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         _dispatch.dispatch_pod(
             "demo", runner=_UncommittedRunner({"only-new.txt": "x\n"}), max_tasks=1
         )
@@ -494,7 +495,7 @@ def test_a_hop_that_changed_nothing_adds_no_commit(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
 
         _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
 
@@ -513,7 +514,7 @@ def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
         monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a, **_k: (False, "forced"))
         head = _git(repo, "rev-parse", "HEAD")
         _bind_pipeline(_COORDINATES_PIPELINE_YAML)
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
 
         runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
@@ -536,7 +537,7 @@ def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(tmp_path: Path
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _bind_pipeline(_CHANGED_PIPELINE_YAML)
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
 
         _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
 
@@ -551,7 +552,7 @@ def test_a_failed_pin_records_no_commit_and_an_empty_head(
     with _seed_pod(tmp_path, repo):
         _bind_pipeline(_COORDINATES_PIPELINE_YAML)
         monkeypatch.setattr(_sys, "git_commit_all", lambda *_a, **_k: None)
-        queued = _dispatch.enqueue_task("demo", "work", channel="cli")
+        queued = _dispatch.enqueue_task_once("demo", "work", channel="cli")[0]
 
         _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
 

@@ -8,9 +8,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _agents, _pod, app
+from docket.cli import _contract, _pod, app
 from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 from docket.kernel.home import Home, current_home, use_home
@@ -23,7 +24,7 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+    monkeypatch.setattr(_contract, "is_tty", lambda: False)
     home = tmp_path / "home"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -72,7 +73,7 @@ class TestProvisioningLeavesAWorkdirItDidNotCreate:
 
 class TestRemovingTheLastImplementerKeepsThePodsOwnData:
     def test_defect_82_memory_config_and_the_work_dir_survive(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         memory = current_home().pod_memory_path("demo")
         memory.write_text("{}")
         config = current_home().pod_config_dir("demo")
@@ -89,7 +90,7 @@ class TestRemovingTheLastImplementerKeepsThePodsOwnData:
         assert not current_home().pod_cache_dir("demo").exists()
 
     def test_defect_82_the_port_range_is_released_and_a_new_implementer_gets_one(self) -> None:
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         _pod.remove_member("demo", "demo-implementer", yes=True)
 
         assert _pod.add_members("demo", "implementer") == ["demo-implementer"]

@@ -19,7 +19,6 @@ from docket.core import secrets as _secrets
 from docket.edges.adapters import system as _sys
 
 LIGHTS_OUT = "lights-out"
-ATTENDED = "attended"
 
 
 @dataclass(frozen=True)

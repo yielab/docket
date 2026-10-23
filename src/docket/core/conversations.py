@@ -17,7 +17,6 @@ ops stay testable; the ``cli`` layer stamps ``datetime.now(UTC)``.
 
 from __future__ import annotations
 
-import datetime as _dt
 import json
 from collections.abc import Callable
 from enum import StrEnum
@@ -31,15 +30,6 @@ from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
-
-
-def _epoch_from_iso(ts: str) -> float | None:
-    """Parse the leading 'YYYY-MM-DDTHH:MM:SS' of *ts* as a UTC epoch."""
-    try:
-        dt = _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
-    except (ValueError, IndexError):
-        return None
-    return dt.replace(tzinfo=_dt.UTC).timestamp()
 
 
 class ConversationStatus(StrEnum):
@@ -156,17 +146,6 @@ def record(
     return conv, upsert(reg, conv)
 
 
-def resume(
-    reg: ConversationRegistry, cid: str, now: str
-) -> tuple[Conversation | None, ConversationRegistry]:
-    """Mark a conversation ``in_progress`` and bump ``updated``. No-op if unknown."""
-    conv = get(reg, cid)
-    if conv is None:
-        return None, reg
-    resumed = conv.model_copy(update={"status": ConversationStatus.in_progress, "updated": now})
-    return resumed, upsert(reg, resumed)
-
-
 def touch_for_hop(
     reg: ConversationRegistry, *, agent_id: str, task_ref: str, last_message: str, now: str
 ) -> ConversationRegistry:
@@ -216,7 +195,7 @@ def prune_closed(
     removed = 0
     for c in reg.conversations:
         if c.status == ConversationStatus.done:
-            epoch = _epoch_from_iso(c.updated)
+            epoch = _clock.parse_epoch(c.updated)
             if epoch is not None and epoch < cutoff_epoch:
                 removed += 1
                 continue
@@ -325,11 +304,6 @@ def record_durable(
         ),
         path,
     )
-
-
-def resume_durable(cid: str, now: str, path: Path | None = None) -> Conversation | None:
-    """Resume a known conversation atomically; unknown ids leave the file untouched."""
-    return mutate(lambda reg: resume(reg, cid, now), path)
 
 
 def remove_agent_durable(agent_id: str, path: Path | None = None) -> bool:

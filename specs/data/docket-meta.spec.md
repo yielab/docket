@@ -10,7 +10,7 @@ also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46
 This specification defines the schema for `.docket-meta.json`, the per-agent metadata file that
 docket treats as the source of truth for an agent's identity and configuration. One file exists per
 agent at `$DOCKET_HOME/workspaces/projects/<agent-id>/.docket-meta.json`. It is read and written
-through the typed `meta_get` / `meta_set` / `meta_read` helpers over docket's atomic JSON store.
+through the typed `meta_get` / `meta_set` helpers over docket's atomic JSON store.
 
 ## Scope
 
@@ -70,7 +70,7 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 | `sessionKey` | string | `agent:<pod>:<projectKey>` | Yes (written always) | provisioning | Base session scope key. Pod dispatch derives its per-turn session keys itself and does not read this value |
 | `projectKey` | string | none | Yes (written always) | provisioning | Last component of `sessionKey` (default `default`) |
 | `budgetUsd` | number or numeric string | at least 0 | No | `docket pod set` / `unset` (Lead), provisioning (Lead, when a budget was requested) | Per-pod spend cap in USD, read from the Lead only. `pod set` writes a JSON number; provisioning with a requested budget writes it as a string (`"20.0"`). Both read back the same. `pod unset` stores `null`, which reads as the default (`0`, unlimited). See "Pod settings on the Lead" |
-| `paused` | bool | none | No | dispatch budget gate (sets `true`); `docket pod set budgetUsd <n>` and `docket run --resume` (set `false`) | Whether the pod is paused. Set on the Lead when the pod's usage-derived cost estimate reaches `budgetUsd`; dispatch then refuses every further claim for that pod and traces `paused_refused`. Read through `AgentMeta.is_paused` / `AgentMeta.coerce_paused` (a real `bool`, tolerant of a stringified `"true"`/`"false"`), never a raw string compare |
+| `paused` | bool | none | No | dispatch budget gate (sets `true`); `docket pod set budgetUsd <n>` and `docket run --resume` (set `false`) | Whether the pod is paused. Set on the Lead when the pod's usage-derived cost estimate reaches `budgetUsd`; dispatch then refuses every further claim for that pod and traces `paused_refused`. Read through `AgentMeta.coerce_paused` (a real `bool`, tolerant of a stringified `"true"`/`"false"`), never a raw string compare |
 | `pausedReason` | string | none | No | same as `paused` | Human-readable pause reason. The only writer sets the literal `"budget"`; the clearing writers set `""` |
 | `portRangeStart` | number | integer at least 0 | No (implementer only) | provisioning | First port of the pod's reserved range. Absent on non-implementers. A shared locked allocation gives concurrently created pods distinct ranges |
 | `portRangeCount` | number | integer above 0 | No (implementer only) | provisioning | Number of ports in the same allocation as `portRangeStart` |
@@ -154,8 +154,8 @@ and only then writes (atomically, under a lock):
 - `AgentMeta` does not range-check `budgetUsd`; the at-least-0 rule is enforced by `PodSettings`
   (so by `docket pod set` and by every dispatch read).
 
-`meta_get` on a missing file returns the caller's default. `meta_read` and `meta_set` on an agent
-with no file fail validation (`kind` is required), so a missing agent is never read as an empty
+`meta_get` on a missing file returns the caller's default. `meta_set` on an agent
+with no file fails validation (`kind` is required), so a missing agent is never read as an empty
 object.
 
 ## Field rules
@@ -289,8 +289,8 @@ stand as written; these change when the cards land.
 
 ## Implementation
 
-- `src/docket/core/models.py`: `AgentMeta` (`is_paused`, `coerce_paused`, `display_name`), `AgentKind`, `AgentScope`, `WorkspaceKind`
-- `src/docket/core/fleet.py`: `meta_get`, `meta_set`, `meta_read`, `set_model_both`
+- `src/docket/core/models.py`: `AgentMeta` (`coerce_paused`), `AgentKind`, `AgentScope`, `WorkspaceKind`
+- `src/docket/core/fleet.py`: `meta_get`, `meta_set`, `set_model_both`
 - `src/docket/core/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`, `value_and_source`), `PodSettingsError`, `pod_of`, `member_id`, `bound_pipeline_path`
 - `src/docket/core/pod_provisioning.py`: pod-member provisioning, `POD_TEMPLATE_VERSION`, `validate_verify_cmd`, `parse_budget_usd`
 - `src/docket/cli/_agents.py`: `docket init`, `docket init --from`

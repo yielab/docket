@@ -16,7 +16,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -24,6 +23,7 @@ from typing import Any, Literal
 import docket.kernel.templates as _templates
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
+from docket.core import document_fields as _documents
 from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp_tools
@@ -57,7 +57,6 @@ _MANIFEST_KEYS = frozenset(
 # The same name shape `core.exporter.ExporterSpec` validates -- checked here too so a
 # credential-shaped string or a URL is refused for what it is, before a catalog lookup
 # (`Catalog.get` on a non-string would raise `TypeError` on the dict membership test).
-_EXPORTER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 ApplyAction = Literal["add", "replace", "skip"]
 
@@ -220,7 +219,7 @@ def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list
 
 def resolve_recipe(name_or_dir: str) -> Path:
     """*name_or_dir* as a directory path, else the operator's own
-    ``config.user_recipes_dir()/<name>``, else a shipped recipe under ``config.recipes_dir()``.
+    ``Home.user_recipes_dir/<name>``, else a shipped recipe under ``templates.RECIPES_DIR``.
     Raises ``PodApplyError`` naming both scopes' recipe names when none resolves."""
     candidate = Path(name_or_dir)
     if candidate.is_dir():
@@ -229,7 +228,7 @@ def resolve_recipe(name_or_dir: str) -> Path:
     operator_candidate = operator_dir / name_or_dir
     if operator_candidate.is_dir():
         return operator_candidate
-    shipped = _templates.recipes_dir() / name_or_dir
+    shipped = _templates.RECIPES_DIR / name_or_dir
     if shipped.is_dir():
         return shipped
     operator_names = (
@@ -237,7 +236,7 @@ def resolve_recipe(name_or_dir: str) -> Path:
         if operator_dir.is_dir()
         else []
     )
-    shipped_names = sorted(p.name for p in _templates.recipes_dir().iterdir() if p.is_dir())
+    shipped_names = sorted(p.name for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
     raise PodApplyError(
         f"unknown recipe {name_or_dir!r}; operator: {', '.join(operator_names)}; "
         f"shipped: {', '.join(shipped_names)}"
@@ -406,7 +405,7 @@ def list_recipes() -> list[RecipeInfo]:
     same-named shipped one -- the same resolution order ``resolve_recipe`` applies to a single
     lookup. Sorted by name; used by ``docket pod recipes``."""
     by_name: dict[str, RecipeInfo] = {}
-    shipped_dir = _templates.recipes_dir()
+    shipped_dir = _templates.RECIPES_DIR
     if shipped_dir.is_dir():
         for entry in sorted(shipped_dir.iterdir()):
             if entry.is_dir():
@@ -817,7 +816,7 @@ def _plan_exporters(manifest: dict[str, Any]) -> tuple[str, ...]:
     catalog = _exporter.load_catalog()
     names: list[str] = []
     for entry in raw:
-        if not isinstance(entry, str) or not _EXPORTER_NAME_RE.match(entry):
+        if not isinstance(entry, str) or not _documents.NAME_RE.match(entry):
             raise PodApplyError(f"pod.yaml: 'exporters' entry {entry!r} is not an exporter name")
         if catalog.get(entry) is None:
             raise PodApplyError(f"pod.yaml: 'exporters' names unknown exporter {entry!r}")
@@ -958,7 +957,7 @@ class PlanReview:
 def is_shipped_recipe(directory: Path) -> bool:
     """Whether *directory* is a recipe docket ships (exempt from the operator review)."""
     try:
-        directory.resolve().relative_to(_templates.recipes_dir().resolve())
+        directory.resolve().relative_to(_templates.RECIPES_DIR.resolve())
     except ValueError:
         return False
     return True
@@ -1486,7 +1485,7 @@ def _export_schemas(directory: Path) -> None:
     """Copy the four published config-v1 JSON Schemas into ``<directory>/.schemas/`` so every
     exported YAML's `# yaml-language-server:` header resolves without reaching outside the
     export -- ``apply``/``discover_config_paths`` never look under ``.schemas/``."""
-    src_dir = _templates.config_schemas_dir()
+    src_dir = _templates.CONFIG_SCHEMAS_DIR
     dest_dir = directory / ".schemas"
     dest_dir.mkdir(parents=True, exist_ok=True)
     for kind in ("role", "pipeline", "policy", "pod"):

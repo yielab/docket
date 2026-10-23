@@ -962,9 +962,10 @@ One interaction contract serves every command:
 - `confirm(action, *, yes, typed=None)`: with a TTY, a `y/N` prompt, or the typed name when
   `typed` is given; without a TTY it refuses with exit 1 naming `--yes` (or `--confirm <name>`
   when `typed` is given). `yes=True` returns without prompting. Every confirming verb uses it.
-- `require_value(name, value, flag)`: with no TTY and no value, exit 1 naming the flag; never a
-  picker.
 - `emit_json(obj)`: plain `json.dumps` to stdout, never Rich.
+- `require_pod(pod)`: the pod from `--pod`, then `DOCKET_POD`, then the cwd; with none, exit 1
+  naming what was looked for.
+- `is_tty()`: whether stdin is a terminal; the one reading every prompting flow consults.
 - `next_step(command)`: the one `→ Next:` line described under "The console voice".
 
 Besides `confirm`, only a fixed set of flows prompt, each after checking for a terminal itself:
@@ -1052,7 +1053,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
   bare-`docket` guide lines
 - `src/docket/cli/_help.py`: `DocketGroup` (panel order, unknown-word suggestions)
 - `src/docket/cli/_target.py`: `resolve_pod`, `pod_option`
-- `src/docket/cli/_contract.py`: `confirm`, `require_value`, `emit_json`, `next_step`
+- `src/docket/cli/_contract.py`: `confirm`, `emit_json`, `next_step`, `require_pod`, `is_tty`
 - `src/docket/cli/_agents.py`: `docket init` (`cmd_init`, `InitRequest`, `run_init`, the review)
 - `src/docket/cli/_status.py`: `docket status`
 - `src/docket/cli/_inbox.py`: `docket inbox`

@@ -575,4 +575,5 @@ Where the names above live today (the only place paths appear):
 - `src/docket/kernel/home.py`: the `Home` members `default_model`, `model_registry_file`,
   `providers_file`, `provider_models_file`
 - `src/docket/kernel/templates.py`: `PROVIDER_TEMPLATES_DIR`
+- `src/docket/core/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
 - `src/docket/templates/providers/*.yaml`: the built-in provider documents (prices, presets)

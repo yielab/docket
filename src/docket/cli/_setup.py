@@ -314,7 +314,7 @@ def run_flow(json_out: bool = False) -> int:
         _contract.emit_json(_report_json(r))
         return 0 if r.endpoint.ok else 1
     _report(r)
-    interactive = _contract._is_tty()
+    interactive = _contract.is_tty()
     if not r.endpoint.ok:
         if not interactive:
             ui.error("Model endpoint missing", f"Run {r.endpoint.command}")

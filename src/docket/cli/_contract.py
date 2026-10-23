@@ -1,7 +1,7 @@
-"""The interaction contract every command follows: confirm, emit JSON, require a value, hint.
+"""The interaction contract every command follows: confirm, emit JSON, hint.
 
-Off a TTY nothing prompts: a missing confirmation or value is a one-line refusal naming the
-flag that supplies it.
+Off a TTY nothing prompts: a missing confirmation is a one-line refusal naming the flag that
+supplies it.
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from pathlib import Path
 import typer
 
 from docket import ui
-from docket.cli._target import resolve_pod
+from docket.cli._target import TargetError, resolve_pod
 
 
-def _is_tty() -> bool:
+def is_tty() -> bool:
     return sys.stdin.isatty()
 
 
@@ -25,7 +25,7 @@ def confirm(action: str, *, yes: bool, typed: str | None = None) -> bool:
     """True when the operator confirmed ``action``; refuses (exit 1) off a TTY without consent."""
     if yes:
         return True
-    if not _is_tty():
+    if not is_tty():
         flag = f"--confirm {typed}" if typed is not None else "--yes"
         ui.error(f"{action} needs confirmation", f"Re-run with {flag}")
         raise typer.Exit(1)
@@ -39,18 +39,19 @@ def emit_json(obj: object) -> None:
     sys.stdout.write(json.dumps(obj, indent=2) + "\n")
 
 
-def require_value(name: str, value: str | None, flag: str) -> str:
-    """Return ``value``; with none, exit 1 naming ``flag``. Never opens a picker."""
-    if value:
-        return value
-    ui.error(f"{name} is required", f"Pass {flag}")
-    raise typer.Exit(1)
-
-
 def resolve_pod_here(pod: str | None) -> str:
     """The pod a command acts on: ``pod``, then ``DOCKET_POD``, then the cwd. Raises
     ``TargetError`` when none or several match; each command words its own refusal."""
     return resolve_pod(pod, env=os.environ, cwd=Path.cwd())
+
+
+def require_pod(pod: str | None) -> str:
+    """The pod a command acts on (``resolve_pod_here``); exit 1 with the refusal when none."""
+    try:
+        return resolve_pod_here(pod)
+    except TargetError as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
 
 
 def next_step(command: str) -> None:

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _mcp
 from docket.cli import _pod as _pod_cli
@@ -96,7 +97,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod_cli.build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 

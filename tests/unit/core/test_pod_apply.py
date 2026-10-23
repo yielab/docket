@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.core import orchestrator as _orch
@@ -24,13 +25,12 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     """A minimal two-role pod (lead + implementer) in an isolated ``DOCKET_HOME`` --
     ``plan_apply``'s existing-pod lookup (``_dispatch.pod_pipeline``) needs one to resolve
     against, even for a manifest that never reaches roles/policies/settings."""
-    from docket.cli import _pod as _cli_pod
 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
 
 
@@ -461,7 +461,7 @@ class TestClassifyDirectory:
         assert _pod_apply.classify_directory(root).refused == ("bash",)
 
     def test_shipped_recipes_are_exempt_and_other_directories_are_not(self, tmp_path: Path) -> None:
-        shipped = next(p for p in _templates.recipes_dir().iterdir() if p.is_dir())
+        shipped = next(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
         assert _pod_apply.is_shipped_recipe(shipped)
         assert not _pod_apply.is_shipped_recipe(tmp_path)
 
@@ -494,7 +494,7 @@ class TestReviewDecision:
     def test_nothing_to_run_and_shipped_recipes_go(self, tmp_path: Path) -> None:
         plain = _repo_dir(tmp_path, {"policies/p.json": "{}"})
         assert _pod_apply.review_decision(tmp_path, "a", plain, None).status == "go"
-        shipped = next(p for p in _templates.recipes_dir().iterdir() if p.is_dir())
+        shipped = next(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
         assert _pod_apply.review_decision(tmp_path, "a", shipped, "bogus").status == "go"
 
     def test_run_items_need_the_code_then_accept_it(self, tmp_path: Path) -> None:

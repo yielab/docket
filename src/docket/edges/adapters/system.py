@@ -3,7 +3,7 @@
 Every shell-out to a container runtime, sandbox tool, or git lives here. Every subprocess call
 catches FileNotFoundError / TimeoutExpired / OSError and degrades gracefully so a missing binary
 never crashes a command. Functions are module-level and typed so callers can monkeypatch them.
-Imports ``docket.core.security`` for ``match_high_risk``. ``run_verify_cmd`` is the only function
+Imports ``docket.core.security`` for ``match_high_risk``. ``run_command`` is the only function
 here that runs a free-form command through a real shell (``shell=True``); every other function
 builds a fixed argv itself -- see ``specs/functional/security-gates.spec.md`` for the scoping
 rationale, which also covers the exec-sandbox section below (mechanism only; the decision to use
@@ -123,16 +123,6 @@ def secret_tool_lookup(service: str, key: str) -> str | None:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     return result.stdout or None
-
-
-def keyring_secret(name: str) -> str | None:
-    """*name*'s value from the OS keyring under docket's service, or ``None`` when ``secret-tool``
-    is missing or the lookup fails (no D-Bus session, no entry)."""
-    if not secret_tool_available():
-        return None
-
-    value = secret_tool_lookup(current_home().keyring_service, name)
-    return value.strip() if value else None
 
 
 def secret_tool_store(service: str, key: str, value: str) -> bool:
@@ -957,18 +947,6 @@ def jail_launch(
         build = landlock_argv if backend == "landlock" else seatbelt_argv
         return JailLaunch(build(all_roots, command, network, read_only), jailed_env(merged))
     raise InvalidInput(f"no sandbox backend to launch under: {backend}")
-
-
-def run_verify_cmd(
-    cmd: str,
-    cwd: str,
-    timeout: int = 120,
-    env: dict[str, str] | None = None,
-    jail: JailPolicy | None = None,
-) -> tuple[bool, str]:
-    """``run_command`` projected onto ``(passed, output)``: only exit status 0 passes."""
-    code, output = run_command(cmd, cwd, timeout, env=env, jail=jail)
-    return code == 0, output
 
 
 def run_command(

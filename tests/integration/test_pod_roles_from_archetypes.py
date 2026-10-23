@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod
@@ -149,7 +150,7 @@ class TestModelClassFallback:
 class TestPodAddStarterRole:
     def test_add_researcher_provisions_full_workspace(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             _pod.add_members("demo", "researcher")
 
             assert "demo-researcher" in _ids(oc_dir)
@@ -171,7 +172,7 @@ class TestPodAddStarterRole:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path):
-            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             _pod.add_members("demo", "researcher")
             capsys.readouterr()
 
@@ -182,7 +183,7 @@ class TestPodAddStarterRole:
 
     def test_members_of_lists_researcher_after_legacy_roles(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
-            _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+            build_pod("demo", _pod.pod.FULL_POD_ROLES)
             _pod.add_members("demo", "researcher")
             all_ids = _ids(oc_dir)
             members = pod.members_of(all_ids, "demo")

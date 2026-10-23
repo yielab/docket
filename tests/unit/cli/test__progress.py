@@ -19,6 +19,7 @@ import pytest
 
 from docket.cli import _progress
 from docket.core import approval as _ap
+from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._progress"
@@ -137,7 +138,7 @@ class TestRenderEvent:
                 "approval_requested",
                 {"token": "apr-2", "action": "bash('rm -rf x')"},
             )
-            now = _progress._epoch(record["ts"]) + 20  # 20s have elapsed since the event
+            now = _clock.parse_epoch(record["ts"]) + 20  # 20s have elapsed since the event
             line = _progress.render_event(record, now=now)
             assert line == (
                 "⏸ implementer wants: bash('rm -rf x') · token apr-2 · denies in 100s · "

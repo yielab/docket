@@ -21,12 +21,14 @@ from typing import Any
 
 import pytest
 import typer
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
+from docket.core import pod_provisioning as _pp
 from docket.core import runtime_driver as _rd
 from docket.kernel.home import Home, current_home, use_home
 
@@ -104,7 +106,7 @@ def _fake_runner() -> _dispatch.Runner:
 class TestDispatchVerifyCwd:
     """The verify gate's real subprocess must run in the resolved directory: each test plants a
     marker file and asserts on it via a real ``shell=True`` subprocess, not a mocked
-    ``run_verify_cmd``, proving the actual cwd rather than a helper's return value."""
+    ``run_command``, proving the actual cwd rather than a helper's return value."""
 
     @pytest.fixture(autouse=True)
     def _hermetic(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
@@ -203,7 +205,7 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     with use_home(Home(home)):
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         yield home
 
 
@@ -225,7 +227,7 @@ class TestSetVerifyValidation:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, monkeypatch):
-            too_long = "x" * (_pod._MAX_VERIFY_CMD_LEN + 1)
+            too_long = "x" * (_pp._MAX_VERIFY_CMD_LEN + 1)
             with pytest.raises(typer.Exit):
                 _pod.set_setting("demo", "verify", too_long, member="demo-implementer")
 
@@ -241,13 +243,13 @@ class TestSetVerifyValidation:
     def test_validator_accepts_command_exactly_at_the_cap(self) -> None:
         # Boundary check on the validator itself (not the full CLI path, which
         # would need to synthesize a single argv token this long).
-        at_cap = "x" * _pod._MAX_VERIFY_CMD_LEN
-        assert _pod._validate_verify_cmd(at_cap) == at_cap
+        at_cap = "x" * _pp._MAX_VERIFY_CMD_LEN
+        assert _pp.validate_verify_cmd(at_cap) == at_cap
 
     def test_validator_rejects_one_char_over_the_cap(self) -> None:
-        over_cap = "x" * (_pod._MAX_VERIFY_CMD_LEN + 1)
-        with pytest.raises(_pod.VerifyCmdError):
-            _pod._validate_verify_cmd(over_cap)
+        over_cap = "x" * (_pp._MAX_VERIFY_CMD_LEN + 1)
+        with pytest.raises(_pp.VerifyCmdError):
+            _pp.validate_verify_cmd(over_cap)
 
     def test_successful_set_verify_writes_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

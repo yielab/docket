@@ -78,7 +78,7 @@ def _run(
     stdin_text: str = "",
 ) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
-        mp.setattr(_contract, "_is_tty", lambda: True)
+        mp.setattr(_contract, "is_tty", lambda: True)
         result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 
@@ -147,7 +147,7 @@ class TestCmdBind:
 
         home = _setup_agent(tmp_path)
         with use_home(Home(home)):
-            monkeypatch.setattr(_contract, "_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             monkeypatch.setattr(telegram, "wire_discovery_configured", lambda: True, raising=False)
             monkeypatch.setattr(
                 telegram,

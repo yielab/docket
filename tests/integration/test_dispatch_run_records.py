@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 import typer
+from tests.pods import build_pod
 
 import docket.serve as _serve
 from docket.cli import _pod, _run
@@ -55,7 +56,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -296,7 +297,7 @@ class TestCliDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
 
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
                 return [_dispatch.TaskResult(task_id="task-x", status="done")]
@@ -316,7 +317,7 @@ class TestCliDispatchPath:
     ) -> None:
         """A failed task exits 1, matching its failed run record, and prints its id and reason."""
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
             reason = "reviewer hop failed: model wrote [/bold] then [red]stopped"
 
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
@@ -340,7 +341,7 @@ class TestCliDispatchPath:
     ) -> None:
         """Success and expected pauses exit 0 and keep the bracketed task id visible."""
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
 
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
                 return [_dispatch.TaskResult(task_id="task-x", status=status, reason="paused")]
@@ -371,7 +372,7 @@ class TestCliDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+            _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
 
             def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
                 raise RuntimeError("daemon exploded")
@@ -521,10 +522,7 @@ class TestRunsReadEndpoints:
         assert requested["cancellation"]["requestedAt"] is not None
         assert requested["cancellation"]["stoppedAt"] is None
 
-        assert (
-            _runs._finish_run_transition(rec["id"], state="succeeded", task_ids=["task-cancelled"])
-            is False
-        )
+        assert _runs.finish_run(rec["id"], state="succeeded", task_ids=["task-cancelled"]) is False
         with urllib.request.urlopen(req, timeout=5) as resp:
             stopped = json.loads(resp.read())
         assert stopped["state"] == "cancelled"
@@ -656,7 +654,7 @@ class TestSweepDispatchPath:
         sweep call itself must never raise (it runs on a daemon thread with no
         one to catch it)."""
         with _seed_pod(tmp_path, project="pod-a"):
-            _pod.build_pod("pod-b", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/pod-b")
+            build_pod("pod-b", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/pod-b")
             with use_home(
                 dataclasses.replace(current_home(), approvals_dir_override=tmp_path / "approvals")
             ):
@@ -685,7 +683,7 @@ class TestSweepWorkers:
     @contextmanager
     def _two_pods(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         with _seed_pod(tmp_path, project="pod-a"):
-            _pod.build_pod("pod-b", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/pod-b")
+            build_pod("pod-b", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/pod-b")
             monkeypatch.setattr(
                 "docket.core.dispatch.dispatchable_pods", lambda: ["pod-a", "pod-b"], raising=True
             )

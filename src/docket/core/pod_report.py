@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
@@ -334,7 +334,7 @@ def _model_source(role: str, project: str) -> str:
     return "policy"
 
 
-def _caller_default() -> str:
+def caller_default() -> Literal["wait", "park"]:
     """The approval default an unset ``approvalMode`` takes for this caller: ``wait`` on a
     TTY, ``park`` without one."""
     return "wait" if sys.stdin.isatty() else "park"
@@ -359,8 +359,8 @@ def pod_report(project: str) -> dict[str, Any]:
         }
         for mid, role, _idx in _pod.members_of(ids, project)
     ]
-    caller = _caller_default()
-    approval = _dispatch.pod_approval_mode(project, caller_default=caller)  # type: ignore[arg-type]
+    caller = caller_default()
+    approval = _dispatch.pod_approval_mode(project, caller_default=caller)
     record = _config_of_record_report(settings)
     return {
         "pod": project,

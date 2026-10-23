@@ -354,7 +354,7 @@ def consume_pregrant(token: str) -> bool:
             return None
         expires_at = data.get("expiresAt")
         if expires_at:
-            deadline = _parse_iso(str(expires_at))
+            deadline = _clock.parse_epoch(str(expires_at))
             if deadline is not None and _clock.epoch() > deadline:
                 return None
         data["consumedAt"] = _clock.stamp()
@@ -547,22 +547,8 @@ def _resolve_timeout_as_denied(token: str) -> bool:
     return True
 
 
-def _parse_iso(text: str) -> float | None:
-    """Parse a ``YYYY-MM-DDTHH:MM:SS...`` UTC timestamp to epoch seconds, or ``None``
-    for anything unparseable (fail-open on parsing, never on the expiry decision
-    itself: an unparseable ``expiresAt`` is treated as "no expiry recorded")."""
-    try:
-        return (
-            _dt.datetime.strptime(text[:19], "%Y-%m-%dT%H:%M:%S")
-            .replace(tzinfo=_dt.UTC)
-            .timestamp()
-        )
-    except ValueError:
-        return None
-
-
 def _iso_after(stamp: str, seconds: float) -> str:
-    base = _parse_iso(stamp) or _clock.epoch()
+    base = _clock.parse_epoch(stamp) or _clock.epoch()
     moment = _dt.datetime.fromtimestamp(base + seconds, _dt.UTC)
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -570,7 +556,7 @@ def _iso_after(stamp: str, seconds: float) -> str:
 def _expiry_deadline(data: dict[str, Any]) -> float | None:
     """A pending record's own ``expiresAt`` epoch seconds, or ``None`` when absent."""
     expires_at = data.get("expiresAt")
-    return _parse_iso(str(expires_at)) if expires_at else None
+    return _clock.parse_epoch(str(expires_at)) if expires_at else None
 
 
 def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
@@ -628,7 +614,7 @@ def approval_sweep_expired() -> int:
             and str((data.get("context") or {}).get("kind", "")) == "pregrant"
         ):
             expires_at = data.get("expiresAt")
-            deadline = _parse_iso(str(expires_at)) if expires_at else None
+            deadline = _clock.parse_epoch(str(expires_at)) if expires_at else None
             if deadline is not None and now > deadline:
                 project = str(data.get("project", "")) or "operator"
                 role = str(data.get("role", "")) or "operator"

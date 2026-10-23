@@ -1,4 +1,4 @@
-"""The interaction contract: confirm, emit_json, require_value, next_step."""
+"""The interaction contract: confirm, emit_json, next_step."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ SUBJECT = "docket.cli._contract"
 
 @pytest.fixture
 def no_tty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+    monkeypatch.setattr(_contract, "is_tty", lambda: False)
 
 
 def test_confirm_off_tty_refuses_naming_yes(
@@ -42,7 +42,7 @@ def test_confirm_with_yes_returns_without_prompting(no_tty: None) -> None:
 
 
 def test_confirm_on_tty_reads_the_typed_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_contract, "_is_tty", lambda: True)
+    monkeypatch.setattr(_contract, "is_tty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "x")
     assert _contract.confirm("delete pod x", yes=False, typed="x") is True
     monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
@@ -52,16 +52,6 @@ def test_confirm_on_tty_reads_the_typed_name(monkeypatch: pytest.MonkeyPatch) ->
 def test_emit_json_is_plain_json(capsys: pytest.CaptureFixture[str]) -> None:
     _contract.emit_json({"a": [1, 2], "b": "x"})
     assert json.loads(capsys.readouterr().out) == {"a": [1, 2], "b": "x"}
-
-
-def test_require_value_returns_a_value_and_refuses_a_missing_one(
-    no_tty: None, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert _contract.require_value("pod", "x", "--pod") == "x"
-    with pytest.raises(typer.Exit) as exc:
-        _contract.require_value("pod", None, "--pod")
-    assert exc.value.exit_code == 1
-    assert "--pod" in capsys.readouterr().err
 
 
 def test_next_step_prints_one_line_on_stderr_unless_silenced(
@@ -89,3 +79,15 @@ def test_resolve_pod_here_reads_the_process_environment_and_cwd(
     monkeypatch.delenv("DOCKET_POD")
     with pytest.raises(TargetError):
         _contract.resolve_pod_here(None)
+
+
+def test_require_pod_refuses_with_exit_1_naming_what_was_looked_for(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DOCKET_POD", raising=False)
+    assert _contract.require_pod("explicit") == "explicit"
+    with pytest.raises(typer.Exit) as exc:
+        _contract.require_pod(None)
+    assert exc.value.exit_code == 1
+    assert "--pod" in capsys.readouterr().err

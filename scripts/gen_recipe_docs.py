@@ -84,7 +84,7 @@ def _readme_body(directory: Path) -> str:
 
 
 def render() -> str:
-    recipes = sorted(p for p in _templates.recipes_dir().iterdir() if p.is_dir())
+    recipes = sorted(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
     summaries = {p.name: _pod_apply.summarize_recipe(p) for p in recipes}
     lines = [HEADER, "| Recipe | Brings | Description |", "| --- | --- | --- |"]
     for p in recipes:

@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import Thread
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
@@ -186,7 +187,7 @@ class TestPodShowExporters:
 
         with _seed(tmp_path):
             (current_home().root / "workspaces" / "projects").mkdir(parents=True)
-            _pod_cli.build_pod("demo", ("lead",), codebase="/src/demo")
+            build_pod("demo", ("lead",), codebase="/src/demo")
             _store_langfuse_keys()
 
             with _serve(200) as endpoint:

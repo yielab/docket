@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from docket.kernel import ids as _ids
 from docket.kernel.errors import InvalidInput
 
-A2A_STATES: tuple[str, ...] = (
+A2AState = Literal[
     "SUBMITTED",
     "WORKING",
     "INPUT_REQUIRED",
@@ -26,7 +26,7 @@ A2A_STATES: tuple[str, ...] = (
     "FAILED",
     "CANCELED",
     "REJECTED",
-)
+]
 
 EVENT_KINDS: tuple[str, ...] = (
     "task.input_required",
@@ -45,7 +45,7 @@ _EVENT_SCHEMA_URL = "https://docket.dev/schemas/operator-v1/event.schema.json"
 
 def a2a_state(
     status: str, blocked_reason: str | None = None, failure_kind: str | None = None
-) -> str:
+) -> A2AState:
     """Map a docket task ``status`` (plus reason/kind) onto its A2A 1.0.0 ``TaskState``."""
     if status == "pending":
         return "SUBMITTED"

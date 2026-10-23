@@ -15,9 +15,10 @@ from typing import Any
 
 import pytest
 from tests.conftest import record_isolation_off
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod, _run, _setup
+from docket.cli import _contract, _pod, _run, _setup
 from docket.cli import app as _app
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
@@ -45,7 +46,7 @@ def _seed_pod(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, roles or _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, roles or _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -140,7 +141,7 @@ class TestForegroundApprovalPrompt:
                 driver = DocketDriver(backend_factory=lambda model: backend)
                 monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-                _dispatch.enqueue_task("demo", "push the release", channel="cli")
+                _dispatch.enqueue_task_once("demo", "push the release", channel="cli")
                 _run._pod_dispatch("demo")
 
                 tasks = _dispatch.read_tasks("demo")
@@ -162,7 +163,7 @@ class TestForegroundApprovalPrompt:
                 driver = DocketDriver(backend_factory=lambda model: backend)
                 monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-                _dispatch.enqueue_task("demo", "push the release", channel="cli")
+                _dispatch.enqueue_task_once("demo", "push the release", channel="cli")
                 _run._pod_dispatch("demo")
 
                 tasks = _dispatch.read_tasks("demo")
@@ -197,7 +198,7 @@ class TestNoTtyNoChangePath:
             monkeypatch.setattr(_progress, "dispatch_with_progress", _boom)
             monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
 
-            _dispatch.enqueue_task("demo", "quiet path", channel="cli")
+            _dispatch.enqueue_task_once("demo", "quiet path", channel="cli")
             _run._pod_dispatch("demo")  # must not raise
 
 
@@ -216,7 +217,7 @@ class TestWaitingStatesAreNotErrors:
             monkeypatch.setattr(_run.ui, "warn", lambda msg: calls.append("warn"))
             monkeypatch.setattr(_run.ui, "error", lambda msg: calls.append("error"))
 
-            _dispatch.enqueue_task("demo", "ask first", channel="cli")
+            _dispatch.enqueue_task_once("demo", "ask first", channel="cli")
             _run._pod_dispatch("demo")
 
             assert calls == ["warn"]
@@ -231,7 +232,7 @@ def _fake_task_result() -> Any:
 class TestDryRun:
     def test_leaves_runs_and_tasks_untouched(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             before_runs, before_tasks = _runs_file(), _dispatch.read_tasks("demo")
 
             result = runner.invoke(_app, ["run", "--dry-run", "--pod", "demo"])
@@ -258,7 +259,7 @@ class TestEndpointGate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             _endpoint(monkeypatch, ok=False)
 
             result = runner.invoke(_app, ["run", "--pod", "demo"])
@@ -274,7 +275,7 @@ class TestEndpointGate:
         """The seam: no stand-in for ``readiness()``; a fresh home resolves to a hosted model
         with no credential, so the real report says the endpoint is missing."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
             result = runner.invoke(_app, ["run", "--pod", "demo"])
@@ -307,7 +308,7 @@ class TestRun:
     ) -> None:
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
 
             result = runner.invoke(_app, ["run", "--pod", "demo"])
@@ -322,7 +323,7 @@ class TestRun:
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
             _fleet.meta_set("demo-lead", "budgetUsd", "5")
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             monkeypatch.setattr(_dispatch, "pod_gating_cost", lambda project: (0.12, True))
             monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
 
@@ -338,7 +339,7 @@ class TestRun:
     ) -> None:
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             seen: dict[str, Any] = {}
 
             def _fake(project: str, **kw: Any) -> list[Any]:
@@ -364,7 +365,7 @@ class TestRun:
             _endpoint(monkeypatch, ok=True)
             _fleet.meta_set("demo-lead", "paused", True)
             _fleet.meta_set("demo-lead", "pausedReason", "budget")
-            task = _dispatch.enqueue_task("demo", "held", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "held", channel="cli")[0]
             monkeypatch.setattr(_dispatch, "unblock_pod", lambda project: 1)
             monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
             assert task["status"] == "pending"
@@ -380,7 +381,7 @@ class TestRun:
     ) -> None:
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             bad = tmp_path / "broken.pipeline.yaml"
             bad.write_text(
                 "name: broken\nsteps:\n  - id: build\n    role: implementer\n    nope: x\n"
@@ -399,7 +400,7 @@ class TestRun:
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
             monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
 
             result = runner.invoke(_app, ["run", "--pod", "demo"])
 
@@ -422,7 +423,7 @@ class TestRun:
 
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
-            _dispatch.enqueue_task("demo", "a task", channel="cli")
+            _dispatch.enqueue_task_once("demo", "a task", channel="cli")
             failed = TaskResult(task_id="t1", status="failed", hops=[], reason="verify failed")
             monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [failed])
 
@@ -495,7 +496,7 @@ def _repo_pod(tmp_path: Path, run: str = "make migrate") -> Iterator[Path]:
         (code / ".docket" / "skills" / "style-guide" / "SKILL.md").write_text(
             _SKILL.format(body="v1")
         )
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
         _pa.apply(_pa.plan_apply("demo", code / ".docket"))
         _rr.remember(code, "demo", _pa.classify_directory(code / ".docket").runs)
         yield code
@@ -559,7 +560,7 @@ class TestRunPicksUpTheRepository:
                 _SKILL.format(body="v2")
             )
             calls = _dispatches(monkeypatch)
-            monkeypatch.setattr(_run, "_stdin_is_tty", lambda: False)
+            monkeypatch.setattr(_contract, "is_tty", lambda: False)
             result = runner.invoke(_app, ["run", "--pod", "demo"])
             assert result.exit_code == 0 and calls == ["demo"]
             assert "! The repository changed a command that needs your OK. Running with the" in (
@@ -577,7 +578,7 @@ class TestRunPicksUpTheRepository:
         with _repo_pod(tmp_path) as code:
             (code / ".docket" / "pipeline.yaml").write_text(_PIPELINE.format(run="make evil"))
             calls = _dispatches(monkeypatch)
-            monkeypatch.setattr(_run, "_stdin_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             result = runner.invoke(_app, ["run", "--pod", "demo"], input="y\n")
             assert result.exit_code == 0 and calls == ["demo"]
             assert "The repository changed a command since you allowed it on " in result.output
@@ -593,7 +594,7 @@ class TestRunPicksUpTheRepository:
         with _repo_pod(tmp_path) as code:
             (code / ".docket" / "pipeline.yaml").write_text(_PIPELINE.format(run="make evil"))
             calls = _dispatches(monkeypatch)
-            monkeypatch.setattr(_run, "_stdin_is_tty", lambda: True)
+            monkeypatch.setattr(_contract, "is_tty", lambda: True)
             result = runner.invoke(_app, ["run", "--pod", "demo"], input="n\n")
             assert result.exit_code == 0 and calls == ["demo"]
             assert "-> Running with the version you allowed on " in result.output

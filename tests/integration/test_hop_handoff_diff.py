@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _tool_call_response
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -55,7 +56,7 @@ def _seed_research_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
     with use_home(Home(home)):
         record_isolation_off(home)
         register_local_provider(home, "local", [{"id": "stub"}], base_url=base_url)
-        _pod.build_pod("demo", ("lead", "researcher", "critic"), codebase=str(codebase))
+        build_pod("demo", ("lead", "researcher", "critic"), codebase=str(codebase))
         for role in ("lead", "researcher", "critic"):
             _fleet.meta_set(_pod.pod.member_id("demo", role), "model", "local/stub")
         path = _pod.pod.bound_pipeline_path("demo")
@@ -78,7 +79,7 @@ def _run_pipeline(
         ]
     )
     with _seed_research_pod(tmp_path, server.base_url):
-        _dispatch.enqueue_task("demo", "research the topic", channel="cli")
+        _dispatch.enqueue_task_once("demo", "research the topic", channel="cli")
         (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
         assert result.status == "done", result.reason
         hops = _dispatch.read_tasks("demo")[0]["hops"]

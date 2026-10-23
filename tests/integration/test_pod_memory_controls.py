@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.cli import _pod
@@ -40,7 +41,7 @@ def root(tmp_path: Path) -> Iterator[Path]:
         repo = tmp_path / "origin"
         (repo / "dist").mkdir(parents=True)
         (repo / "dist" / "bundle.js").write_text("x\n")
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
         yield repo
 
 
@@ -201,7 +202,7 @@ class TestReset:
         self, root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(_pitfall(), _entry("generated", "dist/bundle.js", "accepted"))
-        monkeypatch.setattr("docket.cli._contract._is_tty", lambda: True)
+        monkeypatch.setattr("docket.cli._contract.is_tty", lambda: True)
         monkeypatch.setattr("builtins.input", lambda _prompt: "n")
 
         result = _run("pod", "memory", "reset", "--pod", "demo")

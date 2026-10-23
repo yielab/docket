@@ -1,4 +1,4 @@
-"""``docket pod validate`` over directories: invalid files first, a note for a kind-less file."""
+"""``docket pod validate`` over directories: invalid files first, a kind-less file still loads."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ _ROLE_WITHOUT_KIND = (
 )
 
 
-def test_a_role_file_without_kind_loads_ok_with_a_note(tmp_path: Path) -> None:
+def test_a_canonical_role_file_without_kind_loads_ok_without_a_note(tmp_path: Path) -> None:
     roles_dir = tmp_path / "roles"
     roles_dir.mkdir()
     (roles_dir / "plain.yaml").write_text(_ROLE_WITHOUT_KIND, encoding="utf-8")
@@ -58,7 +58,7 @@ def test_a_role_file_without_kind_loads_ok_with_a_note(tmp_path: Path) -> None:
 
     assert rc == 0
     assert "ok " in out
-    assert "no 'kind:'" in out
+    assert "no 'kind:'" not in out
 
 
 def test_a_short_form_role_without_kind_is_refused_naming_the_kind_key(tmp_path: Path) -> None:

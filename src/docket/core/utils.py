@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
+from docket.core.runtime_driver import UsageDay, UsageTotals
 from docket.kernel.home import current_home
 
 
@@ -38,26 +37,11 @@ def si_format(n: int) -> str:
     return f"{f:.1f}P"
 
 
-@dataclass
-class CostTotals:
-    """Aggregated token/cost totals for one agent across all sessions."""
-
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read: int = 0
-    cache_write: int = 0
-    cost_usd: float = 0.0
-    turns: int = 0
-
-
-def aggregate_cost(agent_id: str) -> CostTotals:
+def aggregate_cost(agent_id: str) -> UsageTotals:
     """Return aggregated token/cost totals for *agent_id*.
 
-    Session-JSONL parsing lives behind the RuntimeDriver port -- this is a pure
-    translation from the driver's ``UsageTotals`` to the legacy ``CostTotals``
-    shape ``cli/_cost.py``,
-    ``cli/_doctor.py``, and ``core/dispatch.py`` already depend on. See
-    core/runtime_driver.py.
+    Session-JSONL parsing lives behind the RuntimeDriver port: this returns the driver's
+    ``UsageTotals`` as reported. See core/runtime_driver.py.
 
     Resolves ``edges.adapters.docket_runtime.default_driver()``
     (``DocketDriver``) -- load-bearing for ``core/dispatch.py``'s own
@@ -67,18 +51,10 @@ def aggregate_cost(agent_id: str) -> CostTotals:
     """
     from docket.edges.adapters import docket_runtime as _dr
 
-    t = _dr.default_driver().usage(agent_id).totals
-    return CostTotals(
-        input_tokens=t.input_tokens,
-        output_tokens=t.output_tokens,
-        cache_read=t.cache_read,
-        cache_write=t.cache_write,
-        cost_usd=t.cost_usd,
-        turns=t.turns,
-    )
+    return _dr.default_driver().usage(agent_id).totals
 
 
-def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
+def estimate_cost_usd(model: str, totals: UsageTotals) -> float | None:
     """Token-based cost estimate for *model*, priced from the provider catalog
     (``models_policy.price_for``).
 
@@ -123,18 +99,7 @@ def gating_cost(agent_id: str) -> tuple[float, bool]:
     return est, True
 
 
-@dataclass
-class DayRecord:
-    """Cost/token totals for a single calendar day."""
-
-    date: str
-    turns: int
-    input_tokens: int
-    output_tokens: int
-    cost_usd: float
-
-
-def cost_history(agent_id: str) -> list[DayRecord]:
+def cost_history(agent_id: str) -> list[UsageDay]:
     """Return per-day token/cost records for *agent_id*.
 
     Delegates to the RuntimeDriver port's ``usage()`` (see ``aggregate_cost``'s
@@ -148,13 +113,4 @@ def cost_history(agent_id: str) -> list[DayRecord]:
     """
     from docket.edges.adapters import docket_runtime as _dr
 
-    return [
-        DayRecord(
-            date=d.date,
-            turns=d.turns,
-            input_tokens=d.input_tokens,
-            output_tokens=d.output_tokens,
-            cost_usd=d.cost_usd,
-        )
-        for d in _dr.default_driver().usage(agent_id).by_day
-    ]
+    return _dr.default_driver().usage(agent_id).by_day

@@ -9,12 +9,13 @@ when trace files expire or task records are deleted.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import pod as _pod
 from docket.core import trace as _trace
+from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 
 __all__ = ["EscalationMetrics", "count_escalation_metrics"]
@@ -61,14 +62,7 @@ def count_escalation_metrics() -> EscalationMetrics:
             if isinstance(question_rec, dict):
                 created_str = question_rec.get("createdAt", "")
                 if created_str:
-                    try:
-                        question_created = datetime.fromisoformat(
-                            created_str.replace("Z", "+00:00")
-                        )
-                        if question_created.tzinfo is None:
-                            question_created = question_created.replace(tzinfo=UTC)
-                    except (ValueError, AttributeError):
-                        pass
+                    question_created = _clock.parse_iso(created_str)
 
             for answer_rec in task_answers:
                 if not isinstance(answer_rec, dict):
@@ -88,16 +82,12 @@ def count_escalation_metrics() -> EscalationMetrics:
 
                 # Calculate latency if we have both timestamps
                 if question_created:
-                    try:
-                        answered_at = datetime.fromisoformat(answered_at_str.replace("Z", "+00:00"))
-                        if answered_at.tzinfo is None:
-                            answered_at = answered_at.replace(tzinfo=UTC)
+                    answered_at = _clock.parse_iso(answered_at_str)
+                    if answered_at is not None:
                         delta = (answered_at - question_created).total_seconds()
                         if delta >= 0:  # Only count valid positive latencies
                             latency_sum += delta
                             latency_count += 1
-                    except (ValueError, AttributeError):
-                        pass
 
     # Add approval metrics as kind="approval"
     _add_approval_metrics(questions)

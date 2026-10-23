@@ -2,7 +2,7 @@
 ``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests, would be
 documentation, not enforcement. ``match_high_risk`` is wired into the two real paths docket
 controls; three sibling helpers that once composed it were deleted since none had a production
-caller. Covers: TestRunVerifyCmdHighRisk (``run_verify_cmd`` is the one docket-launched
+caller. Covers: TestRunVerifyCmdHighRisk (``run_command`` is the one docket-launched
 subprocess built from a free-form, operator-composed shell command, unlike every other call in
 that module's fixed argv lists; a high-risk match fails closed, the shell command never
 starts); and TestPreOutputHighRiskClassification (``pre_output`` classifies a hop's real output
@@ -30,7 +30,7 @@ from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
-# ── system adapter: run_verify_cmd's own high-risk guard ─────────────────────
+# ── system adapter: run_command's own high-risk guard ─────────────────────
 
 
 class TestRunVerifyCmdHighRisk:
@@ -41,8 +41,8 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        passed, output = _sys.run_verify_cmd("stripe charge customer --amount 500", str(tmp_path))
-        assert passed is False
+        code, output = _sys.run_command("stripe charge customer --amount 500", str(tmp_path))
+        assert code is None
         assert "money-movement" in output
         assert "docket setup sandbox classes" in output
 
@@ -53,8 +53,8 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        passed, output = _sys.run_verify_cmd("git push origin production", str(tmp_path))
-        assert passed is False
+        code, output = _sys.run_command("git push origin production", str(tmp_path))
+        assert code is None
         assert "prod-deploy" in output
 
     def test_secret_access_command_never_runs(
@@ -64,16 +64,14 @@ class TestRunVerifyCmdHighRisk:
             raise AssertionError("subprocess.run must not be called for a high-risk command")
 
         monkeypatch.setattr(subprocess, "run", _boom)
-        passed, output = _sys.run_verify_cmd("ssh-keygen -t ed25519 -N ''", str(tmp_path))
-        assert passed is False
+        code, output = _sys.run_command("ssh-keygen -t ed25519 -N ''", str(tmp_path))
+        assert code is None
         assert "secret-access" in output
 
     def test_ordinary_verify_pipeline_is_unaffected(self, tmp_path: Path) -> None:
         """A realistic multi-command verify pipeline is not a false positive."""
-        passed, output = _sys.run_verify_cmd(
-            "echo building; echo testing && echo done", str(tmp_path)
-        )
-        assert passed is True
+        code, output = _sys.run_command("echo building; echo testing && echo done", str(tmp_path))
+        assert code == 0
         assert "done" in output
 
 
@@ -177,7 +175,7 @@ class _RecordingRunner:
 class TestPreOutputHighRiskClassification:
     def test_secret_access_output_gets_warn_classification(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Rotate the deploy key", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Rotate the deploy key", channel="cli")
         runner = _RecordingRunner({"lead": "ran ssh-keygen -t ed25519 to rotate the deploy key"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -197,7 +195,7 @@ class TestPreOutputHighRiskClassification:
 
     def test_money_movement_output_gets_warn_classification(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Process the refund", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Process the refund", channel="cli")
         runner = _RecordingRunner({"lead": "stripe charge customer for the annual invoice"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -215,7 +213,7 @@ class TestPreOutputHighRiskClassification:
         only ever raises a bare allow to warn, never overrides a stronger hit."""
         _seed_lean_pod()
         _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "FORBIDDEN_TOKEN: also ran stripe charge customer here"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -229,7 +227,7 @@ class TestPreOutputHighRiskClassification:
 
     def test_non_matching_output_still_silent(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "nothing interesting here"})
         _dispatch.dispatch_pod("myapp", runner=runner)
 

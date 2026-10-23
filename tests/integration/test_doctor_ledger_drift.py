@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.pods import build_pod
 
 from docket.cli import _pod, _setup_check
 from docket.core import dispatch as _dispatch
@@ -38,7 +39,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -50,7 +51,7 @@ def _claim_a_task(project: str = "demo") -> str:
     """Enqueue + claim a task via the real dispatch state machine (so
     TASK_LIST.json ends up in a genuine 'running' state, ledger written by
     dispatch itself); returns the task id."""
-    _dispatch.enqueue_task(project, "some work", channel="cli")
+    _dispatch.enqueue_task_once(project, "some work", channel="cli")
     claim = _dispatch._claim_next_task(project, resume=False)
     assert claim is not None
     return str(claim[0]["id"])

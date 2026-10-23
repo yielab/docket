@@ -11,10 +11,12 @@ from typing import Any
 
 from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
+from tests.pods import build_pod
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import pod_provisioning as _pp
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.cli._pod"
@@ -39,7 +41,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
 
 
@@ -59,7 +61,7 @@ def _seed_parked_task(
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     with _seed_pod(tmp_path):
         _bind_ask_pipeline("demo")
-        _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         yield _dispatch.read_tasks("demo")[0]
 
@@ -105,7 +107,7 @@ class TestPodRemove:
 
             assert code == 1
             assert "pod delete" in out
-            assert set(_pod.pod_member_ids("demo")) == {"demo-lead", "demo-implementer"}
+            assert set(_pp.pod_member_ids("demo")) == {"demo-lead", "demo-implementer"}
 
     def test_off_a_tty_without_yes_refuses_and_names_the_flag(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -113,14 +115,14 @@ class TestPodRemove:
 
             assert code == 1
             assert "--yes" in out
-            assert "demo-implementer" in _pod.pod_member_ids("demo")
+            assert "demo-implementer" in _pp.pod_member_ids("demo")
 
     def test_yes_removes_the_member_and_its_workspace(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as home:
             code, _out = _invoke("remove", "demo-implementer", "--yes")
 
             assert code == 0
-            assert _pod.pod_member_ids("demo") == ["demo-lead"]
+            assert _pp.pod_member_ids("demo") == ["demo-lead"]
             assert not (home / "workspaces" / "projects" / "demo-implementer").exists()
 
     def test_a_name_outside_the_pod_is_refused(self, tmp_path: Path) -> None:
@@ -128,7 +130,7 @@ class TestPodRemove:
             code, _out = _invoke("remove", "other-implementer", "--yes")
 
             assert code == 1
-            assert len(_pod.pod_member_ids("demo")) == 2
+            assert len(_pp.pod_member_ids("demo")) == 2
 
 
 class TestPodDelete:
@@ -138,14 +140,14 @@ class TestPodDelete:
 
             assert code == 1
             assert "--confirm demo" in out
-            assert len(_pod.pod_member_ids("demo")) == 2
+            assert len(_pp.pod_member_ids("demo")) == 2
 
     def test_a_wrong_confirm_name_deletes_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             code, _out = _invoke("delete", "--confirm", "nope")
 
             assert code == 1
-            assert len(_pod.pod_member_ids("demo")) == 2
+            assert len(_pp.pod_member_ids("demo")) == 2
 
     def test_a_member_id_is_refused_as_a_pod(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -153,7 +155,7 @@ class TestPodDelete:
 
             assert code == 1
             assert "member id" in out
-            assert len(_pod.pod_member_ids("demo")) == 2
+            assert len(_pp.pod_member_ids("demo")) == 2
 
     def test_confirm_with_the_name_removes_every_member_and_audits(self, tmp_path: Path) -> None:
         from docket.core import audit as _audit
@@ -162,7 +164,7 @@ class TestPodDelete:
             code, _out = _invoke("delete", "--confirm", "demo")
 
             assert code == 0
-            assert _pod.pod_member_ids("demo") == []
+            assert _pp.pod_member_ids("demo") == []
             assert [e["action"] for e in _audit.read_audit()].count("pod.delete") == 1
 
 
@@ -174,7 +176,7 @@ class TestPodAdd:
             assert code == 1
             assert "unknown pod role" in out
             assert "Traceback" not in out
-            assert len(_pod.pod_member_ids("demo")) == 2
+            assert len(_pp.pod_member_ids("demo")) == 2
 
     def test_a_second_lead_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):

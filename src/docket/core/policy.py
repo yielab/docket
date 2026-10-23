@@ -120,7 +120,7 @@ def _validate_doc(p: dict[str, Any], label: str) -> str:
     if p.get("action") not in VALID_ACTIONS:
         return f"{label}: unknown action '{p.get('action')}'"
 
-    # A document fires on a `match` (the legacy text regex), a `when` (structured predicates
+    # A document fires on a `match` (the text regex), a `when` (structured predicates
     # over the tool call), or both -- it must carry at least one.
     match = p.get("match")
     when = p.get("when")
@@ -590,7 +590,7 @@ def install_policies() -> PolicyInstallResult:
     if that distinction matters to the caller. Pure logic, no UI: this is the shared producer
     behind the workstation foundation bootstrap's policy-provisioning step, so what "installed"
     means has one definition."""
-    template_dir = _templates.policy_templates_dir()
+    template_dir = _templates.POLICY_TEMPLATES_DIR
     result = PolicyInstallResult(
         template_dir=template_dir, policies_dir=current_home().policies_dir
     )

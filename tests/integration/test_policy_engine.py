@@ -137,7 +137,7 @@ def _shipped_template_files() -> list[Path]:
     return sorted(
         p
         for pattern in ("*.json", "*.yaml", "*.yml")
-        for p in _templates.policy_templates_dir().glob(pattern)
+        for p in _templates.POLICY_TEMPLATES_DIR.glob(pattern)
     )
 
 
@@ -176,8 +176,8 @@ class TestInstallPolicies:
     ) -> None:
         monkeypatch.setattr(
             _templates,
-            "policy_templates_dir",
-            lambda: Path("/nonexistent-templates-xyz/policies"),
+            "POLICY_TEMPLATES_DIR",
+            Path("/nonexistent-templates-xyz/policies"),
             raising=True,
         )
         result = _policy.install_policies()
@@ -220,7 +220,7 @@ class TestPolicyEvalDetail:
 class TestEnqueuePreInputGate:
     def test_allows_when_no_policies_installed(self) -> None:
         _seed_lean_pod()
-        task = _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        task = _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")[0]
         assert task["status"] == "pending"
         assert _dispatch.read_tasks("myapp")[0]["id"] == task["id"]
 
@@ -228,7 +228,7 @@ class TestEnqueuePreInputGate:
         _seed_lean_pod()
         _write_policy("no-wipes", "pre_input", "wipe prod db", "block", message="absolutely not")
         with pytest.raises(_dispatch.DispatchError, match="no-wipes"):
-            _dispatch.enqueue_task("myapp", "please wipe prod db tonight", channel="cli")
+            _dispatch.enqueue_task_once("myapp", "please wipe prod db tonight", channel="cli")
         assert _dispatch.read_tasks("myapp") == []
 
     def test_block_emits_a_self_contained_terminal_session(self) -> None:
@@ -238,7 +238,7 @@ class TestEnqueuePreInputGate:
         _seed_lean_pod()
         _write_policy("no-wipes", "pre_input", "wipe prod db", "block")
         with pytest.raises(_dispatch.DispatchError):
-            _dispatch.enqueue_task("myapp", "please wipe prod db tonight", channel="cli")
+            _dispatch.enqueue_task_once("myapp", "please wipe prod db tonight", channel="cli")
 
         events = _trace_events("myapp")
         types = [e["event_type"] for e in events]
@@ -255,7 +255,9 @@ class TestEnqueuePreInputGate:
     def test_require_approval_persists_waiting_approval_with_real_token(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _dispatch.enqueue_task("myapp", "URGENT WIRE the vendor today", channel="cli")
+        task = _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[
+            0
+        ]
 
         assert task["status"] == "waiting_approval"
         assert task["approvalToken"].startswith("apr-")
@@ -279,7 +281,7 @@ class TestEnqueuePreInputGate:
     def test_require_approval_task_is_not_claimable_until_granted(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        _dispatch.enqueue_task("myapp", "URGENT WIRE the vendor today", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")
 
         runner = _RecordingRunner()
         results = _dispatch.dispatch_pod("myapp", runner=runner)
@@ -289,7 +291,9 @@ class TestEnqueuePreInputGate:
     def test_require_approval_grant_resumes_and_runs_the_pipeline(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _dispatch.enqueue_task("myapp", "URGENT WIRE the vendor today", channel="cli")
+        task = _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[
+            0
+        ]
         token = task["approvalToken"]
 
         _ap.approval_grant(token)
@@ -308,7 +312,9 @@ class TestEnqueuePreInputGate:
     def test_require_approval_deny_fails_task_terminally(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _dispatch.enqueue_task("myapp", "URGENT WIRE the vendor today", channel="cli")
+        task = _dispatch.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[
+            0
+        ]
         token = task["approvalToken"]
 
         _ap.approval_deny(token)
@@ -326,9 +332,9 @@ class TestEnqueuePreInputGate:
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
             "redact",
         )
-        task = _dispatch.enqueue_task(
+        task = _dispatch.enqueue_task_once(
             "myapp", "loop in leaky@example.com before shipping", channel="cli"
-        )
+        )[0]
         assert "leaky@example.com" not in task["description"]
         assert "[REDACTED]" in task["description"]
         stored = _dispatch.read_tasks("myapp")[0]
@@ -337,7 +343,9 @@ class TestEnqueuePreInputGate:
     def test_warn_does_not_change_status_or_description(self) -> None:
         _seed_lean_pod()
         _write_policy("fyi-only", "pre_input", "heads up", "warn")
-        task = _dispatch.enqueue_task("myapp", "heads up, this one is tricky", channel="cli")
+        task = _dispatch.enqueue_task_once("myapp", "heads up, this one is tricky", channel="cli")[
+            0
+        ]
         assert task["status"] == "pending"
         assert task["description"] == "heads up, this one is tricky"
         events = _trace_events("myapp")
@@ -357,7 +365,7 @@ class TestPreOutputGate:
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
             "redact",
         )
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "reach me at leaky@example.com for questions"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -366,12 +374,12 @@ class TestPreOutputGate:
         lead_hop = next(h for h in results[0].hops if h.role == "lead")
         assert "leaky@example.com" not in lead_hop.output
         assert "[REDACTED]" in lead_hop.output
-        assert "leaky@example.com" not in lead_hop.rendered_artifact()
+        assert "leaky@example.com" not in lead_hop.artifact.render()
 
     def test_block_fails_the_hop_and_stops_the_pipeline(self) -> None:
         _seed_lean_pod()
         _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "here is a FORBIDDEN_TOKEN in my output"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -386,7 +394,7 @@ class TestPreOutputGate:
     def test_warn_leaves_output_unchanged_and_task_continues(self) -> None:
         _seed_lean_pod()
         _write_policy("fyi-output", "pre_output", "heads up", "warn")
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "heads up: nothing to see here"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -402,7 +410,7 @@ class TestPreOutputGate:
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
             "redact",
         )
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner(
             {
                 "lead": "lead contact: lead@example.com",
@@ -421,7 +429,7 @@ class TestPreOutputGate:
         field/value `cli/_metrics.py`'s reader tallies "Guardrail trips" by."""
         _seed_lean_pod()
         _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "FORBIDDEN_TOKEN in the output"})
         _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -434,7 +442,7 @@ class TestPreOutputGate:
 
     def test_allow_is_silent_no_guardrail_trace_at_all(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "nothing interesting here"})
         _dispatch.dispatch_pod("myapp", runner=runner)
 

@@ -21,7 +21,7 @@ from rich.markup import escape
 from docket import ui
 from docket.cli import _contract
 from docket.cli import _pod_show as _show
-from docket.cli._target import TargetError, pod_option
+from docket.cli._target import pod_option
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -39,65 +39,11 @@ from docket.core.audit import audit_log
 from docket.edges import store
 from docket.kernel.home import current_home
 
-# Names this module's callers and tests reach on `docket.cli._pod`; the implementations
-# live in core/pod_provisioning.py.
-POD_TEMPLATE_VERSION = _pp.POD_TEMPLATE_VERSION
-_MAX_VERIFY_CMD_LEN = _pp._MAX_VERIFY_CMD_LEN
-VerifyCmdError = _pp.VerifyCmdError
-_validate_verify_cmd = _pp.validate_verify_cmd
-_worktree_branch = _pp.worktree_branch
-_provision_task_worktree = _pp.provision_task_worktree
-_member_soul = _pp._member_soul
-_member_agents = _pp._member_agents
-_member_tools = _pp._member_tools
-teardown_member = _pp.teardown_member
-free_pod_resources = _pp.free_pod_resources
-release_implementer_resources = _pp.release_implementer_resources
-purge_pod_history = _pp.purge_pod_history
-pod_member_ids = _pp.pod_member_ids
-
 pod_app = typer.Typer(
     name="pod",
     help="Manage this project's pod: members, settings and configuration.",
     no_args_is_help=True,
 )
-
-
-def provision_member(
-    member: pod.PodMember,
-    *,
-    codebase: str,
-    stack: str,
-    description: str,
-    project: str,
-    project_key: str,
-    port_range_start: int = 0,
-    port_range_count: int = 0,
-    scratch_dir: str = "",
-    verify_cmd: str = "",
-    work_dir: str = "",
-    blueprint_name: str = "",
-    budget_usd: float | None = None,
-) -> tuple[bool, str]:
-    """Create one pod member's workspace + meta and register it in the fleet registry.
-    Thin rendering wrapper over `core.pod_provisioning.provision_member` — prints the
-    `(ok, message)` result."""
-    ok, msg = _pp.provision_member(
-        member,
-        codebase=codebase,
-        stack=stack,
-        description=description,
-        project=project,
-        project_key=project_key,
-        port_range_start=port_range_start,
-        port_range_count=port_range_count,
-        scratch_dir=scratch_dir,
-        verify_cmd=verify_cmd,
-        work_dir=work_dir,
-        blueprint_name=blueprint_name,
-        budget_usd=budget_usd,
-    )
-    return ok, msg
 
 
 def pod_roles(full: bool, with_roles: str) -> tuple[str, ...]:
@@ -124,38 +70,6 @@ def _render_created(members: list[_pp.ProvisionedMember]) -> list[str]:
     for m in members:
         ui.success(escape(f"  {m.member_id}  [{m.role}]  {m.model}"))
     return [m.member_id for m in members]
-
-
-def build_pod(
-    project: str,
-    roles: tuple[str, ...],
-    *,
-    codebase: str = "",
-    stack: str = "",
-    description: str = "",
-    project_key: str = "default",
-    work_dir: str = "",
-    blueprint_name: str = "",
-    budget_usd: float | None = None,
-) -> list[str]:
-    """Provision a fresh pod's members and return their ids, all-or-nothing: a partial
-    failure rolls back every member and any pod resources, the contract `POST /pods` shares."""
-    try:
-        created = _pp.provision_members(
-            project,
-            roles,
-            codebase=codebase,
-            stack=stack,
-            description=description,
-            project_key=project_key,
-            work_dir=work_dir,
-            blueprint_name=blueprint_name,
-            budget_usd=budget_usd,
-        )
-    except _pp.PodProvisionError as exc:
-        ui.warn(f"  pod provisioning failed: {exc}")
-        return []
-    return _render_created(created)
 
 
 def build_pod_from_blueprint(
@@ -195,17 +109,8 @@ def build_pod_from_blueprint(
     return _render_created(result.members)
 
 
-def _pod_name(name: str | None) -> str:
-    """The pod a leaf acts on: ``--pod``, ``DOCKET_POD``, then the cwd; exit 1 when none."""
-    try:
-        return _contract.resolve_pod_here(name)
-    except TargetError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
-
-
 def _require_members(project: str) -> list[str]:
-    members = pod_member_ids(project)
+    members = _pp.pod_member_ids(project)
     if not members:
         ui.error(f"No pod named '{project}'", "Create one with: docket init")
         raise typer.Exit(1)
@@ -243,7 +148,7 @@ def cmd_show(
     With a member id, that member's whole effective configuration instead.
 
     Example: docket pod show"""
-    project = _pod_name(pod_name)
+    project = _contract.require_pod(pod_name)
     _require_members(project)
     if member is not None:
         _require_member(project, member)
@@ -270,8 +175,8 @@ def add_members(project: str, role: str, *, count: int = 1, verify_cmd: str = ""
         raise typer.Exit(1) from ex
     if verify_cmd:
         try:
-            verify_cmd = _validate_verify_cmd(verify_cmd)
-        except VerifyCmdError as ex:
+            verify_cmd = _pp.validate_verify_cmd(verify_cmd)
+        except _pp.VerifyCmdError as ex:
             ui.error(str(ex))
             raise typer.Exit(1) from ex
 
@@ -302,14 +207,14 @@ def add_members(project: str, role: str, *, count: int = 1, verify_cmd: str = ""
             member = pod.plan_added_member(
                 project,
                 role,
-                pod_member_ids(project),
+                _pp.pod_member_ids(project),
                 project_key=project_key,
                 role_models=role_models,
             )
         except pod.PodError as ex:
             ui.error(str(ex))
             raise typer.Exit(1) from ex
-        ok, msg = provision_member(
+        ok, msg = _pp.provision_member(
             member,
             project=project,
             project_key=project_key,
@@ -341,7 +246,7 @@ def cmd_add(
     """Add members of a role to the pod.
 
     Example: docket pod add reviewer"""
-    project = _pod_name(pod_name)
+    project = _contract.require_pod(pod_name)
     if add_members(project, role, count=count, verify_cmd=verify):
         _contract.next_step("docket pod show")
         return
@@ -358,7 +263,7 @@ def remove_member(project: str, member_id: str, *, yes: bool) -> None:
     if not _contract.confirm(f"Remove {member_id} and its workspace", yes=yes):
         ui.warn("Aborted.")
         raise typer.Exit(1)
-    ok, msg = teardown_member(member_id)
+    ok, msg = _pp.teardown_member(member_id)
     if ok:
         ui.success(f"Removed {member_id}")
         if msg:
@@ -367,9 +272,9 @@ def remove_member(project: str, member_id: str, *, yes: bool) -> None:
         ui.warn(f"{member_id}: fleet deregistration reported: {msg} (workspace cleaned)")
     audit_log("pod.remove", f"{project} member={member_id} role={role}")
     if role == "implementer":
-        remaining = {_fleet.meta_get(mid, "role", "") for mid in pod_member_ids(project)}
+        remaining = {_fleet.meta_get(mid, "role", "") for mid in _pp.pod_member_ids(project)}
         if "implementer" not in remaining:
-            release_implementer_resources(project)
+            _pp.release_implementer_resources(project)
 
 
 @pod_app.command("remove")
@@ -381,7 +286,7 @@ def cmd_remove(
     """Remove a member and its workspace. The Lead is removed only with the pod.
 
     Example: docket pod remove demo-reviewer"""
-    remove_member(_pod_name(pod_name), member, yes=yes)
+    remove_member(_contract.require_pod(pod_name), member, yes=yes)
     _contract.next_step("docket pod show")
 
 
@@ -407,7 +312,7 @@ def reset_member(project: str, member_id: str, *, yes: bool) -> None:
     for name, text in _pp.rendered_member_files(member_id).items():
         (ws / name).write_text(text, encoding="utf-8")
         (ws / name).chmod(0o600)
-    _fleet.meta_set(member_id, "templateVersion", str(POD_TEMPLATE_VERSION))
+    _fleet.meta_set(member_id, "templateVersion", str(_pp.POD_TEMPLATE_VERSION))
     audit_log("pod.reset", f"{project} member={member_id}")
     ui.success(f"Reset {member_id}: ledger cleared, workspace files rebuilt")
 
@@ -421,7 +326,7 @@ def cmd_reset(
     """Reset a member's ledger and rebuild its workspace files from its metadata.
 
     Example: docket pod reset demo-implementer"""
-    reset_member(_pod_name(pod_name), member, yes=yes)
+    reset_member(_contract.require_pod(pod_name), member, yes=yes)
     _contract.next_step("docket pod show")
 
 
@@ -433,15 +338,15 @@ def _delete_pod(project: str, members: list[str]) -> int:
         if _fleet.get_binding(mid):
             _fleet.remove_binding(mid)
         _conv.remove_agent_durable(mid)
-        ok, msg = teardown_member(mid)
+        ok, msg = _pp.teardown_member(mid)
         if ok:
             ui.success(f"Removed {mid}")
             if msg:
                 ui.dim(f"  {msg}")
         else:
             ui.warn(f"{mid}: fleet deregistration reported: {msg} (workspace cleaned)")
-    free_pod_resources(project)
-    purge_pod_history(project, members)
+    _pp.free_pod_resources(project)
+    _pp.purge_pod_history(project, members)
     audit_log("pod.delete", f"{project} pod ({len(members)} members)")
     ui.success(f"Pod '{project}' deleted")
     return 0
@@ -455,8 +360,8 @@ def cmd_delete(
     """Destroy the pod: every member, workspace, session and trace. The audit log stays.
 
     Example: docket pod delete --confirm demo"""
-    project = _pod_name(pod_name)
-    members = pod_member_ids(project)
+    project = _contract.require_pod(pod_name)
+    members = _pp.pod_member_ids(project)
     if not members:
         if current_home().workspace_dir(project).is_dir():
             ui.error(f"'{project}' is a member id, not a pod", "Pass the pod name with --pod")
@@ -492,7 +397,7 @@ _MEMORY_STATUSES = ("accepted", "pending", "refused")
 
 
 def _memory_pod(pod_name: str | None) -> str:
-    project = _pod_name(pod_name)
+    project = _contract.require_pod(pod_name)
     _require_members(project)
     return project
 
@@ -609,7 +514,7 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
         return
     raw_codebase = _fleet.meta_get(member_id, "codebase", "")
     codebase = pod.resolve_member_cwd(member_id, "", raw_codebase)
-    content = _member_tools(
+    content = _pp._member_tools(
         project,
         role,
         codebase,
@@ -626,8 +531,8 @@ def _set_member_verify(project: str, member_id: str, command: str) -> None:
     """Set an implementer's verify command (validated, audited) and re-render its TOOLS.md."""
     _implementer_member(project, member_id)
     try:
-        command = _validate_verify_cmd(command)
-    except VerifyCmdError as ex:
+        command = _pp.validate_verify_cmd(command)
+    except _pp.VerifyCmdError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     _fleet.meta_set(member_id, "verifyCmd", command)
@@ -736,7 +641,7 @@ def cmd_set(
     """Set a pod setting; with --member, set an implementer's verify command.
 
     Example: docket pod set budgetUsd 5"""
-    set_setting(_pod_name(pod_name), key, value, member=member)
+    set_setting(_contract.require_pod(pod_name), key, value, member=member)
     _contract.next_step("docket pod show")
 
 
@@ -749,7 +654,7 @@ def cmd_unset(
     """Clear a pod setting back to its default; with --member, clear a verify command.
 
     Example: docket pod unset verify --member demo-implementer"""
-    unset_setting(_pod_name(pod_name), key, member=member)
+    unset_setting(_contract.require_pod(pod_name), key, member=member)
     _contract.next_step("docket pod show")
 
 

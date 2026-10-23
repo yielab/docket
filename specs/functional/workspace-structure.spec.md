@@ -318,7 +318,7 @@ Where the names above live today; the only section that names source paths.
   `pod_memory_path`, `pod_config_dir`, `user_recipes_dir`, `pod_memory_max_accepted`,
   `pod_memory_max_undecided`, `pod_memory_max_per_task`, `pod_memory_note_max_chars`,
   `pod_memory_render_max_bytes`
-- `src/docket/kernel/templates.py`: `policy_templates_dir`, `recipes_dir`, `PROVIDER_TEMPLATES_DIR`,
+- `src/docket/kernel/templates.py`: `POLICY_TEMPLATES_DIR`, `RECIPES_DIR`, `PROVIDER_TEMPLATES_DIR`,
   `EXPORTER_TEMPLATES_DIR`, `CHANNEL_TEMPLATES_DIR`
 - `src/docket/core/pod_provisioning.py`: `provision_member`, `rendered_member_files`,
   `member_sync_status`, `resync_member`, `POD_TEMPLATE_VERSION`, `TASK_WORKTREES_DIRNAME`

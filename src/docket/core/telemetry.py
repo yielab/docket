@@ -330,21 +330,13 @@ def _span_id(session_id: str, kind: str, key: str) -> str:
     return hashlib.sha256(f"{session_id}|{kind}|{key}".encode()).hexdigest()[:16]
 
 
-def _parse_ts(ts: str) -> datetime:
-    text = ts[:-1] + "+00:00" if ts.endswith("Z") else ts
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        return _clock.now()
-
-
 def _format_ts(moment: datetime) -> str:
     text = moment.isoformat()
     return text[:-6] + "Z" if text.endswith("+00:00") else text
 
 
 def _shift_ts(ts: str, delta_ms: int) -> str:
-    return _format_ts(_parse_ts(ts) + timedelta(milliseconds=delta_ms))
+    return _format_ts((_clock.parse_iso(ts) or _clock.now()) + timedelta(milliseconds=delta_ms))
 
 
 def _close(open_span: _OpenSpan, trace_id: str, end_ts: str, status: str) -> Span:

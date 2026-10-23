@@ -30,14 +30,11 @@ from pydantic import (
 )
 
 import docket.kernel.templates as _templates
+from docket.core import document_fields as _documents
 from docket.core.operator_contract import EVENT_KINDS
 from docket.edges import store as _store
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
-
-_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-_CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-_CREDENTIAL_VALUE_RE = re.compile(r"^[A-Za-z0-9/_\-+.]{20,}$")
 
 # The `on:` vocabulary: every ADR 0016 §7 event type suffix, plus the `needs_you` shorthand
 # that stands for every "something needs a human" transition at once.
@@ -128,9 +125,7 @@ class ChannelSpec(BaseModel):
     @field_validator("name")
     @classmethod
     def _valid_name(cls, value: str) -> str:
-        if not _NAME_RE.match(value):
-            raise InvalidInput(f"'{value}' is not a valid channel name (^[a-z0-9][a-z0-9-]*$)")
-        return value
+        return _documents.check_name(value, "channel")
 
     @field_validator("capabilities")
     @classmethod
@@ -176,14 +171,7 @@ class ChannelSpec(BaseModel):
     def _valid_secret_name(cls, value: str | None) -> str | None:
         if value is None:
             return value
-        if _CREDENTIAL_NAME_RE.match(value):
-            return value
-        if _CREDENTIAL_VALUE_RE.match(value):
-            raise InvalidInput(
-                f"'{value}' looks like a credential VALUE, not a name -- "
-                "'secret' names a stored secret, it never carries one"
-            )
-        raise InvalidInput(f"'{value}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
+        return _documents.check_credential_name(value, "'secret'")
 
 
 def _validation_to_channel_error(path: Path | str, exc: ValidationError) -> ChannelError:

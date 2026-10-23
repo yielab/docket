@@ -222,7 +222,7 @@ def cmd_enable(
     spec = _spec_or_exit(name)
     values, _source = _exp.resolve_credentials(spec)
     missing = [c for c, v in zip(spec.auth.credentials, values, strict=True) if not v]
-    if missing and not _contract._is_tty():
+    if missing and not _contract.is_tty():
         ui.error(f"Exporter '{name}' needs credentials that are not set: {', '.join(missing)}")
         for cred in missing:
             ui.console.print(f"  export {cred}=<value>", markup=False)
