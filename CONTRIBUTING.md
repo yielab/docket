@@ -258,10 +258,11 @@ Seven rules, each written down because breaking it cost real work here.
    a baseline. Run `uv sync --all-extras` first: a missing `anyio` produces three phantom mypy
    errors that are not real.
 4. **Isolation is part of done.** The suite has leaked into a developer's real `~/.docket` three
-   times, once displacing the whole environment with fixture agents. Any new `DOCKET_HOME`-derived
-   constant in `config.py` must reach `_DOCKET_HOME_PATHS` in `tests/conftest.py`, and any test
-   choosing its own home calls `repoint_docket_home` rather than hand-rolling a partial copy. Both
-   are guarded. A test must not depend on the host's sandbox either: one that turns isolation on
+   times, once displacing the whole environment with fixture agents. Every path docket writes is a
+   `Home` field or property in `kernel/home.py`, every test runs inside the autouse
+   `use_home` home in `tests/conftest.py`, and a test choosing its own home enters
+   `use_home(Home(root))` rather than patching constants;
+   `tests/guards/test_docket_home_isolation.py` checks every path the current `Home` hands out. A test must not depend on the host's sandbox either: one that turns isolation on
    stubs `sandbox_availability` or skips with a named reason when it needs a real backend, and
    `scripts/maint/pytest-without-sandbox.sh` runs the suite as a host with no usable backend
    (`DOCKET_SANDBOX_PROBE=none`, like a stock CI container). Forcing `DOCKET_SANDBOX_BACKEND=none` is not that check; it hid 40 macOS
