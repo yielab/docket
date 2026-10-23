@@ -495,7 +495,7 @@ def _resolve_ask_verdict(
         _park_call(call, tool, args, ctx, verdict, digest, result)
         return True
 
-    rationale, blocked = _approval.screen_rationale(ctx.rationale)
+    rationale, blocked = _approval.screen_rationale(ctx.rationale, ctx.project)
     token = _approval.approval_create(
         ctx.project or "operator",
         ctx.role or "tool",
@@ -534,7 +534,7 @@ def _park_call(
         park_context["role"] = ctx.role
     if ctx.task_id:
         park_context["taskId"] = ctx.task_id  # lets the inbox fold this approval into its task
-    rationale, blocked = _approval.screen_rationale(ctx.rationale)
+    rationale, blocked = _approval.screen_rationale(ctx.rationale, ctx.project)
     token = _approval.approval_create(
         ctx.project or "operator",
         ctx.role or "tool",

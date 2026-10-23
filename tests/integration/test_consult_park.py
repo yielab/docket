@@ -16,6 +16,7 @@ from typing import Any, Literal
 import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
+import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import answers as _answers
 from docket.core import consult as _consult_mod
@@ -264,6 +265,23 @@ class TestAnswer:
         assert "option redis (Redis)" in resumed.content
         assert task["answers"][0]["step"] == "implementer"
         assert "consultAnswer" not in task
+
+    def test_defect_39_consult_answer_is_blocked_by_a_pod_only_policy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _Backend([_final("plan"), _consult()])
+        run = _start(tmp_path, monkeypatch, backend)
+        policies = _cfg.pod_config_dir("demo") / "policies"
+        policies.mkdir(parents=True)
+        (policies / "pod-block-input.yaml").write_text(
+            "kind: policy\nname: pod-block-input\nappliesTo: ['*']\non: input\n"
+            "when:\n  matches: 'CANARY-PHRASE'\nthen: block\nmessage: canary\n"
+        )
+
+        with pytest.raises(_answers.AnswerRejected):
+            _answer(run, "accept", {"optionId": "redis", "note": "CANARY-PHRASE"})
+
+        assert _task(run)["status"] == "waiting_input"
 
     def test_a_declined_answer_resumes_with_declined_and_records_one_correction(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

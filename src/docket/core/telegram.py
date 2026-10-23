@@ -288,7 +288,7 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
     # call, so the safe default folds require_approval into the same
     # fail-closed outcome as block (identical reasoning to
     # core/mcp_tools.py's _screen_description).
-    hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False)
+    hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
             "telegram.delegate_blocked",

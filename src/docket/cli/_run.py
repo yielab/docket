@@ -226,7 +226,7 @@ def _pod_dispatch(
         _dispatch.pod_pipeline(project)
         effective = spec if spec is not None else _dispatch.effective_pipeline(project, None)
         plan = _orch.resolve_plan(
-            effective, _dispatch.pod_full_roster(project), registry=_arch.load_registry()
+            effective, _dispatch.pod_full_roster(project), registry=_arch.load_registry(project)
         )
         cap = _dispatch.pod_budget(project)
     except _dispatch.DispatchError as ex:
@@ -363,7 +363,7 @@ def _dry_run(project: str, spec: _pipeline.PipelineSpec | None) -> None:
         _dispatch.pod_pipeline(project)
         effective = spec if spec is not None else _dispatch.effective_pipeline(project, None)
         plan = _orch.resolve_plan(
-            effective, _dispatch.pod_full_roster(project), registry=_arch.load_registry()
+            effective, _dispatch.pod_full_roster(project), registry=_arch.load_registry(project)
         )
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
