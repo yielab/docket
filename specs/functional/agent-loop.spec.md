@@ -850,10 +850,20 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 
 ## Implementation
 
-- `src/docket/agent/loop.py`: `run_agent_turn`, `LoopConfig`, `AgentLoopResult`,
-  `StopReason`, `MIN_OUTPUT_TOKENS`, `approval_unavailable_error`, `approval_parked_error`; the
-  `prompt_composed`, `session_compaction`, `request_fit`, `budget_warning`, `llm_call`,
-  `tool_call` and `tool_result` emitters
+- `src/docket/agent/loop.py`: `run_agent_turn` and the `_TurnState` orchestrator (the
+  request/response phase and terminal finalization); re-exports `LoopConfig`, `AgentLoopResult`,
+  `StopReason`, `MIN_OUTPUT_TOKENS`, `approval_unavailable_error`, `approval_parked_error`
+- `src/docket/agent/loop_types.py`: `LoopConfig`, `AgentLoopResult`, `StopReason`
+- `src/docket/agent/loop_state.py`: `TurnState`, the turn state the collaborators share
+- `src/docket/agent/loop_budget.py`: `TurnBudget` (request-fit preflight, token-budget
+  accounting, the per-iteration ceilings), `MIN_OUTPUT_TOKENS`
+- `src/docket/agent/loop_compaction.py`: `TurnCompaction` (the tool-free summariser,
+  `run_compaction`, the request-fit reduction around the task message)
+- `src/docket/agent/loop_steps.py`: `ToolStep` (the tool batch through `dispatch_tool`, the
+  denial ceiling, no-progress), `approval_unavailable_error`, `approval_parked_error`
+- `src/docket/agent/loop_trace.py`, `src/docket/agent/loop_request.py`: the `prompt_composed`,
+  `session_compaction`, `request_fit`, `budget_warning`, `llm_call`, `tool_call` and
+  `tool_result` emitters; token accounting
 - `src/docket/agent/driver.py`: `DocketDriver`, `default_driver`, the default
   `mcp_loader`, root resolution, the base-commit `RepoView` construction, the export start/flush
 - `src/docket/agent/ports.py`: `RuntimeDriver`, `TurnResult`, `DriverCapabilities`,

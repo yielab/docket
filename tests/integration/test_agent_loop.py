@@ -27,6 +27,7 @@ from tests.integration import llm_stub as _stub
 
 from docket.agent import context as _agent_context
 from docket.agent import loop as _loop
+from docket.agent import loop_compaction as _loop_compaction
 from docket.agent import loop_trace as _loop_trace
 from docket.agent import session as _session
 from docket.agent import session_compaction as _session_compaction
@@ -55,7 +56,7 @@ from docket.observability import trace as _trace
 SUBJECT = "docket.agent.loop"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "agent" / "loop.py"
+AGENT_LOOP_SRCS = sorted((REPO_ROOT / "src" / "docket" / "agent").glob("loop*.py"))
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
@@ -880,7 +881,7 @@ class TestLiveSessionCompaction:
                 assert "ORIGINAL_SUFFIX" in prompt
                 return _final("FIRST_SUMMARY " + "S" * 1_000)
 
-        real_compact_session = _loop.compact_session
+        real_compact_session = _loop_compaction.compact_session
         injected = False
         ranged_calls: list[tuple[int, int]] = []
 
@@ -900,7 +901,9 @@ class TestLiveSessionCompaction:
                 )
             return result
 
-        monkeypatch.setattr(_loop, "compact_session", _append_after_ranged_write, raising=True)
+        monkeypatch.setattr(
+            _loop_compaction, "compact_session", _append_after_ranged_write, raising=True
+        )
         backend = ConcurrentRevisionBackend()
 
         result = _loop.run_agent_turn(
@@ -998,7 +1001,7 @@ class TestLiveSessionCompaction:
                     TokenUsage(10, 5),
                 )
 
-        real_compact_session = _loop.compact_session
+        real_compact_session = _loop_compaction.compact_session
         ranged_calls: list[tuple[int, int]] = []
 
         def _append_after_every_ranged_write(
@@ -1020,7 +1023,7 @@ class TestLiveSessionCompaction:
             return result
 
         monkeypatch.setattr(
-            _loop,
+            _loop_compaction,
             "compact_session",
             _append_after_every_ranged_write,
             raising=True,
@@ -1562,7 +1565,7 @@ class TestSingleExecutionPath:
     confirmed red when a hand-patched direct-dispatch path replaced the real call."""
 
     def test_never_imports_toolbox_or_calls_a_handler_directly(self) -> None:
-        tree = ast.parse(AGENT_LOOP_SRC.read_text(encoding="utf-8"))
+        tree = ast.parse("\n".join(src.read_text(encoding="utf-8") for src in AGENT_LOOP_SRCS))
 
         imported_modules: set[str] = set()
         for node in ast.walk(tree):
@@ -1583,7 +1586,8 @@ class TestSingleExecutionPath:
         assert handler_attr_accesses == [], "agent_loop.py must never touch Tool.handler directly"
 
     def test_dispatch_tool_is_imported_and_is_the_only_call_of_its_name(self) -> None:
-        tree = ast.parse(AGENT_LOOP_SRC.read_text(encoding="utf-8"))
+        # The loop is split across agent/loop*.py; the single call site is counted over all of them.
+        tree = ast.parse("\n".join(src.read_text(encoding="utf-8") for src in AGENT_LOOP_SRCS))
 
         imported_names: set[str] = set()
         for node in ast.walk(tree):

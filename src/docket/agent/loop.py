@@ -144,165 +144,42 @@ budget/estimate evidence only, never messages or model/tool content.
 
 from __future__ import annotations
 
-import hashlib
-import json
-import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
 
 from docket.agent import identity as _identity
 from docket.agent.llm import (
     ChatBackend,
     ChatMessage,
     TokenUsage,
-    ToolCall,
     ToolSpec,
-    system,
-    tool_result,
-    user,
 )
-from docket.agent.loop_request import (
-    _accumulate,
-    _build_reduction_candidates,
-    _estimate_input_tokens,
-    _finalization_messages,
-    _segment_revision,
-    _selected_estimate,
-    _usage_delta,
-)
+from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
+from docket.agent.loop_compaction import TurnCompaction
+from docket.agent.loop_request import _accumulate, _finalization_messages
+from docket.agent.loop_state import TurnState
+from docket.agent.loop_steps import ToolStep, approval_parked_error, approval_unavailable_error
 from docket.agent.loop_trace import (
-    _trace_compaction,
     _trace_llm_call,
     _trace_prompt_composed,
-    _trace_request_fit,
     _trace_terminal_finalization,
-    _trace_tool_call,
-    _trace_tool_result,
 )
-from docket.agent.ports import FailureKind, TurnResult
-from docket.agent.session import append_messages, condense_history, load_messages
-from docket.agent.session_compaction import CompactionResult, compact_session
-from docket.agent.tools.registry import (
-    ToolContext,
-    ToolDenialKind,
-    ToolRegistry,
-    ToolResult,
-    dispatch_tool,
-)
+from docket.agent.loop_types import AgentLoopResult, LoopConfig, StopReason
+from docket.agent.session import append_messages
+from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.teams import roles as _archetypes
 
 __all__ = [
+    "MIN_OUTPUT_TOKENS",
     "AgentLoopResult",
     "LoopConfig",
     "StopReason",
+    "approval_parked_error",
+    "approval_unavailable_error",
     "run_agent_turn",
 ]
-
-StopReason = Literal[
-    "final_message",
-    "max_iterations",
-    "max_tool_calls",
-    "timeout",
-    "token_budget",
-    "truncated",
-    "backend_error",
-    "compaction_failed",
-    "context_fit",
-    "tool_denials",
-    "run_cancelled",
-    "approval_unavailable",
-    "approval_parked",
-    "no_progress",
-]
-_TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
-# The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
-MIN_OUTPUT_TOKENS = 256
-
-
-@dataclass(frozen=True)
-class LoopConfig:
-    """Bounds for one ``run_agent_turn`` call. See the module docstring for
-    what each one guards against; defaults come from the current ``Home``'s
-    ``agent_loop_*`` fields, read when the config is built, so every tunable here
-    is env-overridable the same way every other docket tunable is.
-
-    ``max_tokens``/``temperature`` are passed straight through to
-    ``ChatBackend.complete`` — ``None`` (the default for both) means "let the
-    endpoint decide," never a docket-side guess at a model's defaults. A
-    positive ``max_tokens`` also supplies the output reserve for cumulative
-    request preflight; without one the loop keeps its measured-response guard
-    rather than inventing an output bound.
-    """
-
-    max_iterations: int = field(default_factory=lambda: current_home().agent_loop_max_iterations)
-    max_tool_calls: int = field(default_factory=lambda: current_home().agent_loop_max_tool_calls)
-    max_consecutive_tool_denials: int = field(
-        default_factory=lambda: current_home().agent_loop_max_consecutive_tool_denials
-    )
-    no_progress_rounds: int = field(
-        default_factory=lambda: current_home().agent_loop_no_progress_rounds
-    )
-    wall_clock_timeout_s: float = field(
-        default_factory=lambda: current_home().agent_loop_wall_clock_timeout_s
-    )
-    token_budget: int = field(default_factory=lambda: current_home().agent_loop_token_budget)
-    request_timeout_s: int = field(
-        default_factory=lambda: current_home().agent_loop_request_timeout_s
-    )
-    max_tokens: int | None = None
-    temperature: float | None = None
-    history_budget_tokens: int | None = None
-    summary_input_budget_tokens: int | None = None
-    context_window_tokens: int | None = None
-
-
-@dataclass
-class AgentLoopResult:
-    """Outcome of one ``run_agent_turn`` call.
-
-    ``failure_kind`` is ``None`` exactly when ``ok`` is True, and
-    ``stop_reason == "final_message"`` exactly when ``ok`` is True — the only
-    stop reason that represents a completed, usable turn. Mirrors
-    ``ChatResponse``/``TurnResult``'s identical invariant deliberately, so
-    ``agent/driver.py``'s translation to ``TurnResult`` is a
-    field-for-field copy, not a re-interpretation.
-    """
-
-    ok: bool
-    output: str = ""
-    stop_reason: StopReason = "final_message"
-    iterations: int = 0
-    tool_calls_executed: int = 0
-    usage: TokenUsage = field(default_factory=TokenUsage)
-    error: str = ""
-    failure_kind: FailureKind | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
-    retry_after_s: float | None = None
-    model: str = ""
-    provider: str = ""
-
-
-# Quoted key=value pairs, because TurnResult carries no structured field to hold these. A
-# function rather than an inline string so a test can drive the real format.
-def approval_unavailable_error(result: ToolResult) -> str:
-    """Render a refused-approval denial as quoted key=value pairs."""
-    return (
-        f"approval_unavailable: tool={result.tool!r} call_id={result.call_id!r} "
-        f"policy_id={result.policy_id!r} reason={result.reason!r}"
-    )
-
-
-def approval_parked_error(result: ToolResult) -> str:
-    """Render a parked-approval stop in the same key=value shape
-    ``approval_unavailable_error`` uses, so one function owns the format."""
-    return (
-        f"approval_parked: tool={result.tool!r} call_id={result.call_id!r} "
-        f"policy_id={result.policy_id!r} reason={result.reason!r} "
-        f"approval_token={result.approval_token!r}"
-    )
 
 
 # LoopConfig wins when set explicitly; a backend's own reported window or output
@@ -365,102 +242,19 @@ def _resolve_role_registry_and_prompt(
 
 
 @dataclass
-class _FitStop:
-    """Terminal outcome of one context-fit reduction attempt, returned verbatim."""
+class _TurnState(TurnState):
+    """The orchestrator: ``TurnState`` plus the collaborators that act on it (budget,
+    compaction and request fit, the tool step), and the request/response phase between them."""
 
-    messages: list[ChatMessage]
-    estimated_input: int
-    error: str
-    stop_reason: StopReason | None
-    failure_kind: FailureKind | None
-
-
-@dataclass
-class _FitOutcome:
-    """Result of one reduce_for_fit call: a stop outcome, or retry-loop state."""
-
-    stop: _FitStop | None = None
-    durable_revision: list[ChatMessage] = field(default_factory=list)
-    current_revision: str = ""
-    current_messages: list[ChatMessage] = field(default_factory=list)
-    attempts: int = 0
-
-
-class _ProgressDetector:
-    """Counts consecutive tool rounds whose fingerprint was already seen this turn."""
-
-    def __init__(self, limit: int) -> None:
-        self.limit = limit
-        self._seen: set[frozenset[tuple[str, str, bool, str]]] = set()
-        self._repeats = 0
-        self._names: list[str] = []
-
-    @staticmethod
-    def entry(call: ToolCall, ok: bool, output: str) -> tuple[str, str, bool, str]:
-        try:
-            args = json.dumps(json.loads(call.arguments), sort_keys=True, separators=(",", ":"))
-        except (TypeError, ValueError):
-            args = str(call.arguments)
-        return (call.name, args, ok, hashlib.sha256(output.encode("utf-8")).hexdigest())
-
-    def observe(self, entries: list[tuple[str, str, bool, str]]) -> bool:
-        """Record one round; True when the repeat count has reached the limit."""
-        if self.limit <= 0 or not entries:
-            return False
-        fingerprint = frozenset(entries)
-        if fingerprint in self._seen:
-            self._repeats += 1
-            self._names = sorted({e[0] for e in entries})
-        else:
-            self._seen.add(fingerprint)
-            self._repeats = 0
-        return self._repeats >= self.limit
-
-    def error(self) -> str:
-        return (
-            f"no progress: {self._repeats} consecutive tool rounds repeated earlier "
-            f"results; repeated tool(s)={','.join(self._names)}"
-        )
-
-
-@dataclass
-class _TurnState:
-    """Turn-scoped state threaded through ``run_agent_turn``'s phases as attributes,
-    in place of the nested closures and their captured/``nonlocal`` locals."""
-
-    backend: ChatBackend
-    ctx: ToolContext
-    session_key: str
-    cfg: LoopConfig
-    clock: Callable[[], float]
-    started: float
-    project: str
-    trace_key: str
-    context_window: int | None
-    output_reserve: int
-    request_max_tokens: int | None
-    call_max_tokens: int | None
-    registry: ToolRegistry
-    system_prompt: str
-    tool_specs: list[ToolSpec]
-
-    trace_task_id: str = ""
-    total_usage: TokenUsage = field(default_factory=TokenUsage)
-    tool_calls_executed: int = 0
-    iteration: int = 0
-    last_raw: dict[str, Any] = field(default_factory=dict)
-    last_model: str = ""
-    last_provider: str = ""
-    summary_usage: TokenUsage = field(default_factory=TokenUsage)
-    accounted_summary_usage: TokenUsage = field(default_factory=TokenUsage)
-    compaction_failure_stop_reason: StopReason | None = None
-    incoming: ChatMessage | None = None
-    task_message_index: int = -1
     finalization_attempted: bool = False
-    consecutive_denial_kinds: list[ToolDenialKind] = field(default_factory=list)
-    progress: _ProgressDetector | None = None
-    calibration: float = 1.0
-    pending_raw_estimate: int = 0
+    budget: TurnBudget = field(init=False, repr=False)
+    compaction: TurnCompaction = field(init=False, repr=False)
+    steps: ToolStep = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.budget = TurnBudget(self)
+        self.compaction = TurnCompaction(self, self.budget)
+        self.steps = ToolStep(self)
 
     @classmethod
     def create(
@@ -518,579 +312,6 @@ class _TurnState:
             trace_task_id=trace_task_id,
         )
 
-    def done(
-        self,
-        *,
-        ok: bool,
-        stop_reason: StopReason,
-        output: str = "",
-        error: str = "",
-        failure_kind: FailureKind | None = None,
-        retry_after_s: float | None = None,
-    ) -> AgentLoopResult:
-        return AgentLoopResult(
-            ok=ok,
-            output=output,
-            stop_reason=stop_reason,
-            iterations=self.iteration,
-            tool_calls_executed=self.tool_calls_executed,
-            usage=self.total_usage,
-            error=error,
-            failure_kind=failure_kind,
-            raw=self.last_raw,
-            retry_after_s=retry_after_s,
-            model=self.last_model,
-            provider=self.last_provider,
-        )
-
-    def cancellation_requested(self) -> bool:
-        return self.ctx.cancellation_check is not None and self.ctx.cancellation_check()
-
-    def cancelled(self) -> AgentLoopResult:
-        return self.done(
-            ok=False,
-            stop_reason="run_cancelled",
-            error="run cancellation requested",
-            failure_kind="run_cancelled",
-        )
-
-    def preflight_request(
-        self,
-        request_messages: list[ChatMessage],
-        request_tools: list[ToolSpec],
-        *,
-        purpose: str,
-    ) -> tuple[int, str]:
-        raw_estimate = _estimate_input_tokens(
-            self.backend,
-            request_messages,
-            request_tools,
-            self.request_max_tokens,
-            self.cfg.temperature,
-        )
-        self.pending_raw_estimate = raw_estimate
-        estimated_input = math.ceil(raw_estimate * self.calibration)
-        if self.context_window is None:
-            _trace_request_fit(
-                self.project,
-                self.trace_key,
-                self.ctx.role,
-                purpose=purpose,
-                status="unknown_window",
-                estimated_input_tokens=estimated_input,
-                output_reserve_tokens=self.output_reserve,
-                context_window_tokens=None,
-                task_id=self.trace_task_id,
-            )
-            return estimated_input, ""
-        if self.output_reserve <= 0:
-            error = (
-                "context fit: selected endpoint has registered context window "
-                f"{self.context_window} but no positive maximum-output reserve"
-            )
-        elif estimated_input + self.output_reserve > self.context_window:
-            error = (
-                "context fit: estimated request "
-                f"{estimated_input + self.output_reserve} tokens (input {estimated_input} + "
-                f"output reserve {self.output_reserve}) exceeds registered context window "
-                f"{self.context_window}"
-            )
-        else:
-            error = ""
-        _trace_request_fit(
-            self.project,
-            self.trace_key,
-            self.ctx.role,
-            purpose=purpose,
-            status="failed" if error else "fits",
-            estimated_input_tokens=estimated_input,
-            output_reserve_tokens=self.output_reserve,
-            context_window_tokens=self.context_window,
-            task_id=self.trace_task_id,
-        )
-        return estimated_input, error
-
-    def context_fit_convergence_error(self, reason: str, estimated_input: int) -> str:
-        registered_window = (
-            str(self.context_window) if self.context_window is not None else "unknown"
-        )
-        return (
-            "context fit: estimated request "
-            f"{estimated_input + self.output_reserve} tokens (input {estimated_input} + output "
-            f"reserve {self.output_reserve}) could not be validated against registered context "
-            f"window {registered_window}: {reason}"
-        )
-
-    def effective_measured_tokens(self) -> int:
-        pending = _usage_delta(self.summary_usage, self.accounted_summary_usage)
-        return self.total_usage.counted_tokens + pending.counted_tokens
-
-    def calibrate(self, measured_input: int) -> None:
-        """Scale later estimates by ``max(1, measured / estimated)`` of the latest call."""
-        if measured_input > 0 and self.pending_raw_estimate > 0:
-            self.calibration = max(1.0, measured_input / self.pending_raw_estimate)
-
-    def reserve_within_budget(self, estimated_input: int, remaining: int) -> int:
-        """A known cap cut to what the budget leaves after the input (requirement 46); the
-        default reserve of an unknown cap is left alone."""
-        room = remaining - estimated_input
-        if self.request_max_tokens is None or room < MIN_OUTPUT_TOKENS:
-            return self.output_reserve
-        return min(self.output_reserve, room)
-
-    def prospective_budget_error(self, estimated_input: int, *, purpose: str) -> str:
-        measured_tokens = self.effective_measured_tokens()
-        remaining = self.cfg.token_budget - measured_tokens
-        reserve = self.reserve_within_budget(estimated_input, remaining)
-        prospective = estimated_input + reserve
-        if prospective <= remaining:
-            if self.request_max_tokens is not None:
-                self.call_max_tokens = reserve
-            return ""
-        return (
-            f"{_TOKEN_BUDGET_ERROR_PREFIX} cannot start {purpose} completion within "
-            f"token_budget={self.cfg.token_budget} (used {measured_tokens}, estimated input "
-            f"{estimated_input} + output reserve {reserve}, remaining "
-            f"{max(0, remaining)}); no backend call made"
-        )
-
-    def summarize_without_reentry(
-        self,
-        agent_id: str,
-        summary_session_key: str,
-        prompt: str,
-        timeout: int,
-        env: dict[str, str] | None = None,
-    ) -> TurnResult:
-        """One tool-free backend call: no loop recursion and no session writes."""
-        if summary_session_key == self.session_key:
-            self.compaction_failure_stop_reason = "compaction_failed"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                {},
-                "compaction summarizer key matched the target session",
-                "invalid_output",
-            )
-        elapsed = self.clock() - self.started
-        remaining = int(self.cfg.wall_clock_timeout_s - elapsed)
-        if remaining <= 0:
-            self.compaction_failure_stop_reason = "compaction_failed"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                {},
-                "compaction exhausted the turn wall-clock budget",
-                "timeout",
-            )
-        summary_messages = [user(prompt)]
-        estimated_input, fit_error = self.preflight_request(
-            summary_messages,
-            [],
-            purpose="compaction",
-        )
-        if fit_error:
-            self.compaction_failure_stop_reason = "context_fit"
-            return TurnResult(False, "", 0.0, {}, fit_error, "invalid_output")
-        budget_error = self.prospective_budget_error(estimated_input, purpose="compaction")
-        if budget_error:
-            self.compaction_failure_stop_reason = "token_budget"
-            return TurnResult(False, "", 0.0, {}, budget_error, "invalid_output")
-        if self.cancellation_requested():
-            self.compaction_failure_stop_reason = "run_cancelled"
-            return TurnResult(False, "", 0.0, {}, "run cancellation requested", "run_cancelled")
-        response = self.backend.complete(
-            summary_messages,
-            tools=(),
-            max_tokens=self.call_max_tokens,
-            temperature=self.cfg.temperature,
-            timeout=min(timeout, remaining),
-        )
-        _trace_llm_call(
-            self.project,
-            self.trace_key,
-            self.ctx.role,
-            response,
-            purpose="compaction",
-            task_id=self.trace_task_id,
-            messages=summary_messages,
-        )
-        self.last_raw = response.raw
-        self.last_model, self.last_provider = response.model, response.provider
-        self.summary_usage = _accumulate(self.summary_usage, response.usage)
-        if self.cancellation_requested():
-            self.compaction_failure_stop_reason = "run_cancelled"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                response.raw,
-                "run cancellation requested",
-                "run_cancelled",
-            )
-        if not response.ok:
-            self.compaction_failure_stop_reason = "compaction_failed"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                response.raw,
-                response.error,
-                response.failure_kind or "daemon_error",
-            )
-        if response.truncated:
-            self.compaction_failure_stop_reason = "compaction_failed"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                response.raw,
-                "compaction summarizer response was truncated; partial summary was not accepted",
-                "invalid_output",
-            )
-        if response.tool_calls:
-            self.compaction_failure_stop_reason = "compaction_failed"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                response.raw,
-                "compaction summarizer requested tools on a tool-free call",
-                "invalid_output",
-            )
-        if not response.message.content.strip():
-            self.compaction_failure_stop_reason = "compaction_failed"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                response.raw,
-                "compaction summarisation turn returned an empty summary",
-                "invalid_output",
-            )
-        measured_tokens = self.effective_measured_tokens()
-        if measured_tokens > self.cfg.token_budget:
-            self.compaction_failure_stop_reason = "token_budget"
-            return TurnResult(
-                False,
-                "",
-                0.0,
-                response.raw,
-                (
-                    f"{_TOKEN_BUDGET_ERROR_PREFIX} compaction completion exceeded "
-                    f"token_budget={self.cfg.token_budget} (used {measured_tokens}); summary was "
-                    "not accepted"
-                ),
-                "invalid_output",
-            )
-        return TurnResult(True, response.message.content, 0.0, response.raw)
-
-    def run_compaction(
-        self,
-        *,
-        budget_tokens: int | None,
-        compact_range: tuple[int, int] | None = None,
-        keep_latest_unit: bool = True,
-    ) -> tuple[CompactionResult, StopReason | None]:
-        self.compaction_failure_stop_reason = None
-        elapsed_now = self.clock() - self.started
-        remaining_now = max(1, int(self.cfg.wall_clock_timeout_s - elapsed_now))
-        result = compact_session(
-            self.session_key,
-            role=self.ctx.role,
-            agent_id=self.ctx.agent_id,
-            summarizer=self.summarize_without_reentry,
-            summarizer_session_key=f"{self.session_key}:compaction",
-            budget_tokens=budget_tokens,
-            summary_input_budget_tokens=self.cfg.summary_input_budget_tokens,
-            compact_range=compact_range,
-            keep_latest_unit=keep_latest_unit,
-            timeout=min(self.cfg.request_timeout_s, remaining_now),
-            label=f"{self.ctx.role} session",
-            project=self.project,
-        )
-        usage_delta = _usage_delta(self.summary_usage, self.accounted_summary_usage)
-        self.total_usage = _accumulate(self.total_usage, usage_delta)
-        self.accounted_summary_usage = self.summary_usage
-        if usage_delta.total_tokens or usage_delta.cached_tokens:
-            append_messages(self.session_key, [], usage=usage_delta)
-        _trace_compaction(
-            self.project, self.trace_key, self.ctx.role, result, task_id=self.trace_task_id
-        )
-        return result, self.compaction_failure_stop_reason
-
-    def apply_initial_history_compaction(self) -> AgentLoopResult | None:
-        """Compact durable history to the turn's budget before the incoming message is seeded."""
-        if self.cancellation_requested():
-            return self.cancelled()
-        compaction, compaction_stop_reason = self.run_compaction(
-            budget_tokens=self.cfg.history_budget_tokens
-        )
-        if not compaction.ok:
-            return self.done(
-                ok=False,
-                stop_reason=compaction_stop_reason or "compaction_failed",
-                error=compaction.error,
-                failure_kind=compaction.failure_kind or "invalid_output",
-            )
-        return None
-
-    def messages_for_durable(self, durable: list[ChatMessage]) -> list[ChatMessage]:
-        return [
-            *([system(self.system_prompt)] if self.system_prompt else []),
-            *condense_history(durable),
-        ]
-
-    def seed_task_message(self, message: str) -> None:
-        """Append the incoming user message and record its durable position."""
-        incoming = user(message)
-        appended = append_messages(self.session_key, [incoming])
-        self.incoming = incoming
-        self.task_message_index = len(appended.messages) - 1
-
-    def fit_task_request(
-        self,
-    ) -> tuple[list[ChatMessage], int, str, StopReason | None, FailureKind | None]:
-        durable_revision = load_messages(self.session_key)
-        current_messages = self.messages_for_durable(durable_revision)
-        current_revision = _segment_revision(durable_revision)
-        attempts = 0
-        attempt_cap = max(2, len(durable_revision) + 1)
-        protected_segments: dict[str, tuple[int, str]] = {}
-        while True:
-            estimated_input, fit_error = self.preflight_request(
-                current_messages,
-                self.tool_specs,
-                purpose="task",
-            )
-            latest_durable = load_messages(self.session_key)
-            latest_revision = _segment_revision(latest_durable)
-            if latest_revision != current_revision:
-                if attempts >= attempt_cap:
-                    return (
-                        current_messages,
-                        estimated_input,
-                        self.context_fit_convergence_error(
-                            "durable history changed during request preflight and did not "
-                            f"stabilize within attempt cap {attempt_cap}; no backend call made",
-                            estimated_input,
-                        ),
-                        "context_fit",
-                        "invalid_output",
-                    )
-                attempts += 1
-                durable_revision = latest_durable
-                current_revision = latest_revision
-                current_messages = self.messages_for_durable(durable_revision)
-                continue
-            if self.prospective_budget_error(estimated_input, purpose="tool-enabled task"):
-                return current_messages, estimated_input, "", None, None
-            if not fit_error:
-                return current_messages, estimated_input, "", None, None
-            if self.context_window is None or self.output_reserve <= 0:
-                return (
-                    current_messages,
-                    estimated_input,
-                    fit_error,
-                    "context_fit",
-                    "invalid_output",
-                )
-            if attempts >= attempt_cap:
-                return (
-                    current_messages,
-                    estimated_input,
-                    f"{fit_error}; request-fit compaction did not converge",
-                    "context_fit",
-                    "invalid_output",
-                )
-
-            outcome = self.reduce_for_fit(
-                fit_error, estimated_input, current_messages, protected_segments, attempts
-            )
-            if outcome.stop is not None:
-                stop = outcome.stop
-                return (
-                    stop.messages,
-                    stop.estimated_input,
-                    stop.error,
-                    stop.stop_reason,
-                    stop.failure_kind,
-                )
-            durable_revision = outcome.durable_revision
-            current_revision = outcome.current_revision
-            current_messages = outcome.current_messages
-            attempts = outcome.attempts
-
-    def reduce_for_fit(
-        self,
-        fit_error: str,
-        estimated_input: int,
-        current_messages: list[ChatMessage],
-        protected_segments: dict[str, tuple[int, str]],
-        attempts: int,
-    ) -> _FitOutcome:
-        """One request-fit compaction attempt: try the suffix, then the prefix, around
-        the task message; return a terminal ``_FitStop`` or state to retry with."""
-        assert self.incoming is not None
-        assert self.context_window is not None
-        durable = load_messages(self.session_key)
-        task_index = self.task_message_index
-        if task_index < 0 or task_index >= len(durable) or durable[task_index] != self.incoming:
-            return _FitOutcome(
-                stop=_FitStop(
-                    current_messages,
-                    estimated_input,
-                    f"{fit_error}; current task was not found in durable history",
-                    "context_fit",
-                    "invalid_output",
-                )
-            )
-        overflow = estimated_input + self.output_reserve - self.context_window
-        candidate_ranges = _build_reduction_candidates(durable, task_index, protected_segments)
-
-        progressed = False
-        accepted_segment = ""
-        accepted_prior_protected_count = 0
-        accepted_replacement_count = 0
-        for segment, selected_range, keep_latest, prior_protected_count in candidate_ranges:
-            selected = durable[selected_range[0] : selected_range[1]]
-            selected_tokens = _selected_estimate(selected)
-            target = max(1, selected_tokens - overflow - 32)
-            if target >= selected_tokens:
-                continue
-            fit_compaction, fit_compaction_stop_reason = self.run_compaction(
-                budget_tokens=target,
-                compact_range=selected_range,
-                keep_latest_unit=keep_latest,
-            )
-            if not fit_compaction.ok:
-                failure_stop_reason = fit_compaction_stop_reason or "compaction_failed"
-                return _FitOutcome(
-                    stop=_FitStop(
-                        current_messages,
-                        estimated_input,
-                        fit_compaction.error or "request-fit compaction failed",
-                        failure_stop_reason,
-                        (
-                            fit_compaction.failure_kind
-                            if failure_stop_reason == "compaction_failed"
-                            else "invalid_output"
-                        )
-                        or "invalid_output",
-                    )
-                )
-            if fit_compaction.compacted:
-                accepted_segment = segment
-                accepted_prior_protected_count = prior_protected_count
-                accepted_replacement_count = (
-                    fit_compaction.after_message_count
-                    - fit_compaction.before_message_count
-                    + selected_range[1]
-                    - selected_range[0]
-                )
-                progressed = True
-                break
-
-        if not progressed:
-            return _FitOutcome(
-                stop=_FitStop(
-                    current_messages,
-                    estimated_input,
-                    f"{fit_error}; irreducible durable request",
-                    "context_fit",
-                    "invalid_output",
-                )
-            )
-
-        durable = load_messages(self.session_key)
-        reloaded_task_index = (
-            accepted_replacement_count if accepted_segment == "prefix" else task_index
-        )
-        if (
-            reloaded_task_index < 0
-            or reloaded_task_index >= len(durable)
-            or durable[reloaded_task_index] != self.incoming
-        ):
-            return _FitOutcome(
-                stop=_FitStop(
-                    current_messages,
-                    estimated_input,
-                    self.context_fit_convergence_error(
-                        "current task durable identity changed during request-fit compaction",
-                        estimated_input,
-                    ),
-                    "context_fit",
-                    "invalid_output",
-                )
-            )
-        self.task_message_index = reloaded_task_index
-        if accepted_segment and accepted_replacement_count > 0:
-            if accepted_segment == "suffix":
-                suffix = durable[reloaded_task_index + 1 :]
-                protected_count = accepted_prior_protected_count + accepted_replacement_count
-                accepted_messages = suffix[:protected_count]
-            else:
-                protected_count = accepted_replacement_count
-                accepted_messages = durable[:protected_count]
-            if len(accepted_messages) == protected_count:
-                protected_segments[accepted_segment] = (
-                    protected_count,
-                    _segment_revision(accepted_messages),
-                )
-        durable_revision = durable
-        current_revision = _segment_revision(durable_revision)
-        current_messages = self.messages_for_durable(durable_revision)
-        return _FitOutcome(
-            durable_revision=durable_revision,
-            current_revision=current_revision,
-            current_messages=current_messages,
-            attempts=attempts + 1,
-        )
-
-    # A non-None second element means stop now; otherwise the first element is
-    # this iteration's request timeout.
-    def check_iteration_bounds(self) -> tuple[int, AgentLoopResult | None]:
-        """Cancellation plus the four per-iteration ceilings, in bound-check order."""
-        if self.cancellation_requested():
-            return 0, self.cancelled()
-        self.iteration += 1
-        if self.iteration > self.cfg.max_iterations:
-            return 0, self.done(
-                ok=False,
-                stop_reason="max_iterations",
-                error=f"exceeded max_iterations={self.cfg.max_iterations}",
-                failure_kind="invalid_output",
-            )
-        elapsed = self.clock() - self.started
-        if elapsed > self.cfg.wall_clock_timeout_s:
-            return 0, self.done(
-                ok=False,
-                stop_reason="timeout",
-                error=f"exceeded wall_clock_timeout_s={self.cfg.wall_clock_timeout_s}",
-                failure_kind="timeout",
-            )
-        if self.total_usage.counted_tokens > self.cfg.token_budget:
-            return 0, self.done(
-                ok=False,
-                stop_reason="token_budget",
-                error=(
-                    f"exceeded token_budget={self.cfg.token_budget} "
-                    f"(used {self.total_usage.counted_tokens})"
-                ),
-                failure_kind="invalid_output",
-            )
-        if self.tool_calls_executed >= self.cfg.max_tool_calls:
-            return 0, self.done(
-                ok=False,
-                stop_reason="max_tool_calls",
-                error=f"exceeded max_tool_calls={self.cfg.max_tool_calls}",
-                failure_kind="invalid_output",
-            )
-        remaining = max(1, int(self.cfg.wall_clock_timeout_s - elapsed))
-        return min(self.cfg.request_timeout_s, remaining), None
-
     # Falls back to one tool-free terminal attempt when the ordinary
     # tool-enabled round no longer fits the remaining turn budget. A non-None
     # last element means stop now.
@@ -1104,7 +325,7 @@ class _TurnState:
             fit_error,
             fit_stop_reason,
             fit_failure_kind,
-        ) = self.fit_task_request()
+        ) = self.compaction.fit_task_request()
         if fit_error:
             return (
                 [],
@@ -1119,7 +340,7 @@ class _TurnState:
             )
 
         request_tools = self.tool_specs
-        normal_budget_error = self.prospective_budget_error(
+        normal_budget_error = self.budget.prospective_budget_error(
             normal_estimated_input, purpose="tool-enabled task"
         )
         if not normal_budget_error:
@@ -1139,12 +360,12 @@ class _TurnState:
             )
         self.finalization_attempted = True
         terminal_messages = _finalization_messages(messages)
-        final_estimated_input, final_fit_error = self.preflight_request(
+        final_estimated_input, final_fit_error = self.budget.preflight_request(
             terminal_messages,
             [],
             purpose="task",
         )
-        final_budget_error = self.prospective_budget_error(
+        final_budget_error = self.budget.prospective_budget_error(
             final_estimated_input, purpose="terminal finalization"
         )
         if final_fit_error:
@@ -1228,7 +449,7 @@ class _TurnState:
         self.last_raw = response.raw
         self.last_model, self.last_provider = response.model, response.provider
         self.total_usage = _accumulate(self.total_usage, response.usage)
-        self.calibrate(response.usage.input_tokens)
+        self.budget.calibrate(response.usage.input_tokens)
         if self.cancellation_requested():
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(self.session_key, [], usage=response.usage)
@@ -1312,141 +533,10 @@ class _TurnState:
             )
         return assistant_msg, response.usage, None
 
-    # Persists the assistant message and every tool result as one atomic unit
-    # through dispatch_tool. Returns None to keep looping.
-    def dispatch_tool_batch(
-        self,
-        messages: list[ChatMessage],
-        assistant_msg: ChatMessage,
-        response_usage: TokenUsage,
-    ) -> AgentLoopResult | None:
-        """Gate the batch size, dispatch every call, then apply the denial ceiling."""
-        if self.tool_calls_executed + len(assistant_msg.tool_calls) > self.cfg.max_tool_calls:
-            return self.done(
-                ok=False,
-                stop_reason="max_tool_calls",
-                error=(
-                    f"model requested {len(assistant_msg.tool_calls)} tool call(s), which would "
-                    f"exceed max_tool_calls={self.cfg.max_tool_calls} (already used "
-                    f"{self.tool_calls_executed}); none of this batch was executed"
-                ),
-                failure_kind="invalid_output",
-            )
-
-        tool_msgs: list[ChatMessage] = []
-        batch_cancelled = False
-        approval_unavailable: ToolResult | None = None
-        approval_parked: ToolResult | None = None
-        round_entries: list[tuple[str, str, bool, str]] = []
-        self.ctx.rationale = assistant_msg.content or ""
-        for call in assistant_msg.tool_calls:
-            _trace_tool_call(
-                self.project,
-                self.trace_key,
-                self.ctx.role,
-                call.name,
-                call.id,
-                call.arguments,
-                task_id=self.trace_task_id,
-            )
-            result = dispatch_tool(call, self.ctx, self.registry)
-            if result.denial_kind != "run_cancelled":
-                self.tool_calls_executed += 1
-            tool_output = result.as_tool_output()
-            _trace_tool_result(
-                self.project,
-                self.trace_key,
-                self.ctx.role,
-                call.name,
-                call.id,
-                result.decision,
-                result.ok,
-                result.executed,
-                result.denial_kind,
-                result.policy_id,
-                result.reason,
-                task_id=self.trace_task_id,
-                output=tool_output,
-            )
-            if result.denial_kind is not None and not result.executed:
-                self.consecutive_denial_kinds.append(result.denial_kind)
-            elif result.decision == "allow" and result.executed:
-                self.consecutive_denial_kinds.clear()
-            tool_msgs.append(tool_result(call, tool_output))
-            round_entries.append(_ProgressDetector.entry(call, result.ok, tool_output))
-            if result.denial_kind == "run_cancelled" or self.cancellation_requested():
-                batch_cancelled = True
-            if result.denial_kind == "approval_unavailable" and approval_unavailable is None:
-                approval_unavailable = result
-            if result.denial_kind == "approval_parked" and approval_parked is None:
-                approval_parked = result
-
-        messages.append(assistant_msg)
-        messages.extend(tool_msgs)
-        # One append per iteration, the whole atomic unit at once — never the
-        # assistant message and its tool results in separate calls, which
-        # would let a crash between them persist an orphaned tool_calls entry.
-        append_messages(self.session_key, [assistant_msg, *tool_msgs], usage=response_usage)
-        if batch_cancelled:
-            return self.cancelled()
-        if approval_unavailable is not None:
-            # Terminal on its own, unlike gate_denied/invalid_call: there is
-            # nobody left to ask, so no further retry of this batch or another
-            # can change the outcome. Named specifically so a caller does not
-            # have to grep a generic denial-limit error for which rule fired.
-            #
-            # The error is written as quoted key=value pairs because TurnResult has no
-            # structured field to carry these through.
-            return self.done(
-                ok=False,
-                stop_reason="approval_unavailable",
-                error=approval_unavailable_error(approval_unavailable),
-                failure_kind="invalid_output",
-            )
-        if approval_parked is not None:
-            # Terminal exactly like approval_unavailable above: nobody on
-            # this thread can answer, whether or not somebody elsewhere
-            # eventually does.
-            return self.done(
-                ok=False,
-                stop_reason="approval_parked",
-                error=approval_parked_error(approval_parked),
-                failure_kind="invalid_output",
-            )
-        denial_limit = self.cfg.max_consecutive_tool_denials
-        if denial_limit > 0 and len(self.consecutive_denial_kinds) >= denial_limit:
-            reported_kinds = self.consecutive_denial_kinds[-denial_limit:]
-            return self.done(
-                ok=False,
-                stop_reason="tool_denials",
-                error=(
-                    "consecutive tool denials reached configured limit: "
-                    f"count={len(self.consecutive_denial_kinds)}; "
-                    f"kinds={','.join(reported_kinds)}; no further model request was made"
-                ),
-                failure_kind="invalid_output",
-            )
-        return self.stop_if_no_progress(round_entries)
-
-    def stop_if_no_progress(
-        self, round_entries: list[tuple[str, str, bool, str]]
-    ) -> AgentLoopResult | None:
-        """Stop once enough consecutive rounds repeat already-seen results."""
-        if self.progress is None:
-            self.progress = _ProgressDetector(self.cfg.no_progress_rounds)
-        if not self.progress.observe(round_entries):
-            return None
-        return self.done(
-            ok=False,
-            stop_reason="no_progress",
-            error=self.progress.error(),
-            failure_kind="invalid_output",
-        )
-
     # Returns None to keep looping.
     def run_iteration(self) -> AgentLoopResult | None:
         """One full round: bounds, fit-or-finalize, model call, tool dispatch."""
-        request_timeout, stop = self.check_iteration_bounds()
+        request_timeout, stop = self.budget.check_iteration_bounds()
         if stop is not None:
             return stop
         messages, request_tools, finalizing, stop = self.prepare_request_or_finalize()
@@ -1458,7 +548,7 @@ class _TurnState:
         if stop is not None:
             return stop
         assert assistant_msg is not None  # only None alongside a non-None stop
-        return self.dispatch_tool_batch(messages, assistant_msg, response_usage)
+        return self.steps.dispatch_tool_batch(messages, assistant_msg, response_usage)
 
 
 def run_agent_turn(
@@ -1498,11 +588,11 @@ def run_agent_turn(
         trace_task_id=trace_task_id,
     )
 
-    initial_compaction_stop = state.apply_initial_history_compaction()
+    initial_compaction_stop = state.compaction.apply_initial_history_compaction()
     if initial_compaction_stop is not None:
         return initial_compaction_stop
 
-    state.seed_task_message(message)
+    state.compaction.seed_task_message(message)
 
     while True:
         outcome = state.run_iteration()
