@@ -68,7 +68,7 @@ def _run_three_hops(monkeypatch: pytest.MonkeyPatch) -> str:
     backend = _Backend(["lead plan", "implementer done", "fine\nAPPROVE"])
     driver = DocketDriver(backend_factory=lambda model: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
+    task = _dispatch.enqueue_task_once("demo", "evidence please", channel="cli")[0]
     results = _dispatch.dispatch_pod("demo")
     assert results[0].status == "done"
     return str(task["id"])
@@ -119,7 +119,7 @@ class TestTaskEvidence:
 
     def test_legacy_record_without_the_new_fields_builds(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "old", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "old", channel="cli")[0]
             _seed_task(task["id"], [{"role": "lead", "member": "demo-lead", "ok": True}])
             ev = _ev.task_evidence("demo", task["id"], "1.1.0")
             hop = ev.hops[0]
@@ -148,7 +148,7 @@ def _gated_task(
     tmp_path: Path,
 ) -> Iterator[str]:
     with _seed_pod(tmp_path):
-        task = _dispatch.enqueue_task("demo", "gated", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "gated", channel="cli")[0]
         first = {"role": "implementer", "member": "m", "ok": True, "verify": _GATED_VERIFY}
         second = {"role": "reviewer", "member": "m", "ok": True}
         _seed_task(
@@ -188,7 +188,7 @@ class TestEvidence11:
         import jsonschema
 
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "plain", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "plain", channel="cli")[0]
             plain = {"role": "lead", "member": "m", "ok": True, "verify": {**_GATED_VERIFY}}
             del plain["verify"]["label"]
             _seed_task(task["id"], [plain])
@@ -225,7 +225,7 @@ class TestRepoFilesOnTheHop:
 
             monkeypatch.setattr(driver, "run_turn", with_files)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-            task = _dispatch.enqueue_task("demo", "files", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "files", channel="cli")[0]
             assert _dispatch.dispatch_pod("demo")[0].status == "done"
             doc = _ev.task_evidence("demo", str(task["id"]), "1.1.0")
             assert [d.path for d in doc.directives or []] == ["AGENTS.md"]

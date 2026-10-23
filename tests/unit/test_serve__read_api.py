@@ -245,7 +245,7 @@ class TestInboxEndpoint:
         build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
         from docket.core import dispatch as _dispatch
 
-        _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
 
         status, body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
 
@@ -257,7 +257,7 @@ class TestInboxEndpoint:
         build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
         from docket.core import dispatch as _dispatch
 
-        _dispatch.enqueue_task("demo", "ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
 
         status, http_body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
         assert status == 200

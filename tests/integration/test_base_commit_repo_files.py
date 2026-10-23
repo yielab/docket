@@ -165,7 +165,7 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **repo_kwargs: bool)
 def _run(skill_probe: bool = False) -> tuple[_Runner, _Backend]:
     backend = _Backend(skill_probe)
     runner = _Runner(backend)
-    _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+    _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
     (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
     assert result.status == "waiting_approval", result.reason
     assert ".docket/skills" in result.reason
@@ -222,7 +222,7 @@ def test_the_hop_records_each_composed_repository_file_with_its_sha256(
             return out
 
         runner.driver.run_turn = spy  # type: ignore[method-assign]
-        _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+        _dispatch.enqueue_task_once("demo", "do the thing", channel="cli")
         (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
         assert result.status == "waiting_approval", result.reason
         assert ".docket/skills" in result.reason

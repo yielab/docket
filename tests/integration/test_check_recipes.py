@@ -104,7 +104,7 @@ def test_the_recipe_command_classifies_allow_by_default(recipe: str) -> None:
 def test_a_test_that_already_passes_on_the_base_fails_the_task(tmp_path: Path) -> None:
     with _repo_with_module(tmp_path) as repo:
         _bind_pipeline(_anti_tautology_with_this_interpreter())
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         runner = _FilesRunner(
             {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"}
         )
@@ -120,7 +120,7 @@ def test_a_test_that_already_passes_on_the_base_fails_the_task(tmp_path: Path) -
 def test_an_uncommitted_test_that_already_passes_on_the_base_fails_the_task(tmp_path: Path) -> None:
     with _repo_with_module(tmp_path):
         _bind_pipeline(_anti_tautology_with_this_interpreter())
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         runner = _FilesRunner(
             {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"},
             commit=False,
@@ -152,7 +152,7 @@ def test_a_test_that_fails_on_the_base_and_passes_after_the_change_finishes_done
 ) -> None:
     with _repo_with_module(tmp_path) as repo:
         _bind_pipeline(_anti_tautology_with_this_interpreter())
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         runner = _FilesRunner(
             {
                 "mod.py": "def f():\n    return 2\n",
@@ -171,7 +171,7 @@ def test_a_test_that_fails_on_the_base_and_passes_after_the_change_finishes_done
 def test_no_changed_test_file_passes_the_step_trivially(tmp_path: Path) -> None:
     with _repo_with_module(tmp_path):
         _bind_pipeline(_anti_tautology_with_this_interpreter())
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
 
         (res,) = _dispatch.dispatch_pod(
             "demo", runner=_FilesRunner({"notes.txt": "x\n"}), max_tasks=1
@@ -200,7 +200,7 @@ def test_the_mutation_step_scores_only_the_changed_source_file(tmp_path: Path) -
     _git(repo, "commit", "-m", "base")
     with _seed_pod(tmp_path, repo):
         _bind_pipeline(_pipeline_text("mutation"))
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         runner = _FilesRunner({"src/pkg/calc.py": "def add(a, b):\n    return a + b\n"})
 
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)

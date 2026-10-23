@@ -417,7 +417,7 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        _dispatch.enqueue_task(project, "add a login endpoint", channel="cli")
+        _dispatch.enqueue_task_once(project, "add a login endpoint", channel="cli")
         runner = _SecureBuildRunner(project)
         results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
 

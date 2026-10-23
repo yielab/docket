@@ -501,7 +501,6 @@ names = [
     "_enqueue_pre_input_gate",
     "validate_task_options",
     "_queued_with_key",
-    "enqueue_task",
     "enqueue_task_once",
     "pod_full_roster",
     "_eligible_for_claim",

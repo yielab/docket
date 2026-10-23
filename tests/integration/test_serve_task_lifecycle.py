@@ -129,7 +129,7 @@ def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_serve
         ]
     )
     with _seed_pod(tmp_path, server.base_url) as codebase, _live_server() as live_server:
-        task = _dispatch.enqueue_task("demo", "write a file", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "write a file", channel="cli")[0]
         (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
         assert result.status == "done", result.reason
         record = next(t for t in _dispatch.read_tasks("demo") if t["id"] == task["id"])["worktree"]
@@ -161,7 +161,7 @@ def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_serve
 def test_diff_of_an_in_place_task_is_a_conflict_with_a_reason(tmp_path: Path) -> None:
     """A task with no worktree branch answers 409 and says it ran in place."""
     with _seed_pod(tmp_path), _live_server() as live_server:
-        task = _dispatch.enqueue_task("demo", "plain", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "plain", channel="cli")[0]
 
         status, body = _call("GET", f"{live_server}/tasks/demo/{task['id']}/diff")
 
@@ -180,7 +180,7 @@ def test_diff_of_an_unknown_task_is_not_found(tmp_path: Path) -> None:
 def test_lifecycle_routes_need_the_bearer_token(tmp_path: Path) -> None:
     """No token is 401 before anything else is looked at."""
     with _seed_pod(tmp_path), _live_server() as live_server:
-        task = _dispatch.enqueue_task("demo", "plain", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "plain", channel="cli")[0]
         base = f"{live_server}/tasks/demo/{task['id']}"
 
         assert _call("GET", f"{base}/diff", token=None)[0] == 401
@@ -191,7 +191,7 @@ def test_lifecycle_routes_need_the_bearer_token(tmp_path: Path) -> None:
 def test_cancel_stops_the_live_run_of_a_running_task_and_audits_the_channel(tmp_path: Path) -> None:
     """A running task with a live run is cancelled over HTTP; the audit names channel and reason."""
     with _seed_pod(tmp_path), _live_server() as live_server:
-        task = _dispatch.enqueue_task("demo", "long", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "long", channel="cli")[0]
         _set_task(task["id"], status="running", claimPid=os.getpid())
         run = _runs.create_run("cli", "demo")
         assert _runs.mark_running(run["id"])
@@ -211,7 +211,7 @@ def test_cancel_stops_the_live_run_of_a_running_task_and_audits_the_channel(tmp_
 def test_cancel_with_nothing_in_flight_is_a_conflict(tmp_path: Path) -> None:
     """A terminal task has nothing to cancel: 409 and the status unchanged."""
     with _seed_pod(tmp_path), _live_server() as live_server:
-        task = _dispatch.enqueue_task("demo", "done already", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "done already", channel="cli")[0]
         _set_task(task["id"], status="done")
 
         status, _body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
@@ -223,7 +223,7 @@ def test_cancel_with_nothing_in_flight_is_a_conflict(tmp_path: Path) -> None:
 def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
     """A task waiting for an answer is cancelled over HTTP and audited with the channel."""
     with _seed_pod(tmp_path), _live_server() as live_server:
-        task = _dispatch.enqueue_task("demo", "ask", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "ask", channel="cli")[0]
         _set_task(task["id"], status="waiting_input", question={"text": "which?"})
 
         status, body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
@@ -240,8 +240,8 @@ def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
 def test_retry_requeues_a_failed_task_and_refuses_a_done_one(tmp_path: Path) -> None:
     """Retry flips failed to pending (200) and answers 409 on a done task."""
     with _seed_pod(tmp_path), _live_server() as live_server:
-        failed = _dispatch.enqueue_task("demo", "broke", channel="cli")
-        done = _dispatch.enqueue_task("demo", "fine", channel="cli")
+        failed = _dispatch.enqueue_task_once("demo", "broke", channel="cli")[0]
+        done = _dispatch.enqueue_task_once("demo", "fine", channel="cli")[0]
         _set_task(failed["id"], status="failed")
         _set_task(done["id"], status="done")
 

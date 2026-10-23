@@ -124,7 +124,7 @@ def test_a_lights_out_task_that_edits_package_json_parks_naming_it(
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _lights_out(monkeypatch)
-        _dispatch.enqueue_task("demo", "bump", channel="cli")
+        _dispatch.enqueue_task_once("demo", "bump", channel="cli")
 
         (res,) = _dispatch.dispatch_pod(
             "demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=1
@@ -145,8 +145,8 @@ def test_a_grant_ends_the_parked_task_done_and_a_deny_fails_it_check_changed(
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "bump one", channel="cli")
-        _dispatch.enqueue_task("demo", "bump two", channel="cli")
+        _dispatch.enqueue_task_once("demo", "bump one", channel="cli")
+        _dispatch.enqueue_task_once("demo", "bump two", channel="cli")
 
         _dispatch.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=2)
 
@@ -171,7 +171,7 @@ def test_a_task_that_edits_the_script_its_gate_runs_parks(tmp_path: Path) -> Non
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo, _GATED_PIPELINE):
-        _dispatch.enqueue_task("demo", "loosen", channel="cli")
+        _dispatch.enqueue_task_once("demo", "loosen", channel="cli")
 
         _dispatch.dispatch_pod(
             "demo", runner=_Editor({"scripts/check.sh": "# nothing to see\nexit 0\n"}), max_tasks=1
@@ -186,7 +186,7 @@ def test_a_task_that_edits_only_src_ends_done(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo, _GATED_PIPELINE):
-        _dispatch.enqueue_task("demo", "feature", channel="cli")
+        _dispatch.enqueue_task_once("demo", "feature", channel="cli")
 
         (res,) = _dispatch.dispatch_pod(
             "demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1
@@ -202,7 +202,7 @@ def test_a_team_pattern_protects_a_path_the_defaults_do_not(tmp_path: Path) -> N
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _fleet.meta_set("demo-lead", "protects", "src/*.js")
-        _dispatch.enqueue_task("demo", "feature", channel="cli")
+        _dispatch.enqueue_task_once("demo", "feature", channel="cli")
 
         _dispatch.dispatch_pod(
             "demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1

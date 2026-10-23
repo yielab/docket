@@ -344,7 +344,7 @@ class TestBudgetSet:
             meta = _lead_meta("proj")
             meta.update({"paused": True, "pausedReason": "budget"})
             current_home().meta_path(lead).write_text(json.dumps(meta))
-            _dispatch.enqueue_task("proj", "held", channel="cli")
+            _dispatch.enqueue_task_once("proj", "held", channel="cli")
 
             if how == "set-zero":
                 _pod.set_setting("proj", "budgetUsd", "0")
@@ -363,7 +363,7 @@ class TestBudgetSet:
     ) -> None:
         with _build(tmp_path):
             for desc in ("needs a file", "needs a file too"):
-                _dispatch.enqueue_task("proj", desc, channel="cli")
+                _dispatch.enqueue_task_once("proj", desc, channel="cli")
             path = _dispatch.pod_task_list_path("proj")
             doc = _store.read_json(path)
             for task in doc["tasks"]:

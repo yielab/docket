@@ -52,7 +52,7 @@ def seeded(tmp_path: Path) -> Iterator[dict[str, Any]]:
         wt = tmp_path / "wt"
         _git(repo, "worktree", "add", "-q", "-b", "docket/demo/t1", str(wt), base)
         (wt / "calc.py").write_text("x = 2\n")
-        task = _dispatch.enqueue_task("demo", "bump x", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "bump x", channel="cli")[0]
         path = _dispatch.pod_task_list_path("demo")
         doc = _store.read_json(path)
         for t in doc["tasks"]:

@@ -58,7 +58,7 @@ def _finish(
     root: Path, commit: str, output: str, *, events: list[tuple[str, dict[str, Any]]]
 ) -> str:
     """Enqueue a task, give its trace *events*, and finalize it with one implementer hop."""
-    task = _dispatch.enqueue_task("demo", "do the work", channel="cli")
+    task = _dispatch.enqueue_task_once("demo", "do the work", channel="cli")[0]
     task_id = str(task["id"])
     session = f"agent:demo:{task_id}"
     for event_type, payload in events or [("session_start", {"source": "test"})]:

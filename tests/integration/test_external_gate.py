@@ -82,7 +82,7 @@ def _spec(script: Path, on: str = "", timeout: str = "") -> _pipeline.PipelineSp
 def _run(tmp_path: Path, body: str, **kw: str) -> Iterator[tuple[Any, FakeDriver]]:
     with _seed(tmp_path):
         script = _script(tmp_path, body)
-        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
         driver = FakeDriver()
         res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(script, **kw))[0]
         yield res, driver
@@ -168,7 +168,7 @@ class TestExitMapping:
                 "    gate: {external: 'definitely-not-a-command-zz9'}\n"
             ).spec
             assert spec is not None
-            _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
             res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=spec)[0]
 
             assert res.failure_kind in ("gate_error", "gate_failed")
@@ -236,7 +236,7 @@ class TestReasons:
 
     def test_a_pre_existing_reasons_file_is_deleted_and_never_read(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
             planted = _dispatch._gate_reasons_path("demo", task["id"], "build")
             planted.parent.mkdir(parents=True, exist_ok=True)
             planted.write_text(json.dumps({"reasons": [{"summary": "PLANTED"}]}), encoding="utf-8")
@@ -257,7 +257,7 @@ class TestReasons:
             _secrets.save_secrets({"LEAKY_KEY": canary})
             payload = json.dumps({"reasons": [{"summary": f"token {canary} leaked"}]})
             script = _script(tmp_path, _reasons_script(payload, 1))
-            _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
             res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
 
             persisted = json.dumps(_dispatch.read_tasks("demo")[0]["hops"])
@@ -322,7 +322,7 @@ class TestNeedsHumanSeam:
                 tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
             )
             _bind("demo", _SEAM.format(script=script))
-            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
             driver = FakeDriver()
 
             first = _dispatch.dispatch_pod("demo", runner=driver)[0]
@@ -351,7 +351,7 @@ class TestNeedsHumanSeam:
                 tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
             )
             _bind("demo", _SEAM.format(script=script))
-            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
             driver = FakeDriver()
 
             _dispatch.dispatch_pod("demo", runner=driver)
@@ -370,7 +370,7 @@ class TestNeedsHumanSeam:
         with _seed(tmp_path):
             script = _script(tmp_path, "exit 2\n")
             _bind("demo", _SEAM.format(script=script))
-            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
             driver = FakeDriver()
 
             assert _dispatch.dispatch_pod("demo", runner=driver)[0].status == "waiting_input"

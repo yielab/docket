@@ -79,7 +79,7 @@ def _meet_everything(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _dispatch_one(spec_text: str) -> tuple[_dispatch.TaskResult, FakeDriver]:
-    _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+    _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
     driver = FakeDriver()
     res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(spec_text))[0]
     return res, driver

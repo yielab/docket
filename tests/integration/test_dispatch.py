@@ -137,12 +137,12 @@ class TestEnqueueTaskPreBrief:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task(
+            task = _dispatch.enqueue_task_once(
                 "demo",
                 "add rate limiting",
                 brief={"objective": "add rate limiting", "acceptance": ["429 after 100 req/min"]},
                 channel="cli",
-            )
+            )[0]
 
             assert "## Pre-brief" in task["description"]
             assert "429 after 100 req/min" in task["description"]
@@ -153,7 +153,7 @@ class TestEnqueueTaskPreBrief:
     def test_an_invalid_brief_raises_and_persists_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             try:
-                _dispatch.enqueue_task(
+                _dispatch.enqueue_task_once(
                     "demo", "add rate limiting", brief={"objective": ""}, channel="cli"
                 )
             except _dispatch.DispatchError:
@@ -164,7 +164,7 @@ class TestEnqueueTaskPreBrief:
 
     def test_no_brief_leaves_the_description_and_task_shape_unchanged(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "plain task, no brief", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "plain task, no brief", channel="cli")[0]
 
             assert task["description"] == "plain task, no brief"
             assert "brief" not in task
@@ -191,7 +191,7 @@ class TestEnqueueTaskPreBrief:
 class TestPipeline:
     def test_lean_pod_runs_lead_then_implementer(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "Fix the bug", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Fix the bug", channel="cli")
             runner = FakeDriver()
             results = _dispatch.dispatch_pod("demo", runner=runner)
             assert len(results) == 1
@@ -345,7 +345,7 @@ class TestPipeline:
 
     def test_task_persisted_with_status_and_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver(cost=0.05))
             tasks = _dispatch.read_tasks("demo")
             assert tasks[0]["status"] == "done"
@@ -354,7 +354,7 @@ class TestPipeline:
 
     def test_traces_written_per_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task("demo", "Trace me", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Trace me", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
@@ -372,7 +372,7 @@ class TestPipeline:
 
     def test_failed_hop_stops_pipeline(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
-            _dispatch.enqueue_task("demo", "Break early", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Break early", channel="cli")
             runner = FakeDriver(fail_role="implementer")
             res = _dispatch.dispatch_pod("demo", runner=runner)[0]
             assert res.status == "failed"
@@ -382,7 +382,7 @@ class TestPipeline:
 
     def test_typed_run_cancellation_cancels_task_and_stops_pipeline(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "Stop cleanly", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Stop cleanly", channel="cli")[0]
             calls = 0
 
             def runner(*_args: object, **_kwargs: object) -> _rd.TurnResult:
@@ -410,7 +410,7 @@ class TestPipeline:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
             monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
             runner = FakeDriver()
@@ -425,7 +425,7 @@ class TestPipeline:
         # Two pods exist; dispatching 'demo' must never touch 'other'.
         with _seed_pod(tmp_path, project="demo") as oc_dir:
             build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/other")
-            _dispatch.enqueue_task("demo", "Stay in my lane", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Stay in my lane", channel="cli")
             runner = FakeDriver()
             _dispatch.dispatch_pod("demo", runner=runner)
             assert runner.calls, "expected dispatch to run"
@@ -451,7 +451,7 @@ class TestHopEvidence:
         with _seed_pod(tmp_path):
             _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
             _fleet.meta_set("demo-implementer", "verifyCmd", "echo ok")
-            _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
 
             res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
 
@@ -473,7 +473,7 @@ class TestHopEvidence:
             secret_value = "zzqx-unleakable-canary-9000"
             _secrets.save_secrets({"LEAKY_KEY": secret_value})
             _fleet.meta_set("demo-implementer", "verifyCmd", f"echo {secret_value}; exit 1")
-            _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
 
             res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
 
@@ -490,7 +490,7 @@ class TestHopEvidence:
 
     def test_no_verify_cmd_leaves_verify_unset(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "no verify configured", channel="cli")
+            _dispatch.enqueue_task_once("demo", "no verify configured", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
             persisted = _dispatch.read_tasks("demo")[0]
             implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
@@ -535,7 +535,7 @@ class TestHopEnvInjection:
         """Integration: dispatch_pod passes env=<dict> to the implementer hop's
         runner call and env=None to the lead hop — the acceptance gate end to end."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "Use my env", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Use my env", channel="cli")
             runner = FakeDriver()
             _dispatch.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
@@ -556,7 +556,7 @@ class TestHopEnvInjection:
             raw.pop("portRangeCount", None)
             raw.pop("scratchDir", None)
             path.write_text(json.dumps(raw))
-            _dispatch.enqueue_task("demo", "No allocation here", channel="cli")
+            _dispatch.enqueue_task_once("demo", "No allocation here", channel="cli")
             runner = FakeDriver()
             _dispatch.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
@@ -612,7 +612,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "End to end", channel="cli")
+            _dispatch.enqueue_task_once("demo", "End to end", channel="cli")
             results = _dispatch.dispatch_pod("demo")
             assert results[0].status == "done"
             # cost_usd stays 0.0 through DocketDriver — CLAUDE.md's standing rule
@@ -636,7 +636,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            task = _dispatch.enqueue_task("demo", "Trace task id", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Trace task id", channel="cli")[0]
             results = _dispatch.dispatch_pod("demo")
             assert results[0].status == "done"
 
@@ -684,7 +684,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
             started = time.monotonic()
             results = _dispatch.dispatch_pod("demo")
             elapsed = time.monotonic() - started
@@ -733,7 +733,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
             started = time.monotonic()
             results = _dispatch.dispatch_pod("demo")
             elapsed = time.monotonic() - started
@@ -790,7 +790,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: park_backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
             parked = _dispatch.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
@@ -867,7 +867,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
             parked = _dispatch.dispatch_pod("demo")
             token = parked[0].approval_token
 
@@ -909,7 +909,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
             parked = _dispatch.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
@@ -949,7 +949,7 @@ class TestEndToEnd:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            task = _dispatch.enqueue_task("demo", "Keep context bounded", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Keep context bounded", channel="cli")[0]
             legacy_task_key = f"agent:demo:{task['id']}"
             legacy_message = assistant("LEGACY_TASK_WIDE_HISTORY")
             _session.append_messages(legacy_task_key, [legacy_message])
@@ -1056,7 +1056,7 @@ class TestConcurrentDispatch:
         with _seed_pod(tmp_path):
             n_tasks = 8
             for i in range(n_tasks):
-                _dispatch.enqueue_task("demo", f"task {i}", channel="cli")
+                _dispatch.enqueue_task_once("demo", f"task {i}", channel="cli")
 
             calls: list[str] = []
             calls_lock = threading.Lock()
@@ -1212,8 +1212,8 @@ class TestSweepDoesNotStallOnAParkedPod:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("alpha", "gated work", channel="cli")
-            _dispatch.enqueue_task("beta", "plain work", channel="cli")
+            _dispatch.enqueue_task_once("alpha", "gated work", channel="cli")
+            _dispatch.enqueue_task_once("beta", "plain work", channel="cli")
 
             started = time.monotonic()
             _serve._run_sweeps(True)
@@ -1230,7 +1230,7 @@ class TestSweepDoesNotStallOnAParkedPod:
 class TestCrashRecovery:
     def test_resume_skips_already_completed_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
-            _dispatch.enqueue_task("demo", "Resume me", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Resume me", channel="cli")
 
             crasher = _CrashOnRoleRunner(crash_role="reviewer")
             with pytest.raises(RuntimeError, match="simulated crash"):
@@ -1268,7 +1268,7 @@ class TestCrashRecovery:
     def test_stale_claim_without_resume_is_not_reclaimed(self, tmp_path: Path) -> None:
         """The default (non-resume) dispatch never auto-retries a crashed task."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "Crash me", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Crash me", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
             with pytest.raises(RuntimeError):
                 _dispatch.dispatch_pod("demo", runner=crasher)
@@ -1284,7 +1284,7 @@ class TestCrashRecovery:
 
     def test_stale_claim_sweep_emits_trace_event(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task("demo", "Crash me too", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Crash me too", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
             with pytest.raises(RuntimeError):
                 _dispatch.dispatch_pod("demo", runner=crasher)
@@ -1321,8 +1321,8 @@ class TestDeterministicRefusalSettlesTheClaim:
 
     def test_refusal_fails_the_task_not_the_whole_dispatch(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "task one", channel="cli")
-            _dispatch.enqueue_task("demo", "task two", channel="cli")
+            _dispatch.enqueue_task_once("demo", "task one", channel="cli")
+            _dispatch.enqueue_task_once("demo", "task two", channel="cli")
 
             results = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
 
@@ -1344,7 +1344,7 @@ class TestDeterministicRefusalSettlesTheClaim:
         """No CLAIM_STALE_TIMEOUT override and no decoy task needed — unlike a swept crash, a
         settled deterministic refusal is immediately resumable once its cause is fixed."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "fix me", channel="cli")
+            _dispatch.enqueue_task_once("demo", "fix me", channel="cli")
 
             first = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
             assert first[0].status == "failed"
@@ -1391,7 +1391,7 @@ class TestDeterministicRefusalSettlesTheClaim:
                 raise AssertionError("the model backend must not be reached")
 
             monkeypatch.setattr(_dr, "default_driver", lambda: DocketDriver(backend_factory=_never))
-            _dispatch.enqueue_task("demo", "refused posture", channel="cli")
+            _dispatch.enqueue_task_once("demo", "refused posture", channel="cli")
 
             results = _dispatch.dispatch_pod("demo")
 
@@ -1425,7 +1425,7 @@ class TestDeterministicRefusalSettlesTheClaim:
         other exception) is unaffected — the task stays 'running', recoverable only through the
         existing stale-claim sweep, never settled outright."""
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "crash me", channel="cli")
+            _dispatch.enqueue_task_once("demo", "crash me", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
 
             with pytest.raises(RuntimeError, match="simulated crash"):
@@ -1449,7 +1449,7 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
         from docket.cli import app
 
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "crash me", channel="cli")
+            _dispatch.enqueue_task_once("demo", "crash me", channel="cli")
             crasher = _CrashOnRoleRunner(crash_role="implementer")
             with pytest.raises(RuntimeError):
                 _dispatch.dispatch_pod("demo", runner=crasher)
@@ -1491,7 +1491,7 @@ class TestBlockedStaysBlocked:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")
             monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
             runner = FakeDriver()
@@ -1510,7 +1510,7 @@ class TestBlockedStaysBlocked:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "Too expensive", channel="cli")[0]
             monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
@@ -1526,8 +1526,8 @@ class TestBlockedStaysBlocked:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "One", channel="cli")
-            _dispatch.enqueue_task("demo", "Two", channel="cli")
+            _dispatch.enqueue_task_once("demo", "One", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Two", channel="cli")
             monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
             lead_id = _pod.pod.member_id("demo", "lead")
@@ -1626,7 +1626,7 @@ class TestRunCliPrologue:
             record_isolation_off(home)
 
             _pod.build_pod_from_blueprint("rsch", "research", location="", description="")
-            _dispatch.enqueue_task("rsch", "look into it", channel="cli")
+            _dispatch.enqueue_task_once("rsch", "look into it", channel="cli")
             monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
 
             _endpoint_ready(monkeypatch)
@@ -1696,7 +1696,7 @@ class TestOperatorInputStepsPark:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+            _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
 
             results = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
 
@@ -1725,7 +1725,7 @@ class TestOperatorInputStepsPark:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+            _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
             _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
             assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
 
@@ -1741,7 +1741,7 @@ class TestAnswerTaskResumesDispatch:
     def test_an_accepted_answer_resumes_straight_through_to_done(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_pipeline("demo", _ASK_PIPELINE_YAML)
-            task = _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
             assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
 
@@ -1771,7 +1771,7 @@ class TestAnswerTaskResumesDispatch:
         on resume: the second decline, a brand new `answer_task` call, must still see it."""
         with _seed_pod(tmp_path):
             _bind_pipeline("demo", _ASK_DECLINE_CAP_PIPELINE_YAML)
-            task = _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
             assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
 
@@ -1932,7 +1932,7 @@ class TestRequireVerify:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "Should fail verification", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Should fail verification", channel="cli")
             results = _dispatch.dispatch_pod("demo")
             assert results[0].status == "failed"
             assert "verifyCmd required but not set" in results[0].reason
@@ -1951,7 +1951,7 @@ class TestRequireVerify:
             driver = DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "Should skip verification", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Should skip verification", channel="cli")
             results = _dispatch.dispatch_pod("demo")
             assert results[0].status == "done"
 
@@ -1962,7 +1962,7 @@ class TestIntakeRecipeTaskBrief:
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            task = _dispatch.enqueue_task("demo", "build the widget", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "build the widget", channel="cli")[0]
             runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
             first = _dispatch.dispatch_pod("demo", runner=runner)
@@ -1999,7 +1999,7 @@ class TestIntakeRecipeTaskBrief:
     def test_a_brief_naming_a_missing_secret_blocks_with_resources(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task("demo", "call the API", channel="cli")
+            _dispatch.enqueue_task_once("demo", "call the API", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
 
             results = _dispatch.dispatch_pod("demo", runner=runner)
@@ -2018,8 +2018,8 @@ class TestIntakeRecipeTaskBrief:
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task("demo", "call the API", channel="cli")
-            _dispatch.enqueue_task("demo", "do the plain thing", channel="cli")
+            _dispatch.enqueue_task_once("demo", "call the API", channel="cli")
+            _dispatch.enqueue_task_once("demo", "do the plain thing", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY, _LEAD_READY_NO_BRIEF_REPLY])
 
             results = _dispatch.dispatch_pod("demo", runner=runner)
@@ -2030,7 +2030,7 @@ class TestIntakeRecipeTaskBrief:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
             _secrets.save_secrets({"MISSING_KEY": "shh"})
-            _dispatch.enqueue_task("demo", "call the API", channel="cli")
+            _dispatch.enqueue_task_once("demo", "call the API", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
 
             results = _dispatch.dispatch_pod("demo", runner=runner)
@@ -2042,7 +2042,7 @@ class TestIntakeRecipeTaskBrief:
     ) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task("demo", "do the plain thing", channel="cli")
+            _dispatch.enqueue_task_once("demo", "do the plain thing", channel="cli")
             runner = _IntakeRunner([_LEAD_READY_NO_BRIEF_REPLY])
 
             results = _dispatch.dispatch_pod("demo", runner=runner)
@@ -2054,7 +2054,7 @@ class TestIntakeRecipeTaskBrief:
     def test_reject_fails_the_task_as_rejected(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            _dispatch.enqueue_task("demo", "delete production", channel="cli")
+            _dispatch.enqueue_task_once("demo", "delete production", channel="cli")
             runner = _IntakeRunner([_LEAD_REJECT_REPLY])
 
             results = _dispatch.dispatch_pod("demo", runner=runner)

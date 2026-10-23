@@ -84,7 +84,7 @@ def _seed_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
 
 
 def _queue_task(**fields: Any) -> str:
-    task = _dispatch.enqueue_task("demo", "write a file", channel="cli")
+    task = _dispatch.enqueue_task_once("demo", "write a file", channel="cli")[0]
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:
         for entry in doc["tasks"]:

@@ -120,7 +120,7 @@ class TestHttpGrantConsumesThePregrant:
             driver = DocketDriver(backend_factory=lambda model: park_backend)
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            _dispatch.enqueue_task_once("demo", "clean the build dir", channel="cli")
             parked = _dispatch.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
@@ -379,7 +379,7 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
         message must contain `## Operator answers` with both exact values."""
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            task = _dispatch.enqueue_task("demo", "build the widget", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "build the widget", channel="cli")[0]
             runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
             first = _dispatch.dispatch_pod("demo", runner=runner)

@@ -100,4 +100,4 @@ def test_a_dispatch_post_writes_a_run_dispatch_entry(
 def test_enqueue_requires_a_channel() -> None:
     _seed()
     with pytest.raises(TypeError):
-        _dispatch.enqueue_task("demo", "x")  # type: ignore[call-arg]
+        _dispatch.enqueue_task_once("demo", "x")  # type: ignore[call-arg]

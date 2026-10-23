@@ -79,7 +79,7 @@ def _run_pipeline(
         ]
     )
     with _seed_research_pod(tmp_path, server.base_url):
-        _dispatch.enqueue_task("demo", "research the topic", channel="cli")
+        _dispatch.enqueue_task_once("demo", "research the topic", channel="cli")
         (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
         assert result.status == "done", result.reason
         hops = _dispatch.read_tasks("demo")[0]["hops"]

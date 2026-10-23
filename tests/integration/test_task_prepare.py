@@ -135,7 +135,7 @@ def test_the_implementer_hop_finds_the_installed_tool_and_the_task_records_it(
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         runner = _Runner()
 
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
@@ -160,8 +160,8 @@ def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(tmp_path: Path, npm
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "first", channel="cli")
-        _dispatch.enqueue_task("demo", "second", channel="cli")
+        _dispatch.enqueue_task_once("demo", "first", channel="cli")
+        _dispatch.enqueue_task_once("demo", "second", channel="cli")
         runner = _Runner()
 
         results = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=2)
@@ -180,7 +180,7 @@ def test_a_broken_lockfile_fails_the_task_before_any_hop(tmp_path: Path) -> None
     repo = tmp_path / "repo"
     _init_repo(repo, lock="broken")
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
         runner = _Runner()
 
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
@@ -200,7 +200,7 @@ def test_a_blank_task_prepare_skips_the_install(tmp_path: Path, npm_log: Path) -
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _dispatch.enqueue_task("demo", "work", channel="cli", prepare="")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli", prepare="")
         runner = _Runner()
 
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
@@ -217,7 +217,7 @@ def test_a_pods_prepare_setting_wins_over_the_lockfile(tmp_path: Path, npm_log: 
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
         _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "prepare", "none")
-        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.enqueue_task_once("demo", "work", channel="cli")
 
         (res,) = _dispatch.dispatch_pod("demo", runner=_Runner(), max_tasks=1)
 

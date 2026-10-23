@@ -41,7 +41,7 @@ def _seed(tmp_path: Path) -> Iterator[str]:
     approvals.mkdir()
     with use_home(dataclasses.replace(Home(home), approvals_dir_override=approvals)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "evidence please", channel="cli")[0]
         hop = _dispatch._hop_record(
             _dispatch.HopResult(
                 role="implementer",

@@ -127,7 +127,7 @@ def _start(
         _fleet.meta_set("demo-lead", "pipeline", digest)
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    queued = _dispatch.enqueue_task("demo", "in-place task", channel="cli")
+    queued = _dispatch.enqueue_task_once("demo", "in-place task", channel="cli")[0]
     _dispatch.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
     return _Run("demo", str(queued["id"]))
 

@@ -207,7 +207,7 @@ class _BigOutputRunner:
 class TestContextComposedTrace:
     def test_context_composed_emitted_per_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task("demo", "Trace the context", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Trace the context", channel="cli")
             _dispatch.dispatch_pod("demo", runner=_BigOutputRunner())
 
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
@@ -235,7 +235,7 @@ class TestContextComposedTrace:
 
     def test_context_composed_not_truncated_for_small_outputs(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
-            _dispatch.enqueue_task("demo", "Small trace", channel="cli")
+            _dispatch.enqueue_task_once("demo", "Small trace", channel="cli")
 
             class _SmallRunner:
                 def __call__(

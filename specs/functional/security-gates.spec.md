@@ -329,7 +329,7 @@ where it applies to commands docket itself launches.
    producer `docket setup` uses (`install_policies`). An empty `$POLICIES_DIR` makes every hook
    evaluation `allow`, so this step is what makes the rest of this section possible.
 2. The `pre_input` hook **MUST** be evaluated exactly once per task, when the task is enqueued
-   (`enqueue_task`), against the task's raw description, with role `"lead"` (the pipeline's fixed
+   (`enqueue_task_once`), against the task's raw description, with role `"lead"` (the pipeline's fixed
    entry point). It **MUST NOT** be re-evaluated before every hop: doing so would re-trip the same
    `"*"`-scoped policy at every role for one piece of incoming text. An operator's task is trusted
    by default (the `prompt-injection` policy is skipped for it); `POST /tasks` may set `trusted`.
@@ -364,7 +364,7 @@ where it applies to commands docket itself launches.
    policy's id and `action` is the verdict (`"block"`). The HTTP `/metrics` counter
    `docket_policy_hits_total` tallies `guardrail_check` events (by policy, hook and action) and the
    gate's `tool.*` audit entries; it does not read `guardrail_block`, so a block is counted once.
-5. `pre_tool_call` **MUST NOT** be evaluated by the dispatch flow between hops: `enqueue_task` and
+5. `pre_tool_call` **MUST NOT** be evaluated by the dispatch flow between hops: `enqueue_task_once` and
    `dispatch_task` orchestrate hops and stay outside every tool call made during a turn.
    `pre_tool_call` fires inside the turn, in `dispatch_tool` ("In-turn tool-call gate").
 6. `docket pod validate [PATH]` **MUST** check policies through the one config validator, with
@@ -1476,7 +1476,7 @@ $ git clone https://anywhere.example/repo.git
   `dispatch_tool`, which every pod-dispatch hop's calls pass, is gated by argument, by both the
   command classifier and the `high-risk-deploy` policy.
 - A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue:
-  `enqueue_task` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
+  `enqueue_task_once` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
   `block` **MUST NOT** let a later pipeline step run; the hop that tripped it **MUST** be the
   task's last recorded hop when it fails.
 - `pre_tool_call` **MUST NOT** be evaluated a second time by the hop-orchestration flow, and
@@ -1538,7 +1538,7 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/plugins.py`: the `docket.plugins` API (`PLUGIN_API_VERSION`, `predicate`,
   `ToolCall`, `PolicyContext`, `REGISTRY`)
 - `src/docket/core/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`
-- `src/docket/core/dispatch.py`: `enqueue_task` (the `pre_input` gate), `dispatch_task` (the
+- `src/docket/core/dispatch.py`: `enqueue_task_once` (the `pre_input` gate), `dispatch_task` (the
   `pre_output` scan, the profile check), `pod_approval_mode`, hop composition
   (`DOCKET_APPROVAL_MODE`, `DOCKET_APPROVAL_EXPIRES_AT`, the task restriction keys, the hop
   network), the verify, `run:` and prepare launches, `resolve_waiting_approval`

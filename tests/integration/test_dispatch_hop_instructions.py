@@ -90,7 +90,7 @@ def _prep_pod(
         _register_security_reviewer()
         build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
         _pod.add_members("proj", "security-reviewer")
-        _dispatch.enqueue_task("proj", "ship the security review", channel="cli")
+        _dispatch.enqueue_task_once("proj", "ship the security review", channel="cli")
         yield
 
 

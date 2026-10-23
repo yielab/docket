@@ -27,7 +27,7 @@ def _work(root: Path, task: str) -> None:
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
         build_pod(_PROJECT, ("lead", "implementer"), codebase=f"/src/{_PROJECT}")
-        _dispatch.enqueue_task(_PROJECT, task, channel="cli")
+        _dispatch.enqueue_task_once(_PROJECT, task, channel="cli")
         _audit.audit_log("test.two_homes", task)
 
 

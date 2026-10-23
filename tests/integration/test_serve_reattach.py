@@ -157,7 +157,7 @@ def _park_on_consult(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     backend = _Backend([_final("plan"), _consult(), _final("built with redis")])
     driver = DocketDriver(backend_factory=lambda model_name: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    queued = _dispatch.enqueue_task("demo", "in-place task", channel="cli")
+    queued = _dispatch.enqueue_task_once("demo", "in-place task", channel="cli")[0]
     _dispatch.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
     return str(queued["id"])
 
@@ -167,7 +167,7 @@ class TestServedFromDisk:
         self,
     ) -> None:
         _gated_pod()
-        task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         token = _task_list()[0]["approvalToken"]
 
@@ -200,7 +200,7 @@ class TestAnswerAcrossRestart:
         self,
     ) -> None:
         _gated_pod()
-        task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
         runner = FakeDriver()
         _dispatch.dispatch_pod("demo", runner=runner)
         token = _task_list()[0]["approvalToken"]
@@ -269,7 +269,7 @@ class TestExpiryStates:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         _gated_pod()
-        gated = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        gated = _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")[0]
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         token = _task_list()[0]["approvalToken"]
         record = _ap.approval_get(token)
@@ -296,7 +296,7 @@ class TestExpiryStates:
 class TestStaleClaim:
     def test_a_stale_claim_failure_is_resumed_by_the_next_sweep(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "x", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "x", channel="cli")[0]
         path = _dispatch.pod_task_list_path("demo")
         doc = json.loads(path.read_text())
         doc["tasks"][0].update(

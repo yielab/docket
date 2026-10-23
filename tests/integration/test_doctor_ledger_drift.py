@@ -51,7 +51,7 @@ def _claim_a_task(project: str = "demo") -> str:
     """Enqueue + claim a task via the real dispatch state machine (so
     TASK_LIST.json ends up in a genuine 'running' state, ledger written by
     dispatch itself); returns the task id."""
-    _dispatch.enqueue_task(project, "some work", channel="cli")
+    _dispatch.enqueue_task_once(project, "some work", channel="cli")
     claim = _dispatch._claim_next_task(project, resume=False)
     assert claim is not None
     return str(claim[0]["id"])

@@ -69,7 +69,7 @@ def stub() -> Iterator[_ScriptedLLMServer]:
 def _queue(**extra: Any) -> str:
     from docket.edges import store as _store
 
-    _dispatch.enqueue_task("demo", "ship it", channel="cli")
+    _dispatch.enqueue_task_once("demo", "ship it", channel="cli")
     tasks = _dispatch.read_tasks("demo")
     tasks[0].update(extra)
     _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})

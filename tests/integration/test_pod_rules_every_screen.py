@@ -133,14 +133,14 @@ class TestDefect39PodPolicyOnEveryScreen:
         _pod_policy("pod-block-input", _INPUT_BLOCK)
 
         with pytest.raises(_dispatch.DispatchError, match="pod-block-input"):
-            _dispatch.enqueue_task("demo", "please CANARY-PHRASE now", channel="cli")
+            _dispatch.enqueue_task_once("demo", "please CANARY-PHRASE now", channel="cli")
 
         assert _dispatch.read_tasks("demo") == []
 
     def test_defect_39_hop_pre_output_blocks_on_a_pod_only_policy(self, tmp_path: Path) -> None:
         _seed_pod(tmp_path)
         _pod_policy("pod-block-output", _OUTPUT_BLOCK)
-        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
         runner = _OutputRunner({"lead": "the lead says CANARY-PHRASE"})
 
         results = _dispatch.dispatch_pod("demo", runner=runner)
@@ -194,7 +194,7 @@ class TestDefect39PodPolicyOnEveryScreen:
         bound.parent.mkdir(parents=True, exist_ok=True)
         bound.write_text(ask, encoding="utf-8")
         _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
-        _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         parked = _dispatch.read_tasks("demo")[0]
         assert parked["status"] == "waiting_input"
@@ -226,7 +226,7 @@ class TestDefect20PodRoleGateContract:
         self, tmp_path: Path
     ) -> None:
         _seed_auditor_pod(tmp_path)
-        _dispatch.enqueue_task("demo", "Audit it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Audit it", channel="cli")
         runner = _OutputRunner({"auditor": "looks fine to me, no verdict word"})
 
         results = _dispatch.dispatch_pod("demo", runner=runner)

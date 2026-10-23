@@ -260,7 +260,7 @@ def pod_task_list_path(project: str) -> Path:
     return current_home().workspace_dir(lead_id) / "TASK_LIST.json"
 
 
-# Fields a task record may lack because enqueue_task does not write them.
+# Fields a task record may lack because enqueue_task_once does not write them.
 # ``hops`` is handled separately below — a shared mutable default would leak
 # the same list object across every backfilled task.
 _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
@@ -286,7 +286,7 @@ _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
 
 
 def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
-    """Fill every field ``enqueue_task`` does not write onto a task dict, in place (returns it)."""
+    """Fill every field ``enqueue_task_once`` does not write onto a task dict, in place (returns it)."""
     for key, default in _TASK_SCALAR_DEFAULTS.items():
         task.setdefault(key, default)
     if not isinstance(task.get("hops"), list):
@@ -369,22 +369,6 @@ def validate_task_options(**raw: Any) -> _task_options.TaskOptions:
 
 def _queued_with_key(tasks: list[dict[str, Any]], key: str) -> dict[str, Any] | None:
     return next((t for t in tasks if t.get("idempotencyKey") == key), None)
-
-
-def enqueue_task(
-    project: str,
-    description: str,
-    priority: str = "normal",
-    *,
-    channel: str,
-    trusted: bool | None = None,
-    brief: dict[str, Any] | None = None,
-    **options: Any,
-) -> dict[str, Any]:
-    """The task :func:`enqueue_task_once` queued, or the one already queued for the key."""
-    return enqueue_task_once(
-        project, description, priority, channel=channel, trusted=trusted, brief=brief, **options
-    )[0]
 
 
 def enqueue_task_once(

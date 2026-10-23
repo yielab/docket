@@ -166,7 +166,7 @@ class TestRecordPregrant:
 
     def test_records_the_same_shape_a_live_park_grant_appends(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             token = _interruptions.record_pregrant(
                 "demo", task["id"], "git push origin main", channel="cli", actor="tester"
@@ -180,7 +180,7 @@ class TestRecordPregrant:
 
     def test_collapses_whitespace_before_digesting(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             _interruptions.record_pregrant(
                 "demo", task["id"], "git   push  origin\tmain", channel="cli"
@@ -192,7 +192,7 @@ class TestRecordPregrant:
 
     def test_custom_tool_changes_the_digest(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             _interruptions.record_pregrant("demo", task["id"], "hello", tool="write", channel="cli")
 
@@ -218,7 +218,7 @@ class TestPregrantAtTheChokepoint:
             _seed_pod(tmp_path),
             use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
         ):
-            task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
+            task = _dispatch.enqueue_task_once("demo", "ship it", channel="cli")[0]
             _interruptions.record_pregrant(
                 "demo", task["id"], "git push origin main", channel="cli"
             )

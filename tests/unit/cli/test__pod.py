@@ -61,7 +61,7 @@ def _seed_parked_task(
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     with _seed_pod(tmp_path):
         _bind_ask_pipeline("demo")
-        _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         yield _dispatch.read_tasks("demo")[0]
 

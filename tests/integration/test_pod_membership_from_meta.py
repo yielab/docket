@@ -94,7 +94,7 @@ class TestCustomRoleEndingInRegisteredRoleName:
             # fixture actually reproduces the trigger's precondition before dispatching.
             assert pod.pod_of("proj-security-reviewer") == "proj"
 
-            _dispatch.enqueue_task("proj", "ship the security review", channel="cli")
+            _dispatch.enqueue_task_once("proj", "ship the security review", channel="cli")
 
             driver = FakeDriver()
 

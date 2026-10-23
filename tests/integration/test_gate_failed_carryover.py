@@ -73,7 +73,7 @@ def _implementer_messages(driver: FakeDriver) -> list[str]:
 @contextmanager
 def _run(tmp_path: Path, verify_cmd: str, yaml: str) -> Iterator[tuple[Any, FakeDriver]]:
     with _seed(tmp_path, verify_cmd):
-        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        _dispatch.enqueue_task_once("demo", "Ship it", channel="cli")
         driver = FakeDriver()
         results = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(yaml))
         yield results[0], driver

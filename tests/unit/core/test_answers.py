@@ -57,7 +57,7 @@ def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     position are exactly what ``answer_task`` expects."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task(project, "needs a decision", channel="cli")
+    _dispatch.enqueue_task_once(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
     return _dispatch.read_tasks(project)[0]
 
@@ -83,7 +83,7 @@ class TestAnswerTaskValidation:
 
     def test_answering_a_task_that_is_not_waiting_input_raises(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
+        task = _dispatch.enqueue_task_once("demo", "plain task", channel="cli")[0]
 
         with pytest.raises(_answers.AnswerError):
             _answers.answer_task(
@@ -152,7 +152,7 @@ class TestAnswerTaskPlacement:
         pipelines = current_home().pod_config_dir("demo") / "pipelines"
         pipelines.mkdir(parents=True)
         (pipelines / "ask.yaml").write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
-        _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        _dispatch.enqueue_task_once("demo", "needs a decision", channel="cli")
         path = _dispatch.pod_task_list_path("demo")
         doc = _store.read_json(path)
         doc["tasks"][0]["pipeline"] = "ask"
