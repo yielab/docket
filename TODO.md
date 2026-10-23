@@ -31,11 +31,10 @@
 > (`3e9c3d9f`, `0a0bff6c`, `f9a5cec4`). Operator items left: `~/.docket/provider-models.json.bak`
 > still holds a worker test's junk rows (`m`, window 9) and the maintainer deletes it; the two
 > task branches `docket/fab-dev/task-b1e95477…` and `…task-b5e39e26…` in the Fabulada repository
-> carry the new tests and are the maintainer's to merge or drop. No phase is planned on
-> `develop`; Phase 46 (D-66, ADR 0030) is planned on branch `plan/phase-46-structure` and waits for
-> the maintainer's approval.
+> carry the new tests and are the maintainer's to merge or drop. Phase 46 (D-66, ADR 0030) is
+> active on branch `plan/phase-46-structure` since 2026-10-22.
 
-## ◇ PHASE 46 — PLANNED — organize by context, refactor by tool (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, starts when Phase 45 closes)
+## ◇ PHASE 46 — ACTIVE — organize by context, refactor by tool (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, started 2026-10-22 on `plan/phase-46-structure`)
 
 > **Evidence.** Measured 2026-10-20 at `c74a224e` (ADR 0030 "Evidence"): 31 of 63 `core` modules
 > import `edges`; 206 function-local imports hide a 38-module cycle; `core/dispatch.py` is 4,727
@@ -66,9 +65,59 @@
 > tests unchanged; before/after live traces identical modulo ids and timestamps; no `cli/`,
 > `core/`, `edges/`, `serve.py`, `config.py` left.
 
+### Progress and execution plan (2026-10-22)
+
+**Done on the branch.**
+
+- **Specs truth pass** (`3c533a9c`, `2ed1cce5`). Every one of the 32 specs now states today's code, carries no history, and names a path only in its last `## Implementation` section, the only text P46-3 rewrites. The pass did not apply Phase 46 ahead of time: each amendment is listed on its card below.
+- **The pass found 87 code defects.** None was fixed, because the specs state the code as it is. They are scheduled in Wave 120 below, or folded into the Phase 46 card that rewrites that code anyway.
+- **P46-5 step 1**, out of the planned order. It does not depend on P46-2..4. Commits `8325268f` and `cd04b643`:
+  - `kernel/` holds `home`, `clock`, `ids`, `errors` and `text`, with their unit tests, the leaf guard and the shrink-only adoption guard.
+  - `scripts/maint/adopt_kernel.py` rewrites call sites and `scripts/maint/measure_kernel_adoption.py` counts what remains.
+  - Ids, text and clock are adopted (counts 0, 3 and 0), and 13 wrappers are deleted.
+
+**How work is split: volume decides script or model.** A rewrite that is the same at every site is done by a script, even when a model could do one site faster: the script is written once, runs again in seconds on whatever tree it meets, and does not drift at site 300. A model takes the work where each site is a decision. Measured on the working tree on 2026-10-22:
+
+| Work | Volume | Who | Why |
+| --- | --- | --- | --- |
+| `config.*` reads → `current_home()` | 415 sites, 61 files | script (P46-5 step 3) | same rewrite everywhere |
+| `repoint_docket_home` → `use_home` in tests | 190 sites, 132 files | script (P46-5 step 3) | same rewrite everywhere |
+| `raise ValueError` → `InvalidInput` | 148 sites | script (P46-5 step 2) | `InvalidInput` is a `ValueError`, every `except` still catches |
+| 36 error classes → a kind | 36 classes | Opus writes the table, then the script applies it | the judgment is in the table, not in the edit |
+| `os.environ` outside `config.py` | 34 sites (61 more go away with `config.py`) | Sonnet, from the measurer's list | each site needs a decision |
+| module moves (P46-7..9) | about 100 modules | `move.py` | as ADR 0030 |
+| the 87 defects | about 75 after folding and duplicates, in 13 cards | Sonnet, one card per group of files | each needs a RED test and a decision |
+| stale text and dead code | 9 items with exact locations | Haiku | no judgment |
+| spec versions, the index, goldens | per batch | `bump.sh`, `check_spec_index.py`, `run.sh` | already scripts |
+
+Opus is the integrator only. It writes the error-kind table, reviews W120-1 and W120-2 (security), merges, bumps specs and owns every rollup. Haiku takes only edits whose exact locations are known.
+
+**Stages.** Merge in the order shown inside a batch. Each stage starts when the previous one is merged.
+
+| Stage | In parallel | Agents |
+| --- | --- | --- |
+| 1 | Wave 120 batch A (W120-1..7) and the rules of P46-5 step 3 | 8 Sonnet |
+| 2 | Wave 120 batch B (W120-8..12), P46-5 step 2's catcher and table, P46-1, P46-2, P46-3 | 9 Sonnet |
+| 3 | W120-13; the integrator then runs P46-5 steps 2 and 3 over the final tree (scripts last, once) and closes P46-5 | 1 Haiku |
+| 4 | P46-4 (needs P46-2, P46-3 and P46-5) | 1 Sonnet |
+| 5 | Baseline live run (integrator), then P46-6 → P46-15 as planned, with the freeze | per card |
+
+The scripts run last because the Wave 120 branches touch the same files the codemods touch. A script run once over the merged tree meets no conflict. A worker whose new test raises the `repointers`, `config-reads`, `environ` or `error-raises` count writes the new baseline with `measure_kernel_adoption.py --write` and reports the change; the step 2 and step 3 run brings the counts down. The `clock`, `ids` and `text` counts stay where they are: use `kernel.clock`, `kernel.ids` and `kernel.text`.
+
+**Decisions for the maintainer.** Each card applies the default below unless the maintainer answers otherwise before its batch starts.
+
+| # | Question | Default (D-57 unless stated) | Card |
+| --- | --- | --- | --- |
+| Q1 | analyst and critic have opposite model classes in `models_policy.ROLE_CLASS` and `archetypes.STARTER_ARCHETYPES` (defect 6) | keep the value the live path resolves today, and delete the other table's entry | W120-9 |
+| Q2 | `requireApprovalRoles` is read and never written (defect 7); `_policy_requires_approval` always returns False (defect 46) | delete both; one source of `require_approval` fewer | W120-8 |
+| Q3 | the role scope `org` and the global `docket-roles.json` have no writer (defect 24); `kind:`-less short forms are a compatibility layer (defect 66) | delete both | W120-9 |
+| Q4 | Telegram `/approve` and `/deny` accept a token from any pod (defect 65) | refuse a token from a pod other than the chat's bound pod | W120-10 |
+| Q5 | the `docket init --from` path without a blueprint (defects 36, 37, 84, 86, including a path traversal) | delete it: an entry without `blueprint` is refused, and the four defects go with it | W120-2 |
+| Q6 | the adoption evidence comes from the harness writing records itself (defect 80) | keep the benchmark, and make the doc say what it proves | W120-7 |
+
 ### P46-1 — the rules the documents state
 
-**Status:** TODO after Phase 45 closes · **Size:** S · **Model:** integrator · **Kind:** R
+**Status:** TODO · stage 2 · **Size:** S · **Model:** Sonnet writes, integrator reviews · **Kind:** R
 
 - **Trigger:** ADR 0030 points 1-2 and 5 replace the layer rule `cli -> core -> edges`.
 - **Goal:** `CONTRIBUTING.md` "Package layout" describes the context packages, the two-level rule,
@@ -84,30 +133,34 @@
 
 ### P46-2 — `analyze.py`: the measurements and the first mapping
 
-**Status:** TODO after P46-1 · **Size:** M · **Model:** Sonnet · **Kind:** T (tool with tests)
+**Status:** TODO · stage 2 (independent of P46-1: it writes only `scripts/maint/refactor/`) · **Size:** M · **Model:** Sonnet · **Kind:** T (tool with tests)
 
 - **Goal:** `scripts/maint/refactor/analyze.py` writes `refactor/analysis.json` + markdown: import
   graph and SCCs (top-level and with local imports, via `grimp`); every function-local `docket`
   import (file, line); call-graph groups for `core/dispatch.py`, `serve.py`,
   `edges/adapters/system.py` (definitions, line ranges, external callers); every `["status"] =`
-  site with the fields set in the same block and its caller; every `_cfg.NAME` read; every
+  site with the fields set in the same block and its caller; every
   monkeypatch target with the module that defines the patched object; fan-in per task-record key;
   whether `runs.json` duplicates `task["hops"]`. `--metrics` prints the nine gate numbers.
   `--draft-map` emits `refactor/target-map.toml` from the groups and ADR 0030 "Target layout".
-- **Non-goals:** changing any file under `src/` or `tests/`.
-- **Acceptance:** on `develop` the metrics print local imports 206, largest cycle 38, `status`
-  writers 16, largest module 4727 (±0); on `tests/architecture/fixtures/toy/` the groups and
+- **Non-goals:** changing any file under `src/` or `tests/`; counting `config.*` reads (that is
+  `measure_kernel_adoption.py config-reads`, already a guard).
+- **Acceptance:** on its base commit the metrics equal an independent count (`rg`/`ast`) of local
+  imports, largest cycle, `status` writers and largest module; the 2026-10-20 numbers (206, 38,
+  16, 4727) no longer hold after P46-5 and Wave 120; on `tests/architecture/fixtures/toy/` the groups and
   SCCs match the fixture's expected JSON. Oracle: the tool's own tests.
 - **RED test:** the toy fixture's expected JSON before the tool exists.
 - **Gates:** ruff, mypy on the script, its tests; `comment_lint`.
 
 ### P46-3 — `move.py` and `refactor_gate.sh`
 
-**Status:** TODO after P46-1 · **Size:** L · **Model:** Sonnet · **Kind:** T (tool with tests)
+**Status:** TODO · stage 2 (independent of P46-1 and P46-2 until its real-tree dry run) · **Size:** L · **Model:** Sonnet · **Kind:** T (tool with tests)
 
 - **Goal:** `scripts/maint/refactor/move.py` (libcst) executes `target-map.toml`: `git mv` whole
   modules; move named definitions with leading comments and decorators in mapping order; rewrite
-  `import`/`from … import` in `src/` and `tests/`; rewrite `"docket.a.b"` string targets and
+  `import`/`from … import` in `src/`, `tests/`, `benchmarks/`, `scripts/`, `examples/` and
+  `packages/` (code outside `src/` imports `docket.*`; missing one fails only the docs job);
+  in `specs/` only the `## Implementation` sections name paths; rewrite `"docket.a.b"` string targets and
   `SUBJECT`; move each test file to its `SUBJECT` module's mirror path, splitting a file by
   symbol when its tests import two destinations; rewrite code paths in `specs/`, `docs/` (not
   `cycles-ended/`, not `adr/`), `CONTRIBUTING.md`, `AGENTS.md`, `.agents/skills/`; `ruff --fix`;
@@ -123,9 +176,13 @@
 
 ### P46-4 — `tests/architecture/`, the ratchets and the markers
 
-**Status:** TODO after P46-2 and P46-3 · **Size:** M · **Model:** Sonnet · **Kind:** T
+**Status:** TODO · stage 4, after P46-2, P46-3 and P46-5 · **Size:** M · **Model:** Sonnet · **Kind:** T
 
-- **Goal:** move the 25 guards to `tests/architecture/` and the 18 agent-lane files to
+- **Folded defect 69** (truth pass): `pytest-without-sandbox.sh` runs in no CI job (CI gets a
+  `-m "not sandbox"` job on a runner with `DOCKET_SANDBOX_PROBE=none`); the `slow` marker is
+  registered and used by nothing (use it or drop it); 15 test files exceed 800 lines with no guard
+  (`test_module_size.py` covers `tests/` with its own ceiling).
+- **Goal:** move every guard (27, the two `kernel` guards included) to `tests/architecture/` and the 18 agent-lane files to
   `tests/release/` (by `move.py`). Add `test_import_contracts.py` (import-linter, ADR 0030
   dependency table, current violations in a baseline ignore list), `test_no_local_imports.py`
   (baseline 206), `test_module_size.py` (ceiling = current largest, target 700),
@@ -142,20 +199,387 @@
 
 ### P46-5 — `kernel/` and `Home`
 
-**Status:** TODO after P46-4 · **Size:** L · **Model:** integrator + codemod · **Kind:** T + R
+**Status:** IN-PROGRESS · step 1 DONE 2026-10-22, steps 2-3 in stages 1-3 · **Size:** L · **Model:** per step · **Kind:** T + R
 
-- **Goal:** `analyze.py --emit-home` generates `kernel/home.py::Home` from the 102 `config.py`
-  names (same defaults, types, environment variables); the maintainer reviews the class once.
-  `current_home()` (`ContextVar`, process default from the environment) and `use_home(home)`
-  context manager. Codemods: the 307 `_cfg.NAME` reads → `current_home().name`; the test fixture
-  `use_home(Home(tmp_path))` replaces `repoint_docket_home`; `datetime.now(UTC)`/`time.monotonic`
-  outside tests → `kernel/clock.py`. `config.py` keeps only template lookups and moves to
-  `kernel/`. `kernel/ids.py`, `kernel/errors.py`, `kernel/text.py` take `_now`, `_parse_iso`,
-  `_cut_at_word` and friends. The architecture guard forbids `os.environ`, `datetime.now` and
-  `time.*` outside `kernel/`.
-- **Acceptance:** a new test runs two `use_home` blocks and asserts disjoint files; the
-  partial-repointer guard and its baseline are deleted; the gate passes.
-- **Gates:** `refactor_gate.sh`.
+- **Step 1: DONE (2026-10-22).**
+  - `kernel/home.py::Home` was written by hand, not generated. `tests/integration/test_home_parity.py` pins that it equals `config.py`, name for name and default for default.
+  - Beside it: `current_home()`, `use_home()`, `kernel/clock.py` (`use_clock`), `kernel/ids.py`, `kernel/errors.py` (`DocketError` and the kinds `InvalidInput`, `NotFound`, `Conflict`, `Refused`, `Unavailable`, `DocumentError`) and `kernel/text.py` (`cut_chars`, `cut_output`, `ellipsize`, `one_line`).
+  - `tests/guards/test_kernel_is_a_leaf.py` checks that kernel imports nothing from docket.
+  - `tests/guards/test_kernel_adoption.py` with its baseline is a strict-equality ratchet: a count may neither rise nor fall without the baseline changing.
+  - `adopt_kernel.py` has the rules `ids`, `text`, `clock` and `wrappers`. It rewrote 9 id sites, the text sites, 62 clock sites and 74 wrapper calls, and deleted 13 wrappers.
+  - The runtime build hook lists the kernel files.
+  - A `ContextVar` does not reach a thread docket spawns: a threaded test re-enters `use_clock` in the thread.
+- **Step 2, errors (stage 2 writes, stage 3 runs).**
+  - Opus writes the table that sends each of the 36 builtin-derived classes to a kind.
+  - A Sonnet worker adds the rule `errors` to `adopt_kernel.py` (re-parent per the table; `raise ValueError(x)` → `raise InvalidInput(x)`; refuse a raise with more than one argument) and its toy tests.
+  - The same worker adds one catcher of `DocketError` at the CLI entry and one in the HTTP handler. It first checks the `except ValueError` sites in `serve.py` (~219, ~991, ~1162).
+  - The 2 `RuntimeError` raises are migrated by hand.
+- **Step 3, home (stage 1 writes the rules, stage 3 runs them).**
+  - A Sonnet worker adds the rules `config-reads` (`config.NAME` → `current_home().name`) and `repointers` (→ `use_home(Home(tmp_path))`) with toy tests. Today the codemod has no tests of its own.
+  - `config-reads` refuses a read at import time and lists it, because a module-level read freezes the default home.
+  - The same worker handles the 34 `environ` sites outside `config.py` from the measurer's list: each becomes a `Home` field or stays at an entry point.
+  - Then `config.py` keeps only template lookups and moves to `kernel/`. `test_home_parity.py`, `tests/guards/test_partial_repointers.py` and its baseline are deleted.
+- **Text, settled.**
+  - `approval._audit_field` caps at 513 characters while the audit spec says 512: it becomes `ellipsize(x, 512)`.
+  - `…[+N chars]` (`cli/_setup_export.py`) and `[diff truncated …]` (`system.py`) keep their own format, one user each.
+  - `_cut_at_word` stays in dispatch, because only one context uses it.
+- **Acceptance.**
+  - A new test runs two `use_home` blocks and asserts their files are disjoint.
+  - Adoption counts are `clock 0`, `ids 0`, `text 0`, `error-classes 0`, `error-raises 0`, `config-reads 0` and `repointers 0`. `environ` keeps only the entry-point sites step 3 listed.
+  - The partial-repointer guard is gone, and `adopt_kernel.py --check` reports 0 sites.
+  - The full suite and the goldens pass unchanged.
+- **Gates:** CLAUDE.md "Running tests", plus `refactor_gate.sh` once P46-3 lands.
+
+## ◇ WAVE 120 — the defects the specs truth pass found (before P46-6; stages 1-3 above)
+
+> **Trigger.** The truth pass of 2026-10-22 checked every spec against the code and recorded 87
+> code defects with file:line evidence. The specs state today's behaviour, defects included. The
+> numbers below are the pass's defect numbers; the log is the gitignored
+> `internal-docs/audits/specs-truth-pass-2026-10-22.md`. Each card names the file and the
+> behaviour, so a worker does not need the log.
+>
+> **Folded into other cards, not here:**
+>
+> - 8, 51, 56 → P46-12
+> - 10, 67 → P46-11
+> - 14 → P46-9
+> - 62 → P46-10
+> - 69 → P46-4, plus the golden count in CLAUDE.md, which the integrator fixes
+> - 27 and the first half of 74 → follow-ups
+>
+> **Duplicates:** 83 is the same defect as 30, and 87 as 60.
+>
+> **Why this wave runs before P46-6:**
+>
+> - The freeze forbids `src/` edits from P46-6 to P46-15.
+> - The baseline live run must include the fixes, so that before and after compare the same
+>   behaviour.
+> - P46-9 requires byte-identical HTTP responses, so every byte change lands now.
+>
+> A fix made in the old layout costs nothing extra: the codemod moves it.
+>
+> **Rules for every W120 card.**
+>
+> - **The owning spec changes with the code.** The worker rewrites the requirement it changes and
+>   no other. The integrator bumps versions (`bump.sh`) once per spec per batch.
+> - **RED first.** A defect marked *unverified* is first reproduced by the RED test. If it does
+>   not reproduce, the worker drops it and says so.
+> - **Ownership is by function.** A card edits only the functions it names. Shared files are
+>   noted per card, and the card order is the merge order inside a batch.
+> - **P46-5 rules.**
+>   - New raises use the kinds in `kernel.errors`.
+>   - Clock, id and text reads go through `kernel.clock`, `kernel.ids` and `kernel.text`.
+>   - A rise in `repointers`, `config-reads`, `environ` or `error-raises` is written with
+>     `measure_kernel_adoption.py --write` and reported.
+> - **Probes** follow the rule in `.agents/handoffs/specs-truth-pass-worker-packets.md`:
+>   - Run in a throwaway home: `d=$(mktemp -d)`, then `cd "$d"`.
+>   - Remove it with `rm -rf "$d"`.
+>   - Never touch `~/.docket` and never call a hosted service.
+> - **Gates.**
+>   - `ruff`, `ruff format --check`, `mypy src` and the tests you touched.
+>   - Then `uv run pytest`.
+>   - Then `env -u VIRTUAL_ENV bash tests/golden/run.sh verify-all`. A golden changes only when
+>     the card says its output changes, and the diff is explained.
+>   - `validate-specs.sh`, `gen_cli_docs.py --check`, and `comment_lint.py --check` on the files
+>     you touched.
+
+### W120-1 — a pod's own rules apply on every screen
+
+**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet, Opus review · **Kind:** fix (security)
+
+- **Defect 39.** `policy_eval_detail` is called without `project`, so a pod-only policy is
+  skipped, at these sites:
+  - enqueue `pre_input`: `core/dispatch.py` ~328
+  - a hop's `pre_output`: ~2077
+  - Telegram `/delegate`: `core/telegram.py` ~291
+  - approval reasons: `core/approval.py` ~67, ~381, ~416
+  - answers: `core/answers.py` ~123
+
+  `tools.py`, `identity.py`, `pod_memory.py` and `mcp_tools.py` already pass it.
+- **Defect 20.** Dispatch and `docket run` resolve the plan with `load_registry()` without a
+  project, so the `gateContract` of a role defined only in the pod is lost and its step runs
+  ungated. Sites: `dispatch.py` ~2981, `cli/_run.py` ~228 and ~365, `cli/_pod_config.py` ~395.
+- **Defect 40.** `docket pod check` ignores the pod's `allowCommands` (`cli/_pod_config.py`
+  ~437), so the dry run asks where the gate allows.
+- **Owns** exactly those call sites. Shared files:
+  - `dispatch.py` with W120-8 and W120-12
+  - `telegram.py` with W120-10
+  - `_run.py` with W120-11
+  - `_pod_config.py` with W120-9
+- **RED tests**, each using a pod-only policy or role:
+  - enqueue is refused
+  - a hop's output is blocked
+  - `/delegate` is refused
+  - the gate contract gates the step
+  - `pod check` reports what the live gate decides
+- **Specs:** security-gates, role-archetypes.
+
+### W120-2 — `docket init` and provisioning leave alone what they did not create
+
+**Status:** TODO · batch A · **Size:** L · **Model:** Sonnet, Opus review · **Kind:** fix, security items first
+
+- **Security defects.**
+  - 60/87: provisioning runs `chmod 700` on a workdir it did not create, the cwd included
+    (`core/pod_provisioning.py` ~848). The repo ended at mode 700 during the pass.
+  - 82: removing the last implementer deletes all of `pods/<pod>/` (`remove_member` →
+    `free_pod_resources` → `shutil.rmtree`). That loses `memory.json`, `config/` and the cache.
+  - Q5: delete the `--from` path for entries without a blueprint (`cli/_agents.py` ~463-673).
+    Defects 36, 37, 84 and 86 go with it; 36 is a path traversal (`{"id": "../escaped"}` creates
+    `workspaces/escaped`).
+  - 70: `init` run from a directory that holds `.docket/` (for example `~` with the default home)
+    applies that directory as a team configuration. *Unverified.*
+- **UX defects.**
+  - 30/83: an empty slug answers "already exists".
+  - 31: a name longer than 64 characters ends in a traceback.
+  - 32: a relative or missing codebase is stored as given.
+  - 58: `init --json` prints text on `code_mismatch` and on `refused`.
+  - 85: Rich eats `[a-z0-9]` in the invalid-id message.
+  - 74, second half: a standalone `SOUL.md` writes `agent:<id>:default` while the meta keeps
+    another `projectKey`.
+- **Owns** `cli/_agents.py`, `core/pod_provisioning.py`, and only the repository-config
+  discovery in `core/pod_apply.py`, which it shares with W120-9.
+- **RED tests:**
+  - a pre-existing workdir keeps its mode
+  - removing the last implementer keeps `pods/<pod>/memory.json`
+  - a `--from` entry without a blueprint is refused
+  - `init` from a directory holding the home applies nothing
+  - one refusal per UX defect, with exit 2 and `--json` output that parses
+- **Specs:** agent-lifecycle, cli-interface, input-validation, workspace-structure,
+  session-scoping.
+
+### W120-3 — the trace and the exporters tell the truth
+
+**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
+
+- **Defects.**
+  - 2: `terminal_outcomes` picks the "latest" sessions by file name (`task-<uuid4>`), so `status`
+    shows random ones. The test passes only because it names its sessions `a` and `b`.
+  - 3: `sweep_all`'s synthetic `session_end` reaches no subscriber and ignores
+    `DOCKET_NO_TRACE`.
+  - 12: a JSON line that is not an object breaks `export_lines` and `GET /traces`.
+    *Unverified.*
+  - 18: `enable_exporter --privacy` over a stored `share`, or the reverse, writes an invalid
+    entry. The load drops it in silence, yet `exporter.enabled` is audited.
+  - 19: `set_privacy(content_max_chars=0)` writes an invalid entry the same way.
+  - The fix for 18 and 19: both writers validate before they write and refuse with
+    `InvalidInput`; the audit entry is written only on success.
+- **Deletions.**
+  - 1: `trace_ingest` has no production caller and imports `edges` from `core`.
+  - 4: `drift_alert` is in `EVENT_TYPES` and the telemetry map, and nothing emits it.
+- **Reproduce or drop.** 5: `run_bash` on an exception other than `TimeoutExpired` (`toolbox.py`
+  ~441).
+- **Owns** `core/trace.py`, `core/exporter.py`, the `EVENT_TYPES` map in `core/telemetry.py`, and
+  `run_bash`.
+- **Specs:** trace-store, observability-export.
+
+### W120-4 — the pipeline loader refuses what it cannot run
+
+**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet · **Kind:** fix
+
+- **Defect 53.** The loader accepts each of these in silence:
+  - `run`, `input`, `when` or `archetype` on a `parallel` group
+  - a step that has both `run` and `input`
+  - an invalid `max` on a forward route
+  - an unvalidated `on` on a parallel child, where YAML's `on` → `True` is not corrected either
+  - the `from` of a child `input`
+
+  The places are `Step._check_shape`, `PipelineSpec._check` and `_fix_on_key`.
+- **Defect 54.** `test_validate_pipeline_wrapper_matches_load` compares a value with itself.
+  Delete it, or make it compare against `load`.
+- **Owns** `core/pipeline.py` and its tests.
+- **RED tests:** one per shape. `docket pod validate` names the field and exits non-zero, and
+  every shipped recipe still loads.
+- **Spec:** pipeline-format.
+
+### W120-5 — providers and secrets fail loudly and store nothing on failure
+
+**Status:** TODO · batch A · **Size:** M · **Model:** Sonnet · **Kind:** fix
+
+- **Defect 44.** A global document with empty `presets` makes `load_registry()` raise
+  `KeyError: 'economy'`. Instead, raise a `DocumentError` that names the missing anchor, both at
+  load and at `provider add`.
+- **Defect 43.** `setup provider add <catalog> --ctx N` with neither a URL nor `--model` ignores
+  `--ctx` and `--max-tokens`. With a URL or `--model` over a built-in, it replaces `models[]` with
+  one unpriced row. Fix: apply the flag or refuse it, and keep the inherited rows. *Unverified
+  live.*
+- **Defect 78.** When the probe fails on transport, the credential is stored anyway and the
+  output says "Nothing was registered". Fix: store only after the probe.
+- **Defect 79.** With `DOCKET_SECRETS_BACKEND=keyring` and no `secret-tool`, secrets are written
+  as plain text in silence. Fix: refuse, with a hint.
+- **Defect 38.** `credential_add`, `prompt_and_store` and the `_KEY_NAME` grammar have no caller.
+  Apply the grammar where a person types a credential name, or delete all three if no such path
+  exists.
+- **Owns** the loading in `core/models_policy.py`, `cli/_setup_model.py`, `core/secrets.py`, and
+  the registration path in `core/provider.py`.
+- **Specs:** model-profiles, api-keys, input-validation.
+
+### W120-6 — the HTTP server's own answers
+
+**Status:** TODO · batch A · **Size:** S · **Model:** Sonnet · **Kind:** fix (byte changes, before P46-9)
+
+- **Defects.**
+  - 11: `/metrics` emits `docket_agent_turns_total` without HELP or TYPE and interleaves it with
+    `docket_agent_cost_usd`. With two or more agents the output breaks the 0.0.4 text format.
+  - 72: `GET /pods/<p>` does not catch `PodSettingsError`; it must answer with the JSON error
+    envelope. `POST /pods/<p>/apply` parses the body before it checks that the pod exists.
+  - 13: a run cancelled by the server's second signal records `source: "cli"` (`core/runs.py`
+    ~79, ~576). *Unverified.*
+  - 33: the `docket start --telegram` hint names `setup provider add TELEGRAM_BOT_TOKEN`; it
+    should name `setup notify enable telegram`.
+- **Owns** those handlers in `serve.py` and the cancel source in `core/runs.py`.
+- **RED tests:** `/metrics` with two agents parses under the exposition rules; a pod with invalid
+  settings gets a JSON error body.
+- **Specs:** serve-read-api, operator-api.
+
+### W120-7 — the adoption evidence says what it proves
+
+**Status:** TODO · batch A · **Size:** S · **Model:** Sonnet · **Kind:** doc and fix
+
+- **Defect 80 (Q6).** `benchmarks/run.py` writes the run, task, session and trace records
+  itself, including a fabricated `guardrail_block`. It calls the CLI only for `run --dry-run`,
+  `task approve`, `task deny` and `task show`. `docs/ADOPTION-EVIDENCE.md` and the benchmark
+  README must say exactly that, and no sentence may present it as a product run.
+- **Defect 81.** `regenerate.py --source-commit` must refuse a dirty tree, and it must replace
+  the JSONL and the aggregate together, through a temp file and a rename.
+- **Owns** `benchmarks/` and `docs/ADOPTION-EVIDENCE.md`.
+- **Spec:** adoption-benchmark. The agent-lane prose tests that read the doc must pass.
+
+### W120-8 — dispatch, answers and the budget unblock
+
+**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
+
+- **Deletions (Q2).**
+  - 7: the `requireApprovalRoles` reader (`core/interruptions.py` ~85, `dispatch.py` ~1490)
+  - 46: the `_policy_requires_approval` stub (~1505)
+  - 52: `dispatch_pod(approval_timeout=)`, which has no caller
+- **Defects.**
+  - 48: `answer_task` places the parked step against the pod's effective pipeline, not the
+    task's own pipeline or the one given by `run --pipeline` (`core/answers.py` ~286).
+    *Unverified.*
+  - 49: `pod set budgetUsd 0` and `pod unset budgetUsd` requeue the blocked tasks but leave the
+    Lead paused, so each one is refused at claim.
+  - 52: "Unblocked N budget-blocked task(s)" counts every blocked task that `unblock_pod`
+    requeues, not only the budget-blocked ones.
+  - 50: `dispatch_pod` stops on any `blocked`, including a brief's `resources` block (~4691).
+- **Owns** those functions and the unblock in `cli/_pod.py`. It shares `dispatch.py` with
+  W120-1, which merges first, and with W120-12.
+- **Specs:** pod-dispatch, operator-loop.
+
+### W120-9 — roles and configuration documents follow one rule each
+
+**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix and deletion
+
+- **Defects.**
+  - 21: denying `fetch` in a pod removes every built-in of kind `read` (read, glob, grep, skill,
+    consult), because the denial goes by kind. The test only checks that `fetch` is gone. Fix: a
+    built-in denial removes that built-in alone; MCP tools keep the capability rule (CLAUDE.md
+    limit 1).
+  - 22: `pod validate` never dry-runs the role templates (`validate_archetype_dict` has no
+    caller), so a `${typo}` passes validation and fails at provisioning.
+  - 23: the short-form `model:` error sends the user to `docket setup model set <role>`, which
+    refuses any role outside the ten named ones.
+  - 59: `roles/*.yml` and `roles/*.json` are validated and counted, but `_plan_roles` applies
+    only `*.yaml`. Fix: one glob for all three.
+  - 34: `pod recipes --json` emits `mcp_servers` and omits `exporters`.
+  - 6 (Q1): the analyst/critic model class, per the decision table.
+- **Deletions (Q3).**
+  - 24: the `org` scope and the reader of the global `docket-roles.json`
+  - 66: the `kind:`-less path (`config_docs.py` ~177-197). A document without `kind:` gets its
+    parser's real error or the `kind` error.
+- **Owns** `core/archetypes.py`, `core/config_docs.py`, `_plan_roles` in `core/pod_apply.py`,
+  `ROLE_CLASS`, and the recipes and scope functions in `cli/_pod_config.py`.
+- **Specs:** role-archetypes, model-profiles, config-format, pod-blueprints, cli-json-shapes.
+
+### W120-10 — channels and Telegram deliver and refuse correctly
+
+**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix
+
+- **Defects.**
+  - 25: the shipped `email` channel never delivers. The template sets `to`, `from` and
+    `smtpHost`; the dialect reads `host`, `user` and `to`, and always demands a secret. Fix: one
+    set of keys, and a secret only when auth is set. RED against a local SMTP stub.
+  - 26: `notify.flush` says "never raises" but guards neither `build_inbox` nor the store reads,
+    and `docket run` calls it unguarded. *Unverified.*
+  - 63: with the keyring backend the bot reads `""` from `secrets.json`. Fix: read the token
+    through the secrets backend. *Unverified.*
+  - 64: `_DELEGATE_RE` has no word boundary, so `/delegatefoo bar` enqueues "foo bar".
+  - 65 (Q4): `/approve` and `/deny` accept another pod's token, per the decision table.
+- **Folded follow-up: two enqueue entry points.** Its trigger was the next edit of
+  `telegram.py`. Keep one enqueue function and move its callers in `telegram.py` and
+  `cli/_mcp.py` to it.
+- **Owns** `edges/adapters/channels/email.py`, `templates/channels/06-email.yaml`,
+  `core/notify.py`, `core/telegram.py` except the `/delegate` screen that W120-1 changes, and
+  `cli/_setup_notify.py`.
+- **Specs:** operator-loop, telegram-integration.
+
+### W120-11 — the CLI's own output is honest
+
+**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix
+
+- **Defects.**
+  - 75: the `docket run` header prints `spent $0.00` next to the real cap, but recorded spend is
+    always 0. Show the labelled estimate and the cap only.
+  - 76: no command shows `paused` or `pausedReason`. `status` shows both, in text and in
+    `--json`.
+  - 55: `setup --fix --json` prints `ok Installed N baseline policies` before the JSON. That line
+    goes to stderr.
+  - 35: `docket log abc` exits 2 with "No such command". Print a usage message naming the
+    argument, and drop `scope` from the empty-log message.
+  - 41: the approval prompt in `docket run` catches only `ApprovalNoop`, so an
+    `ApprovalConflict` escapes the progress loop (`cli/_progress.py` ~139). *Unverified.*
+  - 71: the help of `setup --fix` claims repairs it does not make. It also requires `TOOLS.md`
+    from every Implementer, though provisioning does not always write it, and the seeds point to
+    a daily-log path that does not exist.
+  - 57: `cli/_mcp.py` keeps its own copy of `cost_snapshot`. Keep one function.
+- **Folded follow-up: queue counts twice.** `status` uses `pod_report.task_counts`.
+- **Owns** `cli/_log.py`, `cli/_setup.py`, `cli/_setup_check.py`, `cli/_status.py`,
+  `cli/_progress.py`, the header in `cli/_run.py`, and the cost function in `cli/_mcp.py`.
+- **Specs:** cli-interface, cli-json-shapes, cost-tracking, workspace-structure.
+
+### W120-12 — the runtime facade counts tokens as the loop does
+
+**Status:** TODO · batch B · **Size:** M · **Model:** Sonnet · **Kind:** fix (the facade's output changes, so it lands before the baseline)
+
+- **Defects.**
+  - 61: the `docket_runtime` envelope counts `total_tokens` (input + output), while the loop
+    counts `counted_tokens` (input − cache + output). Cache writes are never summed
+    (`_execution.py` ~57).
+  - 15: the `RuntimeDriver.run_turn` port has no `trace_task_id`, although both drivers take
+    one, and dispatch calls `default_driver()` around the port (`runtime_driver.py` ~241,
+    `dispatch.py` ~2008).
+  - 16: `consult_park` is chosen on `trace_task_id is not None` instead of a non-empty value.
+    *Unverified.*
+  - 17: a composition that holds only the runtime contract sends a system prompt but emits no
+    `prompt_composed` (`agent_loop.py` ~929). *Unverified.*
+- **Owns** those functions; mypy proves the port.
+- **Specs:** runtime-library, agent-loop.
+
+### W120-13 — stale text and dead code
+
+**Status:** TODO · batch C, after batch B merges · **Size:** S · **Model:** Haiku · **Kind:** text, and deletions with a zero-caller proof
+
+- **Text.**
+  - 9: the `mcp_client._stdio_params` docstring names an opt-out that does not exist, and
+    `mcp_tools.py` ~439 says "will call once wired" about a path that is already wired.
+  - 29: `cli/_setup_sandbox.py` ~362 names "doctor". Name the real command, as `--help` shows it.
+  - 45: "Model intent per agent" in `models_policy.py` ~266, `pipeline.py` ~258,
+    `test_models_policy.py` ~93 and `pipeline-format.spec.md` ~220; `MODEL_PRICING` in the
+    comments at `cli/_mcp.py` ~265 and `docket_runtime.py` ~801.
+  - 68: `pyproject.toml` ~74, ~86 and ~134 name `docket mcp serve`; the `test_all_ten_tools_*`
+    tests check 13 tools; the `queue` and `load_session` docstrings are wrong.
+  - 77: `examples/starter/README.md` ~54-62 says the starter runs `docket task list`, but it only
+    prints that line.
+- **Dead code.** Delete each item with its tests, after `rg` shows no caller:
+  - 28: `cli/_flags.py::find_unknown_flag`
+  - 42: `system.register_credential_name`
+  - 47: `HandoffArtifact.notes`, its `render` branch and its `DROP_ORDER` entry
+  - 73: `store.read_json_readonly`
+  - Folded follow-up, dead since the harness was deleted:
+    - `verify["touched"]`
+    - `git_worktree_fingerprint`, if nothing else uses it
+    - evidence 1.0.0: `EVIDENCE_V1`, `docs/contracts/evidence-v1`,
+      `scripts/gen_evidence_schema.py` and its CI step
+- **Stop rule:** if a caller turns up, stop and report. A model does not decide a deletion.
 
 ### P46-6 — `bootstrap.py`, the composition root
 
@@ -183,6 +607,9 @@
   public in their module; the 24 importers are rewritten in the same commit (no re-export, D-57).
   `HopResult`/`TaskResult` become frozen with `with_*` methods; the four mutators return values.
 - **Non-goals:** changing any transition (P46-12), any persisted shape (P46-11).
+- **Spec amendment (truth pass):** `DispatchError` is raised from the agent layer through a lazy
+  import of `core.dispatch`, the agent→tasks edge the ADR forbids; it moves to `tasks/domain` and
+  the agent side raises a `kernel.errors` kind (agent-loop, mcp-client `## Implementation`).
 - **Acceptance:** `core/dispatch.py` does not exist; largest resulting module ≤ 700; the 72
   `dispatch` patches are on their defining modules (the P46-4 fixture proves it); manifest ids
   unchanged under new paths; the gate passes after every commit.
@@ -197,6 +624,8 @@
   `interfaces` (cli commands, mcp, telegram entry). `edges/adapters/system.py` splits into
   `platform/process.py`, `platform/git.py`, `sandbox/launch.py` by the P46-2 groups; `jail.py` and
   `plugins.py` leave the package root. Mirror tests, specs and live docs rewritten per commit.
+  `python -m docket.jail` and `docket.plugins` / `REGISTRY` are public names (security-gates):
+  they keep working at the same names.
 - **Acceptance:** `src/docket/cli`, `core` and `edges` do not exist; the import-linter ignore
   list is exactly the remaining domain→adapter edges (printed by `analyze.py`); the gate passes
   per commit.
@@ -211,6 +640,10 @@
   dispatch) and generates the `(method, pattern) -> handler` table; `interfaces/http/auth.py`
   holds the bearer check once; `interfaces/http/server.py` holds the handler class, threads and
   stop controller.
+- **Folded defect 14:** the `docket start` "Endpoints:" banner lists 6 of 21 routes; it prints
+  from the generated route table.
+- **Spec amendment:** serve-read-api and operator-api both describe `/health`, `ensure`, the
+  `POST /tasks` table and the `GET /tasks` filters; one spec owns each, the other links.
 - **Acceptance:** `SERVE_API_VERSION` and every response byte-identical (the serve tests move
   beside their route and pass unchanged); `serve.py` does not exist.
 - **Gates:** `refactor_gate.sh`.
@@ -222,7 +655,11 @@
 - **Goal:** with the contract "`agent` imports `kernel` only" green, delete
   `packages/docket-runtime/hatch_build.py` and its 40-file closure; the distribution includes
   `docket/agent` and `docket/kernel`; `docket_runtime/__init__.py` re-exports the same facade names.
-- **Acceptance:** `uv build` in a clean venv, `import docket_runtime` exposes the same names;
+- **Folded defect 62:** the hook's copied closure is not closed: several copied modules
+  (`docket_runtime`, `exporter`, `telemetry`, `llm`, …) fail to import in a clean venv while the
+  facade imports; deleting the hook closes it.
+- **Acceptance:** `uv build` in a clean venv, `import docket_runtime` exposes the same names and
+  every module in the distribution imports;
   `tests/release/test_runtime_package_boundary.py` passes with the hook gone.
 - **Gates:** `refactor_gate.sh`, `tests/release`.
 
@@ -235,6 +672,20 @@
   unchanged); pod settings move from the Lead's `.docket-meta.json` to `pods/<pod>/settings.json`;
   `TASK_LIST.json` stays one document per pod. Old-shape readers are deleted, not kept.
 - **Non-goals:** one file per task (measured trigger); any API change.
+- **Folded defects:** 10 — `answer_task` clears `question` and the answer record keeps neither
+  `kind` nor `createdAt`, so every answer counts as `clarification` and
+  `docket_decision_latency_seconds_count` stays 0 (the test seeds a shape the writer never
+  produces): the nested `pending` keeps both; 67 — `budgetUsd` is a string after provisioning
+  and the flat `--from`, a float after `pod set`, and `AgentMeta.budget_usd` has no `ge=0`: one
+  number type, `>= 0`, in `settings.json`.
+- **Spec amendments** (from the truth pass, each spec states today's shape): agent-loop req 18
+  and 30 (`mcpServers`, `projectInstructions`, `worktree.*`), operator-loop (Lead settings
+  `requireApprovalRoles` if Q2 keeps it, `approvalMode`, `approvalExpiryHours`; flat task fields
+  `taskGrants`, `pregrants`, `answers[]`, `question`, `consultations`), cli-interface
+  (`TASK_LIST.json` location, `worktree.prunedAt`, `approvalToken`), mcp-client (`mcpServers`),
+  security-gates (profile, `readOnly`, `network`; `failureKind`, `approvalToken`,
+  `worktree.gitDir`), pod-dispatch (~25 sections), serve-read-api (the task field set),
+  agent-lifecycle and user-stories (`paused`, `budgetUsd` on the Lead's meta).
 - **Acceptance:** operator-api and serve-read-api tests unchanged; the gate; the operator wipes
   and re-initializes the live `~/.docket` after it lands (no users, no migration) and one
   dispatch on the local model runs to `done`.
@@ -252,6 +703,12 @@
   transition sets its fields; each other pair raises `IllegalTransition`.
   `test_status_writers.py` ratchets to 1.
 - **Non-goals:** adding or removing a transition that exists today.
+- **Folded defects:** 8 — `in_progress` is in `TASK_STATUSES` and nothing writes it (not a
+  `Status` member); 56 — `status` sums `counts["completed"]`, a state nothing writes; 51 — a task
+  gate with no step is left `dispatch_refused` (resumable), claimed by `--resume` and refused
+  again, while every other impossible gate ends `pipeline`: the table gives both one state.
+- **Spec amendments:** pod-dispatch (~20 sections), operator-loop (`answer_task`, expiry,
+  grant/deny transitions), security-gates (the direct `waiting_approval` write).
 - **Acceptance:** no behavioural test changes; the generated test passes; the gate passes.
 - **Gates:** `refactor_gate.sh`.
 
@@ -305,6 +762,12 @@
 > packet note, the warm workspace, and "no `node_modules` is pod configuration", which ADR 0029
 > reversed).
 
+- **Found in the specs truth pass (2026-10-22).**
+  - **Notification dedup is in memory only** (`core/notify.py` ~91-118): restarting `docket
+    start` resends each pending notification once (unverified). Trigger: an operator reports a
+    repeat after a restart.
+  - **Every member of a pod shares the base session key `agent:<pod>:<key>`** (`core/pod.py`
+    ~86-90); latent, no turn uses the base key as history. Trigger: a turn that reads it.
 - **Found in the Phase 45 real runs (2026-10-20, two runs of one small task on `fab-dev`).**
   - **The implementer sends 0.65 of what the backend counts** (14 and 13 calls, largest request
     ~7,000 estimated tokens), with no toolchain grant needed (`npm` came from the prepared
@@ -405,30 +868,14 @@
   `dispatch_pod`.
 - **A task's `network: none` cuts the agent turn only** (P43-4): `verifyCmd` and `run:` steps keep
   the pod's posture; the spec says so.
-- **Two enqueue entry points** (P43-1): `enqueue_task` returns the task, `enqueue_task_once`
-  returns `(task, created)`; fold into one when the remaining callers (`telegram.py`, `_mcp.py`)
-  are next touched. A raced duplicate `idempotencyKey` under `require_approval` can leave an
-  orphan approval token.
-- **`trace-store.spec.md` requirement 6 says "exactly"** but the code's `EVENT_TYPES` has members
-  the list never named (found by P43-2); re-derive the list from the frozenset.
 - **A team's skills** (P43-7): `core/skills.py` reads only `<codebase>/.docket/skills`; a repository
   keeping `teams/<pod>/` has no per-team skills scope. `init --help` and `--name` do not mention
   teams.
-- **Queue counts twice** (P43-6): `core/pod_report.py::task_counts` and the inline Counter in
-  `cli/_status.py` (~lines 138-164) compute the same mapping; point `status` at `task_counts`.
-  `pod_report._caller_default` reads `sys.stdin.isatty()`, so under `docket start` the report's
-  approval default depends on the daemon's stdin.
 - **`POST /pods/<p>/apply` edge** (P43-8): an all-skip apply writes no `pod.apply` audit entry
   (pre-existing rule).
 - **Corrections cursor** (P43-9): a client must percent-encode `+` in `since` (a raw `+` decodes
   to a space and is `400`); a pod whose Lead was removed but whose ledger remains answers `404`
   (existence is `dispatchable_pods()`, the same rule as `GET /pods`).
-- **Dead after the harness deletion** (P43-12, proven by `rg`; the `inPlace` key rides P45-3):
-  the `verify["touched"]` key (`dispatch.py` around `_evaluate_mechanical_gate`,
-  `system.git_worktree_fingerprint`, `core/evidence.py`) only fed the harness `files`; evidence
-  1.0.0 (`task_evidence(..., "1.0.0")`, `EVIDENCE_V1`, `docs/contracts/evidence-v1`,
-  `scripts/gen_evidence_schema.py`) has no `src` caller. Delete under D-57 when the next card
-  touches `core/dispatch.py` or `core/evidence.py`.
 - **Cancel over HTTP reports `cancelled` once the stop is requested** (P43-10): the task stays
   `running` in the store until the executor notices; a consumer polls `GET /tasks/<pod>/<id>`.
   The slow-stub cancel path is not covered by a test (the test seeds a run record).
@@ -461,7 +908,7 @@
    (regenerate `docs/commands.md` whenever a Typer docstring or help text changes) · `uv run pytest
    tests/agent` green when prose or an artifact moved · the integrator re-measures
    `scripts/metrics.py --check` per batch (card branches that add tests fail it by design) · the
-   card's own spec updated with a version bump + changelog entry (integrator-applied in a
+   card's own spec updated with a version bump (specs carry no changelog) (integrator-applied in a
    multi-agent wave), **Status line matching what actually shipped** · committed `Type: description`
    (no Claude/Co-Authored-By trailer) · public-repo privacy scrubbed (grep the diff for real names /
    `/home/<user>` paths before committing).

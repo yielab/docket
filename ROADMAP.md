@@ -9,9 +9,15 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-20.** Every phase 0–45 is complete; no phase is planned on `develop`
-(Phase 46, organize by context and refactor by tool, D-66, ADR 0030, is planned on branch
-`plan/phase-46-structure` and waits for the maintainer). Phase 45 (a prepared task worktree, model
+**Last updated: 2026-10-22.** Every phase 0–45 is complete. **Phase 46** (organize by context
+and refactor by tool, D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md))
+is active on branch `plan/phase-46-structure` since 2026-10-22: every spec states today's code
+with no history and names paths only in its `## Implementation` section (`3c533a9c`); P46-5's
+first step shipped `kernel/` (`Home`, clock, ids, errors, text) with a shrink-only adoption guard
+and moved every clock, id and text read onto it (`8325268f`, `cd04b643`). The truth pass found 87
+code defects; Wave 120 (13 cards) fixes them before P46-6's freeze, and the rest of P46-5 runs its
+codemods once over the merged tree. The plan, the model per card and the six open decisions are
+on `TODO.md`. Phase 45 (a prepared task worktree, model
 limits from the provider, protected paths, approvals per team; D-65,
 [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md))
 closed 2026-10-20: five cards over Waves 117-119 and two small real runs that found and fixed three
@@ -67,6 +73,7 @@ until the project drops its beta warning.
 | 43 | The team runtime behind an external plan of record: addressable tasks, HTTP lifecycle, pods over HTTP, `.docket/teams/`, one door (API 5, `exec` deleted) | D-63 · [0027](docs/adr/0027-the-team-runtime-behind-an-external-plan-of-record.md) | **complete** 2026-10-17: Wave 109 (the task, P43-1..5) 2026-10-14, Wave 110 (the pod, P43-6..9) and Wave 111 (the daemon and the command, P43-10..12) 2026-10-17; `exec` deleted, API 5, `0.2.0-beta.6` declared |
 | 44 | Context in layers and a budget that counts new tokens: replay bench, new-token budget, bounded tool output, condensed history, delivered handoffs, cache-ordered prompt, governed pod memory | D-64 · [0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md) | 2026-10-18 |
 | 45 | A prepared checkout, models from the provider, and a check the change cannot define: install from the lockfile with a cache, limits from `/models`, protected paths that park for a person, approvals per (codebase, pod) | D-65 · [0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md) | 2026-10-20 |
+| 46 | Organize by context, refactor by tool: `kernel/` and `Home`, import contracts as tests, one owner of a task's state, the runtime as a package, scripts for every mechanical step | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **active** since 2026-10-22: specs truth pass, P46-5 step 1; Wave 120 next |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
