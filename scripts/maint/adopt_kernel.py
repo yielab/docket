@@ -13,14 +13,17 @@ from __future__ import annotations
 import argparse
 import ast
 import bisect
+import dataclasses
 import difflib
 import functools
 import importlib.util
+import io
 import itertools
 import json
 import re
 import subprocess
 import sys
+import tokenize
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +31,7 @@ from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "docket"
+TESTS_ROOT = REPO_ROOT / "tests"
 KERNEL_ROOT = SRC_ROOT / "kernel"
 
 
@@ -616,6 +620,380 @@ def errors(tree: ast.Module, source: str, rel: str) -> Outcome:
     return out
 
 
+# config-reads ----------------------------------------------------------------------------------
+
+CONFIG_MODULE = "docket.config"
+CURRENT_HOME_IMPORT = "from docket.kernel.home import current_home"
+HOME_MODULE_PATH = KERNEL_ROOT / "home.py"
+
+
+@functools.cache
+def _home_members() -> tuple[frozenset[str], frozenset[str]]:
+    """Every public name ``Home`` offers, and the subset that are properties."""
+    spec = importlib.util.spec_from_file_location("_adopt_kernel_home", HOME_MODULE_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    home = module.Home
+    names = {f.name for f in dataclasses.fields(home)}
+    names |= {n for n in dir(home) if not n.startswith("_") and n != "from_environ"}
+    props = {n for n in names if isinstance(getattr(home, n, None), property)}
+    return frozenset(names), frozenset(props)
+
+
+def _home_member(name: str) -> str | None:
+    """The ``Home`` member that answers ``config.<name>``, else ``None``."""
+    attr = "root" if name == "DOCKET_HOME" else name.lower()
+    return attr if attr in _home_members()[0] else None
+
+
+def _import_time(tree: ast.Module) -> dict[int, str]:
+    """Each node evaluated when the module is imported, mapped to the context that does it."""
+    found: dict[int, str] = {}
+
+    def visit(node: ast.AST, why: str | None) -> None:
+        if why is not None:
+            found[id(node)] = why
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            args = node.args
+            outer = [(d, "default argument value") for d in args.defaults]
+            outer += [(d, "default argument value") for d in args.kw_defaults if d is not None]
+            if not isinstance(node, ast.Lambda):
+                outer += [(d, "decorator argument") for d in node.decorator_list]
+                outer += [(a.annotation, "annotation") for a in ast.walk(args) if _annotated(a)]
+                outer += [(node.returns, "annotation")] if node.returns is not None else []
+            for part, label in outer:
+                visit(part, label if why is not None else None)
+            for child in [node.body] if isinstance(node, ast.Lambda) else node.body:
+                visit(child, None)
+        elif isinstance(node, ast.ClassDef) and why is not None:
+            for child in ast.iter_child_nodes(node):
+                visit(child, "class body" if why == "module level" else why)
+        else:
+            for child in ast.iter_child_nodes(node):
+                visit(child, why)
+
+    visit(tree, "module level")
+    return found
+
+
+def _annotated(node: ast.AST) -> bool:
+    return isinstance(node, ast.arg) and node.annotation is not None
+
+
+def _config_names(tree: ast.Module, aliases: dict[str, str]) -> set[str]:
+    """Local names the module binds to ``docket.config``."""
+    return {local for local, target in aliases.items() if target == CONFIG_MODULE}
+
+
+def _rebound(tree: ast.Module, names: set[str]) -> set[str]:
+    """Which of *names* the module also assigns, declares as a parameter or defines."""
+    taken: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            taken.add(node.id)
+        elif isinstance(node, ast.arg):
+            taken.add(node.arg)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            taken.add(node.name)
+    return names & taken
+
+
+def _handed_on(call: ast.AST | None, module: ast.Name) -> str:
+    """Why the config module passed as a value is left alone; a patch of one constant says which."""
+    if isinstance(call, ast.Call) and len(call.args) >= 2 and call.args[0] is module:
+        key = call.args[1]
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            member = _home_member(key.value)
+            if member is None:
+                return f"patches config.{key.value}, which has no Home field"
+            return f"patches config.{key.value}; set Home.{member} on the test's home"
+    return "the config module handed on as a value"
+
+
+def config_reads(tree: ast.Module, source: str, rel: str) -> Outcome:
+    """``config.NAME`` reads become ``current_home().<field>``; everything else is listed."""
+    aliases = _aliases(tree, rel)
+    names = _config_names(tree, aliases)
+    out = Outcome()
+    inside = _inside_fstring(tree) if sys.version_info < (3, 12) else set()
+    at_import = _import_time(tree)
+    shadowed = _rebound(tree, names)
+    parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    as_base = {
+        id(n.value)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+    }
+    properties = _home_members()[1]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            if node.value.id not in names:
+                continue
+            what = f"config.{node.attr}"
+            member = _home_member(node.attr)
+            call = parents.get(id(node))
+            as_call = isinstance(call, ast.Call) and call.func is node
+            as_call = as_call and not call.args and not call.keywords
+            if node.value.id in shadowed:
+                why = f"{node.value.id} is also a variable, parameter or definition here"
+            elif not isinstance(node.ctx, ast.Load):
+                why = "a write to the module's constant belongs to the repointers rule"
+            elif member is None:
+                why = "no Home field"
+            elif id(node) in at_import:
+                why = f"read at import time ({at_import[id(node)]}); it would freeze the home"
+            elif id(node) in inside:
+                why = "inside an f-string"
+            elif member in properties and node.attr.islower() and not as_call:
+                why = f"{member} is a Home property; the function is not called here"
+            else:
+                why = ""
+            if why:
+                out.unmappable.append((node.lineno, f"{what}: {why}"))
+            elif member in properties and node.attr.islower():
+                assert isinstance(call, ast.Call)
+                out.edits.append(Edit(*span(call, source), f"current_home().{member}"))
+            else:
+                out.edits.append(Edit(*span(node, source), f"current_home().{member}"))
+        elif isinstance(node, ast.Name) and node.id in names and node.id not in shadowed:
+            if isinstance(node.ctx, ast.Load) and id(node) not in as_base:
+                out.unmappable.append((node.lineno, _handed_on(parents.get(id(node)), node)))
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if aliases.get(alias.asname or alias.name, "").startswith(f"{CONFIG_MODULE}."):
+                    out.unmappable.append(
+                        (node.lineno, f"imported by name: {alias.name}; rewrite its uses by hand")
+                    )
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value.startswith(f"{CONFIG_MODULE}."):
+                out.unmappable.append((node.lineno, f"named by a string: {node.value}"))
+    if out.edits:
+        out.imports.append(CURRENT_HOME_IMPORT)
+    return out
+
+
+# repointers ------------------------------------------------------------------------------------
+
+HOME_IMPORTS = ["from docket.kernel.home import Home", "from docket.kernel.home import use_home"]
+ITERATOR_IMPORT = "from collections.abc import Iterator"
+THREADS = re.compile(r"\b(Thread|threading|ThreadPoolExecutor|Executor|Timer|serve_forever)\b")
+MONKEYPATCH_CONTEXT = frozenset({"pytest.MonkeyPatch.context", "MonkeyPatch.context"})
+BODY_FIELDS = ("body", "orelse", "finalbody")
+
+
+def _repoint_stmt(stmt: ast.stmt) -> ast.Call | None:
+    """The call of a statement that is exactly ``repoint_docket_home(<name>, <path>)``."""
+    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
+        return None
+    call = stmt.value
+    func = call.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+    return call if name == "repoint_docket_home" else None
+
+
+def _own_nodes(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
+    """Every node of *fn*'s body that runs in *fn* itself, not in a nested scope."""
+    found: list[ast.AST] = []
+    stack: list[ast.AST] = list(fn.body)
+    while stack:
+        node = stack.pop()
+        found.append(node)
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            stack.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def _multiline_strings(source: str) -> list[tuple[int, int]]:
+    """Line ranges of string literals that span lines; re-indenting them changes their value."""
+    ranges: list[tuple[int, int]] = []
+    fstring_start = getattr(tokenize, "FSTRING_START", None)
+    fstring_end = getattr(tokenize, "FSTRING_END", None)
+    opened: list[int] = []
+    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        if tok.type == tokenize.STRING and tok.start[0] != tok.end[0]:
+            ranges.append((tok.start[0], tok.end[0]))
+        elif fstring_start is not None and tok.type == fstring_start:
+            opened.append(tok.start[0])
+        elif fstring_end is not None and tok.type == fstring_end:
+            first = opened.pop()
+            if first != tok.end[0]:
+                ranges.append((first, tok.end[0]))
+    return ranges
+
+
+def _is_fixture(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any("fixture" in ast.unparse(d) for d in fn.decorator_list)
+
+
+class _Scope(NamedTuple):
+    stmts: list[ast.stmt]  # the body the repointing statement sits in
+    owner: ast.AST  # the function or the MonkeyPatch.context() block that owns it
+    kind: str  # "test", "fixture" or "block"
+
+
+def _scope_of(stmt: ast.stmt, parents: dict[int, ast.AST]) -> _Scope | str:
+    """Where a repointing statement's effect ends, or why it cannot be reproduced."""
+    holder = parents[id(stmt)]
+    if isinstance(holder, ast.AsyncFunctionDef):
+        return "an async function"
+    if isinstance(holder, ast.FunctionDef):
+        if stmt not in holder.body:
+            return "not directly in the function body"
+        if _is_fixture(holder):
+            return _Scope(holder.body, holder, "fixture")
+        if holder.name.startswith("test"):
+            return _Scope(holder.body, holder, "test")
+        return (
+            f"in helper {holder.name}(): the repoint outlives the function that makes it; "
+            "turn the helper into a context manager or a fixture by hand"
+        )
+    if isinstance(holder, ast.With) and stmt in holder.body:
+        context = holder.items[0].context_expr if len(holder.items) == 1 else None
+        if isinstance(context, ast.Call) and ast.unparse(context.func) in MONKEYPATCH_CONTEXT:
+            return _Scope(holder.body, holder, "block")
+    return f"inside a {type(holder).__name__}, where the repoint's end is not the block's end"
+
+
+def _arg_refusal(call: ast.Call, scope: _Scope) -> str | None:
+    """Why the call's arguments are not ``(<the monkeypatch>, <path>)``, else ``None``."""
+    ok = len(call.args) == 2 and not call.keywords
+    ok = ok and not any(isinstance(a, ast.Starred) for a in call.args)
+    first = call.args[0] if call.args else None
+    if not (ok and isinstance(first, ast.Name)):
+        return "arguments other than (monkeypatch, path)"
+    owner = scope.owner
+    if isinstance(owner, ast.With):
+        target = owner.items[0].optional_vars
+        mine = isinstance(target, ast.Name) and target.id == first.id
+    else:
+        assert isinstance(owner, ast.FunctionDef)
+        params = [
+            a.arg for a in (*owner.args.posonlyargs, *owner.args.args, *owner.args.kwonlyargs)
+        ]
+        mine = first.id == "monkeypatch" and first.id in params
+    return None if mine else f"{first.id} is not the monkeypatch of its own scope"
+
+
+def _indent(text: str, by: str) -> str:
+    return "".join(f"{by}{line}" if line.strip() else line for line in text.splitlines(True))
+
+
+def _render(lines: list[str], stmts: list[ast.stmt], lo: int, hi: int, source: str) -> str:
+    """Lines ``lo:hi`` with each direct repoint wrapping everything after it in ``use_home``."""
+    first = next((i for i, s in enumerate(stmts) if _repoint_stmt(s) is not None), None)
+    if first is None:
+        return "".join(lines[lo:hi])
+    stmt = stmts[first]
+    call = _repoint_stmt(stmt)
+    assert call is not None and stmt.end_lineno is not None
+    s, e = span(call.args[1], source)
+    path = source.encode("utf-8")[s:e].decode("utf-8")
+    pad = " " * stmt.col_offset
+    before = "".join(lines[lo : stmt.lineno - 1])
+    inner = _render(lines, stmts[first + 1 :], stmt.end_lineno, hi, source)
+    return f"{before}{pad}with use_home(Home({path})):\n{_indent(inner, '    ')}"
+
+
+def repointers(tree: ast.Module, source: str, rel: str) -> Outcome:
+    """A repointed home becomes ``use_home(Home(path))`` around the rest of its scope."""
+    out = Outcome()
+    parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    lines = source.splitlines(True)
+    strings = _multiline_strings(source)
+    starts = line_starts(source)
+    data = source.encode("utf-8")
+    sites = {line for line, _ in MEASURE.repointers(tree, rel)}  # type: ignore[attr-defined]
+    done: set[int] = set()  # statements a wrapping already covers
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and n.lineno in sites]
+    for call in sorted(calls, key=lambda n: n.lineno):
+        stmt = parents[id(call)]
+        if not isinstance(stmt, ast.stmt) or _repoint_stmt(stmt) is not call:
+            out.unmappable.append((call.lineno, "repoint_docket_home() used as a value"))
+            continue
+        if id(stmt) in done:
+            continue
+        scope = _scope_of(stmt, parents)
+        if isinstance(scope, str):
+            out.unmappable.append((call.lineno, scope))
+            continue
+        direct = [s for s in scope.stmts if _repoint_stmt(s) is not None]
+        refusals = [r for c in direct if (r := _arg_refusal(_repoint_stmt(c), scope))]  # type: ignore[arg-type]
+        stmts = scope.stmts[scope.stmts.index(direct[0]) :]
+        lo, hi = stmts[0].lineno - 1, stmts[-1].end_lineno or stmts[-1].lineno
+        for c in direct:
+            end = c.end_lineno or c.lineno
+            if "#" in "".join(lines[c.lineno - 1 : end]):
+                refusals.append("a comment inside the repoint statement")
+            elif "\t" in lines[c.lineno - 1][: c.col_offset]:
+                refusals.append("tab indentation")
+        if any(a <= hi and lo + 1 <= b for a, b in strings):
+            refusals.append("a multi-line string literal that re-indenting would change")
+        owner = scope.owner
+        fixture_edits: list[Edit] = []
+        extra_yield = False
+        if THREADS.search("".join(lines[owner.lineno - 1 : owner.end_lineno])):
+            refusals.append("the function starts threads, which a ContextVar does not reach")
+        if scope.kind == "fixture":
+            assert isinstance(owner, ast.FunctionDef)
+            plan = _fixture_plan(owner, source)
+            if isinstance(plan, str):
+                refusals.append(plan)
+            else:
+                fixture_edits, extra_yield = plan
+        elif scope.kind == "test" and not stmts[1:]:
+            refusals.append("nothing follows the repoint in the test")
+        if refusals:
+            for c in direct:
+                out.unmappable.append((c.lineno, "; ".join(dict.fromkeys(refusals))))
+            done.update(id(c) for c in direct)
+            continue
+        work = list(lines)
+        if scope.kind == "fixture":
+            _fixture_returns(owner, work)  # type: ignore[arg-type]
+        if extra_yield:
+            work.insert(hi, f"{' ' * direct[0].col_offset}yield\n")
+        text = _render(work, stmts, lo, hi + (1 if extra_yield else 0), source)
+        end = starts[hi] if hi < len(starts) else len(data)
+        out.edits.append(Edit(starts[lo], end, text, f"use_home x{len(direct)}"))
+        out.edits += fixture_edits
+        done.update(id(c) for c in direct)
+    if out.edits:
+        out.imports += HOME_IMPORTS
+        if any(e.text.startswith("Iterator[") for e in out.edits):
+            out.imports.append(ITERATOR_IMPORT)
+    return out
+
+
+def _fixture_plan(fn: ast.FunctionDef, source: str) -> tuple[list[Edit], bool] | str:
+    """A fixture that holds ``use_home`` open must yield: the edits that make it a generator
+    and whether a closing ``yield`` is needed, or why it cannot be made one."""
+    own = _own_nodes(fn)
+    if any(isinstance(n, (ast.Yield, ast.YieldFrom)) for n in own):
+        return [], False
+    returns = [n for n in own if isinstance(n, ast.Return)]
+    if any(r is not fn.body[-1] for r in returns):
+        return "a fixture with a return that is not its last statement"
+    edits: list[Edit] = []
+    if fn.returns is not None:
+        data = source.encode("utf-8")
+        s, e = span(fn.returns, source)
+        edits.append(Edit(s, e, f"Iterator[{data[s:e].decode('utf-8')}]"))
+    return edits, not returns
+
+
+def _fixture_returns(fn: ast.FunctionDef, work: list[str]) -> None:
+    """Turn the fixture's closing ``return`` into ``yield``, in place on the line list."""
+    last = fn.body[-1]
+    if isinstance(last, ast.Return):
+        line = work[last.lineno - 1].encode("utf-8")
+        cut = last.col_offset
+        work[last.lineno - 1] = (line[:cut] + b"yield" + line[cut + len("return") :]).decode(
+            "utf-8"
+        )
+
+
 # wrappers --------------------------------------------------------------------------------------
 #
 # A wrapper is a parameterless module-level ``def`` whose whole body is one kernel call. Deleting
@@ -857,6 +1235,13 @@ RULES: dict[str, tuple[Rule, str]] = {
     "text": (text, ""),
     "clock": (clock, "time"),
     "errors": (errors, "Error"),
+    "config-reads": (config_reads, "config"),
+    "repointers": (repointers, "repoint_docket_home"),
+}
+# the trees a rule rewrites; a rule absent here rewrites src/docket only
+RULE_ROOTS: dict[str, tuple[Path, ...]] = {
+    "config-reads": (SRC_ROOT, TESTS_ROOT),
+    "repointers": (TESTS_ROOT,),
 }
 # rules that read the whole tree first: rule -> the rewrite it wants per file
 PROJECT_RULES: dict[str, Callable[[], dict[str, Outcome]]] = {"wrappers": wrappers}
@@ -1004,8 +1389,13 @@ def plan_project(rule: str) -> list[FilePlan]:
 def plan_tree(rules: list[str]) -> list[FilePlan]:
     if rules and rules[0] in PROJECT_RULES:
         return plan_project(rules[0])
-    files = (p for p in sorted(SRC_ROOT.rglob("*.py")) if not p.is_relative_to(KERNEL_ROOT))
-    return [plan for p in files if (plan := plan_file(p, rules)) is not None]
+    plans = []
+    roots = dict.fromkeys(r for rule in rules for r in RULE_ROOTS.get(rule, (SRC_ROOT,)))
+    for root in roots:
+        wanted = [r for r in rules if root in RULE_ROOTS.get(r, (SRC_ROOT,))]
+        files = (p for p in sorted(root.rglob("*.py")) if not p.is_relative_to(KERNEL_ROOT))
+        plans += [plan for p in files if (plan := plan_file(p, wanted)) is not None]
+    return plans
 
 
 def run_ruff(paths: list[Path]) -> int:
