@@ -235,10 +235,9 @@ def _check_env(step_id: str, env: dict[str, str]) -> None:
 
 
 class Step(BaseModel):
-    """One node in the pipeline: a unit step (``role`` xor ``agent`` xor ``run`` xor ``input``,
-    plus optional gate/retries/timeout) or a parallel group (``parallel``: unit-step children
-    only, one level deep). See specs/functional/pipeline-format.spec.md ("Steps", "Parallel groups",
-    "Operator input")."""
+    """One node in the pipeline: a unit step (``role`` xor ``agent`` xor ``run`` xor ``input``)
+    or a parallel group (unit-step children, one level deep). See
+    specs/functional/pipeline-format.spec.md ("Steps", "Parallel groups", "Operator input")."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -329,9 +328,30 @@ class Step(BaseModel):
                 raise InvalidInput(
                     f"step {self.id!r}: a 'parallel' group carries no env of its own"
                 )
+            for group_field, group_value in (
+                ("run", self.run),
+                ("input", self.input),
+                ("when", self.when),
+                ("archetype", self.archetype),
+            ):
+                if group_value is not None:
+                    raise InvalidInput(
+                        f"step {self.id!r}: a 'parallel' group carries no {group_field!r} of its own"
+                    )
             if not self.parallel:
                 raise InvalidInput(f"step {self.id!r}: 'parallel' must list at least one step")
             for child in self.parallel:
+                for child_field, child_value in (
+                    ("run", child.run),
+                    ("input", child.input),
+                    ("when", child.when),
+                    ("on", child.on),
+                ):
+                    if child_value is not None:
+                        raise InvalidInput(
+                            f"step {child.id!r}: a 'parallel' child carries no {child_field!r} "
+                            "(a group runs its children as plain role/agent hops)"
+                        )
                 if child.parallel is not None:
                     raise InvalidInput(
                         f"step {self.id!r}: nested 'parallel' groups are not supported "
@@ -342,6 +362,8 @@ class Step(BaseModel):
         if self.run is not None:
             if not self.run.strip():
                 raise InvalidInput(f"step {self.id!r}: 'run' must not be empty")
+            if self.input is not None:
+                raise InvalidInput(f"step {self.id!r}: 'run' and 'input' are mutually exclusive")
             if self.env is not None:
                 _check_env(self.id, self.env)
             if self.role is not None or self.agent is not None:
@@ -547,6 +569,50 @@ def _route_shape(step_id: str, label: str, route: Any) -> tuple[str, Any, bool]:
     raise InvalidInput(f"step {step_id!r}: 'on' entry {label!r} is malformed")
 
 
+def _check_input_from(step: Step, index: int, top_index: dict[str, int]) -> None:
+    """Refuse an ``input`` step whose ``from`` is not a top-level step before *index*."""
+    assert step.input is not None
+    source = step.input.from_
+    if source not in top_index:
+        raise InvalidInput(f"step {step.id!r}: input 'from' references {source!r}, not a step id")
+    if top_index[source] >= index:
+        raise InvalidInput(f"step {step.id!r}: input 'from' {source!r} must be an earlier step")
+
+
+def _check_input_keys(step: Step) -> None:
+    valid_keys = frozenset({"answered", "declined"})
+    invalid = {str(k).lower() for k in step.on or {}} - valid_keys
+    if invalid:
+        raise InvalidInput(
+            f"step {step.id!r}: input step 'on' keys must be a subset of "
+            f"{sorted(valid_keys)}; got invalid key(s): {sorted(invalid)}"
+        )
+
+
+def _check_routes(step: Step, index: int, top_index: dict[str, int]) -> None:
+    """Validate every ``on`` entry of the top-level *step* at position *index*: the target,
+    and ``max`` wherever it is written, an integer ``>= 1`` and required when the target is
+    not ahead."""
+    for label, route in (step.on or {}).items():
+        target, max_value, has_max = _route_shape(step.id, label, route)
+        valid_max = (
+            isinstance(max_value, int) and not isinstance(max_value, bool) and max_value >= 1
+        )
+        if has_max and not valid_max:
+            raise InvalidInput(
+                f"step {step.id!r}: 'on' entry {label!r} has an invalid 'max' "
+                f"{max_value!r} (an integer >= 1)"
+            )
+        if target in ("fail", "stop"):
+            continue
+        if target not in top_index:
+            raise InvalidInput(f"step {step.id!r}: 'on' target {target!r} is not a step id")
+        if top_index[target] <= index and not has_max:
+            raise InvalidInput(
+                f"step {step.id!r}: backward or self route to {target!r} requires 'max' >= 1"
+            )
+
+
 # ── Pipeline ───────────────────────────────────────────────────────────────────
 
 
@@ -595,24 +661,8 @@ class PipelineSpec(BaseModel):
                         )
                 continue
             if s.input is not None:
-                if s.input.from_ not in top_index:
-                    raise InvalidInput(
-                        f"step {s.id!r}: input 'from' references {s.input.from_!r}, "
-                        "which is not a step id"
-                    )
-                if top_index[s.input.from_] >= i:
-                    raise InvalidInput(
-                        f"step {s.id!r}: input 'from' {s.input.from_!r} must be an earlier step"
-                    )
-                if s.on:
-                    valid_keys = frozenset({"answered", "declined"})
-                    on_keys = {str(k).lower() for k in s.on}
-                    invalid = on_keys - valid_keys
-                    if invalid:
-                        raise InvalidInput(
-                            f"step {s.id!r}: input step 'on' keys must be a subset of "
-                            f"{sorted(valid_keys)}; got invalid key(s): {sorted(invalid)}"
-                        )
+                _check_input_from(s, i, top_index)
+                _check_input_keys(s)
                 continue
             if not isinstance(s.gate, VerdictGate) or s.gate.rework is None:
                 continue
@@ -629,18 +679,11 @@ class PipelineSpec(BaseModel):
         for i, s in enumerate(self.steps):
             if s.parallel or not s.on:
                 continue
+            _check_routes(s, i, top_index)
             for label, route in s.on.items():
-                target, max_value, has_max = _route_shape(s.id, label, route)
+                target, _max_value, _has_max = _route_shape(s.id, label, route)
                 if target in ("fail", "stop"):
                     continue
-                if target not in top_index:
-                    raise InvalidInput(f"step {s.id!r}: 'on' target {target!r} is not a step id")
-                if top_index[target] <= i and (
-                    not has_max or not isinstance(max_value, int) or max_value < 1
-                ):
-                    raise InvalidInput(
-                        f"step {s.id!r}: backward or self route to {target!r} requires 'max' >= 1"
-                    )
                 nxt = self.steps[i + 1] if i + 1 < len(self.steps) else None
                 # Only where `pass` is the gate's ordinary success; a verdict gate names its
                 # passing values itself and may route every real one.
@@ -951,7 +994,14 @@ def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
     if "id" in entry:
         if isinstance(entry["id"], str):
             seen_ids.append(entry["id"])
-        return _fix_on_key(entry)
+        fixed = _fix_on_key(entry)
+        children = fixed.get("parallel")
+        if isinstance(children, list):
+            fixed = {
+                **fixed,
+                "parallel": [_fix_on_key(c) if isinstance(c, dict) else c for c in children],
+            }
+        return fixed
     normalized = _normalize_short_step(entry, seen_ids)
     if isinstance(normalized.get("id"), str):
         seen_ids.append(normalized["id"])

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from docket.cli import _pod
@@ -58,3 +59,44 @@ def test_a_role_file_without_kind_loads_ok_with_a_note(tmp_path: Path) -> None:
     assert rc == 0
     assert "ok " in out
     assert "no 'kind:'" in out
+
+
+_REFUSED_PIPELINES = {
+    "group-run": (
+        "  - id: a\n    role: lead\n  - id: g\n    run: echo hi\n    parallel:\n"
+        "      - id: c\n        role: reviewer\n",
+        "'run'",
+    ),
+    "run-and-input": (
+        "  - id: a\n    role: lead\n  - id: ask\n    run: echo hi\n    input:\n      from: a\n",
+        "'input'",
+    ),
+    "forward-bad-max": (
+        "  - id: a\n    role: implementer\n    gate: {type: mechanical}\n"
+        "    on:\n      fail: {goto: b, max: 0}\n  - id: b\n    role: tester\n",
+        "'max'",
+    ),
+    "child-on": (
+        "  - id: a\n    role: lead\n  - id: g\n    parallel:\n"
+        "      - id: c\n        role: reviewer\n        on:\n          pass: nowhere\n",
+        "'on'",
+    ),
+    "child-input": (
+        "  - id: a\n    role: lead\n  - id: g\n    parallel:\n"
+        "      - id: c\n        input:\n          from: ghost\n",
+        "'input'",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_REFUSED_PIPELINES))
+def test_pod_validate_refuses_a_pipeline_the_executor_cannot_run(tmp_path: Path, name: str) -> None:
+    body, field = _REFUSED_PIPELINES[name]
+    pipelines = tmp_path / "pipelines"
+    pipelines.mkdir()
+    (pipelines / "p.yaml").write_text("kind: pipeline\nname: p\nsteps:\n" + body, encoding="utf-8")
+
+    rc, out = _validate(tmp_path)
+
+    assert rc == 1
+    assert field in out

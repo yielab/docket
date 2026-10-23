@@ -148,7 +148,7 @@ This specification does NOT cover:
    `instructions` applied like any other role: they replace the Lead's own instruction text (the
    built-in line, or an overlaid `lead` archetype's `hopInstruction`).
 9. A unit step **MAY** declare `run` (`str`, a shell command) instead of `role`/`agent`; declaring
-   `run` beside either **MUST** be a validation error. A `run` step (a command step) **MUST NOT**
+   `run` beside either, or beside `input`, **MUST** be a validation error. A `run` step (a command step) **MUST NOT**
    also declare `gate`, `instructions`, `retries`, `archetype` or `model`; each is a validation
    error naming the field. It **MAY** declare `timeout`, `when` and `on` (see "Conditional steps and
    command steps" and "Outcome routing"). Its exit code is its own outcome; the format models no
@@ -232,9 +232,9 @@ This specification does NOT cover:
    list of unit steps that the executor runs concurrently (`pod-dispatch.spec.md`, "Parallel step
    groups"), for example one per `--count N` duplicate role member.
 2. A parallel-group step **MUST NOT** also declare `role`, `agent`, `gate`, `retries`, `timeout`,
-   `instructions`, `model`, `on` or `env` at the group level — only its children carry those;
-   declaring any of them on the group **MUST** be a validation error. An empty `parallel` list
-   **MUST** be a validation error.
+   `instructions`, `model`, `on`, `env`, `run`, `input`, `when` or `archetype` at the group
+   level — its children carry the hop fields; declaring any of them on the group **MUST** be a
+   validation error naming the field. An empty `parallel` list **MUST** be a validation error.
 3. Nesting **MUST** be limited to exactly one level: a child of a `parallel` group **MUST NOT**
    itself declare `parallel`. A nested `parallel` **MUST** be a validation error naming the
    offending child.
@@ -242,7 +242,9 @@ This specification does NOT cover:
    `id`, a valid target, valid `archetype`/`retries`/`timeout`/`instructions`/`model`/`gate`
    shape), except that a child's gate **MUST NOT** carry a `rework` edge (Rework edges
    Requirement 5). Short form applies to top-level steps only; a group and its children are written
-   in canonical form.
+   in canonical form. The executor runs a child as a plain role or agent hop and acts on none of
+   `run`, `input`, `when` and `on` there, so a child **MUST NOT** declare any of them; each is a
+   validation error naming the child and the field (a child's unquoted `on:` key is read as `on`).
 
 ### Zero migration
 
@@ -355,8 +357,8 @@ This specification does NOT cover:
    `answered`/`declined` for an `input` step (any other key **MUST** be a validation error); for a
    `run` step, `pass`/`fail` by exit code, or the command's last non-blank output line when that
    line is a single upper-case token. Labels are compared case-insensitively. A `Route` is either a
-   mapping `{goto: <step id>, max: <int>}` (`max` **MUST** be an integer `>= 1` when `goto` names a
-   step at or before this one) or one of the literal strings `"fail"` or `"stop"`, or a bare step id
+   mapping `{goto: <step id>, max: <int>}` (`max`, wherever it is written, **MUST** be an integer
+   `>= 1`, and **MUST** be present when `goto` names a step at or before this one) or one of the literal strings `"fail"` or `"stop"`, or a bare step id
    (a forward target equivalent to `{goto: <that id>}` with no bound). A route mapping with any
    other key, or a route of any other type, **MUST** be a validation error.
 2. A gate outcome named in the step's own `on` map is routed *instead of* that outcome's ordinary
@@ -366,8 +368,8 @@ This specification does NOT cover:
    `pod-dispatch.spec.md`, "Generalized gate execution".
 3. `PipelineSpec` **MUST** validate every top-level step's `on` entries: a `goto` or bare step id
    **MUST** name an existing top-level step id in the document (forward or backward) or be
-   `fail`/`stop`; a backward or self target without a valid `max` **MUST** be a validation error
-   naming the step; and a step that no execution path reaches **MUST** be a validation error naming
+   `fail`/`stop`; a `max` that is not an integer `>= 1`, or a backward or self target without one,
+   **MUST** be a validation error naming the step; and a step that no execution path reaches **MUST** be a validation error naming
    the unreachable step. The reachability walk starts at the first step, follows each step's default
    successor and every `on` target, and never continues past a `fail`/`stop` terminal; a step's
    default successor edge is not followed when its `on` map names every outcome that would
@@ -428,8 +430,8 @@ This specification does NOT cover:
    or `env`. Its `on` routing, when present, **MUST** use only the keys `answered` or `declined`
    (case-insensitive).
 2. `input.from` **MUST** be the id of a *top-level* step that precedes this one in the pipeline; a
-   forward or self reference, or an id that is not a top-level step id, is a validation error naming
-   the step id and the bad source.
+   forward or self reference, or an id that is not a top-level step id, is a validation error
+   naming the step id and the bad source.
 3. `docket pod plan` renders an `input` step as `asks the operator (from <source-step-id>)`; the
    plan only describes the step, it never asks.
 4. Execution — parking the task in `waiting_input` and resuming from an operator's answer — is
