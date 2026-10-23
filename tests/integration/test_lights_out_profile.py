@@ -27,7 +27,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
-from docket.teams import pod as _pod_core
+from docket.teams import pod_settings as _pod_settings
 
 SUBJECT = "docket.interfaces"
 
@@ -216,13 +216,16 @@ class TestStricterOnly:
     def test_a_pod_cannot_be_weaker_than_the_fleet(self, home: Path) -> None:
         _fleet.set_profile("lights-out")
 
-        with pytest.raises(_pod_core.PodSettingsError, match="stricter"):
-            _pod_core.PodSettings.coerce("profile", "attended", project="demo")
+        with pytest.raises(_pod_settings.PodSettingsError, match="stricter"):
+            _pod_settings.PodSettings.coerce("profile", "attended", project="demo")
 
-        assert _pod_core.PodSettings.coerce("profile", "lights-out", project="demo") == "lights-out"
+        assert (
+            _pod_settings.PodSettings.coerce("profile", "lights-out", project="demo")
+            == "lights-out"
+        )
 
     def test_attended_is_fine_when_the_fleet_is_attended(self, home: Path) -> None:
-        assert _pod_core.PodSettings.coerce("profile", "attended", project="demo") == "attended"
+        assert _pod_settings.PodSettings.coerce("profile", "attended", project="demo") == "attended"
 
     def test_pod_set_refuses_the_weaker_value(self, home: Path) -> None:
         from docket.interfaces.cli.app import app

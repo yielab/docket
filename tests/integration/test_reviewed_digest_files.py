@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 
 from docket.governance import review as _reviewed
-from docket.teams.apply import plan as _pod_apply
-from docket.teams.apply.plan import RunItem
+from docket.teams.apply import review as _review
+from docket.teams.apply.review import RunItem
 
 SUBJECT = "docket.governance.review"
 
@@ -91,11 +91,11 @@ def test_pod_update_asks_again_after_the_script_its_pipeline_runs_changes(repo: 
         "name: p\nsteps:\n  - id: lead\n    role: lead\n  - id: check\n"
         "    run: bash scripts/check.sh\n"
     )
-    review = _pod_apply.classify_directory(config)
+    review = _review.classify_directory(config)
     assert [i.runs for i in review.runs] == ["bash scripts/check.sh"]
     _reviewed.remember(repo, "demo", review.runs)
-    assert _pod_apply.review_decision(repo, "demo", config, None).status == "go"
+    assert _review.review_decision(repo, "demo", config, None).status == "go"
 
     (repo / "scripts" / "check.sh").write_text("exit 0  # looser\n")
 
-    assert _pod_apply.review_decision(repo, "demo", config, None).status == "needs_code"
+    assert _review.review_decision(repo, "demo", config, None).status == "needs_code"

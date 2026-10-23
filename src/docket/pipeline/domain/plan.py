@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 
 # ── Planning (pure, deterministic) ───────────────────────────────────────────
@@ -100,7 +101,7 @@ class ExecutionPlan:
         return tuple(n for n in self.nodes if not (isinstance(n, PlannedUnit) and n.skipped))
 
 
-def _gate_from_contract(gc: _archetypes.GateContract) -> _pipeline.Gate | None:
+def _gate_from_contract(gc: _role_schema.GateContract) -> _pipeline.Gate | None:
     """Translate an archetype's descriptive ``gateContract`` into a real Gate. For
     ``verdict``, the first regex is the passing value and every other one just fails
     the step (no rework -- a step wanting a bounded rework loop must declare its own

@@ -25,7 +25,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
-from docket.teams import pod
+from docket.teams import pod, pod_settings
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.pod"
@@ -278,7 +278,7 @@ class TestConfigSetSchedule:
             from docket.pipeline.application import schedule as _sched
 
             assert _sched.load_schedules(current_home().schedule_file) == {}
-            assert pod.PodSettings.load_for("proj").schedule is None
+            assert pod_settings.PodSettings.load_for("proj").schedule is None
 
     def test_a_schedule_set_by_the_command_fires_under_the_serve_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

@@ -14,6 +14,7 @@ import docket.kernel.templates as _templates
 from docket.agent import context as _ctx
 from docket.agent.handoff import HandoffArtifact
 from docket.kernel.home import Home, current_home, use_home
+from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import config_docs as _config_docs
 from docket.teams import roles as _arch
 
@@ -56,22 +57,33 @@ class TestBudgetForRole:
     def test_builtin_role_resolves_its_archetypes_token_budget(self) -> None:
         assert (
             _ctx.budget_for_role("implementer")
-            == _arch.BUILTIN_ARCHETYPES["implementer"].token_budget
+            == _builtin_roles.BUILTIN_ARCHETYPES["implementer"].token_budget
         )
-        assert _ctx.budget_for_role("reviewer") == _arch.BUILTIN_ARCHETYPES["reviewer"].token_budget
-        assert _ctx.budget_for_role("tester") == _arch.BUILTIN_ARCHETYPES["tester"].token_budget
-        assert _ctx.budget_for_role("lead") == _arch.BUILTIN_ARCHETYPES["lead"].token_budget
+        assert (
+            _ctx.budget_for_role("reviewer")
+            == _builtin_roles.BUILTIN_ARCHETYPES["reviewer"].token_budget
+        )
+        assert (
+            _ctx.budget_for_role("tester")
+            == _builtin_roles.BUILTIN_ARCHETYPES["tester"].token_budget
+        )
+        assert (
+            _ctx.budget_for_role("lead") == _builtin_roles.BUILTIN_ARCHETYPES["lead"].token_budget
+        )
 
     def test_unregistered_role_falls_back_to_the_default(self) -> None:
         assert _ctx.budget_for_role("no-such-role-anywhere") == _ctx.DEFAULT_TOKEN_BUDGET
 
     def test_every_builtin_and_starter_archetype_has_a_positive_budget(self) -> None:
-        for name, found in {**_arch.BUILTIN_ARCHETYPES, **_arch.STARTER_ARCHETYPES}.items():
+        for name, found in {
+            **_builtin_roles.BUILTIN_ARCHETYPES,
+            **_builtin_roles.STARTER_ARCHETYPES,
+        }.items():
             assert found.token_budget > 0, name
 
     def test_defensively_falls_back_for_a_non_positive_budget(self) -> None:
         """`RoleArchetype.__post_init__` already rejects a non-positive `tokenBudget` for anything built the normal way (`from_wire`, or a plain constructor call) -- this exercises `budget_for_role`'s own defensive fallback for the one way around that: bypassing the frozen dataclass's `__init__` after construction."""
-        arch = _arch.BUILTIN_ARCHETYPES["implementer"]
+        arch = _builtin_roles.BUILTIN_ARCHETYPES["implementer"]
         object.__setattr__(arch, "token_budget", 0)
         try:
             assert _ctx.budget_for_role("implementer") == _ctx.DEFAULT_TOKEN_BUDGET
@@ -85,7 +97,7 @@ class TestBudgetForRole:
             _ctx.budget_for_role(
                 "implementer", context_window_tokens=1_000_000, max_output_tokens=8_192
             )
-            == _arch.BUILTIN_ARCHETYPES["implementer"].token_budget
+            == _builtin_roles.BUILTIN_ARCHETYPES["implementer"].token_budget
         )
 
     def test_unregistered_role_with_no_window_still_falls_back_to_the_default(self) -> None:

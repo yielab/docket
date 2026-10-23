@@ -24,7 +24,11 @@ from docket.interfaces.cli.commands import pod_config as _pod_config
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import config_docs as _config_docs
 from docket.teams import pod
+from docket.teams import pod_settings as _pod_settings
+from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import recipes as _recipes
+from docket.teams.apply import write as _write
 
 SUBJECT = "docket.teams.apply.plan"
 
@@ -62,8 +66,8 @@ def _recipe(tmp_path: Path, *, select: bool = False, doc: str = _SERVER_DOC) -> 
     return directory
 
 
-def _apply(project: str, directory: Path) -> _pod_apply.ApplyResult:
-    return _pod_apply.apply(_pod_apply.plan_apply(project, directory))
+def _apply(project: str, directory: Path) -> _model.ApplyResult:
+    return _write.apply(_pod_apply.plan_apply(project, directory))
 
 
 def test_apply_installs_the_server_for_that_pod_only(
@@ -112,17 +116,17 @@ def test_the_installed_server_reaches_the_registry_narrowed_to_its_tools(tmp_pat
 def test_a_second_pod_cannot_select_it(tmp_path: Path) -> None:
     _apply("shop", _recipe(tmp_path))
 
-    assert pod.PodSettings.coerce("mcpServers", "fakesrv", project="shop") == "fakesrv"
-    with pytest.raises(pod.PodSettingsError, match="another pod"):
-        pod.PodSettings.coerce("mcpServers", "fakesrv", project="other")
-    with pytest.raises(pod.PodSettingsError, match="fakesrv"):
-        pod.PodSettings.coerce("mcpServers", "fakesrv")
+    assert _pod_settings.PodSettings.coerce("mcpServers", "fakesrv", project="shop") == "fakesrv"
+    with pytest.raises(_pod_settings.PodSettingsError, match="another pod"):
+        _pod_settings.PodSettings.coerce("mcpServers", "fakesrv", project="other")
+    with pytest.raises(_pod_settings.PodSettingsError, match="fakesrv"):
+        _pod_settings.PodSettings.coerce("mcpServers", "fakesrv")
 
 
 def test_a_recipe_may_select_its_own_server_in_the_same_apply(tmp_path: Path) -> None:
     _apply("shop", _recipe(tmp_path, select=True))
 
-    assert pod.PodSettings.load_for("shop").mcp_servers == ("fakesrv",)
+    assert _pod_settings.PodSettings.load_for("shop").mcp_servers == ("fakesrv",)
 
 
 def test_dry_run_lists_it_and_installs_nothing(tmp_path: Path) -> None:
@@ -144,12 +148,12 @@ def test_a_second_identical_apply_skips(tmp_path: Path) -> None:
 def test_a_name_that_collides_with_a_global_server_is_refused(tmp_path: Path) -> None:
     _mt.add_mcp_server(_mt.McpServerConfig(name="fakesrv", command="x"))
 
-    with pytest.raises(_pod_apply.PodApplyError, match="global"):
+    with pytest.raises(_model.PodApplyError, match="global"):
         _pod_apply.plan_apply("shop", _recipe(tmp_path))
 
 
 def test_summarize_recipe_names_the_servers(tmp_path: Path) -> None:
-    summary = _pod_apply.summarize_recipe(_recipe(tmp_path))
+    summary = _recipes.summarize_recipe(_recipe(tmp_path))
 
     assert summary.mcp_servers == ("fakesrv",)
     assert summary.render().endswith("mcp-servers fakesrv")
@@ -158,7 +162,7 @@ def test_summarize_recipe_names_the_servers(tmp_path: Path) -> None:
 def test_export_round_trips_the_server(tmp_path: Path) -> None:
     _apply("shop", _recipe(tmp_path))
     exported = tmp_path / "export"
-    _pod_apply.export_pod("shop", exported)
+    _write.export_pod("shop", exported)
 
     written = exported / "mcp-servers" / "fakesrv.yaml"
     assert written.is_file()
@@ -200,7 +204,7 @@ def test_an_isolate_key_is_an_unknown_key_error(tmp_path: Path) -> None:
 def test_export_writes_no_isolate_key(tmp_path: Path) -> None:
     _apply("shop", _recipe(tmp_path))
     exported = tmp_path / "export"
-    _pod_apply.export_pod("shop", exported)
+    _write.export_pod("shop", exported)
 
     assert "isolate" not in (exported / "mcp-servers" / "fakesrv.yaml").read_text()
 
@@ -211,7 +215,7 @@ def test_the_plan_summary_carries_no_unjailed_note(
     directory = _recipe(tmp_path)
     _pod_config.render_apply_plan(_pod_apply.plan_apply("shop", directory))
     assert "unjailed" not in capsys.readouterr().out
-    assert "unjailed" not in _pod_apply.summarize_recipe(directory).render()
+    assert "unjailed" not in _recipes.summarize_recipe(directory).render()
 
 
 def test_code_intel_servers_declare_no_isolate_key() -> None:

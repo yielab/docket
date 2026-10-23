@@ -8,7 +8,7 @@ from docket.platform import git as _git
 from docket.platform import store as _store
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
-from docket.teams import pod_provisioning as _pp
+from docket.teams import task_worktrees as _task_worktrees
 from docket.teams.settings import pod_task_list_path
 
 
@@ -109,7 +109,9 @@ def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
             )
         return
     task_id = str(claimed.get("id", ""))
-    record, reason = _pp.provision_task_worktree(implementer, project, task_id, codebase, base_ref)
+    record, reason = _task_worktrees.provision_task_worktree(
+        implementer, project, task_id, codebase, base_ref
+    )
     if base_ref and not record:
         claimed["claimRefusal"] = ("base_ref", f"baseRef {base_ref!r} was not used: {reason}")
         return

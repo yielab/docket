@@ -29,8 +29,8 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
-from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
+from docket.teams import task_worktrees as _task_worktrees
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -149,7 +149,7 @@ def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_serve
         assert body["untracked"] == ["loose.txt"]
         assert body["worktreePresent"] is True
 
-        entries = _pp.prune_task_worktrees("demo", force=True)
+        entries = _task_worktrees.prune_task_worktrees("demo", force=True)
         assert [e.action for e in entries] == ["removed"]
         status, after = _call("GET", url)
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from docket.teams import pod_provisioning as _pp
+from docket.teams import task_worktrees as _task_worktrees
 
 SUBJECT = "docket.teams.pod_provisioning"
 
@@ -43,7 +43,9 @@ def test_task_worktree_starts_from_base_ref(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     main_sha, prev_sha = _repo_with_prev_branch(repo)
 
-    record, reason = _pp.provision_task_worktree("p-implementer", "p", "t1", str(repo), "prev")
+    record, reason = _task_worktrees.provision_task_worktree(
+        "p-implementer", "p", "t1", str(repo), "prev"
+    )
 
     assert reason == ""
     assert record["baseRef"] == "prev"
@@ -56,7 +58,7 @@ def test_task_worktree_without_base_ref_starts_from_head(tmp_path: Path) -> None
     repo = tmp_path / "repo"
     main_sha, _ = _repo_with_prev_branch(repo)
 
-    record, reason = _pp.provision_task_worktree("p-implementer", "p", "t1", str(repo))
+    record, reason = _task_worktrees.provision_task_worktree("p-implementer", "p", "t1", str(repo))
 
     assert reason == ""
     assert record["baseCommit"] == main_sha
@@ -67,9 +69,11 @@ def test_unresolvable_base_ref_leaves_no_worktree_or_branch(tmp_path: Path) -> N
     repo = tmp_path / "repo"
     _repo_with_prev_branch(repo)
 
-    record, reason = _pp.provision_task_worktree("p-implementer", "p", "t1", str(repo), "nope")
+    record, reason = _task_worktrees.provision_task_worktree(
+        "p-implementer", "p", "t1", str(repo), "nope"
+    )
 
     assert record == {}
     assert "nope" in reason
-    assert not (_pp.task_worktrees_dir("p-implementer") / "t1").exists()
-    assert _pp.worktree_branch("p", "t1") not in _git(repo, "branch", "--list")
+    assert not (_task_worktrees.task_worktrees_dir("p-implementer") / "t1").exists()
+    assert _task_worktrees.worktree_branch("p", "t1") not in _git(repo, "branch", "--list")

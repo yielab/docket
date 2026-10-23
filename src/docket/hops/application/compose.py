@@ -24,6 +24,7 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application.actions import _mint_task_grant_pregrants
 from docket.tasks.domain.task import HopResult
+from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.settings import _pod_settings, pod_approval_mode
 
@@ -70,7 +71,7 @@ def _resolve_hop_instructions(
     # role name (absent from the registry) still gets no instruction,
     # matching today's behavior.
     archetype = _archetypes.load_registry(project).get(role)
-    return _archetypes.resolve_hop_instruction(archetype) if archetype else ""
+    return _role_schema.resolve_hop_instruction(archetype) if archetype else ""
 
 
 def _render_gate_reasons(reasons: list[dict[str, Any]]) -> str:
@@ -186,7 +187,7 @@ def _hop_message(
         else:
             lead_archetype = _archetypes.load_registry(project).get("lead")
             lead_instruction = (
-                _archetypes.resolve_hop_instruction(lead_archetype) if lead_archetype else ""
+                _role_schema.resolve_hop_instruction(lead_archetype) if lead_archetype else ""
             )
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
         if root_block:

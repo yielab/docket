@@ -7,6 +7,7 @@ from docket.kernel.home import current_home
 from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams import utils as _utils
 
 DEFAULT_TIMEOUT = 300
@@ -29,13 +30,13 @@ def pod_recorded_cost(project: str) -> float:
     return round(total, 6)
 
 
-def _pod_settings(project: str) -> _pod.PodSettings:
+def _pod_settings(project: str) -> _teams_pod_settings.PodSettings:
     """Load this pod's validated Lead-meta settings, or raise ``DispatchError``
     naming the offending key -- never a silently substituted default (see
     ``teams.pod.PodSettings``)."""
     try:
-        return _pod.PodSettings.load_for(project)
-    except _pod.PodSettingsError as exc:
+        return _teams_pod_settings.PodSettings.load_for(project)
+    except _teams_pod_settings.PodSettingsError as exc:
         raise DispatchError(str(exc)) from exc
 
 

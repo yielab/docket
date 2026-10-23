@@ -25,11 +25,19 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
+from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import config_docs as _config_docs
+from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
+from docket.teams import pod_settings as _pod_settings
+from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
+from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import recipes as _recipes
+from docket.teams.apply import review as _review
+from docket.teams.apply import write as _write
 
 _HOOKS = ("pre_input", "pre_tool_call", "pre_output")
 
@@ -49,7 +57,7 @@ def _scope_pod(pod: str | None) -> str:
 
 def _default_dir(project: str, *, create: bool = False) -> Path:
     """The pod's configuration-of-record directory from the Lead's own recorded meta."""
-    return _pod_apply.repo_config_dir(_codebase(project), project, create=create)
+    return _review.repo_config_dir(_codebase(project), project, create=create)
 
 
 def _codebase(project: str) -> Path:
@@ -61,7 +69,7 @@ def _codebase(project: str) -> Path:
 # -- render helpers shared with init ---------------------------------------------------------
 
 
-def render_apply_header(project: str, directory: Path, summary: _pod_apply.RecipeSummary) -> None:
+def render_apply_header(project: str, directory: Path, summary: _recipes.RecipeSummary) -> None:
     """Print the apply header: the recipe's description when set, then its derived summary."""
     ui.header("Apply plan", f"{project} <- {directory}")
     if summary.description:
@@ -81,12 +89,12 @@ _RUN_LABELS = {
 }
 
 
-def run_item_label(item: _pod_apply.RunItem) -> str:
+def run_item_label(item: _review.RunItem) -> str:
     """The console label of one run-on-this-machine item."""
     return _RUN_LABELS.get(item.kind, item.kind).format(item.name)
 
 
-def render_run_items(items: tuple[_pod_apply.RunItem, ...]) -> None:
+def render_run_items(items: tuple[_review.RunItem, ...]) -> None:
     """Print the numbered ``Runs on this machine`` list, one exact command per item."""
     width = max((len(run_item_label(i)) for i in items), default=0)
     ui.console.print("Runs on this machine")
@@ -95,7 +103,7 @@ def render_run_items(items: tuple[_pod_apply.RunItem, ...]) -> None:
         ui.console.print(f"  {n}. {escape(label)}   {escape(item.runs)}")
 
 
-def render_review(review: _pod_apply.PlanReview) -> None:
+def render_review(review: _review.PlanReview) -> None:
     """Print the two groups of a repository's directory: adds, then runs on this machine."""
     if review.adds:
         ui.console.print("Adds to the team")
@@ -105,13 +113,13 @@ def render_review(review: _pod_apply.PlanReview) -> None:
     render_run_items(review.runs)
 
 
-def _render_items(items: tuple[_pod_apply.ApplyItem, ...]) -> None:
+def _render_items(items: tuple[_model.ApplyItem, ...]) -> None:
     for item in items:
         note = f" ({item.note})" if item.note else ""
         ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}{escape(note)}")
 
 
-def render_apply_plan(plan: _pod_apply.ApplyPlan) -> None:
+def render_apply_plan(plan: _model.ApplyPlan) -> None:
     """Print an apply plan one item per line, then one line per named exporter."""
     _render_items(plan.items)
     render_exporter_states(plan.exporters)
@@ -177,17 +185,17 @@ def _sync(project: str, dry_run: bool, json_out: bool) -> None:
         _fail(f"No pod found for '{project}'", "Run docket init")
     stale = []
     for member_id in member_ids:
-        status = _pp.member_sync_status(member_id)
+        status = _member_workspace.member_sync_status(member_id)
         if status is None or not status.stale:
             continue
         stale.append(member_id)
         if dry_run:
             was = status.stored_template_version or "?"
-            ui.warn(f"{member_id} is stale (v{was} -> v{_pp.POD_TEMPLATE_VERSION})")
+            ui.warn(f"{member_id} is stale (v{was} -> v{_member_workspace.POD_TEMPLATE_VERSION})")
             for name, diff in status.diffs.items():
                 ui.console.print(escape(diff) if diff else f"  {name}: no content change")
         else:
-            written = _pp.resync_member(member_id)
+            written = _member_workspace.resync_member(member_id)
             audit_log("pod.sync", f"member={member_id} files=({','.join(written)})")
             ui.success(f"{member_id}: re-rendered {', '.join(written) or '(version stamp only)'}")
     if not stale:
@@ -212,20 +220,20 @@ def _apply_directory(
     project: str, target: str, dry_run: bool, json_out: bool, accept: str | None = None
 ) -> None:
     try:
-        directory = _pod_apply.resolve_recipe(target)
+        directory = _recipes.resolve_recipe(target)
         plan = _pod_apply.plan_apply(project, directory)
-    except _pod_apply.PodApplyError as ex:
+    except _model.PodApplyError as ex:
         _fail(str(ex))
     if not dry_run:
         _review_directory(project, directory, json_out, accept)
     if json_out:
         _contract.emit_json({"items": [asdict(item) for item in plan.items]})
     else:
-        render_apply_header(project, directory, _pod_apply.summarize_recipe(directory))
+        render_apply_header(project, directory, _recipes.summarize_recipe(directory))
         render_apply_plan(plan)
     if dry_run:
         return
-    result = _pod_apply.apply(plan)
+    result = _write.apply(plan)
     if not json_out:
         changed = [item for item in result.items if item.action != "skip"]
         if changed:
@@ -235,7 +243,7 @@ def _apply_directory(
         _contract.next_step("docket pod show")
 
 
-def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _pod_apply.ApplyItem]:
+def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _model.ApplyItem]:
     try:
         document = _config_docs.load_document(path)
     except _config_docs.ConfigDocError as exc:
@@ -252,8 +260,8 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _pod_ap
             f"A {document.kind} document is not applied on its own",
             "Put it in a directory beside its recipe and apply the directory",
         )
-    action: _pod_apply.ApplyAction = "replace" if exists else "add"
-    return document, _pod_apply.ApplyItem(kind=document.kind, name=document.name, action=action)  # type: ignore[arg-type]
+    action: _model.ApplyAction = "replace" if exists else "add"
+    return document, _model.ApplyItem(kind=document.kind, name=document.name, action=action)  # type: ignore[arg-type]
 
 
 def _install_policy(project: str, path: Path) -> None:
@@ -281,7 +289,7 @@ def _apply_file(project: str, path: Path, dry_run: bool, json_out: bool) -> None
             if error:
                 _fail(error)
             _install_policy(project, path)
-    except _arch.ArchetypeError as exc:
+    except _role_schema.ArchetypeError as exc:
         _fail(f"Invalid archetype: {exc}")
     audit_log("pod.apply", f"project={project} file={path} kind={document.kind}")
     if not json_out:
@@ -309,8 +317,8 @@ def cmd_export(
     if target.exists() and any(target.iterdir()) and not force:
         _fail(f"'{target}' is not empty", "Pass --force to overwrite")
     try:
-        _pod_apply.export_pod(project, target)
-    except _pod_apply.PodApplyError as ex:
+        _write.export_pod(project, target)
+    except _model.PodApplyError as ex:
         _fail(str(ex))
     audit_log("pod.export", f"project={project} dir={target}")
     ui.success(f"Exported pod '{project}' to {target}")
@@ -343,7 +351,7 @@ def cmd_validate(
         doc = result.document
         ui.success(f"{result.path} ({doc.kind} {doc.name})")
     if not target.is_file():
-        summary = _pod_apply.summarize_recipe(target)
+        summary = _recipes.summarize_recipe(target)
         ui.dim(f"  {summary.render()}")
         if summary.description:
             ui.dim(f"  {summary.description}")
@@ -355,7 +363,7 @@ def _validate_default() -> Path:
     candidate = Path.cwd() / ".docket"
     pod = _scope_pod(None)
     if pod:
-        candidate = _pod_apply.repo_config_dir(Path.cwd(), pod)
+        candidate = _review.repo_config_dir(Path.cwd(), pod)
     return candidate if candidate.is_dir() else Path.cwd()
 
 
@@ -415,8 +423,8 @@ def _unreachable_handler(_args: dict[str, Any], _ctx: _tools.ToolContext) -> NoR
 def _pod_allow_commands(project: str) -> tuple[str, ...]:
     """The pod's ``allowCommands`` as the live gate sees it: empty when the setting is unreadable."""
     try:
-        return _pod_core.PodSettings.load_for(project).allow_commands
-    except _pod_core.PodSettingsError:
+        return _pod_settings.PodSettings.load_for(project).allow_commands
+    except _pod_settings.PodSettingsError:
         return ()
 
 
@@ -496,7 +504,7 @@ def cmd_check(
 # -- recipes ----------------------------------------------------------------------------------
 
 
-def _brings(summary: _pod_apply.RecipeSummary) -> str:
+def _brings(summary: _recipes.RecipeSummary) -> str:
     """The parts a recipe brings, joined with `+` in summary order; `nothing` for an empty one."""
     parts = [
         label
@@ -516,7 +524,7 @@ def _brings(summary: _pod_apply.RecipeSummary) -> str:
 
 
 def _info_dict(
-    name: str, scope: str, directory: str, summary: _pod_apply.RecipeSummary
+    name: str, scope: str, directory: str, summary: _recipes.RecipeSummary
 ) -> dict[str, object]:
     return {
         "name": name,
@@ -537,7 +545,7 @@ def _info_dict(
 
 
 def _recipes_list(json_out: bool) -> None:
-    infos = _pod_apply.list_recipes()
+    infos = _recipes.list_recipes()
     if json_out:
         _contract.emit_json(
             [_info_dict(i.name, i.scope, str(i.directory), i.summary) for i in infos]
@@ -557,12 +565,12 @@ def _recipes_list(json_out: bool) -> None:
 
 def _recipes_show(name_or_dir: str, json_out: bool) -> None:
     try:
-        directory = _pod_apply.resolve_recipe(name_or_dir)
-    except _pod_apply.PodApplyError as exc:
+        directory = _recipes.resolve_recipe(name_or_dir)
+    except _model.PodApplyError as exc:
         _fail(str(exc))
-    summary = _pod_apply.summarize_recipe(directory)
+    summary = _recipes.summarize_recipe(directory)
     scope = next(
-        (info.scope for info in _pod_apply.list_recipes() if info.directory == directory), ""
+        (info.scope for info in _recipes.list_recipes() if info.directory == directory), ""
     )
     readme = directory / "README.md"
     body = readme.read_text(encoding="utf-8") if readme.is_file() else ""
@@ -604,7 +612,7 @@ def cmd_recipes(
 
 
 def _role_row(
-    registry: _arch.ArchetypeRegistry, name: str, arch: _arch.RoleArchetype
+    registry: _arch.ArchetypeRegistry, name: str, arch: _role_schema.RoleArchetype
 ) -> dict[str, str]:
     return {
         "name": name,
@@ -632,8 +640,8 @@ def _roles_list(project: str, json_out: bool) -> None:
             f"{row['gate']:<11} {row['description'][:40]}"
         )
     ui.console.print()
-    ui.dim(f"  Built-in: {', '.join(_arch.BUILTIN_ROLE_ORDER)}")
-    ui.dim(f"  Starter library: {', '.join(_arch.STARTER_ROLE_ORDER)}")
+    ui.dim(f"  Built-in: {', '.join(_builtin_roles.BUILTIN_ROLE_ORDER)}")
+    ui.dim(f"  Starter library: {', '.join(_builtin_roles.STARTER_ROLE_ORDER)}")
     ui.console.print()
 
 

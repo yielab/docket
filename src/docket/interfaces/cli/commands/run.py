@@ -30,13 +30,16 @@ from docket.teams import pod as _pod_core
 from docket.teams import report as _report
 from docket.teams import roles as _arch
 from docket.teams import settings as _settings
+from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import review as _review
+from docket.teams.apply import write as _write
 
 
 def _repo_dir(project: str) -> Path | None:
     """The configuration-of-record directory of *project*'s Lead, or None with no codebase."""
     codebase = _fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", "")
-    return _pod_apply.repo_config_dir(Path(codebase), project) if codebase else None
+    return _review.repo_config_dir(Path(codebase), project) if codebase else None
 
 
 def _ask_changed_commands(changes: _pod_apply.RepoChanges) -> bool:
@@ -71,7 +74,7 @@ def _pick_up_repository(project: str) -> None:
         return
     try:
         changes = _pod_apply.repo_changes(project, directory)
-    except _pod_apply.PodApplyError as exc:
+    except _model.PodApplyError as exc:
         ui.warn(f"The repository's .docket/ was not applied: {exc}. Running with the pod as it is.")
         return
     if changes is None:
@@ -85,8 +88,8 @@ def _pick_up_repository(project: str) -> None:
     if changes.runs_changed and not _ask_changed_commands(changes):
         return
     if changes.review.runs and (changes.runs_changed or changes.allowed_on):
-        _reviewed.remember(_pod_apply.repo_root(directory), project, changes.review.runs)
-    _pod_apply.apply(changes.plan)
+        _reviewed.remember(_review.repo_root(directory), project, changes.review.runs)
+    _write.apply(changes.plan)
     if changes.adds_changed:
         ui.info(f"Updated from the repository: {', '.join(changes.adds_changed)}.")
 

@@ -22,6 +22,7 @@ from docket.models import selection as _models_policy
 from docket.observability import exporter as _exporter
 from docket.operator import channel as _channel
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.apply import plan as _pod_apply
 
@@ -293,7 +294,7 @@ def _load_role(path: Path) -> dict[str, Any]:
     refused here and not at provisioning."""
     try:
         doc = _archetypes.load_role_file(str(path))
-    except _archetypes.ArchetypeError as exc:
+    except _role_schema.ArchetypeError as exc:
         raise ConfigDocError(path, str(exc)) from exc
     errors = _archetypes.validate_archetype_dict(str(doc.get("name", "")), doc)
     if errors:

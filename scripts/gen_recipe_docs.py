@@ -23,7 +23,7 @@ RECIPES_MD = ROOT / "docs" / "recipes.md"
 sys.path.insert(0, str(SRC))
 
 from docket.kernel import templates as _templates  # noqa: E402
-from docket.teams.apply import plan as _pod_apply  # noqa: E402
+from docket.teams.apply import recipes as _recipes  # noqa: E402
 
 HEADER = """# The recipe library
 
@@ -47,7 +47,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 """
 
 
-def _brings(summary: _pod_apply.RecipeSummary) -> str:
+def _brings(summary: _recipes.RecipeSummary) -> str:
     parts: list[str] = []
     for count, singular, plural in (
         (summary.roles, "role", "roles"),
@@ -85,7 +85,7 @@ def _readme_body(directory: Path) -> str:
 
 def render() -> str:
     recipes = sorted(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
-    summaries = {p.name: _pod_apply.summarize_recipe(p) for p in recipes}
+    summaries = {p.name: _recipes.summarize_recipe(p) for p in recipes}
     lines = [HEADER, "| Recipe | Brings | Description |", "| --- | --- | --- |"]
     for p in recipes:
         s = summaries[p.name]

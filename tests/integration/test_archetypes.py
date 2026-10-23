@@ -20,6 +20,7 @@ import pytest
 from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import builtin_roles, role_schema
 from docket.teams import roles as arch
 
 SUBJECT = "docket.teams.roles"
@@ -52,60 +53,60 @@ class TestClosedEnums:
         return doc
 
     def test_unknown_scope_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="scope"):
-            arch.from_wire("custom", self._base_doc(scope="galaxy"))
+        with pytest.raises(role_schema.ArchetypeError, match="scope"):
+            role_schema.from_wire("custom", self._base_doc(scope="galaxy"))
 
     def test_unknown_model_class_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="modelClass"):
-            arch.from_wire("custom", self._base_doc(modelClass="medium"))
+        with pytest.raises(role_schema.ArchetypeError, match="modelClass"):
+            role_schema.from_wire("custom", self._base_doc(modelClass="medium"))
 
     def test_unknown_gate_contract_kind_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="gate contract kind"):
-            arch.from_wire("custom", self._base_doc(gateContract={"kind": "vibes"}))
+        with pytest.raises(role_schema.ArchetypeError, match="gate contract kind"):
+            role_schema.from_wire("custom", self._base_doc(gateContract={"kind": "vibes"}))
 
     def test_blank_soul_template_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="soulTemplate"):
-            arch.from_wire("custom", self._base_doc(soulTemplate="   "))
+        with pytest.raises(role_schema.ArchetypeError, match="soulTemplate"):
+            role_schema.from_wire("custom", self._base_doc(soulTemplate="   "))
 
     def test_blank_agents_template_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="agentsTemplate"):
-            arch.from_wire("custom", self._base_doc(agentsTemplate=""))
+        with pytest.raises(role_schema.ArchetypeError, match="agentsTemplate"):
+            role_schema.from_wire("custom", self._base_doc(agentsTemplate=""))
 
     def test_invalid_name_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="invalid archetype name"):
-            arch.from_wire("Bad Name!", self._base_doc(name="Bad Name!"))
+        with pytest.raises(role_schema.ArchetypeError, match="invalid archetype name"):
+            role_schema.from_wire("Bad Name!", self._base_doc(name="Bad Name!"))
 
     def test_non_positive_version_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="version"):
-            arch.from_wire("custom", self._base_doc(version=0))
+        with pytest.raises(role_schema.ArchetypeError, match="version"):
+            role_schema.from_wire("custom", self._base_doc(version=0))
 
     def test_bad_gate_regex_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="does not compile"):
-            arch.from_wire(
+        with pytest.raises(role_schema.ArchetypeError, match="does not compile"):
+            role_schema.from_wire(
                 "custom",
                 self._base_doc(gateContract={"kind": "verdict", "regexes": ["(unbalanced"]}),
             )
 
     def test_name_mismatch_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="does not match"):
-            arch.from_wire("custom", self._base_doc(name="other"))
+        with pytest.raises(role_schema.ArchetypeError, match="does not match"):
+            role_schema.from_wire("custom", self._base_doc(name="other"))
 
     def test_valid_doc_round_trips(self) -> None:
-        parsed = arch.from_wire("custom", self._base_doc())
+        parsed = role_schema.from_wire("custom", self._base_doc())
         assert parsed.name == "custom"
         assert parsed.scope == "pod"
         assert parsed.model_class == "cheap"
         back = parsed.to_wire()
-        reparsed = arch.from_wire("custom", back)
+        reparsed = role_schema.from_wire("custom", back)
         assert reparsed == parsed
 
 
 class TestBuiltinAndStarterArchetypes:
     def test_builtin_role_order(self) -> None:
-        assert arch.BUILTIN_ROLE_ORDER == ("lead", "implementer", "reviewer", "tester")
+        assert builtin_roles.BUILTIN_ROLE_ORDER == ("lead", "implementer", "reviewer", "tester")
 
     def test_starter_role_order(self) -> None:
-        assert arch.STARTER_ROLE_ORDER == (
+        assert builtin_roles.STARTER_ROLE_ORDER == (
             "researcher",
             "analyst",
             "writer",
@@ -116,21 +117,21 @@ class TestBuiltinAndStarterArchetypes:
 
     @pytest.mark.parametrize("name", ["lead", "implementer", "reviewer", "tester"])
     def test_builtin_validates(self, name: str) -> None:
-        found = arch.BUILTIN_ARCHETYPES[name]
+        found = builtin_roles.BUILTIN_ARCHETYPES[name]
         assert arch.validate_archetype_dict(name, found.to_wire()) == []
 
     @pytest.mark.parametrize(
         "name", ["researcher", "analyst", "writer", "critic", "operator", "monitor"]
     )
     def test_starter_validates(self, name: str) -> None:
-        found = arch.STARTER_ARCHETYPES[name]
+        found = builtin_roles.STARTER_ARCHETYPES[name]
         assert arch.validate_archetype_dict(name, found.to_wire()) == []
 
     def test_every_builtin_and_starter_archetype_has_its_own_policy_row(self) -> None:
         """One vocabulary: an archetype's model row is its own name."""
         from docket.models import selection as mp
 
-        names = {*arch.BUILTIN_ARCHETYPES, *arch.STARTER_ARCHETYPES}
+        names = {*builtin_roles.BUILTIN_ARCHETYPES, *builtin_roles.STARTER_ARCHETYPES}
         assert set(mp.ROLE_CLASS) == names
         assert set(mp.ALL_ROLES) == names
 
@@ -138,7 +139,7 @@ class TestBuiltinAndStarterArchetypes:
         """The archetype's `gateContract`, resolved through `pipeline.domain.plan`, must produce
         the same pattern/passValues as `pipeline/domain/spec.py`'s hardcoded reviewer step -- two
         independent sources describing the same role must agree."""
-        found = arch.BUILTIN_ARCHETYPES["reviewer"]
+        found = builtin_roles.BUILTIN_ARCHETYPES["reviewer"]
         assert found.gate_contract.kind == "verdict"
         resolved = _orch._gate_from_contract(found.gate_contract)
         assert isinstance(resolved, _pipeline.VerdictGate)
@@ -158,7 +159,7 @@ class TestBuiltinAndStarterArchetypes:
 
     def test_tester_gate_matches_pipeline_default_verdict_gate(self) -> None:
         """See the reviewer test's docstring above."""
-        found = arch.BUILTIN_ARCHETYPES["tester"]
+        found = builtin_roles.BUILTIN_ARCHETYPES["tester"]
         assert found.gate_contract.kind == "verdict"
         resolved = _orch._gate_from_contract(found.gate_contract)
         assert isinstance(resolved, _pipeline.VerdictGate)
@@ -172,29 +173,29 @@ class TestBuiltinAndStarterArchetypes:
         ]
 
     def test_lead_gate_is_none(self) -> None:
-        assert arch.BUILTIN_ARCHETYPES["lead"].gate_contract.kind == "none"
+        assert builtin_roles.BUILTIN_ARCHETYPES["lead"].gate_contract.kind == "none"
 
     def test_implementer_gate_is_mechanical(self) -> None:
-        assert arch.BUILTIN_ARCHETYPES["implementer"].gate_contract.kind == "mechanical"
+        assert builtin_roles.BUILTIN_ARCHETYPES["implementer"].gate_contract.kind == "mechanical"
 
 
 class TestRender:
     def test_render_substitutes(self) -> None:
-        assert arch.render("hi ${project}", {"project": "demo"}) == "hi demo"
+        assert role_schema.render("hi ${project}", {"project": "demo"}) == "hi demo"
 
     def test_render_unknown_variable_raises(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="unknown variable"):
-            arch.render("hi ${typo}", {"project": "demo"})
+        with pytest.raises(role_schema.ArchetypeError, match="unknown variable"):
+            role_schema.render("hi ${typo}", {"project": "demo"})
 
     def test_render_ignores_unused_extra_variables(self) -> None:
-        assert arch.render("hi ${project}", {"project": "demo", "extra": "y"}) == "hi demo"
+        assert role_schema.render("hi ${project}", {"project": "demo", "extra": "y"}) == "hi demo"
 
 
 class TestRegistryOverlay:
     def test_load_registry_without_overlay_has_ten_roles(self, registry_file: Path) -> None:
         registry = arch.load_registry("demo")
-        assert set(registry.role_names()) == set(arch.BUILTIN_ARCHETYPES) | set(
-            arch.STARTER_ARCHETYPES
+        assert set(registry.role_names()) == set(builtin_roles.BUILTIN_ARCHETYPES) | set(
+            builtin_roles.STARTER_ARCHETYPES
         )
         assert len(registry.role_names()) == 10
 
@@ -243,7 +244,7 @@ class TestRegistryOverlay:
         assert registry.source_of("lead") == "pod:demo"
 
         # Built-in Python literal itself is untouched (module-level constant).
-        assert arch.BUILTIN_ARCHETYPES["lead"].model_class == "cheap"
+        assert builtin_roles.BUILTIN_ARCHETYPES["lead"].model_class == "cheap"
 
     def test_malformed_overlay_entry_is_skipped_not_fatal(self, registry_file: Path) -> None:
         registry_file.parent.mkdir(parents=True, exist_ok=True)
@@ -257,21 +258,21 @@ class TestRegistryOverlay:
         assert "lead" in registry
 
     def test_add_user_archetype_requires_name(self, registry_file: Path) -> None:
-        with pytest.raises(arch.ArchetypeError, match="name"):
+        with pytest.raises(role_schema.ArchetypeError, match="name"):
             arch.add_user_archetype({"version": 1}, "demo")
 
     def test_a_global_roles_file_is_not_read(self, registry_file: Path) -> None:
         stray = current_home().root / "docket-roles.json"
         stray.parent.mkdir(parents=True, exist_ok=True)
         stray.write_text(
-            json.dumps({"roles": {"lead": {**arch.BUILTIN_ARCHETYPES["lead"].to_wire()}}}),
+            json.dumps({"roles": {"lead": {**builtin_roles.BUILTIN_ARCHETYPES["lead"].to_wire()}}}),
             encoding="utf-8",
         )
         assert arch.load_registry("demo").source_of("lead") == "built-in"
 
     def test_scope_org_is_not_a_scope(self) -> None:
-        assert set(arch.SCOPES) == {"pod"}
-        wire = {**arch.STARTER_ARCHETYPES["writer"].to_wire(), "scope": "org"}
+        assert set(role_schema.SCOPES) == {"pod"}
+        wire = {**builtin_roles.STARTER_ARCHETYPES["writer"].to_wire(), "scope": "org"}
         assert arch.validate_archetype_dict("writer", wire)
 
     def test_parse_yaml_file(self, tmp_path: Path) -> None:
@@ -292,13 +293,13 @@ class TestRegistryOverlay:
         assert doc["name"] == "producer"
 
     def test_parse_yaml_file_missing(self, tmp_path: Path) -> None:
-        with pytest.raises(arch.ArchetypeError, match="not found"):
+        with pytest.raises(role_schema.ArchetypeError, match="not found"):
             arch.parse_yaml_file(str(tmp_path / "nope.yaml"))
 
     def test_parse_yaml_file_not_a_mapping(self, tmp_path: Path) -> None:
         p = tmp_path / "list.yaml"
         p.write_text("- 1\n- 2\n", encoding="utf-8")
-        with pytest.raises(arch.ArchetypeError, match="mapping"):
+        with pytest.raises(role_schema.ArchetypeError, match="mapping"):
             arch.parse_yaml_file(str(p))
 
 

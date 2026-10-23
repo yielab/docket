@@ -420,7 +420,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         """``GET /pods`` and ``GET /pods/<p>`` (operator-api.spec.md "Pod answers")."""
         from docket.tasks.application import queue as _queue
         from docket.tasks.domain import task as _task
-        from docket.teams import pod as _pod_core
+        from docket.teams import pod_settings as _pod_settings
         from docket.teams import report as _pod_report
 
         project = path[len("/pods/") :] if path.startswith("/pods/") else ""
@@ -435,7 +435,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         try:
             detail = _pod_report.pod_detail(project)
-        except (_task.DispatchError, _pod_core.PodSettingsError) as exc:
+        except (_task.DispatchError, _pod_settings.PodSettingsError) as exc:
             self._send_json_error(str(exc), 500)
             return
         self._send(json.dumps(detail).encode("utf-8"), "application/json")
@@ -1100,7 +1100,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
         from docket.tasks.application import queue as _queue
         from docket.teams import pod as _pod_core
+        from docket.teams.apply import model as _model
         from docket.teams.apply import plan as _pod_apply
+        from docket.teams.apply import review as _review
 
         if project not in _queue.dispatchable_pods():
             self._send_json_error(f"Unknown pod: {project}", 404)
@@ -1133,7 +1135,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error("dryRun must be a boolean and accept a string", 400)
             return
         if directory_value is None:
-            directory_value = str(_pod_apply.repo_config_dir(Path(codebase), project))
+            directory_value = str(_review.repo_config_dir(Path(codebase), project))
         elif not Path(directory_value).is_absolute():
             self._send_json_error("directory must be an absolute path", 400)
             return
@@ -1145,7 +1147,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             outcome = _pod_apply.apply_directory(
                 project, directory, Path(codebase), accept=accept, dry_run=dry_run, channel="http"
             )
-        except _pod_apply.PodApplyError as exc:
+        except _model.PodApplyError as exc:
             self._send_json_error(str(exc), 400)
             return
         if outcome.status == "refused":

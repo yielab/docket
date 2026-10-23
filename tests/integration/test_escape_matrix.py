@@ -38,7 +38,7 @@ from docket.sandbox import landlock as _landlock
 from docket.sandbox import launch as _launch
 from docket.sandbox import seatbelt as _seatbelt
 from docket.tasks.application import queue as _queue
-from docket.teams import pod_provisioning as _pp
+from docket.teams import task_worktrees as _task_worktrees
 
 SUBJECT = "docket.sandbox.jail"
 
@@ -202,7 +202,9 @@ def task_tree(arena: Path) -> TaskTree:
     (main / "a.txt").write_text("a\n")
     _git(main, "add", "a.txt")
     _git(main, "commit", "-q", "-m", "init")
-    record, reason = _pp.provision_task_worktree("proj-implementer-1", "proj", "t1", str(main))
+    record, reason = _task_worktrees.provision_task_worktree(
+        "proj-implementer-1", "proj", "t1", str(main)
+    )
     assert record, reason
     wt = Path(record["dir"]).resolve()
     common = Path(_git(wt, "rev-parse", "--git-common-dir"))

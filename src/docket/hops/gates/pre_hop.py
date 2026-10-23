@@ -22,6 +22,7 @@ from docket.tasks.application.queue import pod_full_roster, read_tasks
 from docket.tasks.domain.task import DispatchError, TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams import utils as _utils
 from docket.teams.settings import _pod_settings, pod_recorded_cost
 
@@ -125,7 +126,7 @@ def _apply_task_restrictions(
         task_mode = restrictions.get("network")
         if task_mode == "none":
             extra[_rd.DOCKET_TASK_NETWORK] = _hop_network(
-                _pod.effective_network(ctx.project)[0], task_mode
+                _teams_pod_settings.effective_network(ctx.project)[0], task_mode
             )
         if restrictions.get("policies"):
             try:

@@ -14,7 +14,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.platform import git as _git
 from docket.platform import store
-from docket.teams.apply.plan import RunItem
+from docket.teams.apply.review import RunItem
 
 CODE_LENGTH = 16
 _NAMES_NO_FILE = frozenset({"allow-commands", "network", "role-loosens"})

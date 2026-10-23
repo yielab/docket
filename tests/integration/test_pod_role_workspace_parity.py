@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
+from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
-from docket.teams import pod_provisioning as _pp
 
 SUBJECT = "docket.teams"
 
@@ -144,7 +144,7 @@ class TestLegacyByteParity:
         expected = _legacy_member_soul(
             member, case["project"], case["codebase"], case["stack"], case["description"]
         )
-        actual = _pp._member_soul(
+        actual = _member_workspace._member_soul(
             member, case["project"], case["codebase"], case["stack"], case["description"]
         )
         assert actual == expected
@@ -161,7 +161,7 @@ class TestLegacyByteParity:
             session_key=f"agent:{case['project']}:default",
         )
         expected = _legacy_member_agents(member, case["project"])
-        actual = _pp._member_agents(member, case["project"])
+        actual = _member_workspace._member_agents(member, case["project"])
         assert actual == expected
 
     def test_duplicate_index_member_id_unaffected(self) -> None:
@@ -175,6 +175,6 @@ class TestLegacyByteParity:
             session_key="agent:demo:default",
         )
         expected = _legacy_member_soul(member, "demo", "/src/demo", "Python", "")
-        actual = _pp._member_soul(member, "demo", "/src/demo", "Python", "")
+        actual = _member_workspace._member_soul(member, "demo", "/src/demo", "Python", "")
         assert actual == expected
         assert "demo-implementer-2" in actual

@@ -1,0 +1,74 @@
+# teams: split plan.py, pod.py, pod_provisioning.py, roles.py (ADR 0030: no module over 700 lines)
+
+# ---- teams/apply/plan.py: plan data model (leaf) ----
+[[definition]]
+from = "docket.teams.apply.plan"
+to = "docket.teams.apply.model"
+names = ["ApplyAction", "PodApplyError", "ApplyItem", "_RoleWrite", "_PolicyWrite", "_PluginWrite",
+         "_NamedPipelineWrite", "_SkillWrite", "_McpServerWrite", "_MemberWrite", "_PipelineWrite",
+         "_SettingWrite", "ApplyPlan", "ApplyResult"]
+
+# ---- recipe resolution/summary and config-directory file readers ----
+[[definition]]
+from = "docket.teams.apply.plan"
+to = "docket.teams.apply.recipes"
+names = ["unresolvable_pipeline_steps", "resolve_recipe", "RecipeSummary", "_recipe_manifest",
+         "_recipe_pipeline_file", "_config_glob", "_server_files", "_declared_servers",
+         "_named_pipeline_files", "summarize_recipe", "RecipeInfo", "list_recipes",
+         "_directory_files", "_skill_digest", "directory_digest"]
+
+# ---- review of repo-supplied config (classify, decide, run changes) ----
+[[definition]]
+from = "docket.teams.apply.plan"
+to = "docket.teams.apply.review"
+names = ["REPO_REFUSED_COMMANDS", "RunItem", "PlanReview", "is_shipped_recipe", "ReviewDecision",
+         "_run_steps", "_config_docs_doc", "_loosened_denials", "_is_repo_config_dir", "_is_state_root",
+         "repo_root", "repo_config_dir", "_prepare_runs", "classify_directory", "review_decision",
+         "RunChange", "runs_changed"]
+
+# ---- writing: apply (directory to pod) and export (pod to directory) ----
+[[definition]]
+from = "docket.teams.apply.plan"
+to = "docket.teams.apply.write"
+names = ["_dump_yaml_file", "_schema_header", "_export_roles", "_export_policies", "_export_plugins",
+         "_export_named_pipelines", "_export_skills", "_export_mcp_servers", "_export_pipeline",
+         "_export_manifest", "_export_schemas", "export_pod", "apply"]
+
+# ---- teams/pod.py: PodSettings and its validation helpers ----
+[[definition]]
+from = "docket.teams.pod"
+to = "docket.teams.pod_settings"
+names = ["PodSettingsError", "_SETTING_FIELD_BY_ALIAS", "_INVALID_BIN_NAME_CHARS", "_OPAQUE_COMMAND_NAMES",
+         "PodSettings", "effective_network", "effective_read_only"]
+
+# ---- teams/pod_provisioning.py: task worktrees (leaf) ----
+[[definition]]
+from = "docket.teams.pod_provisioning"
+to = "docket.teams.task_worktrees"
+names = ["TASK_WORKTREES_DIRNAME", "worktree_branch", "task_worktrees_dir", "provision_task_worktree",
+         "_teardown_worktree_branch", "PRUNABLE_TASK_STATUSES", "WorktreePruneEntry", "_task_list_file",
+         "_worktree_owner", "_prune_one", "prune_task_worktrees"]
+
+# ---- member workspace files: render, write, re-sync ----
+[[definition]]
+from = "docket.teams.pod_provisioning"
+to = "docket.teams.member_workspace"
+names = ["POD_TEMPLATE_VERSION", "_render_context", "_member_soul", "_member_tools", "_member_agents",
+         "_write_member_workspace", "provision_member", "_member_from_meta", "rendered_member_files",
+         "MemberSyncStatus", "member_sync_status", "resync_member"]
+
+# ---- teams/roles.py: archetype schema (leaf) ----
+[[definition]]
+from = "docket.teams.roles"
+to = "docket.teams.role_schema"
+names = ["SCOPES", "MODEL_CLASSES", "GATE_KINDS", "_NAME_RE", "ArchetypeError", "GateContract",
+         "RoleArchetype", "from_wire", "resolve_hop_instruction", "render"]
+
+# ---- shipped role definitions: built-in pod roles and the starter library ----
+[[definition]]
+from = "docket.teams.roles"
+to = "docket.teams.builtin_roles"
+names = ["_SOUL_HEAD", "_LEAD_BODY", "_IMPLEMENTER_BODY", "_REVIEWER_BODY", "_TESTER_BODY", "_METHOD",
+         "_POD_AGENTS_TEMPLATE", "BUILTIN_ARCHETYPES", "BUILTIN_ROLE_ORDER", "_STARTER_SOUL_HEAD",
+         "_STARTER_AGENTS_TEMPLATE", "_RESEARCHER_BODY", "_ANALYST_BODY", "_WRITER_BODY", "_CRITIC_BODY",
+         "_OPERATOR_BODY", "_MONITOR_BODY", "STARTER_ARCHETYPES", "STARTER_ROLE_ORDER"]

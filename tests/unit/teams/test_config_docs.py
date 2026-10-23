@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 import docket.kernel.templates as _templates
 from docket.teams import config_docs
+from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 
 SUBJECT = "docket.teams.config_docs"
@@ -103,7 +104,7 @@ def test_the_model_class_error_points_at_the_pipeline_step_not_at_setup_model(
 ) -> None:
     from docket.teams import roles as archetypes
 
-    with pytest.raises(archetypes.ArchetypeError) as exc_info:
+    with pytest.raises(_role_schema.ArchetypeError) as exc_info:
         archetypes.normalize_role({"name": "vetter", "model": "gpt-5"}, tmp_path)
 
     assert "docket setup model set" not in str(exc_info.value)

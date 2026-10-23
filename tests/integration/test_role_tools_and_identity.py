@@ -35,6 +35,8 @@ from docket.agent.tools.registry import (
 from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
+from docket.teams import builtin_roles as _builtin_roles
+from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 
 SUBJECT = "docket.agent"
@@ -106,32 +108,36 @@ class TestArchetypeDeniedToolsAreData:
     dispatch-level proof is `TestReviewerCannotDispatchAWrite` below."""
 
     def test_reviewer_denies_write_edit_bash(self) -> None:
-        assert _archetypes.BUILTIN_ARCHETYPES["reviewer"].denied_tools == ("write", "edit", "bash")
+        assert _builtin_roles.BUILTIN_ARCHETYPES["reviewer"].denied_tools == (
+            "write",
+            "edit",
+            "bash",
+        )
 
     def test_tester_denies_write_edit_but_keeps_bash(self) -> None:
-        tester = _archetypes.BUILTIN_ARCHETYPES["tester"]
+        tester = _builtin_roles.BUILTIN_ARCHETYPES["tester"]
         assert "bash" not in tester.denied_tools
         assert "write" in tester.denied_tools and "edit" in tester.denied_tools
 
     def test_lead_denies_write_edit_bash(self) -> None:
-        assert _archetypes.BUILTIN_ARCHETYPES["lead"].denied_tools == ("write", "edit", "bash")
+        assert _builtin_roles.BUILTIN_ARCHETYPES["lead"].denied_tools == ("write", "edit", "bash")
 
     def test_implementer_has_full_access(self) -> None:
-        assert _archetypes.BUILTIN_ARCHETYPES["implementer"].denied_tools == ()
+        assert _builtin_roles.BUILTIN_ARCHETYPES["implementer"].denied_tools == ()
 
     def test_starter_read_only_roles_match_the_reviewer_pattern(self) -> None:
         for name in ("critic", "monitor"):
-            assert _archetypes.STARTER_ARCHETYPES[name].denied_tools == ("write", "edit", "bash")
+            assert _builtin_roles.STARTER_ARCHETYPES[name].denied_tools == ("write", "edit", "bash")
 
     def test_starter_write_roles_have_full_access(self) -> None:
         for name in ("researcher", "analyst", "writer", "operator"):
-            assert _archetypes.STARTER_ARCHETYPES[name].denied_tools == ()
+            assert _builtin_roles.STARTER_ARCHETYPES[name].denied_tools == ()
 
     def test_denied_tools_round_trips_through_wire_format(self) -> None:
-        reviewer = _archetypes.BUILTIN_ARCHETYPES["reviewer"]
+        reviewer = _builtin_roles.BUILTIN_ARCHETYPES["reviewer"]
         wire = reviewer.to_wire()
         assert wire["deniedTools"] == ["write", "edit", "bash"]
-        reparsed = _archetypes.from_wire("reviewer", wire)
+        reparsed = _role_schema.from_wire("reviewer", wire)
         assert reparsed.denied_tools == ("write", "edit", "bash")
 
     def test_a_user_archetype_can_declare_its_own_denylist(self) -> None:

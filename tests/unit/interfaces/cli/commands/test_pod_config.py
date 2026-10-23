@@ -21,7 +21,8 @@ from docket.interfaces.cli.commands import pod_config as _pod_config
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import pod as _pod_core
 from docket.teams import roles as _arch
-from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import recipes as _recipes
+from docket.teams.apply import review as _review
 
 SUBJECT = "docket.interfaces.cli.commands.pod_config"
 
@@ -52,7 +53,7 @@ def _pod_run(*args: str):  # type: ignore[no-untyped-def]
     return _runner.invoke(_pod.pod_app, list(args))
 
 
-def _summary(**overrides: object) -> _pod_apply.RecipeSummary:
+def _summary(**overrides: object) -> _recipes.RecipeSummary:
     fields: dict[str, object] = {
         "roles": 0,
         "policies": 0,
@@ -64,7 +65,7 @@ def _summary(**overrides: object) -> _pod_apply.RecipeSummary:
         "description": "",
     }
     fields.update(overrides)
-    return _pod_apply.RecipeSummary(**fields)  # type: ignore[arg-type]
+    return _recipes.RecipeSummary(**fields)  # type: ignore[arg-type]
 
 
 class TestPodCheck:
@@ -185,7 +186,7 @@ class TestPodUpdateRenameAndReview:
         with _seed_pod(tmp_path):
             monkeypatch.setattr(_contract, "is_tty", lambda: False)
             code = self._repo(tmp_path)
-            items = _pod_apply.classify_directory(code / ".docket").runs
+            items = _review.classify_directory(code / ".docket").runs
             wrong = _pod_run("update", str(code / ".docket"), "--pod", "demo", "--accept", "0" * 16)
             assert wrong.exit_code == 2
             ok = _pod_run(

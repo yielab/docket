@@ -8,7 +8,7 @@ import pytest
 
 from docket.agent import driver as _dr
 from docket.hops.workspace import prepare as _prepare
-from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 
 SUBJECT = "docket.agent.driver"
 
@@ -17,7 +17,7 @@ def test_a_hop_reads_its_pods_grants_and_the_entries_its_root_links_into(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     grant, entry = tmp_path / "node", tmp_path / "entry"
-    monkeypatch.setattr(_pod, "effective_read_only", lambda project: (grant,))
+    monkeypatch.setattr(_pod_settings, "effective_read_only", lambda project: (grant,))
     monkeypatch.setattr(_prepare, "linked_entries", lambda root: (entry,))
     assert _dr._hop_read_only("demo", tmp_path) == (grant, entry)
 
@@ -25,5 +25,5 @@ def test_a_hop_reads_its_pods_grants_and_the_entries_its_root_links_into(
 def test_a_root_that_links_nowhere_adds_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(_pod, "effective_read_only", lambda project: ())
+    monkeypatch.setattr(_pod_settings, "effective_read_only", lambda project: ())
     assert _dr._hop_read_only("demo", tmp_path) == ()

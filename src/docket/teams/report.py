@@ -27,9 +27,11 @@ from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
-from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import recipes as _recipes
+from docket.teams.apply import review as _review
 from docket.teams.models import AgentKind, AgentMeta
 
 
@@ -93,7 +95,7 @@ def _policies_for_role(role: str, project: str) -> list[dict[str, str]]:
 
 
 def _mcp_servers_report(
-    pod_settings: _pod.PodSettings | None, project: str = ""
+    pod_settings: _pod_settings.PodSettings | None, project: str = ""
 ) -> list[dict[str, Any]]:
     """Every MCP server a turn would load: the pod's own ``mcpServers`` selection when
     set (``scope: "pod"``), else the full catalog -- global servers (``scope: "global"``)
@@ -118,17 +120,19 @@ def _mcp_servers_report(
     ]
 
 
-def _pod_settings_report(settings: _pod.PodSettings, project: str) -> dict[str, dict[str, Any]]:
+def _pod_settings_report(
+    settings: _pod_settings.PodSettings, project: str
+) -> dict[str, dict[str, Any]]:
     """Every ``PodSettings`` key's effective value and source ("set"/"default") --
     the ``settings`` object of ``docket pod show --json``."""
     report: dict[str, dict[str, Any]] = {}
-    for key in _pod.PodSettings.KEYS:
+    for key in _pod_settings.PodSettings.KEYS:
         value, source = settings.value_and_source(key, project)
         report[key] = {"value": value, "source": source}
     return report
 
 
-def _config_of_record_report(settings: _pod.PodSettings | None) -> dict[str, str]:
+def _config_of_record_report(settings: _pod_settings.PodSettings | None) -> dict[str, str]:
     """``configSource``/``configDigest`` (ADR 0012) plus ``drift``: ``"yes"``/``"no"`` when the
     source directory is still present and its digest is recomputed, ``""`` when there is no
     recorded source or the directory is gone (drift is then simply unknown, not asserted)."""
@@ -137,7 +141,7 @@ def _config_of_record_report(settings: _pod.PodSettings | None) -> dict[str, str
     source_dir = Path(settings.config_source)
     drift = ""
     if source_dir.is_dir():
-        current = _pod_apply.directory_digest(source_dir)
+        current = _recipes.directory_digest(source_dir)
         drift = "yes" if current != settings.config_digest else "no"
     return {
         "configSource": settings.config_source,
@@ -262,7 +266,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
 
     # Never substitute a default for a bad stored value -- raised here, before any of the resolvers below that also read
     # this pod's settings, so every value below reflects a validated PodSettings.
-    pod_settings = _pod.PodSettings.load_for(project) if project else None
+    pod_settings = _pod_settings.PodSettings.load_for(project) if project else None
 
     role_registry_scope = _archetypes.load_registry(project)
     role_scope = _scope_label(role_registry_scope.source_of(role))
@@ -318,7 +322,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
         "pipeline": pipeline,
         "podSettings": pod_settings_report,
         "network": dict(
-            zip(("mode", "scope"), _pod.effective_network(project or None), strict=True)
+            zip(("mode", "scope"), _pod_settings.effective_network(project or None), strict=True)
         ),
         "projectInstructions": {"files": list(pi_files), "source": pi_source},
         "skills": skills_report,
@@ -346,7 +350,7 @@ def pod_report(project: str) -> dict[str, Any]:
     """The pod as one report; raises ``DispatchError``/``PodSettingsError`` when it is missing
     or its stored settings are invalid."""
     _steps.pod_pipeline(project)
-    settings = _pod.PodSettings.load_for(project)
+    settings = _pod_settings.PodSettings.load_for(project)
     ids = [a.id for a in _fleet.list_agents()]
     members = [
         {
@@ -373,7 +377,9 @@ def pod_report(project: str) -> dict[str, Any]:
             "source": "set" if _settings.pod_approval_mode_is_set(project) else "unset",
         },
         "pipeline": {"source": _steps.effective_pipeline_source(project)},
-        "network": dict(zip(("mode", "scope"), _pod.effective_network(project), strict=True)),
+        "network": dict(
+            zip(("mode", "scope"), _pod_settings.effective_network(project), strict=True)
+        ),
         "budgetUnpriced": _steps.unpriced_budget_models(project),
         **record,
     }
@@ -427,11 +433,11 @@ def pod_detail(project: str) -> dict[str, Any]:
         "profile": verdict,
         "pipelineSource": _steps.effective_pipeline_source(project),
         "repoConfigDir": _repo_config_dir(project),
-        "readOnly": [str(path) for path in _pod.effective_read_only(project)],
+        "readOnly": [str(path) for path in _pod_settings.effective_read_only(project)],
     }
 
 
 def _repo_config_dir(project: str) -> str:
     """The pod's configuration-of-record directory, `""` for a pod with no codebase."""
     codebase = _codebase(project)
-    return str(_pod_apply.repo_config_dir(Path(codebase), project)) if codebase else ""
+    return str(_review.repo_config_dir(Path(codebase), project)) if codebase else ""

@@ -27,6 +27,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.teams import pod
 from docket.teams import roles as _arch
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import write as _write
 
 SUBJECT = "docket.teams.apply.plan"
 
@@ -110,7 +111,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
         recipe_dir = _recipe_dir(name)
 
         plan = _pod_apply.plan_apply(project, recipe_dir)
-        _pod_apply.apply(plan)
+        _write.apply(plan)
 
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors

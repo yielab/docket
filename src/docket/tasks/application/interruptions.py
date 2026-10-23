@@ -25,7 +25,7 @@ from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
-from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import settings as _settings
 
 # The kinds that can actually pause a task on a human answer -- everything else
@@ -86,8 +86,8 @@ def _iter_leaf_steps(steps: list[_pipeline.Step]) -> list[_pipeline.Step]:
 
 def _approval_expiry_hours(project: str) -> int:
     try:
-        return _pod.PodSettings.load_for(project).approval_expiry_hours
-    except _pod.PodSettingsError:
+        return _pod_settings.PodSettings.load_for(project).approval_expiry_hours
+    except _pod_settings.PodSettingsError:
         return 24
 
 

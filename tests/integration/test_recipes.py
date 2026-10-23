@@ -36,8 +36,12 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import pod
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
+from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import recipes as _recipes
+from docket.teams.apply import write as _write
 
 SUBJECT = "docket.teams.apply.plan"
 
@@ -149,7 +153,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(recipe_dir: Path, tmp_path: Pat
     pack has no pipeline to resolve, so applying it cleanly is the whole assertion."""
     project = "fixture"
     with _seed_fixture_pod(tmp_path, project):
-        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+        _write.apply(_pod_apply.plan_apply(project, recipe_dir))
 
         pipeline_file = recipe_dir / "pipeline.yaml"
         if not pipeline_file.is_file():
@@ -188,7 +192,7 @@ def test_apply_with_an_invalid_setting_writes_nothing(tmp_path: Path) -> None:
             "kind: pod\nname: x\nsettings:\n  mcpServers: [zzz]\n", encoding="utf-8"
         )
 
-        with pytest.raises(_pod_apply.PodApplyError, match="zzz"):
+        with pytest.raises(_model.PodApplyError, match="zzz"):
             _pod_apply.plan_apply(project, bad_dir)
 
         assert not current_home().pod_config_dir(project).exists()
@@ -214,7 +218,7 @@ def test_apply_with_an_invalid_policy_writes_nothing(tmp_path: Path) -> None:
             encoding="utf-8",
         )
 
-        with pytest.raises(_pod_apply.PodApplyError, match=r"broken\.json"):
+        with pytest.raises(_model.PodApplyError, match=r"broken\.json"):
             _pod_apply.plan_apply(project, bad_dir)
 
         assert not current_home().pod_config_dir(project).exists()
@@ -231,7 +235,7 @@ def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(tmp_path
         plan = _pod_apply.plan_apply(project, recipe_dir)
         policy_items = [i for i in plan.items if i.kind == "policy"]
         assert [(i.name, i.action) for i in policy_items] == [(src.name, "add")]
-        _pod_apply.apply(plan)
+        _write.apply(plan)
 
         dest = current_home().pod_config_dir(project) / "policies" / src.name
         assert dest.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
@@ -242,7 +246,7 @@ def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(tmp_path
         second_plan = _pod_apply.plan_apply(project, recipe_dir)
         second_policy_items = [i for i in second_plan.items if i.kind == "policy"]
         assert [(i.name, i.action) for i in second_policy_items] == [(src.name, "skip")]
-        _pod_apply.apply(second_plan)
+        _write.apply(second_plan)
         entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
         assert entries_after == entries_before
 
@@ -261,7 +265,7 @@ def test_secure_build_plans_applies_and_round_trips_its_skill(tmp_path: Path) ->
         plan = _pod_apply.plan_apply(project, recipe_dir)
         skill_items = [i for i in plan.items if i.kind == "skill"]
         assert [(i.name, i.action) for i in skill_items] == [("security-review", "add")]
-        _pod_apply.apply(plan)
+        _write.apply(plan)
 
         dest = current_home().pod_config_dir(project) / "skills" / "security-review" / "SKILL.md"
         assert dest.is_file()
@@ -273,19 +277,19 @@ def test_secure_build_plans_applies_and_round_trips_its_skill(tmp_path: Path) ->
         second_plan = _pod_apply.plan_apply(project, recipe_dir)
         second_skill_items = [i for i in second_plan.items if i.kind == "skill"]
         assert [(i.name, i.action) for i in second_skill_items] == [("security-review", "skip")]
-        _pod_apply.apply(second_plan)
+        _write.apply(second_plan)
         entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
         assert entries_after == entries_before
 
         export_dir = tmp_path / "export-skill"
-        _pod_apply.export_pod(project, export_dir)
+        _write.export_pod(project, export_dir)
         assert (export_dir / "skills" / "security-review" / "SKILL.md").is_file()
 
         reapply_plan = _pod_apply.plan_apply(project, export_dir)
         reapply_skill_items = [i for i in reapply_plan.items if i.kind == "skill"]
         assert [(i.name, i.action) for i in reapply_skill_items] == [("security-review", "skip")]
 
-        summary = _pod_apply.summarize_recipe(recipe_dir)
+        summary = _recipes.summarize_recipe(recipe_dir)
         assert summary.skills == 1
 
 
@@ -312,7 +316,7 @@ def test_git_safety_blocks_force_push_after_apply(tmp_path: Path) -> None:
     project = "leangit2"
     with _seed_fixture_pod(tmp_path, project):
         recipe_dir = RECIPES_DIR / "git-safety"
-        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+        _write.apply(_pod_apply.plan_apply(project, recipe_dir))
 
         command = "git push --force origin main"
         text = _tools.render_tool_call("bash", {"command": command})
@@ -330,7 +334,7 @@ def test_secrets_guard_blocks_env_write_and_allows_a_plain_write(tmp_path: Path)
     project = "leansecrets"
     with _seed_fixture_pod(tmp_path, project):
         recipe_dir = RECIPES_DIR / "secrets-guard"
-        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+        _write.apply(_pod_apply.plan_apply(project, recipe_dir))
 
         env_call = _policy.ToolCallFacts(
             tool="write", args={"path": "config/.env"}, branch_of=lambda: ""
@@ -410,7 +414,7 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
     with _seed_fixture_pod(tmp_path, project):
         recipe_dir = RECIPES_DIR / "secure-build"
 
-        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+        _write.apply(_pod_apply.plan_apply(project, recipe_dir))
         assert pod.pod_of(f"{project}-security-vetter") == project
         assert _arch.load_registry(project).source_of("security-vetter") == f"pod:{project}"
         assert "security-vetter" not in _arch.load_registry().archetypes
@@ -480,7 +484,7 @@ def test_export_then_apply_round_trip_matches_pod_show(
     target_project = "poddst"  # same length as source_project -- see `_normalized`
     with _seed_fixture_pod(tmp_path / "source", source_project):
         recipe_dir = RECIPES_DIR / "secure-build"
-        _pod_apply.apply(_pod_apply.plan_apply(source_project, recipe_dir))
+        _write.apply(_pod_apply.plan_apply(source_project, recipe_dir))
         _pod.set_setting(source_project, "approvalMode", "refuse")
 
         export_dir = tmp_path / "exported"
@@ -509,7 +513,7 @@ def test_export_then_apply_round_trip_matches_pod_show(
         source_report = _explain_json(f"{source_project}-security-vetter", capsys)
 
         with _seed_fixture_pod(tmp_path / "target", target_project):
-            _pod_apply.apply(_pod_apply.plan_apply(target_project, export_dir))
+            _write.apply(_pod_apply.plan_apply(target_project, export_dir))
 
             target_report = _explain_json(f"{target_project}-security-vetter", capsys)
 
@@ -517,10 +521,10 @@ def test_export_then_apply_round_trip_matches_pod_show(
             # the target pod from `export_dir` -- different directories, each still `drift: no`
             # since neither was edited after its own `apply`.
             assert source_report["configSource"] == str(recipe_dir.resolve())
-            assert source_report["configDigest"] == _pod_apply.directory_digest(recipe_dir)
+            assert source_report["configDigest"] == _recipes.directory_digest(recipe_dir)
             assert source_report["drift"] == "no"
             assert target_report["configSource"] == str(export_dir.resolve())
-            assert target_report["configDigest"] == _pod_apply.directory_digest(export_dir)
+            assert target_report["configDigest"] == _recipes.directory_digest(export_dir)
             assert target_report["drift"] == "no"
 
             assert _normalized(source_report, source_project) == _normalized(
@@ -547,7 +551,7 @@ def test_export_writes_only_this_pods_own_scope_never_global(tmp_path: Path) -> 
             encoding="utf-8",
         )
 
-        _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "secure-build"))
+        _write.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "secure-build"))
         pod_policies_dir = current_home().pod_config_dir(project) / "policies"
         pod_policies_dir.mkdir(parents=True, exist_ok=True)
         policy_text = (
@@ -559,7 +563,7 @@ def test_export_writes_only_this_pods_own_scope_never_global(tmp_path: Path) -> 
         _pod.set_setting(project, "approvalMode", "refuse")
 
         export_dir = tmp_path / "export-out"
-        _pod_apply.export_pod(project, export_dir)
+        _write.export_pod(project, export_dir)
 
         assert sorted(p.name for p in (export_dir / "roles").iterdir()) == [
             "security-vetter.md",
@@ -599,11 +603,11 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
         recipe_copy = tmp_path / "recipe-copy"
         shutil.copytree(RECIPES_DIR / "secure-build", recipe_copy)
 
-        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_copy))
+        _write.apply(_pod_apply.plan_apply(project, recipe_copy))
 
-        settings = pod.PodSettings.load_for(project)
+        settings = _pod_settings.PodSettings.load_for(project)
         assert settings.config_source == str(recipe_copy.resolve())
-        assert settings.config_digest == _pod_apply.directory_digest(recipe_copy)
+        assert settings.config_digest == _recipes.directory_digest(recipe_copy)
 
         lead_id = pod.member_id(project, "lead")
         report = _explain_json(lead_id, capsys)
@@ -633,7 +637,7 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
         (bad_dir / "pod.yaml").write_text(
             "kind: pod\nname: x\nsettings:\n  configDigest: " + "0" * 64 + "\n", encoding="utf-8"
         )
-        with pytest.raises(_pod_apply.PodApplyError, match="configDigest"):
+        with pytest.raises(_model.PodApplyError, match="configDigest"):
             _pod_apply.plan_apply(project, bad_dir)
 
 
@@ -647,7 +651,7 @@ def test_apply_records_config_source_from_every_validated_apply_all_skip_include
     with _seed_fixture_pod(tmp_path, project):
         dir_a = tmp_path / "recipe-a"
         shutil.copytree(RECIPES_DIR / "secure-build", dir_a)
-        _pod_apply.apply(_pod_apply.plan_apply(project, dir_a))
+        _write.apply(_pod_apply.plan_apply(project, dir_a))
 
         dir_b = tmp_path / "recipe-b"
         shutil.copytree(RECIPES_DIR / "secure-build", dir_b)
@@ -655,13 +659,13 @@ def test_apply_records_config_source_from_every_validated_apply_all_skip_include
         entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
         second_plan = _pod_apply.plan_apply(project, dir_b)
         assert [item.action for item in second_plan.items] == ["skip"] * len(second_plan.items)
-        _pod_apply.apply(second_plan)
+        _write.apply(second_plan)
         entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
         assert entries_after == entries_before  # all-skip: no new audit entry
 
-        settings = pod.PodSettings.load_for(project)
+        settings = _pod_settings.PodSettings.load_for(project)
         assert settings.config_source == str(dir_b.resolve())
-        assert settings.config_digest == _pod_apply.directory_digest(dir_b)
+        assert settings.config_digest == _recipes.directory_digest(dir_b)
 
 
 def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
@@ -714,7 +718,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
             encoding="utf-8",
         )
 
-        _pod_apply.apply(_pod_apply.plan_apply(project, _templates.RECIPES_DIR / "secure-build"))
+        _write.apply(_pod_apply.plan_apply(project, _templates.RECIPES_DIR / "secure-build"))
 
         from docket.teams import fleet as _fleet
 
@@ -743,7 +747,7 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
             encoding="utf-8",
         )
 
-        infos = {info.name: info for info in _pod_apply.list_recipes()}
+        infos = {info.name: info for info in _recipes.list_recipes()}
         assert infos["mine"].scope == "operator"
         assert infos["mine"].summary.policies == 1
         for shipped_name in REQUIRED_RECIPES:
@@ -773,7 +777,7 @@ def test_recipes_show_unknown_name_exits_1_naming_both_scopes(tmp_path: Path) ->
 def test_a_recipe_step_env_survives_apply_and_export(tmp_path: Path) -> None:
     project = "envpod"
     with _seed_fixture_pod(tmp_path / "source", project):
-        _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))
+        _write.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))
         export_dir = tmp_path / "exported"
         assert _pod_cli("export", str(export_dir), "--pod", project).exit_code == 0
         result = _pipeline.load_pipeline((export_dir / "pipeline.yaml").read_text(encoding="utf-8"))

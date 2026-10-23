@@ -16,7 +16,7 @@ from docket.agent import identity as I
 from docket.agent import memory as _mem
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
-from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 
 _LOCAL_WINDOW = 16_384
 _LOCAL_MAX_OUTPUT = 8_192
@@ -208,7 +208,7 @@ class TestProjectInstructionsDefault:
         assert report.status == "full"
 
         files, source = I.project_instruction_files(
-            _pod.PodSettings.load_for("default-demo"), codebase
+            _pod_settings.PodSettings.load_for("default-demo"), codebase
         )
         assert files == ("AGENTS.md",)
         assert source == "default"
@@ -229,7 +229,7 @@ class TestProjectInstructionsDefault:
         assert "REPO-AGENTS-SENTINEL" not in composition.text
 
         files, source = I.project_instruction_files(
-            _pod.PodSettings.load_for("explicit-demo"), codebase
+            _pod_settings.PodSettings.load_for("explicit-demo"), codebase
         )
         assert files == ("CONTRIBUTING.md",)
         assert source == "set"

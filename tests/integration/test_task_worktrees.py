@@ -28,6 +28,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
+from docket.teams import task_worktrees as _task_worktrees
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -357,8 +358,10 @@ def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(tmp_path: Path) 
         assert task["hops"] == []
         assert "worktree" not in task
         assert runner.roots == []
-        assert not (_pp.task_worktrees_dir("demo-implementer") / task["id"]).exists()
-        assert _pp.worktree_branch("demo", task["id"]) not in _git(repo, "branch", "--list")
+        assert not (_task_worktrees.task_worktrees_dir("demo-implementer") / task["id"]).exists()
+        assert _task_worktrees.worktree_branch("demo", task["id"]) not in _git(
+            repo, "branch", "--list"
+        )
 
 
 def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
@@ -486,7 +489,7 @@ def test_an_unmerged_pinned_task_survives_prune_without_force(tmp_path: Path) ->
         _queue.enqueue_task_once("demo", "work", channel="cli")
         _sweep.dispatch_pod("demo", runner=_UncommittedRunner({"only-new.txt": "x\n"}), max_tasks=1)
 
-        (entry,) = _pp.prune_task_worktrees("demo")
+        (entry,) = _task_worktrees.prune_task_worktrees("demo")
 
         assert entry.action == "kept"
         assert "not merged" in entry.reason

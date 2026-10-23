@@ -18,6 +18,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod_provisioning as _pp
 
 SUBJECT = "docket"
@@ -78,7 +79,9 @@ class TestBuildPod:
                 # the first metadata write after provisioning raise ValidationError).
                 from docket.teams.models import AgentMeta
 
-                assert AgentMeta.model_validate(m).template_version == str(_pp.POD_TEMPLATE_VERSION)
+                assert AgentMeta.model_validate(m).template_version == str(
+                    _member_workspace.POD_TEMPLATE_VERSION
+                )
 
     def test_managed_workspace_modes_are_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
@@ -377,7 +380,7 @@ class TestMemberSync:
     def test_freshly_provisioned_member_is_not_stale(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-            status = _pp.member_sync_status("demo-lead")
+            status = _member_workspace.member_sync_status("demo-lead")
             assert status is not None
             assert status.stale is False
             assert status.diffs == {}
@@ -388,7 +391,7 @@ class TestMemberSync:
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
-            status = _pp.member_sync_status("demo-lead")
+            status = _member_workspace.member_sync_status("demo-lead")
 
             assert status is not None
             assert status.stale is True
@@ -400,9 +403,13 @@ class TestMemberSync:
     ) -> None:
         with _seed(tmp_path):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-            monkeypatch.setattr(_pp, "POD_TEMPLATE_VERSION", _pp.POD_TEMPLATE_VERSION + 1)
+            monkeypatch.setattr(
+                _member_workspace,
+                "POD_TEMPLATE_VERSION",
+                _member_workspace.POD_TEMPLATE_VERSION + 1,
+            )
 
-            status = _pp.member_sync_status("demo-lead")
+            status = _member_workspace.member_sync_status("demo-lead")
 
             assert status is not None
             assert status.stale is True
@@ -414,9 +421,9 @@ class TestMemberSync:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             _pod._fleet.meta_set("demo-lead", "templateVersion", "4")
 
-            status = _pp.member_sync_status("demo-lead")
+            status = _member_workspace.member_sync_status("demo-lead")
 
-            assert _pp.POD_TEMPLATE_VERSION == 5
+            assert _member_workspace.POD_TEMPLATE_VERSION == 5
             assert status is not None
             assert status.stale is True
 
@@ -426,11 +433,13 @@ class TestMemberSync:
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
-            written = _pp.resync_member("demo-lead")
+            written = _member_workspace.resync_member("demo-lead")
 
             assert written == ["SOUL.md"]
             assert "STALE-HAND-EDITED-SOUL" not in soul_path.read_text()
-            assert _meta(home, "demo-lead")["templateVersion"] == str(_pp.POD_TEMPLATE_VERSION)
+            assert _meta(home, "demo-lead")["templateVersion"] == str(
+                _member_workspace.POD_TEMPLATE_VERSION
+            )
 
     def test_resync_is_a_no_op_on_an_already_current_member(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
@@ -438,7 +447,7 @@ class TestMemberSync:
             soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
             before = soul_path.read_text()
 
-            written = _pp.resync_member("demo-lead")
+            written = _member_workspace.resync_member("demo-lead")
 
             assert written == []
             assert soul_path.read_text() == before
@@ -460,14 +469,14 @@ class TestMemberSync:
             meta_path.write_text(json.dumps(meta))
             memory_before = (ws / "MEMORY.md").read_bytes()
 
-            written = _pp.resync_member("demo-implementer")
+            written = _member_workspace.resync_member("demo-implementer")
 
             assert {"SOUL.md", "AGENTS.md"} <= set(written)
             assert "promise" not in (ws / "SOUL.md").read_text()
             assert "HEARTBEAT" not in (ws / "AGENTS.md").read_text()
             assert (ws / "MEMORY.md").read_bytes() == memory_before
             assert _meta(home, "demo-implementer")["templateVersion"] == str(
-                _pp.POD_TEMPLATE_VERSION
+                _member_workspace.POD_TEMPLATE_VERSION
             )
 
     def test_resync_never_touches_instructions_md(self, tmp_path: Path) -> None:
@@ -477,13 +486,13 @@ class TestMemberSync:
             (ws / "SOUL.md").write_text("STALE-HAND-EDITED-SOUL\n")
             (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
 
-            _pp.resync_member("demo-lead")
+            _member_workspace.resync_member("demo-lead")
 
             assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"
 
     def test_non_pod_member_has_no_sync_status(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            assert _pp.member_sync_status("nobody-here") is None
+            assert _member_workspace.member_sync_status("nobody-here") is None
 
 
 def _sync(*flags: str) -> str:

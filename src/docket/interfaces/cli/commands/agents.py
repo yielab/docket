@@ -26,7 +26,11 @@ from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import provisioning as _prov
+from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import recipes as _recipes
+from docket.teams.apply import review as _review
+from docket.teams.apply import write as _write
 
 
 @dataclass(frozen=True)
@@ -82,7 +86,7 @@ def _resolve_repo_apply_source(
     """The directory `docket init` should apply after provisioning -- a present ``.docket/``
     or a resolved ``--recipe``, mutually exclusive, validated first (ADR 0012). ``(None, 1)``
     means stop (already printed); ``(None, 0)`` means nothing to apply."""
-    docket_dir = _pod_apply.repo_config_dir(loc_path, pod_name)
+    docket_dir = _review.repo_config_dir(loc_path, pod_name)
     has_docket_dir = docket_dir.is_dir()
     teams = _unnamed_teams(loc_path / ".docket", docket_dir)
     if teams and cli_recipe is None:
@@ -98,8 +102,8 @@ def _resolve_repo_apply_source(
     apply_source: Path | None = None
     if cli_recipe is not None:
         try:
-            apply_source = _pod_apply.resolve_recipe(cli_recipe)
-        except _pod_apply.PodApplyError as exc:
+            apply_source = _recipes.resolve_recipe(cli_recipe)
+        except _model.PodApplyError as exc:
             ui.error(str(exc))
             return None, 1
     elif has_docket_dir:
@@ -114,7 +118,7 @@ def _resolve_repo_apply_source(
     return apply_source, 0
 
 
-def _refuse_shell(req: InitRequest, review: _pod_apply.PlanReview) -> int:
+def _refuse_shell(req: InitRequest, review: _review.PlanReview) -> int:
     if req.json_out:
         ui.console.print_json(
             _json.dumps(
@@ -131,7 +135,7 @@ def _refuse_shell(req: InitRequest, review: _pod_apply.PlanReview) -> int:
     return 2
 
 
-def _items(review: _pod_apply.PlanReview) -> list[dict[str, str]]:
+def _items(review: _review.PlanReview) -> list[dict[str, str]]:
     return [{"kind": i.kind, "name": i.name, "runs": i.runs} for i in review.runs]
 
 
@@ -140,7 +144,7 @@ def _changed_since_review(
     root: Path,
     project: str,
     code: str,
-    review: _pod_apply.PlanReview,
+    review: _review.PlanReview,
     command: str = "docket init",
 ) -> int:
     from docket.governance import review as _reviewed
@@ -168,7 +172,7 @@ def _changed_since_review(
                 f"    before: {escape(was.get((item.kind, item.name), '(not reviewed)'))}"
             )
             ui.console.print(f"    now:    {escape(item.runs)}")
-    target = _pod_apply.repo_config_dir(root, project, create=True).relative_to(root).as_posix()
+    target = _review.repo_config_dir(root, project, create=True).relative_to(root).as_posix()
     ui.console.print(
         "Review the new version with: docket init --no-apply, then "
         f"docket pod update {target} --dry-run"
@@ -180,14 +184,14 @@ def _stopped(command: str) -> str:
     return "Not set up" if command == "docket init" else "Not updated"
 
 
-def _label(item: _pod_apply.RunItem) -> str:
+def _label(item: _review.RunItem) -> str:
     from docket.interfaces.cli.commands.pod_config import run_item_label
 
     return run_item_label(item)
 
 
 def _needs_review(
-    req: InitRequest, review: _pod_apply.PlanReview, code: str, command: str = "docket init"
+    req: InitRequest, review: _review.PlanReview, code: str, command: str = "docket init"
 ) -> int:
     from docket.interfaces.cli.commands.pod_config import render_run_items
 
@@ -223,7 +227,7 @@ def review_repo_source(
     from docket.governance import review as _reviewed
     from docket.interfaces.cli.commands.pod_config import render_review
 
-    decision = _pod_apply.review_decision(loc_path, project, apply_source, req.accept)
+    decision = _review.review_decision(loc_path, project, apply_source, req.accept)
     review = decision.review
     if decision.status == "go":
         return 0
@@ -258,16 +262,16 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
 
     try:
         plan = _pod_apply.plan_apply(aid, apply_source)
-    except _pod_apply.PodApplyError as exc:
+    except _model.PodApplyError as exc:
         ui.error(str(exc))
         return 1
     from docket.interfaces.cli.commands.pod_config import render_apply_header, render_apply_plan
 
-    render_apply_header(aid, apply_source, _pod_apply.summarize_recipe(apply_source))
+    render_apply_header(aid, apply_source, _recipes.summarize_recipe(apply_source))
     render_apply_plan(plan)
     try:
-        result = _pod_apply.apply(plan)
-    except _pod_apply.PodApplyError as exc:
+        result = _write.apply(plan)
+    except _model.PodApplyError as exc:
         ui.error(str(exc))
         return 1
     changed = [item for item in result.items if item.action != "skip"]

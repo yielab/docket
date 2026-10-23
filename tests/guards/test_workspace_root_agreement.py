@@ -23,9 +23,9 @@ import pytest
 import docket.agent.memory as _mem
 from docket.agent.driver import _resolve_roots
 from docket.kernel.home import current_home
+from docket.teams.member_workspace import provision_member
 from docket.teams.models import AgentMeta
 from docket.teams.pod import PodMember
-from docket.teams.pod_provisioning import provision_member
 
 _MODEL = "anthropic/claude-haiku-4-5-20251001"
 

@@ -618,14 +618,14 @@ def _check_template_version(ids: list[str]) -> int:
 
 def _pod_member_sync(ids: list[str]) -> list[tuple[str, Any]]:
     """(member id, sync status) for each pod member whose status can be read."""
+    from docket.teams import member_workspace as _member_workspace
     from docket.teams import pod as _pod
-    from docket.teams import pod_provisioning as _pp
 
     out: list[tuple[str, Any]] = []
     for aid in ids:
         if _pod.pod_of(aid) is None:
             continue
-        status = _pp.member_sync_status(aid)
+        status = _member_workspace.member_sync_status(aid)
         if status is not None:
             out.append((aid, status))
     return out
@@ -635,8 +635,8 @@ def _check_pod_sync(ids: list[str]) -> int:
     """Flag pod members whose managed files drifted from the current archetype +
     metadata -- the pod counterpart of ``_check_template_version``, which skips pod
     members outright. Advisory; ``docket pod update`` re-renders."""
+    from docket.teams import member_workspace as _member_workspace
     from docket.teams import pod as _pod
-    from docket.teams import pod_provisioning as _pp
 
     if not any(_pod.pod_of(aid) is not None for aid in ids):
         return 0
@@ -647,7 +647,7 @@ def _check_pod_sync(ids: list[str]) -> int:
             stale += 1
             ui.console.print(
                 f"[red]✗[/red]   {aid}: stale (v{status.stored_template_version or '?'}, "
-                f"current v{_pp.POD_TEMPLATE_VERSION}) — docket pod update"
+                f"current v{_member_workspace.POD_TEMPLATE_VERSION}) — docket pod update"
             )
         else:
             ui.success(f"  {aid}: v{status.stored_template_version} (current)")
@@ -961,9 +961,9 @@ def _check_json_config_files(ids: list[str]) -> tuple[int, dict[str, Any]]:
 
 
 def _pp_version() -> int:
-    from docket.teams import pod_provisioning as _pp
+    from docket.teams import member_workspace as _member_workspace
 
-    return int(_pp.POD_TEMPLATE_VERSION)
+    return int(_member_workspace.POD_TEMPLATE_VERSION)
 
 
 def _check_json() -> dict[str, Any]:

@@ -10,6 +10,7 @@ from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.platform import store as _store
+from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import roles as _arch
 
 ALL_ROLES: tuple[str, ...] = (
@@ -29,7 +30,10 @@ ALL_ROLES: tuple[str, ...] = (
 # named roles is its archetype's own `modelClass`.
 ROLE_CLASS: dict[str, str] = {
     name: arch.model_class
-    for name, arch in {**_arch.BUILTIN_ARCHETYPES, **_arch.STARTER_ARCHETYPES}.items()
+    for name, arch in {
+        **_builtin_roles.BUILTIN_ARCHETYPES,
+        **_builtin_roles.STARTER_ARCHETYPES,
+    }.items()
 }
 
 # The row a project agent that is not a pod member follows.

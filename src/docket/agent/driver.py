@@ -62,6 +62,7 @@ from docket.tasks.application import runs as _runs
 from docket.tasks.application.consult import DEFAULT_MAX_CONSULTATIONS
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 from docket.teams.models import AgentMeta
 from docket.teams.roles import BUILTIN_TOOL_KINDS
 
@@ -108,8 +109,8 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
     if not raw:
         return None
     try:
-        coerced = _pod.PodSettings.coerce("mcpServers", raw, project=project)
-    except _pod.PodSettingsError as exc:
+        coerced = _pod_settings.PodSettings.coerce("mcpServers", raw, project=project)
+    except _pod_settings.PodSettingsError as exc:
         from docket.tasks.domain.task import DispatchError
 
         raise DispatchError(str(exc)) from exc
@@ -257,8 +258,8 @@ def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
     if project is None:
         return ()
     try:
-        return _pod.PodSettings.load_for(project).allow_commands
-    except _pod.PodSettingsError:
+        return _pod_settings.PodSettings.load_for(project).allow_commands
+    except _pod_settings.PodSettingsError:
         return ()
 
 
@@ -273,8 +274,8 @@ def _max_consultations(agent_id: str, raw: str | None) -> int:
     project = _pod.pod_of(agent_id)
     if project is not None:
         try:
-            return _pod.PodSettings.load_for(project).max_consultations_per_task
-        except _pod.PodSettingsError:
+            return _pod_settings.PodSettings.load_for(project).max_consultations_per_task
+        except _pod_settings.PodSettingsError:
             pass
     return DEFAULT_MAX_CONSULTATIONS
 
@@ -402,7 +403,7 @@ def _resolve_network(
     """``(network_allowed, refusal)`` for this turn. Mode ``none`` needs the jail to enforce it,
     so with isolation off the turn is refused up front and audited (``network.refused``).
     *task_none* is the task's own ``network: none``: it narrows, never widens."""
-    mode, scope = _pod.effective_network(project or _pod.pod_of(agent_id))
+    mode, scope = _pod_settings.effective_network(project or _pod.pod_of(agent_id))
     if task_none:
         mode, scope = "none", ("task" if scope == "default" else scope)
     if mode == "open":
@@ -437,14 +438,14 @@ def resolve_command_jail(project: str, label: str) -> tuple[_launch.JailPolicy |
     return _launch.JailPolicy(
         network=network_allowed,
         cache_dir=_ensure_pod_cache(project),
-        read_only=_pod.effective_read_only(project),
+        read_only=_pod_settings.effective_read_only(project),
     ), None
 
 
 def _hop_read_only(project: str, root: Path) -> tuple[Path, ...]:
     """The read-only roots of a hop: the operator's grants for the pod, plus the prepared
     install cache entries the hop's root links into."""
-    return (*_pod.effective_read_only(project), *_prepare.linked_entries(root))
+    return (*_pod_settings.effective_read_only(project), *_prepare.linked_entries(root))
 
 
 def _resolve_posture(

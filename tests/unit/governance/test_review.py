@@ -8,7 +8,7 @@ from pathlib import Path
 from docket.governance import review as _reviewed
 from docket.governance.audit import read_audit
 from docket.kernel.home import current_home
-from docket.teams.apply.plan import RunItem
+from docket.teams.apply.review import RunItem
 
 SUBJECT = "docket.governance.review"
 

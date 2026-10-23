@@ -16,7 +16,7 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.sandbox import launch as _launch
 from docket.teams import fleet as _fleet
-from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 
 LIGHTS_OUT = "lights-out"
 
@@ -88,8 +88,8 @@ def effective_profile(project: str) -> str:
     if _fleet.get_profile() == LIGHTS_OUT:
         return LIGHTS_OUT
     try:
-        return _pod.PodSettings.load_for(project).profile
-    except _pod.PodSettingsError:
+        return _pod_settings.PodSettings.load_for(project).profile
+    except _pod_settings.PodSettingsError:
         return LIGHTS_OUT
 
 
@@ -118,8 +118,8 @@ def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
         if _is_implementer(unit) and unit.member_id:
             names.update(_record.hop_env(unit.member_id, "implementer") or {})
     try:
-        selection = _pod.PodSettings.load_for(project).mcp_servers
-    except _pod.PodSettingsError:
+        selection = _pod_settings.PodSettings.load_for(project).mcp_servers
+    except _pod_settings.PodSettingsError:
         selection = None
     for server in _mcp.load_mcp_servers(project):
         if selection is None or server.name in selection:
@@ -136,7 +136,7 @@ def gather_facts(
         from docket.pipeline.application import executor as _executor
 
         nodes = _executor._resolve_pipeline_steps(project, spec)[0]
-    mode, scope = _pod.effective_network(project)
+    mode, scope = _pod_settings.effective_network(project)
     ungated = tuple(
         unit.step_id
         for unit in _walk(nodes)
@@ -164,7 +164,7 @@ def project_violations(
 
 def fleet_violations() -> list[Violation]:
     """The requirements the fleet record alone decides (isolation, network), with no pod in view."""
-    mode, scope = _pod.effective_network(None)
+    mode, scope = _pod_settings.effective_network(None)
     facts = Facts(
         isolation_on=_fleet.get_isolation_enabled(),
         backend=_launch.sandbox_availability().backend,

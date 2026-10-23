@@ -26,6 +26,7 @@ from docket.sandbox import docker, landlock
 from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 
 SUBJECT = "docket.sandbox.launch"
 
@@ -118,23 +119,23 @@ class TestResolution:
         if glob != "unset":
             _fleet.set_network_mode(glob)
         self._lead("shop", **({"network": pod_value} if pod_value else {}))
-        assert _pod.effective_network("shop") == (mode, scope)
+        assert _pod_settings.effective_network("shop") == (mode, scope)
 
     def test_non_pod_agent_follows_global(self) -> None:
-        assert _pod.effective_network(None) == ("none", "default")
+        assert _pod_settings.effective_network(None) == ("none", "default")
         _fleet.set_network_mode("open")
-        assert _pod.effective_network(None) == ("open", "default")
+        assert _pod_settings.effective_network(None) == ("open", "default")
         _fleet.set_network_mode("none")
-        assert _pod.effective_network(None) == ("none", "global")
+        assert _pod_settings.effective_network(None) == ("none", "global")
 
     def test_unreadable_pod_settings_fail_closed(self) -> None:
         self._lead("shop", network="bogus")
-        assert _pod.effective_network("shop")[0] == "none"
+        assert _pod_settings.effective_network("shop")[0] == "none"
 
     def test_pod_setting_validates(self) -> None:
-        assert _pod.PodSettings.coerce("network", "none") == "none"
-        with pytest.raises(_pod.PodSettingsError):
-            _pod.PodSettings.coerce("network", "maybe")
+        assert _pod_settings.PodSettings.coerce("network", "none") == "none"
+        with pytest.raises(_pod_settings.PodSettingsError):
+            _pod_settings.PodSettings.coerce("network", "maybe")
 
 
 class TestGatesCommand:

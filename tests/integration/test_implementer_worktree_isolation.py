@@ -21,13 +21,10 @@ import pytest
 
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import git as _git
+from docket.teams.member_workspace import provision_member
 from docket.teams.pod import PodMember
-from docket.teams.pod_provisioning import (
-    provision_member,
-    provision_task_worktree,
-    teardown_member,
-    worktree_branch,
-)
+from docket.teams.pod_provisioning import teardown_member
+from docket.teams.task_worktrees import provision_task_worktree, worktree_branch
 
 SUBJECT = "docket.interfaces.cli.commands.pod"
 

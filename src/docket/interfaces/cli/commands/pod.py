@@ -35,12 +35,14 @@ from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
+from docket.teams import member_workspace as _member_workspace
 from docket.teams import memory as _pod_memory
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import report as _report
 from docket.teams import roles as _arch
-from docket.teams.apply import plan as _pod_apply
+from docket.teams.apply import recipes as _recipes
 
 pod_app = typer.Typer(
     name="pod",
@@ -157,7 +159,7 @@ def cmd_show(
         _require_member(project, member)
     try:
         report = _report.member_report(member) if member else _report.pod_report(project)
-    except (_task.DispatchError, pod.PodSettingsError) as ex:
+    except (_task.DispatchError, _pod_settings.PodSettingsError) as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     if json_out:
@@ -217,7 +219,7 @@ def add_members(project: str, role: str, *, count: int = 1, verify_cmd: str = ""
         except pod.PodError as ex:
             ui.error(str(ex))
             raise typer.Exit(1) from ex
-        ok, msg = _pp.provision_member(
+        ok, msg = _member_workspace.provision_member(
             member,
             project=project,
             project_key=project_key,
@@ -312,10 +314,10 @@ def reset_member(project: str, member_id: str, *, yes: bool) -> None:
         raise typer.Exit(1)
     ws = current_home().workspace_dir(member_id)
     _reset_ledger(member_id, ws)
-    for name, text in _pp.rendered_member_files(member_id).items():
+    for name, text in _member_workspace.rendered_member_files(member_id).items():
         (ws / name).write_text(text, encoding="utf-8")
         (ws / name).chmod(0o600)
-    _fleet.meta_set(member_id, "templateVersion", str(_pp.POD_TEMPLATE_VERSION))
+    _fleet.meta_set(member_id, "templateVersion", str(_member_workspace.POD_TEMPLATE_VERSION))
     audit_log("pod.reset", f"{project} member={member_id}")
     ui.success(f"Reset {member_id}: ledger cleared, workspace files rebuilt")
 
@@ -517,7 +519,7 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
         return
     raw_codebase = _fleet.meta_get(member_id, "codebase", "")
     codebase = pod.resolve_member_cwd(member_id, "", raw_codebase)
-    content = _pp._member_tools(
+    content = _member_workspace._member_tools(
         project,
         role,
         codebase,
@@ -593,12 +595,12 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     if key == "schedule":
         _pod_config_set_schedule(project, lead_id, value)
         return
-    if key in pod.PodSettings.RECORDED_KEYS:
+    if key in _pod_settings.PodSettings.RECORDED_KEYS:
         ui.error(f"{key} is written by update, not by set")
         raise typer.Exit(1)
     try:
-        coerced = pod.PodSettings.coerce(key, value, project=project)
-    except pod.PodSettingsError as ex:
+        coerced = _pod_settings.PodSettings.coerce(key, value, project=project)
+    except _pod_settings.PodSettingsError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     _fleet.meta_set(lead_id, key, coerced)
@@ -617,8 +619,11 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
         _unset_member_verify(project, member)
         return
     lead_id = _lead_for_settings(project)
-    if key not in pod.PodSettings.KEYS:
-        ui.error(f"unknown pod setting {key!r}", f"Valid keys: {', '.join(pod.PodSettings.KEYS)}")
+    if key not in _pod_settings.PodSettings.KEYS:
+        ui.error(
+            f"unknown pod setting {key!r}",
+            f"Valid keys: {', '.join(_pod_settings.PodSettings.KEYS)}",
+        )
         raise typer.Exit(1)
     # None reads back exactly like an absent key: the writer's only way to clear one.
     _fleet.meta_set(lead_id, key, None)
@@ -682,7 +687,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
     roster = _queue.pod_full_roster(project)
     registry = _arch.load_registry(project)
     plan = _orch.resolve_plan(result.spec, roster, registry=registry)
-    problems = _pod_apply.unresolvable_pipeline_steps(plan, project)
+    problems = _recipes.unresolvable_pipeline_steps(plan, project)
     if problems:
         ui.error(f"Pipeline '{path_str}' targets a role/agent this pod does not have:")
         for p in problems:
@@ -712,8 +717,8 @@ def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
     this pod's writer into ``docket-schedules.json``, and mirror it into the Lead's meta
     for display."""
     try:
-        coerced = pod.PodSettings.coerce("schedule", spec)
-    except pod.PodSettingsError as ex:
+        coerced = _pod_settings.PodSettings.coerce("schedule", spec)
+    except _pod_settings.PodSettingsError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
 

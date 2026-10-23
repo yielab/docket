@@ -143,20 +143,20 @@ class TestOneRoleVocabulary:
     """The policy speaks archetype names: one vocabulary for a member, its archetype and its row."""
 
     def test_policy_roles_are_the_archetype_names(self) -> None:
-        from docket.teams import roles as _arch
+        from docket.teams import builtin_roles as _builtin_roles
 
-        names = set(_arch.BUILTIN_ARCHETYPES) | set(_arch.STARTER_ARCHETYPES)
+        names = set(_builtin_roles.BUILTIN_ARCHETYPES) | set(_builtin_roles.STARTER_ARCHETYPES)
         assert set(_mp.ALL_ROLES) == names
         assert set(_mp.ROLE_CLASS) == names
 
     def test_each_role_resolves_to_the_rank_its_archetype_declares(self, tmp_path: Path) -> None:
         """Analyst resolves on the economy rank and critic on the standard rank, and the
         archetype's own `modelClass` says the same: one class per role."""
-        from docket.teams import roles as _arch
+        from docket.teams import builtin_roles as _builtin_roles
 
         with _point_at(tmp_path):
             _, tiers, _ = _mp.load_registry()
-            declared = {**_arch.BUILTIN_ARCHETYPES, **_arch.STARTER_ARCHETYPES}
+            declared = {**_builtin_roles.BUILTIN_ARCHETYPES, **_builtin_roles.STARTER_ARCHETYPES}
             assert _mp.resolve_role_model("analyst") == tiers["economy"]
             assert _mp.resolve_role_model("critic") == tiers["standard"]
             for role in _mp.ALL_ROLES:

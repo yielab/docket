@@ -30,6 +30,7 @@ from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.teams import fleet as _fleet
+from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod_provisioning as _pp
 from docket.teams import report as _pod_report
 
@@ -278,7 +279,7 @@ class TestIdempotence:
         winner_at_first_member = threading.Event()
         loser_at_first_member = threading.Event()
         winner_paused = False
-        real_write = _pp._write_member_workspace
+        real_write = _member_workspace._write_member_workspace
 
         def staged_write(*args: Any, **kwargs: Any) -> None:
             nonlocal winner_paused
@@ -294,7 +295,7 @@ class TestIdempotence:
                     raise OSError("loser failed after allocation")
             return real_write(*args, **kwargs)
 
-        monkeypatch.setattr(_pp, "_write_member_workspace", staged_write)
+        monkeypatch.setattr(_member_workspace, "_write_member_workspace", staged_write)
         outcomes: dict[str, object] = {}
 
         def provision() -> None:
@@ -343,7 +344,7 @@ class TestRollback:
         workdir_marker.write_text("preserve workdir")
 
         calls = {"n": 0}
-        real_write = _pp._write_member_workspace
+        real_write = _member_workspace._write_member_workspace
 
         def flaky_write(*args: Any, **kwargs: Any) -> None:
             calls["n"] += 1
@@ -351,7 +352,7 @@ class TestRollback:
                 raise OSError("disk full (induced failure)")
             return real_write(*args, **kwargs)
 
-        monkeypatch.setattr(_pp, "_write_member_workspace", flaky_write)
+        monkeypatch.setattr(_member_workspace, "_write_member_workspace", flaky_write)
 
         with pytest.raises(_pp.PodProvisionError):
             _pp.provision_pod("flaky", "software", location="/src/flaky")
@@ -369,7 +370,7 @@ class TestRollback:
         """Force the SECOND member's real workspace write to fail (the Lead is created first) and
         prove nothing survives: no workspace dir, no fleet registration, no allocation."""
         calls = {"n": 0}
-        real_write = _pp._write_member_workspace
+        real_write = _member_workspace._write_member_workspace
 
         def flaky_write(*args: Any, **kwargs: Any) -> None:
             calls["n"] += 1
@@ -377,7 +378,7 @@ class TestRollback:
                 raise OSError("disk full (induced failure)")
             return real_write(*args, **kwargs)
 
-        monkeypatch.setattr(_pp, "_write_member_workspace", flaky_write)
+        monkeypatch.setattr(_member_workspace, "_write_member_workspace", flaky_write)
 
         with pytest.raises(_pp.PodProvisionError):
             _pp.provision_pod("flaky", "software", location="/src/flaky")
@@ -396,7 +397,7 @@ class TestRollback:
     ) -> None:
         url, token = live_server
         calls = {"n": 0}
-        real_write = _pp._write_member_workspace
+        real_write = _member_workspace._write_member_workspace
 
         def flaky_write(*args: Any, **kwargs: Any) -> None:
             calls["n"] += 1
@@ -404,7 +405,7 @@ class TestRollback:
                 raise OSError("disk full (induced failure)")
             return real_write(*args, **kwargs)
 
-        monkeypatch.setattr(_pp, "_write_member_workspace", flaky_write)
+        monkeypatch.setattr(_member_workspace, "_write_member_workspace", flaky_write)
 
         status, body = _post(f"{url}/pods", {"name": "flaky", "location": "/src/flaky"}, token)
 

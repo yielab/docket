@@ -36,6 +36,7 @@ from docket.kernel.home import current_home
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 
 #: A composed prompt section's fit outcome, for the ``prompt_composed`` trace event
 #: `agent/loop.py` emits -- this module stays trace-free and only reports data.
@@ -408,7 +409,7 @@ def _screen_project_instructions_file(
 
 
 def project_instruction_files(
-    settings: _pod.PodSettings, root: Path
+    settings: _pod_settings.PodSettings, root: Path
 ) -> tuple[tuple[str, ...], str]:
     """This pod's effective project-instructions files at *root* and their source: an
     explicit list (`"set"`), the `AGENTS.md` default (`"default"`), or none (`""`)."""
@@ -441,8 +442,8 @@ def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) ->
     if project is None:
         return ""
     try:
-        settings = _pod.PodSettings.load_for(project)
-    except _pod.PodSettingsError:
+        settings = _pod_settings.PodSettings.load_for(project)
+    except _pod_settings.PodSettingsError:
         return ""
     if not project_roots:
         return ""

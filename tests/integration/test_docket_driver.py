@@ -2188,7 +2188,7 @@ class TestConsultBudgetReachesTheTurn:
 
     def test_a_pod_member_reads_the_pods_setting(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from docket.teams import pod as _pod
-        from docket.teams.pod import PodSettings
+        from docket.teams.pod_settings import PodSettings
 
         monkeypatch.setattr(_pod, "pod_of", lambda agent_id: "shop")
         monkeypatch.setattr(

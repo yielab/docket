@@ -490,6 +490,8 @@ def _repo_pod(tmp_path: Path, run: str = "make migrate") -> Iterator[Path]:
     """A pod whose recorded config is its repository's `.docket/`, the run step allowed."""
     from docket.governance import review as _rr
     from docket.teams.apply import plan as _pa
+    from docket.teams.apply import review as _review
+    from docket.teams.apply import write as _write
 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
@@ -503,8 +505,8 @@ def _repo_pod(tmp_path: Path, run: str = "make migrate") -> Iterator[Path]:
             _SKILL.format(body="v1")
         )
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
-        _pa.apply(_pa.plan_apply("demo", code / ".docket"))
-        _rr.remember(code, "demo", _pa.classify_directory(code / ".docket").runs)
+        _write.apply(_pa.plan_apply("demo", code / ".docket"))
+        _rr.remember(code, "demo", _review.classify_directory(code / ".docket").runs)
         yield code
 
 
