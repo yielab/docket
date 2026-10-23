@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core.llm import ModelLimits
 from docket.edges import store as _store
 from docket.edges.adapters import system as _system
@@ -280,7 +280,7 @@ class Catalog:
 
 
 def _load_builtin_providers() -> dict[str, ProviderSpec]:
-    directory = _cfg.PROVIDER_TEMPLATES_DIR
+    directory = _templates.PROVIDER_TEMPLATES_DIR
     entries: dict[str, ProviderSpec] = {}
     if not directory.is_dir():
         return entries

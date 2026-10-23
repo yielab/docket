@@ -29,7 +29,7 @@ from urllib.parse import quote as _url_quote
 
 from pydantic import ValidationError as _ValidationError
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
 from docket.core import audit as _audit
@@ -634,7 +634,7 @@ def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
     for suffix in (".yaml", ".yml"):
         if (pod_dir / f"{name}{suffix}").is_file():
             return pod_dir / f"{name}{suffix}", f"pod:{name}"
-    for root in (current_home().user_recipes_dir, _cfg.recipes_dir()):
+    for root in (current_home().user_recipes_dir, _templates.recipes_dir()):
         if (root / name / "pipeline.yaml").is_file():
             return root / name / "pipeline.yaml", f"recipe:{name}"
     return None

@@ -13,9 +13,21 @@ from pathlib import Path
 _RETRY_ROLES = ("lead", "implementer", "reviewer", "tester")
 
 
+def _int(env: Mapping[str, str], name: str, default: int) -> int:
+    return int(env.get(name, str(default)))
+
+
+def _float(env: Mapping[str, str], name: str, default: float) -> float:
+    return float(env.get(name, str(default)))
+
+
 def _optional_int(env: Mapping[str, str], name: str) -> int | None:
     raw = env.get(name, "")
     return int(raw) if raw else None
+
+
+def _optional_path(env: Mapping[str, str], name: str) -> Path | None:
+    return Path(env[name]) if name in env else None
 
 
 @dataclass(frozen=True)
@@ -180,84 +192,66 @@ class Home:
     def from_environ(cls, env: Mapping[str, str]) -> Home:
         return cls(
             root=Path(env.get("DOCKET_HOME", Path.home() / ".docket")),
-            traces_dir_override=(Path(env["TRACES_DIR"]) if "TRACES_DIR" in env else None),
-            audit_log_max_bytes=int(env.get("AUDIT_LOG_MAX_BYTES", str(5 * 1024 * 1024))),
-            policies_dir_override=(Path(env["POLICIES_DIR"]) if "POLICIES_DIR" in env else None),
-            plugins_dir_override=(Path(env["PLUGINS_DIR"]) if "PLUGINS_DIR" in env else None),
-            skills_dir_override=(Path(env["SKILLS_DIR"]) if "SKILLS_DIR" in env else None),
-            approvals_dir_override=(Path(env["APPROVALS_DIR"]) if "APPROVALS_DIR" in env else None),
-            corrections_dir_override=(
-                Path(env["CORRECTIONS_DIR"]) if "CORRECTIONS_DIR" in env else None
+            traces_dir_override=_optional_path(env, "TRACES_DIR"),
+            audit_log_max_bytes=_int(env, "AUDIT_LOG_MAX_BYTES", 5 * 1024 * 1024),
+            policies_dir_override=_optional_path(env, "POLICIES_DIR"),
+            plugins_dir_override=_optional_path(env, "PLUGINS_DIR"),
+            skills_dir_override=_optional_path(env, "SKILLS_DIR"),
+            approvals_dir_override=_optional_path(env, "APPROVALS_DIR"),
+            corrections_dir_override=_optional_path(env, "CORRECTIONS_DIR"),
+            schedule_file_override=_optional_path(env, "SCHEDULE_FILE"),
+            runs_file_override=_optional_path(env, "RUNS_FILE"),
+            session_timeout=_int(env, "SESSION_TIMEOUT", 3600),
+            approval_timeout=_int(env, "APPROVAL_TIMEOUT", 900),
+            tool_approval_timeout=_int(env, "TOOL_APPROVAL_TIMEOUT", 120),
+            tool_approval_poll_interval_s=_float(env, "TOOL_APPROVAL_POLL_INTERVAL_S", 2),
+            claim_stale_timeout=_int(env, "CLAIM_STALE_TIMEOUT", 1800),
+            metrics_window=_int(env, "METRICS_WINDOW", 50),
+            runaway_turns_threshold=_int(env, "RUNAWAY_TURNS_THRESHOLD", 200),
+            runaway_cost_threshold=_float(env, "RUNAWAY_COST_THRESHOLD", 20),
+            key_max_age_days=_int(env, "DOCKET_KEY_MAX_AGE_DAYS", 90),
+            trace_retention_days=_int(env, "TRACE_RETENTION_DAYS", 30),
+            context_token_budget_override=_optional_int(env, "CONTEXT_TOKEN_BUDGET"),
+            distill_timeout_s=_int(env, "DISTILL_TIMEOUT_S", 120),
+            dispatch_retries_default=_int(env, "DISPATCH_RETRIES_DEFAULT", 2),
+            dispatch_retry_backoff_s=_float(env, "DISPATCH_RETRY_BACKOFF_S", 2),
+            dispatch_retry_max_wait_s=_float(env, "DISPATCH_RETRY_MAX_WAIT_S", 60),
+            dispatch_sweep_workers=_int(env, "DISPATCH_SWEEP_WORKERS", 4),
+            template_version=_int(env, "TEMPLATE_VERSION", 5),
+            sessions_dir_override=_optional_path(env, "SESSIONS_DIR"),
+            agent_loop_max_iterations=_int(env, "AGENT_LOOP_MAX_ITERATIONS", 20),
+            agent_loop_max_tool_calls=_int(env, "AGENT_LOOP_MAX_TOOL_CALLS", 40),
+            agent_loop_max_consecutive_tool_denials=_int(
+                env, "AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS", 3
             ),
-            schedule_file_override=(Path(env["SCHEDULE_FILE"]) if "SCHEDULE_FILE" in env else None),
-            runs_file_override=(Path(env["RUNS_FILE"]) if "RUNS_FILE" in env else None),
-            session_timeout=int(env.get("SESSION_TIMEOUT", "3600")),
-            approval_timeout=int(env.get("APPROVAL_TIMEOUT", "900")),
-            tool_approval_timeout=int(env.get("TOOL_APPROVAL_TIMEOUT", "120")),
-            tool_approval_poll_interval_s=float(env.get("TOOL_APPROVAL_POLL_INTERVAL_S", "2")),
-            claim_stale_timeout=int(env.get("CLAIM_STALE_TIMEOUT", "1800")),
-            metrics_window=int(env.get("METRICS_WINDOW", "50")),
-            runaway_turns_threshold=int(env.get("RUNAWAY_TURNS_THRESHOLD", "200")),
-            runaway_cost_threshold=float(env.get("RUNAWAY_COST_THRESHOLD", "20")),
-            key_max_age_days=int(env.get("DOCKET_KEY_MAX_AGE_DAYS", "90")),
-            trace_retention_days=int(env.get("TRACE_RETENTION_DAYS", "30")),
-            context_token_budget_override=(
-                int(env["CONTEXT_TOKEN_BUDGET"]) if "CONTEXT_TOKEN_BUDGET" in env else None
-            ),
-            distill_timeout_s=int(env.get("DISTILL_TIMEOUT_S", "120")),
-            dispatch_retries_default=int(env.get("DISPATCH_RETRIES_DEFAULT", "2")),
-            dispatch_retry_backoff_s=float(env.get("DISPATCH_RETRY_BACKOFF_S", "2")),
-            dispatch_retry_max_wait_s=float(env.get("DISPATCH_RETRY_MAX_WAIT_S", "60")),
-            dispatch_sweep_workers=int(env.get("DISPATCH_SWEEP_WORKERS", "4")),
-            template_version=int(env.get("TEMPLATE_VERSION", "5")),
-            sessions_dir_override=(Path(env["SESSIONS_DIR"]) if "SESSIONS_DIR" in env else None),
-            agent_loop_max_iterations=int(env.get("AGENT_LOOP_MAX_ITERATIONS", "20")),
-            agent_loop_max_tool_calls=int(env.get("AGENT_LOOP_MAX_TOOL_CALLS", "40")),
-            agent_loop_max_consecutive_tool_denials=int(
-                env.get("AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS", "3")
-            ),
-            agent_loop_no_progress_rounds=int(env.get("AGENT_LOOP_NO_PROGRESS_ROUNDS", "3")),
-            tool_max_output_chars=int(env.get("DOCKET_TOOL_MAX_OUTPUT_CHARS", "30000")),
-            agent_loop_wall_clock_timeout_s=float(
-                env.get("AGENT_LOOP_WALL_CLOCK_TIMEOUT_S", "300")
-            ),
-            agent_loop_token_budget=int(env.get("AGENT_LOOP_TOKEN_BUDGET", "100000")),
-            agent_loop_request_timeout_s=int(env.get("AGENT_LOOP_REQUEST_TIMEOUT_S", "120")),
-            mcp_servers_file_override=(
-                Path(env["MCP_SERVERS_FILE"]) if "MCP_SERVERS_FILE" in env else None
-            ),
-            providers_file_override=(
-                Path(env["PROVIDERS_FILE"]) if "PROVIDERS_FILE" in env else None
-            ),
-            exporters_file_override=(
-                Path(env["EXPORTERS_FILE"]) if "EXPORTERS_FILE" in env else None
-            ),
-            exporters_health_file_override=(
-                Path(env["EXPORTERS_HEALTH_FILE"]) if "EXPORTERS_HEALTH_FILE" in env else None
-            ),
-            channels_file_override=(Path(env["CHANNELS_FILE"]) if "CHANNELS_FILE" in env else None),
-            notify_state_file_override=(
-                Path(env["NOTIFY_STATE_FILE"]) if "NOTIFY_STATE_FILE" in env else None
-            ),
-            channels_health_file_override=(
-                Path(env["CHANNELS_HEALTH_FILE"]) if "CHANNELS_HEALTH_FILE" in env else None
-            ),
-            export_queue_max=int(env.get("EXPORT_QUEUE_MAX", "1000")),
-            export_flush_timeout_s=float(env.get("EXPORT_FLUSH_TIMEOUT_S", "5.0")),
-            mcp_client_timeout_s=float(env.get("MCP_CLIENT_TIMEOUT_S", "10")),
-            mcp_client_max_timeout_s=float(env.get("MCP_CLIENT_MAX_TIMEOUT_S", "60")),
-            fetch_max_response_bytes=int(env.get("FETCH_MAX_RESPONSE_BYTES", str(200000))),
-            fetch_timeout_s=float(env.get("FETCH_TIMEOUT_S", "15")),
-            fleet_file_override=(Path(env["FLEET_FILE"]) if "FLEET_FILE" in env else None),
-            telegram_poll_timeout_s=int(env.get("TELEGRAM_POLL_TIMEOUT_S", "25")),
-            telegram_request_timeout_s=float(env.get("TELEGRAM_REQUEST_TIMEOUT_S", "35")),
+            agent_loop_no_progress_rounds=_int(env, "AGENT_LOOP_NO_PROGRESS_ROUNDS", 3),
+            tool_max_output_chars=_int(env, "DOCKET_TOOL_MAX_OUTPUT_CHARS", 30000),
+            agent_loop_wall_clock_timeout_s=_float(env, "AGENT_LOOP_WALL_CLOCK_TIMEOUT_S", 300),
+            agent_loop_token_budget=_int(env, "AGENT_LOOP_TOKEN_BUDGET", 100000),
+            agent_loop_request_timeout_s=_int(env, "AGENT_LOOP_REQUEST_TIMEOUT_S", 120),
+            mcp_servers_file_override=_optional_path(env, "MCP_SERVERS_FILE"),
+            providers_file_override=_optional_path(env, "PROVIDERS_FILE"),
+            exporters_file_override=_optional_path(env, "EXPORTERS_FILE"),
+            exporters_health_file_override=_optional_path(env, "EXPORTERS_HEALTH_FILE"),
+            channels_file_override=_optional_path(env, "CHANNELS_FILE"),
+            notify_state_file_override=_optional_path(env, "NOTIFY_STATE_FILE"),
+            channels_health_file_override=_optional_path(env, "CHANNELS_HEALTH_FILE"),
+            export_queue_max=_int(env, "EXPORT_QUEUE_MAX", 1000),
+            export_flush_timeout_s=_float(env, "EXPORT_FLUSH_TIMEOUT_S", 5.0),
+            mcp_client_timeout_s=_float(env, "MCP_CLIENT_TIMEOUT_S", 10),
+            mcp_client_max_timeout_s=_float(env, "MCP_CLIENT_MAX_TIMEOUT_S", 60),
+            fetch_max_response_bytes=_int(env, "FETCH_MAX_RESPONSE_BYTES", 200000),
+            fetch_timeout_s=_float(env, "FETCH_TIMEOUT_S", 15),
+            fleet_file_override=_optional_path(env, "FLEET_FILE"),
+            telegram_poll_timeout_s=_int(env, "TELEGRAM_POLL_TIMEOUT_S", 25),
+            telegram_request_timeout_s=_float(env, "TELEGRAM_REQUEST_TIMEOUT_S", 35),
             keyring_service=env.get("DOCKET_KEYRING_SERVICE", "docket-cli"),
             sandbox_docker_image=env.get("DOCKET_SANDBOX_IMAGE", "alpine:3.20"),
-            context_bytes_per_token=max(1, int(env.get("CONTEXT_BYTES_PER_TOKEN", "4"))),
+            context_bytes_per_token=max(1, _int(env, "CONTEXT_BYTES_PER_TOKEN", 4)),
             dispatch_retries_by_role=tuple(
-                (role, int(env[f"DISPATCH_RETRIES_{role.upper()}"]))
+                (role, n)
                 for role in _RETRY_ROLES
-                if f"DISPATCH_RETRIES_{role.upper()}" in env
+                if (n := _optional_int(env, f"DISPATCH_RETRIES_{role.upper()}")) is not None
             ),
             dispatch_turn_timeout_s=_optional_int(env, "DISPATCH_TURN_TIMEOUT_S"),
             dispatch_verify_timeout_s=_optional_int(env, "DISPATCH_VERIFY_TIMEOUT_S"),

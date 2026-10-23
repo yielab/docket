@@ -29,7 +29,7 @@ from pydantic import (
     model_validator,
 )
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core.operator_contract import EVENT_KINDS
 from docket.edges import store as _store
 from docket.kernel.errors import DocumentError, InvalidInput
@@ -263,7 +263,7 @@ class Catalog:
 
 
 def _load_builtin_channels() -> dict[str, ChannelSpec]:
-    directory = _cfg.CHANNEL_TEMPLATES_DIR
+    directory = _templates.CHANNEL_TEMPLATES_DIR
     entries: dict[str, ChannelSpec] = {}
     if not directory.is_dir():
         return entries

@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-import docket.config as _cfg
+import docket.kernel.templates as _templates
 from docket.core import privacy as _privacy
 from docket.core.trace import EVENT_TYPES
 from docket.edges import store as _store
@@ -236,7 +236,7 @@ class Catalog:
 
 
 def _load_builtin_exporters() -> dict[str, ExporterSpec]:
-    directory = _cfg.EXPORTER_TEMPLATES_DIR
+    directory = _templates.EXPORTER_TEMPLATES_DIR
     entries: dict[str, ExporterSpec] = {}
     if not directory.is_dir():
         return entries
