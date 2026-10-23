@@ -72,20 +72,58 @@ git checkout -b feature/your-feature
   A docstring is one line unless it states a contract (what is guaranteed, what fails closed).
   `uv run python scripts/maint/comment_lint.py --check src tests` reads this rule
 
-### Package layout (three layers: `cli/ → core/ → edges/`)
+### Package layout (one package per business context; ADR 0030, D-66)
 
-All command logic lives in the `docket` package under `src/docket/`. Dependencies point
-inward only — a `cli` command may call `core` and `edges`; `core` never imports `cli`. Two
-invariants matter most, both enforced by tests rather than convention alone:
+All command logic lives in the `docket` package under `src/docket/`. The rule new code follows
+is **one package per business context, at most two levels inside it**, and the dependencies
+between packages are import-linter contracts, not prose.
 
-1. **Every tool call goes through `core/tools.py`'s single dispatcher** (`dispatch_tool`).
-   docket's governance stack — the policy engine, the approval store, the high-risk classifier,
-   the audit log — only means anything if there is exactly one place a tool can execute from.
-   An AST test enforces this:
+**The target.** `src/docket/` holds twelve context packages (`kernel`, `tasks`, `pipeline`,
+`hops`, `agent`, `governance`, `sandbox`, `teams`, `models`, `observability`, `operator`,
+`platform`), `interfaces/` (`cli`, `http`, `mcp`, `telegram`) and one `bootstrap.py`. Inside a
+context there are at most two levels: `domain/`, `application/` and `adapters/` where the context
+needs them, flat otherwise. The full tree is "Target layout" in
+[ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
+
+**Allowed dependencies** (the ADR's table; `tests/architecture/` enforces it from stage 2 of
+Phase 46 on):
+
+| From | May import |
+|---|---|
+| `kernel` | nothing in `docket` |
+| `<context>/domain` | `kernel`, its own `domain` |
+| `<context>/application` | `kernel`, its own `domain` and `ports`, other contexts' `__init__` |
+| `<context>/adapters`, `platform`, `sandbox` | `kernel`, the ports and domain types they implement |
+| `agent` | `kernel` only (plus its own packages) |
+| `interfaces` | `kernel`, `bootstrap`, contexts' `__init__` |
+| `bootstrap` | everything |
+
+So a domain package never imports an adapter, a context reaches another only through that
+context's `__init__`, and nothing imports `interfaces/`. Function-local imports of `docket.*` are
+forbidden because they hide cycles; the existing ones are a baseline that only shrinks. A module
+over **700 lines is a defect**, and the ceiling ratchets down to it from today's largest module.
+
+**What holds today.** The tree is still the three technical layers `cli/ -> core/ -> edges/`, and
+nothing above is enforced yet. Phase 46 moves the code (P46-7 to P46-12): until a module is moved,
+add to the layer it lives in and follow the same direction (`cli` may call `core` and `edges`;
+`core` never imports `cli`). New code that has no home yet is written to the dependency table, so
+the move does not have to untangle it. Once the moves land `cli/`, `core/` and `edges/` do not
+exist and this section is the whole rule.
+
+Two invariants matter most and are enforced by tests rather than convention alone; they do not
+move with the refactor:
+
+1. **Every tool call goes through the single tool dispatcher** (`dispatch_tool`, today in
+   `core/tools.py`). docket's governance stack — the policy engine, the approval store, the
+   high-risk classifier, the audit log — only means anything if there is exactly one place a tool
+   can execute from. An AST test enforces this:
    `tests/unit/core/test_tools.py::test_only_the_chokepoint_imports_the_handler_module`.
-2. **docket-owned JSON goes through `edges/store.py`** (atomic write + filelock + `.bak`
-   rotation + 0600 perms) — never write those files directly. The one documented exemption is
-   append-only JSONL (`core/trace.py`, `core/audit.py`), which writes directly by design.
+2. **docket-owned JSON goes through the one store module** (today `edges/store.py`: atomic write
+   + filelock + `.bak` rotation + 0600 perms) — never write those files directly. The one
+   documented exemption is append-only JSONL (`core/trace.py`, `core/audit.py`), which writes
+   directly by design.
+
+Where things go today:
 
 - **Commands** are Typer functions in `src/docket/cli/` — add them to `cli/__init__.py`, or to
   a `_<group>.py` module for a larger subcommand group (e.g. `cli/_gates.py`).
@@ -112,6 +150,9 @@ All contributions must include appropriate tests:
   covers cross-module or real-process behaviour, `tests/guards/` holds AST/layout invariants,
   and `tests/agent/` holds checks on prose, release artifacts or agent hook scripts — that lane
   is budgeted, never the default suite, and runs in its own CI job
+  (the directories of today; ADR 0030 replaces them with a mirror of the code, lanes as pytest
+  markers, and `tests/{fixtures,contracts,e2e,architecture,release}/` as the only directories
+  that do not mirror a module — see that section for what holds now and what Phase 46 moves)
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
 For scale, so you know what you're getting into: **5,151 tests** in the default suite
