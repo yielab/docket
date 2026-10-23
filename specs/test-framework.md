@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Active
 **Last Updated**: 2026-10-23
 
@@ -64,8 +64,8 @@ Layout on disk today (the target is rules 11-15 of "Lanes and placement"):
 
 ```text
 tests/
-├── conftest.py             autouse home fixture, shared helpers, duration guard
-├── fakes.py                FakeDriver: the shared RuntimeDriver double
+├── conftest.py             autouse isolation (home, DOCKET_SERVICE_MANAGER=none, plain Typer errors), duration guard
+├── support/                the one owner of each shared helper and fixture: home, pods, trace, llm, git, http, cli, fakes
 ├── fixtures/               recorded data and adapter-scenario fixtures shared by several lanes
 ├── unit/                   mirrors src/docket/: unit/tasks/application/test_queue.py ↔ src/docket/tasks/application/queue.py
 ├── integration/            several modules, or a real process where the process boundary is the subject
@@ -95,7 +95,8 @@ Requirements:
 
 1. **Default suite = product lanes.** `testpaths` lists `tests/unit`, `tests/integration` and
    `tests/guards` only and never collects `tests/agent`. The `agent-lane` CI job runs
-   `uv run pytest tests/agent`.
+   `uv run pytest tests/agent`, and the `no-sandbox` CI job runs the default suite through
+   `scripts/maint/pytest-without-sandbox.sh -q`, a host where sandbox detection reports `none`.
 2. **One unit file per module, named for it.** `unit/<pkg>/test_<module>.py` declares
    `SUBJECT = "docket.<pkg>.<module>"` (a top-level module's file sits directly in `unit/`; the
    part of the stem before `__` names the module). The guard checks that `SUBJECT` equals the
@@ -126,8 +127,7 @@ Requirements:
    of removed command names and of any `docket ...` invocation that is not live in the Click tree.
 6. **Duration ceilings** are stop conditions: 2 s per test in `unit/` and `guards/`, 10 s in
    `integration/`. A test that passes but runs past its lane's ceiling is reported as failed by
-   `tests/conftest.py`. `agent/` and the golden suite have no ceiling. The `slow` marker is
-   registered for artifact-building agent-lane tests; no test carries it today.
+   `tests/conftest.py`. `agent/` and the golden suite have no ceiling. No pytest marker is registered.
 7. **Docstrings and comments follow the repository comment policy**: a module docstring is at
    most 12 lines and a function, class or test docstring at most 3 lines, in `src/` and `tests/`
    alike; no card ids, phases, dates or provenance narration anywhere. The comment-lint script is
@@ -152,6 +152,8 @@ Requirements:
       what `.docket-meta.json` owns; docket-owned JSON is written only through the store
       chokepoint (two JSONL-append exemptions); only the tool chokepoint imports the tool-handler
       module.
+    - *Suite shape.* No top-level helper or fixture is defined, with an identical body, in two
+      test files; the one definition lives in `tests/support/` (`test_suite_shape.py`).
     - *Layering.* The domain and edge layers never print, never import the console helper, and the
       domain layer never imports `subprocess`.
     - *CLI surface.* Every leaf's `--help` exits 0 and carries an `Example:` line, and every
@@ -177,14 +179,15 @@ Requirements:
     with the module when the module moves into its context package. **Convention** until the
     layout guard checks the mirror path (see rule 14).
 12. **Lanes are pytest markers, not directories.** The registered markers are `unit`,
-    `integration`, `sandbox`, `e2e`, `slow`, `release` and `evals`; every test carries the marker
+    `integration`, `sandbox`, `e2e`, `release` and `evals`; every test carries the marker
     of its lane, CI jobs select with `-m`, and `testpaths` is `tests`. The duration ceilings of
     rule 6 bind by marker (`unit` 2 s, `integration` 10 s). Rule 1's list of `testpaths`
     directories holds until the markers are registered. **Convention** until then.
 13. **Four directories exist for a reason other than mirroring a module, and one holds the shared
-    fakes.** `tests/fixtures/` is the one source of fakes and builders (`home.py`, `repo.py`,
-    `builders.py`, `fakes/`). `tests/contracts/` holds `test_<port>_contract.py`, one suite per
-    port, parametrized over the real adapter and the fake in `tests/fixtures/fakes/`, so a fake
+    fakes.** `tests/support/` is the one source of shared helpers, fixtures and fakes (`home.py`, `pods.py`,
+    `trace.py`, `llm.py`, `git.py`, `http.py`, `cli.py`, `fakes.py`); `tests/fixtures/` holds
+    recorded data only. `tests/contracts/` holds `test_<port>_contract.py`, one suite per
+    port, parametrized over the real adapter and the fake in `tests/support/fakes.py`, so a fake
     is proven to behave as the real one. `tests/e2e/` holds named whole flows (a software pod to
     done, the rework cycle, a park and its grant or deny, a resume after restart).
     `tests/architecture/` holds the import-linter contracts and the shrink-only ratchets (import
