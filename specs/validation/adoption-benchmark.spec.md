@@ -383,5 +383,7 @@ the baseline regenerator downloads anything (rule 8).
 - `tests/agent/release/test_adoption_benchmark.py`: the base suite.
 - `tests/agent/release/test_adoption_adversarial_recovery.py`: the journey suite.
 - `tests/agent/release/test_adoption_evidence.py`: the publication suite.
+- `tests/integration/test_adoption_tools.py`: output placement and the clean-tree refusal, in
+  the default suite.
 - `.github/workflows/ci.yml`, `pyproject.toml`: full-history checkouts and the `jsonschema`
   development dependency.
