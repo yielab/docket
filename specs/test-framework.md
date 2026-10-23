@@ -59,7 +59,7 @@ contract before implementation, and the smallest coherent change makes it green.
 
 ## Test layout
 
-Layout on disk:
+Layout on disk today (the target is rules 11-15 of "Lanes and placement"):
 
 ```text
 tests/
@@ -85,7 +85,10 @@ The whole-workflow smoke test lives in `tests/integration/` (it spawns a real CL
 
 ## Lanes and placement
 
-The placement rules below bind every new or edited test file.
+The placement rules below bind every new or edited test file. Rules 1-10 describe the layout the
+tree has today and the guards that enforce it. Rules 11-15 are the placement rule new tests follow
+under ADR 0030 (D-66): each is a **convention** until the guard it names exists. Where a later
+rule changes an earlier one, the later rule names it.
 
 Requirements:
 
@@ -165,6 +168,38 @@ Requirements:
     - *Repository hygiene.* No Telegram-ID-shaped literal in `src/` and only sanctioned synthetic
       ones elsewhere; no retired-daemon coupling in product code; no function under `src/docket`
       exceeds 150 lines except the listed ones, which may not grow (a baseline records them).
+
+11. **Tests mirror the code.** A test file for `src/docket/<path>/<module>.py` lives at
+    `tests/<path>/test_<module>.py`, one file per module, and that path is the file's subject. A
+    file over 800 lines splits as `test_<module>__<aspect>.py` (rule 2). A module's test moves
+    with the module when the module moves into its context package. **Convention** until the
+    layout guard checks the mirror path (see rule 14).
+12. **Lanes are pytest markers, not directories.** The registered markers are `unit`,
+    `integration`, `sandbox`, `e2e`, `slow`, `release` and `evals`; every test carries the marker
+    of its lane, CI jobs select with `-m`, and `testpaths` is `tests`. The duration ceilings of
+    rule 6 bind by marker (`unit` 2 s, `integration` 10 s). Rule 1's list of `testpaths`
+    directories holds until the markers are registered. **Convention** until then.
+13. **Four directories exist for a reason other than mirroring a module, and one holds the shared
+    fakes.** `tests/fixtures/` is the one source of fakes and builders (`home.py`, `repo.py`,
+    `builders.py`, `fakes/`). `tests/contracts/` holds `test_<port>_contract.py`, one suite per
+    port, parametrized over the real adapter and the fake in `tests/fixtures/fakes/`, so a fake
+    is proven to behave as the real one. `tests/e2e/` holds named whole flows (a software pod to
+    done, the rework cycle, a park and its grant or deny, a resume after restart).
+    `tests/architecture/` holds the import-linter contracts and the shrink-only ratchets (import
+    contracts, function-local `docket` imports, module size toward the 700-line ceiling, writers
+    of a task's `status`, the test-id manifest). `tests/release/` is the agent lane of rule 3 under
+    its new name and keeps its `LANE` / `REASON` / `RETIRE_WHEN` headers and its line budget.
+    `tests/evals/` is reserved for agent-quality evals and holds a README only. `tests/guards/`,
+    `tests/agent/` and the flat `tests/integration/` of rules 1-3 hold until their files are moved
+    into these directories and mirror paths.
+14. **`SUBJECT` ends.** Once rule 11 is checked by path, no test file declares `SUBJECT`, the
+    layout guard derives the subject from the path, and no file outside `tests/architecture/`
+    names a module path in a string. Until then rule 2 stands.
+15. **A patch targets the module that defines the patched name.** An autouse fixture fails any
+    `monkeypatch.setattr` whose original object's `__module__` is not the module patched, with
+    "patch the defining module: <module>"; the targets a test patches at the process boundary are
+    `docket.kernel.clock` and `os.environ`. **Convention** until the fixture exists; the
+    existing patches on other modules are a baseline that only shrinks.
 
 Run every guard with `uv run pytest tests/guards`.
 

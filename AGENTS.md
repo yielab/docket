@@ -32,8 +32,18 @@ task; load only the referenced section or spec.
 1. Identify the measured need and the exact live call path.
 2. Read only the owning spec and neighboring tests.
 3. Update the spec, add a failing behavioral test, then implement the smallest coherent change.
-4. Preserve `cli -> core -> edges`, `core/tools.py::dispatch_tool` as the sole tool chokepoint,
-   and `edges/store.py` as the sole writer of docket-owned JSON.
+4. Preserve the import contracts of ADR 0030 (D-66), `dispatch_tool` as the sole tool chokepoint
+   and the store module as the sole writer of docket-owned JSON. The contracts, as the ADR's
+   table states them: `kernel` imports nothing in `docket`; `<context>/domain` imports `kernel`
+   and its own `domain`; `<context>/application` imports `kernel`, its own `domain` and `ports`,
+   and other contexts' `__init__`; `<context>/adapters`, `platform` and `sandbox` import `kernel`
+   and the ports and domain types they implement; `agent` imports `kernel` only (plus its own
+   packages); `interfaces` imports `kernel`, `bootstrap` and contexts' `__init__`; `bootstrap`
+   imports everything. No function-local `docket.*` import; no module over 700 lines. The
+   contracts are enforced by `tests/architecture/` once Phase 46 stage 2 lands; until a module is
+   moved it still lives in `cli/`, `core/` or `edges/` and keeps the old direction (`cli` may
+   call `core` and `edges`; `core` never imports `cli`), while new code is written to the table.
+   `dispatch_tool` is in `core/tools.py` and the store in `edges/store.py` until they move.
 5. Nothing is kept for the past (ROADMAP D-57, ADR 0022): docket has no users. Delete a removed
    or renamed command, flag, alias, route, persisted shape or behaviour in the same change,
    with its tests, spec text and docs. No alias, notice, migration, hidden command or no-op
