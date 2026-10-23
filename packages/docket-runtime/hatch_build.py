@@ -56,6 +56,12 @@ _RUNTIME_FILES = (
     "edges/adapters/llm.py",
     "edges/adapters/system.py",
     "edges/adapters/toolbox.py",
+    "kernel/__init__.py",
+    "kernel/clock.py",
+    "kernel/errors.py",
+    "kernel/home.py",
+    "kernel/ids.py",
+    "kernel/text.py",
 )
 
 
