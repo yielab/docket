@@ -8,85 +8,89 @@ read-only `find_registry_problems` surface `docket setup` reports through instea
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import models_policy as _mp
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.models_policy"
 
 
-def _point_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _point_at(
+    tmp_path: Path,
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 class TestFindRegistryProblems:
     def test_no_file_has_no_problems(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path, monkeypatch)
-        assert _mp.find_registry_problems() == []
+        with _point_at(tmp_path):
+            assert _mp.find_registry_problems() == []
 
     def test_well_formed_registry_has_no_problems(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text(
-            json.dumps(
-                {
-                    "default": "anthropic/claude-sonnet-4-6",
-                    "rankAnchors": {"standard": "anthropic/claude-sonnet-4-6"},
-                    "roles": {"reviewer": "anthropic/claude-haiku-4-5"},
-                }
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text(
+                json.dumps(
+                    {
+                        "default": "anthropic/claude-sonnet-4-6",
+                        "rankAnchors": {"standard": "anthropic/claude-sonnet-4-6"},
+                        "roles": {"reviewer": "anthropic/claude-haiku-4-5"},
+                    }
+                )
             )
-        )
-        assert _mp.find_registry_problems() == []
+            assert _mp.find_registry_problems() == []
 
     def test_unknown_rank_anchor_is_named(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text(
-            json.dumps({"rankAnchors": {"deluxe": "anthropic/claude-sonnet-4-6"}})
-        )
-        problems = _mp.find_registry_problems()
-        assert problems == [("rankAnchors.deluxe", "unknown rank anchor")]
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text(
+                json.dumps({"rankAnchors": {"deluxe": "anthropic/claude-sonnet-4-6"}})
+            )
+            problems = _mp.find_registry_problems()
+            assert problems == [("rankAnchors.deluxe", "unknown rank anchor")]
 
     def test_bad_model_id_in_default_is_named(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
-        problems = _mp.find_registry_problems()
-        assert len(problems) == 1
-        assert problems[0][0] == "default"
-        assert "not-a-model-id" in problems[0][1]
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
+            problems = _mp.find_registry_problems()
+            assert len(problems) == 1
+            assert problems[0][0] == "default"
+            assert "not-a-model-id" in problems[0][1]
 
     def test_unknown_role_is_named(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text(
-            json.dumps({"roles": {"astrologer": "anthropic/claude-haiku-4-5"}})
-        )
-        problems = _mp.find_registry_problems()
-        assert problems == [("roles.astrologer", "unknown role")]
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text(
+                json.dumps({"roles": {"astrologer": "anthropic/claude-haiku-4-5"}})
+            )
+            problems = _mp.find_registry_problems()
+            assert problems == [("roles.astrologer", "unknown role")]
 
     def test_malformed_json_is_reported_by_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text("{not json")
-        problems = _mp.find_registry_problems()
-        assert len(problems) == 1
-        assert problems[0][0] == str(current_home().model_registry_file)
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text("{not json")
+            problems = _mp.find_registry_problems()
+            assert len(problems) == 1
+            assert problems[0][0] == str(current_home().model_registry_file)
 
 
 class TestResolveStepModel:
@@ -96,16 +100,15 @@ class TestResolveStepModel:
     def test_rank_word_resolves_to_the_live_anchor(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path, monkeypatch)
-        _, tiers, _ = _mp.load_registry()
-        assert _mp.resolve_step_model("cheap") == tiers["economy"]
-        assert _mp.resolve_step_model("strong") == tiers["standard"]
+        with _point_at(tmp_path):
+            _, tiers, _ = _mp.load_registry()
+            assert _mp.resolve_step_model("cheap") == tiers["economy"]
+            assert _mp.resolve_step_model("strong") == tiers["standard"]
 
     def test_literal_with_unknown_provider_is_refused_by_name(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path, monkeypatch)
-        with pytest.raises(ValueError, match="nope"):
+        with _point_at(tmp_path), pytest.raises(ValueError, match="nope"):
             _mp.resolve_step_model("nope/x")
 
 
@@ -136,20 +139,20 @@ class TestResolveRoleModelInPodScope:
         from docket.core import archetypes as _arch
         from docket.core import config_docs as _config_docs
 
-        home = _point_at(tmp_path, monkeypatch)
-        self._registry_on_local(home)
-        role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
-        _arch.add_user_archetype(_config_docs.load_document(role_file).doc, "p")
+        with _point_at(tmp_path) as home:
+            self._registry_on_local(home)
+            role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
+            _arch.add_user_archetype(_config_docs.load_document(role_file).doc, "p")
 
-        assert _mp.resolve_role_model("security-vetter", project="p") == "local/x"
+            assert _mp.resolve_role_model("security-vetter", project="p") == "local/x"
 
     def test_unknown_role_falls_back_to_the_registry_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        self._registry_on_local(home)
+        with _point_at(tmp_path) as home:
+            self._registry_on_local(home)
 
-        assert _mp.resolve_role_model("nobody-here") == "local/x"
+            assert _mp.resolve_role_model("nobody-here") == "local/x"
 
 
 class TestOneRoleVocabulary:
@@ -169,41 +172,41 @@ class TestOneRoleVocabulary:
         archetype's own `modelClass` says the same: one class per role."""
         from docket.core import archetypes as _arch
 
-        _point_at(tmp_path, monkeypatch)
-        _, tiers, _ = _mp.load_registry()
-        declared = {**_arch.BUILTIN_ARCHETYPES, **_arch.STARTER_ARCHETYPES}
-        assert _mp.resolve_role_model("analyst") == tiers["economy"]
-        assert _mp.resolve_role_model("critic") == tiers["standard"]
-        for role in _mp.ALL_ROLES:
-            rank = "economy" if declared[role].model_class == "cheap" else "standard"
-            assert _mp.resolve_role_model(role) == tiers[rank], role
-            assert _mp.ROLE_CLASS[role] == declared[role].model_class, role
+        with _point_at(tmp_path):
+            _, tiers, _ = _mp.load_registry()
+            declared = {**_arch.BUILTIN_ARCHETYPES, **_arch.STARTER_ARCHETYPES}
+            assert _mp.resolve_role_model("analyst") == tiers["economy"]
+            assert _mp.resolve_role_model("critic") == tiers["standard"]
+            for role in _mp.ALL_ROLES:
+                rank = "economy" if declared[role].model_class == "cheap" else "standard"
+                assert _mp.resolve_role_model(role) == tiers[rank], role
+                assert _mp.ROLE_CLASS[role] == declared[role].model_class, role
 
     def test_implementer_reads_its_own_row(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text(
-            json.dumps({"roles": {"implementer": "openai/gpt-4.1"}}), encoding="utf-8"
-        )
-        assert _mp.resolve_role_model("implementer") == "openai/gpt-4.1"
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text(
+                json.dumps({"roles": {"implementer": "openai/gpt-4.1"}}), encoding="utf-8"
+            )
+            assert _mp.resolve_role_model("implementer") == "openai/gpt-4.1"
 
     def test_a_retired_role_key_is_ignored_and_reported(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text(
-            json.dumps({"roles": {"programmer": "openai/gpt-4.1"}}), encoding="utf-8"
-        )
-        assert _mp.resolve_role_model("implementer") != "openai/gpt-4.1"
-        assert _mp.find_registry_problems() == [("roles.programmer", "unknown role")]
-        current_home().model_registry_file.unlink()
-        _mp.write_registry({"role.programmer": "x/y"})
-        assert "programmer" not in json.loads(current_home().model_registry_file.read_text()).get(
-            "roles", {}
-        )
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text(
+                json.dumps({"roles": {"programmer": "openai/gpt-4.1"}}), encoding="utf-8"
+            )
+            assert _mp.resolve_role_model("implementer") != "openai/gpt-4.1"
+            assert _mp.find_registry_problems() == [("roles.programmer", "unknown role")]
+            current_home().model_registry_file.unlink()
+            _mp.write_registry({"role.programmer": "x/y"})
+            assert "programmer" not in json.loads(
+                current_home().model_registry_file.read_text()
+            ).get("roles", {})
 
 
 class TestReapplyRolePolicy:
@@ -216,32 +219,36 @@ class TestReapplyRolePolicy:
         from docket.core import fleet as _fleet
         from docket.edges import store as _store
 
-        home = _point_at(tmp_path, monkeypatch)
-        home.mkdir(parents=True, exist_ok=True)
-        current_home().model_registry_file.write_text(
-            json.dumps({"default": "local/local-model"}), encoding="utf-8"
-        )
-        aid = "demo-security-vetter"
-        path = current_home().meta_path(aid)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _store.write_json(
-            path,
-            {
-                "schemaVersion": 1,
-                "kind": "project",
-                "scope": "project",
-                "role": "security-vetter",
-                "pod": "demo",
-                "model": current_home().default_model,
-            },
-        )
-
-        assert _mp.reapply_role_policy() == [
-            _mp.RoleRepoint(
-                aid, "demo", "security-vetter", current_home().default_model, "local/local-model"
+        with _point_at(tmp_path) as home:
+            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.write_text(
+                json.dumps({"default": "local/local-model"}), encoding="utf-8"
             )
-        ]
-        assert _fleet.meta_get(aid, "model", "") == "local/local-model"
+            aid = "demo-security-vetter"
+            path = current_home().meta_path(aid)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _store.write_json(
+                path,
+                {
+                    "schemaVersion": 1,
+                    "kind": "project",
+                    "scope": "project",
+                    "role": "security-vetter",
+                    "pod": "demo",
+                    "model": current_home().default_model,
+                },
+            )
+
+            assert _mp.reapply_role_policy() == [
+                _mp.RoleRepoint(
+                    aid,
+                    "demo",
+                    "security-vetter",
+                    current_home().default_model,
+                    "local/local-model",
+                )
+            ]
+            assert _fleet.meta_get(aid, "model", "") == "local/local-model"
 
 
 class TestRankAnchorsFailLoudly:
@@ -266,16 +273,16 @@ class TestRankAnchorsFailLoudly:
         from docket.core import provider as _provider
         from docket.kernel.errors import DocumentError
 
-        _point_at(tmp_path, monkeypatch)
-        builtin = _provider.load_catalog().get("anthropic")
-        assert builtin is not None
-        broken = _provider.ProviderSpec.model_validate(
-            {**builtin.model_dump(by_alias=True), "presets": presets}
-        )
-        _provider.save_provider(broken)
+        with _point_at(tmp_path):
+            builtin = _provider.load_catalog().get("anthropic")
+            assert builtin is not None
+            broken = _provider.ProviderSpec.model_validate(
+                {**builtin.model_dump(by_alias=True), "presets": presets}
+            )
+            _provider.save_provider(broken)
 
-        with pytest.raises(DocumentError) as excinfo:
-            _mp.load_registry()
+            with pytest.raises(DocumentError) as excinfo:
+                _mp.load_registry()
 
-        assert missing in str(excinfo.value)
-        assert str(current_home().providers_file) in str(excinfo.value)
+            assert missing in str(excinfo.value)
+            assert str(current_home().providers_file) in str(excinfo.value)

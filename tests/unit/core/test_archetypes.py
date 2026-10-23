@@ -361,15 +361,17 @@ class TestPodDeniedTools:
     def test_no_project_ignores_the_pod_setting(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with use_home(Home(tmp_path / ".docket")):
-            with use_home(
+        with (
+            use_home(Home(tmp_path / ".docket")),
+            use_home(
                 dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
-            ):
-                _write_lead_meta("acme", "fetch")
+            ),
+        ):
+            _write_lead_meta("acme", "fetch")
 
-                narrowed = registry_for_role(builtin_registry(), "implementer", project="")
+            narrowed = registry_for_role(builtin_registry(), "implementer", project="")
 
-                assert "fetch" in narrowed.names()
+            assert "fetch" in narrowed.names()
 
 
 _SECURITY_VETTER_LONG: dict[str, object] = {

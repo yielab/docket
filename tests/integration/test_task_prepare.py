@@ -12,18 +12,19 @@ import json
 import os
 import stat
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import trace as _trace
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.prepare"
 
@@ -76,15 +77,17 @@ def npm_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return log
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, codebase: Path) -> None:
+@contextmanager
+def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
-    _bind_pipeline(
-        "name: two\nsteps:\n  - id: lead\n    role: lead\n  - id: implementer\n    role: implementer\n"
-    )
+    with use_home(Home(home)):
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        _bind_pipeline(
+            "name: two\nsteps:\n  - id: lead\n    role: lead\n  - id: implementer\n    role: implementer\n"
+        )
+        yield
 
 
 def _bind_pipeline(text: str) -> None:
@@ -130,26 +133,26 @@ def test_the_implementer_hop_finds_the_installed_tool_and_the_task_records_it(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    runner = _Runner()
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        runner = _Runner()
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    assert [s["tool"] for s in runner.seen] == [True]
-    task = _dispatch.read_tasks("demo")[0]
-    assert task["prepared"]["command"] == "npm ci"
-    assert task["prepared"]["source"] == "lockfile"
-    assert task["prepared"]["cacheHit"] is False
-    assert task["prepared"]["lockHash"] == hashlib.sha256(_LOCK.encode()).hexdigest()
-    (event,) = _prepare_events(task["id"])
-    assert event["payload"]["command"] == "npm ci"
-    assert event["payload"]["cacheHit"] is False
-    assert event["payload"]["exit"] == 0
-    wt = Path(task["worktree"]["dir"])
-    assert (wt / "node_modules").is_symlink()
-    assert _git(wt, "status", "--porcelain") == ""
+        assert res.status == "done", res.reason
+        assert [s["tool"] for s in runner.seen] == [True]
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["prepared"]["command"] == "npm ci"
+        assert task["prepared"]["source"] == "lockfile"
+        assert task["prepared"]["cacheHit"] is False
+        assert task["prepared"]["lockHash"] == hashlib.sha256(_LOCK.encode()).hexdigest()
+        (event,) = _prepare_events(task["id"])
+        assert event["payload"]["command"] == "npm ci"
+        assert event["payload"]["cacheHit"] is False
+        assert event["payload"]["exit"] == 0
+        wt = Path(task["worktree"]["dir"])
+        assert (wt / "node_modules").is_symlink()
+        assert _git(wt, "status", "--porcelain") == ""
 
 
 def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(
@@ -157,21 +160,21 @@ def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "first", channel="cli")
-    _dispatch.enqueue_task("demo", "second", channel="cli")
-    runner = _Runner()
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "first", channel="cli")
+        _dispatch.enqueue_task("demo", "second", channel="cli")
+        runner = _Runner()
 
-    results = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=2)
+        results = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=2)
 
-    assert [r.status for r in results] == ["done", "done"]
-    assert [s["tool"] for s in runner.seen] == [True, True]
-    assert _npm_calls(npm_log) == ["ci"]
-    tasks = _dispatch.read_tasks("demo")
-    assert sorted(t["prepared"]["cacheHit"] for t in tasks) == [False, True]
-    hit = next(t for t in tasks if t["prepared"]["cacheHit"])
-    (event,) = _prepare_events(hit["id"])
-    assert event["payload"]["cacheHit"] is True and event["payload"]["exit"] is None
+        assert [r.status for r in results] == ["done", "done"]
+        assert [s["tool"] for s in runner.seen] == [True, True]
+        assert _npm_calls(npm_log) == ["ci"]
+        tasks = _dispatch.read_tasks("demo")
+        assert sorted(t["prepared"]["cacheHit"] for t in tasks) == [False, True]
+        hit = next(t for t in tasks if t["prepared"]["cacheHit"])
+        (event,) = _prepare_events(hit["id"])
+        assert event["payload"]["cacheHit"] is True and event["payload"]["exit"] is None
 
 
 def test_a_broken_lockfile_fails_the_task_before_any_hop(
@@ -179,21 +182,21 @@ def test_a_broken_lockfile_fails_the_task_before_any_hop(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo, lock="broken")
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    runner = _Runner()
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        runner = _Runner()
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    task = _dispatch.read_tasks("demo")[0]
-    assert (res.status, res.failure_kind) == ("failed", "prepare")
-    assert task["failureKind"] == "prepare"
-    assert "lockfile is broken" in task["reason"] and "npm ci" in task["reason"]
-    assert task["hops"] == [] and runner.seen == []
-    assert "prepared" not in task
-    assert [p for p in current_home().prepare_cache_dir.glob("*/*") if p.is_dir()] == []
-    (event,) = _prepare_events(task["id"])
-    assert event["payload"]["exit"] == 1
+        task = _dispatch.read_tasks("demo")[0]
+        assert (res.status, res.failure_kind) == ("failed", "prepare")
+        assert task["failureKind"] == "prepare"
+        assert "lockfile is broken" in task["reason"] and "npm ci" in task["reason"]
+        assert task["hops"] == [] and runner.seen == []
+        assert "prepared" not in task
+        assert [p for p in current_home().prepare_cache_dir.glob("*/*") if p.is_dir()] == []
+        (event,) = _prepare_events(task["id"])
+        assert event["payload"]["exit"] == 1
 
 
 def test_a_blank_task_prepare_skips_the_install(
@@ -201,17 +204,17 @@ def test_a_blank_task_prepare_skips_the_install(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "work", channel="cli", prepare="")
-    runner = _Runner()
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "work", channel="cli", prepare="")
+        runner = _Runner()
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    assert [s["tool"] for s in runner.seen] == [False]
-    assert _npm_calls(npm_log) == []
-    task = _dispatch.read_tasks("demo")[0]
-    assert "prepared" not in task and _prepare_events(task["id"]) == []
+        assert res.status == "done", res.reason
+        assert [s["tool"] for s in runner.seen] == [False]
+        assert _npm_calls(npm_log) == []
+        task = _dispatch.read_tasks("demo")[0]
+        assert "prepared" not in task and _prepare_events(task["id"]) == []
 
 
 def test_a_pods_prepare_setting_wins_over_the_lockfile(
@@ -219,11 +222,11 @@ def test_a_pods_prepare_setting_wins_over_the_lockfile(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "prepare", "none")
-    _dispatch.enqueue_task("demo", "work", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "prepare", "none")
+        _dispatch.enqueue_task("demo", "work", channel="cli")
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=_Runner(), max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=_Runner(), max_tasks=1)
 
-    assert res.status == "done", res.reason
-    assert _npm_calls(npm_log) == []
+        assert res.status == "done", res.reason
+        assert _npm_calls(npm_log) == []

@@ -6,17 +6,19 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import evidence as _ev
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -29,32 +31,33 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+@contextmanager
+def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    approvals = tmp_path / "approvals"
-    approvals.mkdir()
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals, raising=True)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
-    hop = _dispatch._hop_record(
-        _dispatch.HopResult(
-            role="implementer",
-            member_id="demo-implementer",
-            ok=True,
-            verify={"cmd": "true", "exitCode": 0, "durationS": 0.1, "outputTail": ""},
+    with use_home(Home(home)):
+        approvals = tmp_path / "approvals"
+        approvals.mkdir()
+        monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals, raising=True)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
+        hop = _dispatch._hop_record(
+            _dispatch.HopResult(
+                role="implementer",
+                member_id="demo-implementer",
+                ok=True,
+                verify={"cmd": "true", "exitCode": 0, "durationS": 0.1, "outputTail": ""},
+            )
         )
-    )
-    path = _dispatch.pod_task_list_path("demo")
-    raw = json.loads(path.read_text())
-    for t in raw["tasks"]:
-        if t["id"] == task["id"]:
-            t["hops"] = [hop]
-            t["status"] = "done"
-    path.write_text(json.dumps(raw))
-    return str(task["id"])
+        path = _dispatch.pod_task_list_path("demo")
+        raw = json.loads(path.read_text())
+        for t in raw["tasks"]:
+            if t["id"] == task["id"]:
+                t["hops"] = [hop]
+                t["status"] = "done"
+        path.write_text(json.dumps(raw))
+        yield str(task["id"])
 
 
 @pytest.fixture()
@@ -87,43 +90,43 @@ class TestSurfacesAgree:
         capsys: pytest.CaptureFixture[str],
         server: str,
     ) -> None:
-        task_id = _seed(tmp_path, monkeypatch)
-        capsys.readouterr()
-        shown = CliRunner().invoke(app, ["task", "show", task_id, "--json", "--pod", "demo"])
-        assert shown.exit_code == 0, shown.output
-        cli_doc = json.loads(shown.output)["evidence"]
-        status, http_body = _get(f"{server}/tasks/demo/{task_id}/evidence", _TOKEN)
-        assert status == 200
-        assert cli_doc == json.loads(http_body)
-        assert cli_doc == _ev.task_evidence("demo", task_id, "1.1.0").model_dump(
-            by_alias=True, mode="json"
-        )
-        assert cli_doc["v"] == "1.1.0"
+        with _seed(tmp_path, monkeypatch) as task_id:
+            capsys.readouterr()
+            shown = CliRunner().invoke(app, ["task", "show", task_id, "--json", "--pod", "demo"])
+            assert shown.exit_code == 0, shown.output
+            cli_doc = json.loads(shown.output)["evidence"]
+            status, http_body = _get(f"{server}/tasks/demo/{task_id}/evidence", _TOKEN)
+            assert status == 200
+            assert cli_doc == json.loads(http_body)
+            assert cli_doc == _ev.task_evidence("demo", task_id, "1.1.0").model_dump(
+                by_alias=True, mode="json"
+            )
+            assert cli_doc["v"] == "1.1.0"
 
 
 class TestErrors:
     def test_unauthenticated_is_401(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server: str
     ) -> None:
-        task_id = _seed(tmp_path, monkeypatch)
-        assert _get(f"{server}/tasks/demo/{task_id}/evidence")[0] == 401
+        with _seed(tmp_path, monkeypatch) as task_id:
+            assert _get(f"{server}/tasks/demo/{task_id}/evidence")[0] == 401
 
     def test_unknown_task_is_404_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server: str
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        status, body = _get(f"{server}/tasks/demo/nope/evidence", _TOKEN)
-        assert status == 404
-        assert json.loads(body)["ok"] is False
+        with _seed(tmp_path, monkeypatch):
+            status, body = _get(f"{server}/tasks/demo/nope/evidence", _TOKEN)
+            assert status == 404
+            assert json.loads(body)["ok"] is False
 
     def test_cli_unknown_task_exits_1(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        result = CliRunner().invoke(app, ["task", "show", "nope", "--pod", "demo"])
-        assert result.exit_code == 1
+        with _seed(tmp_path, monkeypatch):
+            result = CliRunner().invoke(app, ["task", "show", "nope", "--pod", "demo"])
+            assert result.exit_code == 1
 
     def test_cli_table_lists_the_hop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        task_id = _seed(tmp_path, monkeypatch)
-        result = CliRunner().invoke(app, ["task", "show", task_id, "--pod", "demo"])
-        assert "implementer" in result.output
+        with _seed(tmp_path, monkeypatch) as task_id:
+            result = CliRunner().invoke(app, ["task", "show", task_id, "--pod", "demo"])
+            assert "implementer" in result.output

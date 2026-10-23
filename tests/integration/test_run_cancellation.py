@@ -30,6 +30,7 @@ from docket.core import runs as _runs
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.config"
 
@@ -295,7 +296,7 @@ class TestCancelRun:
 
         monkeypatch.setattr(_store, "read_modify_write", _stage_cancel_transition)
         outcomes: list[_runs.CancelOutcome] = []
-        worker = threading.Thread(
+        worker = new_thread(
             target=lambda: outcomes.append(_runs.cancel_run(record["id"])),
             name="cancel-worker",
         )
@@ -331,7 +332,7 @@ class TestCancelRun:
             body_observed.append(signal.is_requested())
             return []
 
-        executor = threading.Thread(
+        executor = new_thread(
             target=lambda: _runs.execute(record["id"], _blocked_body),
             name="run-executor",
         )

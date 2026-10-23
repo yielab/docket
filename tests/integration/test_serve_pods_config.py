@@ -10,11 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.core import audit as _audit
 from docket.core import fleet as _fleet
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -34,20 +33,20 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     (home / "approvals").mkdir()
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
 
-    class _Handler(_DocketHandler):
-        serve_token = _TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{srv.server_address[1]}"
-    codebase = tmp_path / "codebase"
-    codebase.mkdir()
-    status, _ = _post(f"{url}/pods", {"name": "demo", "location": str(codebase)})
-    assert status == 201
-    yield url
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{srv.server_address[1]}"
+        codebase = tmp_path / "codebase"
+        codebase.mkdir()
+        status, _ = _post(f"{url}/pods", {"name": "demo", "location": str(codebase)})
+        assert status == 201
+        yield url
+        srv.shutdown()
 
 
 def _post(

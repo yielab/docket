@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from threading import Barrier, Thread
+from threading import Barrier
 
 import pytest
 
 import docket.config as _cfg
 from docket.core import conversations as C
 from docket.edges import store as _store
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.cli"
 
@@ -221,12 +222,12 @@ class TestLockedMutations:
                 errors.append(exc)
 
         threads = [
-            Thread(target=record, kwargs={"agent_id": "a", "peer_id": "-1", "topic": "topic"}),
-            Thread(
+            new_thread(target=record, kwargs={"agent_id": "a", "peer_id": "-1", "topic": "topic"}),
+            new_thread(
                 target=record,
                 kwargs={"agent_id": "a", "peer_id": "-1", "last_message": "preview"},
             ),
-            Thread(target=record, kwargs={"agent_id": "b", "peer_id": "-2", "topic": "other"}),
+            new_thread(target=record, kwargs={"agent_id": "b", "peer_id": "-2", "topic": "other"}),
         ]
         for thread in threads:
             thread.start()

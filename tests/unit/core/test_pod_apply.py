@@ -4,21 +4,23 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import orchestrator as _orch
 from docket.core import pod
 from docket.core import pod_apply as _pod_apply
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.pod_apply"
 
 
-def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str) -> None:
+@contextmanager
+def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     """A minimal two-role pod (lead + implementer) in an isolated ``DOCKET_HOME`` --
     ``plan_apply``'s existing-pod lookup (``_dispatch.pod_pipeline``) needs one to resolve
     against, even for a manifest that never reaches roles/policies/settings."""
@@ -27,8 +29,9 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    with use_home(Home(home)):
+        _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield
 
 
 def _unit(step_id: str, *, role: str | None, agent: str | None, skipped: bool) -> _orch.PlannedUnit:
@@ -114,17 +117,17 @@ class TestSummarizeRecipe:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         project = "scoped"
-        _seed_fixture_pod(tmp_path, monkeypatch, project)
-        recipe_dir = tmp_path / "recipe"
-        recipe_dir.mkdir()
-        (recipe_dir / "pod.yaml").write_text(
-            "kind: pod\nname: x\nscope: policies\n", encoding="utf-8"
-        )
+        with _seed_fixture_pod(tmp_path, project):
+            recipe_dir = tmp_path / "recipe"
+            recipe_dir.mkdir()
+            (recipe_dir / "pod.yaml").write_text(
+                "kind: pod\nname: x\nscope: policies\n", encoding="utf-8"
+            )
 
-        with pytest.raises(_pod_apply.PodApplyError, match="scope"):
-            _pod_apply.plan_apply(project, recipe_dir)
+            with pytest.raises(_pod_apply.PodApplyError, match="scope"):
+                _pod_apply.plan_apply(project, recipe_dir)
 
-        assert not current_home().pod_config_dir(project).exists()
+            assert not current_home().pod_config_dir(project).exists()
 
 
 class TestRolesInEveryConfigFormat:
@@ -134,32 +137,35 @@ class TestRolesInEveryConfigFormat:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         project = "formats"
-        _seed_fixture_pod(tmp_path, monkeypatch, project)
-        recipe_dir = tmp_path / "recipe"
-        (recipe_dir / "roles").mkdir(parents=True)
-        base = {
-            "kind": "role",
-            "scope": "pod",
-            "modelClass": "cheap",
-            "soulTemplate": "You vet.",
-            "agentsTemplate": "Protocol.",
-        }
-        (recipe_dir / "roles" / "from-yml.yml").write_text(
-            "\n".join(f"{k}: {v}" for k, v in {**base, "name": "from-yml"}.items()),
-            encoding="utf-8",
-        )
-        (recipe_dir / "roles" / "from-json.json").write_text(
-            json.dumps({**base, "name": "from-json"}), encoding="utf-8"
-        )
+        with _seed_fixture_pod(tmp_path, project):
+            recipe_dir = tmp_path / "recipe"
+            (recipe_dir / "roles").mkdir(parents=True)
+            base = {
+                "kind": "role",
+                "scope": "pod",
+                "modelClass": "cheap",
+                "soulTemplate": "You vet.",
+                "agentsTemplate": "Protocol.",
+            }
+            (recipe_dir / "roles" / "from-yml.yml").write_text(
+                "\n".join(f"{k}: {v}" for k, v in {**base, "name": "from-yml"}.items()),
+                encoding="utf-8",
+            )
+            (recipe_dir / "roles" / "from-json.json").write_text(
+                json.dumps({**base, "name": "from-json"}), encoding="utf-8"
+            )
 
-        plan = _pod_apply.plan_apply(project, recipe_dir)
+            plan = _pod_apply.plan_apply(project, recipe_dir)
 
-        assert sorted(i.name for i in plan.items if i.kind == "role") == ["from-json", "from-yml"]
-        _pod_apply.apply(plan)
-        roles = json.loads((current_home().pod_config_dir(project) / "roles.json").read_text())[
-            "roles"
-        ]
-        assert {"from-yml", "from-json"} <= set(roles)
+            assert sorted(i.name for i in plan.items if i.kind == "role") == [
+                "from-json",
+                "from-yml",
+            ]
+            _pod_apply.apply(plan)
+            roles = json.loads((current_home().pod_config_dir(project) / "roles.json").read_text())[
+                "roles"
+            ]
+            assert {"from-yml", "from-json"} <= set(roles)
 
     def test_a_json_role_that_drops_a_builtin_denial_is_a_run_item(self, tmp_path: Path) -> None:
         root = _repo_dir(
@@ -197,56 +203,56 @@ class TestRecipeExporters:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         project = "observed"
-        _seed_fixture_pod(tmp_path, monkeypatch, project)
-        recipe_dir = tmp_path / "recipe"
-        recipe_dir.mkdir()
-        (recipe_dir / "pod.yaml").write_text(
-            "kind: pod\nname: x\nexporters: [langfuse]\n", encoding="utf-8"
-        )
+        with _seed_fixture_pod(tmp_path, project):
+            recipe_dir = tmp_path / "recipe"
+            recipe_dir.mkdir()
+            (recipe_dir / "pod.yaml").write_text(
+                "kind: pod\nname: x\nexporters: [langfuse]\n", encoding="utf-8"
+            )
 
-        plan = _pod_apply.plan_apply(project, recipe_dir)
-        assert plan.exporters == ("langfuse",)
-        assert all(item.action == "skip" for item in plan.items)
+            plan = _pod_apply.plan_apply(project, recipe_dir)
+            assert plan.exporters == ("langfuse",)
+            assert all(item.action == "skip" for item in plan.items)
 
-        result = _pod_apply.apply(plan)
+            result = _pod_apply.apply(plan)
 
-        assert result.exporters == ("langfuse",)
-        assert pod.PodSettings.load_for(project).exporters == ("langfuse",)
-        assert not current_home().exporters_file.exists()
+            assert result.exporters == ("langfuse",)
+            assert pod.PodSettings.load_for(project).exporters == ("langfuse",)
+            assert not current_home().exporters_file.exists()
 
     def test_plan_apply_rejects_a_credential_shaped_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         project = "shaped"
-        _seed_fixture_pod(tmp_path, monkeypatch, project)
-        recipe_dir = tmp_path / "recipe"
-        recipe_dir.mkdir()
-        (recipe_dir / "pod.yaml").write_text(
-            "kind: pod\nname: x\nexporters:\n  - endpoint: https://example.test\n",
-            encoding="utf-8",
-        )
+        with _seed_fixture_pod(tmp_path, project):
+            recipe_dir = tmp_path / "recipe"
+            recipe_dir.mkdir()
+            (recipe_dir / "pod.yaml").write_text(
+                "kind: pod\nname: x\nexporters:\n  - endpoint: https://example.test\n",
+                encoding="utf-8",
+            )
 
-        with pytest.raises(_pod_apply.PodApplyError, match="exporters"):
-            _pod_apply.plan_apply(project, recipe_dir)
+            with pytest.raises(_pod_apply.PodApplyError, match="exporters"):
+                _pod_apply.plan_apply(project, recipe_dir)
 
-        assert not current_home().exporters_file.exists()
-        assert pod.PodSettings.load_for(project).exporters == ()
+            assert not current_home().exporters_file.exists()
+            assert pod.PodSettings.load_for(project).exporters == ()
 
     def test_plan_apply_rejects_an_unknown_exporter_name(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         project = "unknownexp"
-        _seed_fixture_pod(tmp_path, monkeypatch, project)
-        recipe_dir = tmp_path / "recipe"
-        recipe_dir.mkdir()
-        (recipe_dir / "pod.yaml").write_text(
-            "kind: pod\nname: x\nexporters: [nope]\n", encoding="utf-8"
-        )
+        with _seed_fixture_pod(tmp_path, project):
+            recipe_dir = tmp_path / "recipe"
+            recipe_dir.mkdir()
+            (recipe_dir / "pod.yaml").write_text(
+                "kind: pod\nname: x\nexporters: [nope]\n", encoding="utf-8"
+            )
 
-        with pytest.raises(_pod_apply.PodApplyError, match="exporters"):
-            _pod_apply.plan_apply(project, recipe_dir)
+            with pytest.raises(_pod_apply.PodApplyError, match="exporters"):
+                _pod_apply.plan_apply(project, recipe_dir)
 
-        assert pod.PodSettings.load_for(project).exporters == ()
+            assert pod.PodSettings.load_for(project).exporters == ()
 
 
 class TestPrepare:
@@ -261,38 +267,39 @@ class TestPrepare:
     def test_apply_stores_it_as_the_pods_setting_and_export_writes_it_back(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
-        recipe = self._recipe(tmp_path, "kind: pod\nname: x\nprepare: make deps\n")
-        plan = _pod_apply.plan_apply("prep", recipe)
-        assert [(i.kind, i.name, i.action) for i in plan.items] == [("setting", "prepare", "add")]
-        _pod_apply.apply(plan)
-        assert pod.PodSettings.load_for("prep").prepare == "make deps"
-        out = tmp_path / "out"
-        _pod_apply.export_pod("prep", out)
-        manifest = (out / "pod.yaml").read_text(encoding="utf-8")
-        assert "prepare: make deps" in manifest and "settings" not in manifest
+        with _seed_fixture_pod(tmp_path, "prep"):
+            recipe = self._recipe(tmp_path, "kind: pod\nname: x\nprepare: make deps\n")
+            plan = _pod_apply.plan_apply("prep", recipe)
+            assert [(i.kind, i.name, i.action) for i in plan.items] == [
+                ("setting", "prepare", "add")
+            ]
+            _pod_apply.apply(plan)
+            assert pod.PodSettings.load_for("prep").prepare == "make deps"
+            out = tmp_path / "out"
+            _pod_apply.export_pod("prep", out)
+            manifest = (out / "pod.yaml").read_text(encoding="utf-8")
+            assert "prepare: make deps" in manifest and "settings" not in manifest
 
     def test_a_blank_prepare_is_stored_as_none(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
-        _pod_apply.apply(_pod_apply.plan_apply("prep", self._recipe(tmp_path, "prepare: ''\n")))
-        assert pod.PodSettings.load_for("prep").prepare == "none"
+        with _seed_fixture_pod(tmp_path, "prep"):
+            _pod_apply.apply(_pod_apply.plan_apply("prep", self._recipe(tmp_path, "prepare: ''\n")))
+            assert pod.PodSettings.load_for("prep").prepare == "none"
 
     def test_prepare_inside_settings_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
-        recipe = self._recipe(tmp_path, "settings:\n  prepare: make\n")
-        with pytest.raises(_pod_apply.PodApplyError, match="top level"):
-            _pod_apply.plan_apply("prep", recipe)
+        with _seed_fixture_pod(tmp_path, "prep"):
+            recipe = self._recipe(tmp_path, "settings:\n  prepare: make\n")
+            with pytest.raises(_pod_apply.PodApplyError, match="top level"):
+                _pod_apply.plan_apply("prep", recipe)
 
     @pytest.mark.parametrize("text", ["prepare: 3\n", "prepare: [a]\n", 'prepare: "a\\nb"\n'])
     def test_a_malformed_prepare_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "prep")
-        with pytest.raises(_pod_apply.PodApplyError):
+        with _seed_fixture_pod(tmp_path, "prep"), pytest.raises(_pod_apply.PodApplyError):
             _pod_apply.plan_apply("prep", self._recipe(tmp_path, text))
 
     def test_a_declared_command_is_a_run_item_and_none_is_not(self, tmp_path: Path) -> None:
@@ -334,35 +341,41 @@ class TestProtects:
     def test_apply_stores_the_list_and_export_writes_it_back(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
-        recipe = self._recipe(tmp_path, "kind: pod\nname: x\nprotects: ['src/api/*', Makefile]\n")
-        plan = _pod_apply.plan_apply("guard", recipe)
-        assert [(i.kind, i.name, i.action) for i in plan.items] == [("setting", "protects", "add")]
-        _pod_apply.apply(plan)
-        assert pod.PodSettings.load_for("guard").protects == ("src/api/*", "Makefile")
-        out = tmp_path / "out"
-        _pod_apply.export_pod("guard", out)
-        manifest = (out / "pod.yaml").read_text(encoding="utf-8")
-        assert "protects:" in manifest and "settings" not in manifest
+        with _seed_fixture_pod(tmp_path, "guard"):
+            recipe = self._recipe(
+                tmp_path, "kind: pod\nname: x\nprotects: ['src/api/*', Makefile]\n"
+            )
+            plan = _pod_apply.plan_apply("guard", recipe)
+            assert [(i.kind, i.name, i.action) for i in plan.items] == [
+                ("setting", "protects", "add")
+            ]
+            _pod_apply.apply(plan)
+            assert pod.PodSettings.load_for("guard").protects == ("src/api/*", "Makefile")
+            out = tmp_path / "out"
+            _pod_apply.export_pod("guard", out)
+            manifest = (out / "pod.yaml").read_text(encoding="utf-8")
+            assert "protects:" in manifest and "settings" not in manifest
 
     def test_an_empty_list_clears_the_patterns(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
-        _pod_apply.apply(_pod_apply.plan_apply("guard", self._recipe(tmp_path, "protects: [a]\n")))
-        (tmp_path / "recipe" / "pod.yaml").write_text(
-            "kind: pod\nname: x\nprotects: []\n", encoding="utf-8"
-        )
-        _pod_apply.apply(_pod_apply.plan_apply("guard", tmp_path / "recipe"))
-        assert pod.PodSettings.load_for("guard").protects == ()
+        with _seed_fixture_pod(tmp_path, "guard"):
+            _pod_apply.apply(
+                _pod_apply.plan_apply("guard", self._recipe(tmp_path, "protects: [a]\n"))
+            )
+            (tmp_path / "recipe" / "pod.yaml").write_text(
+                "kind: pod\nname: x\nprotects: []\n", encoding="utf-8"
+            )
+            _pod_apply.apply(_pod_apply.plan_apply("guard", tmp_path / "recipe"))
+            assert pod.PodSettings.load_for("guard").protects == ()
 
     def test_protects_inside_settings_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
-        recipe = self._recipe(tmp_path, "settings:\n  protects: a\n")
-        with pytest.raises(_pod_apply.PodApplyError, match="top level"):
-            _pod_apply.plan_apply("guard", recipe)
+        with _seed_fixture_pod(tmp_path, "guard"):
+            recipe = self._recipe(tmp_path, "settings:\n  protects: a\n")
+            with pytest.raises(_pod_apply.PodApplyError, match="top level"):
+                _pod_apply.plan_apply("guard", recipe)
 
     @pytest.mark.parametrize(
         "text", ["protects: a\n", "protects: [1]\n", "protects: ['/abs']\n", "protects: ['']\n"]
@@ -370,9 +383,9 @@ class TestProtects:
     def test_a_malformed_protects_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "guard")
-        with pytest.raises(_pod_apply.PodApplyError, match="protects"):
-            _pod_apply.plan_apply("guard", self._recipe(tmp_path, text))
+        with _seed_fixture_pod(tmp_path, "guard"):
+            with pytest.raises(_pod_apply.PodApplyError, match="protects"):
+                _pod_apply.plan_apply("guard", self._recipe(tmp_path, text))
 
     def test_protects_is_not_a_run_item(self, tmp_path: Path) -> None:
         review = _pod_apply.classify_directory(self._recipe(tmp_path, "protects: [a]\n"))
@@ -554,30 +567,30 @@ class TestPodLocalPipelines:
     ) -> None:
         from docket.core import dispatch as _dispatch
 
-        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
-        root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})
-        plan = _pod_apply.plan_apply("demo", root)
-        assert ("pipeline", "pipelines/fast.yaml", "add") in {
-            (i.kind, i.name, i.action) for i in plan.items
-        }
-        _pod_apply.apply(plan, channel="cli")
-        path, source = _dispatch._task_pipeline_file("demo", "fast") or (None, None)
-        assert source == "pod:fast" and path is not None
-        assert path.read_text() == _FAST and oct(path.stat().st_mode & 0o777) == "0o600"
-        again = _pod_apply.plan_apply("demo", root)
-        assert ("pipeline", "pipelines/fast.yaml", "skip") in {
-            (i.kind, i.name, i.action) for i in again.items
-        }
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})
+            plan = _pod_apply.plan_apply("demo", root)
+            assert ("pipeline", "pipelines/fast.yaml", "add") in {
+                (i.kind, i.name, i.action) for i in plan.items
+            }
+            _pod_apply.apply(plan, channel="cli")
+            path, source = _dispatch._task_pipeline_file("demo", "fast") or (None, None)
+            assert source == "pod:fast" and path is not None
+            assert path.read_text() == _FAST and oct(path.stat().st_mode & 0o777) == "0o600"
+            again = _pod_apply.plan_apply("demo", root)
+            assert ("pipeline", "pipelines/fast.yaml", "skip") in {
+                (i.kind, i.name, i.action) for i in again.items
+            }
 
     def test_export_writes_it_back_byte_for_byte(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
-        root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})
-        _pod_apply.apply(_pod_apply.plan_apply("demo", root), channel="cli")
-        out = tmp_path / "exported"
-        _pod_apply.export_pod("demo", out)
-        assert (out / "pipelines" / "fast.yaml").read_text() == _FAST
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})
+            _pod_apply.apply(_pod_apply.plan_apply("demo", root), channel="cli")
+            out = tmp_path / "exported"
+            _pod_apply.export_pod("demo", out)
+            assert (out / "pipelines" / "fast.yaml").read_text() == _FAST
 
     @pytest.mark.parametrize(
         ("name", "text", "message"),
@@ -590,10 +603,10 @@ class TestPodLocalPipelines:
     def test_a_file_dispatch_could_not_run_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, text: str, message: str
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
-        root = _repo_dir(tmp_path, {f"pipelines/{name}": text})
-        with pytest.raises(_pod_apply.PodApplyError, match=message):
-            _pod_apply.plan_apply("demo", root)
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(tmp_path, {f"pipelines/{name}": text})
+            with pytest.raises(_pod_apply.PodApplyError, match=message):
+                _pod_apply.plan_apply("demo", root)
 
     def test_its_commands_need_the_review(self, tmp_path: Path) -> None:
         root = _repo_dir(
@@ -623,15 +636,16 @@ class TestSkippedSettingsSayWhy:
     def test_a_default_value_is_noted_and_a_set_one_is_not(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_fixture_pod(tmp_path, monkeypatch, "demo")
-        root = _repo_dir(
-            tmp_path, {"pod.yaml": "kind: pod\nname: x\nsettings:\n  approvalMode: wait\n"}
-        )
-        [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
-        assert (item.action, item.note) == ("skip", "already the default")
-        root = _repo_dir(
-            tmp_path / "b", {"pod.yaml": "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 4\n"}
-        )
-        _pod_apply.apply(_pod_apply.plan_apply("demo", root), channel="cli")
-        [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
-        assert (item.action, item.note) == ("skip", "")
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(
+                tmp_path, {"pod.yaml": "kind: pod\nname: x\nsettings:\n  approvalMode: wait\n"}
+            )
+            [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
+            assert (item.action, item.note) == ("skip", "already the default")
+            root = _repo_dir(
+                tmp_path / "b",
+                {"pod.yaml": "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 4\n"},
+            )
+            _pod_apply.apply(_pod_apply.plan_apply("demo", root), channel="cli")
+            [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
+            assert (item.action, item.note) == ("skip", "")

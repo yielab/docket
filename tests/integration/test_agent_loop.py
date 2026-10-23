@@ -46,6 +46,7 @@ from docket.core.tools import ToolContext, ToolRegistry
 from docket.edges.adapters import llm as _llm_adapter
 from docket.edges.adapters.toolbox import ToolOutcome
 from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core.agent_loop"
 
@@ -234,7 +235,7 @@ def _threaded_turn(
         except BaseException as exc:  # surfaced in the owning test thread
             errors.append(exc)
 
-    worker = threading.Thread(target=_run, name=f"turn:{session_key}")
+    worker = new_thread(target=_run, name=f"turn:{session_key}")
     worker.start()
     return worker, results, errors
 

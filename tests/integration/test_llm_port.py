@@ -22,7 +22,6 @@ from threading import Thread
 from typing import Any
 
 import pytest
-from tests.conftest import point_home_at
 
 from docket.core import llm
 from docket.core.dispatch import _RETRYABLE_FAILURE_KINDS
@@ -36,6 +35,7 @@ from docket.core.llm import (
     ToolSpec,
 )
 from docket.edges.adapters import llm as adapter
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -675,23 +675,23 @@ class TestEndpointResolution:
 
         from docket.cli import _setup_model
 
-        point_home_at(monkeypatch, tmp_path)
-        monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
+        with use_home(Home(tmp_path)):
+            monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
 
-        assert _setup_model._write_credential("OPENROUTER_API_KEY", "sk-or-stored", "add")
-        assert _setup_model._write_credential("AI_GATEWAY_API_KEY", "vercel-stored", "add")
+            assert _setup_model._write_credential("OPENROUTER_API_KEY", "sk-or-stored", "add")
+            assert _setup_model._write_credential("AI_GATEWAY_API_KEY", "vercel-stored", "add")
 
-        openrouter = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
-        gateway = adapter.resolve_endpoint("ai-gateway/anthropic/claude-sonnet-4.6")
+            openrouter = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
+            gateway = adapter.resolve_endpoint("ai-gateway/anthropic/claude-sonnet-4.6")
 
-        assert openrouter is not None
-        assert openrouter.base_url == "https://openrouter.ai/api/v1"
-        assert openrouter.model_id == "anthropic/claude-sonnet-4.6"
-        assert openrouter.api_key == "sk-or-stored"
-        assert gateway is not None
-        assert gateway.base_url == "https://ai-gateway.vercel.sh/v1"
-        assert gateway.model_id == "anthropic/claude-sonnet-4.6"
-        assert gateway.api_key == "vercel-stored"
+            assert openrouter is not None
+            assert openrouter.base_url == "https://openrouter.ai/api/v1"
+            assert openrouter.model_id == "anthropic/claude-sonnet-4.6"
+            assert openrouter.api_key == "sk-or-stored"
+            assert gateway is not None
+            assert gateway.base_url == "https://ai-gateway.vercel.sh/v1"
+            assert gateway.model_id == "anthropic/claude-sonnet-4.6"
+            assert gateway.api_key == "vercel-stored"
 
     def test_registered_gateway_placeholder_does_not_mask_env_key_or_exact_limits(
         self, monkeypatch: pytest.MonkeyPatch
@@ -825,13 +825,13 @@ class TestEndpointResolution:
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env")
         from docket.core import secrets as _secrets
 
-        point_home_at(monkeypatch, tmp_path)
-        _secrets.save_secrets({"OPENROUTER_API_KEY": "sk-or-stored"})
+        with use_home(Home(tmp_path)):
+            _secrets.save_secrets({"OPENROUTER_API_KEY": "sk-or-stored"})
 
-        endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-haiku-4.5")
+            endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-haiku-4.5")
 
-        assert endpoint is not None
-        assert endpoint.api_key == "sk-or-env"
+            assert endpoint is not None
+            assert endpoint.api_key == "sk-or-env"
 
     def test_unknown_provider_resolves_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)

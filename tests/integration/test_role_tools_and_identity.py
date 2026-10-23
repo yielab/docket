@@ -19,7 +19,6 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import pytest
-from tests.conftest import patch_home
 
 from docket.core import agent_loop as _loop
 from docket.core import archetypes as _archetypes
@@ -441,18 +440,18 @@ class TestSystemPromptForAgent:
         assert "DURABLE-MEMORY" not in refreshed
 
     def test_oversized_memory_is_visibly_truncated(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        patch_home(monkeypatch, context_token_budget_override=350)
-        ws = _write_meta("bounded-context-agent")
-        (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
-        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
-        (ws / "AGENTS.md").write_text("KEEP-AGENT-RULE\n")
-        (ws / "MEMORY.md").write_text("memory-detail-" * 1000)
+        with use_home(dataclasses.replace(current_home(), context_token_budget_override=350)):
+            ws = _write_meta("bounded-context-agent")
+            (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
+            (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
+            (ws / "AGENTS.md").write_text("KEEP-AGENT-RULE\n")
+            (ws / "MEMORY.md").write_text("memory-detail-" * 1000)
 
-        prompt = _identity.compose_agent_prompt("bounded-context-agent").text
+            prompt = _identity.compose_agent_prompt("bounded-context-agent").text
 
-        assert "KEEP-AGENT-RULE" in prompt
-        assert "[... MEMORY.md truncated:" in prompt
-        assert _context.estimate_tokens(prompt) <= 350
+            assert "KEEP-AGENT-RULE" in prompt
+            assert "[... MEMORY.md truncated:" in prompt
+            assert _context.estimate_tokens(prompt) <= 350
 
     def test_oversized_soul_does_not_erase_the_contract_or_memory(self) -> None:
         """A SOUL.md alone larger than the whole budget must not blank every section."""

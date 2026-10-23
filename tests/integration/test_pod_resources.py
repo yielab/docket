@@ -11,16 +11,18 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import pod_provisioning as _pp
 from docket.core import resources as _res
 from docket.edges import store as _store
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core"
 
@@ -32,12 +34,15 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _seed(
+    tmp_path: Path,
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _meta(home: Path, member_id: str) -> dict:  # type: ignore[type-arg]
@@ -107,52 +112,52 @@ class TestPortAllocation:
         """Two fresh projects start together from one empty registry; the write gate would make a
         read/compute/write implementation deterministically collide on the same range, so
         allocation must commit each project through one atomic registry transition instead."""
-        _seed(tmp_path, monkeypatch)
-        start = threading.Barrier(2)
-        old_write_gate = threading.Barrier(2)
-        write_count = 0
-        write_count_lock = threading.Lock()
-        real_write = _store.write_json
+        with _seed(tmp_path):
+            start = threading.Barrier(2)
+            old_write_gate = threading.Barrier(2)
+            write_count = 0
+            write_count_lock = threading.Lock()
+            real_write = _store.write_json
 
-        def staged_write(path: Path, data: dict[str, object]) -> None:
-            nonlocal write_count
-            if path == current_home().port_alloc_file:
-                with write_count_lock:
-                    write_count += 1
-                    should_wait = write_count <= 2
-                if should_wait:
-                    old_write_gate.wait(timeout=2)
-            real_write(path, data)
+            def staged_write(path: Path, data: dict[str, object]) -> None:
+                nonlocal write_count
+                if path == current_home().port_alloc_file:
+                    with write_count_lock:
+                        write_count += 1
+                        should_wait = write_count <= 2
+                    if should_wait:
+                        old_write_gate.wait(timeout=2)
+                real_write(path, data)
 
-        monkeypatch.setattr(_pp._store, "write_json", staged_write)
-        results: dict[str, tuple[int, int, str]] = {}
-        failures: list[BaseException] = []
+            monkeypatch.setattr(_pp._store, "write_json", staged_write)
+            results: dict[str, tuple[int, int, str]] = {}
+            failures: list[BaseException] = []
 
-        def allocate(project: str) -> None:
-            try:
-                start.wait(timeout=2)
-                results[project] = _pp.allocate_pod_resources(project)
-            except BaseException as exc:  # keep thread failures visible to pytest
-                failures.append(exc)
+            def allocate(project: str) -> None:
+                try:
+                    start.wait(timeout=2)
+                    results[project] = _pp.allocate_pod_resources(project)
+                except BaseException as exc:  # keep thread failures visible to pytest
+                    failures.append(exc)
 
-        threads = [
-            threading.Thread(target=allocate, args=(project,)) for project in ("alpha", "beta")
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(timeout=5)
+            threads = [
+                new_thread(target=allocate, args=(project,)) for project in ("alpha", "beta")
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=5)
 
-        assert not failures
-        assert all(not thread.is_alive() for thread in threads)
-        assert results["alpha"][0] != results["beta"][0]
-        allocation_table = _store.read_json(current_home().port_alloc_file)
-        assert allocation_table["allocations"] == {
-            "alpha": results["alpha"][0],
-            "beta": results["beta"][0],
-        }
-        assert Path(results["alpha"][2]).is_dir()
-        assert Path(results["beta"][2]).is_dir()
+            assert not failures
+            assert all(not thread.is_alive() for thread in threads)
+            assert results["alpha"][0] != results["beta"][0]
+            allocation_table = _store.read_json(current_home().port_alloc_file)
+            assert allocation_table["allocations"] == {
+                "alpha": results["alpha"][0],
+                "beta": results["beta"][0],
+            }
+            assert Path(results["alpha"][2]).is_dir()
+            assert Path(results["beta"][2]).is_dir()
 
 
 # ── integration ──────────────────────────────────────────────────────────────
@@ -162,132 +167,132 @@ class TestPodResources:
     def test_build_pod_allocates_resources_for_implementer(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        meta = _meta(home, "demo-implementer")
-        assert meta["portRangeStart"] == _res.PORT_BASE
-        assert meta["portRangeCount"] == _res.PORT_RANGE_SIZE
-        assert "scratchDir" in meta
-        assert meta["scratchDir"]  # non-empty
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            meta = _meta(home, "demo-implementer")
+            assert meta["portRangeStart"] == _res.PORT_BASE
+            assert meta["portRangeCount"] == _res.PORT_RANGE_SIZE
+            assert "scratchDir" in meta
+            assert meta["scratchDir"]  # non-empty
 
     def test_lead_does_not_get_port_resources(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        meta = _meta(home, "demo-lead")
-        assert "portRangeStart" not in meta
-        assert "scratchDir" not in meta
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            meta = _meta(home, "demo-lead")
+            assert "portRangeStart" not in meta
+            assert "scratchDir" not in meta
 
     def test_implementer_tools_md_contains_port_range(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
-        assert tools_path.exists(), "TOOLS.md should be written for the implementer"
-        content = tools_path.read_text()
-        assert "DOCKET_PORT_BASE" in content
-        assert "DOCKET_SCRATCH_DIR" in content
-        assert str(_res.PORT_BASE) in content
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
+            assert tools_path.exists(), "TOOLS.md should be written for the implementer"
+            content = tools_path.read_text()
+            assert "DOCKET_PORT_BASE" in content
+            assert "DOCKET_SCRATCH_DIR" in content
+            assert str(_res.PORT_BASE) in content
 
     def test_lead_has_no_tools_md(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        tools_path = home / "workspaces" / "projects" / "demo-lead" / "TOOLS.md"
-        assert not tools_path.exists()
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            tools_path = home / "workspaces" / "projects" / "demo-lead" / "TOOLS.md"
+            assert not tools_path.exists()
 
     def test_two_pods_get_disjoint_port_ranges(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
-        meta_a = _meta(home, "alpha-implementer")
-        meta_b = _meta(home, "beta-implementer")
-        start_a = meta_a["portRangeStart"]
-        count_a = meta_a["portRangeCount"]
-        start_b = meta_b["portRangeStart"]
-        count_b = meta_b["portRangeCount"]
-        range_a = set(range(start_a, start_a + count_a))
-        range_b = set(range(start_b, start_b + count_b))
-        assert not (range_a & range_b), "port ranges overlap between pods"
+        with _seed(tmp_path) as home:
+            _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
+            _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
+            meta_a = _meta(home, "alpha-implementer")
+            meta_b = _meta(home, "beta-implementer")
+            start_a = meta_a["portRangeStart"]
+            count_a = meta_a["portRangeCount"]
+            start_b = meta_b["portRangeStart"]
+            count_b = meta_b["portRangeCount"]
+            range_a = set(range(start_a, start_a + count_a))
+            range_b = set(range(start_b, start_b + count_b))
+            assert not (range_a & range_b), "port ranges overlap between pods"
 
     def test_scratch_dir_is_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        meta = _meta(home, "demo-implementer")
-        scratch = Path(meta["scratchDir"])
-        assert scratch.is_dir(), "scratch dir must exist after provisioning"
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            meta = _meta(home, "demo-implementer")
+            scratch = Path(meta["scratchDir"])
+            assert scratch.is_dir(), "scratch dir must exist after provisioning"
 
     def test_two_pods_get_distinct_scratch_dirs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
-        scratch_a = _meta(home, "alpha-implementer")["scratchDir"]
-        scratch_b = _meta(home, "beta-implementer")["scratchDir"]
-        assert scratch_a != scratch_b
+        with _seed(tmp_path) as home:
+            _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES)
+            _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES)
+            scratch_a = _meta(home, "alpha-implementer")["scratchDir"]
+            scratch_b = _meta(home, "beta-implementer")["scratchDir"]
+            assert scratch_a != scratch_b
 
     def test_pod_delete_frees_port_range(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        # Free the port range by simulating pod teardown.
-        _pod.free_pod_resources("demo")
-        # Re-provisioning the same project should get PORT_BASE (reused slot).
-        _pod.build_pod("demo2", _pod.pod.DEFAULT_POD_ROLES)
-        meta = _meta(home, "demo2-implementer")
-        assert meta["portRangeStart"] == _res.PORT_BASE
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            # Free the port range by simulating pod teardown.
+            _pod.free_pod_resources("demo")
+            # Re-provisioning the same project should get PORT_BASE (reused slot).
+            _pod.build_pod("demo2", _pod.pod.DEFAULT_POD_ROLES)
+            meta = _meta(home, "demo2-implementer")
+            assert meta["portRangeStart"] == _res.PORT_BASE
 
     def test_pod_delete_removes_scratch_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        meta = _meta(home, "demo-implementer")
-        scratch = Path(meta["scratchDir"])
-        assert scratch.is_dir()
-        _pod.free_pod_resources("demo")
-        assert not scratch.exists(), "scratch dir must be removed on pod teardown"
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            meta = _meta(home, "demo-implementer")
+            scratch = Path(meta["scratchDir"])
+            assert scratch.is_dir()
+            _pod.free_pod_resources("demo")
+            assert not scratch.exists(), "scratch dir must be removed on pod teardown"
 
     def test_free_pod_resources_idempotent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        # Calling free on a pod that never existed is safe.
-        _pod.free_pod_resources("nonexistent")
+        with _seed(tmp_path):
+            # Calling free on a pod that never existed is safe.
+            _pod.free_pod_resources("nonexistent")
 
     def test_provision_lock_dir_is_owner_only(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pp.provision_pod("demo", "software", location="/src/demo")
-        lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
-        assert lock_dir.is_dir()
-        assert lock_dir.stat().st_mode & 0o777 == 0o700
-        assert lock_dir.parent.stat().st_mode & 0o777 == 0o700
+        with _seed(tmp_path) as home:
+            _pp.provision_pod("demo", "software", location="/src/demo")
+            lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
+            assert lock_dir.is_dir()
+            assert lock_dir.stat().st_mode & 0o777 == 0o700
+            assert lock_dir.parent.stat().st_mode & 0o777 == 0o700
 
     def test_pod_delete_removes_provision_lock_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pp.provision_pod("demo", "software", location="/src/demo")
-        lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
-        assert lock_dir.is_dir()
-        _pod.free_pod_resources("demo")
-        assert not lock_dir.exists(), "provision lock dir must be removed on pod teardown"
+        with _seed(tmp_path) as home:
+            _pp.provision_pod("demo", "software", location="/src/demo")
+            lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
+            assert lock_dir.is_dir()
+            _pod.free_pod_resources("demo")
+            assert not lock_dir.exists(), "provision lock dir must be removed on pod teardown"
 
     def test_pods_dir_and_project_dir_are_owner_only(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        pods_dir = home / "workspaces" / "pods"
-        project_dir = pods_dir / "demo"
-        assert pods_dir.is_dir()
-        assert project_dir.is_dir()
-        assert pods_dir.stat().st_mode & 0o777 == 0o700
-        assert project_dir.stat().st_mode & 0o777 == 0o700
+        with _seed(tmp_path) as home:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+            pods_dir = home / "workspaces" / "pods"
+            project_dir = pods_dir / "demo"
+            assert pods_dir.is_dir()
+            assert project_dir.is_dir()
+            assert pods_dir.stat().st_mode & 0o777 == 0o700
+            assert project_dir.stat().st_mode & 0o777 == 0o700

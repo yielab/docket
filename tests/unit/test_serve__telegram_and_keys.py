@@ -15,6 +15,7 @@ import pytest
 
 import docket.serve as serve
 from docket.core import telegram as _telegram
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.serve"
 
@@ -39,7 +40,7 @@ def _fast_backoffs(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _run_loop_until(stop: threading.Event, n_calls: int, timeout: float = 5.0) -> None:
-    t = threading.Thread(target=serve._telegram_poll_loop, args=(stop,), daemon=True)
+    t = new_thread(target=serve._telegram_poll_loop, args=(stop,), daemon=True)
     t.start()
     t.join(timeout=timeout)
     assert not t.is_alive(), f"telegram poll loop did not stop after {n_calls} calls"

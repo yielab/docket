@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 import docket.serve as serve
@@ -208,18 +207,18 @@ def inbox_live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type:
 
     home = tmp_path / ".docket"
     home.mkdir()
-    repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
+    with use_home(Home(home)):
+        monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
 
-    class _Handler(_DocketHandler):
-        serve_token = _INBOX_TEST_TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _INBOX_TEST_TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{port}"
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        port = srv.server_address[1]
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        yield f"http://127.0.0.1:{port}"
+        srv.shutdown()
 
 
 def _get_json(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:

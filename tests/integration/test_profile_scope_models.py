@@ -50,9 +50,8 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        with use_home(Home(oc_dir)):
-            result = _runner.invoke(_app, args)
+    with use_home(Home(oc_dir)):
+        result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
 
 

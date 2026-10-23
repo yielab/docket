@@ -10,11 +10,12 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import answers as _answers
@@ -23,7 +24,7 @@ from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.edges.adapters import system as _sys
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.dispatch"
 
@@ -97,12 +98,14 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, codebase: Path) -> None:
+@contextmanager
+def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+    with use_home(Home(home)):
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        yield
 
 
 def _bind_pipeline(text: str) -> None:
@@ -184,9 +187,9 @@ def test_provisioning_a_repo_pod_creates_no_worktree(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    assert _worktree_paths(repo) == [str(repo.resolve())]
-    assert not (current_home().projects_dir / "demo-implementer" / "tasks").exists()
+    with _seed_pod(tmp_path, repo):
+        assert _worktree_paths(repo) == [str(repo.resolve())]
+        assert not (current_home().projects_dir / "demo-implementer" / "tasks").exists()
 
 
 def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(
@@ -194,43 +197,42 @@ def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
+    with _seed_pod(tmp_path, repo):
+        first = _dispatch.enqueue_task("demo", "first", channel="cli")
+        runner_one = _Runner("one.txt")
+        (res_one,) = _dispatch.dispatch_pod("demo", runner=runner_one, max_tasks=1)
+        assert res_one.status == "done", res_one.reason
 
-    first = _dispatch.enqueue_task("demo", "first", channel="cli")
-    runner_one = _Runner("one.txt")
-    (res_one,) = _dispatch.dispatch_pod("demo", runner=runner_one, max_tasks=1)
-    assert res_one.status == "done", res_one.reason
+        # The codebase moves on between tasks; nothing from task 1 is merged into it.
+        (repo / "later.txt").write_text("later\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "later")
+        head_at_task_two = _git(repo, "rev-parse", "HEAD")
 
-    # The codebase moves on between tasks; nothing from task 1 is merged into it.
-    (repo / "later.txt").write_text("later\n")
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-m", "later")
-    head_at_task_two = _git(repo, "rev-parse", "HEAD")
+        second = _dispatch.enqueue_task("demo", "second", channel="cli")
+        runner_two = _Runner("two.txt")
+        (res_two,) = _dispatch.dispatch_pod("demo", runner=runner_two, max_tasks=1)
+        assert res_two.status == "done", res_two.reason
 
-    second = _dispatch.enqueue_task("demo", "second", channel="cli")
-    runner_two = _Runner("two.txt")
-    (res_two,) = _dispatch.dispatch_pod("demo", runner=runner_two, max_tasks=1)
-    assert res_two.status == "done", res_two.reason
+        tasks = {t["id"]: t for t in _dispatch.read_tasks("demo")}
+        wt_one = tasks[first["id"]]["worktree"]
+        wt_two = tasks[second["id"]]["worktree"]
+        tasks_dir = current_home().projects_dir / "demo-implementer" / "tasks"
+        assert wt_one["dir"] == str(tasks_dir / first["id"])
+        assert wt_two["dir"] == str(tasks_dir / second["id"])
+        assert wt_one["branch"] == f"docket/demo/{first['id']}"
+        assert wt_two["branch"] == f"docket/demo/{second['id']}"
+        assert runner_one.roots == [wt_one["dir"]]
+        assert runner_two.roots == [wt_two["dir"]]
 
-    tasks = {t["id"]: t for t in _dispatch.read_tasks("demo")}
-    wt_one = tasks[first["id"]]["worktree"]
-    wt_two = tasks[second["id"]]["worktree"]
-    tasks_dir = current_home().projects_dir / "demo-implementer" / "tasks"
-    assert wt_one["dir"] == str(tasks_dir / first["id"])
-    assert wt_two["dir"] == str(tasks_dir / second["id"])
-    assert wt_one["branch"] == f"docket/demo/{first['id']}"
-    assert wt_two["branch"] == f"docket/demo/{second['id']}"
-    assert runner_one.roots == [wt_one["dir"]]
-    assert runner_two.roots == [wt_two["dir"]]
-
-    evidence = next(h for h in tasks[second["id"]]["hops"] if h["role"] == "implementer")[
-        "evidence"
-    ]
-    assert evidence["baseCommit"] == wt_two["baseCommit"] == head_at_task_two
-    assert evidence["commit"] == _sys.git_head_sha(wt_two["dir"])
-    # Task 1's commit is on task 1's branch only: task 2's stat is its own file.
-    assert evidence["diffStat"] == {"files": 1, "insertions": 1, "deletions": 0}
-    assert "one.txt" not in _git(repo, "ls-tree", "--name-only", wt_two["branch"])
+        evidence = next(h for h in tasks[second["id"]]["hops"] if h["role"] == "implementer")[
+            "evidence"
+        ]
+        assert evidence["baseCommit"] == wt_two["baseCommit"] == head_at_task_two
+        assert evidence["commit"] == _sys.git_head_sha(wt_two["dir"])
+        # Task 1's commit is on task 1's branch only: task 2's stat is its own file.
+        assert evidence["diffStat"] == {"files": 1, "insertions": 1, "deletions": 0}
+        assert "one.txt" not in _git(repo, "ls-tree", "--name-only", wt_two["branch"])
 
 
 def test_a_parked_then_answered_task_resumes_in_the_same_worktree(
@@ -238,30 +240,30 @@ def test_a_parked_then_answered_task_resumes_in_the_same_worktree(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    digest = hashlib.sha256(_ASK_PIPELINE_YAML.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path("demo")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
+    with _seed_pod(tmp_path, repo):
+        digest = hashlib.sha256(_ASK_PIPELINE_YAML.encode("utf-8")).hexdigest()
+        path = _pod.pod.bound_pipeline_path("demo")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
+        _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
 
-    queued = _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
-    runner = _Runner("answer.txt")
-    (parked,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
-    assert parked.status == "waiting_input"
-    recorded = _dispatch.read_tasks("demo")[0]["worktree"]
-    assert Path(recorded["dir"]).is_dir()
-    assert runner.roots == []
+        queued = _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        runner = _Runner("answer.txt")
+        (parked,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        assert parked.status == "waiting_input"
+        recorded = _dispatch.read_tasks("demo")[0]["worktree"]
+        assert Path(recorded["dir"]).is_dir()
+        assert runner.roots == []
 
-    _answers.answer_task(
-        "demo", queued["id"], "accept", {"answer": "yes"}, channel="cli", actor="op"
-    )
-    (done,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        _answers.answer_task(
+            "demo", queued["id"], "accept", {"answer": "yes"}, channel="cli", actor="op"
+        )
+        (done,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert done.status == "done", done.reason
-    assert runner.roots == [recorded["dir"]]
-    assert _dispatch.read_tasks("demo")[0]["worktree"] == recorded
-    assert len([p for p in _worktree_paths(repo) if "/tasks/" in p]) == 1
+        assert done.status == "done", done.reason
+        assert runner.roots == [recorded["dir"]]
+        assert _dispatch.read_tasks("demo")[0]["worktree"] == recorded
+        assert len([p for p in _worktree_paths(repo) if "/tasks/" in p]) == 1
 
 
 def test_removing_the_member_leaves_no_task_worktree(
@@ -269,18 +271,18 @@ def test_removing_the_member_leaves_no_task_worktree(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "first", channel="cli")
-    _dispatch.enqueue_task("demo", "second", channel="cli")
-    _dispatch.dispatch_pod("demo", runner=_Runner("a.txt"), max_tasks=1)
-    _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
-    assert len([p for p in _worktree_paths(repo) if "/tasks/" in p]) == 2
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "first", channel="cli")
+        _dispatch.enqueue_task("demo", "second", channel="cli")
+        _dispatch.dispatch_pod("demo", runner=_Runner("a.txt"), max_tasks=1)
+        _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
+        assert len([p for p in _worktree_paths(repo) if "/tasks/" in p]) == 2
 
-    ok, note = _pp.teardown_member("demo-implementer")
+        ok, note = _pp.teardown_member("demo-implementer")
 
-    assert ok
-    assert _worktree_paths(repo) == [str(repo.resolve())]
-    assert note.count("git branch -D") == 2
+        assert ok
+        assert _worktree_paths(repo) == [str(repo.resolve())]
+        assert note.count("git branch -D") == 2
 
 
 def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
@@ -288,29 +290,29 @@ def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a: (False, "disk full"))
-    seen: list[Any] = []
+    with _seed_pod(tmp_path, repo):
+        monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a: (False, "disk full"))
+        seen: list[Any] = []
 
-    def runner(
-        agent_id: str,
-        session_key: str,
-        message: str,
-        timeout: int,
-        env: dict[str, str] | None = None,
-    ) -> TurnResult:
-        seen.append((agent_id, env))
-        return TurnResult(True, "done", 0.0, {})
+        def runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            seen.append((agent_id, env))
+            return TurnResult(True, "done", 0.0, {})
 
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    record = _dispatch.read_tasks("demo")[0]["worktree"]
-    assert record["dir"] == ""
-    assert "disk full" in record["fallbackReason"]
-    implementer_env = next(env for agent, env in seen if agent.endswith("-implementer"))
-    assert PIPELINE_WORKTREE_ENV not in (implementer_env or {})
+        assert res.status == "done", res.reason
+        record = _dispatch.read_tasks("demo")[0]["worktree"]
+        assert record["dir"] == ""
+        assert "disk full" in record["fallbackReason"]
+        implementer_env = next(env for agent, env in seen if agent.endswith("-implementer"))
+        assert PIPELINE_WORKTREE_ENV not in (implementer_env or {})
 
 
 def _enqueue_with_base_ref(base_ref: str) -> None:
@@ -333,16 +335,16 @@ def test_a_task_with_a_base_ref_starts_its_worktree_there(
     _git(repo, "commit", "-m", "previous attempt")
     prev_sha = _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "-")
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _enqueue_with_base_ref("prev")
+    with _seed_pod(tmp_path, repo):
+        _enqueue_with_base_ref("prev")
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
 
-    assert res.status == "done", res.reason
-    record = _dispatch.read_tasks("demo")[0]["worktree"]
-    assert record["baseRef"] == "prev"
-    assert record["baseCommit"] == prev_sha
-    assert (Path(record["dir"]) / "prev.txt").is_file()
+        assert res.status == "done", res.reason
+        record = _dispatch.read_tasks("demo")[0]["worktree"]
+        assert record["baseRef"] == "prev"
+        assert record["baseCommit"] == prev_sha
+        assert (Path(record["dir"]) / "prev.txt").is_file()
 
 
 def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(
@@ -350,22 +352,22 @@ def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _enqueue_with_base_ref("nope")
-    runner = _Runner("b.txt")
+    with _seed_pod(tmp_path, repo):
+        _enqueue_with_base_ref("nope")
+        runner = _Runner("b.txt")
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    task = _dispatch.read_tasks("demo")[0]
-    assert (res.status, res.failure_kind) == ("failed", "base_ref")
-    assert task["status"] == "failed"
-    assert task["failureKind"] == "base_ref"
-    assert "nope" in task["reason"]
-    assert task["hops"] == []
-    assert "worktree" not in task
-    assert runner.roots == []
-    assert not (_pp.task_worktrees_dir("demo-implementer") / task["id"]).exists()
-    assert _pp.worktree_branch("demo", task["id"]) not in _git(repo, "branch", "--list")
+        task = _dispatch.read_tasks("demo")[0]
+        assert (res.status, res.failure_kind) == ("failed", "base_ref")
+        assert task["status"] == "failed"
+        assert task["failureKind"] == "base_ref"
+        assert "nope" in task["reason"]
+        assert task["hops"] == []
+        assert "worktree" not in task
+        assert runner.roots == []
+        assert not (_pp.task_worktrees_dir("demo-implementer") / task["id"]).exists()
+        assert _pp.worktree_branch("demo", task["id"]) not in _git(repo, "branch", "--list")
 
 
 def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
@@ -373,14 +375,14 @@ def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a, **_k: (False, "disk full"))
-    _enqueue_with_base_ref("HEAD")
+    with _seed_pod(tmp_path, repo):
+        monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a, **_k: (False, "disk full"))
+        _enqueue_with_base_ref("HEAD")
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
 
-    assert (res.status, res.failure_kind) == ("failed", "base_ref")
-    assert "disk full" in _dispatch.read_tasks("demo")[0]["reason"]
+        assert (res.status, res.failure_kind) == ("failed", "base_ref")
+        assert "disk full" in _dispatch.read_tasks("demo")[0]["reason"]
 
 
 def test_a_command_step_gets_the_task_id_and_the_evidence_commits(
@@ -388,21 +390,21 @@ def test_a_command_step_gets_the_task_id_and_the_evidence_commits(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _bind_pipeline(_COORDINATES_PIPELINE_YAML)
+    with _seed_pod(tmp_path, repo):
+        _bind_pipeline(_COORDINATES_PIPELINE_YAML)
 
-    queued = _dispatch.enqueue_task("demo", "work", channel="cli")
-    (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("work.txt"), max_tasks=1)
+        queued = _dispatch.enqueue_task("demo", "work", channel="cli")
+        (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("work.txt"), max_tasks=1)
 
-    assert res.status == "done", res.reason
-    task = _dispatch.read_tasks("demo")[0]
-    evidence = next(h for h in task["hops"] if h["role"] == "implementer")["evidence"]
-    command = next(h for h in task["hops"] if h["role"] == "coordinates")
-    assert evidence["baseCommit"] and evidence["commit"]
-    assert evidence["baseCommit"] == task["worktree"]["baseCommit"]
-    assert command["output"].strip() == (
-        f"id={queued['id']} base={evidence['baseCommit']} head={evidence['commit']}"
-    )
+        assert res.status == "done", res.reason
+        task = _dispatch.read_tasks("demo")[0]
+        evidence = next(h for h in task["hops"] if h["role"] == "implementer")["evidence"]
+        command = next(h for h in task["hops"] if h["role"] == "coordinates")
+        assert evidence["baseCommit"] and evidence["commit"]
+        assert evidence["baseCommit"] == task["worktree"]["baseCommit"]
+        assert command["output"].strip() == (
+            f"id={queued['id']} base={evidence['baseCommit']} head={evidence['commit']}"
+        )
 
 
 def test_a_command_step_without_an_implementer_hop_gets_empty_commits(
@@ -410,15 +412,17 @@ def test_a_command_step_without_an_implementer_hop_gets_empty_commits(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _bind_pipeline(_NO_IMPLEMENTER_PIPELINE_YAML)
+    with _seed_pod(tmp_path, repo):
+        _bind_pipeline(_NO_IMPLEMENTER_PIPELINE_YAML)
 
-    queued = _dispatch.enqueue_task("demo", "work", channel="cli")
-    (res,) = _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
+        queued = _dispatch.enqueue_task("demo", "work", channel="cli")
+        (res,) = _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    command = next(h for h in _dispatch.read_tasks("demo")[0]["hops"] if h["role"] == "coordinates")
-    assert command["output"].strip() == f"id={queued['id']} base= head="
+        assert res.status == "done", res.reason
+        command = next(
+            h for h in _dispatch.read_tasks("demo")[0]["hops"] if h["role"] == "coordinates"
+        )
+        assert command["output"].strip() == f"id={queued['id']} base= head="
 
 
 def test_uncommitted_work_is_committed_on_the_task_branch(
@@ -426,25 +430,25 @@ def test_uncommitted_work_is_committed_on_the_task_branch(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "Add the notes file", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "Add the notes file", channel="cli")
 
-    runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    task = _dispatch.read_tasks("demo")[0]
-    record = task["worktree"]
-    hop = _implementer_hop(task)
-    evidence = hop["evidence"]
-    assert evidence["commit"] != evidence["baseCommit"] == record["baseCommit"]
-    assert evidence["commit"] == _git(repo, "rev-parse", record["branch"])
-    assert _git(repo, "log", "-1", "--format=%s", record["branch"]) == "Add the notes file"
-    assert evidence["diffStat"] == {"files": 2, "insertions": 2, "deletions": 1}
-    assert hop["artifact"]["files_changed"] == ["README.md", "notes.txt"]
-    assert _git(Path(record["dir"]), "status", "--porcelain") == ""
-    _git(repo, "merge", record["branch"])
-    assert (repo / "notes.txt").read_text() == "new\n"
+        assert res.status == "done", res.reason
+        task = _dispatch.read_tasks("demo")[0]
+        record = task["worktree"]
+        hop = _implementer_hop(task)
+        evidence = hop["evidence"]
+        assert evidence["commit"] != evidence["baseCommit"] == record["baseCommit"]
+        assert evidence["commit"] == _git(repo, "rev-parse", record["branch"])
+        assert _git(repo, "log", "-1", "--format=%s", record["branch"]) == "Add the notes file"
+        assert evidence["diffStat"] == {"files": 2, "insertions": 2, "deletions": 1}
+        assert hop["artifact"]["files_changed"] == ["README.md", "notes.txt"]
+        assert _git(Path(record["dir"]), "status", "--porcelain") == ""
+        _git(repo, "merge", record["branch"])
+        assert (repo / "notes.txt").read_text() == "new\n"
 
 
 class _LeadWritesRunner:
@@ -471,23 +475,23 @@ def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(
     """A research pipeline has no Implementer; its writer's file must still reach the branch."""
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _bind_pipeline("name: write\nsteps:\n  - id: lead\n    role: lead\n")
-    _dispatch.enqueue_task("demo", "Write the notes", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _bind_pipeline("name: write\nsteps:\n  - id: lead\n    role: lead\n")
+        _dispatch.enqueue_task("demo", "Write the notes", channel="cli")
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=_LeadWritesRunner(), max_tasks=1)
+        (res,) = _dispatch.dispatch_pod("demo", runner=_LeadWritesRunner(), max_tasks=1)
 
-    assert res.status == "done", res.reason
-    task = _dispatch.read_tasks("demo")[0]
-    record = task["worktree"]
-    head = _git(repo, "rev-parse", record["branch"])
-    assert head != record["baseCommit"]
-    assert _git(repo, "show", f"{head}:research/notes.md") == "findings"
-    assert "lead hop" in _git(repo, "log", "-1", "--format=%b", record["branch"])
-    assert _git(Path(record["dir"]), "status", "--porcelain") == ""
-    (hop,) = task["hops"]
-    assert hop["artifact"]["files_changed"] == ["research/"]
-    assert hop["evidence"] is None
+        assert res.status == "done", res.reason
+        task = _dispatch.read_tasks("demo")[0]
+        record = task["worktree"]
+        head = _git(repo, "rev-parse", record["branch"])
+        assert head != record["baseCommit"]
+        assert _git(repo, "show", f"{head}:research/notes.md") == "findings"
+        assert "lead hop" in _git(repo, "log", "-1", "--format=%b", record["branch"])
+        assert _git(Path(record["dir"]), "status", "--porcelain") == ""
+        (hop,) = task["hops"]
+        assert hop["artifact"]["files_changed"] == ["research/"]
+        assert hop["evidence"] is None
 
 
 def test_an_unmerged_pinned_task_survives_prune_without_force(
@@ -495,15 +499,17 @@ def test_an_unmerged_pinned_task_survives_prune_without_force(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "work", channel="cli")
-    _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"only-new.txt": "x\n"}), max_tasks=1)
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "work", channel="cli")
+        _dispatch.dispatch_pod(
+            "demo", runner=_UncommittedRunner({"only-new.txt": "x\n"}), max_tasks=1
+        )
 
-    (entry,) = _pp.prune_task_worktrees("demo")
+        (entry,) = _pp.prune_task_worktrees("demo")
 
-    assert entry.action == "kept"
-    assert "not merged" in entry.reason
-    assert Path(_dispatch.read_tasks("demo")[0]["worktree"]["dir"], "only-new.txt").is_file()
+        assert entry.action == "kept"
+        assert "not merged" in entry.reason
+        assert Path(_dispatch.read_tasks("demo")[0]["worktree"]["dir"], "only-new.txt").is_file()
 
 
 def test_a_hop_that_changed_nothing_adds_no_commit(
@@ -511,15 +517,15 @@ def test_a_hop_that_changed_nothing_adds_no_commit(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "work", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "work", channel="cli")
 
-    _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
+        _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
 
-    task = _dispatch.read_tasks("demo")[0]
-    evidence = _implementer_hop(task)["evidence"]
-    assert evidence["commit"] == evidence["baseCommit"]
-    assert _git(repo, "rev-parse", task["worktree"]["branch"]) == evidence["baseCommit"]
+        task = _dispatch.read_tasks("demo")[0]
+        evidence = _implementer_hop(task)["evidence"]
+        assert evidence["commit"] == evidence["baseCommit"]
+        assert _git(repo, "rev-parse", task["worktree"]["branch"]) == evidence["baseCommit"]
 
 
 def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
@@ -527,26 +533,26 @@ def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a, **_k: (False, "forced"))
-    head = _git(repo, "rev-parse", "HEAD")
-    _bind_pipeline(_COORDINATES_PIPELINE_YAML)
-    _dispatch.enqueue_task("demo", "work", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        monkeypatch.setattr(_sys, "git_worktree_add", lambda *_a, **_k: (False, "forced"))
+        head = _git(repo, "rev-parse", "HEAD")
+        _bind_pipeline(_COORDINATES_PIPELINE_YAML)
+        _dispatch.enqueue_task("demo", "work", channel="cli")
 
-    runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
-    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-    assert res.status == "done", res.reason
-    task = _dispatch.read_tasks("demo")[0]
-    evidence = _implementer_hop(task)["evidence"]
-    assert evidence["baseCommit"] == head != evidence["commit"]
-    assert _git(repo, "show", f"{evidence['commit']}:notes.txt") == "new"
-    assert _git(repo, "rev-parse", "HEAD") == head
-    assert _git(repo, "diff", "--cached", "--name-only") == ""
-    assert _git(repo, "diff", "--name-only") == "README.md"
-    assert _git(repo, "ls-files", "--others") == "notes.txt"
-    command = next(h for h in task["hops"] if h["role"] == "coordinates")
-    assert f"head={evidence['commit']}" in command["output"]
+        assert res.status == "done", res.reason
+        task = _dispatch.read_tasks("demo")[0]
+        evidence = _implementer_hop(task)["evidence"]
+        assert evidence["baseCommit"] == head != evidence["commit"]
+        assert _git(repo, "show", f"{evidence['commit']}:notes.txt") == "new"
+        assert _git(repo, "rev-parse", "HEAD") == head
+        assert _git(repo, "diff", "--cached", "--name-only") == ""
+        assert _git(repo, "diff", "--name-only") == "README.md"
+        assert _git(repo, "ls-files", "--others") == "notes.txt"
+        command = next(h for h in task["hops"] if h["role"] == "coordinates")
+        assert f"head={evidence['commit']}" in command["output"]
 
 
 def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(
@@ -554,13 +560,13 @@ def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _bind_pipeline(_CHANGED_PIPELINE_YAML)
-    _dispatch.enqueue_task("demo", "work", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _bind_pipeline(_CHANGED_PIPELINE_YAML)
+        _dispatch.enqueue_task("demo", "work", channel="cli")
 
-    _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
+        _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
 
-    assert [h["role"] for h in _dispatch.read_tasks("demo")[0]["hops"]][-1] == "on-text"
+        assert [h["role"] for h in _dispatch.read_tasks("demo")[0]["hops"]][-1] == "on-text"
 
 
 def test_a_failed_pin_records_no_commit_and_an_empty_head(
@@ -568,16 +574,18 @@ def test_a_failed_pin_records_no_commit_and_an_empty_head(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _bind_pipeline(_COORDINATES_PIPELINE_YAML)
-    monkeypatch.setattr(_sys, "git_commit_all", lambda *_a, **_k: None)
-    queued = _dispatch.enqueue_task("demo", "work", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _bind_pipeline(_COORDINATES_PIPELINE_YAML)
+        monkeypatch.setattr(_sys, "git_commit_all", lambda *_a, **_k: None)
+        queued = _dispatch.enqueue_task("demo", "work", channel="cli")
 
-    _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
+        _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
 
-    task = _dispatch.read_tasks("demo")[0]
-    evidence = _implementer_hop(task)["evidence"]
-    assert evidence["commit"] is None
-    assert evidence["diffStat"] is None
-    command = next(h for h in task["hops"] if h["role"] == "coordinates")
-    assert command["output"].strip() == (f"id={queued['id']} base={evidence['baseCommit']} head=")
+        task = _dispatch.read_tasks("demo")[0]
+        evidence = _implementer_hop(task)["evidence"]
+        assert evidence["commit"] is None
+        assert evidence["diffStat"] is None
+        command = next(h for h in task["hops"] if h["role"] == "coordinates")
+        assert command["output"].strip() == (
+            f"id={queued['id']} base={evidence['baseCommit']} head="
+        )

@@ -17,6 +17,7 @@ import pytest
 from docket.core import archetypes as _archetypes
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core.orchestrator"
 
@@ -76,7 +77,7 @@ class TestDeterminism:
         def _worker(i: int) -> None:
             results[i] = _orch.resolve_plan(spec, roster, registry=registry)
 
-        threads = [threading.Thread(target=_worker, args=(i,)) for i in range(8)]
+        threads = [new_thread(target=_worker, args=(i,)) for i in range(8)]
         for t in threads:
             t.start()
         for t in threads:

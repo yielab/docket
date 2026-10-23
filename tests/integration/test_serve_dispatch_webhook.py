@@ -9,11 +9,11 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import fleet as _fleet
 from docket.core import runs as _runs
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -28,15 +28,15 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
 
-    class _Handler(_DocketHandler):
-        serve_token = _TOKEN
+        class _Handler(_DocketHandler):
+            serve_token = _TOKEN
 
-    srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_address[1]}"
-    srv.shutdown()
+        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        yield f"http://127.0.0.1:{srv.server_address[1]}"
+        srv.shutdown()
 
 
 def _post(url: str) -> tuple[int, dict]:  # type: ignore[type-arg]

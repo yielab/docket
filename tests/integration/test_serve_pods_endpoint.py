@@ -30,7 +30,7 @@ from docket.core import pod_provisioning as _pp
 from docket.core import pod_report as _pod_report
 from docket.edges import store as _store
 from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.threads import ContextHTTPServer
+from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -304,8 +304,8 @@ class TestIdempotence:
             except Exception as exc:
                 outcomes[name] = exc
 
-        winner = threading.Thread(target=provision, name="winner")
-        loser = threading.Thread(target=provision, name="loser")
+        winner = new_thread(target=provision, name="winner")
+        loser = new_thread(target=provision, name="loser")
         winner.start()
         assert winner_at_first_member.wait(timeout=2)
         loser.start()

@@ -10,11 +10,12 @@ import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
+from tests.conftest import record_isolation_off, register_local_provider
 from tests.integration.llm_stub import _final_response, _tool_call_response
 
 from docket.cli import _pod
@@ -24,6 +25,7 @@ from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 from docket.core import runs as _runs
 from docket.edges import store as _store
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.serve import _DocketHandler
 
@@ -73,7 +75,8 @@ def _git(repo: Path, *args: str) -> str:
     return out.stdout.strip()
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, base_url: str = "") -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, base_url: str = "") -> Iterator[Path]:
     codebase = tmp_path / "code"
     codebase.mkdir()
     subprocess.run(["git", "init", str(codebase)], check=True, capture_output=True)
@@ -85,20 +88,20 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, base_url: str = "
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    if base_url:
-        register_local_provider(home, "local", [{"id": "stub"}], base_url=base_url)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
-    if base_url:
-        for role in ("lead", "implementer"):
-            _fleet.meta_set(_pod.pod.member_id("demo", role), "model", "local/stub")
-        path = _pod.pod.bound_pipeline_path("demo")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_IMPLEMENTER_ONLY, encoding="utf-8")
-        digest = hashlib.sha256(_IMPLEMENTER_ONLY.encode("utf-8")).hexdigest()
-        _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
-    return codebase
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        if base_url:
+            register_local_provider(home, "local", [{"id": "stub"}], base_url=base_url)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        if base_url:
+            for role in ("lead", "implementer"):
+                _fleet.meta_set(_pod.pod.member_id("demo", role), "model", "local/stub")
+            path = _pod.pod.bound_pipeline_path("demo")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(_IMPLEMENTER_ONLY, encoding="utf-8")
+            digest = hashlib.sha256(_IMPLEMENTER_ONLY.encode("utf-8")).hexdigest()
+            _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
+        yield codebase
 
 
 def _set_task(task_id: str, **fields: Any) -> None:
@@ -125,141 +128,140 @@ def test_diff_reports_the_task_branch_against_its_base(
             _final_response("done"),
         ]
     )
-    codebase = _seed_pod(tmp_path, monkeypatch, server.base_url)
-    task = _dispatch.enqueue_task("demo", "write a file", channel="cli")
-    (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
-    assert result.status == "done", result.reason
-    record = next(t for t in _dispatch.read_tasks("demo") if t["id"] == task["id"])["worktree"]
-    (Path(record["dir"]) / "loose.txt").write_text("not added\n")
-    url = f"{live_server}/tasks/demo/{task['id']}/diff"
+    with _seed_pod(tmp_path, server.base_url) as codebase:
+        task = _dispatch.enqueue_task("demo", "write a file", channel="cli")
+        (result,) = _dispatch.dispatch_pod("demo", max_tasks=1)
+        assert result.status == "done", result.reason
+        record = next(t for t in _dispatch.read_tasks("demo") if t["id"] == task["id"])["worktree"]
+        (Path(record["dir"]) / "loose.txt").write_text("not added\n")
+        url = f"{live_server}/tasks/demo/{task['id']}/diff"
 
-    status, body = _call("GET", url)
+        status, body = _call("GET", url)
 
-    assert status == 200, body
-    assert body["task"] == task["id"]
-    assert body["branch"] == record["branch"]
-    assert body["baseCommit"] == record["baseCommit"]
-    assert body["head"] == _git(codebase, "rev-parse", record["branch"])
-    assert "out.txt" in body["patch"] and "+made" in body["patch"]
-    assert body["untracked"] == ["loose.txt"]
-    assert body["worktreePresent"] is True
+        assert status == 200, body
+        assert body["task"] == task["id"]
+        assert body["branch"] == record["branch"]
+        assert body["baseCommit"] == record["baseCommit"]
+        assert body["head"] == _git(codebase, "rev-parse", record["branch"])
+        assert "out.txt" in body["patch"] and "+made" in body["patch"]
+        assert body["untracked"] == ["loose.txt"]
+        assert body["worktreePresent"] is True
 
-    entries = _pp.prune_task_worktrees("demo", force=True)
-    assert [e.action for e in entries] == ["removed"]
-    status, after = _call("GET", url)
+        entries = _pp.prune_task_worktrees("demo", force=True)
+        assert [e.action for e in entries] == ["removed"]
+        status, after = _call("GET", url)
 
-    assert status == 200
-    assert after["worktreePresent"] is False
-    assert after["untracked"] == []
-    assert after["patch"] == body["patch"]
-    assert after["head"] == body["head"]
+        assert status == 200
+        assert after["worktreePresent"] is False
+        assert after["untracked"] == []
+        assert after["patch"] == body["patch"]
+        assert after["head"] == body["head"]
 
 
 def test_diff_of_an_in_place_task_is_a_conflict_with_a_reason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
 ) -> None:
     """A task with no worktree branch answers 409 and says it ran in place."""
-    _seed_pod(tmp_path, monkeypatch)
-    task = _dispatch.enqueue_task("demo", "plain", channel="cli")
+    with _seed_pod(tmp_path):
+        task = _dispatch.enqueue_task("demo", "plain", channel="cli")
 
-    status, body = _call("GET", f"{live_server}/tasks/demo/{task['id']}/diff")
+        status, body = _call("GET", f"{live_server}/tasks/demo/{task['id']}/diff")
 
-    assert status == 409
-    assert body["reason"] == "task ran in place"
+        assert status == 409
+        assert body["reason"] == "task ran in place"
 
 
 def test_diff_of_an_unknown_task_is_not_found(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
 ) -> None:
     """An id the pod never queued answers 404 on diff, cancel and retry."""
-    _seed_pod(tmp_path, monkeypatch)
-
-    assert _call("GET", f"{live_server}/tasks/demo/task-nope/diff")[0] == 404
-    assert _call("POST", f"{live_server}/tasks/demo/task-nope/cancel")[0] == 404
-    assert _call("POST", f"{live_server}/tasks/demo/task-nope/retry")[0] == 404
+    with _seed_pod(tmp_path):
+        assert _call("GET", f"{live_server}/tasks/demo/task-nope/diff")[0] == 404
+        assert _call("POST", f"{live_server}/tasks/demo/task-nope/cancel")[0] == 404
+        assert _call("POST", f"{live_server}/tasks/demo/task-nope/retry")[0] == 404
 
 
 def test_lifecycle_routes_need_the_bearer_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
 ) -> None:
     """No token is 401 before anything else is looked at."""
-    _seed_pod(tmp_path, monkeypatch)
-    task = _dispatch.enqueue_task("demo", "plain", channel="cli")
-    base = f"{live_server}/tasks/demo/{task['id']}"
+    with _seed_pod(tmp_path):
+        task = _dispatch.enqueue_task("demo", "plain", channel="cli")
+        base = f"{live_server}/tasks/demo/{task['id']}"
 
-    assert _call("GET", f"{base}/diff", token=None)[0] == 401
-    assert _call("POST", f"{base}/cancel", token=None)[0] == 401
-    assert _call("POST", f"{base}/retry", token="wrong")[0] == 401
+        assert _call("GET", f"{base}/diff", token=None)[0] == 401
+        assert _call("POST", f"{base}/cancel", token=None)[0] == 401
+        assert _call("POST", f"{base}/retry", token="wrong")[0] == 401
 
 
 def test_cancel_stops_the_live_run_of_a_running_task_and_audits_the_channel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
 ) -> None:
     """A running task with a live run is cancelled over HTTP; the audit names channel and reason."""
-    _seed_pod(tmp_path, monkeypatch)
-    task = _dispatch.enqueue_task("demo", "long", channel="cli")
-    _set_task(task["id"], status="running", claimPid=os.getpid())
-    run = _runs.create_run("cli", "demo")
-    assert _runs.mark_running(run["id"])
+    with _seed_pod(tmp_path):
+        task = _dispatch.enqueue_task("demo", "long", channel="cli")
+        _set_task(task["id"], status="running", claimPid=os.getpid())
+        run = _runs.create_run("cli", "demo")
+        assert _runs.mark_running(run["id"])
 
-    status, body = _call(
-        "POST", f"{live_server}/tasks/demo/{task['id']}/cancel", body={"reason": "wrong repo"}
-    )
+        status, body = _call(
+            "POST", f"{live_server}/tasks/demo/{task['id']}/cancel", body={"reason": "wrong repo"}
+        )
 
-    assert status == 200, body
-    assert body == {"ok": True, "task": task["id"], "status": "cancelled"}
-    assert _runs.get_run(run["id"])["cancellation"]["requestedAt"]
-    cancels = [e for e in _audit.read_audit() if e.get("action") == "task.cancel"]
-    assert len(cancels) == 1
-    assert "channel=http" in cancels[0]["detail"] and "wrong repo" in cancels[0]["detail"]
+        assert status == 200, body
+        assert body == {"ok": True, "task": task["id"], "status": "cancelled"}
+        assert _runs.get_run(run["id"])["cancellation"]["requestedAt"]
+        cancels = [e for e in _audit.read_audit() if e.get("action") == "task.cancel"]
+        assert len(cancels) == 1
+        assert "channel=http" in cancels[0]["detail"] and "wrong repo" in cancels[0]["detail"]
 
 
 def test_cancel_with_nothing_in_flight_is_a_conflict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
 ) -> None:
     """A terminal task has nothing to cancel: 409 and the status unchanged."""
-    _seed_pod(tmp_path, monkeypatch)
-    task = _dispatch.enqueue_task("demo", "done already", channel="cli")
-    _set_task(task["id"], status="done")
+    with _seed_pod(tmp_path):
+        task = _dispatch.enqueue_task("demo", "done already", channel="cli")
+        _set_task(task["id"], status="done")
 
-    status, _body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
+        status, _body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
 
-    assert status == 409
-    assert _status(task["id"]) == "done"
+        assert status == 409
+        assert _status(task["id"]) == "done"
 
 
 def test_cancel_of_a_parked_task_ends_it_cancelled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
 ) -> None:
     """A task waiting for an answer is cancelled over HTTP and audited with the channel."""
-    _seed_pod(tmp_path, monkeypatch)
-    task = _dispatch.enqueue_task("demo", "ask", channel="cli")
-    _set_task(task["id"], status="waiting_input", question={"text": "which?"})
+    with _seed_pod(tmp_path):
+        task = _dispatch.enqueue_task("demo", "ask", channel="cli")
+        _set_task(task["id"], status="waiting_input", question={"text": "which?"})
 
-    status, body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
+        status, body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
 
-    assert status == 200, body
-    assert body["status"] == "cancelled"
-    assert _status(task["id"]) == "cancelled"
-    assert any(
-        e.get("action") == "task.cancel" and "channel=http" in e["detail"]
-        for e in _audit.read_audit()
-    )
+        assert status == 200, body
+        assert body["status"] == "cancelled"
+        assert _status(task["id"]) == "cancelled"
+        assert any(
+            e.get("action") == "task.cancel" and "channel=http" in e["detail"]
+            for e in _audit.read_audit()
+        )
 
 
 def test_retry_requeues_a_failed_task_and_refuses_a_done_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, live_server: str
 ) -> None:
     """Retry flips failed to pending (200) and answers 409 on a done task."""
-    _seed_pod(tmp_path, monkeypatch)
-    failed = _dispatch.enqueue_task("demo", "broke", channel="cli")
-    done = _dispatch.enqueue_task("demo", "fine", channel="cli")
-    _set_task(failed["id"], status="failed")
-    _set_task(done["id"], status="done")
+    with _seed_pod(tmp_path):
+        failed = _dispatch.enqueue_task("demo", "broke", channel="cli")
+        done = _dispatch.enqueue_task("demo", "fine", channel="cli")
+        _set_task(failed["id"], status="failed")
+        _set_task(done["id"], status="done")
 
-    status, body = _call("POST", f"{live_server}/tasks/demo/{failed['id']}/retry")
+        status, body = _call("POST", f"{live_server}/tasks/demo/{failed['id']}/retry")
 
-    assert (status, body) == (200, {"ok": True, "task": failed["id"], "status": "pending"})
-    assert _status(failed["id"]) == "pending"
-    assert _call("POST", f"{live_server}/tasks/demo/{done['id']}/retry")[0] == 409
-    assert _status(done["id"]) == "done"
+        assert (status, body) == (200, {"ok": True, "task": failed["id"], "status": "pending"})
+        assert _status(failed["id"]) == "pending"
+        assert _call("POST", f"{live_server}/tasks/demo/{done['id']}/retry")[0] == 409
+        assert _status(done["id"]) == "done"

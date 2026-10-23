@@ -17,7 +17,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from tests.conftest import patch_home
 
 import docket.config as _cfg
 from docket.core.llm import ToolCall
@@ -32,11 +31,13 @@ SUBJECT = "docket.edges.adapters.fetch"
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Isolate every docket-owned store this module touches and default the
     fetch allowlist closed so each test opts a host in explicitly."""
-    with use_home(Home(tmp_path)):
-        with use_home(
+    with (
+        use_home(Home(tmp_path)),
+        use_home(
             dataclasses.replace(current_home(), tool_approval_timeout=0, fetch_allowed_domains=())
-        ):
-            yield
+        ),
+    ):
+        yield
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -166,10 +167,10 @@ class TestResponseSizeCap:
         self, server: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _allow(monkeypatch, server)
-        patch_home(monkeypatch, tool_max_output_chars=100)
-        out = _fetch.fetch_url(f"{server}/big")
-        assert out.ok and "more characters]" in out.content
-        assert len(out.content) <= 100 + 60
+        with use_home(dataclasses.replace(current_home(), tool_max_output_chars=100)):
+            out = _fetch.fetch_url(f"{server}/big")
+            assert out.ok and "more characters]" in out.content
+            assert len(out.content) <= 100 + 60
 
 
 class TestTimeout:

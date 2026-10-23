@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
@@ -110,9 +109,8 @@ def _write_docket_session(
 
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
     """Invoke the CLI in-process against *oc_dir* as an isolated DOCKET_HOME."""
-    with pytest.MonkeyPatch.context() as mp:
-        with use_home(Home(oc_dir)):
-            result = _runner.invoke(_app, args)
+    with use_home(Home(oc_dir)):
+        result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
 
 

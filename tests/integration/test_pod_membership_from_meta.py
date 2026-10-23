@@ -12,10 +12,11 @@ requirement 5).
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
 from docket.cli import _pod
@@ -24,6 +25,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import runtime_driver as _rd
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.pod"
 
@@ -33,11 +35,15 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@contextmanager
+def _seed(
+    tmp_path: Path,
+) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
+    with use_home(Home(home)):
+        yield
 
 
 def _register_security_reviewer() -> None:
@@ -78,43 +84,45 @@ def _security_review_pipeline() -> _pipeline.PipelineSpec:
 
 class TestCustomRoleEndingInRegisteredRoleName:
     def test_dispatch_reaches_done(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _seed(tmp_path, monkeypatch)
-        _register_security_reviewer()
-        _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
-        _pod.add_members("proj", "security-reviewer")
+        with _seed(tmp_path):
+            _register_security_reviewer()
+            _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
+            _pod.add_members("proj", "security-reviewer")
 
-        # The provisioned member's own meta is what makes pod_of resolvable -- confirm the
-        # fixture actually reproduces the trigger's precondition before dispatching.
-        assert pod.pod_of("proj-security-reviewer") == "proj"
+            # The provisioned member's own meta is what makes pod_of resolvable -- confirm the
+            # fixture actually reproduces the trigger's precondition before dispatching.
+            assert pod.pod_of("proj-security-reviewer") == "proj"
 
-        _dispatch.enqueue_task("proj", "ship the security review", channel="cli")
+            _dispatch.enqueue_task("proj", "ship the security review", channel="cli")
 
-        driver = FakeDriver()
+            driver = FakeDriver()
 
-        def _runner(
-            agent_id: str,
-            session_key: str,
-            message: str,
-            timeout: int,
-            env: dict[str, str] | None = None,
-        ) -> _rd.TurnResult:
-            result = driver(agent_id, session_key, message, timeout, env)
-            if agent_id.endswith("security-reviewer"):
-                return _rd.TurnResult(True, "APPROVE - clean", result.cost_usd, {"output": "x"})
-            return result
+            def _runner(
+                agent_id: str,
+                session_key: str,
+                message: str,
+                timeout: int,
+                env: dict[str, str] | None = None,
+            ) -> _rd.TurnResult:
+                result = driver(agent_id, session_key, message, timeout, env)
+                if agent_id.endswith("security-reviewer"):
+                    return _rd.TurnResult(True, "APPROVE - clean", result.cost_usd, {"output": "x"})
+                return result
 
-        results = _dispatch.dispatch_pod("proj", runner=_runner, spec=_security_review_pipeline())
+            results = _dispatch.dispatch_pod(
+                "proj", runner=_runner, spec=_security_review_pipeline()
+            )
 
-        assert len(results) == 1
-        assert results[0].status == "done", results[0].reason
-        assert [h.role for h in results[0].hops] == ["lead", "security-reviewer"]
+            assert len(results) == 1
+            assert results[0].status == "done", results[0].reason
+            assert [h.role for h in results[0].hops] == ["lead", "security-reviewer"]
 
     def test_a_genuinely_cross_pod_member_id_is_still_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
-        _pod.build_pod("other", pod.DEFAULT_POD_ROLES, codebase="/src/other")
+        with _seed(tmp_path):
+            _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
+            _pod.build_pod("other", pod.DEFAULT_POD_ROLES, codebase="/src/other")
 
-        assert pod.pod_of("other-lead") == "other"
-        assert pod.pod_of("other-lead") != "proj"
+            assert pod.pod_of("other-lead") == "other"
+            assert pod.pod_of("other-lead") != "proj"

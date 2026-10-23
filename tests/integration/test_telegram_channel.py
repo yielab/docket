@@ -38,6 +38,7 @@ from docket.edges import store as _store
 from docket.edges.adapters.channels import telegram as _tg_channel
 from docket.edges.adapters.telegram import TelegramUpdate
 from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core"
 
@@ -261,8 +262,8 @@ class TestApproveDeny:
             outcomes.append(_tg.handle_message(_msg("-100200", command, update_id=update_id)))
 
         threads = [
-            threading.Thread(target=decide, args=(f"/approve {token}", 2)),
-            threading.Thread(target=decide, args=(f"/deny {token}", 3)),
+            new_thread(target=decide, args=(f"/approve {token}", 2)),
+            new_thread(target=decide, args=(f"/deny {token}", 3)),
         ]
         for thread in threads:
             thread.start()

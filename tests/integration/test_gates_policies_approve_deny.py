@@ -53,12 +53,11 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
 
-    with use_home(Home(d)):
-        with use_home(dataclasses.replace(current_home(), approval_timeout=900)):
-            # Never touch systemctl.
-            # No real backend probing from these tests: default to "no backend usable".
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-            yield d
+    with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
+        # Never touch systemctl.
+        # No real backend probing from these tests: default to "no backend usable".
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        yield d
 
 
 def _pod_cli(*args: str) -> Any:

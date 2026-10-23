@@ -22,6 +22,7 @@ import pytest
 
 from docket.core import runs as _runs
 from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.core.runs"
 
@@ -216,7 +217,7 @@ class TestConcurrentCreate:
             barrier.wait(timeout=5)
             _runs.create_run("sweep", f"proj-{i}")
 
-        threads = [threading.Thread(target=_create, args=(i,)) for i in range(n)]
+        threads = [new_thread(target=_create, args=(i,)) for i in range(n)]
         for t in threads:
             t.start()
         for t in threads:

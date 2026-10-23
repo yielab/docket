@@ -12,11 +12,12 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -24,6 +25,7 @@ from docket.core import fleet as _fleet
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.identity"
 
@@ -140,21 +142,23 @@ class _Runner:
         return result
 
 
-def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **repo_kwargs: bool) -> None:
+@contextmanager
+def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **repo_kwargs: bool) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    repo = tmp_path / "repo"
-    _init_repo(repo, **repo_kwargs)
-    _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES, codebase=str(repo))
-    path = _pod.pod.bound_pipeline_path("demo")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_PIPELINE, encoding="utf-8")
-    digest = hashlib.sha256(_PIPELINE.encode("utf-8")).hexdigest()
-    _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        repo = tmp_path / "repo"
+        _init_repo(repo, **repo_kwargs)
+        _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES, codebase=str(repo))
+        path = _pod.pod.bound_pipeline_path("demo")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_PIPELINE, encoding="utf-8")
+        digest = hashlib.sha256(_PIPELINE.encode("utf-8")).hexdigest()
+        _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
+        yield
 
 
 def _run(skill_probe: bool = False) -> tuple[_Runner, _Backend]:
@@ -170,57 +174,57 @@ def _run(skill_probe: bool = False) -> tuple[_Runner, _Backend]:
 def test_reviewer_prompt_carries_the_base_commit_agents_md_not_the_implementers_rewrite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _setup(tmp_path, monkeypatch)
-    runner, _backend = _run()
-    prompt = runner.prompts["demo-reviewer"]
-    assert "BASE-RULES" in prompt
-    assert "MARKER-RULES" not in prompt
+    with _setup(tmp_path, monkeypatch):
+        runner, _backend = _run()
+        prompt = runner.prompts["demo-reviewer"]
+        assert "BASE-RULES" in prompt
+        assert "MARKER-RULES" not in prompt
 
 
 def test_reviewer_skill_index_and_body_come_from_the_base_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _setup(tmp_path, monkeypatch)
-    runner, backend = _run(skill_probe=True)
-    prompt = runner.prompts["demo-reviewer"]
-    assert "BASE-SKILL-DESC" in prompt
-    assert "MARKER-SKILL-DESC" not in prompt
-    assert "MARKER-EVIL-SKILL" not in prompt
-    tool_results = [m.content for call in backend.calls for m in call if m.role == "tool"]
-    assert any("BASE-SKILL-BODY" in text for text in tool_results)
-    assert not any("MARKER-SKILL-BODY" in text for text in tool_results)
+    with _setup(tmp_path, monkeypatch):
+        runner, backend = _run(skill_probe=True)
+        prompt = runner.prompts["demo-reviewer"]
+        assert "BASE-SKILL-DESC" in prompt
+        assert "MARKER-SKILL-DESC" not in prompt
+        assert "MARKER-EVIL-SKILL" not in prompt
+        tool_results = [m.content for call in backend.calls for m in call if m.role == "tool"]
+        assert any("BASE-SKILL-BODY" in text for text in tool_results)
+        assert not any("MARKER-SKILL-BODY" in text for text in tool_results)
 
 
 def test_a_file_absent_at_the_base_commit_is_absent_whatever_the_worktree_holds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _setup(tmp_path, monkeypatch, agents=False, skill=False)
-    runner, _backend = _run()
-    prompt = runner.prompts["demo-reviewer"]
-    assert "MARKER-RULES" not in prompt
-    assert "MARKER-SKILL-DESC" not in prompt
-    assert "MARKER-EVIL-SKILL" not in prompt
+    with _setup(tmp_path, monkeypatch, agents=False, skill=False):
+        runner, _backend = _run()
+        prompt = runner.prompts["demo-reviewer"]
+        assert "MARKER-RULES" not in prompt
+        assert "MARKER-SKILL-DESC" not in prompt
+        assert "MARKER-EVIL-SKILL" not in prompt
 
 
 def test_the_hop_records_each_composed_repository_file_with_its_sha256(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _setup(tmp_path, monkeypatch)
-    backend = _Backend(False)
-    runner = _Runner(backend)
-    seen: list[TurnResult] = []
-    real = runner.driver.run_turn
+    with _setup(tmp_path, monkeypatch):
+        backend = _Backend(False)
+        runner = _Runner(backend)
+        seen: list[TurnResult] = []
+        real = runner.driver.run_turn
 
-    def spy(*args, **kwargs):  # type: ignore[no-untyped-def]
-        out = real(*args, **kwargs)
-        seen.append(out)
-        return out
+        def spy(*args, **kwargs):  # type: ignore[no-untyped-def]
+            out = real(*args, **kwargs)
+            seen.append(out)
+            return out
 
-    runner.driver.run_turn = spy  # type: ignore[method-assign]
-    _dispatch.enqueue_task("demo", "do the thing", channel="cli")
-    (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
-    assert result.status == "waiting_approval", result.reason
-    assert ".docket/skills" in result.reason
-    files = seen[-1].repo_files
-    assert files["AGENTS.md"] == hashlib.sha256(_BASE_AGENTS.encode()).hexdigest()
-    assert ".docket/skills/demo-skill/SKILL.md" in files
+        runner.driver.run_turn = spy  # type: ignore[method-assign]
+        _dispatch.enqueue_task("demo", "do the thing", channel="cli")
+        (result,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        assert result.status == "waiting_approval", result.reason
+        assert ".docket/skills" in result.reason
+        files = seen[-1].repo_files
+        assert files["AGENTS.md"] == hashlib.sha256(_BASE_AGENTS.encode()).hexdigest()
+        assert ".docket/skills/demo-skill/SKILL.md" in files

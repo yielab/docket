@@ -226,11 +226,10 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        with use_home(Home(home)):
-            if extra_path is not None:
-                mp.setenv("PATH", f"{extra_path}{os.pathsep}{os.environ['PATH']}")
-            result = _runner.invoke(_app, args)
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
+        if extra_path is not None:
+            mp.setenv("PATH", f"{extra_path}{os.pathsep}{os.environ['PATH']}")
+        result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
 
 

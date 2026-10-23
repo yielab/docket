@@ -77,10 +77,9 @@ def _run(
     home: Path,
     stdin_text: str = "",
 ) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        with use_home(Home(home)):
-            mp.setattr(_contract, "_is_tty", lambda: True)
-            result = _runner.invoke(_app, args, input=stdin_text)
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
+        mp.setattr(_contract, "_is_tty", lambda: True)
+        result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 
 

@@ -12,18 +12,18 @@ from __future__ import annotations
 import contextlib
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
 from docket.core import secrets as _secrets
 from docket.core.audit import read_audit
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core.exporter"
 
@@ -33,12 +33,15 @@ _PUBLIC_KEY = "pk-lf-testvalue00000000000000"
 _SECRET_KEY = "sk-lf-testvalue00000000000000"
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _seed(
+    tmp_path: Path,
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _store_langfuse_keys() -> None:
@@ -91,87 +94,94 @@ class TestEnableWithoutCredentials:
         """RED on the base: `docket setup export` does not exist as a command. Once it does, a
         non-TTY caller with no stored credential is refused, naming both missing names, with
         `docket-exporters.json` never created (ADR 0014's fail-closed negative case)."""
-        _seed(tmp_path, monkeypatch)
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        with _seed(tmp_path):
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        result = _runner.invoke(_app, ["setup", "export", "enable", "langfuse"])
+            result = _runner.invoke(_app, ["setup", "export", "enable", "langfuse"])
 
-        assert result.exit_code == 1
-        combined = result.stdout + result.stderr
-        assert "LANGFUSE_PUBLIC_KEY" in combined
-        assert "LANGFUSE_SECRET_KEY" in combined
-        assert not current_home().exporters_file.exists()
+            assert result.exit_code == 1
+            combined = result.stdout + result.stderr
+            assert "LANGFUSE_PUBLIC_KEY" in combined
+            assert "LANGFUSE_SECRET_KEY" in combined
+            assert not current_home().exporters_file.exists()
 
 
 class TestEnableWithLocalServer:
     def test_enable_writes_minimal_document_and_lists_enabled(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        _store_langfuse_keys()
+        with _seed(tmp_path) as home:
+            _store_langfuse_keys()
 
-        with _serve(200) as endpoint:
-            result = _runner.invoke(
-                _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
-            )
-        assert result.exit_code == 0, result.stdout + result.stderr
+            with _serve(200) as endpoint:
+                result = _runner.invoke(
+                    _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+                )
+            assert result.exit_code == 0, result.stdout + result.stderr
 
-        entries = _global_exporters(home)
-        assert entries["langfuse"] == {
-            "kind": "exporter",
-            "name": "langfuse",
-            "enabled": True,
-            "endpoint": endpoint,
-        }
+            entries = _global_exporters(home)
+            assert entries["langfuse"] == {
+                "kind": "exporter",
+                "name": "langfuse",
+                "enabled": True,
+                "endpoint": endpoint,
+            }
 
-        list_result = _runner.invoke(_app, ["setup", "export", "list", "--json"])
-        assert list_result.exit_code == 0
-        rows = {row["name"]: row for row in json.loads(list_result.stdout)}
-        assert rows["langfuse"]["state"] == "enabled"
+            list_result = _runner.invoke(_app, ["setup", "export", "list", "--json"])
+            assert list_result.exit_code == 0
+            rows = {row["name"]: row for row in json.loads(list_result.stdout)}
+            assert rows["langfuse"]["state"] == "enabled"
 
-        audit_entries = read_audit()
-        enabled_entries = [e for e in audit_entries if e["action"] == "exporter.enabled"]
-        assert len(enabled_entries) == 1
-        assert "privacy=minimal" in enabled_entries[0]["detail"]
-        assert _SECRET_KEY not in json.dumps(audit_entries)
+            audit_entries = read_audit()
+            enabled_entries = [e for e in audit_entries if e["action"] == "exporter.enabled"]
+            assert len(enabled_entries) == 1
+            assert "privacy=minimal" in enabled_entries[0]["detail"]
+            assert _SECRET_KEY not in json.dumps(audit_entries)
 
-        show_result = _runner.invoke(_app, ["setup", "export", "show", "langfuse"])
-        assert show_result.exit_code == 0
-        assert "session.id" in show_result.stdout  # the built-in's inherited alias
+            show_result = _runner.invoke(_app, ["setup", "export", "show", "langfuse"])
+            assert show_result.exit_code == 0
+            assert "session.id" in show_result.stdout  # the built-in's inherited alias
 
-        disable_result = _runner.invoke(_app, ["setup", "export", "disable", "langfuse"])
-        assert disable_result.exit_code == 0
-        assert _global_exporters(home)["langfuse"]["enabled"] is False
-        assert _secrets.load_secrets()["LANGFUSE_SECRET_KEY"] == _SECRET_KEY
+            disable_result = _runner.invoke(_app, ["setup", "export", "disable", "langfuse"])
+            assert disable_result.exit_code == 0
+            assert _global_exporters(home)["langfuse"]["enabled"] is False
+            assert _secrets.load_secrets()["LANGFUSE_SECRET_KEY"] == _SECRET_KEY
 
     def test_enable_refuses_on_transport_failure_and_writes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The kept negative case: a transport failure is the one outcome that still refuses
         and leaves the catalog untouched, even once the missing-credential gate is past."""
-        home = _seed(tmp_path, monkeypatch)
-        _store_langfuse_keys()
+        with _seed(tmp_path) as home:
+            _store_langfuse_keys()
 
-        result = _runner.invoke(
-            _app,
-            ["setup", "export", "enable", "langfuse", "--endpoint", "http://127.0.0.1:1/v1/traces"],
-        )
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "enable",
+                    "langfuse",
+                    "--endpoint",
+                    "http://127.0.0.1:1/v1/traces",
+                ],
+            )
 
-        assert result.exit_code == 1
-        assert _global_exporters(home) == {}
-        assert not current_home().exporters_file.exists()
-        assert "Could not reach" in result.stderr
+            assert result.exit_code == 1
+            assert _global_exporters(home) == {}
+            assert not current_home().exporters_file.exists()
+            assert "Could not reach" in result.stderr
 
 
 class TestRemoveBuiltin:
     def test_remove_builtin_without_global_entry_exits_1_naming_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        result = _runner.invoke(_app, ["setup", "export", "remove", "jaeger"])
-        assert result.exit_code == 1
-        assert "built-in" in result.stderr
-        assert "jaeger" in result.stderr
+        with _seed(tmp_path):
+            result = _runner.invoke(_app, ["setup", "export", "remove", "jaeger"])
+            assert result.exit_code == 1
+            assert "built-in" in result.stderr
+            assert "jaeger" in result.stderr
 
 
 class TestPodShowExporters:
@@ -180,22 +190,24 @@ class TestPodShowExporters:
     ) -> None:
         from docket.cli import _pod as _pod_cli
 
-        _seed(tmp_path, monkeypatch)
-        (current_home().root / "workspaces" / "projects").mkdir(parents=True)
-        _pod_cli.build_pod("demo", ("lead",), codebase="/src/demo")
-        _store_langfuse_keys()
+        with _seed(tmp_path):
+            (current_home().root / "workspaces" / "projects").mkdir(parents=True)
+            _pod_cli.build_pod("demo", ("lead",), codebase="/src/demo")
+            _store_langfuse_keys()
 
-        with _serve(200) as endpoint:
-            enable_result = _runner.invoke(
-                _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+            with _serve(200) as endpoint:
+                enable_result = _runner.invoke(
+                    _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+                )
+            assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
+
+            shown = _runner.invoke(
+                _pod_cli.pod_app, ["show", "demo-lead", "--pod", "demo", "--json"]
             )
-        assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
-
-        shown = _runner.invoke(_pod_cli.pod_app, ["show", "demo-lead", "--pod", "demo", "--json"])
-        assert shown.exit_code == 0, shown.output
-        report = json.loads(shown.stdout)
-        by_name = {e["name"]: e for e in report["exporters"]}
-        assert by_name["langfuse"]["state"] == "enabled"
+            assert shown.exit_code == 0, shown.output
+            report = json.loads(shown.stdout)
+            by_name = {e["name"]: e for e in report["exporters"]}
+            assert by_name["langfuse"]["state"] == "enabled"
 
 
 class TestPrivacyCommand:
@@ -205,68 +217,69 @@ class TestPrivacyCommand:
         """RED on the base: `docket setup export privacy` does not exist as an action. Once it
         does, an off-TTY widening call must refuse without touching the global file or the
         audit log (ADR 0015's fail-closed negative case, mirroring `enable`'s)."""
-        home = _seed(tmp_path, monkeypatch)
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        with _seed(tmp_path) as home:
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        before_exists = current_home().exporters_file.exists()
-        before_audit = read_audit()
+            before_exists = current_home().exporters_file.exists()
+            before_audit = read_audit()
 
-        result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse", "conversation"])
+            result = _runner.invoke(
+                _app, ["setup", "export", "privacy", "langfuse", "conversation"]
+            )
 
-        assert result.exit_code == 1
-        assert "--yes" in (result.stdout + result.stderr)
-        assert current_home().exporters_file.exists() == before_exists
-        assert _global_exporters(home) == {}
-        assert read_audit() == before_audit
+            assert result.exit_code == 1
+            assert "--yes" in (result.stdout + result.stderr)
+            assert current_home().exporters_file.exists() == before_exists
+            assert _global_exporters(home) == {}
+            assert read_audit() == before_audit
 
     def test_off_tty_with_yes_widens_and_audits_host_not_content(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        with _seed(tmp_path) as home:
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        result = _runner.invoke(
-            _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
-        )
+            result = _runner.invoke(
+                _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
+            )
 
-        assert result.exit_code == 0, result.stdout + result.stderr
-        entry = _global_exporters(home)["langfuse"]
-        assert entry["privacy"] == "conversation"
-        assert "share" not in entry or entry["share"] is None
+            assert result.exit_code == 0, result.stdout + result.stderr
+            entry = _global_exporters(home)["langfuse"]
+            assert entry["privacy"] == "conversation"
+            assert "share" not in entry or entry["share"] is None
 
-        audit_entries = [e for e in read_audit() if e["action"] == "exporter.privacy"]
-        assert len(audit_entries) == 1
-        assert audit_entries[0]["detail"] == (
-            "name=langfuse from=minimal to=conversation host=cloud.langfuse.com"
-        )
+            audit_entries = [e for e in read_audit() if e["action"] == "exporter.privacy"]
+            assert len(audit_entries) == 1
+            assert audit_entries[0]["detail"] == (
+                "name=langfuse from=minimal to=conversation host=cloud.langfuse.com"
+            )
 
     def test_narrowing_never_asks_even_off_a_tty(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        with _seed(tmp_path) as home:
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        widen = _runner.invoke(
-            _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
-        )
-        assert widen.exit_code == 0, widen.stdout + widen.stderr
+            widen = _runner.invoke(
+                _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
+            )
+            assert widen.exit_code == 0, widen.stdout + widen.stderr
 
-        narrow = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse", "minimal"])
+            narrow = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse", "minimal"])
 
-        assert narrow.exit_code == 0, narrow.stdout + narrow.stderr
-        assert _global_exporters(home)["langfuse"]["privacy"] == "minimal"
+            assert narrow.exit_code == 0, narrow.stdout + narrow.stderr
+            assert _global_exporters(home)["langfuse"]["privacy"] == "minimal"
 
     def test_no_argument_shows_leaves_this_host_and_writes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
+        with _seed(tmp_path) as home:
+            result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse"])
 
-        result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse"])
-
-        assert result.exit_code == 0, result.stdout + result.stderr
-        assert "Leaves this host" in result.stdout
-        assert "never: credentials" in result.stdout
-        assert _global_exporters(home) == {}
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert "Leaves this host" in result.stdout
+            assert "never: credentials" in result.stdout
+            assert _global_exporters(home) == {}
 
 
 class TestDoctorExporterHealth:
@@ -275,22 +288,22 @@ class TestDoctorExporterHealth:
     ) -> None:
         from docket.cli._setup_check import run_check
 
-        _seed(tmp_path, monkeypatch)
-        _store_langfuse_keys()
-        with _serve(200) as endpoint:
-            enable_result = _runner.invoke(
-                _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+        with _seed(tmp_path):
+            _store_langfuse_keys()
+            with _serve(200) as endpoint:
+                enable_result = _runner.invoke(
+                    _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+                )
+            assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
+
+            current_home().exporters_health_file.write_text(
+                json.dumps({"langfuse": {"failed": 3, "lastOk": ""}})
             )
-        assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
 
-        current_home().exporters_health_file.write_text(
-            json.dumps({"langfuse": {"failed": 3, "lastOk": ""}})
-        )
-
-        capsys.readouterr()
-        run_check()
-        out = capsys.readouterr().out
-        assert "langfuse" in out and "failed export" in out
+            capsys.readouterr()
+            run_check()
+            out = capsys.readouterr().out
+            assert "langfuse" in out and "failed export" in out
 
 
 _CANARY = "rm -rf CANARY-TOOL-ARG-MARKER"
@@ -363,45 +376,45 @@ class TestPreview:
     def test_minimal_hides_the_canary_and_writes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        session_id = _seed_session(home)
-        before = _snapshot(home)
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
+            before = _snapshot(home)
 
-        result = _runner.invoke(
-            _app, ["setup", "export", "preview", "langfuse", "--session", session_id]
-        )
+            result = _runner.invoke(
+                _app, ["setup", "export", "preview", "langfuse", "--session", session_id]
+            )
 
-        assert result.exit_code == 0, result.stdout + result.stderr
-        assert _CANARY not in result.stdout
-        assert "toolArguments: 0" in result.stdout
-        assert _snapshot(home) == before
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert _CANARY not in result.stdout
+            assert "toolArguments: 0" in result.stdout
+            assert _snapshot(home) == before
 
     def test_actions_level_shows_the_canary_under_tool_call_arguments(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        session_id = _seed_session(home)
-        before = _snapshot(home)
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
+            before = _snapshot(home)
 
-        result = _runner.invoke(
-            _app,
-            [
-                "setup",
-                "export",
-                "preview",
-                "langfuse",
-                "--session",
-                session_id,
-                "--level",
-                "actions",
-            ],
-        )
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "preview",
+                    "langfuse",
+                    "--session",
+                    session_id,
+                    "--level",
+                    "actions",
+                ],
+            )
 
-        assert result.exit_code == 0, result.stdout + result.stderr
-        assert _CANARY in result.stdout
-        assert "gen_ai.tool.call.arguments [toolArguments]" in result.stdout
-        assert "toolArguments: 1" in result.stdout
-        assert _snapshot(home) == before
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert _CANARY in result.stdout
+            assert "gen_ai.tool.call.arguments [toolArguments]" in result.stdout
+            assert "toolArguments: 1" in result.stdout
+            assert _snapshot(home) == before
 
     def test_json_output_equals_otlp_http_encode_of_the_same_projection(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -412,48 +425,48 @@ class TestPreview:
         from docket.core import trace as _trace
         from docket.edges.adapters.exporters import otlp_http as _otlp_http
 
-        home = _seed(tmp_path, monkeypatch)
-        session_id = _seed_session(home)
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
 
-        result = _runner.invoke(
-            _app,
-            [
-                "setup",
-                "export",
-                "preview",
-                "langfuse",
-                "--session",
-                session_id,
-                "--level",
-                "actions",
-                "--json",
-            ],
-        )
-        assert result.exit_code == 0, result.stdout + result.stderr
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "preview",
+                    "langfuse",
+                    "--session",
+                    session_id,
+                    "--level",
+                    "actions",
+                    "--json",
+                ],
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
 
-        spec = _exp.load_catalog().get("langfuse")
-        assert spec is not None
-        _label, classes = _privacy.resolve("actions", None)
-        policy = _telemetry.ExportPolicy(
-            events=_telemetry.DEFAULT_EVENTS,
-            classes=classes,
-            label="actions",
-            content_max_chars=spec.content_max_chars,
-        )
-        state = _telemetry.ProjectionState()
-        spans = []
-        tracefile = _trace.find_trace(session_id)
-        assert tracefile is not None
-        for record in _trace.read_trace(tracefile):
-            admitted = policy.admit(record)
-            if admitted is None:
-                continue
-            spans.extend(_telemetry.project(admitted, state, policy))
-        spans.extend(_telemetry.flush_open(state))
-        expected = _otlp_http.encode(spans, resource=spec.resource, aliases=spec.aliases)
+            spec = _exp.load_catalog().get("langfuse")
+            assert spec is not None
+            _label, classes = _privacy.resolve("actions", None)
+            policy = _telemetry.ExportPolicy(
+                events=_telemetry.DEFAULT_EVENTS,
+                classes=classes,
+                label="actions",
+                content_max_chars=spec.content_max_chars,
+            )
+            state = _telemetry.ProjectionState()
+            spans = []
+            tracefile = _trace.find_trace(session_id)
+            assert tracefile is not None
+            for record in _trace.read_trace(tracefile):
+                admitted = policy.admit(record)
+                if admitted is None:
+                    continue
+                spans.extend(_telemetry.project(admitted, state, policy))
+            spans.extend(_telemetry.flush_open(state))
+            expected = _otlp_http.encode(spans, resource=spec.resource, aliases=spec.aliases)
 
-        assert json.loads(result.stdout) == expected
-        assert result.stdout.strip().encode() == json.dumps(expected).encode()
+            assert json.loads(result.stdout) == expected
+            assert result.stdout.strip().encode() == json.dumps(expected).encode()
 
     def test_footer_notes_when_the_level_grants_content_the_session_never_recorded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -461,23 +474,23 @@ class TestPreview:
         """`llm_call` above never carried `inputMessages`/`outputMessages`/`systemInstructions`
         (minimal was in effect when it was captured) -- previewing it at `conversation` must
         say so instead of silently showing less than a later, wider-captured session would."""
-        home = _seed(tmp_path, monkeypatch)
-        session_id = _seed_session(home)
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
 
-        result = _runner.invoke(
-            _app,
-            [
-                "setup",
-                "export",
-                "preview",
-                "langfuse",
-                "--session",
-                session_id,
-                "--level",
-                "conversation",
-            ],
-        )
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "preview",
+                    "langfuse",
+                    "--session",
+                    session_id,
+                    "--level",
+                    "conversation",
+                ],
+            )
 
-        assert result.exit_code == 0, result.stdout + result.stderr
-        assert "recorded no conversation content" in result.stdout
-        assert "captured only once an exporter grants it" in result.stdout
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert "recorded no conversation content" in result.stdout
+            assert "captured only once an exporter grants it" in result.stdout

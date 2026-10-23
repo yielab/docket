@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 from tests.fakes import FakeDriver
 
 from docket.cli import _pod
@@ -22,6 +24,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pipeline as _pipeline
 from docket.core import secrets as _secrets
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -45,16 +48,20 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@contextmanager
+def _seed(
+    tmp_path: Path,
+) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
-    # The member's own check must never run for an external gate.
-    _fleet.meta_set("demo-implementer", "verifyCmd", f"touch {tmp_path / 'verifycmd-ran'}")
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
+        # The member's own check must never run for an external gate.
+        _fleet.meta_set("demo-implementer", "verifyCmd", f"touch {tmp_path / 'verifycmd-ran'}")
+        yield
 
 
 def _script(tmp_path: Path, body: str) -> Path:
@@ -70,13 +77,13 @@ def _spec(script: Path, on: str = "", timeout: str = "") -> _pipeline.PipelineSp
     return loaded.spec
 
 
-def _run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str, **kw: str):
-    _seed(tmp_path, monkeypatch)
-    script = _script(tmp_path, body)
-    _dispatch.enqueue_task("demo", "Ship it", channel="cli")
-    driver = FakeDriver()
-    res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(script, **kw))[0]
-    return res, driver
+def _run(tmp_path: Path, body: str, **kw: str):
+    with _seed(tmp_path):
+        script = _script(tmp_path, body)
+        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        driver = FakeDriver()
+        res = _dispatch.dispatch_pod("demo", runner=driver, spec=_spec(script, **kw))[0]
+        return res, driver
 
 
 def _build_hops(res: Any) -> list[Any]:
@@ -95,7 +102,7 @@ class TestExitMapping:
     def test_exit_zero_passes_and_runs_only_the_gate_command(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        res, _driver = _run(tmp_path, monkeypatch, "echo fine\nexit 0\n")
+        res, _driver = _run(tmp_path, "echo fine\nexit 0\n")
 
         assert res.status == "done", res.reason
         verify = _build_hops(res)[0].verify
@@ -108,7 +115,7 @@ class TestExitMapping:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         body = 'echo "task=$DOCKET_TASK_ID file=$DOCKET_GATE_REASONS_FILE"\nexit 0\n'
-        res, _driver = _run(tmp_path, monkeypatch, body)
+        res, _driver = _run(tmp_path, body)
 
         tail = _build_hops(res)[0].verify["outputTail"]
         assert f"task={res.task_id}" in tail
@@ -126,7 +133,7 @@ class TestExitMapping:
     def test_an_unrouted_non_pass_fails_the_task_with_its_own_kind(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int, label: str, kind: str
     ) -> None:
-        res, _driver = _run(tmp_path, monkeypatch, f"echo out\nexit {code}\n")
+        res, _driver = _run(tmp_path, f"echo out\nexit {code}\n")
 
         assert res.status == "failed"
         assert res.failure_kind == kind
@@ -145,7 +152,7 @@ class TestExitMapping:
             '  [ -n "$f" ] && printf 0 > "$f" && chmod 400 "$f"\n'
             "done\nexit 1\n"
         )
-        res, _ = _run(tmp_path, monkeypatch, body)
+        res, _ = _run(tmp_path, body)
         assert res.status == "failed"
         assert _build_hops(res)[0].verify["label"] == "fail"
         assert _build_hops(res)[0].verify["exitCode"] == 1
@@ -153,7 +160,7 @@ class TestExitMapping:
     def test_a_timeout_is_error_not_fail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        res, _driver = _run(tmp_path, monkeypatch, "sleep 30\n", timeout=", timeout: 1")
+        res, _driver = _run(tmp_path, "sleep 30\n", timeout=", timeout: 1")
 
         assert res.status == "failed"
         assert res.failure_kind == "gate_error"
@@ -162,7 +169,7 @@ class TestExitMapping:
     def test_a_routed_error_is_not_an_unrouted_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        res, _driver = _run(tmp_path, monkeypatch, "exit 7\n", on="    on:\n      error: stop\n")
+        res, _driver = _run(tmp_path, "exit 7\n", on="    on:\n      error: stop\n")
 
         assert res.status == "done"
         assert _build_hops(res)[0].verify["label"] == "error"
@@ -170,17 +177,17 @@ class TestExitMapping:
     def test_a_missing_command_is_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        spec = _pipeline.load_pipeline(
-            "name: g\nsteps:\n  - id: build\n    role: implementer\n"
-            "    gate: {external: 'definitely-not-a-command-zz9'}\n"
-        ).spec
-        assert spec is not None
-        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=spec)[0]
+        with _seed(tmp_path):
+            spec = _pipeline.load_pipeline(
+                "name: g\nsteps:\n  - id: build\n    role: implementer\n"
+                "    gate: {external: 'definitely-not-a-command-zz9'}\n"
+            ).spec
+            assert spec is not None
+            _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=spec)[0]
 
-        assert res.failure_kind in ("gate_error", "gate_failed")
-        assert _build_hops(res)[0].verify["label"] == "error"
+            assert res.failure_kind in ("gate_error", "gate_failed")
+            assert _build_hops(res)[0].verify["label"] == "error"
 
 
 class TestReasons:
@@ -197,7 +204,7 @@ class TestReasons:
         )
         flag = tmp_path / "flag"
         body = f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 1)
-        res, driver = _run(tmp_path, monkeypatch, body, on=_ON_RETRY)
+        res, driver = _run(tmp_path, body, on=_ON_RETRY)
 
         assert res.status == "done", res.reason
         first, second = _build_hops(res)
@@ -224,7 +231,7 @@ class TestReasons:
         body = f"test -f {flag} && exit 0\ntouch {flag}\necho {REASON}\n" + _reasons_script(
             payload, 1
         )
-        res, driver = _run(tmp_path, monkeypatch, body, on=_ON_RETRY)
+        res, driver = _run(tmp_path, body, on=_ON_RETRY)
 
         first = _build_hops(res)[0]
         assert first.verify["reasonsInvalid"] is True
@@ -240,7 +247,7 @@ class TestReasons:
             'printf \'"}]}\' >> "$DOCKET_GATE_REASONS_FILE"\n'
             "echo tailtext\nexit 1\n"
         )
-        res, _driver = _run(tmp_path, monkeypatch, body)
+        res, _driver = _run(tmp_path, body)
 
         verify = _build_hops(res)[0].verify
         assert verify["reasonsInvalid"] is True
@@ -250,35 +257,35 @@ class TestReasons:
     def test_a_pre_existing_reasons_file_is_deleted_and_never_read(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
-        planted = _dispatch._gate_reasons_path("demo", task["id"], "build")
-        planted.parent.mkdir(parents=True, exist_ok=True)
-        planted.write_text(json.dumps({"reasons": [{"summary": "PLANTED"}]}), encoding="utf-8")
-        script = _script(
-            tmp_path,
-            'test -e "$DOCKET_GATE_REASONS_FILE" && echo STILL-THERE || echo GONE\nexit 1\n',
-        )
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
+        with _seed(tmp_path):
+            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            planted = _dispatch._gate_reasons_path("demo", task["id"], "build")
+            planted.parent.mkdir(parents=True, exist_ok=True)
+            planted.write_text(json.dumps({"reasons": [{"summary": "PLANTED"}]}), encoding="utf-8")
+            script = _script(
+                tmp_path,
+                'test -e "$DOCKET_GATE_REASONS_FILE" && echo STILL-THERE || echo GONE\nexit 1\n',
+            )
+            res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
 
-        verify = _build_hops(res)[0].verify
-        assert "GONE" in verify["outputTail"]
-        assert "reasons" not in verify
-        assert not verify.get("reasonsInvalid")
+            verify = _build_hops(res)[0].verify
+            assert "GONE" in verify["outputTail"]
+            assert "reasons" not in verify
+            assert not verify.get("reasonsInvalid")
 
     def test_reasons_are_redacted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _seed(tmp_path, monkeypatch)
-        canary = "zzqx-unleakable-reason-canary-77"
-        _secrets.save_secrets({"LEAKY_KEY": canary})
-        payload = json.dumps({"reasons": [{"summary": f"token {canary} leaked"}]})
-        script = _script(tmp_path, _reasons_script(payload, 1))
-        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
-        res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
+        with _seed(tmp_path):
+            canary = "zzqx-unleakable-reason-canary-77"
+            _secrets.save_secrets({"LEAKY_KEY": canary})
+            payload = json.dumps({"reasons": [{"summary": f"token {canary} leaked"}]})
+            script = _script(tmp_path, _reasons_script(payload, 1))
+            _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            res = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
 
-        persisted = json.dumps(_dispatch.read_tasks("demo")[0]["hops"])
-        assert canary not in persisted
-        assert "[REDACTED]" in persisted
-        assert res.status == "failed"
+            persisted = json.dumps(_dispatch.read_tasks("demo")[0]["hops"])
+            assert canary not in persisted
+            assert "[REDACTED]" in persisted
+            assert res.status == "failed"
 
     def test_reasons_pass_the_untrusted_content_screen(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -294,7 +301,7 @@ class TestReasons:
 
         monkeypatch.setattr(_tools, "screen_tool_result", spy)
         payload = json.dumps({"reasons": [{"summary": REASON}]})
-        _run(tmp_path, monkeypatch, _reasons_script(payload, 1))
+        _run(tmp_path, _reasons_script(payload, 1))
 
         assert any(REASON in text for text in seen)
 
@@ -333,71 +340,71 @@ class TestNeedsHumanSeam:
     def test_reasons_survive_the_input_steps_answer_and_resume(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        flag = tmp_path / "flag"
-        payload = json.dumps({"reasons": [{"summary": REASON, "path": "x.py", "line": 3}]})
-        script = _script(
-            tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
-        )
-        _bind("demo", _SEAM.format(script=script))
-        task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
-        driver = FakeDriver()
+        with _seed(tmp_path):
+            flag = tmp_path / "flag"
+            payload = json.dumps({"reasons": [{"summary": REASON, "path": "x.py", "line": 3}]})
+            script = _script(
+                tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
+            )
+            _bind("demo", _SEAM.format(script=script))
+            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            driver = FakeDriver()
 
-        first = _dispatch.dispatch_pod("demo", runner=driver)[0]
-        assert first.status == "waiting_input", first.reason
-        assert len(_implementer_messages(driver)) == 1
+            first = _dispatch.dispatch_pod("demo", runner=driver)[0]
+            assert first.status == "waiting_input", first.reason
+            assert len(_implementer_messages(driver)) == 1
 
-        _answers.answer_task(
-            "demo", task["id"], "accept", {"answer": "go"}, channel="cli", actor="op"
-        )
-        final = _dispatch.dispatch_pod("demo", runner=driver)[0]
+            _answers.answer_task(
+                "demo", task["id"], "accept", {"answer": "go"}, channel="cli", actor="op"
+            )
+            final = _dispatch.dispatch_pod("demo", runner=driver)[0]
 
-        assert final.status == "done", final.reason
-        messages = _implementer_messages(driver)
-        assert len(messages) == 2
-        section = messages[1].split("--- GATE FAILED: build ---", 1)[1]
-        assert REASON in section
-        assert "x.py:3" in section
+            assert final.status == "done", final.reason
+            messages = _implementer_messages(driver)
+            assert len(messages) == 2
+            section = messages[1].split("--- GATE FAILED: build ---", 1)[1]
+            assert REASON in section
+            assert "x.py:3" in section
 
     def test_the_question_shows_the_gate_reasons_and_the_answer_reaches_the_retry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        flag = tmp_path / "flag"
-        payload = json.dumps({"reasons": [{"summary": REASON}]})
-        script = _script(
-            tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
-        )
-        _bind("demo", _SEAM.format(script=script))
-        task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
-        driver = FakeDriver()
+        with _seed(tmp_path):
+            flag = tmp_path / "flag"
+            payload = json.dumps({"reasons": [{"summary": REASON}]})
+            script = _script(
+                tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
+            )
+            _bind("demo", _SEAM.format(script=script))
+            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            driver = FakeDriver()
 
-        _dispatch.dispatch_pod("demo", runner=driver)
-        question = _dispatch.read_tasks("demo")[0]["question"]
-        assert REASON in question["message"], "the operator must see why the verifier asked"
+            _dispatch.dispatch_pod("demo", runner=driver)
+            question = _dispatch.read_tasks("demo")[0]["question"]
+            assert REASON in question["message"], "the operator must see why the verifier asked"
 
-        note = "zz-operator-note-8812"
-        _answers.answer_task(
-            "demo", task["id"], "accept", {"answer": note}, channel="cli", actor="op"
-        )
-        _dispatch.dispatch_pod("demo", runner=driver)
-        retry = _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
-        assert note in retry, "the answer must reach the hop it routes back to"
+            note = "zz-operator-note-8812"
+            _answers.answer_task(
+                "demo", task["id"], "accept", {"answer": note}, channel="cli", actor="op"
+            )
+            _dispatch.dispatch_pod("demo", runner=driver)
+            retry = _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
+            assert note in retry, "the answer must reach the hop it routes back to"
 
     def test_a_declined_answer_fails_the_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        script = _script(tmp_path, "exit 2\n")
-        _bind("demo", _SEAM.format(script=script))
-        task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
-        driver = FakeDriver()
+        with _seed(tmp_path):
+            script = _script(tmp_path, "exit 2\n")
+            _bind("demo", _SEAM.format(script=script))
+            task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+            driver = FakeDriver()
 
-        assert _dispatch.dispatch_pod("demo", runner=driver)[0].status == "waiting_input"
-        _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
+            assert _dispatch.dispatch_pod("demo", runner=driver)[0].status == "waiting_input"
+            _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
 
-        persisted = _dispatch.read_tasks("demo")[0]
-        assert persisted["status"] == "failed"
+            persisted = _dispatch.read_tasks("demo")[0]
+            assert persisted["status"] == "failed"
 
 
 def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(
@@ -406,7 +413,7 @@ def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(
     # Seam: dispatch writes hop.verify, evidence 1.1.0 reads it back; real code on both sides.
     from docket.core import evidence as _evidence
 
-    res, _ = _run(tmp_path, monkeypatch, "echo broke\nexit 1\n")
+    res, _ = _run(tmp_path, "echo broke\nexit 1\n")
     doc = _evidence.task_evidence("demo", res.task_id, "1.1.0").model_dump(by_alias=True)
     gates = [h["gate"] for h in doc["hops"] if "gate" in h]
     assert gates == [{"label": "fail", "exitCode": 1, "reasonsInvalid": False}]

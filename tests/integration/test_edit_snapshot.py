@@ -70,13 +70,12 @@ def _run(
     env: dict[str, str] | None = None,
     unset: list[str] | None = None,
 ) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        with use_home(Home(home)):
-            for key in unset or ():
-                mp.delenv(key, raising=False)
-            for key, value in (env or {}).items():
-                mp.setenv(key, value)
-            result = _runner.invoke(_app, args, input=stdin_text)
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
+        for key in unset or ():
+            mp.delenv(key, raising=False)
+        for key, value in (env or {}).items():
+            mp.setenv(key, value)
+        result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 
 

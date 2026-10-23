@@ -13,18 +13,19 @@ from __future__ import annotations
 import contextlib
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
 from docket.core import provider as _prov
 from docket.edges.adapters.llm import ProbeResult
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core"
 
@@ -39,14 +40,17 @@ _FLEET_CONFIG: dict[str, Any] = {
 }
 
 
-def _seed(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _seed(
+    root: Path,
+) -> Iterator[Path]:
     home = root / ".docket"
     home.mkdir(parents=True)
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _providers(home: Path) -> dict[str, Any]:
@@ -123,27 +127,27 @@ def test_add_registers_at_401_with_a_warning_naming_the_credential(
 ) -> None:
     """RED on the base: `ping_endpoint`/`register_local_provider` treat any HTTPError
     (including a 401) as unreachable and refuse with "Provider was not registered"."""
-    home = _seed(tmp_path, monkeypatch)
-    with _serve(401, b'{"error": "no key"}') as base_url:
-        result = _runner.invoke(
-            _app,
-            [
-                "setup",
-                "provider",
-                "add",
-                "hosted",
-                base_url,
-                "--model",
-                "m",
-                "--credential",
-                "hosted-secret-value",
-            ],
-        )
-    assert result.exit_code == 0, result.stdout
-    entry = _providers(home)["hosted"]
-    assert entry["baseUrl"] == base_url
-    assert entry["auth"] == {"type": "bearer", "header": "", "credentials": ["HOSTED_API_KEY"]}
-    assert "HOSTED_API_KEY" in result.stdout
+    with _seed(tmp_path) as home:
+        with _serve(401, b'{"error": "no key"}') as base_url:
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "provider",
+                    "add",
+                    "hosted",
+                    base_url,
+                    "--model",
+                    "m",
+                    "--credential",
+                    "hosted-secret-value",
+                ],
+            )
+        assert result.exit_code == 0, result.stdout
+        entry = _providers(home)["hosted"]
+        assert entry["baseUrl"] == base_url
+        assert entry["auth"] == {"type": "bearer", "header": "", "credentials": ["HOSTED_API_KEY"]}
+        assert "HOSTED_API_KEY" in result.stdout
 
 
 def test_add_refuses_on_transport_failure_and_does_not_persist(
@@ -151,72 +155,72 @@ def test_add_refuses_on_transport_failure_and_does_not_persist(
 ) -> None:
     """The kept negative case: a transport failure is the one outcome that still refuses and
     leaves the catalog untouched."""
-    home = _seed(tmp_path, monkeypatch)
-    result = _runner.invoke(
-        _app,
-        ["setup", "provider", "add", "deadend", "http://127.0.0.1:1/v1", "--model", "m"],
-    )
-    assert result.exit_code == 1
-    assert _providers(home) == {}
-    assert not (home / "docket-providers.json").exists()
-    assert "Could not reach" in result.stderr
-    assert "Nothing was registered" in result.stderr
+    with _seed(tmp_path) as home:
+        result = _runner.invoke(
+            _app,
+            ["setup", "provider", "add", "deadend", "http://127.0.0.1:1/v1", "--model", "m"],
+        )
+        assert result.exit_code == 1
+        assert _providers(home) == {}
+        assert not (home / "docket-providers.json").exists()
+        assert "Could not reach" in result.stderr
+        assert "Nothing was registered" in result.stderr
 
 
 def test_add_at_200_reports_unadvertised_ids_as_a_suggestion_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    home = _seed(tmp_path, monkeypatch)
-    body = json.dumps({"data": [{"id": "known"}, {"id": "extra-model"}]}).encode()
-    with _serve(200, body) as base_url:
-        result = _runner.invoke(
-            _app, ["setup", "provider", "add", "hosted2", base_url, "--model", "known"]
-        )
-    assert result.exit_code == 0, result.stdout
-    assert "extra-model" in result.stdout
-    stored_ids = {row["id"] for row in _providers(home)["hosted2"]["models"]}
-    assert stored_ids == {"known"}  # a suggestion is printed, never written
+    with _seed(tmp_path) as home:
+        body = json.dumps({"data": [{"id": "known"}, {"id": "extra-model"}]}).encode()
+        with _serve(200, body) as base_url:
+            result = _runner.invoke(
+                _app, ["setup", "provider", "add", "hosted2", base_url, "--model", "known"]
+            )
+        assert result.exit_code == 0, result.stdout
+        assert "extra-model" in result.stdout
+        stored_ids = {row["id"] for row in _providers(home)["hosted2"]["models"]}
+        assert stored_ids == {"known"}  # a suggestion is printed, never written
 
 
 def test_export_then_add_round_trips_through_show_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _seed(tmp_path / "a", monkeypatch)
-    with _serve(200, b'{"data": []}') as base_url:
-        added_a = _runner.invoke(
-            _app,
-            [
-                "setup",
-                "provider",
-                "add",
-                "roundtrip",
-                base_url,
-                "--model",
-                "m",
-                "--ctx",
-                "4096",
-                "--max-tokens",
-                "1024",
-            ],
-        )
-        assert added_a.exit_code == 0, added_a.stdout
-        show_a = _runner.invoke(_app, ["setup", "provider", "show", "roundtrip", "--json"])
-        assert show_a.exit_code == 0, show_a.stdout
+    with _seed(tmp_path / "a"):
+        with _serve(200, b'{"data": []}') as base_url:
+            added_a = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "provider",
+                    "add",
+                    "roundtrip",
+                    base_url,
+                    "--model",
+                    "m",
+                    "--ctx",
+                    "4096",
+                    "--max-tokens",
+                    "1024",
+                ],
+            )
+            assert added_a.exit_code == 0, added_a.stdout
+            show_a = _runner.invoke(_app, ["setup", "provider", "show", "roundtrip", "--json"])
+            assert show_a.exit_code == 0, show_a.stdout
 
-        export_file = tmp_path / "roundtrip.yaml"
-        exported = _runner.invoke(
-            _app, ["setup", "provider", "export", "roundtrip", str(export_file)]
-        )
-        assert exported.exit_code == 0, exported.stdout
-        assert export_file.read_text().startswith("kind: provider\n")
+            export_file = tmp_path / "roundtrip.yaml"
+            exported = _runner.invoke(
+                _app, ["setup", "provider", "export", "roundtrip", str(export_file)]
+            )
+            assert exported.exit_code == 0, exported.stdout
+            assert export_file.read_text().startswith("kind: provider\n")
 
-        _seed(tmp_path / "b", monkeypatch)
-        added_b = _runner.invoke(_app, ["setup", "provider", "add", str(export_file)])
-        assert added_b.exit_code == 0, added_b.stdout
-        show_b = _runner.invoke(_app, ["setup", "provider", "show", "roundtrip", "--json"])
-        assert show_b.exit_code == 0, show_b.stdout
+            with _seed(tmp_path / "b"):
+                added_b = _runner.invoke(_app, ["setup", "provider", "add", str(export_file)])
+                assert added_b.exit_code == 0, added_b.stdout
+                show_b = _runner.invoke(_app, ["setup", "provider", "show", "roundtrip", "--json"])
+                assert show_b.exit_code == 0, show_b.stdout
 
-    assert json.loads(show_a.stdout) == json.loads(show_b.stdout)
+        assert json.loads(show_a.stdout) == json.loads(show_b.stdout)
 
 
 def test_preset_anthropic_on_fresh_home_names_the_missing_credential(
@@ -224,16 +228,16 @@ def test_preset_anthropic_on_fresh_home_names_the_missing_credential(
 ) -> None:
     """A built-in hosted preset needs only its credential -- the built-in document is the
     registration; no separate `provider add` is required for it to apply."""
-    _seed(tmp_path, monkeypatch)
-    result = _runner.invoke(_app, ["setup", "model", "preset", "anthropic"])
-    assert result.exit_code == 0, result.stdout
-    assert "ANTHROPIC_API_KEY" in result.stdout
+    with _seed(tmp_path):
+        result = _runner.invoke(_app, ["setup", "model", "preset", "anthropic"])
+        assert result.exit_code == 0, result.stdout
+        assert "ANTHROPIC_API_KEY" in result.stdout
 
 
 def test_remove_refuses_for_a_built_in_with_no_global_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _seed(tmp_path, monkeypatch)
-    result = _runner.invoke(_app, ["setup", "provider", "remove", "anthropic"])
-    assert result.exit_code == 1
-    assert "built-in" in result.stderr.lower()
+    with _seed(tmp_path):
+        result = _runner.invoke(_app, ["setup", "provider", "remove", "anthropic"])
+        assert result.exit_code == 1
+        assert "built-in" in result.stderr.lower()

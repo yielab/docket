@@ -30,7 +30,7 @@ from docket.core import approval as _ap
 from docket.core import audit as _audit
 from docket.core import trace as _trace
 from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.threads import ContextHTTPServer
+from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -44,12 +44,11 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     d = tmp_path / ".docket"
     d.mkdir()
     (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(d)):
-        with use_home(dataclasses.replace(current_home(), approval_timeout=900)):
-            monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-            monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-            monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
-            yield d
+    with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
+        monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
+        yield d
 
 
 @pytest.fixture()
@@ -117,7 +116,7 @@ def _race_pending_transitions(
         except BaseException as exc:  # the public error/no-op is the oracle
             errors[index] = exc
 
-    threads = [threading.Thread(target=run, args=(index, call)) for index, call in enumerate(calls)]
+    threads = [new_thread(target=run, args=(index, call)) for index, call in enumerate(calls)]
     for thread in threads:
         thread.start()
     for thread in threads:

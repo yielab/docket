@@ -29,7 +29,7 @@ from docket.core import audit as _audit
 from docket.core.approval import _approval_path
 from docket.edges import store as _store
 from docket.kernel.home import current_home, use_home
-from docket.kernel.threads import ContextHTTPServer
+from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.approval"
@@ -268,7 +268,7 @@ class TestGrantDenyViaEndpoint:
         def decide(action: str) -> None:
             replies.append(_post(f"{url}/approvals/{apr_token}", {"action": action}, token))
 
-        threads = [threading.Thread(target=decide, args=(action,)) for action in ("grant", "deny")]
+        threads = [new_thread(target=decide, args=(action,)) for action in ("grant", "deny")]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -315,8 +315,8 @@ class TestGrantDenyViaEndpoint:
                 outcomes["deny"] = "lost"
 
         first, second = (grant, deny) if start_grant_first else (deny, grant)
-        t1 = threading.Thread(target=first)
-        t2 = threading.Thread(target=second)
+        t1 = new_thread(target=first)
+        t2 = new_thread(target=second)
         t1.start()
         t2.start()
         t1.join(timeout=5)

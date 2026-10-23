@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 from docket.cli import app
 from docket.edges import store
 from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
 
 SUBJECT = "docket.config"
 
@@ -216,7 +217,7 @@ def _run_at_barrier(actions: list[Callable[[], None]], timeout: float = 3.0) -> 
         except BaseException as exc:  # retain thread failures for the parent assertion
             errors.append(exc)
 
-    threads = [threading.Thread(target=_wrapped, args=(action,), daemon=True) for action in actions]
+    threads = [new_thread(target=_wrapped, args=(action,), daemon=True) for action in actions]
     for thread in threads:
         thread.start()
     for thread in threads:

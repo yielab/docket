@@ -7,10 +7,11 @@ routing", "Parallel groups", "Conditional steps and command steps") and pod-blue
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
 import docket.config as _cfg
@@ -23,7 +24,7 @@ from docket.core import pod
 from docket.core import pod_apply as _pod_apply
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.config"
 
@@ -40,7 +41,8 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str) -> None:
+@contextmanager
+def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     """Same fixture-pod shape as ``tests/integration/test_recipes.py``'s own helper, kept as
     a local copy here since this module owns its own fixtures independent of that file."""
     import json
@@ -48,8 +50,9 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    with use_home(Home(home)):
+        _cli_pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield
 
 
 def _trace_events(project: str) -> list[dict[str, object]]:
@@ -103,38 +106,38 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(
     """``docket pod update <recipe>`` leaves every pipeline step resolvable on a lean pod
     (only the base ``lead``/``implementer`` roles)."""
     project = f"fixture-{name.replace('-', '_')}"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = _recipe_dir(name)
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = _recipe_dir(name)
 
-    plan = _pod_apply.plan_apply(project, recipe_dir)
-    _pod_apply.apply(plan)
+        plan = _pod_apply.plan_apply(project, recipe_dir)
+        _pod_apply.apply(plan)
 
-    result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
-    assert result.spec is not None, result.errors
+        result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        assert result.spec is not None, result.errors
 
-    roster = _dispatch.pod_full_roster(project)
-    registry = _arch.load_registry(project)
-    exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
+        roster = _dispatch.pod_full_roster(project)
+        registry = _arch.load_registry(project)
+        exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
-    skipped: list[str] = []
-    for node in exec_plan.nodes:
-        units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
-        skipped.extend(u.step_id for u in units if u.skipped)
-    assert skipped == [], f"recipe {name!r} leaves steps unresolvable: {skipped}"
+        skipped: list[str] = []
+        for node in exec_plan.nodes:
+            units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
+            skipped.extend(u.step_id for u in units if u.skipped)
+        assert skipped == [], f"recipe {name!r} leaves steps unresolvable: {skipped}"
 
-    if name == "dual-review":
-        groups = [n for n in exec_plan.nodes if isinstance(n, _orch.PlannedGroup)]
-        assert len(groups) == 1, "dual-review's plan should carry exactly one PlannedGroup"
-        assert [c.step_id for c in groups[0].children] == ["review-code", "review-risk"]
+        if name == "dual-review":
+            groups = [n for n in exec_plan.nodes if isinstance(n, _orch.PlannedGroup)]
+            assert len(groups) == 1, "dual-review's plan should carry exactly one PlannedGroup"
+            assert [c.step_id for c in groups[0].children] == ["review-code", "review-risk"]
 
-    if name == "frugal":
-        setting_items = [i for i in plan.items if i.kind == "setting"]
-        assert len(setting_items) == 3, "frugal's plan should carry three setting items"
-        assert {i.name for i in setting_items} == {
-            "budgetUsd",
-            "maxReworkCycles",
-            "turnTimeoutS",
-        }
+        if name == "frugal":
+            setting_items = [i for i in plan.items if i.kind == "setting"]
+            assert len(setting_items) == 3, "frugal's plan should carry three setting items"
+            assert {i.name for i in setting_items} == {
+                "budgetUsd",
+                "maxReworkCycles",
+                "turnTimeoutS",
+            }
 
 
 # ── dual-review / frugal: the two named shapes, checked without `plan_apply` ─────
@@ -147,22 +150,22 @@ def test_dual_review_plan_has_one_planned_group(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = "dualcheck"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    _cli_pod.add_members(project, "reviewer")
-    _cli_pod.add_members(project, "critic")
+    with _seed_fixture_pod(tmp_path, project):
+        _cli_pod.add_members(project, "reviewer")
+        _cli_pod.add_members(project, "critic")
 
-    text = (_recipe_dir("dual-review") / "pipeline.yaml").read_text(encoding="utf-8")
-    result = _pipeline.load_pipeline(text)
-    assert result.spec is not None, result.errors
+        text = (_recipe_dir("dual-review") / "pipeline.yaml").read_text(encoding="utf-8")
+        result = _pipeline.load_pipeline(text)
+        assert result.spec is not None, result.errors
 
-    roster = _dispatch.pod_full_roster(project)
-    registry = _arch.load_registry(project)
-    exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
+        roster = _dispatch.pod_full_roster(project)
+        registry = _arch.load_registry(project)
+        exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
-    groups = [n for n in exec_plan.nodes if isinstance(n, _orch.PlannedGroup)]
-    assert len(groups) == 1
-    assert [c.step_id for c in groups[0].children] == ["review-code", "review-risk"]
-    assert not any(c.skipped for c in groups[0].children)
+        groups = [n for n in exec_plan.nodes if isinstance(n, _orch.PlannedGroup)]
+        assert len(groups) == 1
+        assert [c.step_id for c in groups[0].children] == ["review-code", "review-risk"]
+        assert not any(c.skipped for c in groups[0].children)
 
 
 def test_frugal_plan_carries_three_setting_items(
@@ -171,13 +174,13 @@ def test_frugal_plan_carries_three_setting_items(
     import yaml
 
     project = "frugalcheck"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    manifest = yaml.safe_load((_recipe_dir("frugal") / "pod.yaml").read_text(encoding="utf-8"))
-    settings = manifest["settings"]
+    with _seed_fixture_pod(tmp_path, project):
+        manifest = yaml.safe_load((_recipe_dir("frugal") / "pod.yaml").read_text(encoding="utf-8"))
+        settings = manifest["settings"]
 
-    items, _writes = _pod_apply._plan_settings(project, settings)
-    assert len(items) == 3
-    assert {i.name for i in items} == {"budgetUsd", "maxReworkCycles", "turnTimeoutS"}
+        items, _writes = _pod_apply._plan_settings(project, settings)
+        assert len(items) == 3
+        assert {i.name for i in items} == {"budgetUsd", "maxReworkCycles", "turnTimeoutS"}
 
 
 # ── reflexion: one full dispatch on the fake driver, rework counted ─────────────
@@ -226,34 +229,34 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = "reflex"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = _recipe_dir("reflexion")
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = _recipe_dir("reflexion")
 
-    # Add this recipe's extra roster members through the ordinary `docket pod add <role>`
-    # path; the recipe's own `pipeline.yaml` is exercised unmodified.
-    _cli_pod.add_members(project, "critic")
-    _cli_pod.add_members(project, "tester")
+        # Add this recipe's extra roster members through the ordinary `docket pod add <role>`
+        # path; the recipe's own `pipeline.yaml` is exercised unmodified.
+        _cli_pod.add_members(project, "critic")
+        _cli_pod.add_members(project, "tester")
 
-    result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
-    assert result.spec is not None, result.errors
+        result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        assert result.spec is not None, result.errors
 
-    _dispatch.enqueue_task(project, "harden the login handler", channel="cli")
-    runner = _ReflexionRunner(project)
-    results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
+        _dispatch.enqueue_task(project, "harden the login handler", channel="cli")
+        runner = _ReflexionRunner(project)
+        results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
 
-    assert len(results) == 1
-    outcome = results[0]
-    assert outcome.status == "done", outcome.reason
-    assert [h.role for h in outcome.hops] == [
-        "implementer",
-        "critic",
-        "implementer",
-        "critic",
-        "tester",
-    ]
+        assert len(results) == 1
+        outcome = results[0]
+        assert outcome.status == "done", outcome.reason
+        assert [h.role for h in outcome.hops] == [
+            "implementer",
+            "critic",
+            "implementer",
+            "critic",
+            "tester",
+        ]
 
-    events = _trace_events(project)
-    critic_events = [e for e in events if e.get("agent_role") == "critic"]
-    rework = [e for e in critic_events if e.get("event_type") == "verdict_rework_started"]
-    assert rework, "the critic's REQUEST-CHANGES rework was not traced"
-    assert "REQUEST-CHANGES" in rework[0]["payload"].get("output", "")  # type: ignore[union-attr]
+        events = _trace_events(project)
+        critic_events = [e for e in events if e.get("agent_role") == "critic"]
+        rework = [e for e in critic_events if e.get("event_type") == "verdict_rework_started"]
+        assert rework, "the critic's REQUEST-CHANGES rework was not traced"
+        assert "REQUEST-CHANGES" in rework[0]["payload"].get("output", "")  # type: ignore[union-attr]

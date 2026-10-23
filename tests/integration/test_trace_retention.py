@@ -28,13 +28,15 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with config paths repointed for trace retention."""
     d = tmp_path / ".docket"
     d.mkdir()
-    with use_home(Home(d)):
-        with use_home(
+    with (
+        use_home(Home(d)),
+        use_home(
             dataclasses.replace(current_home(), session_timeout=3600, trace_retention_days=30)
-        ):
-            monkeypatch.setattr(_cfg, "TRACE_RETENTION_S", 30 * 86400, raising=True)
-            monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-            yield d
+        ),
+    ):
+        monkeypatch.setattr(_cfg, "TRACE_RETENTION_S", 30 * 86400, raising=True)
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        yield d
 
 
 def _write_trace(pdir: Path, name: str, lines: list[dict[str, object]]) -> Path:

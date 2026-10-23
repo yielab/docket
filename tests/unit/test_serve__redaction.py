@@ -28,11 +28,10 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     d = tmp_path / ".docket"
     d.mkdir()
     (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(d)):
-        with use_home(dataclasses.replace(current_home(), approval_timeout=900)):
-            monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-            monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
-            yield d
+    with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
+        yield d
 
 
 # ── approval lifecycle emits trace events, action text redacted ────────────────

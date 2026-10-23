@@ -12,12 +12,14 @@ from __future__ import annotations
 import json
 import threading
 import urllib.request
+from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.conftest import record_isolation_off, repoint_docket_home
+from tests.conftest import record_isolation_off
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -46,19 +48,19 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
+@contextmanager
 def _seed_pod(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     project: str = "demo",
     roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
-) -> Path:
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    record_isolation_off(home)
-    _pod.build_pod(project, roles, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        record_isolation_off(home)
+        _pod.build_pod(project, roles, codebase=f"/src/{project}")
+        yield home
 
 
 # ── seam a: POST /approvals/<token> (HTTP) -> pregrant -> a real re-dispatch consumes it ──
@@ -95,92 +97,92 @@ class TestHttpGrantConsumesThePregrant:
         from docket.core.policy import install_policies
 
         monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
-        home = _seed_pod(tmp_path, monkeypatch)
-        install_policies()
-        _fleet.meta_set("demo-lead", "approvalMode", "park")
+        with _seed_pod(tmp_path) as home:
+            install_policies()
+            _fleet.meta_set("demo-lead", "approvalMode", "park")
 
-        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
-        park_backend = _ScriptedBackend(
-            [
-                _final_response("lead plan"),
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-            ]
-        )
-        driver = DocketDriver(backend_factory=lambda model: park_backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-
-        _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
-        parked = _dispatch.dispatch_pod("demo")
-        token = parked[0].approval_token
-        assert token
-        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_approval"
-
-        # The real HTTP write route -- not `approval.approval_grant` called directly.
-        class _Handler(_DocketHandler):
-            serve_token = "seam-test-token"
-
-        server = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = server.server_address[1]
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            req = urllib.request.Request(
-                f"http://127.0.0.1:{port}/approvals/{token}",
-                data=json.dumps({"action": "grant"}).encode(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer seam-test-token",
-                },
-                method="POST",
+            call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+            park_backend = _ScriptedBackend(
+                [
+                    _final_response("lead plan"),
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                ]
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                status = resp.status
-                body = json.loads(resp.read())
-        finally:
-            server.shutdown()
-            thread.join(timeout=5)
+            driver = DocketDriver(backend_factory=lambda model: park_backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        assert status == 200
-        assert body == {"ok": True, "token": token, "state": "granted"}
+            _dispatch.enqueue_task("demo", "clean the build dir", channel="cli")
+            parked = _dispatch.dispatch_pod("demo")
+            token = parked[0].approval_token
+            assert token
+            assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_approval"
 
-        task = _dispatch.read_tasks("demo")[0]
-        assert task["status"] == "pending"
-        assert len(task["pregrants"]) == 1
-        assert task["pregrants"][0]["token"] == token
+            # The real HTTP write route -- not `approval.approval_grant` called directly.
+            class _Handler(_DocketHandler):
+                serve_token = "seam-test-token"
 
-        # A real re-dispatch: the implementer's identical call is re-issued by the model
-        # and this time is admitted via the single-use pre-grant `_handle_post_approvals`
-        # produced, then the hop finishes normally.
-        resume_backend = _ScriptedBackend(
-            [
-                ChatResponse(
-                    ok=True,
-                    message=assistant("", tool_calls=[call]),
-                    finish_reason="tool_calls",
-                    usage=TokenUsage(10, 5),
-                ),
-                _final_response("implementer done"),
-            ]
-        )
-        driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
-        monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
+            server = ContextHTTPServer(("127.0.0.1", 0), _Handler)
+            port = server.server_address[1]
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/approvals/{token}",
+                    data=json.dumps({"action": "grant"}).encode(),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer seam-test-token",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    status = resp.status
+                    body = json.loads(resp.read())
+            finally:
+                server.shutdown()
+                thread.join(timeout=5)
 
-        second = _dispatch.dispatch_pod("demo")
+            assert status == 200
+            assert body == {"ok": True, "token": token, "state": "granted"}
 
-        assert second[0].status == "done", second[0].reason
-        final = _dispatch.read_tasks("demo")[0]
-        assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
-        assert final["hops"][1]["parked"] is True
-        assert final["hops"][-1]["parked"] is False
-        assert final["hops"][-1]["ok"] is True
-        # The pre-grant is single-use -- a stray real audit.log under the real home was
-        # never touched by this test (only the throwaway `home` this fixture built).
-        assert home.is_dir()
+            task = _dispatch.read_tasks("demo")[0]
+            assert task["status"] == "pending"
+            assert len(task["pregrants"]) == 1
+            assert task["pregrants"][0]["token"] == token
+
+            # A real re-dispatch: the implementer's identical call is re-issued by the model
+            # and this time is admitted via the single-use pre-grant `_handle_post_approvals`
+            # produced, then the hop finishes normally.
+            resume_backend = _ScriptedBackend(
+                [
+                    ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    ),
+                    _final_response("implementer done"),
+                ]
+            )
+            driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
+
+            second = _dispatch.dispatch_pod("demo")
+
+            assert second[0].status == "done", second[0].reason
+            final = _dispatch.read_tasks("demo")[0]
+            assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
+            assert final["hops"][1]["parked"] is True
+            assert final["hops"][-1]["parked"] is False
+            assert final["hops"][-1]["ok"] is True
+            # The pre-grant is single-use -- a stray real audit.log under the real home was
+            # never touched by this test (only the throwaway `home` this fixture built).
+            assert home.is_dir()
 
 
 # ── seam b: channel content level enforced at the real webhook delivery point ──
@@ -373,34 +375,34 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
     ) -> None:
         """The operator answers with `{"q1": "blue", "q2": "large"}`; the Lead's second call
         message must contain `## Operator answers` with both exact values."""
-        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
-        _bind_intake_pipeline("demo")
-        task = _dispatch.enqueue_task("demo", "build the widget", channel="cli")
-        runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            task = _dispatch.enqueue_task("demo", "build the widget", channel="cli")
+            runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
-        first = _dispatch.dispatch_pod("demo", runner=runner)
-        assert first[0].status == "waiting_input"
-        question = _dispatch.read_tasks("demo")[0]["question"]
-        assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
-        assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
+            first = _dispatch.dispatch_pod("demo", runner=runner)
+            assert first[0].status == "waiting_input"
+            question = _dispatch.read_tasks("demo")[0]["question"]
+            assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
+            assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
 
-        _answers.answer_task(
-            "demo",
-            task["id"],
-            "accept",
-            {"q1": "blue", "q2": "large"},
-            channel="cli",
-            actor="op",
-        )
+            _answers.answer_task(
+                "demo",
+                task["id"],
+                "accept",
+                {"q1": "blue", "q2": "large"},
+                channel="cli",
+                actor="op",
+            )
 
-        final = _dispatch.dispatch_pod("demo", runner=runner)
-        assert final[0].status == "done"
+            final = _dispatch.dispatch_pod("demo", runner=runner)
+            assert final[0].status == "done"
 
-        lead_messages = [msg for role, msg in runner.calls if role == "lead"]
-        assert len(lead_messages) == 2, "the Lead must run again after the answer"
-        second_lead_message = lead_messages[1]
+            lead_messages = [msg for role, msg in runner.calls if role == "lead"]
+            assert len(lead_messages) == 2, "the Lead must run again after the answer"
+            second_lead_message = lead_messages[1]
 
-        assert "## Operator answers" in second_lead_message
-        assert "Which color?" in second_lead_message or "add a widget" in question["message"]
-        assert '"q1": "blue"' in second_lead_message
-        assert '"q2": "large"' in second_lead_message
+            assert "## Operator answers" in second_lead_message
+            assert "Which color?" in second_lead_message or "add a widget" in question["message"]
+            assert '"q1": "blue"' in second_lead_message
+            assert '"q2": "large"' in second_lead_message

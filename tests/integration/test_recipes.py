@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
 import typer
-from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
@@ -140,12 +141,14 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str) -> None:
+@contextmanager
+def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    with use_home(Home(home)):
+        _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield
 
 
 @pytest.mark.parametrize("recipe_dir", _recipe_dirs(), ids=lambda p: p.name)
@@ -155,25 +158,24 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(
     """``docket pod update <recipe_dir>`` leaves every pipeline step resolvable -- a policy
     pack has no pipeline to resolve, so applying it cleanly is the whole assertion."""
     project = "fixture"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    with _seed_fixture_pod(tmp_path, project):
+        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
 
-    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+        pipeline_file = recipe_dir / "pipeline.yaml"
+        if not pipeline_file.is_file():
+            return
+        result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
+        assert result.spec is not None, result.errors
 
-    pipeline_file = recipe_dir / "pipeline.yaml"
-    if not pipeline_file.is_file():
-        return
-    result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
-    assert result.spec is not None, result.errors
+        roster = _dispatch.pod_full_roster(project)
+        registry = _arch.load_registry(project)
+        plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
-    roster = _dispatch.pod_full_roster(project)
-    registry = _arch.load_registry(project)
-    plan = _orch.resolve_plan(result.spec, roster, registry=registry)
-
-    skipped: list[str] = []
-    for node in plan.nodes:
-        units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
-        skipped.extend(u.step_id for u in units if u.skipped)
-    assert skipped == [], f"recipe {recipe_dir.name!r} leaves steps unresolvable: {skipped}"
+        skipped: list[str] = []
+        for node in plan.nodes:
+            units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
+            skipped.extend(u.step_id for u in units if u.skipped)
+        assert skipped == [], f"recipe {recipe_dir.name!r} leaves steps unresolvable: {skipped}"
 
 
 def test_pod_apply_resolves_a_shipped_recipe_by_name(
@@ -182,11 +184,10 @@ def test_pod_apply_resolves_a_shipped_recipe_by_name(
     """``docket pod update secure-build`` applies the shipped recipe, as ``init --recipe``
     does -- a README can print a command that needs no path into the installed package."""
     project = "byname"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    with _seed_fixture_pod(tmp_path, project):
+        assert _pod_cli("update", "secure-build", "--pod", project).exit_code == 0
 
-    assert _pod_cli("update", "secure-build", "--pod", project).exit_code == 0
-
-    assert "security-vetter" in _dispatch.pod_full_roster(project)
+        assert "security-vetter" in _dispatch.pod_full_roster(project)
 
 
 def test_apply_with_an_invalid_setting_writes_nothing(
@@ -194,17 +195,17 @@ def test_apply_with_an_invalid_setting_writes_nothing(
 ) -> None:
     """A bad ``pod.yaml`` setting refuses before any pod-scoped file is written."""
     project = "guarded"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    bad_dir = tmp_path / "bad-recipe"
-    bad_dir.mkdir()
-    (bad_dir / "pod.yaml").write_text(
-        "kind: pod\nname: x\nsettings:\n  mcpServers: [zzz]\n", encoding="utf-8"
-    )
+    with _seed_fixture_pod(tmp_path, project):
+        bad_dir = tmp_path / "bad-recipe"
+        bad_dir.mkdir()
+        (bad_dir / "pod.yaml").write_text(
+            "kind: pod\nname: x\nsettings:\n  mcpServers: [zzz]\n", encoding="utf-8"
+        )
 
-    with pytest.raises(_pod_apply.PodApplyError, match="zzz"):
-        _pod_apply.plan_apply(project, bad_dir)
+        with pytest.raises(_pod_apply.PodApplyError, match="zzz"):
+            _pod_apply.plan_apply(project, bad_dir)
 
-    assert not current_home().pod_config_dir(project).exists()
+        assert not current_home().pod_config_dir(project).exists()
 
 
 def test_apply_with_an_invalid_policy_writes_nothing(
@@ -213,26 +214,26 @@ def test_apply_with_an_invalid_policy_writes_nothing(
     """A policy file that fails ``validate_policy`` (an uncompilable regex) refuses before any
     pod-scoped file is written, naming the offending file."""
     project = "badpolicy"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    bad_dir = tmp_path / "bad-recipe"
-    (bad_dir / "policies").mkdir(parents=True)
-    (bad_dir / "policies" / "broken.json").write_text(
-        json.dumps(
-            {
-                "id": "broken",
-                "applies_to": ["implementer"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "(unclosed"},
-                "action": "block",
-            }
-        ),
-        encoding="utf-8",
-    )
+    with _seed_fixture_pod(tmp_path, project):
+        bad_dir = tmp_path / "bad-recipe"
+        (bad_dir / "policies").mkdir(parents=True)
+        (bad_dir / "policies" / "broken.json").write_text(
+            json.dumps(
+                {
+                    "id": "broken",
+                    "applies_to": ["implementer"],
+                    "hook": "pre_tool_call",
+                    "match": {"type": "regex", "pattern": "(unclosed"},
+                    "action": "block",
+                }
+            ),
+            encoding="utf-8",
+        )
 
-    with pytest.raises(_pod_apply.PodApplyError, match=r"broken\.json"):
-        _pod_apply.plan_apply(project, bad_dir)
+        with pytest.raises(_pod_apply.PodApplyError, match=r"broken\.json"):
+            _pod_apply.plan_apply(project, bad_dir)
 
-    assert not current_home().pod_config_dir(project).exists()
+        assert not current_home().pod_config_dir(project).exists()
 
 
 def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
@@ -241,27 +242,27 @@ def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
     """``secure-build``'s policy pack lands in the pod's own directory, never the fleet-wide
     one; a second apply plans it ``skip`` and writes no second audit entry."""
     project = "policied"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = RECIPES_DIR / "secure-build"
-    src = recipe_dir / "policies" / "require-approval-secret-writes.yaml"
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = RECIPES_DIR / "secure-build"
+        src = recipe_dir / "policies" / "require-approval-secret-writes.yaml"
 
-    plan = _pod_apply.plan_apply(project, recipe_dir)
-    policy_items = [i for i in plan.items if i.kind == "policy"]
-    assert [(i.name, i.action) for i in policy_items] == [(src.name, "add")]
-    _pod_apply.apply(plan)
+        plan = _pod_apply.plan_apply(project, recipe_dir)
+        policy_items = [i for i in plan.items if i.kind == "policy"]
+        assert [(i.name, i.action) for i in policy_items] == [(src.name, "add")]
+        _pod_apply.apply(plan)
 
-    dest = current_home().pod_config_dir(project) / "policies" / src.name
-    assert dest.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
-    assert not (current_home().policies_dir / src.name).exists()
-    assert dest in _policy.policy_files(project)
+        dest = current_home().pod_config_dir(project) / "policies" / src.name
+        assert dest.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
+        assert not (current_home().policies_dir / src.name).exists()
+        assert dest in _policy.policy_files(project)
 
-    entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
-    second_plan = _pod_apply.plan_apply(project, recipe_dir)
-    second_policy_items = [i for i in second_plan.items if i.kind == "policy"]
-    assert [(i.name, i.action) for i in second_policy_items] == [(src.name, "skip")]
-    _pod_apply.apply(second_plan)
-    entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
-    assert entries_after == entries_before
+        entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+        second_plan = _pod_apply.plan_apply(project, recipe_dir)
+        second_policy_items = [i for i in second_plan.items if i.kind == "policy"]
+        assert [(i.name, i.action) for i in second_policy_items] == [(src.name, "skip")]
+        _pod_apply.apply(second_plan)
+        entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+        assert entries_after == entries_before
 
 
 # ── skills: the Agent Skills shape, applied/exported like any other pod scope ─────────────────
@@ -274,38 +275,38 @@ def test_secure_build_plans_applies_and_round_trips_its_skill(
     own ``config/skills/``, exports back byte-for-byte, and re-applying the export plans
     ``skip`` -- the same additive/idempotent contract every other recipe part already has."""
     project = "skilled"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = RECIPES_DIR / "secure-build"
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = RECIPES_DIR / "secure-build"
 
-    plan = _pod_apply.plan_apply(project, recipe_dir)
-    skill_items = [i for i in plan.items if i.kind == "skill"]
-    assert [(i.name, i.action) for i in skill_items] == [("security-review", "add")]
-    _pod_apply.apply(plan)
+        plan = _pod_apply.plan_apply(project, recipe_dir)
+        skill_items = [i for i in plan.items if i.kind == "skill"]
+        assert [(i.name, i.action) for i in skill_items] == [("security-review", "add")]
+        _pod_apply.apply(plan)
 
-    dest = current_home().pod_config_dir(project) / "skills" / "security-review" / "SKILL.md"
-    assert dest.is_file()
-    assert dest.read_text(encoding="utf-8") == (
-        recipe_dir / "skills" / "security-review" / "SKILL.md"
-    ).read_text(encoding="utf-8")
+        dest = current_home().pod_config_dir(project) / "skills" / "security-review" / "SKILL.md"
+        assert dest.is_file()
+        assert dest.read_text(encoding="utf-8") == (
+            recipe_dir / "skills" / "security-review" / "SKILL.md"
+        ).read_text(encoding="utf-8")
 
-    entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
-    second_plan = _pod_apply.plan_apply(project, recipe_dir)
-    second_skill_items = [i for i in second_plan.items if i.kind == "skill"]
-    assert [(i.name, i.action) for i in second_skill_items] == [("security-review", "skip")]
-    _pod_apply.apply(second_plan)
-    entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
-    assert entries_after == entries_before
+        entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+        second_plan = _pod_apply.plan_apply(project, recipe_dir)
+        second_skill_items = [i for i in second_plan.items if i.kind == "skill"]
+        assert [(i.name, i.action) for i in second_skill_items] == [("security-review", "skip")]
+        _pod_apply.apply(second_plan)
+        entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+        assert entries_after == entries_before
 
-    export_dir = tmp_path / "export-skill"
-    _pod_apply.export_pod(project, export_dir)
-    assert (export_dir / "skills" / "security-review" / "SKILL.md").is_file()
+        export_dir = tmp_path / "export-skill"
+        _pod_apply.export_pod(project, export_dir)
+        assert (export_dir / "skills" / "security-review" / "SKILL.md").is_file()
 
-    reapply_plan = _pod_apply.plan_apply(project, export_dir)
-    reapply_skill_items = [i for i in reapply_plan.items if i.kind == "skill"]
-    assert [(i.name, i.action) for i in reapply_skill_items] == [("security-review", "skip")]
+        reapply_plan = _pod_apply.plan_apply(project, export_dir)
+        reapply_skill_items = [i for i in reapply_plan.items if i.kind == "skill"]
+        assert [(i.name, i.action) for i in reapply_skill_items] == [("security-review", "skip")]
 
-    summary = _pod_apply.summarize_recipe(recipe_dir)
-    assert summary.skills == 1
+        summary = _pod_apply.summarize_recipe(recipe_dir)
+        assert summary.skills == 1
 
 
 # ── policy-pack recipes: structured predicates over the call, not text ───────────────────────
@@ -317,13 +318,13 @@ def test_git_safety_recipe_plans_policy_items_only(
     """A policy pack has no role, member or pipeline to add -- applying it onto a lean fixture
     pod plans ``policy`` items only (ADR 0013 SS2, "Policy pack")."""
     project = "leangit"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = RECIPES_DIR / "git-safety"
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = RECIPES_DIR / "git-safety"
 
-    plan = _pod_apply.plan_apply(project, recipe_dir)
+        plan = _pod_apply.plan_apply(project, recipe_dir)
 
-    assert plan.items, "git-safety should plan at least one item"
-    assert all(item.kind == "policy" for item in plan.items), plan.items
+        assert plan.items, "git-safety should plan at least one item"
+        assert all(item.kind == "policy" for item in plan.items), plan.items
 
 
 def test_git_safety_blocks_force_push_after_apply(
@@ -333,16 +334,18 @@ def test_git_safety_blocks_force_push_after_apply(
     allowlist -- ``git`` is allowlisted, so only the recipe's structured ``tool``/``matches``
     predicate over the call catches this, never the command classifier alone."""
     project = "leangit2"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = RECIPES_DIR / "git-safety"
-    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = RECIPES_DIR / "git-safety"
+        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
 
-    command = "git push --force origin main"
-    text = _tools.render_tool_call("bash", {"command": command})
-    call = _policy.ToolCallFacts(tool="bash", args={"command": command}, branch_of=lambda: "")
+        command = "git push --force origin main"
+        text = _tools.render_tool_call("bash", {"command": command})
+        call = _policy.ToolCallFacts(tool="bash", args={"command": command}, branch_of=lambda: "")
 
-    action = _policy.policy_test("pre_tool_call", "implementer", text, project=project, call=call)
-    assert action == "block"
+        action = _policy.policy_test(
+            "pre_tool_call", "implementer", text, project=project, call=call
+        )
+        assert action == "block"
 
 
 def test_secrets_guard_blocks_env_write_and_allows_a_plain_write(
@@ -351,25 +354,27 @@ def test_secrets_guard_blocks_env_write_and_allows_a_plain_write(
     """The path-shaped ``anyOf`` fires on a ``.env`` write regardless of content, and never on
     an ordinary file -- the negative case a fail-closed pack must not also over-trigger on."""
     project = "leansecrets"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = RECIPES_DIR / "secrets-guard"
-    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = RECIPES_DIR / "secrets-guard"
+        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
 
-    env_call = _policy.ToolCallFacts(
-        tool="write", args={"path": "config/.env"}, branch_of=lambda: ""
-    )
-    env_text = _tools.render_tool_call("write", {"path": "config/.env", "content": "SECRET=1"})
-    env_action = _policy.policy_test(
-        "pre_tool_call", "implementer", env_text, project=project, call=env_call
-    )
-    assert env_action == "block"
+        env_call = _policy.ToolCallFacts(
+            tool="write", args={"path": "config/.env"}, branch_of=lambda: ""
+        )
+        env_text = _tools.render_tool_call("write", {"path": "config/.env", "content": "SECRET=1"})
+        env_action = _policy.policy_test(
+            "pre_tool_call", "implementer", env_text, project=project, call=env_call
+        )
+        assert env_action == "block"
 
-    doc_call = _policy.ToolCallFacts(tool="write", args={"path": "README.md"}, branch_of=lambda: "")
-    doc_text = _tools.render_tool_call("write", {"path": "README.md", "content": "hello"})
-    doc_action = _policy.policy_test(
-        "pre_tool_call", "implementer", doc_text, project=project, call=doc_call
-    )
-    assert doc_action == "allow"
+        doc_call = _policy.ToolCallFacts(
+            tool="write", args={"path": "README.md"}, branch_of=lambda: ""
+        )
+        doc_text = _tools.render_tool_call("write", {"path": "README.md", "content": "hello"})
+        doc_action = _policy.policy_test(
+            "pre_tool_call", "implementer", doc_text, project=project, call=doc_call
+        )
+        assert doc_action == "allow"
 
 
 # ── secure-build: one full dispatch on the fake driver ──────────────────────────
@@ -428,45 +433,45 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = "webapp"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_dir = RECIPES_DIR / "secure-build"
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_dir = RECIPES_DIR / "secure-build"
 
-    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
-    assert pod.pod_of(f"{project}-security-vetter") == project
-    assert _arch.load_registry(project).source_of("security-vetter") == f"pod:{project}"
-    assert "security-vetter" not in _arch.load_registry().archetypes
+        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
+        assert pod.pod_of(f"{project}-security-vetter") == project
+        assert _arch.load_registry(project).source_of("security-vetter") == f"pod:{project}"
+        assert "security-vetter" not in _arch.load_registry().archetypes
 
-    result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
-    assert result.spec is not None, result.errors
+        result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        assert result.spec is not None, result.errors
 
-    _dispatch.enqueue_task(project, "add a login endpoint", channel="cli")
-    runner = _SecureBuildRunner(project)
-    results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
+        _dispatch.enqueue_task(project, "add a login endpoint", channel="cli")
+        runner = _SecureBuildRunner(project)
+        results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
 
-    assert len(results) == 1
-    outcome = results[0]
-    assert outcome.status == "done", outcome.reason
-    assert [h.role for h in outcome.hops] == [
-        "lead",
-        "implementer",
-        "security-vetter",
-        "implementer",
-        "security-vetter",
-    ]
+        assert len(results) == 1
+        outcome = results[0]
+        assert outcome.status == "done", outcome.reason
+        assert [h.role for h in outcome.hops] == [
+            "lead",
+            "implementer",
+            "security-vetter",
+            "implementer",
+            "security-vetter",
+        ]
 
-    events = _trace_events(project)
-    vetter_events = [e for e in events if e.get("agent_role") == "security-vetter"]
-    rework = [e for e in vetter_events if e.get("event_type") == "verdict_rework_started"]
-    assert rework, "the vetter's REQUEST-CHANGES rework was not traced"
-    assert "REQUEST-CHANGES" in rework[0]["payload"].get("output", "")  # type: ignore[union-attr]
+        events = _trace_events(project)
+        vetter_events = [e for e in events if e.get("agent_role") == "security-vetter"]
+        rework = [e for e in vetter_events if e.get("event_type") == "verdict_rework_started"]
+        assert rework, "the vetter's REQUEST-CHANGES rework was not traced"
+        assert "REQUEST-CHANGES" in rework[0]["payload"].get("output", "")  # type: ignore[union-attr]
 
-    approvals = [
-        e
-        for e in vetter_events
-        if e.get("event_type") == "tool_result"
-        and "APPROVE" in (e.get("payload") or {}).get("text", "")  # type: ignore[union-attr]
-    ]
-    assert approvals, "the vetter's APPROVE verdict was not traced"
+        approvals = [
+            e
+            for e in vetter_events
+            if e.get("event_type") == "tool_result"
+            and "APPROVE" in (e.get("payload") or {}).get("text", "")  # type: ignore[union-attr]
+        ]
+        assert approvals, "the vetter's APPROVE verdict was not traced"
 
 
 # ── export_pod: the round trip is the proof ──────────────────────────────────
@@ -499,51 +504,54 @@ def test_export_then_apply_round_trip_matches_pod_show(
     also covers the CLI's non-empty-directory refusal and its `--force` override."""
     source_project = "podsrc"
     target_project = "poddst"  # same length as source_project -- see `_normalized`
-    _seed_fixture_pod(tmp_path / "source", monkeypatch, source_project)
+    with _seed_fixture_pod(tmp_path / "source", source_project):
+        recipe_dir = RECIPES_DIR / "secure-build"
+        _pod_apply.apply(_pod_apply.plan_apply(source_project, recipe_dir))
+        _pod.set_setting(source_project, "approvalMode", "refuse")
 
-    recipe_dir = RECIPES_DIR / "secure-build"
-    _pod_apply.apply(_pod_apply.plan_apply(source_project, recipe_dir))
-    _pod.set_setting(source_project, "approvalMode", "refuse")
+        export_dir = tmp_path / "exported"
+        assert _pod_cli("export", str(export_dir), "--pod", source_project).exit_code == 0
+        assert (export_dir / "roles" / "security-vetter.yaml").is_file()
+        assert (export_dir / "roles" / "security-vetter.md").is_file()
+        assert (export_dir / "pipeline.yaml").is_file()
+        assert (export_dir / "pod.yaml").is_file()
+        # The export regenerates the policy as short-form YAML (not a byte copy of the recipe's
+        # own file), so the two are compared by parsed content, not bytes.
+        assert _policy.read_policy(
+            export_dir / "policies" / "require-approval-secret-writes.yaml"
+        ) == _policy.read_policy(recipe_dir / "policies" / "require-approval-secret-writes.yaml")
 
-    export_dir = tmp_path / "exported"
-    assert _pod_cli("export", str(export_dir), "--pod", source_project).exit_code == 0
-    assert (export_dir / "roles" / "security-vetter.yaml").is_file()
-    assert (export_dir / "roles" / "security-vetter.md").is_file()
-    assert (export_dir / "pipeline.yaml").is_file()
-    assert (export_dir / "pod.yaml").is_file()
-    # The export regenerates the policy as short-form YAML (not a byte copy of the recipe's
-    # own file), so the two are compared by parsed content, not bytes.
-    assert _policy.read_policy(
-        export_dir / "policies" / "require-approval-secret-writes.yaml"
-    ) == _policy.read_policy(recipe_dir / "policies" / "require-approval-secret-writes.yaml")
+        assert _pod_cli("export", str(export_dir), "--pod", source_project).exit_code == 1
+        # overwrites cleanly
+        assert (
+            _pod_cli("export", str(export_dir), "--pod", source_project, "--force").exit_code == 0
+        )
 
-    assert _pod_cli("export", str(export_dir), "--pod", source_project).exit_code == 1
-    # overwrites cleanly
-    assert _pod_cli("export", str(export_dir), "--pod", source_project, "--force").exit_code == 0
+        # Round trip: re-planning this pod's own export against itself plans every item `skip` --
+        # the schema-header/regenerated-short-form export is still recognized as unchanged.
+        reapply_plan = _pod_apply.plan_apply(source_project, export_dir)
+        assert [item.action for item in reapply_plan.items] == ["skip"] * len(reapply_plan.items)
 
-    # Round trip: re-planning this pod's own export against itself plans every item `skip` --
-    # the schema-header/regenerated-short-form export is still recognized as unchanged.
-    reapply_plan = _pod_apply.plan_apply(source_project, export_dir)
-    assert [item.action for item in reapply_plan.items] == ["skip"] * len(reapply_plan.items)
+        source_report = _explain_json(f"{source_project}-security-vetter", capsys)
 
-    source_report = _explain_json(f"{source_project}-security-vetter", capsys)
+        with _seed_fixture_pod(tmp_path / "target", target_project):
+            _pod_apply.apply(_pod_apply.plan_apply(target_project, export_dir))
 
-    _seed_fixture_pod(tmp_path / "target", monkeypatch, target_project)
-    _pod_apply.apply(_pod_apply.plan_apply(target_project, export_dir))
+            target_report = _explain_json(f"{target_project}-security-vetter", capsys)
 
-    target_report = _explain_json(f"{target_project}-security-vetter", capsys)
+            # Each pod's own configuration-of-record: the source pod was applied from `recipe_dir`,
+            # the target pod from `export_dir` -- different directories, each still `drift: no`
+            # since neither was edited after its own `apply`.
+            assert source_report["configSource"] == str(recipe_dir.resolve())
+            assert source_report["configDigest"] == _pod_apply.directory_digest(recipe_dir)
+            assert source_report["drift"] == "no"
+            assert target_report["configSource"] == str(export_dir.resolve())
+            assert target_report["configDigest"] == _pod_apply.directory_digest(export_dir)
+            assert target_report["drift"] == "no"
 
-    # Each pod's own configuration-of-record: the source pod was applied from `recipe_dir`,
-    # the target pod from `export_dir` -- different directories, each still `drift: no`
-    # since neither was edited after its own `apply`.
-    assert source_report["configSource"] == str(recipe_dir.resolve())
-    assert source_report["configDigest"] == _pod_apply.directory_digest(recipe_dir)
-    assert source_report["drift"] == "no"
-    assert target_report["configSource"] == str(export_dir.resolve())
-    assert target_report["configDigest"] == _pod_apply.directory_digest(export_dir)
-    assert target_report["drift"] == "no"
-
-    assert _normalized(source_report, source_project) == _normalized(target_report, target_project)
+            assert _normalized(source_report, source_project) == _normalized(
+                target_report, target_project
+            )
 
 
 def test_export_writes_only_this_pods_own_scope_never_global(
@@ -552,59 +560,58 @@ def test_export_writes_only_this_pods_own_scope_never_global(
     """A fleet-wide policy, installed alongside this pod's own pod-scoped role/policy, must
     never appear in an export."""
     project = "guardedexp"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    with _seed_fixture_pod(tmp_path, project):
+        current_home().policies_dir.mkdir(parents=True, exist_ok=True)
+        (current_home().policies_dir / "global-policy.json").write_text(
+            json.dumps(
+                {
+                    "id": "global-policy",
+                    "applies_to": ["*"],
+                    "hook": "pre_tool_call",
+                    "match": {"type": "regex", "pattern": "x"},
+                    "action": "require_approval",
+                }
+            ),
+            encoding="utf-8",
+        )
 
-    current_home().policies_dir.mkdir(parents=True, exist_ok=True)
-    (current_home().policies_dir / "global-policy.json").write_text(
-        json.dumps(
-            {
-                "id": "global-policy",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "x"},
-                "action": "require_approval",
-            }
-        ),
-        encoding="utf-8",
-    )
+        _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "secure-build"))
+        pod_policies_dir = current_home().pod_config_dir(project) / "policies"
+        pod_policies_dir.mkdir(parents=True, exist_ok=True)
+        policy_text = (
+            RECIPES_DIR / "secure-build" / "policies" / "require-approval-secret-writes.yaml"
+        ).read_text(encoding="utf-8")
+        (pod_policies_dir / "require-approval-secret-writes.yaml").write_text(
+            policy_text, encoding="utf-8"
+        )
+        _pod.set_setting(project, "approvalMode", "refuse")
 
-    _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "secure-build"))
-    pod_policies_dir = current_home().pod_config_dir(project) / "policies"
-    pod_policies_dir.mkdir(parents=True, exist_ok=True)
-    policy_text = (
-        RECIPES_DIR / "secure-build" / "policies" / "require-approval-secret-writes.yaml"
-    ).read_text(encoding="utf-8")
-    (pod_policies_dir / "require-approval-secret-writes.yaml").write_text(
-        policy_text, encoding="utf-8"
-    )
-    _pod.set_setting(project, "approvalMode", "refuse")
+        export_dir = tmp_path / "export-out"
+        _pod_apply.export_pod(project, export_dir)
 
-    export_dir = tmp_path / "export-out"
-    _pod_apply.export_pod(project, export_dir)
+        assert sorted(p.name for p in (export_dir / "roles").iterdir()) == [
+            "security-vetter.md",
+            "security-vetter.yaml",
+        ]
+        assert sorted(p.name for p in (export_dir / "policies").iterdir()) == [
+            "require-approval-secret-writes.yaml"
+        ]
+        # The export regenerates the policy as short-form YAML, so it is compared by parsed
+        # content, not bytes.
+        assert _policy.read_policy(
+            export_dir / "policies" / "require-approval-secret-writes.yaml"
+        ) == _policy.read_policy(Path(pod_policies_dir / "require-approval-secret-writes.yaml"))
+        assert (export_dir / "pipeline.yaml").is_file()
 
-    assert sorted(p.name for p in (export_dir / "roles").iterdir()) == [
-        "security-vetter.md",
-        "security-vetter.yaml",
-    ]
-    assert sorted(p.name for p in (export_dir / "policies").iterdir()) == [
-        "require-approval-secret-writes.yaml"
-    ]
-    # The export regenerates the policy as short-form YAML, so it is compared by parsed
-    # content, not bytes.
-    assert _policy.read_policy(
-        export_dir / "policies" / "require-approval-secret-writes.yaml"
-    ) == _policy.read_policy(Path(pod_policies_dir / "require-approval-secret-writes.yaml"))
-    assert (export_dir / "pipeline.yaml").is_file()
+        import yaml as _yaml
 
-    import yaml as _yaml
-
-    manifest = _yaml.safe_load((export_dir / "pod.yaml").read_text(encoding="utf-8"))
-    assert manifest == {
-        "kind": "pod",
-        "name": project,
-        "members": ["implementer", "security-vetter"],
-        "settings": {"approvalMode": "refuse"},
-    }
+        manifest = _yaml.safe_load((export_dir / "pod.yaml").read_text(encoding="utf-8"))
+        assert manifest == {
+            "kind": "pod",
+            "name": project,
+            "members": ["implementer", "security-vetter"],
+            "settings": {"approvalMode": "refuse"},
+        }
 
 
 # ── configSource/configDigest: the pod's configuration of record (ADR 0012 §2 rule 5) ──
@@ -616,46 +623,46 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
     """`apply` records `configSource`/`configDigest`; editing the applied directory afterward
     makes `config explain --json` report `drift: yes` against the unchanged recorded digest."""
     project = "recorded"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    recipe_copy = tmp_path / "recipe-copy"
-    shutil.copytree(RECIPES_DIR / "secure-build", recipe_copy)
+    with _seed_fixture_pod(tmp_path, project):
+        recipe_copy = tmp_path / "recipe-copy"
+        shutil.copytree(RECIPES_DIR / "secure-build", recipe_copy)
 
-    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_copy))
+        _pod_apply.apply(_pod_apply.plan_apply(project, recipe_copy))
 
-    settings = pod.PodSettings.load_for(project)
-    assert settings.config_source == str(recipe_copy.resolve())
-    assert settings.config_digest == _pod_apply.directory_digest(recipe_copy)
+        settings = pod.PodSettings.load_for(project)
+        assert settings.config_source == str(recipe_copy.resolve())
+        assert settings.config_digest == _pod_apply.directory_digest(recipe_copy)
 
-    lead_id = pod.member_id(project, "lead")
-    report = _explain_json(lead_id, capsys)
-    assert report["configSource"] == str(recipe_copy.resolve())
-    assert report["configDigest"] == settings.config_digest
-    assert report["drift"] == "no"
+        lead_id = pod.member_id(project, "lead")
+        report = _explain_json(lead_id, capsys)
+        assert report["configSource"] == str(recipe_copy.resolve())
+        assert report["configDigest"] == settings.config_digest
+        assert report["drift"] == "no"
 
-    policy_file = recipe_copy / "policies" / "require-approval-secret-writes.yaml"
-    policy_file.write_text(policy_file.read_text(encoding="utf-8") + "\n# edited\n", "utf-8")
+        policy_file = recipe_copy / "policies" / "require-approval-secret-writes.yaml"
+        policy_file.write_text(policy_file.read_text(encoding="utf-8") + "\n# edited\n", "utf-8")
 
-    drifted_report = _explain_json(lead_id, capsys)
-    assert drifted_report["configDigest"] == settings.config_digest  # recorded value unchanged
-    assert drifted_report["drift"] == "yes"
+        drifted_report = _explain_json(lead_id, capsys)
+        assert drifted_report["configDigest"] == settings.config_digest  # recorded value unchanged
+        assert drifted_report["drift"] == "yes"
 
-    # Written only by `apply` -- `config set` refuses both by name, naming `apply` as the
-    # writer (not the generic "unknown pod setting" message every other unknown key gets).
-    capsys.readouterr()
-    with pytest.raises(typer.Exit) as exc:
-        _pod.set_setting(project, "configSource", "/tmp/whatever")
-    assert exc.value.exit_code == 1
-    assert "written by update" in capsys.readouterr().err
+        # Written only by `apply` -- `config set` refuses both by name, naming `apply` as the
+        # writer (not the generic "unknown pod setting" message every other unknown key gets).
+        capsys.readouterr()
+        with pytest.raises(typer.Exit) as exc:
+            _pod.set_setting(project, "configSource", "/tmp/whatever")
+        assert exc.value.exit_code == 1
+        assert "written by update" in capsys.readouterr().err
 
-    # A `pod.yaml` `settings` mapping cannot carry them either -- refused the same way any
-    # unknown setting already is, since both are deliberately outside `PodSettings.KEYS`.
-    bad_dir = tmp_path / "bad-recipe"
-    bad_dir.mkdir()
-    (bad_dir / "pod.yaml").write_text(
-        "kind: pod\nname: x\nsettings:\n  configDigest: " + "0" * 64 + "\n", encoding="utf-8"
-    )
-    with pytest.raises(_pod_apply.PodApplyError, match="configDigest"):
-        _pod_apply.plan_apply(project, bad_dir)
+        # A `pod.yaml` `settings` mapping cannot carry them either -- refused the same way any
+        # unknown setting already is, since both are deliberately outside `PodSettings.KEYS`.
+        bad_dir = tmp_path / "bad-recipe"
+        bad_dir.mkdir()
+        (bad_dir / "pod.yaml").write_text(
+            "kind: pod\nname: x\nsettings:\n  configDigest: " + "0" * 64 + "\n", encoding="utf-8"
+        )
+        with pytest.raises(_pod_apply.PodApplyError, match="configDigest"):
+            _pod_apply.plan_apply(project, bad_dir)
 
 
 def test_apply_records_config_source_from_every_validated_apply_all_skip_included(
@@ -665,24 +672,24 @@ def test_apply_records_config_source_from_every_validated_apply_all_skip_include
     `configSource`/`configDigest` even though every item plans `skip` -- the record must not
     stay pointing at the first directory once a second one is applied (ADR 0013 §1 rule 3)."""
     project = "reconfigured"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    dir_a = tmp_path / "recipe-a"
-    shutil.copytree(RECIPES_DIR / "secure-build", dir_a)
-    _pod_apply.apply(_pod_apply.plan_apply(project, dir_a))
+    with _seed_fixture_pod(tmp_path, project):
+        dir_a = tmp_path / "recipe-a"
+        shutil.copytree(RECIPES_DIR / "secure-build", dir_a)
+        _pod_apply.apply(_pod_apply.plan_apply(project, dir_a))
 
-    dir_b = tmp_path / "recipe-b"
-    shutil.copytree(RECIPES_DIR / "secure-build", dir_b)
+        dir_b = tmp_path / "recipe-b"
+        shutil.copytree(RECIPES_DIR / "secure-build", dir_b)
 
-    entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
-    second_plan = _pod_apply.plan_apply(project, dir_b)
-    assert [item.action for item in second_plan.items] == ["skip"] * len(second_plan.items)
-    _pod_apply.apply(second_plan)
-    entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
-    assert entries_after == entries_before  # all-skip: no new audit entry
+        entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+        second_plan = _pod_apply.plan_apply(project, dir_b)
+        assert [item.action for item in second_plan.items] == ["skip"] * len(second_plan.items)
+        _pod_apply.apply(second_plan)
+        entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+        assert entries_after == entries_before  # all-skip: no new audit entry
 
-    settings = pod.PodSettings.load_for(project)
-    assert settings.config_source == str(dir_b.resolve())
-    assert settings.config_digest == _pod_apply.directory_digest(dir_b)
+        settings = pod.PodSettings.load_for(project)
+        assert settings.config_source == str(dir_b.resolve())
+        assert settings.config_digest == _pod_apply.directory_digest(dir_b)
 
 
 def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
@@ -719,23 +726,27 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
 ) -> None:
     """A recipe's own role, applied into the pod, gets the fleet's model, never the literal."""
     project = "fixture"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
-    current_home().model_registry_file.write_text(
-        json.dumps(
-            {
-                "default": "local/x",
-                "rankAnchors": {"economy": "local/x", "standard": "local/x", "premium": "local/x"},
-                "roles": {},
-            }
-        ),
-        encoding="utf-8",
-    )
+    with _seed_fixture_pod(tmp_path, project):
+        current_home().model_registry_file.write_text(
+            json.dumps(
+                {
+                    "default": "local/x",
+                    "rankAnchors": {
+                        "economy": "local/x",
+                        "standard": "local/x",
+                        "premium": "local/x",
+                    },
+                    "roles": {},
+                }
+            ),
+            encoding="utf-8",
+        )
 
-    _pod_apply.apply(_pod_apply.plan_apply(project, _cfg.recipes_dir() / "secure-build"))
+        _pod_apply.apply(_pod_apply.plan_apply(project, _cfg.recipes_dir() / "secure-build"))
 
-    from docket.core import fleet as _fleet
+        from docket.core import fleet as _fleet
 
-    assert _fleet.meta_get(pod.member_id(project, "security-vetter"), "model", "") == "local/x"
+        assert _fleet.meta_get(pod.member_id(project, "security-vetter"), "model", "") == "local/x"
 
 
 # ── docket pod recipes: the operator's own recipes directory (ADR 0013 SS1 rule 4-5) ─────────────
@@ -748,29 +759,30 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
     ``operator`` alongside every shipped recipe, and resolves by name for
     ``docket pod update`` exactly as a shipped one does."""
     project = "recipefixture"
-    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    with _seed_fixture_pod(tmp_path, project):
+        mine_dir = current_home().user_recipes_dir / "mine"
+        (mine_dir / "policies").mkdir(parents=True)
+        (mine_dir / "policies" / "x.yaml").write_text(
+            "id: x\n"
+            "applies_to: [implementer]\n"
+            "hook: pre_tool_call\n"
+            "match: {type: regex, pattern: 'nope'}\n"
+            "action: block\n",
+            encoding="utf-8",
+        )
 
-    mine_dir = current_home().user_recipes_dir / "mine"
-    (mine_dir / "policies").mkdir(parents=True)
-    (mine_dir / "policies" / "x.yaml").write_text(
-        "id: x\n"
-        "applies_to: [implementer]\n"
-        "hook: pre_tool_call\n"
-        "match: {type: regex, pattern: 'nope'}\n"
-        "action: block\n",
-        encoding="utf-8",
-    )
+        infos = {info.name: info for info in _pod_apply.list_recipes()}
+        assert infos["mine"].scope == "operator"
+        assert infos["mine"].summary.policies == 1
+        for shipped_name in REQUIRED_RECIPES:
+            assert infos[shipped_name].scope == "shipped"
 
-    infos = {info.name: info for info in _pod_apply.list_recipes()}
-    assert infos["mine"].scope == "operator"
-    assert infos["mine"].summary.policies == 1
-    for shipped_name in REQUIRED_RECIPES:
-        assert infos[shipped_name].scope == "shipped"
-
-    plan = json.loads(_pod_cli("update", "mine", "--pod", project, "--dry-run", "--json").output)
-    assert [(item["kind"], item["name"], item["action"]) for item in plan["items"]] == [
-        ("policy", "x.yaml", "add")
-    ]
+        plan = json.loads(
+            _pod_cli("update", "mine", "--pod", project, "--dry-run", "--json").output
+        )
+        assert [(item["kind"], item["name"], item["action"]) for item in plan["items"]] == [
+            ("policy", "x.yaml", "add")
+        ]
 
 
 def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
@@ -792,11 +804,11 @@ def test_a_recipe_step_env_survives_apply_and_export(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = "envpod"
-    _seed_fixture_pod(tmp_path / "source", monkeypatch, project)
-    _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))
-    export_dir = tmp_path / "exported"
-    assert _pod_cli("export", str(export_dir), "--pod", project).exit_code == 0
-    result = _pipeline.load_pipeline((export_dir / "pipeline.yaml").read_text(encoding="utf-8"))
-    assert result.spec is not None, result.errors
-    step = next(s for s in result.spec.steps if s.id == "check-mutation-score")
-    assert step.env == {"MUTATION_THRESHOLD": "80", "MUTATION_CMD": "mutmut"}
+    with _seed_fixture_pod(tmp_path / "source", project):
+        _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))
+        export_dir = tmp_path / "exported"
+        assert _pod_cli("export", str(export_dir), "--pod", project).exit_code == 0
+        result = _pipeline.load_pipeline((export_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        assert result.spec is not None, result.errors
+        step = next(s for s in result.spec.steps if s.id == "check-mutation-score")
+        assert step.env == {"MUTATION_THRESHOLD": "80", "MUTATION_CMD": "mutmut"}

@@ -17,11 +17,11 @@ import multiprocessing
 import os
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
@@ -41,16 +41,18 @@ def _entries(action: str) -> list[dict[str, Any]]:
     return [e for e in _audit.read_audit() if e["action"] == action]
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield home
 
 
-def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "demo") -> Path:
+@contextmanager
+def _seed_agent(tmp_path: Path, aid: str = "demo") -> Iterator[Path]:
     """A minimal, non-pod project agent: workspace + meta + fleet.json entry."""
     home = tmp_path / ".docket"
     ws = home / "workspaces" / "projects" / aid
@@ -75,8 +77,8 @@ def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "dem
         encoding="utf-8",
     )
 
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _concurrent_audit_writer(
@@ -740,19 +742,19 @@ class TestPodSettingsAudit:
     def test_budget_set_writes_one_config_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _pod.set_setting("demo", "budgetUsd", "5")
-        entries = _entries("pod.config")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
+        with _seed_pod(tmp_path):
+            _pod.set_setting("demo", "budgetUsd", "5")
+            entries = _entries("pod.config")
+            assert len(entries) == 1
+            assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
 
     def test_unset_writes_one_config_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _pod.unset_setting("demo", "budgetUsd")
-        entries = _entries("pod.config")
-        assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetUsd"]
+        with _seed_pod(tmp_path):
+            _pod.unset_setting("demo", "budgetUsd")
+            entries = _entries("pod.config")
+            assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetUsd"]
 
 
 class TestAgentAddDeleteAudit:
@@ -781,10 +783,12 @@ class TestAgentAddDeleteAudit:
     def test_pod_delete_writes_one_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        result = CliRunner().invoke(_pod.pod_app, ["delete", "--pod", "demo", "--confirm", "demo"])
-        assert result.exit_code == 0, result.output
+        with _seed_pod(tmp_path):
+            result = CliRunner().invoke(
+                _pod.pod_app, ["delete", "--pod", "demo", "--confirm", "demo"]
+            )
+            assert result.exit_code == 0, result.output
 
-        entries = _entries("pod.delete")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "demo pod (2 members)"
+            entries = _entries("pod.delete")
+            assert len(entries) == 1
+            assert entries[0]["detail"] == "demo pod (2 members)"

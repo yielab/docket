@@ -11,7 +11,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import patch_home
 
 from docket.core import identity as I
 from docket.core import memory as _mem
@@ -104,25 +103,25 @@ class TestRuntimeWorkspaceContextReporting:
     def test_an_oversized_memory_is_truncated_visibly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        patch_home(monkeypatch, context_token_budget_override=130)
-        (tmp_path / "MEMORY.md").write_text("## Facts\n" + ("M" * 800) + "\n")
+        with use_home(dataclasses.replace(current_home(), context_token_budget_override=130)):
+            (tmp_path / "MEMORY.md").write_text("## Facts\n" + ("M" * 800) + "\n")
 
-        text, sections = I._runtime_workspace_context(tmp_path, "")
+            text, sections = I._runtime_workspace_context(tmp_path, "")
 
-        assert [s.status for s in sections] == ["truncated"]
-        assert "[... MEMORY.md truncated:" in text
+            assert [s.status for s in sections] == ["truncated"]
+            assert "[... MEMORY.md truncated:" in text
 
     def test_an_omitted_memory_leaves_a_one_line_marker(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Even when the whole framed block cannot fit, the section still gets a marker."""
-        patch_home(monkeypatch, context_token_budget_override=50)
-        (tmp_path / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
+        with use_home(dataclasses.replace(current_home(), context_token_budget_override=50)):
+            (tmp_path / "MEMORY.md").write_text("## Facts\nDURABLE-MEMORY-LINE\n")
 
-        text, sections = I._runtime_workspace_context(tmp_path, "")
+            text, sections = I._runtime_workspace_context(tmp_path, "")
 
-        assert all(s.status == "omitted" for s in sections)
-        assert "[... MEMORY.md omitted:" in text
+            assert all(s.status == "omitted" for s in sections)
+            assert "[... MEMORY.md omitted:" in text
 
 
 class TestResolveStaticContextBudget:
@@ -149,18 +148,21 @@ class TestResolveStaticContextBudget:
         """A test-style override (module attribute, never the environment) must still be
         honoured as an explicit override -- the same path a real CONTEXT_TOKEN_BUDGET env
         var takes, since the module constant is what every reader actually sees."""
-        patch_home(monkeypatch, context_token_budget_override=350)
-        tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
-        assert (tokens, source) == (350, "env")
+        with use_home(dataclasses.replace(current_home(), context_token_budget_override=350)):
+            tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
+            assert (tokens, source) == (350, "env")
 
     def test_real_env_var_wins_even_when_equal_to_the_default(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        patch_home(
-            monkeypatch, context_token_budget_override=current_home().context_token_budget_default
-        )
-        tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
-        assert (tokens, source) == (current_home().context_token_budget_default, "env")
+        with use_home(
+            dataclasses.replace(
+                current_home(),
+                context_token_budget_override=current_home().context_token_budget_default,
+            )
+        ):
+            tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
+            assert (tokens, source) == (current_home().context_token_budget_default, "env")
 
 
 class TestComposeAgentPromptIsWindowAware:
@@ -418,18 +420,19 @@ class TestPodMemoryIsTheLastFramedSection:
         self._accepted("tight", "a.js")
         (tmp_path / "a.js").write_text("x")
         base = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
-        patch_home(
-            monkeypatch,
-            context_token_budget_override=len(base.text.encode())
-            // current_home().context_bytes_per_token
-            - 40,
-        )
+        with use_home(
+            dataclasses.replace(
+                current_home(),
+                context_token_budget_override=len(base.text.encode())
+                // current_home().context_bytes_per_token
+                - 40,
+            )
+        ):
+            composition = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
 
-        composition = I.compose_agent_prompt(agent_id, project_roots=(tmp_path,))
-
-        assert I.POD_MEMORY_FRAME not in composition.text
-        sections = {s.name: s.status for s in composition.sections}
-        assert sections.get(I.POD_MEMORY_LABEL) == "omitted"
+            assert I.POD_MEMORY_FRAME not in composition.text
+            sections = {s.name: s.status for s in composition.sections}
+            assert sections.get(I.POD_MEMORY_LABEL) == "omitted"
 
 
 _POD_INPUT_BLOCK = """kind: policy

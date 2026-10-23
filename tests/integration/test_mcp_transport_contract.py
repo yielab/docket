@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import json
 import tomllib
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _mcp
 from docket.cli import _pod as _pod_cli
 from docket.core import approval as _approval
@@ -90,14 +90,14 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    _pod_cli.build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return home
+    with use_home(Home(home)):
+        _pod_cli.build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+        yield home
 
 
 def _audit_actions(action: str) -> list[dict[str, Any]]:
@@ -124,15 +124,15 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        _seed_pod(tmp_path, monkeypatch)
-        server = _mcp._build_server()
+        with _seed_pod(tmp_path):
+            server = _mcp._build_server()
 
-        result = asyncio.run(_call(server, "status", {}))
-        assert result.is_error is False
-        assert result.structured_content["apiVersion"] == "6"
-        assert isinstance(result.structured_content["agents"], list)
-        # Round-trips through the SDK's own JSON serialization too.
-        assert json.loads(json.dumps(result.structured_content)) == result.structured_content
+            result = asyncio.run(_call(server, "status", {}))
+            assert result.is_error is False
+            assert result.structured_content["apiVersion"] == "6"
+            assert isinstance(result.structured_content["agents"], list)
+            # Round-trips through the SDK's own JSON serialization too.
+            assert json.loads(json.dumps(result.structured_content)) == result.structured_content
 
     def test_status_call_is_audited_exactly_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -140,10 +140,10 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        _seed_pod(tmp_path, monkeypatch)
-        server = _mcp._build_server()
-        asyncio.run(_call(server, "status", {}))
-        assert len(_audit_actions("mcp.status")) == 1
+        with _seed_pod(tmp_path):
+            server = _mcp._build_server()
+            asyncio.run(_call(server, "status", {}))
+            assert len(_audit_actions("mcp.status")) == 1
 
     def test_a_raising_tool_becomes_an_iserror_result_not_a_protocol_crash(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -214,17 +214,17 @@ class TestNoBypassThroughRealTransport:
         pytest.importorskip("mcp")
         import asyncio
 
-        _seed_pod(tmp_path, monkeypatch, project="demo")
-        server = _mcp._build_server()
+        with _seed_pod(tmp_path, project="demo"):
+            server = _mcp._build_server()
 
-        result = asyncio.run(
-            _call(server, "delegate", {"project": "demo", "description": "ship the migration"})
-        )
-        assert result.is_error is False
-        assert result.structured_content["description"] == "ship the migration"
+            result = asyncio.run(
+                _call(server, "delegate", {"project": "demo", "description": "ship the migration"})
+            )
+            assert result.is_error is False
+            assert result.structured_content["description"] == "ship the migration"
 
-        tasks = _dispatch.read_tasks("demo")
-        assert [t["description"] for t in tasks] == ["ship the migration"]
+            tasks = _dispatch.read_tasks("demo")
+            assert [t["description"] for t in tasks] == ["ship the migration"]
 
     def test_approvals_grant_through_the_real_sdk_calls_the_same_core_function(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

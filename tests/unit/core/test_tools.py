@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import ClassVar
 
 import pytest
-from tests.conftest import patch_home
 
 from docket.core import approval as core_approval
 from docket.core import tools as core_tools
@@ -566,10 +565,12 @@ class TestBuiltinHandlers:
         (workspace / "mid.txt").write_text(body)
         assert "[truncated:" not in toolbox.read_file((workspace,), "mid.txt").content
 
-        patch_home(monkeypatch, tool_max_output_chars=1_000)
-        out = toolbox.read_file((workspace,), "mid.txt")
-        numbered_length = len(f"{1}\t{body}")
-        assert out.ok and f"[truncated: {numbered_length - 1_000} more characters]" in out.content
+        with use_home(dataclasses.replace(current_home(), tool_max_output_chars=1_000)):
+            out = toolbox.read_file((workspace,), "mid.txt")
+            numbered_length = len(f"{1}\t{body}")
+            assert (
+                out.ok and f"[truncated: {numbered_length - 1_000} more characters]" in out.content
+            )
 
 
 class TestDispatchChokepoint:

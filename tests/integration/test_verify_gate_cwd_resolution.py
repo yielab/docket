@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
 import typer
-from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -202,15 +202,16 @@ class TestDispatchVerifyCwd:
 # ── TestSetVerifyValidation: cli/_pod.py's set-verify / --verify ────────────
 
 
-def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-    return home
+    with use_home(Home(home)):
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        yield home
 
 
 def _meta(home: Path, member_id: str) -> dict[str, Any]:
@@ -220,31 +221,29 @@ def _meta(home: Path, member_id: str) -> dict[str, Any]:
 
 class TestSetVerifyValidation:
     def test_rejects_newline(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit):
+        with _seed_pod(tmp_path, monkeypatch), pytest.raises(typer.Exit):
             _pod.set_setting("demo", "verify", "npm test\nrm -rf /", member="demo-implementer")
 
     def test_rejects_nul_byte(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit):
+        with _seed_pod(tmp_path, monkeypatch), pytest.raises(typer.Exit):
             _pod.set_setting("demo", "verify", "npm\x00test", member="demo-implementer")
 
     def test_rejects_command_over_length_cap(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        too_long = "x" * (_pod._MAX_VERIFY_CMD_LEN + 1)
-        with pytest.raises(typer.Exit):
-            _pod.set_setting("demo", "verify", too_long, member="demo-implementer")
+        with _seed_pod(tmp_path, monkeypatch):
+            too_long = "x" * (_pod._MAX_VERIFY_CMD_LEN + 1)
+            with pytest.raises(typer.Exit):
+                _pod.set_setting("demo", "verify", too_long, member="demo-implementer")
 
     def test_rejected_command_is_not_persisted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = _seed_pod(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit):
-            _pod.set_setting("demo", "verify", "bad\ncmd", member="demo-implementer")
-        m = _meta(oc_dir, "demo-implementer")
-        assert "verifyCmd" not in m
+        with _seed_pod(tmp_path, monkeypatch) as oc_dir:
+            with pytest.raises(typer.Exit):
+                _pod.set_setting("demo", "verify", "bad\ncmd", member="demo-implementer")
+            m = _meta(oc_dir, "demo-implementer")
+            assert "verifyCmd" not in m
 
     def test_validator_accepts_command_exactly_at_the_cap(self) -> None:
         # Boundary check on the validator itself (not the full CLI path, which
@@ -260,22 +259,22 @@ class TestSetVerifyValidation:
     def test_successful_set_verify_writes_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
-        entries = _audit.read_audit()
-        matches = [e for e in entries if e["action"] == "pod.set-verify"]
-        assert matches, f"expected a pod.set-verify audit entry, got: {entries}"
-        assert "demo-implementer" in matches[-1]["detail"]
-        assert "npm test" in matches[-1]["detail"]
+        with _seed_pod(tmp_path, monkeypatch):
+            _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
+            entries = _audit.read_audit()
+            matches = [e for e in entries if e["action"] == "pod.set-verify"]
+            assert matches, f"expected a pod.set-verify audit entry, got: {entries}"
+            assert "demo-implementer" in matches[-1]["detail"]
+            assert "npm test" in matches[-1]["detail"]
 
     def test_no_audit_entry_when_validation_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit):
-            _pod.set_setting("demo", "verify", "bad\ncmd", member="demo-implementer")
-        entries = [e for e in _audit.read_audit() if e["action"] == "pod.set-verify"]
-        assert entries == []
+        with _seed_pod(tmp_path, monkeypatch):
+            with pytest.raises(typer.Exit):
+                _pod.set_setting("demo", "verify", "bad\ncmd", member="demo-implementer")
+            entries = [e for e in _audit.read_audit() if e["action"] == "pod.set-verify"]
+            assert entries == []
 
 
 class TestPodAddVerifyValidation:
@@ -284,15 +283,14 @@ class TestPodAddVerifyValidation:
     def test_add_rejects_newline_in_verify(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit):
+        with _seed_pod(tmp_path, monkeypatch), pytest.raises(typer.Exit):
             _pod.add_members("demo", "implementer", verify_cmd="npm test\nrm -rf /")
 
     def test_add_with_verify_writes_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _pod.add_members("demo", "implementer", verify_cmd="npm test")
-        entries = [e for e in _audit.read_audit() if e["action"] == "pod.set-verify"]
-        assert entries, "expected a pod.set-verify audit entry from `pod add --verify`"
-        assert "demo-implementer-2" in entries[-1]["detail"]
+        with _seed_pod(tmp_path, monkeypatch):
+            _pod.add_members("demo", "implementer", verify_cmd="npm test")
+            entries = [e for e in _audit.read_audit() if e["action"] == "pod.set-verify"]
+            assert entries, "expected a pod.set-verify audit entry from `pod add --verify`"
+            assert "demo-implementer-2" in entries[-1]["detail"]

@@ -29,11 +29,10 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with config paths repointed for trace + audit."""
     d = tmp_path / ".docket"
     d.mkdir()
-    with use_home(Home(d)):
-        with use_home(dataclasses.replace(current_home(), session_timeout=3600)):
-            monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-            monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-            yield d
+    with use_home(Home(d)), use_home(dataclasses.replace(current_home(), session_timeout=3600)):
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
+        yield d
 
 
 # ── audit ────────────────────────────────────────────────────────────────────────

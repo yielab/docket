@@ -51,13 +51,12 @@ def _run(
     env: dict[str, str] | None = None,
     target: Any = None,
 ) -> tuple[int, str, str]:
-    with pytest.MonkeyPatch.context() as mp:
-        with use_home(Home(home)):
-            for key, value in (env or {}).items():
-                mp.setenv(key, value)
-            if cwd is not None:
-                mp.chdir(cwd)
-            result = _runner.invoke(target or _app, args, input=stdin_text)
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
+        for key, value in (env or {}).items():
+            mp.setenv(key, value)
+        if cwd is not None:
+            mp.chdir(cwd)
+        result = _runner.invoke(target or _app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 
 

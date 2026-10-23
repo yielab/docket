@@ -10,10 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import approval as _ap
@@ -21,6 +22,7 @@ from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.kernel.home import Home, use_home
 
 SUBJECT = "docket.core.dispatch"
 
@@ -60,19 +62,19 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed_pod(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repo: Path, pipeline: str = _PIPELINE
-) -> None:
+@contextmanager
+def _seed_pod(tmp_path: Path, repo: Path, pipeline: str = _PIPELINE) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
-    path = _pod.pod.bound_pipeline_path("demo")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(pipeline, encoding="utf-8")
-    digest = hashlib.sha256(pipeline.encode("utf-8")).hexdigest()
-    _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
+    with use_home(Home(home)):
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
+        path = _pod.pod.bound_pipeline_path("demo")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(pipeline, encoding="utf-8")
+        digest = hashlib.sha256(pipeline.encode("utf-8")).hexdigest()
+        _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
+        yield
 
 
 class _Editor:
@@ -119,19 +121,21 @@ def test_a_lights_out_task_that_edits_package_json_parks_naming_it(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _lights_out(monkeypatch)
-    _dispatch.enqueue_task("demo", "bump", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _lights_out(monkeypatch)
+        _dispatch.enqueue_task("demo", "bump", channel="cli")
 
-    (res,) = _dispatch.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=1)
+        (res,) = _dispatch.dispatch_pod(
+            "demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=1
+        )
 
-    task = _only_task()
-    assert (res.status, task["status"]) == ("waiting_approval", "waiting_approval")
-    assert task["checkChanged"] == ["package.json"]
-    assert "package.json" in str(task["reason"])
-    record = _ap.approval_get(str(task["approvalToken"]))
-    assert record["context"]["kind"] == "check_changed"
-    assert record["context"]["paths"] == ["package.json"]
+        task = _only_task()
+        assert (res.status, task["status"]) == ("waiting_approval", "waiting_approval")
+        assert task["checkChanged"] == ["package.json"]
+        assert "package.json" in str(task["reason"])
+        record = _ap.approval_get(str(task["approvalToken"]))
+        assert record["context"]["kind"] == "check_changed"
+        assert record["context"]["paths"] == ["package.json"]
 
 
 def test_a_grant_ends_the_parked_task_done_and_a_deny_fails_it_check_changed(
@@ -139,25 +143,27 @@ def test_a_grant_ends_the_parked_task_done_and_a_deny_fails_it_check_changed(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _dispatch.enqueue_task("demo", "bump one", channel="cli")
-    _dispatch.enqueue_task("demo", "bump two", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _dispatch.enqueue_task("demo", "bump one", channel="cli")
+        _dispatch.enqueue_task("demo", "bump two", channel="cli")
 
-    _dispatch.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=2)
+        _dispatch.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=2)
 
-    first, second = _dispatch.read_tasks("demo")
-    tokens = [str(first["approvalToken"]), str(second["approvalToken"])]
-    _resolve(tokens[0], "granted")
-    _resolve(tokens[1], "denied")
-    granted, denied = _dispatch.read_tasks("demo")
-    assert granted["status"] == "done" and "failureKind" not in granted
-    assert granted["checkChanged"] == ["package.json"] and not granted.get("approvalToken")
-    assert (denied["status"], denied["failureKind"]) == ("failed", "check_changed")
-    assert denied["reason"] == "approval denied: not now"
-    entries = _audit.read_audit()
-    for action, token in (("approval.grant", tokens[0]), ("approval.deny", tokens[1])):
-        details = [e["detail"] for e in entries if e["action"] == action and token in e["detail"]]
-        assert details and "channel=cli" in details[0]
+        first, second = _dispatch.read_tasks("demo")
+        tokens = [str(first["approvalToken"]), str(second["approvalToken"])]
+        _resolve(tokens[0], "granted")
+        _resolve(tokens[1], "denied")
+        granted, denied = _dispatch.read_tasks("demo")
+        assert granted["status"] == "done" and "failureKind" not in granted
+        assert granted["checkChanged"] == ["package.json"] and not granted.get("approvalToken")
+        assert (denied["status"], denied["failureKind"]) == ("failed", "check_changed")
+        assert denied["reason"] == "approval denied: not now"
+        entries = _audit.read_audit()
+        for action, token in (("approval.grant", tokens[0]), ("approval.deny", tokens[1])):
+            details = [
+                e["detail"] for e in entries if e["action"] == action and token in e["detail"]
+            ]
+            assert details and "channel=cli" in details[0]
 
 
 def test_a_task_that_edits_the_script_its_gate_runs_parks(
@@ -165,16 +171,16 @@ def test_a_task_that_edits_the_script_its_gate_runs_parks(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo, _GATED_PIPELINE)
-    _dispatch.enqueue_task("demo", "loosen", channel="cli")
+    with _seed_pod(tmp_path, repo, _GATED_PIPELINE):
+        _dispatch.enqueue_task("demo", "loosen", channel="cli")
 
-    _dispatch.dispatch_pod(
-        "demo", runner=_Editor({"scripts/check.sh": "# nothing to see\nexit 0\n"}), max_tasks=1
-    )
+        _dispatch.dispatch_pod(
+            "demo", runner=_Editor({"scripts/check.sh": "# nothing to see\nexit 0\n"}), max_tasks=1
+        )
 
-    task = _only_task()
-    assert task["status"] == "waiting_approval"
-    assert task["checkChanged"] == ["scripts/check.sh"]
+        task = _only_task()
+        assert task["status"] == "waiting_approval"
+        assert task["checkChanged"] == ["scripts/check.sh"]
 
 
 def test_a_task_that_edits_only_src_ends_done(
@@ -182,16 +188,16 @@ def test_a_task_that_edits_only_src_ends_done(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo, _GATED_PIPELINE)
-    _dispatch.enqueue_task("demo", "feature", channel="cli")
+    with _seed_pod(tmp_path, repo, _GATED_PIPELINE):
+        _dispatch.enqueue_task("demo", "feature", channel="cli")
 
-    (res,) = _dispatch.dispatch_pod(
-        "demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1
-    )
+        (res,) = _dispatch.dispatch_pod(
+            "demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1
+        )
 
-    task = _only_task()
-    assert (res.status, task["status"]) == ("done", "done")
-    assert "checkChanged" not in task
+        task = _only_task()
+        assert (res.status, task["status"]) == ("done", "done")
+        assert "checkChanged" not in task
 
 
 def test_a_team_pattern_protects_a_path_the_defaults_do_not(
@@ -199,10 +205,12 @@ def test_a_team_pattern_protects_a_path_the_defaults_do_not(
 ) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
-    _seed_pod(tmp_path, monkeypatch, repo)
-    _fleet.meta_set("demo-lead", "protects", "src/*.js")
-    _dispatch.enqueue_task("demo", "feature", channel="cli")
+    with _seed_pod(tmp_path, repo):
+        _fleet.meta_set("demo-lead", "protects", "src/*.js")
+        _dispatch.enqueue_task("demo", "feature", channel="cli")
 
-    _dispatch.dispatch_pod("demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1)
+        _dispatch.dispatch_pod(
+            "demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1
+        )
 
-    assert _only_task()["checkChanged"] == ["src/app.js"]
+        assert _only_task()["checkChanged"] == ["src/app.js"]

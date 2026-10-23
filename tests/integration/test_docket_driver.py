@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import point_home_at, record_isolation_off
+from tests.conftest import record_isolation_off
 
 from docket.cli import _setup_model, _setup_sandbox
 from docket.core import approval as _approval
@@ -302,61 +302,63 @@ class TestRunTurn:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.delenv(provider_key, raising=False)
-        point_home_at(monkeypatch, tmp_path)
+        with use_home(Home(tmp_path)):
+            assert _setup_model._write_credential(provider_key, secret, "add")
+            _write_meta("gateway-agent", model=model)
 
-        assert _setup_model._write_credential(provider_key, secret, "add")
-        _write_meta("gateway-agent", model=model)
+            captured: dict[str, object] = {}
 
-        captured: dict[str, object] = {}
+            class _Response:
+                def read(self) -> bytes:
+                    return json.dumps(
+                        {
+                            "choices": [
+                                {
+                                    "message": {"role": "assistant", "content": "gateway ok"},
+                                    "finish_reason": "stop",
+                                }
+                            ],
+                            "usage": {"prompt_tokens": 9, "completion_tokens": 2},
+                        }
+                    ).encode()
 
-        class _Response:
-            def read(self) -> bytes:
-                return json.dumps(
-                    {
-                        "choices": [
-                            {
-                                "message": {"role": "assistant", "content": "gateway ok"},
-                                "finish_reason": "stop",
-                            }
-                        ],
-                        "usage": {"prompt_tokens": 9, "completion_tokens": 2},
-                    }
-                ).encode()
+                def __enter__(self) -> _Response:
+                    return self
 
-            def __enter__(self) -> _Response:
-                return self
+                def __exit__(self, *exc: object) -> None:
+                    return None
 
-            def __exit__(self, *exc: object) -> None:
-                return None
+            def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
+                captured["url"] = request.full_url
+                captured["auth"] = request.get_header("Authorization")
+                captured["payload"] = json.loads(request.data.decode())
+                return _Response()
 
-        def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
-            captured["url"] = request.full_url
-            captured["auth"] = request.get_header("Authorization")
-            captured["payload"] = json.loads(request.data.decode())
-            return _Response()
+            monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
 
-        monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
+            result = DocketDriver().run_turn(
+                "gateway-agent",
+                "agent:gateway-agent:default",
+                "Use the available tools if needed.",
+                60,
+            )
 
-        result = DocketDriver().run_turn(
-            "gateway-agent", "agent:gateway-agent:default", "Use the available tools if needed.", 60
-        )
-
-        assert result.ok is True
-        assert result.output == "gateway ok"
-        assert captured["url"] == expected_url
-        assert captured["auth"] == f"Bearer {secret}"
-        payload = captured["payload"]
-        assert isinstance(payload, dict)
-        assert payload["model"] == wire_model
-        assert payload["stream"] is False
-        assert payload["tools"]
-        assert secret not in json.dumps(payload)
-        trace_text = "".join(
-            path.read_text(encoding="utf-8")
-            for path in current_home().traces_dir.rglob("*")
-            if path.is_file()
-        )
-        assert secret not in trace_text
+            assert result.ok is True
+            assert result.output == "gateway ok"
+            assert captured["url"] == expected_url
+            assert captured["auth"] == f"Bearer {secret}"
+            payload = captured["payload"]
+            assert isinstance(payload, dict)
+            assert payload["model"] == wire_model
+            assert payload["stream"] is False
+            assert payload["tools"]
+            assert secret not in json.dumps(payload)
+            trace_text = "".join(
+                path.read_text(encoding="utf-8")
+                for path in current_home().traces_dir.rglob("*")
+                if path.is_file()
+            )
+            assert secret not in trace_text
 
     def test_registered_limits_reach_the_loop_and_transport(self) -> None:
         _write_meta("bounded-agent")

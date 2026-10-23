@@ -13,10 +13,11 @@ the live rank anchors) and an end-to-end `docket pod add
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
@@ -25,7 +26,7 @@ from docket.core import archetypes as _arch
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import pod
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.core"
 
@@ -35,12 +36,15 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+@contextmanager
+def _seed(
+    tmp_path: Path,
+) -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, home)
-    return home
+    with use_home(Home(home)):
+        yield home
 
 
 def _ids(home: Path) -> list[str]:
@@ -155,45 +159,45 @@ class TestPodAddStarterRole:
     def test_add_researcher_provisions_full_workspace(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        _pod.add_members("demo", "researcher")
+        with _seed(tmp_path) as oc_dir:
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            _pod.add_members("demo", "researcher")
 
-        assert "demo-researcher" in _ids(oc_dir)
-        ws = oc_dir / "workspaces" / "projects" / "demo-researcher"
-        assert (ws / "SOUL.md").is_file()
-        assert (ws / "AGENTS.md").is_file()
-        soul = (ws / "SOUL.md").read_text()
-        assert "Researcher" in soul
-        assert "demo-researcher" in soul
+            assert "demo-researcher" in _ids(oc_dir)
+            ws = oc_dir / "workspaces" / "projects" / "demo-researcher"
+            assert (ws / "SOUL.md").is_file()
+            assert (ws / "AGENTS.md").is_file()
+            soul = (ws / "SOUL.md").read_text()
+            assert "Researcher" in soul
+            assert "demo-researcher" in soul
 
-        meta = json.loads((ws / ".docket-meta.json").read_text())
-        assert meta["role"] == "researcher"
-        assert meta["pod"] == "demo"
-        # researcher is modelClass=strong -> resolves via the 'standard' anchor,
-        # same model an implementer (also strong-class) would get by default.
-        assert meta["model"] == current_home().default_model
+            meta = json.loads((ws / ".docket-meta.json").read_text())
+            assert meta["role"] == "researcher"
+            assert meta["pod"] == "demo"
+            # researcher is modelClass=strong -> resolves via the 'standard' anchor,
+            # same model an implementer (also strong-class) would get by default.
+            assert meta["model"] == current_home().default_model
 
     def test_pod_show_lists_the_added_researcher(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        _pod.add_members("demo", "researcher")
-        capsys.readouterr()
+        with _seed(tmp_path):
+            _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            _pod.add_members("demo", "researcher")
+            capsys.readouterr()
 
-        result = CliRunner().invoke(_pod.pod_app, ["show", "--pod", "demo", "--json"])
-        assert result.exit_code == 0, result.output
-        roles = [m["role"] for m in json.loads(result.stdout)["members"]]
-        assert "researcher" in roles
+            result = CliRunner().invoke(_pod.pod_app, ["show", "--pod", "demo", "--json"])
+            assert result.exit_code == 0, result.output
+            roles = [m["role"] for m in json.loads(result.stdout)["members"]]
+            assert "researcher" in roles
 
     def test_members_of_lists_researcher_after_legacy_roles(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = _seed(tmp_path, monkeypatch)
-        _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
-        _pod.add_members("demo", "researcher")
-        all_ids = _ids(oc_dir)
-        members = pod.members_of(all_ids, "demo")
-        roles_in_order = [role for _mid, role, _idx in members]
-        assert roles_in_order == ["lead", "implementer", "reviewer", "tester", "researcher"]
+        with _seed(tmp_path) as oc_dir:
+            _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+            _pod.add_members("demo", "researcher")
+            all_ids = _ids(oc_dir)
+            members = pod.members_of(all_ids, "demo")
+            roles_in_order = [role for _mid, role, _idx in members]
+            assert roles_in_order == ["lead", "implementer", "reviewer", "tester", "researcher"]
