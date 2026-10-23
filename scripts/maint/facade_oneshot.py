@@ -99,7 +99,11 @@ def module_facts(mod: str) -> tuple[set[str], dict[str, tuple[str, str]], set[st
             elif isinstance(node, ast.ImportFrom):
                 base = node.module or ""
                 if node.level:
-                    pkg = mod.split(".") if module_path(mod).name == "__init__.py" else mod.split(".")[:-1]
+                    pkg = (
+                        mod.split(".")
+                        if module_path(mod).name == "__init__.py"
+                        else mod.split(".")[:-1]
+                    )
                     pkg = pkg[: len(pkg) - (node.level - 1)]
                     base = ".".join([*pkg, base] if base else pkg)
                 for a in node.names:
@@ -164,10 +168,13 @@ def scope_of(tree: ast.Module, node: ast.AST) -> ast.AST:
     """Innermost function containing node, else the module."""
     best: ast.AST = tree
     for n in ast.walk(tree):
-        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef):
-            if n.lineno <= node.lineno <= (n.end_lineno or n.lineno) and n is not node:
-                if best is tree or n.lineno >= best.lineno:  # type: ignore[attr-defined]
-                    best = n
+        inside = (
+            isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+            and n.lineno <= node.lineno <= (n.end_lineno or n.lineno)
+            and n is not node
+        )
+        if inside and (best is tree or n.lineno >= best.lineno):  # type: ignore[attr-defined]
+            best = n
     return best
 
 
@@ -235,7 +242,6 @@ def run(ctx: str, write: bool) -> int:
     plans = {}
     # facade entries: (module, attr) -> resolved
     wanted: dict[tuple[str, str], Resolved] = {}
-    per_file_uses: dict[str, list] = {}
 
     for importer, targets in sorted(by_importer.items()):
         src, tree, items = plan_importer(importer, targets, flags)
@@ -262,7 +268,7 @@ def run(ctx: str, write: bool) -> int:
     final: dict[tuple[str, str], tuple[str, str, str]] = {}  # key -> (defmod, defname, facade)
     for (target, attr), r in wanted.items():
         flags.extend(r.flags)
-        final[(target, attr)] = (r.defmod, r.name, r.name.lstrip('_') or r.name)
+        final[(target, attr)] = (r.defmod, r.name, r.name.lstrip("_") or r.name)
     by_name: dict[str, set[tuple[str, str]]] = defaultdict(set)
     for _, (dm, dn, fn) in final.items():
         by_name[fn].add((dm, dn))
@@ -360,7 +366,13 @@ def rewrite_importer(importer, src, tree, items, final, ctx) -> None:
                 else:
                     new_names.append((fn, cand))
             for n in attrs:
-                edits.append((off(n.lineno, n.col_offset), off(n.end_lineno, n.end_col_offset), chosen[n.attr].encode()))
+                edits.append(
+                    (
+                        off(n.lineno, n.col_offset),
+                        off(n.end_lineno, n.end_col_offset),
+                        chosen[n.attr].encode(),
+                    )
+                )
         imported_names_by_stmt[sid] = new_names
 
     for sid, group in by_stmt.items():
@@ -375,7 +387,9 @@ def rewrite_importer(importer, src, tree, items, final, ctx) -> None:
                 lines.append(f"from {stmt.module} import {kept}")
             else:
                 lines.append(f"import {kept}")
-        facade_part = [(fn, loc) for fn, loc in imported_names_by_stmt[sid] if not fn.startswith("@")]
+        facade_part = [
+            (fn, loc) for fn, loc in imported_names_by_stmt[sid] if not fn.startswith("@")
+        ]
         kernel_part: dict[str, list[str]] = defaultdict(list)
         for fn, loc in imported_names_by_stmt[sid]:
             if fn.startswith("@"):

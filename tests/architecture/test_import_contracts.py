@@ -13,6 +13,7 @@ new violation is not listed, so its contract breaks; a listed import that stoppe
 
 from __future__ import annotations
 
+import ast
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -32,6 +33,7 @@ from importlinter.domain.contract import Contract, ContractCheck, registry
 SUBJECT = "docket"
 
 REPO = Path(__file__).resolve().parents[2]
+SRC = REPO / "src"
 BASELINE = Path(__file__).with_name("import_contracts_baseline.txt")
 ROOT = "docket"
 TYPE_NAME = "docket_allowed_dependencies"
@@ -269,6 +271,97 @@ _RULES_BY_LAYER = {
     "agent": _allowed_agent,
     "interfaces": _allowed_interfaces,
 }
+
+
+def _module_name(path: Path) -> str:
+    parts = list(path.relative_to(SRC).with_suffix("").parts)
+    return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+
+
+def declared_exports(source: str) -> list[str] | None:
+    """The names of a literal ``__all__`` in ``source``, or None when it declares none."""
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets
+        ):
+            assert isinstance(node.value, ast.List | ast.Tuple), "__all__ must be a literal list"
+            return [ast.literal_eval(e) for e in node.value.elts]
+    return None
+
+
+def facade_exports() -> dict[str, list[str]]:
+    """Context -> the names its ``__init__`` exports; kernel has no facade."""
+    found: dict[str, list[str]] = {}
+    for init in sorted((SRC / ROOT).glob("*/__init__.py")):
+        names = declared_exports(init.read_text(encoding="utf-8"))
+        if names is not None:
+            found[init.parent.name] = names
+    return found
+
+
+def _submodules(context: str) -> list[str]:
+    """Dotted names of the modules and packages directly under ``context``."""
+    return [
+        f"{ROOT}.{context}.{p.stem if p.is_file() else p.name}"
+        for p in sorted((SRC / ROOT / context).iterdir())
+        if p.name != "__init__.py" and (p.suffix == ".py" or (p / "__init__.py").exists())
+    ]
+
+
+def names_imported_from_outside() -> dict[str, set[str]]:
+    """Context -> the names other modules of ``src`` import with ``from docket.<context> import``."""
+    used: dict[str, set[str]] = defaultdict(set)
+    for path in sorted((SRC / ROOT).rglob("*.py")):
+        importer = _module_name(path)
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (isinstance(node, ast.ImportFrom) and node.level == 0 and node.module):
+                continue
+            parts = node.module.split(".")
+            if len(parts) == 2 and parts[0] == ROOT and not importer.startswith(node.module):
+                submodules = {m.split(".")[-1] for m in _submodules(parts[1])}
+                used[parts[1]].update(a.name for a in node.names if a.name not in submodules)
+    return used
+
+
+def dead_exports(exports: dict[str, list[str]], used: dict[str, set[str]]) -> list[str]:
+    """Every ``context.name`` exported by a facade that no module outside the context imports."""
+    return [
+        f"{ctx}.{name}"
+        for ctx, names in sorted(exports.items())
+        for name in names
+        if name not in used.get(ctx, set())
+    ]
+
+
+def test_every_export_of_a_context_is_imported_from_outside_it() -> None:
+    dead = dead_exports(facade_exports(), names_imported_from_outside())
+    assert not dead, (
+        "names in a context's __all__ that no other context imports; delete them from the "
+        "facade (a dead export is dead code, ADR 0030 'After Phase 46'):\n  " + "\n  ".join(dead)
+    )
+
+
+def test_every_name_imported_from_a_facade_is_exported_by_it() -> None:
+    exports = facade_exports()
+    missing = [
+        f"{ctx}.{name}"
+        for ctx, names in sorted(names_imported_from_outside().items())
+        if ctx in exports
+        for name in sorted(names - set(exports[ctx]))
+    ]
+    assert not missing, "imported from a facade but absent from its __all__:\n  " + "\n  ".join(
+        missing
+    )
+
+
+def test_the_dead_export_check_sees_what_it_exists_for() -> None:
+    # Without these a check that matched nothing would hold any facade.
+    exports = {"teams": ["fleet_of", "used"], "tasks": ["queue"]}
+    used = {"teams": {"used"}, "tasks": {"queue"}}
+    assert dead_exports(exports, used) == ["teams.fleet_of"]
+    assert dead_exports(exports, {**used, "teams": {"used", "fleet_of"}}) == []
+    assert declared_exports("__all__ = ['a', 'b']\n") == ["a", "b"]
+    assert declared_exports("x = 1\n") is None
 
 
 @pytest.mark.parametrize(("layer", "importer", "imported", "ok"), _BITES)
