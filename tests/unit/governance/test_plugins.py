@@ -1,5 +1,5 @@
-"""Unit coverage for ``core.plugins``'s discovery/evaluation, and the ``when.plugin`` fail-closed
-path it wires into ``core.policy``. See ``docket.plugins`` for the public API a plugin imports."""
+"""Unit coverage for ``governance.plugins``'s discovery/evaluation, and the ``when.plugin`` fail-closed
+path it wires into ``governance.policy``. See ``docket.governance.plugin_api`` for the public API a plugin imports."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from docket.kernel.home import Home, use_home
 SUBJECT = "docket.governance.plugins"
 
 _MIGRATION_PLUGIN = """
-from docket.plugins import predicate
+from docket.governance.plugin_api import predicate
 
 
 @predicate("touches_migrations")
@@ -23,7 +23,7 @@ def touches_migrations(call, ctx, **with_):
 """
 
 _RAISING_PLUGIN = """
-from docket.plugins import predicate
+from docket.governance.plugin_api import predicate
 
 
 @predicate("boom")

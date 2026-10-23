@@ -1,6 +1,6 @@
 """The four built-in pod roles render byte-identical SOUL.md/AGENTS.md.
 
-Compares `cli/_pod.py`'s output against a frozen, independently hand-written
+Compares `interfaces/cli/commands/pod.py`'s output against a frozen, independently hand-written
 baseline embedded here, across a range of inputs -- self-diffing the current
 output would miss a regression from editing both sides together. The baseline moves only with
 a deliberate, spec'd template change (here: no path in SOUL, the shared method in AGENTS, no
@@ -14,13 +14,13 @@ import pytest
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 
 def _legacy_member_soul(
     member: pod.PodMember, project: str, codebase: str, stack: str, description: str
 ) -> str:
-    """Frozen copy of `cli/_pod.py::_member_soul` as the layered prompt defines it -- do not
+    """Frozen copy of `interfaces/cli/commands/pod.py::_member_soul` as the layered prompt defines it -- do not
     "fix" to match a future refactor; this is the byte-identity ground truth."""
     head = (
         f"# SOUL.md — {project} · {member.role}\n\n"

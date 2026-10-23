@@ -2,19 +2,19 @@
 
 ``run_agent_turn`` composes three pieces:
 
-- ``core/llm.py`` — the ``ChatBackend`` port: one request/response
+- ``agent/llm.py`` — the ``ChatBackend`` port: one request/response
   exchange, nothing more.
-- ``core/tools.py`` — ``ToolRegistry``/``dispatch_tool``, the
+- ``agent/tools/registry.py`` — ``ToolRegistry``/``dispatch_tool``, the
   **single** chokepoint where the command classifier, the ``pre_tool_call``
   policy hook, approval routing and audit live.
-- ``core/session.py`` — durable per-session turn history, with
+- ``agent/session.py`` — durable per-session turn history, with
   compaction that never splits a tool-call/tool-result atomic unit.
 
 ``run_agent_turn`` composes these three: load history -> call the backend ->
-receive ``tool_calls`` -> dispatch every one through ``core.tools.dispatch_tool``
+receive ``tool_calls`` -> dispatch every one through ``agent.tools.registry.dispatch_tool``
 -> append results -> repeat until a stop condition. **Non-negotiable: there is
 no second path to tool execution here.** This module never imports
-``edges/adapters/toolbox.py`` and never touches a ``Tool.handler`` directly —
+``agent/tools/builtins/toolbox.py`` and never touches a ``Tool.handler`` directly —
 a tool call that bypassed ``dispatch_tool`` would bypass every guardrail
 built into it.
 
@@ -32,7 +32,7 @@ reported as ``AgentLoopResult.stop_reason``:
   (``LoopConfig.max_tool_calls``). Checked *before* dispatching a batch that
   would exceed it, so a batch is either wholly dispatched or not dispatched
   at all — never partially, which would leave an assistant message with some
-  tool calls answered and others orphaned (exactly what ``core/session.py``'s
+  tool calls answered and others orphaned (exactly what ``agent/session.py``'s
   atomic-unit contract forbids storing).
 - ``tool_denials`` — too many consecutive denied, non-executed tool results
   (``LoopConfig.max_consecutive_tool_denials``). The model may recover after
@@ -40,7 +40,7 @@ reported as ``AgentLoopResult.stop_reason``:
   default third consecutive denial stops locally after its complete atomic
   assistant/tool-result unit and usage are persisted.
 - ``approval_unavailable`` — a tool call needed a human decision
-  (``core.tools.evaluate_tool_call`` returned ``ask``) and ``ToolContext.
+  (``agent.tools.registry.evaluate_tool_call`` returned ``ask``) and ``ToolContext.
   approval_mode == "refuse"``, so ``dispatch_tool`` denied it immediately
   instead of creating an approval record and waiting. Unlike ``tool_denials``
   this is not a count reaching a limit — one such result ends the turn right
@@ -65,8 +65,8 @@ reported as ``AgentLoopResult.stop_reason``:
 - ``token_budget`` — cumulative *counted* usage (``TokenUsage.counted_tokens``:
   real input minus cache reads, plus output) exceeded ``LoopConfig.token_budget``
   on a reply that still wants tools; a reply with none is already paid and is
-  kept. Never the bytes/divisor estimate ``core/context.py``/``core/session.py``
-  use for compaction — see ``core/session.py``'s "Budgeting honesty" section,
+  kept. Never the bytes/divisor estimate ``agent/context.py``/``agent/session.py``
+  use for compaction — see ``agent/session.py``'s "Budgeting honesty" section,
   which this mirrors. The loop combines prior counted usage with the next
   request estimate (scaled by the last measured/estimated ratio, never below
   1) and the output reserve (``Home.default_max_output_tokens`` when the
@@ -92,11 +92,11 @@ the same invariant ``ChatResponse``/``TurnResult`` already keep.
 A truncated response's assistant message is **never appended to session
 history and its tool calls, if any, are never dispatched.** Persisting a
 truncated assistant message that requested tool calls would create an
-orphaned-tool-call state in the very history ``core/session.py``'s
+orphaned-tool-call state in the very history ``agent/session.py``'s
 compaction post-conditions exist to forbid; discarding it instead means the
 turn simply reports ``truncated`` and the caller decides whether to retry —
-the same fail-closed posture ``core/session.py``'s compaction and
-``core/memory.py``'s distillation already take on their own failure paths.
+the same fail-closed posture ``agent/session.py``'s compaction and
+``agent/memory.py``'s distillation already take on their own failure paths.
 
 ## Durability: persisted per iteration, not only at the end
 
@@ -107,8 +107,8 @@ makes a model call of its own to produce the summary, so "before any model
 call" is not quite true: at most one compaction-summary call can precede the
 append. Each iteration that produces tool calls appends the
 assistant message *and every tool result answering it* in one
-``core.session.append_messages`` call — one atomic unit, matching
-``core/session.py``'s own atomicity contract, and never split across two
+``agent.session.append_messages`` call — one atomic unit, matching
+``agent/session.py``'s own atomicity contract, and never split across two
 appends. A crash mid-loop therefore loses at most the in-flight iteration,
 never the ones already completed — the durability contract that is the
 reason docket owns session state at all.
@@ -116,7 +116,7 @@ reason docket owns session state at all.
 ## Tracing
 
 Every dispatched tool call emits a ``tool_call`` trace event before it runs
-and a ``tool_result`` trace event after (``core/trace.py``'s existing event
+and a ``tool_result`` trace event after (``observability/trace.py``'s existing event
 vocabulary, written through ``trace_append``). ``docket task trace`` shows
 what an agent actually did inside a turn. Entering or refusing the terminal
 response reservation emits the existing ``budget_warning`` event with numeric
@@ -125,15 +125,15 @@ budget/estimate evidence only, never messages or model/tool content.
 ## Per-role tool sets and the system prompt
 
 - **The tool registry handed to the model is narrowed by role.**
-  ``core.archetypes.registry_for_role`` is called once per turn, before the
+  ``teams.roles.registry_for_role`` is called once per turn, before the
   first ``backend.complete``, so a Reviewer is never even *advertised*
   ``write``/``edit``, and if a call for either arrives anyway (a stale
   client, a hallucination), ``dispatch_tool`` refuses it as an unknown tool
   against the narrowed registry — a strictly stronger guarantee than a
   SOUL.md instruction. This function never branches on a role's name; the
-  denylist is data on the role's archetype (see ``core/archetypes.py``).
+  denylist is data on the role's archetype (see ``teams/roles.py``).
 - **The system prompt is composed fresh every turn.**
-  ``core.identity.compose_agent_prompt`` reads this agent's ``SOUL.md``,
+  ``agent.identity.compose_agent_prompt`` reads this agent's ``SOUL.md``,
   live persona, the driver's resolved project roots, and bounded private
   workspace state, and reports its own fit accounting (traced as
   ``prompt_composed``). It projects one live-safe startup contract instead
@@ -266,7 +266,7 @@ class AgentLoopResult:
     ``stop_reason == "final_message"`` exactly when ``ok`` is True — the only
     stop reason that represents a completed, usable turn. Mirrors
     ``ChatResponse``/``TurnResult``'s identical invariant deliberately, so
-    ``edges/adapters/docket_runtime.py``'s translation to ``TurnResult`` is a
+    ``agent/driver.py``'s translation to ``TurnResult`` is a
     field-for-field copy, not a re-interpretation.
     """
 
@@ -287,7 +287,7 @@ class AgentLoopResult:
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
     """Fold one exchange's real ``TokenUsage`` into the turn's running total.
 
-    Mirrors ``core.session._add_usage``'s shape exactly (a separate function,
+    Mirrors ``agent.session._add_usage``'s shape exactly (a separate function,
     not an import of that private helper, since the two accumulate into
     different record types — a session's lifetime total vs. one turn's).
     """
@@ -1925,7 +1925,7 @@ def run_agent_turn(
 ) -> AgentLoopResult:
     """Run one full turn: compose -> call -> gate-and-execute -> feed back -> repeat.
 
-    ``session_key`` is the durable-history key (``core/session.py``). The
+    ``session_key`` is the durable-history key (``agent/session.py``). The
     optional trace coordinates select only where events are written and default
     to ``ctx.project``/``session_key`` for backward compatibility. ``ctx`` also
     carries the tool containment boundary (``ctx.roots``) that

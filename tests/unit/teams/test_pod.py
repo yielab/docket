@@ -1,4 +1,4 @@
-"""Pod composition model (core/pod.py) — pure-logic unit tests."""
+"""Pod composition model (teams/pod.py) — pure-logic unit tests."""
 
 from __future__ import annotations
 
@@ -424,7 +424,7 @@ class TestPodSettingsAllowCommands:
 
 class TestPodSettingsProjectInstructions:
     """`PodSettings.projectInstructions`: opt-in relative paths inside the codebase
-    root, composed by `core/identity.py` — see
+    root, composed by `agent/identity.py` — see
     tests/integration/test_role_tools_and_identity.py for the composition itself."""
 
     def test_defaults_to_empty(self) -> None:
@@ -590,7 +590,7 @@ class TestPodSettingsProtects:
 
 class TestPodSettingsDeniedTools:
     """`PodSettings.deniedTools`: built-in tool names every role in this pod
-    additionally denies, unioned by `core.archetypes.registry_for_role` -- see
+    additionally denies, unioned by `teams.roles.registry_for_role` -- see
     `tests/unit/core/test_archetypes.py::TestPodDeniedTools` for the union itself."""
 
     def test_defaults_to_empty(self) -> None:

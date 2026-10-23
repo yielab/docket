@@ -1,4 +1,4 @@
-"""SUBJECT: docket.serve.run_serve -- a second stop signal abandons a blocked sweep (subprocess)."""
+"""SUBJECT: interfaces.http.server.run_serve -- a second stop signal abandons a blocked sweep (subprocess)."""
 
 from __future__ import annotations
 
@@ -29,16 +29,17 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _DRIVER = textwrap.dedent(
     """
     import threading
-    import docket.core.dispatch as d
-    from docket import serve
+    import docket.tasks.application.queue as q
+    import docket.tasks.application.sweep as d
+    from docket.interfaces.http import server
 
     release = threading.Event()
-    d.dispatchable_pods = lambda: ["pod-x"]
+    q.dispatchable_pods = lambda: ["pod-x"]
 
     def _blocked(project, **kw):
         print("SWEEP-BLOCKED", flush=True)
@@ -46,7 +47,7 @@ _DRIVER = textwrap.dedent(
         return []
 
     d.dispatch_pod = _blocked
-    serve.run_serve(port=0, interval=3600, dispatch=True)
+    server.run_serve(port=0, interval=3600, dispatch=True)
     """
 )
 

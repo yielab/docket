@@ -90,9 +90,9 @@ def test_changed_protected_sees_a_file_inside_a_new_untracked_directory(
 ) -> None:
     """A protected file in a directory git has never seen is found by its own path."""
     listed = {False: ["config/"], True: ["config/tsconfig.json"]}
-    monkeypatch.setattr(_pp._sys, "git_diff_names", lambda *_a: [])
+    monkeypatch.setattr(_pp._git, "git_diff_names", lambda *_a: [])
     monkeypatch.setattr(
-        _pp._sys, "git_changed_files", lambda _cwd, *, all_untracked=False: listed[all_untracked]
+        _pp._git, "git_changed_files", lambda _cwd, *, all_untracked=False: listed[all_untracked]
     )
-    monkeypatch.setattr(_pp._sys, "git_tracked_files", lambda _cwd: [])
+    monkeypatch.setattr(_pp._git, "git_tracked_files", lambda _cwd: [])
     assert _pp.changed_protected("/wt", "base", "branch", (), ()) == ["config/tsconfig.json"]

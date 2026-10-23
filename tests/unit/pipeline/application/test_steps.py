@@ -186,7 +186,7 @@ class TestUnpricedModelUnderABudget:
 
 class TestEffectivePipelineBlueprint:
     """``effective_pipeline(project, None)`` resolves the Lead's ``blueprint`` meta through
-    ``core/blueprints.py::get_blueprint`` before falling back to the built-in default -- see
+    ``teams/blueprints.py::get_blueprint`` before falling back to the built-in default -- see
     pod-dispatch.spec.md "Pipeline order and participation"."""
 
     def test_research_pod_runs_its_blueprint_pipeline(self, pod_home: Path) -> None:
@@ -346,7 +346,7 @@ class TestBoundPipeline:
     def test_a_serve_sweep_or_mcp_shaped_dispatch_runs_the_bound_files_steps(
         self, pod_home: Path
     ) -> None:
-        """The exact call ``serve.py``'s sweep/schedule and ``cli/_mcp.py``'s dispatch tool
+        """The exact call ``serve.py``'s sweep/schedule and ``interfaces/cli/commands/mcp.py``'s dispatch tool
         both make -- ``dispatch_pod(project, ...)`` with no ``spec=`` kwarg -- so binding a
         pipeline changes every unattended trigger with zero changes to either caller."""
         _seed_lean_pod("myapp")

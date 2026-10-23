@@ -297,7 +297,7 @@ class TestPolicies:
         result = _pod_cli("check", "--role", "programmer", "--", "-rf /tmp/foo")
         assert result.exit_code == 0
 
-    # -- pod validate over the installed policy store (wires core.policy.validate_policy) ----
+    # -- pod validate over the installed policy store (wires governance.policy.validate_policy) ----
 
     def test_validate_checks_every_installed_file(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)

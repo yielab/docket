@@ -1,4 +1,4 @@
-"""`core/pod_memory.py`: parsing a reply's memory section."""
+"""`teams/memory.py`: parsing a reply's memory section."""
 
 from __future__ import annotations
 

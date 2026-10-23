@@ -1,4 +1,4 @@
-"""The ``consult`` built-in (`core/consult.py`, registered by `core/tools.py`): a model asks
+"""The ``consult`` built-in (`tasks/application/consult.py`, registered by `agent/tools/registry.py`): a model asks
 the operator a decision question with options and a recommendation, bounded per turn."""
 
 from __future__ import annotations

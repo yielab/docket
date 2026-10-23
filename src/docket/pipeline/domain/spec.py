@@ -1,4 +1,4 @@
-"""docket-native pipeline spec: the format only. ``core/orchestrator.py`` is the executor.
+"""docket-native pipeline spec: the format only. ``pipeline/domain/plan.py`` is the executor.
 See specs/functional/pipeline-format.spec.md for the document shape, gate kinds, rework
 edges, and parallel-group contract this module implements.
 
@@ -110,7 +110,7 @@ class VerdictGate(BaseModel):
 class ApprovalGate(BaseModel):
     """The step must not proceed until an operator grants approval. Carries no
     token/timeout/resolution state -- ``core/dispatch.py`` wires it to a real
-    ``core/approval.py`` record; see specs/functional/pipeline-format.spec.md ("Gates")."""
+    ``governance/approval.py`` record; see specs/functional/pipeline-format.spec.md ("Gates")."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -9,9 +9,9 @@ from docket.kernel import ids as _ids
 from docket.kernel.errors import InvalidInput
 
 # The Reviewer/Tester verdict patterns live in exactly one place:
-# `core/pipeline.py`'s `default_pipeline()` declares them as real `VerdictGate`s, and gate
+# `pipeline/domain/spec.py`'s `default_pipeline()` declares them as real `VerdictGate`s, and gate
 # execution reads a step's *resolved* gate generically (see `_execute_unit`'s
-# `isinstance(gate, _pipeline.VerdictGate)` branch and `core.orchestrator.parse_verdict`)
+# `isinstance(gate, _pipeline.VerdictGate)` branch and `pipeline.domain.plan.parse_verdict`)
 # instead of branching on a hardcoded role name. A second, independent copy of these patterns
 # here would drift from that single source of truth (see `tests/unit/core/test_pipeline__spec.py`).
 
@@ -119,7 +119,7 @@ class TaskResult:
     pending_approval_index: int | None = None
     # Only meaningful when status == "waiting_input" -- the minted ``Question``
     # (operator_contract, dumped by alias), so the caller (``_apply_result``) can
-    # persist it for `core.answers.answer_task` to resolve later. See
+    # persist it for `tasks.application.answers.answer_task` to resolve later. See
     # pod-dispatch.spec.md ("Operator input steps and answers").
     question: dict[str, Any] | None = None
     # Only meaningful when status == "failed" -- see RESUMABLE_FAILURE_KINDS.

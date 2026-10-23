@@ -1,7 +1,7 @@
-"""docket owns the turn loop (`core/agent_loop.py`), so every stop condition must be a
+"""docket owns the turn loop (`agent/loop.py`), so every stop condition must be a
 deliberate, reported exit -- never a silent hang or runaway loop. Covers: a single execution
 path (an architectural guard walks the module's own source to prove `run_agent_turn` never
-calls a tool handler except through `core.tools.dispatch_tool`); truncation safety (a
+calls a tool handler except through `agent.tools.registry.dispatch_tool`); truncation safety (a
 length-truncated response carrying tool calls is never dispatched or persisted); all four stop
 conditions -- final message, max_iterations, max_tool_calls, wall-clock timeout, token budget --
 each triggerable with the right `stop_reason`/`failure_kind`; durability (history persisted per

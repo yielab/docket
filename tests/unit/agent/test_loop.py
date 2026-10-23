@@ -1,4 +1,4 @@
-"""Phase functions extracted from `run_agent_turn` (`core/agent_loop.py`).
+"""Phase functions extracted from `run_agent_turn` (`agent/loop.py`).
 
 Each function here is pure and module-level, unlike the loop's stateful
 nested closures, so it is exercised directly instead of only end to end.

@@ -17,7 +17,7 @@ from docket.kernel.home import Home, use_home
 from docket.models import catalog as _provider
 from docket.sandbox import launch as _launch
 
-SUBJECT = "docket.edges.adapters.system"
+SUBJECT = "docket.sandbox.launch"
 
 # Host env is long enough to hit the output cap, so print only the names under test.
 _ENV_CMD = "env | grep -E '^(OPENAI|DOCKET|TELEGRAM|MY_STORED|HARMLESS|PATH|CATALOG)'"

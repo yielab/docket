@@ -29,7 +29,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_core
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _GATED = """\
 name: gated

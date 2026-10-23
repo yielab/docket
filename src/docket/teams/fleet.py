@@ -2,13 +2,13 @@
 
 Agent registration, channel bindings, and isolation flags are read/written
 **only** by docket, through
-``edges/store.py`` — nothing else ever writes ``fleet.json``. The single-writer
+``platform/store.py`` — nothing else ever writes ``fleet.json``. The single-writer
 contract makes cross-runtime configuration drift structurally impossible:
 with one writer, "an older docket version partially wrote this" is still
 possible in principle, but "a different program touched this file" is not.
 
 **Deliberately not duplicated:** a registered agent's ``model``, ``sessionKey``
-and ``projectKey`` remain ``.docket-meta.json``'s job (see ``core/models.py``'s
+and ``projectKey`` remain ``.docket-meta.json``'s job (see ``teams/models.py``'s
 ``AgentMeta``) and are NOT tracked here. ``FleetAgent`` records only the bare
 fact of registration (its id) — carrying a second copy of fields
 ``.docket-meta.json`` already owns would just recreate the same kind of
@@ -20,7 +20,7 @@ version round-trips through an older one instead of being silently dropped.
 This module also carries the read/write functions
 (``meta_get``/``meta_set``/``list_agents``/``add_agent``/``get_binding``/…)
 for fleet and agent-metadata state. These are docket-owned formats read through
-``edges/store.py``, so they live as a plain ``core/`` module.
+``platform/store.py``, so they live as a plain ``core/`` module.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ class FleetSecurity(BaseModel):
     network_mode: str = Field("unset", alias="networkMode")
     # 'auto' (landlock on Linux, seatbelt on macOS) | 'docker' (docker only, once chosen).
     sandbox_backend: str = Field("auto", alias="sandboxBackend")
-    # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; core/profile.py).
+    # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; governance/profile.py).
     profile: str = Field("unset", alias="profile")
     # Resolved absolute paths every jail reads and executes, never writes (the toolchain).
     read_only: list[str] = Field(default_factory=list, alias="readOnly")
@@ -87,7 +87,7 @@ class FleetConfig(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Read/write API. Every function below is docket-owned state — fleet.json
 # and .docket-meta.json — both Docket-owned formats, so this is a plain
-# core/ module (imports only edges/store.py for I/O).
+# core/ module (imports only platform/store.py for I/O).
 # ─────────────────────────────────────────────────────────────────────────────
 
 

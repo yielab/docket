@@ -1,5 +1,5 @@
-"""The `command` and `console` delivery dialects (`edges/adapters/channels/command.py`,
-`edges/adapters/channels/console.py`), plus `sink_for`'s dialect lookup
+"""The `command` and `console` delivery dialects (`operator/adapters/command.py`,
+`operator/adapters/console.py`), plus `sink_for`'s dialect lookup
 (`edges/adapters/channels/__init__.py`).
 """
 

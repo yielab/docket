@@ -2,7 +2,7 @@
 stores (not just looks up).
 
 Nothing on the live turn path reads a per-agent file for credentials --
-`edges/adapters/llm.py` resolves them through `core/secrets.py` directly, so
+`models/adapters/openai_http.py` resolves them through `governance/secrets.py` directly, so
 credentials are written nowhere else. Under `DOCKET_SECRETS_BACKEND=keyring`, add/rotate store
 through `secret-tool store` and fail closed (never falling back to plaintext) if that
 fails; remove clears the keyring entry too.

@@ -6,7 +6,7 @@ exactly one `("started", {"pgid": ...})` followed by exactly one `("exited", {..
 `exitCode` on a normal (or non-zero) completion, `signal="SIGKILL"` when this module itself
 killed the group (timeout), no event at all when `Popen` never produced a process, and no calls
 at all when `on_process` is left `None` -- the default, byte-for-byte-unchanged path. `tool`/
-`callId` are not this module's concern: `core/tools.py` tags those on top. See
+`callId` are not this module's concern: `agent/tools/registry.py` tags those on top. See
 specs/functional/trace-store.spec.md "Process lifecycle events".
 """
 
@@ -20,6 +20,7 @@ import pytest
 
 from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import current_home, use_home
+from docket.sandbox import landlock as _landlock
 
 SUBJECT = "docket.agent.tools.builtins.toolbox"
 
@@ -187,12 +188,12 @@ class TestJailedCacheDir:
             raise OSError("stop")
 
         monkeypatch.setattr(toolbox.subprocess, "Popen", _popen)
-        monkeypatch.setattr(toolbox._system, "git_identity_env", lambda _root: {})
-        monkeypatch.setattr(toolbox._system, "git_dirs", lambda _root: [])
+        monkeypatch.setattr(toolbox._launch, "git_identity_env", lambda _root: {})
+        monkeypatch.setattr(_landlock, "git_dirs", lambda _root: [])
         monkeypatch.setattr(
-            toolbox._system,
+            toolbox._launch,
             "sandbox_availability",
-            lambda: toolbox._system.SandboxAvailability("landlock", False, False, True),
+            lambda: toolbox._launch.SandboxAvailability("landlock", False, False, True),
         )
         return seen
 

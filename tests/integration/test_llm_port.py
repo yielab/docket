@@ -37,7 +37,7 @@ from docket.hops.application.runner import _RETRYABLE_FAILURE_KINDS
 from docket.kernel.home import Home, use_home
 from docket.models.adapters import openai_http as adapter
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.models"
 
 ENDPOINT = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="test-model")
 
@@ -850,7 +850,7 @@ class TestProtocolConformance:
         assert isinstance(adapter.OpenAIChatClient(ENDPOINT), ChatBackend)
 
     def test_core_llm_holds_no_wire_knowledge(self) -> None:
-        """The port must stay format-free -- a wire field name in core/llm.py means translation
+        """The port must stay format-free -- a wire field name in agent/llm.py means translation
         leaked out of the adapter. Checks executable string literals only via AST, excluding
         docstrings/comments, since a substring scan would flag legitimate protocol-describing prose."""
         import ast
@@ -886,7 +886,7 @@ class TestProtocolConformance:
             "Bearer",
         )
         leaked = [(word, text) for text in literals for word in wire_vocabulary if word in text]
-        assert not leaked, f"wire vocabulary leaked into core/llm.py: {leaked}"
+        assert not leaked, f"wire vocabulary leaked into agent/llm.py: {leaked}"
 
     def test_message_roles_are_the_four_the_protocol_defines(self) -> None:
         msgs = [

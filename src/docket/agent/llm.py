@@ -1,13 +1,13 @@
 """Chat-completion port: the typed boundary between docket's turn loop and whatever speaks
-inference. This module is the *port*; ``edges/adapters/llm.py`` is the shipped adapter
+inference. This module is the *port*; ``models/adapters/openai_http.py`` is the shipped adapter
 (OpenAI-compatible ``/v1/chat/completions``). Docket owns the loop, tool registry and every
 gate; it rents only protocols, and inference is one (an HTTP POST with a JSON body) — nothing
 here knows that JSON shape, the shapes below are docket's own vocabulary, and the adapter
-translates in both directions, the same split ``core/runtime_driver.py`` (pure typing) /
+translates in both directions, the same split ``agent/ports.py`` (pure typing) /
 ``edges/adapters/`` (format knowledge) already uses, keeping a future second endpoint dialect
 from leaking wire fields into ``core/``. Deliberately absent: streaming, and any notion of "an
 agent" — a ``ChatBackend`` performs exactly one request/response exchange; multi-step behaviour
-(feeding tool results back, deciding when a turn is over) belongs to ``core/agent_loop.py``,
+(feeding tool results back, deciding when a turn is over) belongs to ``agent/loop.py``,
 because those are the decisions docket refuses to delegate."""
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ class ToolCall:
 class ToolSpec:
     """A tool advertised to the model. ``parameters`` (a JSON Schema object) is a plain dict,
     not a modelled type, because it passes through to the endpoint verbatim and docket never
-    reasons about its internals; ``core/tools.py`` owns what a valid tool looks like."""
+    reasons about its internals; ``agent/tools/registry.py`` owns what a valid tool looks like."""
 
     name: str
     description: str
@@ -125,7 +125,7 @@ def tool_result(call: ToolCall, content: str) -> ChatMessage:
 class TokenUsage:
     """Token counts **as reported by the endpoint** for one exchange — real counts off the
     response body, unlike the ``Home.context_bytes_per_token`` estimates used elsewhere
-    (``core/context.py``'s budgets). Keep this distinction in any
+    (``agent/context.py``'s budgets). Keep this distinction in any
     user-facing wording: never call an estimate a measurement. ``cached_tokens`` is a subset of
     ``input_tokens`` where the endpoint reports one, and 0 where it does not — meaning "not
     reported", never "definitely no cache hit"; ``cache_write_tokens`` is a subset too."""
@@ -149,7 +149,7 @@ class TokenUsage:
 @dataclass
 class ChatResponse:
     """Outcome of one exchange, never an exception for ordinary failures. Mirrors ``TurnResult``'s
-    contract deliberately (reusing ``FailureKind`` so ``core/agent_loop.py``'s driver slots under
+    contract deliberately (reusing ``FailureKind`` so ``agent/loop.py``'s driver slots under
     ``core/dispatch.py``'s retry policy); ``failure_kind`` is ``None`` iff ``ok`` is True."""
 
     ok: bool
@@ -208,7 +208,7 @@ class Endpoint:
 
 @runtime_checkable
 class ChatBackend(Protocol):
-    """The port ``core/agent_loop.py`` programs against: one method, one exchange. Implementations
+    """The port ``agent/loop.py`` programs against: one method, one exchange. Implementations
     must not raise for transport, protocol, or endpoint errors, returning ``ChatResponse(ok=False,
     failure_kind=...)`` instead so the caller's retry policy decides what happens next."""
 

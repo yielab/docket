@@ -39,7 +39,7 @@ def pod_gating_cost(project: str) -> tuple[float, bool]:
     any_estimate = False
     for mid, _role, _idx in _pod.members_of(all_ids, project):
         # recorded == 0.0 above, so every member's own recorded spend is 0.0 too --
-        # this always resolves through core/utils.py::gating_cost's estimate branch.
+        # this always resolves through teams/utils.py::gating_cost's estimate branch.
         est, estimated = _utils.gating_cost(mid)
         if estimated:
             total_est += est
@@ -63,7 +63,7 @@ def _pipeline_step_requires_approval(gate: _pipeline.Gate | None) -> bool:
 
 
 def _approval_action_text(role: str, task: dict[str, Any]) -> str:
-    """Human-readable description recorded on the approval record; ``core/approval.py``
+    """Human-readable description recorded on the approval record; ``governance/approval.py``
     redacts it before persisting, so this need not scrub secrets itself.
     """
     desc = str(task.get("description", "")).strip()
@@ -340,7 +340,7 @@ def _checked_commands(
 def _park_if_check_changed(
     ctx: _UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...], result: TaskResult
 ) -> None:
-    """A finished task whose diff touches a protected path (core/protected_paths.py) parks
+    """A finished task whose diff touches a protected path (hops/workspace/protected_paths.py) parks
     ``waiting_approval`` for a person whatever the profile, instead of ending ``done``. A task
     with no recorded worktree is not checked."""
     record = ctx.task.get("worktree")

@@ -1,6 +1,6 @@
 """`docket start`'s periodic sweep: what it calls, in what order, and its effect.
 
-core/trace.py's expire_old_traces() is tested in isolation by
+observability/trace.py's expire_old_traces() is tested in isolation by
 test_trace_retention.py. This file pins the *wiring* -- that _run_sweeps calls
 sweep_all then approval_sweep_expired, keeps going if one raises, and runs
 once at startup -- and the retention *effect* that ordering exists to protect:
@@ -18,12 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from docket import serve
 from docket.governance import approval as _ap
 from docket.interfaces.http import server as _server
+from docket.kernel import threads as _threads
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
-from docket.pipeline.application import schedule as _schedule
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -167,7 +166,7 @@ class TestSweepWiring:
             def server_close(self) -> None:
                 pass
 
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         _server.run_serve(port=0, interval=30)
         assert ran == ["startup"]
 
@@ -181,7 +180,7 @@ class TestSweepRefreshesObservedModels:
         calls: list[int] = []
         monkeypatch.setattr(_provider, "refresh_observed_models_due", lambda: calls.append(1) or [])
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: [])
-        monkeypatch.setattr(_schedule, "_check_schedules", lambda now: None)
+        monkeypatch.setattr(_server, "_check_schedules", lambda now: None)
         return calls
 
     def test_only_a_dispatching_sweep_refreshes_the_providers_limits(
@@ -205,6 +204,6 @@ class TestSweepRefreshesObservedModels:
         seen: list[int] = []
         monkeypatch.setattr(_provider, "refresh_observed_models_due", boom)
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: seen.append(1) or [])
-        monkeypatch.setattr(_schedule, "_check_schedules", lambda now: None)
+        monkeypatch.setattr(_server, "_check_schedules", lambda now: None)
         _server._run_sweeps(dispatch=True)
         assert seen == [1]

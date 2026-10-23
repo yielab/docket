@@ -1,7 +1,7 @@
 """Shared test doubles for the docket Python suite.
 
 ``FakeDriver`` is the one test double for
-``docket.core.runtime_driver.RuntimeDriver`` — it exists so tests exercising
+``docket.agent.ports.RuntimeDriver`` — it exists so tests exercising
 ``core/dispatch.py``'s pipeline (or anything else that takes a
 ``RuntimeDriver``/``Runner``) don't each hand-roll their own ad-hoc stub
 matching ``agent_run``'s signature. Construct one, tune its canned behaviour

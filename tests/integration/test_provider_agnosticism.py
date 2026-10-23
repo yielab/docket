@@ -7,7 +7,7 @@ now "rank anchors" with an honest caption; a `local` preset prices as "$0 (local
 never a fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the
 dead-end guidance strings in cli/_provider.py name commands that actually exist.
 
-Unit tests import `docket.core.models_policy` directly; CLI-surface tests use CliRunner with
+Unit tests import `docket.models.selection` directly; CLI-surface tests use CliRunner with
 a `use_home` block on a temp directory."""
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ SUBJECT = "docket.interfaces.cli.app"
 _runner = CliRunner()
 
 # ---------------------------------------------------------------------------
-# Direct unit tests: core/models_policy.py
+# Direct unit tests: models/selection.py
 # ---------------------------------------------------------------------------
 
 

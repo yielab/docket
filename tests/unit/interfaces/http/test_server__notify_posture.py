@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import pytest
 
-from docket import serve
 from docket.interfaces.http import server
+from docket.kernel import threads as _threads
 from docket.operator import channel as _channel
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 
 class _FakeServer:
@@ -26,7 +26,7 @@ class _FakeServer:
 
 def _run(monkeypatch: pytest.MonkeyPatch, *, dispatch: bool) -> None:
     monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-    monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+    monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
     monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
     server.run_serve(port=0, interval=30, dispatch=dispatch)
 

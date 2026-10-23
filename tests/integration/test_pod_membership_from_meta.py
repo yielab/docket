@@ -2,9 +2,9 @@
 
 A custom role named `security-reviewer` (registered via the archetype user-overlay) is
 provisionable via `docket pod add`, but its member id (`<project>-security-reviewer`) can
-make `core/pod.py::pod_of` mis-parse the tail `reviewer` as the role, answering the wrong
+make `teams/pod.py::pod_of` mis-parse the tail `reviewer` as the role, answering the wrong
 (nonexistent) project and tripping the cross-pod dispatch refusal in
-`core/dispatch.py::_execute_unit`. See pod-dispatch.spec.md ("Pipeline order and participation",
+`hops/application/runner.py::_execute_unit`. See pod-dispatch.spec.md ("Pipeline order and participation",
 requirement 3) and role-archetypes.spec.md ("Built-in archetypes and legacy fidelity",
 requirement 5).
 """

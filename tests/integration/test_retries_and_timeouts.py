@@ -21,12 +21,12 @@ import pytest
 from tests.pods import build_pod
 
 from docket.agent import ports as _rd
-from docket.core import dispatch as _dispatch
 from docket.hops.application import runner as _application_runner
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor
+from docket.sandbox import launch as _launch
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
@@ -34,7 +34,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_verify_gate.py / test_hop_carryover.py) ──
 
@@ -99,7 +99,7 @@ def _no_sleep(_seconds: float) -> None:
 # ── failure_kind classification ────────────────────────────────────────────────
 #
 # There is no daemon-facing driver and no subprocess-backed `agent_run` to
-# classify failures through. `edges/adapters/llm.py`'s `OpenAIChatClient`
+# classify failures through. `models/adapters/openai_http.py`'s `OpenAIChatClient`
 # (the one shipped `ChatBackend` DocketDriver calls through) is the only
 # failure_kind classifier now; its coverage
 # (timeout / HTTP-status-based daemon_error/nonzero_exit / invalid_output) is
@@ -434,7 +434,7 @@ class TestTimeoutResolution:
             return _rd.TurnResult(True, "done", 0.0, {})
 
         seen_verify_timeouts: list[int] = []
-        real_run_command = _dispatch._sys.run_command
+        real_run_command = _launch.run_command
 
         def _spy_run_command(cmd: str, cwd: str, timeout: int) -> tuple[int | None, str]:
             seen_verify_timeouts.append(timeout)
@@ -444,7 +444,7 @@ class TestTimeoutResolution:
 
         mp = _pytest.MonkeyPatch()
         try:
-            mp.setattr(_dispatch._sys, "run_command", _spy_run_command)
+            mp.setattr(_launch, "run_command", _spy_run_command)
             task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
             res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         finally:

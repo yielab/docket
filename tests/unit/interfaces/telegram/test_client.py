@@ -1,13 +1,13 @@
 """The Telegram Bot API adapter.
 
-``edges/adapters/telegram.py`` is the only module that knows the Bot API's
+``interfaces/telegram/client.py`` is the only module that knows the Bot API's
 wire format. A real local HTTP server backs every network-shaped test
 here; **no test contacts the real Telegram API or needs a token**.
 
 Pins, most important first: (1) the bot token never appears in a returned
 error string, proven against a real 401 and connection failure; (2) an
 empty long-poll result is success, offset echoed back verbatim
-(next-offset computation is ``core/telegram.py``'s job); (3) a network
+(next-offset computation is ``interfaces/telegram/bot.py``'s job); (3) a network
 failure degrades to a typed ``ok=False`` and never raises.
 """
 

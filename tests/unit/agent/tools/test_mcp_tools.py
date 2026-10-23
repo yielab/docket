@@ -1,4 +1,4 @@
-"""MCP tools reachable in a live turn (`core/mcp_tools.py`).
+"""MCP tools reachable in a live turn (`agent/tools/mcp_tools.py`).
 
 Covers `DocketDriver.run_turn` calling `load_mcp_tools` via its
 `mcp_loader` seam before per-turn role narrowing, every MCP-adapted tool
@@ -234,7 +234,7 @@ class TestPodScopedMcpServerSelection:
 
 
 class TestReviewerNeverGainsAWriteCapableMcpTool:
-    """Every adapted MCP tool is `kind="write"` (`core/mcp_tools.py::_build_tool`),
+    """Every adapted MCP tool is `kind="write"` (`agent/tools/mcp_tools.py::_build_tool`),
     so excluding by kind, not name, is required: a name-based denylist could
     never catch `mcp__fake__danger_write` and would hand a Reviewer a write tool."""
 

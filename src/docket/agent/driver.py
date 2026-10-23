@@ -1,14 +1,14 @@
 """``DocketDriver``: the ``RuntimeDriver`` implementation.
 
-Implements ``core.runtime_driver.RuntimeDriver`` on ``core/agent_loop.py`` so ``core/dispatch.py``,
+Implements ``agent.ports.RuntimeDriver`` on ``agent/loop.py`` so ``core/dispatch.py``,
 the pipeline executor, and every Protocol caller work unchanged. ``default_driver()`` is the single
 resolution point production callers -- pod dispatch, distillation, cost aggregation, trace
 ingestion -- use, running on docket's gated loop.
 
-Every ``run_turn`` runs through ``core.agent_loop.run_agent_turn``, dispatching every tool call
-through ``core.tools.dispatch_tool`` -- the one chokepoint every policy/approval/audit guardrail is
+Every ``run_turn`` runs through ``agent.loop.run_agent_turn``, dispatching every tool call
+through ``agent.tools.registry.dispatch_tool`` -- the one chokepoint every policy/approval/audit guardrail is
 built onto. This module never calls a tool handler directly, nor imports
-``edges/adapters/toolbox.py``.
+``agent/tools/builtins/toolbox.py``.
 """
 
 from __future__ import annotations
@@ -45,7 +45,6 @@ from docket.agent.ports import (
 )
 from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry, builtin_registry
-from docket.observability.adapters import sinks as _exporters
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.workspace import prepare as _prepare
@@ -54,6 +53,7 @@ from docket.kernel.home import current_home
 from docket.models.adapters import openai_http as _llm
 from docket.observability import telemetry as _telemetry
 from docket.observability import trace as _trace
+from docket.observability.adapters import sinks as _exporters
 from docket.platform import git as _git
 from docket.platform import process as _process
 from docket.platform import store as _store
@@ -95,7 +95,7 @@ atexit.register(_close_telemetry)
 # pod's own stale configuration -- not an ordinary turn failure like an
 # unreachable/hung/malformed remote server (which `load_mcp_tools` already
 # degrades to "unavailable" for, never raising). Deferred import of
-# `core.dispatch.DispatchError`: `core.dispatch` imports this module at module
+# `tasks.domain.task.DispatchError`: `core.dispatch` imports this module at module
 # scope, so importing it back here would be circular -- by the time any real turn
 # calls this function both modules are already fully loaded.
 def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
@@ -146,7 +146,7 @@ def _load_mcp_tools(
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:
-    """Read *agent_id*'s ``.docket-meta.json`` via ``edges/store.py``. Returns ``(None, "")`` for
+    """Read *agent_id*'s ``.docket-meta.json`` via ``platform/store.py``. Returns ``(None, "")`` for
     a missing or malformed record rather than raising, per the Protocol's "never raises for an
     ordinary failure" contract."""
     raw = _store.read_json(current_home().meta_path(agent_id))
@@ -161,7 +161,7 @@ def _load_agent_meta(agent_id: str) -> AgentMeta | None:
 def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
     """The containment boundary ``dispatch_tool`` enforces: codebase > work_dir > the agent's
     own workspace (a dispatched task's worktree arrives as the pipeline root instead) --
-    mirrors ``core.pod.resolve_member_cwd``, extended here (not there) to also cover a
+    mirrors ``teams.pod.resolve_member_cwd``, extended here (not there) to also cover a
     ``workdir`` pod, which that helper's signature cannot express."""
     if meta is not None and meta.codebase:
         return (Path(meta.codebase),)
@@ -528,7 +528,7 @@ class DocketDriver:
         trace_task_id: str | None = None,
         model: str | None = None,
     ) -> TurnResult:
-        """Run one turn through ``core/agent_loop.py``. Never raises, with one deliberate
+        """Run one turn through ``agent/loop.py``. Never raises, with one deliberate
         exception: ``DispatchError`` for a deterministic refusal -- a refused isolation or
         network posture (``_resolve_posture``), or ``self.mcp_loader`` finding an ``mcpServers``
         name absent from the live catalog (see ``_load_mcp_tools``'s own docstring). A caller
@@ -628,7 +628,7 @@ class DocketDriver:
         token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
-        # trace events under the identical coordinate `core/agent_loop.py`'s own
+        # trace events under the identical coordinate `agent/loop.py`'s own
         # `_trace_tool_call`/`_trace_tool_result` resolve for the very same turn.
         resolved_project = trace_project or _pod.pod_of(agent_id) or agent_id
         resolved_session_key = trace_session_key or session_key
@@ -668,10 +668,10 @@ class DocketDriver:
             on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role
-        # (core.archetypes.registry_for_role, called once inside
+        # (teams.roles.registry_for_role, called once inside
         # run_agent_turn) -- narrowing has to see whatever a configured MCP
         # server contributed, or a write-denying role would keep a
-        # write-capable MCP tool. See core/archetypes.py's registry_for_role
+        # write-capable MCP tool. See teams/roles.py's registry_for_role
         # docstring for the kind-based rule that makes this safe. ``ctx.project``
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
@@ -725,7 +725,7 @@ class DocketDriver:
         return out
 
     def usage(self, agent_id: str) -> UsageReport:
-        """Aggregate this agent's *measured*, non-estimated usage (``core.llm.TokenUsage``) across
+        """Aggregate this agent's *measured*, non-estimated usage (``agent.llm.TokenUsage``) across
         its sessions. ``cost_usd`` stays ``0.0`` and ``by_day`` is always ``[]`` -- see
         specs/functional/cost-tracking.spec.md ("Known gap: --history is always empty")."""
         totals = UsageTotals()
@@ -747,7 +747,7 @@ class DocketDriver:
             # billing claim.
             reports_cost_usd=False,
             # list_sessions/usage read real, durable
-            # docket-owned session storage (core/session.py).
+            # docket-owned session storage (agent/session.py).
             supports_sessions=True,
         )
 

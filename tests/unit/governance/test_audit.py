@@ -1,4 +1,4 @@
-"""The audit log's home directory is created private (core/audit.py)."""
+"""The audit log's home directory is created private (governance/audit.py)."""
 
 from __future__ import annotations
 

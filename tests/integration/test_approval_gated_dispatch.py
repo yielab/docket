@@ -1,6 +1,6 @@
 """Approval-gated dispatch — the approval store's missing producer.
 
-Wires ``core/approval.py``'s ``approval_create`` into ``core/dispatch.py`` end to end: creates,
+Wires ``governance/approval.py``'s ``approval_create`` into ``core/dispatch.py`` end to end: creates,
 waits on, and resolves a real approval rather than sitting with zero production callers.
 
   * TestGateSources — the pipeline ``approval`` gate is the one source of a pre-hop gate.
@@ -64,7 +64,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_reviewer_gate.py) ──────────────────────
 
@@ -658,7 +658,7 @@ class TestApprovalCreateContext:
         assert rec["context"] == {}
 
 
-# ── tool-call-level approval routing (core/tools.py's ToolContext.approval_mode) ──
+# ── tool-call-level approval routing (agent/tools/registry.py's ToolContext.approval_mode) ──
 
 
 class TestToolLevelApprovalMode:

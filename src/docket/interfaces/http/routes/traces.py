@@ -8,7 +8,7 @@ from docket.observability import trace as _trace
 
 # ── /traces/<project> cursor paging ─────────────────────────────────────────
 #
-# Built entirely on `core.trace.export_lines(project, since)` — owned by
+# Built entirely on `observability.trace.export_lines(project, since)` — owned by
 # another card this wave, used here exactly as it stands. That function's
 # `since` filter is `ts >= since`: inclusive, and second-granularity (`ts` is
 # `%Y-%m-%dT%H:%M:%SZ`). Both properties matter for a poll loop that must

@@ -1,4 +1,4 @@
-"""`core/memory.py`: the HEARTBEAT.md dispatch ledger and the seeded contract files.
+"""`agent/memory.py`: the HEARTBEAT.md dispatch ledger and the seeded contract files.
 
 Ledger: rendering, the write path preserving an agent's own prose byte-for-byte outside the
 delimited block, and the read-back.

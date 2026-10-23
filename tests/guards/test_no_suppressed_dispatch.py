@@ -4,7 +4,7 @@ A pod-dispatch call wrapped in a bare
 ``with contextlib.suppress(Exception):`` discards the exception with no
 id, no record, no trace of what happened.
 
-Grep-pinned regression test: scans ``serve.py`` for every such block and
+Grep-pinned regression test: scans ``interfaces/http/server.py`` for every such block and
 fails if any still mentions dispatch in its body. ``trace.sweep_all()``
 and ``approval.approval_sweep_expired()`` are unrelated sweeps left alone
 on purpose -- this guard is scoped to dispatch specifically.
@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import docket.serve as serve
+import docket.interfaces.http.server as serve
 
 _SERVE_PY = Path(serve.__file__)
 
@@ -44,7 +44,7 @@ def _suppress_exception_blocks(text: str) -> list[str]:
     return blocks
 
 
-def test_serve_py_still_uses_suppress_for_unrelated_sweeps() -> None:
+def test_server_py_still_uses_suppress_for_unrelated_sweeps() -> None:
     """Sanity check the test helper itself against a known-good line (trace/approval
     sweeps stay suppressed — they are out of this card's scope)."""
     text = _SERVE_PY.read_text(encoding="utf-8")
@@ -60,25 +60,25 @@ def test_no_suppress_exception_block_mentions_dispatch() -> None:
         block for block in _suppress_exception_blocks(text) if re.search(r"dispatch", block, re.I)
     ]
     assert not offenders, (
-        "serve.py must not silently discard a dispatch exception via "
+        "interfaces/http/server.py must not silently discard a dispatch exception via "
         "contextlib.suppress(Exception) -- every dispatch call site must record "
-        "its outcome in the run registry (core.runs) instead. Offending "
+        "its outcome in the run registry (tasks.application.runs) instead. Offending "
         "block(s):\n" + "\n---\n".join(offenders)
     )
 
 
 def test_webhook_dispatch_call_site_uses_run_registry() -> None:
     text = _SERVE_PY.read_text(encoding="utf-8")
-    assert "from docket.core import runs as _runs" in text, (
-        "serve.py's dispatch call sites (webhook/schedule/sweep) must go "
-        "through core.runs so every attempt is queryable"
+    assert "from docket.tasks.application import runs as _runs" in text, (
+        "interfaces/http/server.py's dispatch call sites (webhook/schedule/sweep) must go "
+        "through tasks.application.runs so every attempt is queryable"
     )
 
 
 def test_dispatch_all_pods_no_longer_called_unguarded_in_serve() -> None:
     """Calling dispatch_all_pods() inside a bare suppress loses per-pod granularity;
     the sweep loop must instead create one run record per pod (dispatchable_pods() +
-    dispatch_pod() through core.runs.execute)."""
+    dispatch_pod() through tasks.application.runs.execute)."""
     text = _SERVE_PY.read_text(encoding="utf-8")
     assert "dispatch_all_pods" not in text
     assert "dispatchable_pods" in text

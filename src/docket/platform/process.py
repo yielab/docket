@@ -59,7 +59,7 @@ def desktop_notifications_available() -> bool:
 def secret_tool_lookup(service: str, key: str) -> str | None:
     """Look up one secret's value via `secret-tool lookup`; returns ``None``
     on any failure (missing binary, timeout, no match) -- treated as "no
-    value", never an error, by `core/secrets.py`'s backend."""
+    value", never an error, by `governance/secrets.py`'s backend."""
     try:
         result = subprocess.run(
             ["secret-tool", "lookup", "service", service, "key", key],

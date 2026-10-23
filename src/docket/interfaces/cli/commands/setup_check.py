@@ -3,7 +3,7 @@
 `run_check(json_out, do_fix)` returns the process exit code: 0 healthy, 1 when
 issues are flagged. Each check is its own function, testable in isolation.
 
-All fleet/agent state is read through `core/fleet.py` and `store`; this
+All fleet/agent state is read through `teams/fleet.py` and `store`; this
 module never opens a daemon config file — there is no daemon to have one.
 Where a check has no daemon-era equivalent, its own docstring says so and
 why (see `_check_dependencies`, `_check_security_gates`, `_check_json`).
@@ -535,7 +535,7 @@ def _policy_problems() -> tuple[list[Any], list[tuple[str, str]]]:
 
 def _check_policies() -> int:
     """Guardrail policy store integrity: flags any file the evaluator would fail closed on,
-    through the same ``core.policy`` validation, so doctor can never call a store healthy that
+    through the same ``governance.policy`` validation, so doctor can never call a store healthy that
     a live turn would block on (security-gates.spec.md, policy engine requirement 7)."""
     ui.section("Guardrail policies:")
     files, problems = _policy_problems()

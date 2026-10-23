@@ -1,10 +1,10 @@
 """Security-gate logic: docket's own command classifier + approval/isolation config.
 
-``dispatch_tool`` (``core/tools.py``) keeps ``pre_tool_call`` and
+``dispatch_tool`` (``agent/tools/registry.py``) keeps ``pre_tool_call`` and
 ``classify_command`` below unconditionally live -- no "enable the gate"
 step, no daemon-side exec-approval mechanism (there is no daemon). Only
 docket's own workspace-isolation and network state is configurable
-(``core/fleet.py``'s ``FleetSecurity``, ``docket setup sandbox``,
+(``teams/fleet.py``'s ``FleetSecurity``, ``docket setup sandbox``,
 ``docket setup sandbox network``) -- not whether calls are gated, only whether
 execution is sandboxed and what network the sandbox has. Also owns
 ``match_high_risk``, the argument-aware allow/ask/deny classifier used by
@@ -152,7 +152,7 @@ def match_high_risk(command: str) -> HighRiskClass | None:
 
 # ── argument-aware command classification ────────────────────────────────
 #
-# `core/tools.py`'s `dispatch_tool` runs every tool call itself, so this
+# `agent/tools/registry.py`'s `dispatch_tool` runs every tool call itself, so this
 # classifier has a real enforcement point downstream. What follows is
 # deliberately NOT a restoration of the old bare-binary-name classifier
 # described in `match_high_risk`'s docstring above: that granularity made
@@ -175,7 +175,7 @@ _OPAQUE_MARKERS: tuple[str, ...] = ("$(", "`", "${", "eval ", "exec ")
 class CommandVerdict:
     """What docket decided about one shell command, and why.
 
-    ``action`` is allow/ask/deny; ``ask`` routes to ``core/approval.py``,
+    ``action`` is allow/ask/deny; ``ask`` routes to ``governance/approval.py``,
     which fails closed on timeout, so an unclassifiable command never
     silently runs. ``reason`` is written for a human approver, naming the
     specific binary or risk class that caused the verdict.
@@ -545,7 +545,7 @@ def classify_command(
     already confined to; otherwise -> allow.
 
     *extra_bins* is a caller-supplied, per-pod extension of the membership
-    check only (``core.pod.PodSettings.allow_commands``) -- it never widens
+    check only (``teams.pod.PodSettings.allow_commands``) -- it never widens
     the opaque-marker check or the high-risk-class check above, both of which
     still run against the full command line first. Every member of
     *extra_bins* is treated as redirect-sensitive, the same conservative rule
@@ -562,7 +562,7 @@ def classify_command(
     Does not catch: a safe binary used destructively within its own remit
     (``git reset --hard``), writes through a redirect outside the workspace
     for a binary that is not redirect-sensitive (path containment in
-    ``core/tools.py`` covers file tools, not shell redirects), or anything a
+    ``agent/tools/registry.py`` covers file tools, not shell redirects), or anything a
     script on the allowlist does once started. A gate, not a sandbox --
     sandboxed exec (``ToolContext.sandbox``) is a separate, opt-in mechanism
     this classifier neither provides nor requires.

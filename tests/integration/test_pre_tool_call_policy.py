@@ -1,5 +1,5 @@
 """The `pre_tool_call` policy hook is live.
-`core/policy.py`'s `policy_eval_detail` is wired into `core/tools.py`'s single decision point
+`governance/policy.py`'s `policy_eval_detail` is wired into `agent/tools/registry.py`'s single decision point
 (`evaluate_tool_call`), combined with the command classifier (most-restrictive-wins); an `ask`
 verdict routes to a synchronous waiter on the real approval store (`wait_for_approval`) so a
 tool call actually blocks on a human, not a no-op -- without this, docket ships four
@@ -210,7 +210,7 @@ class TestHighRiskDeployByArgument:
 
 class TestMostRestrictiveWins:
     """The command classifier and the policy engine can disagree; deny beats
-    ask beats allow, mirroring core/policy.py's own _RANK philosophy."""
+    ask beats allow, mirroring governance/policy.py's own _RANK philosophy."""
 
     def test_policy_block_overrides_a_classifier_ask(self, ctx: ToolContext) -> None:
         _write_policy("custom-block", r"suspicious-arg", "block", message="nope")
@@ -315,7 +315,7 @@ class TestBlockAndRequireApprovalActions:
 
 
 class TestWaitForApprovalUnit:
-    """Direct unit coverage of core/approval.py's new synchronous waiter.
+    """Direct unit coverage of governance/approval.py's new synchronous waiter.
     Every test here injects sleep/clock explicitly -- none ever sleeps for
     real, and none depends on TOOL_APPROVAL_TIMEOUT."""
 

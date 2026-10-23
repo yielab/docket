@@ -15,7 +15,6 @@ import pytest
 
 from docket.kernel.home import Home, use_home
 from docket.platform import git as _git
-from docket.sandbox import docker as _docker
 from docket.sandbox import landlock as _landlock
 from docket.sandbox import launch as _launch
 from docket.sandbox import seatbelt as _seatbelt

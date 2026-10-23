@@ -2,7 +2,7 @@
 
 An approval's own action text and any stored secret value found in a trace
 payload must never reach the trace log or the approval record verbatim.
-Fixtures run in a `use_home` block on a temp seed and drive core.approval/core.trace
+Fixtures run in a `use_home` block on a temp seed and drive governance.approval/observability.trace
 directly, in-process.
 """
 
@@ -19,7 +19,7 @@ from docket.governance import approval as _ap
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 
 @pytest.fixture()

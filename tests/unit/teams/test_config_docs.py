@@ -1,4 +1,4 @@
-"""Unit coverage for ``core.config_docs``'s envelope dispatch -- see
+"""Unit coverage for ``teams.config_docs``'s envelope dispatch -- see
 ``tests/integration/test_validate_cli.py`` for the ``docket pod validate`` command itself."""
 
 from __future__ import annotations

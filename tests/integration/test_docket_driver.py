@@ -1,13 +1,13 @@
-"""`DocketDriver`, the daemon-free `RuntimeDriver` (`edges/adapters/docket_runtime.py`).
+"""`DocketDriver`, the daemon-free `RuntimeDriver` (`agent/driver.py`).
 
-Implements the 7-method `RuntimeDriver` Protocol on top of `core/agent_loop.py` with no
+Implements the 7-method `RuntimeDriver` Protocol on top of `agent/loop.py` with no
 external daemon underneath. Covers: `run_turn` maps `AgentLoopResult` onto `TurnResult`
 honestly (`cost_usd` stays `0.0` always, real tool calls execute end-to-end through the real
 gated dispatcher, and an ordinary failure comes back as `TurnResult(ok=False, ...)`, never an
 exception); root-resolution precedence for the tool-containment boundary -- worktree > codebase
 > work_dir > bare workspace dir -- proven with the real `read` tool against real marker files;
 `provision`/`teardown` are honest no-ops, and `capabilities()` says so; and
-`list_sessions`/`usage` read real, durable `core/session.py` storage, scoped
+`list_sessions`/`usage` read real, durable `agent/session.py` storage, scoped
 correctly to one agent's own sessions.
 """
 
@@ -47,7 +47,7 @@ from docket.sandbox.launch import SandboxAvailability
 from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 
 @pytest.fixture(autouse=True)
@@ -172,7 +172,7 @@ class TestRunTurn:
             record_isolation_off(tmp_path)
             monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
             monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-            # Registration probes /models through edges/adapters/llm.py; answer "reachable, 200".
+            # Registration probes /models through models/adapters/openai_http.py; answer "reachable, 200".
             monkeypatch.setattr(
                 _llm_adapter, "probe_models", lambda *a, **k: _llm_adapter.ProbeResult(status=200)
             )
@@ -1337,7 +1337,7 @@ class TestRunTurn:
             ]
             assert denial_kinds == ["approval_denied", "approval_denied", "approval_denied"]
             # The approval record's own approval_requested/approval_denied trace events
-            # (core/approval.py's _emit_trace) must land under the pod (trace_project),
+            # (governance/approval.py's _emit_trace) must land under the pod (trace_project),
             # not under the agent id -- a separate file from the tool_result trace above.
             assert not (current_home().traces_dir / "denial-agent").exists()
             approval_trace_files = list(
@@ -1354,7 +1354,7 @@ class TestRunTurn:
             assert approval_event_types.count("approval_denied") == 3
 
     def test_env_flows_into_the_tool_context(self) -> None:
-        # "env" (not "echo") is on core.security.SAFE_BINS' curated allowlist,
+        # "env" (not "echo") is on governance.security.SAFE_BINS' curated allowlist,
         # so this runs unattended instead of tripping the approval gate.
         _write_meta("env-agent")
         call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "env"}))
@@ -1887,7 +1887,7 @@ class TestApprovalModeWiring:
         assert tool_msg.content == "approval_mode=wait"
 
     def test_the_env_coordinate_never_leaks_into_the_tool_visible_environment(self) -> None:
-        # "env" (not "echo") is on core.security.SAFE_BINS' curated allowlist,
+        # "env" (not "echo") is on governance.security.SAFE_BINS' curated allowlist,
         # mirroring test_env_flows_into_the_tool_context above.
         _write_meta("mode-leak-agent")
         call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "env"}))
@@ -1983,7 +1983,7 @@ def _allow_commands_probe_registry() -> ToolRegistry:
 
 class TestAllowCommandsWiring:
     """A pod Lead's `allowCommands` setting reaching a member agent's real
-    `ToolContext` (`core.pod.PodSettings` -> `edges/adapters/docket_runtime.py`)."""
+    `ToolContext` (`teams.pod.PodSettings` -> `agent/driver.py`)."""
 
     def test_a_non_pod_agent_gets_no_extra_bins(self) -> None:
         _write_meta("solo-agent")

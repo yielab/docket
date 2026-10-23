@@ -1,8 +1,8 @@
 """The pipeline executor and generalized gate resolution.
 
-``core/pipeline.py`` defines the pipeline *format*; ``core/archetypes.py`` defines a
+``pipeline/domain/spec.py`` defines the pipeline *format*; ``teams/roles.py`` defines a
 role's ``gateContract`` as descriptive data. This module makes both load-bearing: it
-resolves a :class:`~docket.core.pipeline.PipelineSpec` against a pod's live roster
+resolves a :class:`~docket.pipeline.domain.spec.PipelineSpec` against a pod's live roster
 into a concrete, deterministic :class:`ExecutionPlan`, and gate execution reads a
 step's *resolved* gate -- its own, or (only when omitted) its archetype's
 ``gateContract`` -- instead of branching on a hardcoded role name.
@@ -311,7 +311,7 @@ T = TypeVar("T")
 DEFAULT_MAX_PARALLEL_WORKERS = 4
 
 # Trace writes from concurrent group children land on the same per-task
-# tracefile (one session id per task) — core/trace.py's append is not itself
+# tracefile (one session id per task) — observability/trace.py's append is not itself
 # filelocked (it writes JSONL directly rather than through the store.py
 # single-writer chokepoint, since appends are line-independent), so
 # concurrent same-file writers need this to stay non-interleaved.

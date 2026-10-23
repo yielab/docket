@@ -1,7 +1,7 @@
 """Cancellation — `docket task cancel <id>` actually kills the in-flight hop's process group.
 
-Covers ``edges.adapters.system.kill_process_group`` (a real process group leader + child both
-die; an already-dead pid is a harmless no-op) and ``core/runs.py``'s registry additions:
+Covers ``platform.process.kill_process_group`` (a real process group leader + child both
+die; an already-dead pid is a harmless no-op) and ``tasks/application/runs.py``'s registry additions:
 ``current_run_id()``/``add_hop_pid``/``remove_hop_pid`` (the pid-tracking side channel shared via
 contextvars) and ``cancel_run`` (unknown run, already-terminal run, a real kill, and a concurrent
 cancel never clobbered back to "succeeded" by normal completion).
@@ -34,7 +34,7 @@ from docket.tasks.application import runs as _runs
 
 SUBJECT = "docket.tasks.application.runs"
 
-# ── edges.adapters.system.kill_process_group: raw OS mechanics ───────────────
+# ── platform.process.kill_process_group: raw OS mechanics ───────────────
 
 
 class TestKillProcessGroup:
@@ -71,7 +71,7 @@ class TestKillProcessGroup:
         assert _process.kill_process_group(proc.pid) is False
 
 
-# ── core/runs.py: pid tracking + cancel_run ───────────────────────────────────
+# ── tasks/application/runs.py: pid tracking + cancel_run ───────────────────────────────────
 
 
 @pytest.fixture(autouse=True)
@@ -343,7 +343,7 @@ class TestCancelRun:
             env["RUNS_FILE"] = str(current_home().runs_file)
             code = (
                 "import json; from dataclasses import asdict; "
-                "from docket.core.runs import cancel_run; "
+                "from docket.tasks.application.runs import cancel_run; "
                 f"print(json.dumps(asdict(cancel_run({record['id']!r}))))"
             )
             completed = subprocess.run(

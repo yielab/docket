@@ -4,15 +4,15 @@ A provider is a `ProviderSpec` -- name, dialect, base URL, named credentials (ne
 selectable models with optional pricing, and named presets -- loaded the same way a role or
 policy is (model-profiles.spec.md "Provider catalog"). Two scopes, nearest-wins by name: built-in
 (`kernel.templates.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
-(`Home.providers_file`, the operator's own). `edges/adapters/llm.py`'s `resolve_endpoint` reads
-the merged catalog; this module has no knowledge of terminals. `core/models_policy.py`'s
+(`Home.providers_file`, the operator's own). `models/adapters/openai_http.py`'s `resolve_endpoint` reads
+the merged catalog; this module has no knowledge of terminals. `models/selection.py`'s
 `presets`/`preset_table`/`is_local_provider`/`is_marketplace`/`price_for`/`rank_anchors` are the
 only readers of the catalog's presets and pricing; every other per-provider fact (base URLs,
 credential names, key-format prefixes) derives from this module too, so no module keeps its
 own copy.
 
 `register_provider` verifies a document against its live `/models` route with the resolved
-credential (`edges/adapters/llm.py::probe_models` does the socket work; `verify_endpoint` here
+credential (`models/adapters/openai_http.py::probe_models` does the socket work; `verify_endpoint` here
 stays pure) and classifies the result instead of collapsing it to a boolean -- see
 model-profiles.spec.md "Provider readiness" 3 and ADR 0011 §4.
 """
@@ -99,7 +99,7 @@ class ModelRow(BaseModel):
 
 class Preset(BaseModel):
     """A named rank triple attached to the provider that defines it -- what
-    `core/models_policy.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
+    `models/selection.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
     ``cost``) that are derived from the owning `ProviderSpec` instead of stored twice."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -125,7 +125,7 @@ class Preset(BaseModel):
 class ProviderSpec(BaseModel):
     """A `kind: provider` document -- see specs/functional/model-profiles.spec.md
     ("Provider catalog"). ``kind`` itself is the document envelope's concern
-    (`load_provider_document`/`core.config_docs`), not a field of the parsed model."""
+    (`load_provider_document`/`teams.config_docs`), not a field of the parsed model."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -193,7 +193,7 @@ class ProviderSpec(BaseModel):
 def _validation_to_provider_error(path: Path | str, exc: ValidationError) -> ProviderError:
     """Refine pydantic's first error into a ``ProviderError`` naming the field and, for a
     closed-vocabulary failure (an unknown ``dialect``/``auth.type``), the valid values --
-    the same refinement ``core/config_docs.py``'s ``_refine_with_model`` does for a role."""
+    the same refinement ``teams/config_docs.py``'s ``_refine_with_model`` does for a role."""
     first = exc.errors()[0]
     field = ".".join(str(p) for p in first["loc"]) if first["loc"] else ""
     valid: tuple[str, ...] = ()
@@ -367,7 +367,7 @@ def check_rank_anchors(spec: ProviderSpec) -> None:
 
 def save_provider(spec: ProviderSpec) -> None:
     """Write *spec* into the global catalog (``Home.providers_file``), through
-    ``edges/store.py`` -- the sole writer of docket-owned JSON."""
+    ``platform/store.py`` -- the sole writer of docket-owned JSON."""
     spec = _with_inherited_identity(spec)
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:

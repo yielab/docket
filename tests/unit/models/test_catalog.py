@@ -1,4 +1,4 @@
-"""The provider catalog (`core/provider.py`).
+"""The provider catalog (`models/catalog.py`).
 
 Covers ``load_provider_document`` (the `kind: provider` document loader,
 specs/functional/model-profiles.spec.md "Provider catalog") and a structural guarantee: every
@@ -71,7 +71,7 @@ class TestNoProviderNameLiteralOutsideTheCatalog:
                 ]
                 if any(s in _LITERAL_PROVIDER_NAMES for s in strings):
                     offenders.append(f"{rel}:{node.lineno}")
-        assert offenders == [], f"provider-name literal(s) outside core/provider.py: {offenders}"
+        assert offenders == [], f"provider-name literal(s) outside models/catalog.py: {offenders}"
 
 
 class TestBuiltinCatalog:

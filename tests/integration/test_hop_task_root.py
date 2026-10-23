@@ -1,4 +1,4 @@
-"""``core/dispatch.py::_hop_message`` names the task's root and carries the repository map."""
+"""``hops/application/compose.py::_hop_message`` names the task's root and carries the repository map."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from docket.hops.application import compose as _compose
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _TASK = {"description": "ship the feature"}
 

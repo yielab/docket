@@ -34,7 +34,7 @@ from docket.teams.models import AgentKind, AgentMeta
 
 
 def network_text(net: dict[str, Any]) -> str:
-    """The network line, worded by ``core.network_posture`` so it never claims a cut network
+    """The network line, worded by ``governance.network_posture`` so it never claims a cut network
     while isolation is off."""
     posture = _network_posture.network_posture(
         str(net["mode"]), str(net["scope"]), isolation_on=_fleet.get_isolation_enabled()
@@ -44,7 +44,7 @@ def network_text(net: dict[str, Any]) -> str:
 
 def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
     """The containment roots a standalone turn would resolve for *agent_id*: codebase >
-    work_dir > the agent's own workspace (mirrors ``edges/adapters/docket_runtime.py``'s
+    work_dir > the agent's own workspace (mirrors ``agent/driver.py``'s
     ``_resolve_roots``, reproduced for display; a dispatched task's worktree is per task)."""
     if meta.codebase:
         return (Path(meta.codebase),)
@@ -203,7 +203,7 @@ def _provider_report(model: str) -> dict[str, Any]:
 def _skills_report(project: str, roots: tuple[Path, ...]) -> list[dict[str, str]]:
     """Every skill a live turn's ``# Skills`` prompt section would list: ``name`` and
     ``scope`` (``codebase | pod | global``), the same three-scope, nearest-wins discovery
-    ``core.identity`` composes from (ADR 0013 §3 rule 8)."""
+    ``agent.identity`` composes from (ADR 0013 §3 rule 8)."""
     codebase_root = roots[0] if roots else None
     discovered = _skills.discover_skills(project, codebase_root)
     return [{"name": name, "scope": discovered[name].scope} for name in sorted(discovered)]

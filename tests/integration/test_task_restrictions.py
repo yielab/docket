@@ -25,7 +25,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _IMPLEMENTER_ONLY = """\
 name: implementer-only

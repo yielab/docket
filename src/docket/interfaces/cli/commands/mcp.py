@@ -1,7 +1,7 @@
 """docket start --mcp -- expose the control plane as an MCP server over stdio. Every call goes
 through the same governance spine a CLI call does and audit-logs into the same tamper-evident
 chain; dispatch, delegate and approvals call the exact same `core/` functions the CLI and HTTP
-API call. A server, never a host. stdio discipline: tool functions never touch `docket.ui`;
+API call. A server, never a host. stdio discipline: tool functions never touch `docket.interfaces.cli.render.ui`;
 stdout is reserved for JSON-RPC once the server runs. The `mcp` SDK is optional, imported lazily
 in `serve_stdio()` guarded by `try/except ImportError`; a missing SDK prints `MISSING_SDK_HINT`.
 The lower half of this module configures the external MCP servers docket connects to."""
@@ -118,7 +118,7 @@ def tool_delegate(project: str, description: str, priority: str = "normal") -> d
 
 def tool_dispatch(project: str, resume: bool = False, timeout: int | None = None) -> dict[str, Any]:
     """Trigger a pod's real dispatch pipeline, gated exactly like the CLI/webhook via the
-    same `core.dispatch.dispatch_pod`. Runs in a background thread; poll `runs` for the
+    same `tasks.application.sweep.dispatch_pod`. Runs in a background thread; poll `runs` for the
     outcome. See specs/api/mcp-server.spec.md."""
     _audit("dispatch", f"project={project} resume={resume} timeout={timeout}")
     if timeout is not None and timeout <= 0:
@@ -161,8 +161,8 @@ def tool_approvals_list() -> dict[str, Any]:
 
 def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
     """Grant a pending approval token. Identical to `docket task approve`/`docket start`'s
-    `POST /approvals/<token>` — same `core.approval.approval_grant` call (``channel="mcp"``)
-    and `core.dispatch.resolve_waiting_approval` follow-up, resuming any task it gated.
+    `POST /approvals/<token>` — same `governance.approval.approval_grant` call (``channel="mcp"``)
+    and `tasks.application.actions.resolve_waiting_approval` follow-up, resuming any task it gated.
     *option* ``approve_task`` also grants the same call for the rest of its task."""
     _audit("approvals_grant", f"token={token}")
     if option not in ("", "approve_once", "approve_task"):
@@ -183,8 +183,8 @@ def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
 
 def tool_approvals_deny(token: str) -> dict[str, Any]:
     """Deny a pending approval token. Identical to `docket task deny`/`docket start`'s
-    `POST /approvals/<token>` — same `core.approval.approval_deny` call (``channel="mcp"``)
-    and `core.dispatch.resolve_waiting_approval` follow-up, failing any task it gated."""
+    `POST /approvals/<token>` — same `governance.approval.approval_deny` call (``channel="mcp"``)
+    and `tasks.application.actions.resolve_waiting_approval` follow-up, failing any task it gated."""
     _audit("approvals_deny", f"token={token}")
     try:
         _approval.approval_deny(token, channel="mcp")
@@ -202,7 +202,7 @@ def tool_task_answer(
     project: str, task_id: str, action: str, content: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Answer a task's parked ``input`` question. Identical to `docket task answer`
-    / `docket start`'s `POST /tasks/<task_id>/answer` -- same `core.answers.answer_task`
+    / `docket start`'s `POST /tasks/<task_id>/answer` -- same `tasks.application.answers.answer_task`
     call (``channel="mcp"``, ``actor="mcp"``)."""
     _audit("task_answer", f"project={project} task={task_id} action={action}")
     try:

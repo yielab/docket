@@ -28,7 +28,7 @@ from docket.pipeline.application import executor as _executor
 from docket.sandbox import launch as _launch
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 # ── hermetic helpers (mirror test_pod_provisioning.py) ───────────────────────
 
@@ -260,7 +260,7 @@ class TestDispatchVerifyGate:
     def test_verify_unset_skips_with_log(self, tmp_path: Path) -> None:
         # No verifyCmd set — the skip must be visible, but that
         # signal was moved out of a bare print() (core/ never prints): it is the
-        # hop's own `verification_skipped` flag (rendered by `cli/_pod.py`)
+        # hop's own `verification_skipped` flag (rendered by `interfaces/cli/commands/pod.py`)
         # plus a `tool_result` trace event carrying the same fact.
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")  # no verifyCmd

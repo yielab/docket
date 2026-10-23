@@ -27,7 +27,7 @@ from docket.governance import security as _sec
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _RECIPES = _templates.RECIPES_DIR
 

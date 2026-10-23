@@ -1,4 +1,4 @@
-"""``core/provisioning.py`` — the id normaliser (`slugify`) and the id
+"""``teams/provisioning.py`` — the id normaliser (`slugify`) and the id
 validator (`validate_project_id`) enforced at the provisioning boundary.
 
 `validate_project_id` accepts exactly what `slugify` can ever emit: lowercase

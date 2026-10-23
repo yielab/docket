@@ -44,7 +44,7 @@ def _apply_output_guardrails(
     if hop_output:
         hit = _policy.policy_eval_detail(role, "pre_output", hop_output, project=ctx.project)
         # Also classify the hop's real output against the built-in
-        # high-risk action classes (core/security.py's HIGH_RISK_PATTERNS),
+        # high-risk action classes (governance/security.py's HIGH_RISK_PATTERNS),
         # independently of the JSON policy engine above. This is a second,
         # independent check over what the hop *reports* it did, not what a
         # tool call literally asked to run — it still catches a
@@ -122,7 +122,7 @@ class _GateRun:
 
 def _gate_cwd(ctx: _UnitContext, member_id: str) -> str:
     """The directory a gate command runs in: the member's, worktree-aware (shared with
-    cli/_pod.py through ``core.pod.resolve_member_cwd`` so the two never disagree)."""
+    interfaces/cli/commands/pod.py through ``teams.pod.resolve_member_cwd`` so the two never disagree)."""
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
     return _pod.resolve_member_cwd(member_id, _task_worktree_dir(ctx.task), member_codebase)
 
@@ -159,7 +159,7 @@ def _evaluate_mechanical_gate(
     hop: HopResult,
 ) -> _UnitOutcome:
     """A ``MechanicalGate``: run ``verifyCmd`` (or the gate's own command) and gate on its
-    exit, in the dir from ``core.pod.resolve_member_cwd`` (shared with cli/_pod.py so the two
+    exit, in the dir from ``teams.pod.resolve_member_cwd`` (shared with interfaces/cli/commands/pod.py so the two
     never disagree); a ``"pass"``/``"fail"`` named in the step's own ``on`` map routes instead."""
     verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
     if not verify_cmd:

@@ -1,9 +1,9 @@
 """Webhook params bound into pipeline variables.
 
 See specs/data/serve-read-api.spec.md for the ``variables`` field contract.
-Two layers: ``core.pipeline.resolve_variables`` (pure resolution: caller
+Two layers: ``pipeline.domain.spec.resolve_variables`` (pure resolution: caller
 values win over a variable's ``default``, an undeclared key passes through,
-a missing ``required`` variable raises :class:`~docket.core.pipeline.
+a missing ``required`` variable raises :class:`~docket.pipeline.domain.spec.
 VariableError` naming every missing name), and ``POST /dispatch/<project>``,
 whose JSON body is resolved against the pod's effective pipeline via that
 function before any run record is created -- a malformed body or missing
@@ -33,7 +33,7 @@ SUBJECT = "docket.pipeline.domain.spec"
 _TEST_TOKEN = "test-serve-token-w4-vars"
 
 
-# ── core.pipeline.resolve_variables (pure, no server) ────────────────────────
+# ── pipeline.domain.spec.resolve_variables (pure, no server) ────────────────────────
 
 
 def _spec(**variables: _pipeline.Variable) -> _pipeline.PipelineSpec:

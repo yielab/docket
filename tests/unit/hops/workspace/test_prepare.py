@@ -17,7 +17,7 @@ SUBJECT = "docket.hops.workspace.prepare"
 
 @pytest.fixture(autouse=True)
 def _cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setattr(_prepare._sys, "git_info_exclude", lambda common, patterns: None)
+    monkeypatch.setattr(_prepare._git, "git_info_exclude", lambda common, patterns: None)
     with use_home(Home(tmp_path)) as home:
         yield home.prepare_cache_dir
 
@@ -226,7 +226,7 @@ def test_the_linked_names_are_excluded_from_the_repository(
 ) -> None:
     seen: list[tuple[str, tuple[str, ...]]] = []
     monkeypatch.setattr(
-        _prepare._sys, "git_info_exclude", lambda common, patterns: seen.append((common, patterns))
+        _prepare._git, "git_info_exclude", lambda common, patterns: seen.append((common, patterns))
     )
     root = _tree(tmp_path / "wt")
     _prepare.prepare_worktree(_spec(root), root, str(tmp_path / "repo"), "/common", _Run(root))

@@ -1,12 +1,12 @@
 """Built-in tool implementations.
 
 The side-effecting half of docket's tool set: deliberately dumb, since every function assumes
-the decision to run it was already made by ``core/tools.py``'s chokepoint. **Nothing here
+the decision to run it was already made by ``agent/tools/registry.py``'s chokepoint. **Nothing here
 consults a policy, an allowlist or an approval store** -- a second module that could decide to
 execute is a second place a gate can be forgotten. The one exception is containment, not policy:
 every path resolves against allowed roots and an escaping path raises, because this must hold no
 matter which caller arrives and needs the real filesystem (symlinks resolve, ``..`` collapses).
-Imports nothing from ``core/``; reports via ``ToolOutcome`` that ``core/tools.py`` wraps with
+Imports nothing from ``core/``; reports via ``ToolOutcome`` that ``agent/tools/registry.py`` wraps with
 what was *decided*. ``run_bash``'s ``sandbox`` is additive mechanism, never a substitute for
 ``resolve_within``'s path-argument containment, which never inspects ``bash`` shell text -- see
 specs/functional/security-gates.spec.md."""
@@ -354,7 +354,7 @@ def run_bash(
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
-    **Performs no gating.** Reached only after ``core/tools.py`` has classified the command and,
+    **Performs no gating.** Reached only after ``agent/tools/registry.py`` has classified the command and,
     where required, obtained approval. Runs in its own session so a timeout can kill the whole
     process group -- a spawned child that hangs is the normal case, and killing only the shell
     orphans it.
@@ -431,7 +431,7 @@ def run_bash(
 
     # `start_new_session=True` makes this child the leader of a brand-new session, so its
     # pid doubles as its own process group id -- the same identity `_kill_group` and
-    # `core.runs.add_hop_pid` already rely on, with no extra syscall to confirm it.
+    # `tasks.application.runs.add_hop_pid` already rely on, with no extra syscall to confirm it.
     pgid = proc.pid
     if on_process is not None:
         on_process("started", {"pgid": pgid})

@@ -1,10 +1,10 @@
-"""`core/archetypes.py` — the declarative role-archetype registry.
+"""`teams/roles.py` — the declarative role-archetype registry.
 
 Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
 starter-library archetypes validating, the pod-overlay pattern (built-ins + starter library
 overlaid by a pod's own `config/roles.json`, the pod wins by name),
 `docket pod roles` list/show and `pod update <file>`, and that reviewer/tester gate-contract data resolved
-through `core.orchestrator` matches `core/pipeline.py`'s own hardcoded `default_pipeline()`
+through `pipeline.domain.plan` matches `pipeline/domain/spec.py`'s own hardcoded `default_pipeline()`
 verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
 constant (see `core/dispatch.py`'s docstring note on `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
 """
@@ -135,8 +135,8 @@ class TestBuiltinAndStarterArchetypes:
         assert set(mp.ALL_ROLES) == names
 
     def test_reviewer_gate_matches_pipeline_default_verdict_gate(self) -> None:
-        """The archetype's `gateContract`, resolved through `core.orchestrator`, must produce
-        the same pattern/passValues as `core/pipeline.py`'s hardcoded reviewer step -- two
+        """The archetype's `gateContract`, resolved through `pipeline.domain.plan`, must produce
+        the same pattern/passValues as `pipeline/domain/spec.py`'s hardcoded reviewer step -- two
         independent sources describing the same role must agree."""
         found = arch.BUILTIN_ARCHETYPES["reviewer"]
         assert found.gate_contract.kind == "verdict"

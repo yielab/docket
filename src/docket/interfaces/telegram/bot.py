@@ -2,12 +2,12 @@
 
 docket owns the complete approval path. This module makes docket itself the
 bot -- long-polling the Bot API
-(``edges/adapters/telegram.py``, wire format only) and routing every message
+(``interfaces/telegram/client.py``, wire format only) and routing every message
 through docket's own, already-existing approval store and pod-delegation
 APIs. Nothing here reimplements approval logic: :func:`_handle_decision`
-calls ``core.approval.approval_grant``/``approval_deny`` exactly the way
+calls ``governance.approval.approval_grant``/``approval_deny`` exactly the way
 ``cli/_approve.py``/``cli/_deny.py`` do, including the
-``core.dispatch.resolve_waiting_approval`` follow-up.
+``tasks.application.actions.resolve_waiting_approval`` follow-up.
 
 ## Security model -- read this before touching authorization
 
@@ -18,7 +18,7 @@ anything happening:
 
 1. **Sender authorization** (:func:`_authorize`). Only a chat that is
    *explicitly bound* to an agent via ``docket setup notify bind`` (``fleet.json``'s
-   bindings -- ``core.fleet.find_binding``) may approve, deny, check status,
+   bindings -- ``teams.fleet.find_binding``) may approve, deny, check status,
    or delegate anything. An unbound chat gets a plain refusal and the
    attempt is **audited** (``telegram.unauthorized``) -- never silently
    dropped, never granted. This is checked first, before any command is even
@@ -26,10 +26,10 @@ anything happening:
 2. **Content screening** (:func:`_handle_delegate`). Message text that is
    about to become agent input (a delegated task) is run through the
    existing ``pre_input`` policy hook's ``prompt-injection`` policy, exactly
-   the way ``core/mcp_tools.py`` screens a remote MCP server's tool
+   the way ``agent/tools/mcp_tools.py`` screens a remote MCP server's tool
    descriptions before they reach a model -- the same untrusted-external-text
    threat class, the same evaluator, no new hook invented. ``block``/
-   ``require_approval`` refuse before ``core.dispatch.enqueue_task_once`` is ever
+   ``require_approval`` refuse before ``tasks.application.queue.enqueue_task_once`` is ever
    called (fail closed); ``warn``/``redact`` proceed with an audit trail.
 
 **Fail closed, always.** An unknown sender, an unparseable command, a
@@ -41,19 +41,19 @@ CLI already created; anything else is an "unrecognized command" reply, not a
 guess at what the sender meant.
 
 ``/answer <task-id> <text>`` resolves a task's parked ``input`` question
-through the same ``core.answers.answer_task`` every other surface (CLI, HTTP,
+through the same ``tasks.application.answers.answer_task`` every other surface (CLI, HTTP,
 MCP) calls -- see :func:`_handle_answer`. It is the one verb whose *outbound*
 counterpart also exists: an operator who enables the ``telegram`` channel
 document (``kind: channel``, dialect ``telegram``) gets a *push* to every
 chat id it lists in ``actors`` when a task needs input, through
-``edges/adapters/channels/telegram.py::deliver`` -- a separate, explicitly
+``operator/adapters/telegram.py::deliver`` -- a separate, explicitly
 operator-configured path, not a change to this module's own reply-only
 behaviour (see the module-level ``send_message`` call-site pin in
 ``tests/integration/test_telegram_channel.py``).
 
 **The bot token is never handled here.** This module reads it once (from
-``core.secrets``, the same store ``docket setup provider`` uses) to hand to
-``edges/adapters/telegram.py``'s functions; it is never interpolated into an
+``governance.secrets``, the same store ``docket setup provider`` uses) to hand to
+``interfaces/telegram/client.py``'s functions; it is never interpolated into an
 audit entry, a trace payload, or a reply message. See that module's own
 docstring for the wire-level half of this guarantee (the token never
 surfaces in a returned error string either).
@@ -63,7 +63,7 @@ audit entries this module writes carry a chat id, an update id, and (for the
 delegate path) a policy id/action -- never the raw message text. A human
 reading ``docket log`` sees that *something* was blocked or refused, not
 the untrusted content that triggered it (the same discipline
-``core.approval``'s ``action`` field already applies via ``_redact`` at
+``governance.approval``'s ``action`` field already applies via ``_redact`` at
 creation time).
 """
 
@@ -139,7 +139,7 @@ _UNRECOGNIZED_REPLY = (
 @dataclass(frozen=True)
 class InboundMessage:
     """One Telegram message, already unwrapped from the update envelope by
-    ``edges/adapters/telegram.py``. Pure data -- no wire format leaks in."""
+    ``interfaces/telegram/client.py``. Pure data -- no wire format leaks in."""
 
     chat_id: str
     user_id: str
@@ -258,7 +258,7 @@ def _handle_decision(
 
 
 def _handle_status(agent_id: str) -> TelegramActionResult:
-    """Render the derived inbox (:func:`docket.core.inbox.build_inbox`) scoped to *agent_id*'s
+    """Render the derived inbox (:func:`docket.operator.inbox.build_inbox`) scoped to *agent_id*'s
     project -- see :func:`_approval_scope`. Needs-you items first. Read-only; never mutates
     anything."""
     scope = _approval_scope(agent_id)
@@ -272,7 +272,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
     lines = [f"Needs you in '{scope}':"] if needs_you else []
     for item in needs_you:
         if isinstance(item, _oc.ApprovalView):
-            # `action` was already redacted at approval_create() time (core/approval.py's
+            # `action` was already redacted at approval_create() time (governance/approval.py's
             # own _redact) -- safe to echo back verbatim, same as `docket inbox`'s listing.
             action_text = str(item.action or "")[:120]
             lines.append(f"  approval {item.token}  role={item.role}  {action_text}")
@@ -289,7 +289,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
 def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
     """Queue *text* as a task for *agent_id*'s pod. Runs the ``pre_input``
     content-screening gate (see module docstring) before
-    ``core.dispatch.enqueue_task_once`` is ever called."""
+    ``tasks.application.queue.enqueue_task_once`` is ever called."""
     if not text:
         return TelegramActionResult(False, "Usage: /delegate <task description>", True, "delegate")
 
@@ -309,7 +309,7 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
     # human-approval channel for a chat message the way there is for a tool
     # call, so the safe default folds require_approval into the same
     # fail-closed outcome as block (identical reasoning to
-    # core/mcp_tools.py's _screen_description).
+    # agent/tools/mcp_tools.py's _screen_description).
     hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
@@ -337,11 +337,11 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
 
 def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResult:
     """Accept *text* as the answer to *task_id*'s parked question, mirroring
-    ``docket task answer``'s bare-text path (``cli/_task.py::_task_answer``): a
+    ``docket task answer``'s bare-text path (``interfaces/cli/commands/task.py::_task_answer``): a
     single-property schema fills from the whole message, a multi-property one is refused
     with the CLI guidance instead of guessing which field the text belongs
     to. The pod is the bound agent's own project (:func:`_lead_project`) --
-    ``core.answers.answer_task`` itself refuses a *task_id* that belongs to another pod, the
+    ``tasks.application.answers.answer_task`` itself refuses a *task_id* that belongs to another pod, the
     same way it does for any other channel."""
     project = _lead_project(agent_id)
     if project is None:
@@ -480,9 +480,9 @@ def _save_offset(offset: int) -> None:
     _store.write_json(current_home().telegram_offset_file, {"offset": offset})
 
 
-# The two operations `edges/adapters/telegram.py` implements. Injectable so
+# The two operations `interfaces/telegram/client.py` implements. Injectable so
 # this module's tests never touch the real Bot API or a socket -- the same
-# shape `core/mcp_tools.py`'s `ListToolsFn`/`CallToolFn` use for the MCP
+# shape `agent/tools/mcp_tools.py`'s `ListToolsFn`/`CallToolFn` use for the MCP
 # client's SDK boundary.
 GetUpdatesFn = Callable[..., GetUpdatesResult]
 SendMessageFn = Callable[..., bool]
@@ -575,7 +575,7 @@ def poll_once(
 ) -> PollSummary:
     """Long-poll once, handle every returned message, advance the offset.
     ``get_updates``/``send_message`` are injectable (default: the real
-    ``edges/adapters/telegram.py`` functions) so tests avoid any network call.
+    ``interfaces/telegram/client.py`` functions) so tests avoid any network call.
 
     Never raises: an unconfigured bot or a network failure both come back as
     a typed, non-``ok``/non-``configured`` summary for the caller to log and

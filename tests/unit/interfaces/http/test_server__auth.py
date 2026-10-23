@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-import docket.serve as serve
 from docket.interfaces.http import server
+from docket.kernel import threads as _threads
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -42,7 +42,7 @@ class TestTokenFileOption:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "fixed-test-token-abc")
 
         token_path = tmp_path / "serve-token.txt"
@@ -59,7 +59,7 @@ class TestTokenFileOption:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "should-not-appear-on-stdout")
 
         token_path = tmp_path / "serve-token.txt"
@@ -76,7 +76,7 @@ class TestTokenFileOption:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "printed-token-xyz")
 
         server.run_serve(port=0, interval=30)
@@ -88,7 +88,7 @@ class TestTokenFileOption:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "nested-dir-token")
 
         token_path = tmp_path / "nested" / "dir" / "serve-token.txt"
@@ -103,17 +103,17 @@ class TestTokenFileOption:
 
 class TestBindSemanticsDocumented:
     def test_module_docstring_documents_loopback_default(self) -> None:
-        assert "127.0.0.1" in (serve.__doc__ or "")
-        assert "loopback" in (serve.__doc__ or "").lower()
+        assert "127.0.0.1" in (server.__doc__ or "")
+        assert "loopback" in (server.__doc__ or "").lower()
 
     def test_run_serve_docstring_documents_bind(self) -> None:
-        assert "127.0.0.1" in (server.run_serve.__doc__ or "")
+        assert "127.0.0.1" in (server.run_server.__doc__ or "")
 
     def test_startup_banner_prints_bind_address(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "banner-test-token")
 
         server.run_serve(port=0, interval=30)
@@ -125,7 +125,7 @@ class TestBindSemanticsDocumented:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "warn-test-token")
 
         server.run_serve(port=0, interval=30, bind="0.0.0.0")

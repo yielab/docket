@@ -4,7 +4,7 @@
 policy engine, approval store, command classifier and audit log only work if there is exactly one
 place a tool call can run from. A second path is not a convenience, it is a hole.
 
-This module *decides*; ``edges/adapters/toolbox.py`` *acts* and consults no policy, keeping
+This module *decides*; ``agent/tools/builtins/toolbox.py`` *acts* and consults no policy, keeping
 filesystem/subprocess work out of ``core/``. Every non-allow decision is audited here, not by
 callers. ``dispatch_tool``'s full order of operations is the pinned contract in
 ``specs/functional/security-gates.spec.md``'s "in-turn tool-call gate" section.
@@ -215,11 +215,11 @@ def render_tool_call(name: str, args: dict[str, Any]) -> str:
 # ── the gate ──────────────────────────────────────────────────────────────────
 
 
-# Most-restrictive-wins ranking, mirroring core/policy.py's _RANK philosophy
+# Most-restrictive-wins ranking, mirroring governance/policy.py's _RANK philosophy
 # but over the three-valued tool Decision rather than five policy actions.
 _DECISION_RANK: dict[str, int] = {"deny": 2, "ask": 1, "allow": 0}
 
-# core/policy.py action -> tool Decision. `warn`/`redact` do not block
+# governance/policy.py action -> tool Decision. `warn`/`redact` do not block
 # execution — they are recorded (see dispatch_tool) but never change what a
 # tool call is allowed to do, since neither implies a human must decide first.
 _POLICY_ACTION_TO_DECISION: dict[str, Decision] = {

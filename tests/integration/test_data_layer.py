@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 _runner = CliRunner()
 
@@ -120,7 +120,7 @@ class TestAgentMeta:
 
 
 class TestFleetConfig:
-    """core/fleet.py's FleetConfig -- docket's own agent/binding registry."""
+    """teams/fleet.py's FleetConfig -- docket's own agent/binding registry."""
 
     def test_parse_fixture(self, tmp_path: Path) -> None:
         from docket.teams.fleet import FleetConfig
@@ -286,7 +286,7 @@ def oc_env(tmp_path: Path) -> Iterator[Path]:
 
 
 class TestFleet:
-    """The docket-owned `core/fleet.py` registry: fleet.json is read through a validated
+    """The docket-owned `teams/fleet.py` registry: fleet.json is read through a validated
     Pydantic model, not raw dotted-path string lookups, so there is nothing to round-trip a
     dotted path through."""
 
@@ -314,7 +314,7 @@ class TestFleet:
         assert agent is not None
         assert agent.id == "myshop"
         # The fleet registry tracks bare registration only — model and
-        # sessionKey are .docket-meta.json's job (core/fleet.py's rationale).
+        # sessionKey are .docket-meta.json's job (teams/fleet.py's rationale).
         assert not hasattr(agent, "model")
         assert _fleet.meta_get("myshop", "sessionKey") == "agent:myshop:default"
 

@@ -41,9 +41,9 @@ def aggregate_cost(agent_id: str) -> UsageTotals:
     """Return aggregated token/cost totals for *agent_id*.
 
     Session-JSONL parsing lives behind the RuntimeDriver port: this returns the driver's
-    ``UsageTotals`` as reported. See core/runtime_driver.py.
+    ``UsageTotals`` as reported. See agent/ports.py.
 
-    Resolves ``edges.adapters.docket_runtime.default_driver()``
+    Resolves ``agent.driver.default_driver()``
     (``DocketDriver``) -- load-bearing for ``core/dispatch.py``'s own
     pod-budget gate (``pod_gating_cost`` calls this for every hop's member),
     which must see the same driver hops actually execute through or the
@@ -62,7 +62,7 @@ def estimate_cost_usd(model: str, totals: UsageTotals) -> float | None:
     silently treat unknown pricing as "$0". This exists **only** as a
     budget-gating/warning fallback, for when the active driver's recorded
     usage never populates ``cost_usd`` (``aggregate_cost``'s ``cost_usd``
-    then stays 0.0 forever by design — see ``core/runtime_driver.py``'s
+    then stays 0.0 forever by design — see ``agent/ports.py``'s
     ``TurnResult.cost_usd`` docstring: converting a token count into a dollar
     figure is exactly the estimate-to-billing-claim conversion this codebase
     has a standing rule against). An estimate MUST NEVER be presented as, or
@@ -104,7 +104,7 @@ def cost_history(agent_id: str) -> list[UsageDay]:
 
     Delegates to the RuntimeDriver port's ``usage()`` (see ``aggregate_cost``'s
     docstring) instead of parsing session JSONL directly, resolving
-    ``edges.adapters.docket_runtime.default_driver()``. Note ``DocketDriver``'s
+    ``agent.driver.default_driver()``. Note ``DocketDriver``'s
     ``usage().by_day`` is always empty (see its docstring: a session's stored
     usage is one running total, not timestamped per turn), so this always
     returns ``[]`` against the production driver -- an honest gap: a daily

@@ -1,6 +1,6 @@
 """Conversation registry (Option B) — docket's durable index of channel threads.
 
-Guards core/conversations.py: pure registry ops and the load/save round-trip. The registry is
+Guards agent/conversations.py: pure registry ops and the load/save round-trip. The registry is
 Docket's source of truth for what conversations exist
 and their resume state.
 """

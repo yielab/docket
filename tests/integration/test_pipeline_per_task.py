@@ -26,7 +26,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _TWO = (
     "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"

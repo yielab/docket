@@ -6,13 +6,13 @@ notion of which part of a reply is a one-line verdict, which is the file list
 a code change touched, or which fields are safe to shed first once a token
 budget gets tight. The shape (``summary``, ``files_changed``, ``diff_ref``, ``diff``,
 ``verdict``) plus a declared drop order gives a size-constrained
-consumer (``core/context.py``'s token-budget compiler) an order to shed
+consumer (``agent/context.py``'s token-budget compiler) an order to shed
 fields in without inventing one itself.
 
 ``core/dispatch.py`` attaches one to every ``HopResult`` (see that module's
 docstring) and composes the next hop's message from ``HandoffArtifact.render()``
 — never from a hop's raw output directly — then fits the rendered text to the
-role's token budget via ``core/context.py``'s ``compile_artifact``. The
+role's token budget via ``agent/context.py``'s ``compile_artifact``. The
 artifact is persisted alongside its hop record so ``--resume`` recovers it
 exactly; ``from_output`` builds one from raw text alone (``summary``, every
 other field at its default).
@@ -29,7 +29,7 @@ other field at its default).
   ``core/dispatch.py``'s ``_hop_diff_probe`` resolves the member's
   working tree the same way the mechanical verify gate does (worktree →
   shared codebase → the member's own workspace dir, via
-  ``core.pod.resolve_member_cwd``) and, when that tree is a real git
+  ``teams.pod.resolve_member_cwd``) and, when that tree is a real git
   repository and a ``git`` binary is on ``PATH``, calls
   ``edges/adapters/system.py``'s ``git_changed_files``/``git_current_branch``.
   ``files_changed`` is the working tree's uncommitted changes (staged,
@@ -47,8 +47,8 @@ other field at its default).
   is always optional (ADR 0016 §4).
 
 This module is deliberately pure — no filesystem I/O, no subprocess, no import
-of ``core/dispatch.py`` — the same "leaf" shape as ``core/pipeline.py``. It
-does import ``core/operator_contract.py`` (``TaskBrief``), itself an equally
+of ``core/dispatch.py`` — the same "leaf" shape as ``pipeline/domain/spec.py``. It
+does import ``operator/contract.py`` (``TaskBrief``), itself an equally
 pure leaf module, for the one shared shape every intake consumer must agree
 on rather than a second, independently-drifting copy of the same fields.
 """
@@ -123,7 +123,7 @@ class HandoffArtifact(BaseModel):
     """One hop's structured output, handed to the next hop instead of raw text.
 
     ``DROP_ORDER`` is the field-shedding order a size-constrained consumer
-    (``core/context.py``'s token-budget compiler) should follow, least
+    (``agent/context.py``'s token-budget compiler) should follow, least
     valuable first. ``summary`` is deliberately absent from it — it is the
     artifact's minimum viable content and is never dropped outright, only
     truncated once ``render()``'s output no longer fits its token budget.
@@ -200,7 +200,7 @@ class HandoffArtifact(BaseModel):
         *field* must name one of ``DROP_ORDER``'s entries — ``summary`` can
         never be dropped this way (it is not in ``DROP_ORDER``); passing it,
         or any other unknown name, raises ``ValueError`` rather than silently
-        discarding the artifact's one required field. ``core/context.py``'s
+        discarding the artifact's one required field. ``agent/context.py``'s
         ``compile_artifact`` is the intended caller: shed fields in
         ``DROP_ORDER`` order (calling this once per field) until the
         rendered artifact fits its token budget.

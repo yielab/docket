@@ -1,7 +1,7 @@
 """`docket setup mcp add/list/remove` -- a CLI over the MCP client config.
-Pure presentation over the tested `core/mcp_tools.py` functions (`add_mcp_server`/
+Pure presentation over the tested `agent/tools/mcp_tools.py` functions (`add_mcp_server`/
 `load_mcp_servers`/`remove_mcp_server`): validates flags, calls them unchanged, never talks to a
-remote server, and never touches `core/tools.py` or built-in tool registration (the ownership-row
+remote server, and never touches `agent/tools/registry.py` or built-in tool registration (the ownership-row
 guard checked by `TestServersCliNeverReachesTheToolboxOrCoreTools` below).
 Pins: `add`'s `--`-separator (everything after a literal `--` is the launch command verbatim;
 a missing command, malformed `--env`, or an unknown flag before it all reject, never a
@@ -30,7 +30,7 @@ from docket.governance import audit as _audit
 from docket.interfaces.cli.app import app
 from docket.kernel.home import current_home, use_home
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -246,12 +246,12 @@ class TestGroup:
         assert _runner.invoke(app, ["mcp", "servers", "list"]).exit_code == 2
 
 
-# ── ownership-row guard: never reaches core/tools.py or a toolbox handler ────
+# ── ownership-row guard: never reaches agent/tools/registry.py or a toolbox handler ────
 
 
 class TestServersCliNeverReachesTheToolboxOrCoreTools:
-    """The ownership row: `cli/_setup_mcp.py` never builds a Tool, so it must not import
-    `core.tools` or any toolbox handler function -- a stricter bar than the public
+    """The ownership row: `interfaces/cli/commands/setup_mcp.py` never builds a Tool, so it must not import
+    `agent.tools.registry` or any toolbox handler function -- a stricter bar than the public
     Tool/ToolRegistry.register API the MCP client itself uses."""
 
     FILE = "src/docket/interfaces/cli/commands/setup_mcp.py"
@@ -266,9 +266,11 @@ class TestServersCliNeverReachesTheToolboxOrCoreTools:
             if isinstance(node, ast.Import):
                 modules.update(alias.name for alias in node.names)
         offenders = {
-            m for m in modules if m == "docket.agent.tools.registry" or m.endswith(".core.tools")
+            m
+            for m in modules
+            if m == "docket.agent.tools.registry" or m.endswith(".agent.tools.registry")
         }
-        assert not offenders, f"{self.FILE} must never import core.tools: {offenders}"
+        assert not offenders, f"{self.FILE} must never import agent.tools.registry: {offenders}"
 
     def test_no_toolbox_handler_import(self) -> None:
         path = REPO_ROOT / self.FILE

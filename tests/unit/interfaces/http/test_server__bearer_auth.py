@@ -23,12 +23,12 @@ from pathlib import Path
 
 import pytest
 
-import docket.serve as serve
+from docket.interfaces.http import server
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token-g6-xyz789"
 
@@ -84,7 +84,7 @@ class TestCompareDigestAuth:
             calls.append((a, b))
             return bool(real_compare_digest(a, b))
 
-        monkeypatch.setattr(serve.secrets, "compare_digest", spy)
+        monkeypatch.setattr(server.secrets, "compare_digest", spy)
         base_url, token = live_server
         status, _body = _get(f"{base_url}/approvals", token=token)
         assert status == 200

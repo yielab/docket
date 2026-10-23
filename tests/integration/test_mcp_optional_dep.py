@@ -113,7 +113,7 @@ class TestRealSdkIntegration:
         import json as _json
 
         # Isolate from the real ~/.docket — this exercises a real tool call
-        # (status → core.fleet → fleet.json), so it must not touch the
+        # (status → teams.fleet → fleet.json), so it must not touch the
         # developer's actual docket home.
         home = tmp_path / ".docket"
         home.mkdir()

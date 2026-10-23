@@ -1,7 +1,7 @@
 """Cron-expression scheduling.
 
 Covers the standard 5-field ``minute hour dom month dow`` cron support
-beyond ``core/schedule.py``'s ``@every``/``HH:MM`` forms: ``*``, integers,
+beyond ``pipeline/application/schedule.py``'s ``@every``/``HH:MM`` forms: ``*``, integers,
 ``a-b`` ranges, ``/step``, and comma lists, evaluated in UTC, numeric
 fields only (no ``JAN``/``MON`` aliases -- see that module's docstring for
 the scope cut). Stdlib-only, per ROADMAP §4.5's dependency ban. Exercises

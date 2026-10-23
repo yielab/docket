@@ -234,7 +234,7 @@ class TestGrantDenyViaEndpoint:
     def test_deny_after_grant_returns_409_naming_winner(self, live_server: tuple[str, str]) -> None:
         """A resolved token still exists -- the opposite decision is a conflict (409
         naming the winning state), never the missing-token 404. Regression for the bug
-        where `core.approval.ApprovalError` covered both cases indistinguishably."""
+        where `governance.approval.ApprovalError` covered both cases indistinguishably."""
         url, token = live_server
         apr_token = _approval.approval_create("proj10", "implementer", "x")
         _approval.approval_grant(apr_token)
@@ -398,7 +398,7 @@ class TestApprovalChannel:
 
     def test_every_http_claimable_channel_is_accepted(self, live_server: tuple[str, str]) -> None:
         """Only the channels the HTTP transport may claim (`http`, `tack`) --
-        not every member of core.approval.APPROVAL_CHANNELS, several of which
+        not every member of governance.approval.APPROVAL_CHANNELS, several of which
         (`cli`, `mcp`, `telegram`, `timeout`) belong to other surfaces."""
         url, token = live_server
         for chan in ("http", "tack"):

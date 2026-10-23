@@ -43,9 +43,9 @@ TOY = dataclasses.replace(
     hub_threshold=4,
     module_map=(
         ("toy.core.queue", "toy.tasks.queue"),
-        ("toy.core.runs", "toy.tasks.runs"),
+        ("toy.tasks.application.runs", "toy.tasks.runs"),
         ("toy.core.state", "toy.tasks.state"),
-        ("toy.edges.store", "toy.platform.store"),
+        ("toy.platform.store", "toy.platform.store"),
     ),
     definition_rules={
         "toy.core.engine": (

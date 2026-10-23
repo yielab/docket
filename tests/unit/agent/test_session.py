@@ -1,4 +1,4 @@
-"""Durable turn history + compaction (`core/session.py`).
+"""Durable turn history + compaction (`agent/session.py`).
 
 Covers session-key isolation, a round trip preserving `tool_calls`/
 `tool_call_id`/`name`, an assistant `tool_calls` message never split from

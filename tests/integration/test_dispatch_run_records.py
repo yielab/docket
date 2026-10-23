@@ -3,7 +3,7 @@
 Covers the four ways a pod dispatch can be triggered -- CLI, the serve webhook (`POST
 /dispatch/<project>`), a due schedule (`serve._check_schedules`), and the sweep loop
 (`serve._run_sweeps(dispatch=True)`) -- and proves each one creates a run record in
-``core.runs`` (queryable via ``get_run``/``list_runs``), records a success outcome when
+``tasks.application.runs`` (queryable via ``get_run``/``list_runs``), records a success outcome when
 dispatch succeeds, and records a failure outcome (with the exception text) when dispatch
 raises, without the exception propagating out and killing the caller (CLI exits 1 like any
 other command failure; webhook/schedule/sweep never crash their thread/loop). ``dispatch_pod``
@@ -30,11 +30,11 @@ from tests.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import run as _run
+from docket.interfaces.http import server as _http_server
 from docket.interfaces.http import server as _server
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
-from docket.pipeline.application import schedule as _schedule
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
@@ -581,7 +581,7 @@ class TestScheduleDispatchPath:
 
             monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
-            _schedule._check_schedules(time.time())
+            _http_server._check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -609,7 +609,7 @@ class TestScheduleDispatchPath:
 
             monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
 
-            _schedule._check_schedules(time.time())
+            _http_server._check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -791,7 +791,7 @@ class TestSweepWorkers:
                 return []
 
             monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
-            monkeypatch.setattr(_schedule, "_check_schedules", lambda _now: None)
+            monkeypatch.setattr(_http_server, "_check_schedules", lambda _now: None)
             stop = threading.Event()
             loop = new_thread(target=_server._sweep_loop, args=(0.01, stop, True), daemon=True)
             loop.start()

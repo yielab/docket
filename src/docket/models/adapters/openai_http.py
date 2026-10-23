@@ -1,6 +1,6 @@
 """OpenAI-compatible chat-completions adapter.
 
-The one shipped implementation of ``core/llm.py``'s ``ChatBackend`` port, and
+The one shipped implementation of ``agent/llm.py``'s ``ChatBackend`` port, and
 the **only** module in docket that knows what a chat-completions request or
 response looks like on the wire. Everything above it — the turn loop, the tool
 dispatcher, the gates — speaks ``ChatMessage``/``ToolCall``/``ChatResponse``.
@@ -502,7 +502,7 @@ class OpenAIChatClient:
 class ProbeResult:
     """A raw, unclassified probe of a provider's ``/models`` route. ``status`` is ``None``
     only for a transport failure (DNS, refused, timeout) -- classification into a registration
-    outcome is ``core/provider.py::verify_endpoint``'s job, kept pure and out of this module."""
+    outcome is ``models/catalog.py::verify_endpoint``'s job, kept pure and out of this module."""
 
     status: int | None
     transport_error: str = ""
@@ -620,13 +620,13 @@ def resolve_endpoint(model: str) -> Endpoint | None:
        override that points every model at one endpoint. Exists for local
        development and for tests that want a stub server without touching
        stored config.
-    2. The provider catalog entry for ``<provider>`` (``core/provider.py``'s
+    2. The provider catalog entry for ``<provider>`` (``models/catalog.py``'s
        ``load_catalog``) — built-in overridden by the operator's own (global), nearest-wins.
     3. ``DOCKET_LLM_BASE_URL`` alone, only for a provider absent from the catalog (every hosted
        gateway docket knows ships as a built-in catalog document; this step is the one escape
        hatch left for a provider that is neither).
 
-    For a catalog entry, the API key comes from ``core/provider.py``'s ``resolve_credential``
+    For a catalog entry, the API key comes from ``models/catalog.py``'s ``resolve_credential``
     (``DOCKET_LLM_API_KEY`` -> environment -> Docket's central key store, per name in
     ``auth.credentials``). For a provider absent from the catalog, the key falls back through
     ``DOCKET_LLM_API_KEY``, then the derived ``<PREFIX>_API_KEY`` environment variable, then the

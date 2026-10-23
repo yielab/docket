@@ -1,4 +1,4 @@
-"""The gated tool registry, its chokepoint, and the built-in tools (`core/tools.py`).
+"""The gated tool registry, its chokepoint, and the built-in tools (`agent/tools/registry.py`).
 
 Pins the argument-aware command classifier (`git push origin production`
 reads as a deploy, not a benign `git`), that a source-tree walk finds
@@ -39,12 +39,12 @@ from docket.operator.contract import canonical_args_digest
 
 SUBJECT = "docket.agent.tools.registry"
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 @pytest.fixture(autouse=True)
 def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Isolate `core/policy.py` and `core/approval.py`'s real stores from a
+    """Isolate `governance/policy.py` and `governance/approval.py`'s real stores from a
     developer's ``~/.docket``, and set the approval timeout to 0 so a gated
     call nothing grants resolves immediately (fail-closed to denied)."""
     with use_home(
@@ -348,7 +348,7 @@ class TestJailedGateStandsDownTheAllowlist:
 
 
 class TestExtraBinsExtendTheAllowlist:
-    """`classify_command`'s `extra_bins` parameter -- `core.pod.PodSettings.allow_commands`'s
+    """`classify_command`'s `extra_bins` parameter -- `teams.pod.PodSettings.allow_commands`'s
     live path. Default empty leaves every prior verdict byte-identical."""
 
     def test_default_is_identical_to_omitting_the_argument(self) -> None:
@@ -852,10 +852,10 @@ class TestSinglePathToExecution:
     asserted in prose: if a second module can call a handler directly, the gate
     is optional, and an optional gate is not a gate."""
 
-    # core/mcp_tools.py / edges/adapters/mcp_client.py:
+    # agent/tools/mcp_tools.py / agent/tools/mcp_client.py:
     # both reference toolbox.py's `ToolOutcome` -- the inert "what happened"
     # result dataclass every Tool.handler must return -- so an MCP-adapted
-    # tool's handler can construct one, exactly as core/tools.py's own
+    # tool's handler can construct one, exactly as agent/tools/registry.py's own
     # built-in handlers do. Neither file imports, or ever calls, an actual
     # handler *function* (read_file/write_file/edit_file/glob_files/
     # grep_files/run_bash); dispatch_tool remains the only thing that ever
@@ -865,17 +865,17 @@ class TestSinglePathToExecution:
     # which dispatches an MCP-adapted tool through the real, unmodified
     # `dispatch_tool` and proves a `pre_tool_call` policy gates it.
     #
-    # edges/adapters/fetch.py: same shape again --
+    # platform/fetch.py: same shape again --
     # it imports `ToolOutcome` only, to construct the return value its own
-    # `fetch_url` handler function produces. `core/tools.py`'s `fetch`
+    # `fetch_url` handler function produces. `agent/tools/registry.py`'s `fetch`
     # registration calls `fetch_url` directly (the same way it calls
     # `toolbox.read_file` et al.); nothing outside `dispatch_tool` ever does.
     ALLOWED_IMPORTERS: ClassVar[set[str]] = {
-        "core/tools.py",
-        "edges/adapters/toolbox.py",
-        "core/mcp_tools.py",
-        "edges/adapters/mcp_client.py",
-        "edges/adapters/fetch.py",
+        "agent/tools/registry.py",
+        "agent/tools/builtins/toolbox.py",
+        "agent/tools/mcp_tools.py",
+        "agent/tools/mcp_client.py",
+        "platform/fetch.py",
     }
 
     @staticmethod

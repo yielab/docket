@@ -2,13 +2,13 @@
 
 The **only** module in docket that knows the Telegram Bot API's wire format --
 ``getUpdates`` (long-poll) and ``sendMessage``. Stdlib ``urllib`` only, zero
-new dependencies -- the same precedent ``edges/adapters/llm.py`` and
-``edges/adapters/fetch.py`` already set for renting a protocol without
+new dependencies -- the same precedent ``models/adapters/openai_http.py`` and
+``platform/fetch.py`` already set for renting a protocol without
 renting a vendor SDK ("docket rents protocols only").
 
 Everything above this module speaks the typed ``TelegramUpdate`` shape;
 nothing outside this file ever builds a Telegram URL, reads a Telegram JSON
-response, or touches the bot token directly -- ``core/telegram.py`` calls
+response, or touches the bot token directly -- ``interfaces/telegram/bot.py`` calls
 :func:`get_updates`/:func:`send_message` and never sees the wire format.
 
 Real-world long-poll quirks handled here, not above:
@@ -18,7 +18,7 @@ Real-world long-poll quirks handled here, not above:
   failure to report. ``request_timeout`` (this process's own socket timeout)
   must exceed ``timeout`` or a legitimately empty long-poll reads as a local
   timeout instead of "nothing happened". This module takes both values as
-  given and does not enforce that relationship -- ``core/telegram.py``'s
+  given and does not enforce that relationship -- ``interfaces/telegram/bot.py``'s
   ``poll_once`` resolves ``request_timeout`` from config and corrects a
   misconfigured pair before ever calling down to this function.
 - ``offset`` is the caller's job to advance (Telegram only forgets an update
@@ -47,7 +47,7 @@ from dataclasses import dataclass
 
 # Overridable so tests can point this module at a local stdlib http.server
 # instead of the real Telegram API -- the same seam
-# edges/adapters/fetch.py's tests use for FETCH_ALLOWED_DOMAINS, applied to a
+# platform/fetch.py's tests use for FETCH_ALLOWED_DOMAINS, applied to a
 # module constant instead of a config knob because this is wire-format-only,
 # not policy.
 API_ROOT = "https://api.telegram.org"

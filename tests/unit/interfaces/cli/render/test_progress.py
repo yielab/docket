@@ -1,4 +1,4 @@
-"""`docket.cli._progress` -- rendering, answer parsing and the thread
+"""`docket.interfaces.cli.render.progress` -- rendering, answer parsing and the thread
 orchestration behind `docket run`'s foreground progress view.
 Behind a real TTY on a real dispatch, see `tests/unit/cli/test_pod.py`.
 """

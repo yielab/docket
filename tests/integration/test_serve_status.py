@@ -14,7 +14,7 @@ from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _TOKEN = "test-serve-token-status"
 

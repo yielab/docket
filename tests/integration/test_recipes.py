@@ -1,7 +1,7 @@
 """Shipped recipe bundles (``templates/recipes/<name>/``) are real, tested and configurable.
 
 Each recipe is data only: role YAML(s), a pipeline YAML, a small `pod.yaml`, and an optional
-policy pack, applied in one command (`docket pod update`, `core.pod_apply`). The tests below
+policy pack, applied in one command (`docket pod update`, `teams.apply.plan`). The tests below
 read exactly what the wheel ships (`kernel.templates.RECIPES_DIR`), so a recipe that fails to
 validate, resolve against a real roster, or actually dispatch fails here first, never only in an
 operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
@@ -67,7 +67,7 @@ def _policy_yaml_files(recipe_dir: Path) -> list[Path]:
 
 def _pod_manifest_members(recipe_dir: Path) -> list[str]:
     """This recipe's own ``pod.yaml`` ``members``, read with plain YAML rather than
-    ``core.config_docs`` -- a policy pack's manifest carries a ``description`` key the
+    ``teams.config_docs`` -- a policy pack's manifest carries a ``description`` key the
     short-form pod model on this branch does not yet accept."""
     manifest = recipe_dir / "pod.yaml"
     if not manifest.is_file():

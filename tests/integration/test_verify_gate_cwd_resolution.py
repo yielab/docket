@@ -5,7 +5,7 @@ when the task has its own recorded worktree (``task["worktree"]``), verifying a 
 against stale or someone-else's code; and ``set-verify``/``--verify``
 accepting an unvalidated, unaudited value that is later run with ``shell=True``.
 
-TestResolveMemberCwd covers ``core/pod.py``'s shared ``resolve_member_cwd``, used by both the
+TestResolveMemberCwd covers ``teams/pod.py``'s shared ``resolve_member_cwd``, used by both the
 verify gate and ``_regenerate_member_tools`` so the two can't diverge; TestDispatchVerifyCwd
 proves the verify gate's real subprocess runs in the resolved directory; TestSetVerifyValidation
 covers NUL/newline rejection, the length cap, and the ``pod.set-verify`` audit entry.
@@ -33,7 +33,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 # ── TestResolveMemberCwd: pure unit tests for core/pod.resolve_member_cwd ────
 
@@ -195,7 +195,7 @@ class TestDispatchVerifyCwd:
         assert res.status == "failed"
 
 
-# ── TestSetVerifyValidation: cli/_pod.py's set-verify / --verify ────────────
+# ── TestSetVerifyValidation: interfaces/cli/commands/pod.py's set-verify / --verify ────────────
 
 
 @contextmanager

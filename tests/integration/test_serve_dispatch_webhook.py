@@ -18,7 +18,7 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import runs as _runs
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _TOKEN = "test-serve-token-dispatch-webhook"
 

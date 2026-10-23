@@ -36,7 +36,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 _TOKEN = "test-serve-token-reattach"
 _CONSULT = {

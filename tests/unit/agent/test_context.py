@@ -1,4 +1,4 @@
-"""The context compiler (`core/context.py`).
+"""The context compiler (`agent/context.py`).
 
 Pure-function tests: `estimate_tokens`'s chars/token approximation,
 `budget_for_role`'s archetype-registry resolution, the per-hop carryover
@@ -254,7 +254,7 @@ class TestCompileArtifact:
         assert compiled.summary_truncated is False
 
     def test_empty_fields_are_skipped_not_reported_as_dropped(self) -> None:
-        """A field that was already empty (the honest state of `diff_ref`/`files_changed` today -- dispatch has no producer for them yet, see `core/handoff.py`) is never claimed as "dropped": there was nothing there to shed."""
+        """A field that was already empty (the honest state of `diff_ref`/`files_changed` today -- dispatch has no producer for them yet, see `agent/handoff.py`) is never claimed as "dropped": there was nothing there to shed."""
         art = HandoffArtifact(summary="x" * 10_000)  # only summary is set
         compiled = _ctx.compile_artifact(art, budget_tokens=1)
         # Nothing was droppable -- straight to summary truncation.

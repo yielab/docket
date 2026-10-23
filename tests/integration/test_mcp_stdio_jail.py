@@ -1,4 +1,4 @@
-"""A stdio MCP server starts in the turn's jail (`edges/adapters/mcp_client.py::_stdio_params`):
+"""A stdio MCP server starts in the turn's jail (`agent/tools/mcp_client.py::_stdio_params`):
 the turn's backend, roots and network mode, with no per-server opt-out; with isolation off the
 server's own argv is untouched."""
 

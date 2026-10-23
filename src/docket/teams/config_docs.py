@@ -1,7 +1,7 @@
 """The configuration document envelope: one entry point, ``load_document``, that reads a role,
 pipeline, policy, or pod-manifest file, resolves its ``kind:``, and dispatches to the parser
-that already owns that kind (``core.archetypes.from_wire``, ``core.pipeline.load_pipeline``,
-``core.policy.validate_policy``, ``core.pod_apply``'s manifest key set). See
+that already owns that kind (``teams.roles.from_wire``, ``pipeline.domain.spec.load_pipeline``,
+``governance.policy.validate_policy``, ``teams.apply.plan``'s manifest key set). See
 specs/functional/config-format.spec.md."""
 
 from __future__ import annotations
@@ -46,8 +46,8 @@ _LOCATION_KIND: dict[str, str] = {
 
 # ── Short-form models ─────────────────────────────────────────────────────────
 #
-# These describe exactly the short forms `core.archetypes.normalize_role`,
-# `core.pipeline.normalize_pipeline`, and `core.policy.normalize_policy` accept, for JSON
+# These describe exactly the short forms `teams.roles.normalize_role`,
+# `pipeline.domain.spec.normalize_pipeline`, and `governance.policy.normalize_policy` accept, for JSON
 # Schema generation (`scripts/gen_config_schemas.py`) and to give `load_document`'s error a
 # field name and valid-values list when a short-form document fails its kind's real parser.
 # The normalisers remain the only loaders; nothing here ever parses a document directly.
@@ -76,7 +76,7 @@ class RoleDocument(BaseModel):
 
 class PipelineDocument(BaseModel):
     """The short-form pipeline document -- see pipeline-format.spec.md ("Short form"). Each
-    `steps` entry's own sugar keys are validated by `core.pipeline.normalize_pipeline`, not
+    `steps` entry's own sugar keys are validated by `pipeline.domain.spec.normalize_pipeline`, not
     here."""
 
     model_config = ConfigDict(extra="forbid")
@@ -288,7 +288,7 @@ def _infer_kind_from_location(path: Path) -> str | None:
 
 def _load_role(path: Path) -> dict[str, Any]:
     """The canonical wire dict for a role file: the short form is normalised first
-    (``core.archetypes.load_role_file``), then validated exactly as ``pod update`` does, and
+    (``teams.roles.load_role_file``), then validated exactly as ``pod update`` does, and
     both prose templates are rendered once against sample variables so a ``${typo}`` is
     refused here and not at provisioning."""
     try:

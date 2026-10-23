@@ -1,7 +1,7 @@
 """How the network mode is worded: it is cut only while the sandbox is on.
 
 Every surface that prints the mode asks this module, so none of them can say the network is cut
-while nothing is jailed. ``core.pod.effective_network`` still decides the mode; this only words it.
+while nothing is jailed. ``teams.pod.effective_network`` still decides the mode; this only words it.
 """
 
 from __future__ import annotations

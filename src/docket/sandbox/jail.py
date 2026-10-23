@@ -1,4 +1,4 @@
-"""``python -m docket.jail``: confine this process with Landlock and seccomp, then exec a command.
+"""``python -m docket.sandbox.jail``: confine this process with Landlock and seccomp, then exec a command.
 
 Fails closed with exit 125 when the confinement cannot be enforced; runs nothing in that case."""
 
@@ -15,7 +15,7 @@ EXIT_NOT_RUNNABLE = 127
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m docket.jail", add_help=True)
+    parser = argparse.ArgumentParser(prog="python -m docket.sandbox.jail", add_help=True)
     parser.add_argument("--rw", action="append", default=[], help="read-write root")
     parser.add_argument("--ro", action="append", default=[], help="extra read-only root")
     parser.add_argument("--refuse", default="", help="refuse to run, printing this reason")

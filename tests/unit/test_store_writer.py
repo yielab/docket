@@ -1,10 +1,10 @@
 """Enforce the store.py single-writer rule.
 
 store.py's docstring claims ALL docket-owned JSON writes go through
-``edges.store.write_json``. This is a machine-checked guard against
+``platform.store.write_json``. This is a machine-checked guard against
 regression: any hand-rolled ``path.write_text(json.dumps(...))`` atomic-write
 dance outside the chokepoint (and its two documented JSONL-append exemptions,
-``core/trace.py`` / ``core/audit.py``) reintroduces the single-writer bug this
+``observability/trace.py`` / ``governance/audit.py``) reintroduces the single-writer bug this
 rule fixes — writers that skip the filelock and ``.bak`` rotation and can
 corrupt a docket-owned JSON file under concurrent access.
 """
@@ -19,7 +19,7 @@ SUBJECT = "docket.platform.store"
 _REPO = Path(__file__).parent.parent.parent
 _SRC = _REPO / "src" / "docket"
 
-# Modules allowed to write JSON outside the edges/store.py chokepoint.
+# Modules allowed to write JSON outside the platform/store.py chokepoint.
 _EXEMPT = {
     _SRC / "edges" / "store.py",  # the chokepoint itself
     _SRC / "core" / "trace.py",  # append-only JSONL (D-12 exemption)
@@ -51,10 +51,10 @@ def _find_offenders() -> list[str]:
 def test_no_hand_rolled_json_writes_outside_store() -> None:
     offenders = _find_offenders()
     assert offenders == [], (
-        "Docket-owned JSON writes must go through edges/store.py:write_json "
+        "Docket-owned JSON writes must go through platform/store.py:write_json "
         "(D-12 single-writer rule). Hand-rolled write_text(json.dumps(...)) "
         "found outside the chokepoint and its append-only-JSONL exemptions "
-        "(core/trace.py, core/audit.py):\n" + "\n".join(f"  {o}" for o in offenders)
+        "(observability/trace.py, governance/audit.py):\n" + "\n".join(f"  {o}" for o in offenders)
     )
 
 

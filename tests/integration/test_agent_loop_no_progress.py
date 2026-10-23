@@ -162,7 +162,7 @@ def test_default_comes_from_the_config_constant() -> None:
 
 def test_env_override_is_honoured(tmp_path: Path) -> None:
     code = (
-        "from docket.kernel.home import current_home; from docket.core.agent_loop import LoopConfig;"
+        "from docket.kernel.home import current_home; from docket.agent.loop import LoopConfig;"
         "print(current_home().agent_loop_no_progress_rounds, LoopConfig().no_progress_rounds)"
     )
     env = {**os.environ, "AGENT_LOOP_NO_PROGRESS_ROUNDS": "7", "DOCKET_HOME": str(tmp_path)}

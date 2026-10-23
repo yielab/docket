@@ -3,8 +3,8 @@
 Small, pure helpers the interactive/declarative add flow uses to pick sensible
 defaults: the codebase path, the suggested project name, the id slug, and the
 detected stack. The *memory/runtime-contract* side of provisioning (seeding
-``WORKFLOW_AUTO.md`` / ``MEMORY.md`` / daily logs) lives in ``core/memory.py``;
-the workspace builders in ``cli/_pod.py`` and ``cli/_agents.py`` call that
+``WORKFLOW_AUTO.md`` / ``MEMORY.md`` / daily logs) lives in ``agent/memory.py``;
+the workspace builders in ``interfaces/cli/commands/pod.py`` and ``interfaces/cli/commands/agents.py`` call that
 directly.
 """
 

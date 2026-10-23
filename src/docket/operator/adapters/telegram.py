@@ -1,13 +1,13 @@
 """Telegram outbound delivery for a `kind: channel` document whose dialect is `telegram`
 (ADR 0016 SS7): push a rendered text notification to every chat id the operator has
 allow-listed in `actors`. The wire format itself lives in
-`edges/adapters/telegram.py::send_message` -- the same function `core/telegram.py`'s inbound
+`interfaces/telegram/client.py::send_message` -- the same function `interfaces/telegram/bot.py`'s inbound
 poll loop already replies with; this module is the second, explicitly operator-configured
 caller `tests/integration/test_telegram_channel.py` pins.
 
 Deliberately narrow: this is the `notify` half of the `telegram` dialect only. `converse`/
 `decide` (answering a question, approving a token) stay inbound-only, handled entirely by
-`core/telegram.py`'s poll loop against a chat that messaged docket first -- this module never
+`interfaces/telegram/bot.py`'s poll loop against a chat that messaged docket first -- this module never
 initiates a conversation, only a one-shot push.
 """
 
@@ -28,7 +28,7 @@ def deliver(
     timeout: float,
 ) -> DeliveryResult:
     """Send *event* to every chat id in `spec.actors`. Never raises. `secret` is the bot
-    token, resolved by `core.notify.resolve_secret` from `spec.secret` -- the built-in
+    token, resolved by `operator.notify.resolve_secret` from `spec.secret` -- the built-in
     document names the same `TELEGRAM_BOT_TOKEN` credential `docket setup provider add
     TELEGRAM_BOT_TOKEN` stores. Sends only to `spec.actors`; never broadcasts to every
     `fleet.json` binding."""

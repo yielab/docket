@@ -1,4 +1,4 @@
-"""The derived operator inbox (``core/inbox.py``) -- pure assembly over pod tasks and pending
+"""The derived operator inbox (``operator/inbox.py``) -- pure assembly over pod tasks and pending
 approvals, no writes. Pins the four-section split, the A2A mapping on every item, the
 approval-to-task linking rule, the `since` cursor semantics, and paused-pod inclusion.
 """

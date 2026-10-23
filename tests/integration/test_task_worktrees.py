@@ -29,7 +29,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _ASK_PIPELINE_YAML = """\
 name: ask

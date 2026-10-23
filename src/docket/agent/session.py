@@ -1,14 +1,14 @@
 """Durable turn history + compaction.
 
 Persists message history *inside* a turn, keyed on ``agent:<id>:<project>``; loaded by
-``core/agent_loop.py`` before each turn and appended after. Full contract, storage layout, and
+``agent/loop.py`` before each turn and appended after. Full contract, storage layout, and
 wire format: ``specs/functional/session-history.spec.md``.
 
 Load-bearing facts kept here: an assistant message's ``tool_calls`` and every answering
 ``tool``-role reply are one atomic unit ``compact_session`` never splits, drops, or partially
 summarises. If summarisation fails or returns nothing usable, the stored history is left
 unchanged and ``ok=False`` is reported. ``plan_compaction`` budgets against the *estimate*
-(``core.context.estimate_tokens``), never against ``MeasuredUsage``'s *measured* counts.
+(``agent.context.estimate_tokens``), never against ``MeasuredUsage``'s *measured* counts.
 """
 
 from __future__ import annotations
@@ -56,9 +56,9 @@ __all__ = [
 ]
 
 #: The shape `compact_session` needs from a driver -- identical to
-#: `core.memory.DistillRunner`/`core.dispatch.Runner`: `RuntimeDriver.run_turn`'s
+#: `agent.memory.DistillRunner`/`core.dispatch.Runner`: `RuntimeDriver.run_turn`'s
 #: core 5-arg call, nothing more. A separate alias (not an import of either)
-#: because this module must not depend on `core/memory.py` or `core/dispatch.py`
+#: because this module must not depend on `agent/memory.py` or `core/dispatch.py`
 #: for a plain structural type -- see the module docstring's fail-closed section.
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
@@ -78,7 +78,7 @@ _COMPACTION_ACTIVE: ContextVar[bool] = ContextVar("docket_session_compaction_act
 
 
 class StoredToolCall(BaseModel):
-    """Wire/storage twin of ``core.llm.ToolCall`` -- same three fields, no more."""
+    """Wire/storage twin of ``agent.llm.ToolCall`` -- same three fields, no more."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -88,7 +88,7 @@ class StoredToolCall(BaseModel):
 
 
 class StoredMessage(BaseModel):
-    """Wire/storage twin of ``core.llm.ChatMessage``, field-for-field so ``_encode``/``_decode``
+    """Wire/storage twin of ``agent.llm.ChatMessage``, field-for-field so ``_encode``/``_decode``
     are the only translation needed (round-trip contract: session-history.spec.md req 6)."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -182,7 +182,7 @@ def _ensure_session_dir(path: Path) -> None:
 
 def load_session(session_key: str, *, sessions_dir: Path | None = None) -> SessionRecord:
     """Load *session_key*'s durable record, or empty if absent/corrupt -- scoped to *this session
-    only*, never touching another's file. ``edges/store.py`` keeps a ``.bak``; no auto-recovery."""
+    only*, never touching another's file. ``platform/store.py`` keeps a ``.bak``; no auto-recovery."""
     path = _session_path(session_key, sessions_dir)
     if not path.exists():
         return SessionRecord(session_key=session_key)
@@ -509,7 +509,7 @@ def plan_compaction(
 
 def _summarization_message(label: str, units: Sequence[Sequence[ChatMessage]]) -> str:
     """Build the compaction summarisation prompt from the units being replaced -- a self-contained
-    prompt over chat-message units, mirroring ``core.memory._distillation_message``'s shape but
+    prompt over chat-message units, mirroring ``agent.memory._distillation_message``'s shape but
     never re-reading anything from disk."""
     header = (
         f"You are compacting durable turn history for '{label}'. Below are "
@@ -569,7 +569,7 @@ def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
 @dataclass
 class CompactionResult:
     """Outcome of one ``compact_session`` call. ``ok=False`` means the stored history was left
-    **completely untouched** (same fail-closed contract as ``core.memory.DistillResult``).
+    **completely untouched** (same fail-closed contract as ``agent.memory.DistillResult``).
     ``compacted`` (only True alongside ``ok=True``) means summarisation actually ran."""
 
     ok: bool

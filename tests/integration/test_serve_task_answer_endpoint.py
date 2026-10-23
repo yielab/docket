@@ -1,12 +1,12 @@
 """POST /tasks/<id>/answer — resolving a parked question over HTTP.
 
 The HTTP counterpart of `docket task answer` and the MCP `task_answer` tool: same
-`core.answers.answer_task` call (`channel="http"`), so validation/screening/resume are
+`tasks.application.answers.answer_task` call (`channel="http"`), so validation/screening/resume are
 byte-for-byte identical to every other surface. Covers auth, the happy path (a `TaskView`
 response, the durably appended answer, the `actor` field), the error mappings (`422`/`409`/
 `404`/`400`), and `POST /tasks/<project>`'s optional `brief` field -- `422` on a malformed one,
-and `422` again on a well-formed one naming the `core.dispatch.enqueue_task_once` parameter it still
-lacks (see `cli/_pod.py::_pod_delegate`'s identical contention note).
+and `422` again on a well-formed one naming the `tasks.application.queue.enqueue_task_once` parameter it still
+lacks (see `interfaces/cli/commands/pod.py::_pod_delegate`'s identical contention note).
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.governance"
 
 _TEST_TOKEN = "test-serve-token-task-answer-p34-13"
 

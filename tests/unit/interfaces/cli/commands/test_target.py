@@ -1,4 +1,4 @@
-"""Pod targeting (``cli/_target.py``): flag, then DOCKET_POD, then the deepest codebase
+"""Pod targeting (``interfaces/cli/commands/target.py``): flag, then DOCKET_POD, then the deepest codebase
 containing the working directory."""
 
 from __future__ import annotations

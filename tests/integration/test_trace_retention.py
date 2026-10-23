@@ -1,4 +1,4 @@
-"""core.trace's age-based retention sweep (expire_old_traces) + `docket task prune --traces`.
+"""observability.trace's age-based retention sweep (expire_old_traces) + `docket task prune --traces`.
 
 Mirrors the fixture pattern in test_trace_audit.py: trace.py reads paths from
 current_home() at call time, so each test runs in a `use_home` block on a temp seed

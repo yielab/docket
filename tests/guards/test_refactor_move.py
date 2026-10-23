@@ -263,7 +263,7 @@ def test_a_split_half_merges_into_a_test_file_that_already_sits_at_its_path(
 ) -> None:
     root = _copy("merge", "before", tmp_path)
     (root / "refactor" / "target-map.toml").write_text(
-        '[[definition]]\nfrom = "docket.edges.adapters.system"\nto = "docket.edges.adapters.landlock"\n'
+        '[[definition]]\nfrom = "docket.edges.adapters.system"\nto = "docket.sandbox.landlock"\n'
         'names = ["landlock_argv"]\n'
     )
     assert move.main(["--root", str(root)]) == 0

@@ -134,7 +134,7 @@ class TestCmdUnbind:
 
 class TestCmdBind:
     """`setup notify bind` discovers Telegram groups through docket's bot, retaining manual entry as
-    a fallback. The binding it records is the entire authorization boundary (core/telegram.py),
+    a fallback. The binding it records is the entire authorization boundary (interfaces/telegram/bot.py),
     so the output states that plainly."""
 
     def test_bind_discovers_group_without_numeric_id_entry(

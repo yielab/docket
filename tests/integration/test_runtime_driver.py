@@ -1,7 +1,7 @@
 """The RuntimeDriver port.
 
 Covers protocol conformance (both ``DocketDriver`` and ``FakeDriver`` satisfy
-``core.runtime_driver.RuntimeDriver``, and ``default_driver()``'s singleton contract) and
+``agent.ports.RuntimeDriver``, and ``default_driver()``'s singleton contract) and
 ``FakeDriver`` exercised directly. ``DocketDriver`` backs
 onto no OS process and no daemon-shaped file. See test_llm_port.py for response-parsing and
 test_docket_driver.py for ``DocketDriver.run_turn`` itself.

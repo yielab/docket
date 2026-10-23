@@ -32,12 +32,12 @@ def resolve_waiting_approval_detail(
 ) -> tuple[bool, str]:
     """React to a just-applied approval decision by mutating the dispatch task it gated, if
     any -- never mutates the approval record itself, only reacts to a transition
-    ``core/approval.py`` already made. See pod-dispatch.spec.md ("require_approval gate and
+    ``governance/approval.py`` already made. See pod-dispatch.spec.md ("require_approval gate and
     waiting_approval") for the pre-hop gate's grant (-> ``pending`` + gate override) and deny
     (-> ``failed``, ``failureKind: "approval_denied"``) outcomes.
 
     A **parked** in-turn call (ADR 0016 SS2, ``context["parked"] is True``) carries no
-    ``taskId`` -- ``core/tools.py``'s ``_park_call`` has no task to name -- so its task is
+    ``taskId`` -- ``agent/tools/registry.py``'s ``_park_call`` has no task to name -- so its task is
     found by matching ``approvalToken`` directly instead; a grant appends
     ``{token, tool, argsDigest}`` to the task's ``pregrants`` for ``_compose_hop`` to carry
     into the re-run, and does **not** set ``gateOverridePipelineIndex`` (that field is for

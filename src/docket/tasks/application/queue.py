@@ -46,7 +46,7 @@ _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 # see ``dispatch_task``'s ``DispatchError`` handling). Neither is a graded
 # hop/gate outcome, so neither is a "real gate/hop failure" in the sense
 # "blocked and terminal-failure re-entry" uses that phrase for. Shared by
-# ``cli/_pod.py``'s "anything to do?" gate so the two never drift apart.
+# ``interfaces/cli/commands/pod.py``'s "anything to do?" gate so the two never drift apart.
 RESUMABLE_FAILURE_KINDS: frozenset[str] = frozenset({"stale_claim", "dispatch_refused"})
 
 
@@ -230,7 +230,7 @@ def enqueue_task_once(
 def pod_full_roster(project: str) -> dict[str, str]:
     """Every role this pod has, first member per role (``role -> member_id``). Unlike
     :func:`pod_pipeline` (fixed to ``PIPELINE_ORDER``), this covers every role name so a
-    custom :class:`~docket.core.pipeline.PipelineSpec` can target a role outside the default four."""
+    custom :class:`~docket.pipeline.domain.spec.PipelineSpec` can target a role outside the default four."""
     all_ids = [a.id for a in _fleet.list_agents()]
     by_role: dict[str, str] = {}
     for mid, role, _idx in _pod.members_of(all_ids, project):
@@ -245,7 +245,7 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     out for staleness here, since a refusal's claim was already cleanly settled, not crashed);
     ``waiting_approval``/``waiting_input`` never -- neither status is ``pending`` or ``failed``,
     so both are already excluded by construction; a parked question re-enters only through
-    ``core.answers.answer_task`` (-> ``pending``) or expiry (-> ``blocked``, retried like any
+    ``tasks.application.answers.answer_task`` (-> ``pending``) or expiry (-> ``blocked``, retried like any
     other blocked task)."""
     status = t.get("status")
     if status == "pending":
@@ -480,8 +480,8 @@ def dispatchable_pods() -> list[str]:
 
 def pod_roster() -> list[dict[str, Any]]:
     """Every provisioned pod (grouped by project, alphabetical) with its member roster. Pure
-    data assembly for ``docket start --mcp``'s ``pods`` tool, mirroring ``cli/_pod.py``'s
-    ``_pod_list``; lives here (not ``core/pod.py``) to keep that module I/O-free."""
+    data assembly for ``docket start --mcp``'s ``pods`` tool, mirroring ``interfaces/cli/commands/pod.py``'s
+    ``_pod_list``; lives here (not ``teams/pod.py``) to keep that module I/O-free."""
     all_ids = [a.id for a in _fleet.list_agents()]
     projects = sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
 

@@ -1,4 +1,4 @@
-"""The OpenAI-compatible adapter's `/models` limits and request bytes (`edges/adapters/llm.py`).
+"""The OpenAI-compatible adapter's `/models` limits and request bytes (`models/adapters/openai_http.py`).
 
 The four recorded `/models` bodies under `tests/fixtures/provider-models/` are the oracle for the
 per-row limits field map; no test here opens a socket.

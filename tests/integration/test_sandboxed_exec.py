@@ -50,8 +50,8 @@ needs_landlock = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _isolate_gates(tmp_path: Path) -> Iterator[None]:
-    """Tests here call `dispatch_tool` directly, which consults `core/policy.py` and
-    `core/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
+    """Tests here call `dispatch_tool` directly, which consults `governance/policy.py` and
+    `governance/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
     developer's real ``~/.docket/policies`` or blocks on an approval nothing will grant."""
     with use_home(
         dataclasses.replace(
@@ -332,7 +332,7 @@ class TestChokepointWiring:
         model-visible result."""
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         ctx = ToolContext(roots=(workspace,), sandbox="auto")
-        # `printf` (not `echo`) — it is on core.security's SAFE_BINS
+        # `printf` (not `echo`) — it is on governance.security's SAFE_BINS
         # allowlist, so the command classifier allows it outright and this
         # test is exercising the sandbox wiring, not the tool-call gate.
         res = dispatch_tool(self._call('{"command": "printf hi"}'), ctx, builtin_registry())

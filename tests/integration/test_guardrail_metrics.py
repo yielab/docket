@@ -209,7 +209,7 @@ class TestPolicyHitsFromToolGate:
         )
 
     def test_a_bare_command_classifier_denial_is_not_a_policy_hit(self, ctx: ToolContext) -> None:
-        """`rm x` is denied by core/security.py's classifier, no policy involved
+        """`rm x` is denied by governance/security.py's classifier, no policy involved
         at all -- it must not show up under docket_policy_hits_total."""
         res = dispatch_tool(
             ToolCall(id="c2", name="bash", arguments=json.dumps({"command": "rm x"})),

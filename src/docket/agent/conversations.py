@@ -10,8 +10,8 @@ pointer — deterministic resume that does **not** depend on the runtime's ephem
 session.
 
 Layering: this module holds the domain models + **pure** operations on an in-memory
-registry, plus thin load/save helpers over ``edges/store.py`` (the same shape
-``core/models_policy.py`` uses). Timestamps are passed in by the caller so the pure
+registry, plus thin load/save helpers over ``platform/store.py`` (the same shape
+``models/selection.py`` uses). Timestamps are passed in by the caller so the pure
 ops stay testable; the ``cli`` layer stamps ``datetime.now(UTC)``.
 """
 
@@ -215,7 +215,7 @@ def remove_agent(reg: ConversationRegistry, agent_id: str) -> ConversationRegist
     )
 
 
-# --- load / save (I/O via edges/store.py) -------------------------------------
+# --- load / save (I/O via platform/store.py) -------------------------------------
 
 
 def load(path: Path | None = None) -> ConversationRegistry:

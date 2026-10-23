@@ -1,5 +1,5 @@
-"""docket-owned Telegram channel: the inbound routing layer (``core/telegram.py``) and the
-outbound `telegram` channel dialect (``edges/adapters/channels/telegram.py``). Approve/deny/
+"""docket-owned Telegram channel: the inbound routing layer (``interfaces/telegram/bot.py``) and the
+outbound `telegram` channel dialect (``operator/adapters/telegram.py``). Approve/deny/
 status/delegate/answer route through the inbound layer with a real producer, a real audit
 entry, and no daemon bridge. **No test here ever touches a socket or a real token** --
 ``handle_message`` never does network I/O; ``poll_once`` and the dialect's own tests inject
@@ -43,7 +43,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _ASK_PIPELINE_YAML = """\
 name: ask
@@ -548,7 +548,7 @@ class TestAnswer:
         assert _queue.read_tasks("other")[0]["status"] == "waiting_input"
 
     def test_a_multi_property_question_is_refused_with_cli_guidance(self) -> None:
-        """A bare chat message cannot be split across fields -- mirrors ``cli/_task.py``'s
+        """A bare chat message cannot be split across fields -- mirrors ``interfaces/cli/commands/task.py``'s
         ``_task_answer`` bare-text refusal for the same case."""
         task = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
@@ -906,7 +906,7 @@ def _channel_spec(actors: list[str]) -> ChannelSpec:
 
 
 class TestTelegramChannelDialect:
-    """The outbound half of the `telegram` dialect (`edges/adapters/channels/telegram.py::
+    """The outbound half of the `telegram` dialect (`operator/adapters/telegram.py::
     deliver`) -- the second legitimate `send_message` call site `TestOutboundOnlyThroughTheChannel`
     pins. Never touches a socket: `send_message` is monkeypatched on the dialect module."""
 
@@ -982,32 +982,32 @@ class TestTelegramChannelDialect:
 class TestOutboundOnlyThroughTheChannel:
     """Outbound Telegram messages now exist through exactly two paths, and no other
     (specs/functional/telegram-integration.spec.md, Command grammar 7): the
-    reply inside `core.telegram.poll_once` (unchanged -- a response to a message that already
-    passed `_authorize`), and `edges/adapters/channels/telegram.py::deliver`, the `telegram`
+    reply inside `interfaces.telegram.bot.poll_once` (unchanged -- a response to a message that already
+    passed `_authorize`), and `operator/adapters/telegram.py::deliver`, the `telegram`
     channel dialect's `notify` push, which only ever reaches a chat id the operator explicitly
     listed in that channel's own `actors` -- never every `fleet.json` binding, and never from
-    `core/telegram.py` itself. Pinned structurally (an AST walk over `src/`) rather than
+    `interfaces/telegram/bot.py` itself. Pinned structurally (an AST walk over `src/`) rather than
     behaviourally, because the failure guarded against is someone *adding* a third caller -- a
     behavioural test can only assert about call sites that already exist. If a third caller is
     ever added, this test must change in the same commit."""
 
-    _SRC = Path(_tg.__file__).resolve().parent.parent  # src/docket/
+    _SRC = Path(_tg.__file__).resolve().parents[2]  # src/docket/
 
-    #: The two legitimate call sites: the reply inside `core.telegram.poll_once`, and the
+    #: The two legitimate call sites: the reply inside `interfaces.telegram.bot.poll_once`, and the
     #: `telegram` channel dialect's outbound, `actors`-scoped push.
     #: The email dialect also defines a `send_message` -- `smtplib.SMTP.send_message`, an
     #: unrelated stdlib method name collision, not a path to the Telegram channel.
     _ALLOWED: ClassVar[set[str]] = {
-        "core/telegram.py",
-        "edges/adapters/channels/telegram.py",
-        "edges/adapters/channels/email.py",
+        "interfaces/telegram/bot.py",
+        "operator/adapters/telegram.py",
+        "operator/adapters/email.py",
     }
 
     def _send_call_sites(self) -> list[str]:
         found: list[str] = []
         for path in sorted(self._SRC.rglob("*.py")):
             rel = path.relative_to(self._SRC).as_posix()
-            if rel in self._ALLOWED or rel.startswith("edges/adapters/telegram"):
+            if rel in self._ALLOWED or rel == "interfaces/telegram/client.py":
                 continue  # the wire-format adapter defines it; the two allowed callers use it
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
@@ -1034,11 +1034,11 @@ class TestOutboundOnlyThroughTheChannel:
 
     def test_the_approval_store_does_not_reach_the_telegram_channel(self) -> None:
         """Creating an approval must not notify -- an operator polls with /status."""
-        source = (self._SRC / "core" / "approval.py").read_text(encoding="utf-8")
+        source = (self._SRC / "governance" / "approval.py").read_text(encoding="utf-8")
         assert "telegram" not in source.replace("APPROVAL_CHANNELS", "").replace(
             '"telegram"', ""
         ).replace("``telegram``", ""), (
-            "core/approval.py referencing the telegram module would mean approval "
+            "governance/approval.py referencing the telegram module would mean approval "
             "creation can push a message; the channel is inbound-only"
         )
 
@@ -1049,7 +1049,7 @@ class TestOutboundOnlyThroughTheChannel:
         monkeypatch.setattr(_tg, "_lead_project", lambda _aid: "demo")
         monkeypatch.setattr(_tg._policy, "policy_eval_detail", lambda *a, **k: _policy.PolicyHit())
         monkeypatch.setattr(
-            _tg._dispatch, "enqueue_task_once", lambda *a, **k: ({"id": "task-abc123"}, True)
+            _tg._queue, "enqueue_task_once", lambda *a, **k: ({"id": "task-abc123"}, True)
         )
 
         result = _tg._handle_delegate("demo-lead", "do the thing")

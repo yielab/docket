@@ -32,7 +32,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _TOKEN = "test-serve-token-lifecycle"
 _IMPLEMENTER_ONLY = "name: implementer-only\nsteps:\n  - id: implementer\n    role: implementer\n"

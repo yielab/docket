@@ -1,4 +1,4 @@
-"""Neutral span model, incremental projection and export policy (core/telemetry.py)."""
+"""Neutral span model, incremental projection and export policy (observability/telemetry.py)."""
 
 from __future__ import annotations
 

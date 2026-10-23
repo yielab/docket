@@ -68,7 +68,7 @@ def _write_session(
 ) -> None:
     """Seed a docket-native session with measured tokens and no recorded cost -- a
     pod-dispatch hop's turns land here through ``DocketDriver``, whose ``cost_usd`` is
-    always ``0.0`` by design (see core/runtime_driver.py)."""
+    always ``0.0`` by design (see agent/ports.py)."""
     from urllib.parse import quote
 
     sdir = home / "sessions" / quote(session_key, safe="")
@@ -285,7 +285,7 @@ class TestChecks:
     def test_pod_lead_missing_tools_md_not_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A pod Lead never gets a TOOLS.md (`cli/_pod.py` writes one only for an Implementer) — `docket setup --fix` must not flag that as broken."""
+        """A pod Lead never gets a TOOLS.md (`interfaces/cli/commands/pod.py` writes one only for an Implementer) — `docket setup --fix` must not flag that as broken."""
         with _seed(tmp_path, monkeypatch, full_workspace=False) as home:
             ws = home / "workspaces" / "projects" / "myshop"
             for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
@@ -589,7 +589,7 @@ class TestChecks:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
             monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-            monkeypatch.setattr(_setup_check._sys, "docker_image_has_git", lambda: False)
+            monkeypatch.setattr(_setup_check._docker, "docker_image_has_git", lambda: False)
             _setup_check._check_security_gates()
             out = capsys.readouterr().out
             assert "has no git" in out and "DOCKET_SANDBOX_IMAGE=<an image with git>" in out
@@ -601,7 +601,7 @@ class TestChecks:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
             monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-            monkeypatch.setattr(_setup_check._sys, "docker_image_has_git", lambda: True)
+            monkeypatch.setattr(_setup_check._docker, "docker_image_has_git", lambda: True)
             _setup_check._check_security_gates()
             assert "has no git" not in capsys.readouterr().out
             assert _setup_check._check_json_security()["dockerImageHasGit"] is True
@@ -616,7 +616,7 @@ class TestChecks:
             def boom() -> bool:
                 raise AssertionError("probed")
 
-            monkeypatch.setattr(_setup_check._sys, "docker_image_has_git", boom)
+            monkeypatch.setattr(_setup_check._docker, "docker_image_has_git", boom)
             _setup_check._check_security_gates()
             assert _setup_check._check_json_security()["dockerImageHasGit"] is None
 

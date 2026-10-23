@@ -2,9 +2,9 @@
 conversation registry current.
 
 ``core/dispatch.py``'s ``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
-call ``core/memory.py``'s ``sync_dispatch_tasks`` at each task-state-persistence point, so the
+call ``agent/memory.py``'s ``sync_dispatch_tasks`` at each task-state-persistence point, so the
 durable ledger is true whether or not the agent ever wrote anything there itself.
-``_persist_hop`` also calls ``core/conversations.py``'s ``touch_for_hop`` so a wired channel
+``_persist_hop`` also calls ``agent/conversations.py``'s ``touch_for_hop`` so a wired channel
 thread's ``last_message``/``task_ref`` reflect the dispatch actually working, not just whatever
 ``docket setup notify bind`` seeded once. Setup mirrors ``test_dispatch.py``'s hermetic pod fixture (injected
 ``FakeDriver``/plain runner callables, no real subprocess).
@@ -34,7 +34,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 # ── hermetic environment (mirrors test_dispatch.py's _seed_pod) ─────────────────
 

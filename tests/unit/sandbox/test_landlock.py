@@ -8,10 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from docket.sandbox import docker as _docker
 from docket.sandbox import landlock
 from docket.sandbox import launch as _launch
-from docket.sandbox import seatbelt as _seatbelt
 
 SUBJECT = "docket.sandbox.landlock"
 

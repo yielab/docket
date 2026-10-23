@@ -1,4 +1,4 @@
-"""Pod blueprints — the format itself (`core/blueprints.py`).
+"""Pod blueprints — the format itself (`teams/blueprints.py`).
 
 Covers the registry (five built-ins), the closed `workspace_kind` enum,
 `PodBlueprint.__post_init__`'s structural validation, and the cross-check
@@ -133,7 +133,7 @@ class TestValidation:
 class TestPipelineGateFidelity:
     """Every gated step in a blueprint's default_pipeline matches its role's
     own archetype gateContract.kind exactly -- no separate 'default gates'
-    field to drift from the pipeline (see core/blueprints.py's docstring)."""
+    field to drift from the pipeline (see teams/blueprints.py's docstring)."""
 
     _GATE_TYPE_FOR_KIND: ClassVar[dict[str, str]] = {
         "mechanical": "mechanical",
@@ -172,7 +172,7 @@ class TestPipelineGateFidelity:
 
     def test_software_pipeline_is_the_core_pipeline_default(self) -> None:
         # Byte-for-byte the same object core/dispatch.py's hardcoded pipeline
-        # mirrors (core/pipeline.py's own zero-migration contract) — the
+        # mirrors (pipeline/domain/spec.py's own zero-migration contract) — the
         # software blueprint doesn't hand-roll a second copy.
         expected = _pipeline.default_pipeline()
         actual = bp.get_blueprint("software").default_pipeline
@@ -199,7 +199,7 @@ class TestAgenticProduct:
 
     def test_pipeline_is_the_same_object_as_software(self) -> None:
         # No new pipeline/gate design for this card: agentic-product reuses
-        # core.pipeline.default_pipeline() verbatim, the same as software.
+        # pipeline.domain.spec.default_pipeline() verbatim, the same as software.
         software_pipeline = bp.get_blueprint("software").default_pipeline
         agentic_pipeline = bp.get_blueprint("agentic-product").default_pipeline
         assert agentic_pipeline.model_dump() == software_pipeline.model_dump()

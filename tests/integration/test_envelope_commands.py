@@ -23,7 +23,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.sandbox import landlock as _landlock
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 needs_landlock = pytest.mark.skipif(
     not _landlock.landlock_available(), reason="Landlock not available on this kernel"

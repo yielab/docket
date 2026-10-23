@@ -7,7 +7,7 @@ Before this card, `core/dispatch.py`'s hop-message builder gave any role outside
 lead/implementer/reviewer/tester an empty instruction (dispatch.py:571-572,639) --
 a custom verdict-gated role depended entirely on its SOUL template to know its own
 marker convention, and a pipeline's declared `variables` were validated and stored on
-the run record (`core/runs.py`) but never reached a hop's prompt.
+the run record (`tasks/application/runs.py`) but never reached a hop's prompt.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import pod
 from docket.teams import roles as _arch
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 
 @pytest.fixture(autouse=True)

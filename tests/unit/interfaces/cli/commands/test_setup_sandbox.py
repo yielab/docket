@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
+from docket.sandbox import launch as _launch
 
 SUBJECT = "docket.interfaces.cli.commands.setup_sandbox"
 
@@ -89,10 +90,10 @@ def _probe(
 ) -> None:
     monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
     monkeypatch.setattr(_setup_sandbox.sys, "platform", platform)
-    syst = _setup_sandbox._sys
-    monkeypatch.setattr(syst, "landlock_available", lambda: landlock)
-    monkeypatch.setattr(syst, "seatbelt_available", lambda: seatbelt)
-    monkeypatch.setattr(syst, "docker_daemon_reachable", lambda: docker)
+    monkeypatch.setattr(_launch, "landlock_available", lambda: landlock)
+    monkeypatch.setattr(_launch, "seatbelt_available", lambda: seatbelt)
+    monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: docker)
+    monkeypatch.setattr(_setup_sandbox._docker, "docker_daemon_reachable", lambda: docker)
 
 
 class TestTheProbeReport:

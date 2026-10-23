@@ -34,7 +34,7 @@ from docket.teams import settings as _settings
 from docket.teams import utils as _utils
 from docket.teams.models import AgentMeta
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
 
@@ -80,7 +80,7 @@ class _RecordingRunner:
 
 def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tokens: int) -> None:
     """Seeds a docket-native session with real token counts and no cost -- ``DocketDriver``
-    never reports a USD cost (see ``core/runtime_driver.py``'s ``TurnResult.cost_usd``), so
+    never reports a USD cost (see ``agent/ports.py``'s ``TurnResult.cost_usd``), so
     this is the normal shape; ``oc_dir`` is unused but kept so call sites stay untouched."""
     from urllib.parse import quote
 

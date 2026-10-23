@@ -1,4 +1,4 @@
-"""Same-origin redirect handler for credential-bearing requests (`edges/adapters/redirects.py`)."""
+"""Same-origin redirect handler for credential-bearing requests (`platform/redirects.py`)."""
 
 from __future__ import annotations
 

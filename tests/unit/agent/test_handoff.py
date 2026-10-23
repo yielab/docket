@@ -1,4 +1,4 @@
-"""Structured handoff artifacts (`core/handoff.py`).
+"""Structured handoff artifacts (`agent/handoff.py`).
 
 Pure-function tests: `HandoffArtifact.render()`/`dropped()`/`from_output()`'s existing
 contract, plus this card's addition -- `parse_brief` (the last fenced ```json block that

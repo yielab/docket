@@ -1,5 +1,5 @@
 """Exporter catalog: the observability destinations docket knows, as `kind: exporter`
-documents (ADR 0014 §4) -- a deliberate copy of `core/provider.py`'s shape (name, dialect,
+documents (ADR 0014 §4) -- a deliberate copy of `models/catalog.py`'s shape (name, dialect,
 endpoint, named credentials, never a value) with the model/price/preset fields dropped and
 destination-shaped ones added: `resource`/`aliases`, `events`, `privacy`/`share` (what a
 document shares beyond structure -- ADR 0015 §1), and `enabled` (a present credential never activates an
@@ -151,7 +151,7 @@ class ExporterSpec(BaseModel):
 def _validation_to_exporter_error(path: Path | str, exc: ValidationError) -> ExporterError:
     """Refine pydantic's first error into an ``ExporterError`` naming the field and, for a
     closed-vocabulary failure (an unknown ``dialect``/``auth.type``), the valid values -- the
-    same refinement ``core/provider.py``'s ``_validation_to_provider_error`` does."""
+    same refinement ``models/catalog.py``'s ``_validation_to_provider_error`` does."""
     first = exc.errors()[0]
     field_name = ".".join(str(p) for p in first["loc"]) if first["loc"] else ""
     valid: tuple[str, ...] = ()
@@ -303,7 +303,7 @@ def _refuse_invalid_entry(name: str, entry: dict[str, Any]) -> None:
 
 def save_exporter(spec: ExporterSpec) -> None:
     """Write *spec* into the global catalog (``Home.exporters_file``), through
-    ``edges/store.py`` -- the sole writer of docket-owned JSON."""
+    ``platform/store.py`` -- the sole writer of docket-owned JSON."""
     spec = _with_inherited_identity(spec)
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:
@@ -552,7 +552,7 @@ def activation_state(
 
 def read_health() -> dict[str, dict[str, Any]]:
     """Every exporter's health record (``Home.exporters_health_file``), keyed by name -- a
-    read-only view, through ``edges/store.py`` like every other docket-owned JSON read."""
+    read-only view, through ``platform/store.py`` like every other docket-owned JSON read."""
     raw = _store.read_json(current_home().exporters_health_file)
     if not isinstance(raw, dict):
         return {}
@@ -562,7 +562,7 @@ def read_health() -> dict[str, dict[str, Any]]:
 @dataclass(frozen=True)
 class ProbeResult:
     """A raw, unclassified probe of an exporter's endpoint. ``status`` is ``None`` only for a
-    transport failure (DNS, refused, timeout). A plain dataclass, not `edges/adapters/llm.py`'s
+    transport failure (DNS, refused, timeout). A plain dataclass, not `models/adapters/openai_http.py`'s
     provider ``ProbeResult`` -- this module imports nothing from ``edges/``."""
 
     status: int | None
@@ -572,7 +572,7 @@ class ProbeResult:
 @dataclass(frozen=True)
 class ExporterVerification:
     """A classified probe of an exporter's endpoint (the same table
-    ``core/provider.py::verify_endpoint`` uses): a transport failure is the only unreachable
+    ``models/catalog.py::verify_endpoint`` uses): a transport failure is the only unreachable
     outcome; every HTTP status registers, with a warning naming what is not a clean 2xx."""
 
     reachable: bool

@@ -1,4 +1,4 @@
-"""`edges/store.py` -- the single writer of docket-owned JSON: a planted symlink on the
+"""`platform/store.py` -- the single writer of docket-owned JSON: a planted symlink on the
 temporary or backup name must never redirect a write outside the owned path."""
 
 from __future__ import annotations

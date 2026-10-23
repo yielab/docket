@@ -1,6 +1,6 @@
 """The persisted run registry — one record per dispatch invocation.
 
-Unit-level coverage of ``core/runs.py``'s CRUD primitives and its
+Unit-level coverage of ``tasks/application/runs.py``'s CRUD primitives and its
 ``execute()`` safe-wrapper, hermetic against a tmp ``RUNS_FILE``.
 Integration coverage (every real dispatch call site actually creates and
 finishes a record) lives in ``test_dispatch_run_records.py``. Covers:
@@ -35,7 +35,7 @@ def runs_file(tmp_path: Path) -> Iterator[Path]:
 
 
 class _FakeTaskResult:
-    """Minimal stand-in for dispatch.TaskResult (duck-typed by core/runs.py)."""
+    """Minimal stand-in for dispatch.TaskResult (duck-typed by tasks/application/runs.py)."""
 
     def __init__(self, task_id: str, status: str = "done") -> None:
         self.task_id = task_id

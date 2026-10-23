@@ -1,4 +1,4 @@
-"""Operator events and their delivery (`core/notify.py`).
+"""Operator events and their delivery (`operator/notify.py`).
 
 Covers the pure diff/render functions (`diff_events`, `render_data`, `render_text`,
 `build_test_event`) and the impure `flush` orchestrator (dedupe across two flushes, the

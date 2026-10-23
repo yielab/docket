@@ -4,10 +4,10 @@ module only decides what a pod contains and how members are named. Default pod i
 **lean** (Lead + Implementer); Reviewer, Tester, or extra Implementers are added later, and a
 duplicated role gets an indexed member id (``<project>-implementer``, ``...-implementer-2``).
 The set of valid pod roles is not a hardcoded 4-tuple: ``normalize_role``/``member_id``/
-``pod_of``/``members_of`` all resolve against ``core/archetypes.py``'s registry (built-in
+``pod_of``/``members_of`` all resolve against ``teams/roles.py``'s registry (built-in
 four + starter library + any user-defined archetype), so a fifth role is data, never a new
 hardcoded string. ``_role_names()`` reads that registry fresh on every call. ``pod_of`` is the
-one function here with I/O — it reads a member's recorded meta via `core/fleet.py`'s
+one function here with I/O — it reads a member's recorded meta via `teams/fleet.py`'s
 ``meta_get`` before falling back to id-string parsing; see its own docstring."""
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def pod_prefix(project: str) -> str:
 def session_key(project: str, project_key: str = "default") -> str:
     """Return the base scope key written to pod-member metadata, kept for
     metadata compatibility. Pod-dispatch runtime history does not use it — it derives a
-    task/step key per turn via ``core.dispatch.step_session_key`` instead."""
+    task/step key per turn via ``hops.application.runner.step_session_key`` instead."""
     return f"agent:{project}:{project_key}"
 
 
@@ -95,7 +95,7 @@ def pod_of(member_id: str) -> str | None:
     """Project a member id belongs to, or ``None`` if it isn't a pod member. Meta-first (see
     below); reverses ``member_id`` in the fallback: ``demo-lead`` -> ``demo``,
     ``demo-implementer-2`` -> ``demo``, ``my-shop-reviewer`` -> ``my-shop``."""
-    # The member's own recorded meta (written at provisioning, core/pod_provisioning.py) is
+    # The member's own recorded meta (written at provisioning, teams/pod_provisioning.py) is
     # authoritative -- read it before ever guessing from the id string. The string-parsing
     # fallback below rpartitions on "-" and treats the last segment that matches a *registered
     # role name* as the role, which mis-splits a custom role whose own name ends in another
@@ -252,7 +252,7 @@ def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = 
     """Resolve the real working directory for a pod member's mechanical operations. Preference
     order: the running task's own git **worktree** (recorded at claim) -> the pod's shared
     **codebase** root -> the member's own docket **workspace** dir. Both the verification gate
-    (``core/dispatch.py``) and the TOOLS.md generator (``cli/_pod.py``) resolve through this
+    (``core/dispatch.py``) and the TOOLS.md generator (``interfaces/cli/commands/pod.py``) resolve through this
     one helper so they can never disagree about which tree an implementer's work is checked
     against."""
     if task_worktree:
@@ -323,7 +323,7 @@ class PodSettings(BaseModel):
     # byte-identical), parks it durably for a human to resolve later, or
     # refuses it at once -- threaded into the hop's tool env as
     # DOCKET_APPROVAL_MODE (see core/dispatch.py's `_compose_hop` and
-    # core/tools.py's `ToolContext.approval_mode`). The field default stays
+    # agent/tools/registry.py's `ToolContext.approval_mode`). The field default stays
     # "wait" (export/apply round-trips and goldens depend on it); "unset" --
     # which caller-scoped default applies (ADR 0016 SS2) -- is detected from
     # whether the Lead's meta carries this key at all
@@ -344,14 +344,14 @@ class PodSettings(BaseModel):
     # writes the copy before this ever gets written (see core/dispatch.py's
     # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
     pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
-    # An `@every`/`HH:MM`/cron spec (core/schedule.py). Mirrors the value the dedicated
-    # `set schedule <spec>` CLI path (`cli/_pod.py::_pod_config_set_schedule`) persists as
+    # An `@every`/`HH:MM`/cron spec (pipeline/application/schedule.py). Mirrors the value the dedicated
+    # `set schedule <spec>` CLI path (`interfaces/cli/commands/pod.py::_pod_config_set_schedule`) persists as
     # this pod's actual source of truth in `docket-schedules.json` -- see that function's
     # docstring for why this field exists alongside a second, non-meta store.
     schedule: str | None = Field(None, alias="schedule")
     # Relative paths (comma-joined in storage, like allowCommands) inside this pod's
     # codebase root, composed into a turn's system prompt right after INSTRUCTIONS.md
-    # (core/identity.py's opt-in section) -- the AGENTS.md/CLAUDE.md convention, but
+    # (agent/identity.py's opt-in section) -- the AGENTS.md/CLAUDE.md convention, but
     # never auto-discovered: unset (the default) composes byte-identically to today.
     # Validated here (not at codebase-resolution time) so a path that could only ever
     # escape the root -- absolute, home-relative, or containing a ".." segment -- is
@@ -362,10 +362,10 @@ class PodSettings(BaseModel):
     project_instructions: tuple[str, ...] = Field((), alias="projectInstructions")
 
     # This pod's own selection from the shared MCP server catalog
-    # (core/mcp_tools.py::load_mcp_servers()). ``None`` (the default, and every
+    # (agent/tools/mcp_tools.py::load_mcp_servers()). ``None`` (the default, and every
     # pod before this field existed) means "every configured server" -- today's
     # behavior, unchanged. A non-empty tuple names the exhaustive subset this
-    # pod's turns load; edges/adapters/docket_runtime.py::_load_mcp_tools is the
+    # pod's turns load; agent/driver.py::_load_mcp_tools is the
     # sole reader (see its docstring for the live-turn refusal this feeds).
     # Validated against the *live* catalog at `set` time (below) -- not merely
     # syntactically -- because an unconfigured server name here is always a
@@ -373,10 +373,10 @@ class PodSettings(BaseModel):
     # depend on any other docket-owned store.
     mcp_servers: tuple[str, ...] | None = Field(None, alias="mcpServers")
     # Built-in tool names this pod's every role additionally denies, unioned with
-    # each role's own `denied_tools` by `core.archetypes.registry_for_role` (see
+    # each role's own `denied_tools` by `teams.roles.registry_for_role` (see
     # role-archetypes.spec.md's "Per-role tool sets" requirement 7). Validated
     # against the same known tool-name universe `denied_tools` narrowing already
-    # keys off (`core.archetypes.BUILTIN_TOOL_KINDS`), so a typo is refused at
+    # keys off (`teams.roles.BUILTIN_TOOL_KINDS`), so a typo is refused at
     # `set` instead of silently doing nothing at dispatch time.
     denied_tools: tuple[str, ...] = Field((), alias="deniedTools")
 
@@ -385,7 +385,7 @@ class PodSettings(BaseModel):
     # (true). When true and verifyCmd is unset, the task fails with a
     # clear reason instead of silently advancing.
     require_verify: bool = Field(False, alias="requireVerify")
-    # How many `consult` questions one task's turn may ask (core/consult.py); 0 disables.
+    # How many `consult` questions one task's turn may ask (tasks/application/consult.py); 0 disables.
     max_consultations_per_task: int = Field(3, alias="maxConsultationsPerTask", ge=0)
 
     # 'open' (the default: follow the global mode, itself 'none' unless granted) or 'none': cut this pod's jailed tool calls
@@ -396,21 +396,21 @@ class PodSettings(BaseModel):
     # It only ever narrows: ``coerce`` refuses a path the machine has not granted.
     read_only: str = Field("", alias="readOnly")
 
-    # The install command a task's fresh worktree runs before its first hop (core/prepare.py);
+    # The install command a task's fresh worktree runs before its first hop (hops/workspace/prepare.py);
     # 'none' turns preparation off and '' leaves the choice to the worktree's lockfile.
     prepare: str = Field("", alias="prepare")
 
-    # Globs a task may not change without a person (core/protected_paths.py); they add to the
+    # Globs a task may not change without a person (hops/workspace/protected_paths.py); they add to the
     # defaults and never remove one. Comma-joined in storage, like allowCommands.
     protects: tuple[str, ...] = Field((), alias="protects")
 
-    # 'attended' (the default) or 'lights-out' (core/profile.py): a pod may only move toward
+    # 'attended' (the default) or 'lights-out' (governance/profile.py): a pod may only move toward
     # stricter than the fleet's recorded profile -- ``coerce`` refuses a weaker write.
     profile: str = Field("attended", alias="profile")
 
-    # Where this pod's team came from (ADR 0012): the absolute directory `core.pod_apply.apply`
+    # Where this pod's team came from (ADR 0012): the absolute directory `teams.apply.plan.apply`
     # last applied, and a sha256 fingerprint of that directory's contents at that moment
-    # (`core.pod_apply.directory_digest`). Written only by `apply`, right after a plan that
+    # (`teams.apply.plan.directory_digest`). Written only by `apply`, right after a plan that
     # wrote at least one item -- never by `docket pod set` (see `RECORDED_KEYS`) and
     # never carried in a `pod.yaml` `settings` mapping, since both are refused the same way any
     # key outside `KEYS` already is. `docket pod show` recomputes the digest
@@ -418,8 +418,8 @@ class PodSettings(BaseModel):
     config_source: str = Field("", alias="configSource")
     config_digest: str = Field("", alias="configDigest", pattern=r"^(|[0-9a-f]{64})$")
 
-    # Which observability destinations (`core.exporter.load_catalog()` names) this pod's last
-    # applied recipe named (ADR 0014 rule 7) -- recorded by `core.pod_apply.apply`, exactly like
+    # Which observability destinations (`observability.exporter.load_catalog()` names) this pod's last
+    # applied recipe named (ADR 0014 rule 7) -- recorded by `teams.apply.plan.apply`, exactly like
     # `configSource`/`configDigest` above, and never configurable directly (`pod set
     # exporters` is refused the same way). Names are already validated against the live catalog
     # by `plan_apply` before this is ever stored, so no catalog dependency is added here.
@@ -488,7 +488,7 @@ class PodSettings(BaseModel):
     @classmethod
     def _parse_schedule(cls, value: Any) -> str | None:
         """A recognized ``@every``/``HH:MM``/cron spec, or None. Rejects (naming the
-        reason) exactly the specs ``core.schedule.is_schedule_due`` would otherwise treat
+        reason) exactly the specs ``pipeline.application.schedule.is_schedule_due`` would otherwise treat
         as silently never-due."""
         if value in (None, ""):
             return None
@@ -499,7 +499,7 @@ class PodSettings(BaseModel):
         return text
 
     # Rejects the only shapes that could ever resolve outside the codebase root this
-    # pod's agents already have containment-checked access to (core/tools.py's
+    # pod's agents already have containment-checked access to (agent/tools/registry.py's
     # ``roots``). Purely syntactic -- no filesystem access -- so it refuses an
     # escaping value at `set` even before a codebase root exists to check it against.
     @field_validator("project_instructions", mode="before")
@@ -524,7 +524,7 @@ class PodSettings(BaseModel):
             kept.setdefault(name, None)
         return tuple(kept.keys())
 
-    # Checked against `core.mcp_tools.load_mcp_servers()` right here -- a name absent
+    # Checked against `agent.tools.mcp_tools.load_mcp_servers()` right here -- a name absent
     # from the live catalog is refused (naming it) at `set` time, so a typo or a
     # since-removed server can never silently resolve to "load nothing" at dispatch
     # time.
@@ -559,7 +559,7 @@ class PodSettings(BaseModel):
             kept.setdefault(name, None)
         return tuple(kept.keys()) or None
 
-    # Rejects (naming it) any name outside `core.archetypes.BUILTIN_TOOL_KINDS` -- the
+    # Rejects (naming it) any name outside `teams.roles.BUILTIN_TOOL_KINDS` -- the
     # same known-tool universe `registry_for_role`'s kind-based narrowing already keys
     # off -- so a typo is refused here rather than silently denying nothing.
     @field_validator("denied_tools", mode="before")
@@ -638,7 +638,7 @@ class PodSettings(BaseModel):
     @classmethod
     def _parse_exporters(cls, value: Any) -> tuple[str, ...]:
         """Comma-separated exporter catalog names, like ``allow_commands`` -- already
-        validated against the catalog by ``core.pod_apply.plan_apply`` before this is ever
+        validated against the catalog by ``teams.apply.plan.plan_apply`` before this is ever
         stored, so this parser only reshapes the stored string back into a tuple."""
         if value in (None, ""):
             return ()
@@ -681,7 +681,7 @@ class PodSettings(BaseModel):
     def coerce(
         cls, key: str, value: str, *, project: str = "", mcp_extra: tuple[str, ...] = ()
     ) -> float | int | str:
-        """Validate *value* for *key*; return the form to persist via ``core.fleet.meta_set``.
+        """Validate *value* for *key*; return the form to persist via ``teams.fleet.meta_set``.
         Never writes. *project*/*mcp_extra* widen ``mcpServers`` to that pod's own servers."""
         if key not in cls.KEYS:
             raise PodSettingsError(

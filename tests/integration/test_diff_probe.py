@@ -1,7 +1,7 @@
 """The real `files_changed`/`diff_ref` producer for an Implementer hop's artifact.
 
 `HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed fields
-(`core/handoff.py`'s module docstring documents the seam). Covers: TestHopDiffProbeUnit
+(`agent/handoff.py`'s module docstring documents the seam). Covers: TestHopDiffProbeUnit
 (`_hop_diff_probe` in isolation, with `edges/adapters/system.py`'s git calls
 monkeypatched out); TestDispatchPopulatesRealDiff (end to end through a real `dispatch_pod`
 claim against a real git repo: the hop's artifact carries the actual changed file and the
@@ -31,7 +31,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── TestHopDiffProbeUnit: _hop_diff_probe in isolation ──────
 

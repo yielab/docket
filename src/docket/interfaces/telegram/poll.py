@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import threading
 
-# The Telegram long-poll loop. `core.telegram.poll_once` never raises for an
+# The Telegram long-poll loop. `interfaces.telegram.bot.poll_once` never raises for an
 # unconfigured bot or a network failure (it returns a typed summary) -- the
 # `except Exception` below is a last-resort backstop for a genuinely
 # unexpected bug in that call chain, and it prints rather than swallows
 # (a bare `contextlib.suppress(Exception)` around dispatch is banned; a
-# delegate action reaching `core.dispatch.enqueue_task_once` is exactly that
+# delegate action reaching `tasks.application.queue.enqueue_task_once` is exactly that
 # "dispatch" this loop must not hide a failure from).
 _TELEGRAM_UNCONFIGURED_BACKOFF_S = 30
 _TELEGRAM_ERROR_BACKOFF_S = 5

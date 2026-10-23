@@ -1,5 +1,5 @@
 """Channel catalog: the notification/conversation/decision destinations docket knows, as
-`kind: channel` documents (ADR 0016 §7) -- a deliberate copy of `core/exporter.py`'s shape
+`kind: channel` documents (ADR 0016 §7) -- a deliberate copy of `observability/exporter.py`'s shape
 with the model/price/preset fields dropped and destination-shaped ones added: `capabilities`
 (bounded by each dialect's declared maximum), `on` (which event types reach it), `content`
 (how much a delivery carries -- `minimal < actions < conversation`, never the export-only
@@ -76,7 +76,7 @@ def unreached_warning(delivering: Sequence[str]) -> str | None:
 def _format_loc(loc: tuple[Any, ...]) -> str:
     """Render a pydantic error ``loc`` tuple as a dotted path with bracket list indices
     (``capabilities[1]``, not ``capabilities.1``) -- the one difference from
-    `core/exporter.py`'s plain dot-joined refinement."""
+    `observability/exporter.py`'s plain dot-joined refinement."""
     parts: list[str] = []
     for piece in loc:
         if isinstance(piece, int):
@@ -177,7 +177,7 @@ class ChannelSpec(BaseModel):
 def _validation_to_channel_error(path: Path | str, exc: ValidationError) -> ChannelError:
     """Refine pydantic's first error into a ``ChannelError`` naming the field (bracketed list
     indices included) and, for a closed-vocabulary failure, the valid values -- the same
-    refinement `core/exporter.py`'s `_validation_to_exporter_error` does."""
+    refinement `observability/exporter.py`'s `_validation_to_exporter_error` does."""
     first = exc.errors()[0]
     field_name = _format_loc(first["loc"]) if first["loc"] else ""
     valid: tuple[str, ...] = ()
@@ -267,7 +267,7 @@ def _load_builtin_channels() -> dict[str, ChannelSpec]:
 def _with_inherited_identity(spec: ChannelSpec) -> ChannelSpec:
     """Fill every field *spec* left unset (``model_fields_set``, so an explicit clear still
     wins) from the built-in of the same name -- a global channel override inherits every field
-    it does not set, the same rule `core/exporter.py`'s `_with_inherited_identity` applies."""
+    it does not set, the same rule `observability/exporter.py`'s `_with_inherited_identity` applies."""
     builtin = _load_builtin_channels().get(spec.name)
     if builtin is None:
         return spec
@@ -324,7 +324,7 @@ def load_catalog() -> Catalog:
 
 def save_channel(spec: ChannelSpec) -> None:
     """Write *spec* into the global catalog (``Home.channels_file``), through
-    ``edges/store.py`` -- the sole writer of docket-owned JSON."""
+    ``platform/store.py`` -- the sole writer of docket-owned JSON."""
     spec = _with_inherited_identity(spec)
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:

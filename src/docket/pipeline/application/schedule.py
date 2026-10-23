@@ -34,7 +34,7 @@ This module is pure-stdlib. The spec-parsing functions are side-effect-free
 (no filesystem access). ``load_schedules``/``load_last_run`` are read-only I/O
 entry points; ``record_last_run`` is the one write path — it persists into the
 same file, under a ``lastRun`` key sitting alongside ``schedules``, via
-``edges/store.py``'s locked read-modify-write (docket-owned JSON, single-writer
+``platform/store.py``'s locked read-modify-write (docket-owned JSON, single-writer
 rule applies). Before this, the last-run timestamp lived only in an in-memory
 ``dict`` in ``serve.py``, so every ``docket start`` restart re-fired every due
 schedule immediately — persisting it here is what fixes that.
@@ -48,9 +48,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from docket.kernel import threads as _threads
 from docket.kernel.errors import InvalidInput
-from docket.kernel.home import current_home
 from docket.platform import store as _store
 
 
@@ -220,7 +218,7 @@ def load_last_run(path: Path) -> dict[str, float]:
 def record_last_run(path: Path, project: str, ts: float) -> None:
     """Persist *project*'s last-dispatch-attempt timestamp into *path*.
 
-    A locked read-modify-write (``edges/store.py``) against the same file
+    A locked read-modify-write (``platform/store.py``) against the same file
     ``load_schedules``/``load_last_run`` read — the ``schedules`` key is
     preserved untouched, only ``lastRun[project]`` is updated. This is what
     makes the due-check survive a ``docket start`` restart instead of
@@ -261,7 +259,7 @@ def describe_spec_error(spec: str) -> str | None:
 
 def set_schedule(path: Path, project: str, spec: str) -> None:
     """Validate *spec*, then persist ``schedules[project] = spec`` into *path* via
-    ``edges/store.py``'s locked read-modify-write (``lastRun`` untouched). Raises
+    ``platform/store.py``'s locked read-modify-write (``lastRun`` untouched). Raises
     ``ScheduleError`` naming the reason on an unrecognized *spec*, writing nothing."""
     reason = describe_spec_error(spec)
     if reason:
@@ -317,48 +315,3 @@ def find_schedule_problems(path: Path) -> list[tuple[str, str]]:
         if reason:
             problems.append((str(project), reason))
     return problems
-
-
-def _check_schedules(now_ts: float) -> None:
-    """Trigger dispatch for pods whose schedule spec is due (also recognizes a standard 5-field
-    cron expression, not just ``@every``/``HH:MM`` -- see ``core/schedule.py``). The last-run
-    timestamp is read from, and written back into, ``Home.schedule_file`` itself rather than an
-    in-memory dict, so a restart does not re-fire every schedule on its first sweep. Each due
-    project's run record is created before its daemon-thread dispatch starts, so the sweep loop
-    is never blocked and no outcome is silently discarded."""
-    from docket.pipeline.application import schedule as _sched
-    from docket.tasks.application import runs as _runs
-    from docket.tasks.application import sweep as _sweep
-
-    schedules = _sched.load_schedules(current_home().schedule_file)
-    last_run_map = _sched.load_last_run(current_home().schedule_file)
-    for project, spec in schedules.items():
-        reason = _sched.describe_spec_error(spec)
-        if reason:
-            # `is_schedule_due` would otherwise treat this as silently never-due, forever
-            # -- print once per sweep so an operator running `docket start` sees the drop
-            # instead of a schedule that quietly never fires (see `docket setup --fix` for the
-            # equivalent standing report).
-            print(f"[serve] sweep: schedule '{project}' skipped — {reason}")
-            continue
-        last_run = last_run_map.get(project, 0.0)
-        if not _sched.is_schedule_due(spec, last_run, now_ts):
-            continue
-        _sched.record_last_run(current_home().schedule_file, project, now_ts)
-
-        record = _runs.create_run("schedule", project)
-
-        def _run(proj: str = project, run_id: str = record["id"]) -> None:
-            # Process-wide timeout knobs (unset = no override) run inside the
-            # run record, so a scheduled dispatch is both configurable and
-            # observable rather than fire-and-forget.
-            _runs.execute(
-                run_id,
-                lambda: _sweep.dispatch_pod(
-                    proj,
-                    turn_timeout=current_home().dispatch_turn_timeout_s,
-                    verify_timeout=current_home().dispatch_verify_timeout_s,
-                ),
-            )
-
-        _threads.start_thread(_run)

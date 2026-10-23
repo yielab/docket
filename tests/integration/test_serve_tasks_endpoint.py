@@ -1,6 +1,6 @@
 """GET /tasks/<project> — the pod queue as JSON over HTTP.
 
-Exposes `core.dispatch.read_tasks` -- the exact normalized shape `docket pod <p> tasks` renders
+Exposes `tasks.application.queue.read_tasks` -- the exact normalized shape `docket pod <p> tasks` renders
 from -- behind the same Bearer auth as `/runs`. No new behaviour: adds no filtering, no reshaping,
 no 404 that `read_tasks` itself does not express (a project with no pod is `[]`, not an error).
 Covers auth rejection, a missing project segment (400), a project with no pod (200, `{"tasks":
@@ -29,7 +29,7 @@ from docket.platform import store as _store
 from docket.tasks.application import queue as _application_queue
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token-tasks-p22-2"
 

@@ -1,4 +1,4 @@
-"""How ``dispatch_pod`` hands a claimed task to ``core.prepare``: skips, the jail, the refusal."""
+"""How ``dispatch_pod`` hands a claimed task to ``hops.workspace.prepare``: skips, the jail, the refusal."""
 
 from __future__ import annotations
 
@@ -8,10 +8,12 @@ from typing import Any
 
 import pytest
 
-from docket.core import dispatch as _dispatch
+from docket.agent import driver as _dr
 from docket.hops.workspace import prepare as _prepare
+from docket.observability import trace as _trace
 from docket.sandbox import launch as _launch
 from docket.tasks.application import queue as _queue
+from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.queue"
@@ -23,7 +25,7 @@ def worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root.mkdir()
     (root / "package-lock.json").write_text("{}")
     monkeypatch.setattr(_settings, "_pod_settings", lambda project: SimpleNamespace(prepare=""))
-    monkeypatch.setattr(_dispatch._fleet, "meta_get", lambda *a, **k: str(tmp_path / "repo"))
+    monkeypatch.setattr(_fleet, "meta_get", lambda *a, **k: str(tmp_path / "repo"))
     return root
 
 
@@ -58,7 +60,7 @@ def test_a_failed_install_refuses_the_task_with_the_command_status_and_tail(
 ) -> None:
     outcome = _prepare.PrepareOutcome(False, False, 1, 0.5, "x" * 5000 + "TAIL")
     monkeypatch.setattr(_prepare, "prepare_worktree", lambda *a: outcome)
-    monkeypatch.setattr(_dispatch._trace, "trace_event", lambda *a, **k: "written")
+    monkeypatch.setattr(_trace, "trace_event", lambda *a, **k: "written")
     seen: list[tuple[str, str]] = []
     monkeypatch.setattr(
         _queue,
@@ -74,7 +76,7 @@ def test_a_failed_install_refuses_the_task_with_the_command_status_and_tail(
 def test_the_install_runs_on_the_host_when_isolation_is_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (None, None))
+    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (None, None))
     calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(_launch, "run_command", lambda *a, **k: calls.append((a, k)) or (0, ""))
     assert _queue._run_prepare_command("demo", "npm ci", "/wt") == (0, "")
@@ -83,9 +85,7 @@ def test_the_install_runs_on_the_host_when_isolation_is_off(
 
 
 def test_a_refused_posture_is_reported_as_not_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        _dispatch._dr, "resolve_command_jail", lambda project, label: (None, "no backend")
-    )
+    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (None, "no backend"))
     assert _queue._run_prepare_command("demo", "npm ci", "/wt") == (
         None,
         "[prepare not run: no backend]",

@@ -21,7 +21,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _NOTE = "NOTE-SENTENCE-7731 the finding the critic must see"
 _PIPELINE = (

@@ -422,7 +422,7 @@ def _provision_pod_from_spec(
     aid: str, blueprint_name: str, spec: dict[str, Any]
 ) -> list[str] | None:
     """Provision one pod from a `blueprint`-bearing `--from` entry through
-    `cli._pod.build_pod_from_blueprint`, the path `docket init` and `POST /pods` share.
+    `interfaces.cli.commands.pod.build_pod_from_blueprint`, the path `docket init` and `POST /pods` share.
     ``None`` (already warned) means the pod exists or the blueprint is unknown: a skip."""
     from docket.interfaces.cli.commands import pod as _pod
 

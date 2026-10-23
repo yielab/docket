@@ -1,4 +1,4 @@
-"""The `fetch` tool -- an inspectable, allowlisted egress path (`edges/adapters/fetch.py`).
+"""The `fetch` tool -- an inspectable, allowlisted egress path (`platform/fetch.py`).
 
 Pins the domain allowlist as real containment (redirects included), the
 response size cap and timeout with announced truncation, and that `fetch`

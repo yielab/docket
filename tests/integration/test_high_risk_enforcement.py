@@ -1,5 +1,5 @@
 """High-risk classes enforced on docket-launched processes.
-``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests, would be
+``governance/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests, would be
 documentation, not enforcement. ``match_high_risk`` is wired into the two real paths docket
 controls; three sibling helpers that once composed it were deleted since none had a production
 caller. Covers: TestRunVerifyCmdHighRisk (``run_command`` is the one docket-launched
@@ -29,7 +29,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── system adapter: run_command's own high-risk guard ─────────────────────
 

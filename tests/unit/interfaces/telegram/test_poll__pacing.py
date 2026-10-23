@@ -1,6 +1,6 @@
 """`docket start --telegram` wiring: the poll loop's pacing/backoff discipline.
 
-Pinned here, which the channel/adapter test modules don't reach: `serve.py`'s poll loop
+Pinned here, which the channel/adapter test modules don't reach: `interfaces/http/server.py`'s poll loop
 paces itself (no busy-loop on an unconfigured bot or transport error) and never lets an
 unexpected exception escape silently -- catch, print, back off, keep going, never a bare
 `contextlib.suppress(Exception)`.
@@ -17,7 +17,7 @@ from docket.interfaces.telegram import bot as _telegram
 from docket.interfaces.telegram import poll
 from docket.kernel.threads import new_thread
 
-SUBJECT = "docket.serve"
+SUBJECT = "docket.interfaces.telegram.poll"
 
 
 @pytest.fixture(autouse=True)

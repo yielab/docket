@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
-from docket.core import dispatch as _dispatch
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -33,7 +33,7 @@ def test_every_command_a_task_runs_as_a_check_is_collected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(_queue, "pod_full_roster", lambda project: {"implementer": "i"})
-    monkeypatch.setattr(_dispatch._fleet, "meta_get", lambda *a, **k: "make verify")
+    monkeypatch.setattr(_fleet, "meta_get", lambda *a, **k: "make verify")
     steps = (
         _unit("build", gate=_pipeline.MechanicalGate(command="bash scripts/check.sh")),
         _orch.PlannedGroup(

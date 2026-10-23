@@ -17,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import uuid
 from collections.abc import Iterator
@@ -26,8 +27,7 @@ from typing import Any
 
 import pytest
 
-from docket.core import dispatch as _dispatch
-from docket.edges.adapters import system
+from docket.agent import driver as _dr
 from docket.hops.gates import post_hop as _post_hop
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace import worktree as _worktree
@@ -99,7 +99,7 @@ def arena(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A scratch directory outside every temp dir, so no grant covers it by accident."""
     base = _CHECKOUT / f".escape-matrix-{uuid.uuid4().hex[:10]}"
     base.mkdir()
-    temps = {os.path.realpath(p) for p in (system.tempfile.gettempdir(), "/tmp", "/var/tmp")}
+    temps = {os.path.realpath(p) for p in (tempfile.gettempdir(), "/tmp", "/var/tmp")}
     real = os.path.realpath(base)
     if any(real == t or real.startswith(t + os.sep) for t in temps):
         shutil.rmtree(base)
@@ -146,7 +146,7 @@ def _run(
     timeout: int = 90,
     expect_ran: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    """Run *command* once, through ``system.jail_launch`` (the production builder) when *jailed*,
+    """Run *command* once, through ``launch.jail_launch`` (the production builder) when *jailed*,
     under a wrapper parent that carries ``SEED_KEY`` in its environment. A marker written first
     proves the command ran; the call fails when it did not."""
     marker = root / f".ran-{uuid.uuid4().hex[:8]}"
@@ -322,7 +322,7 @@ def test_a_write_outside_the_roots_is_refused(backend: str, arena: Path) -> None
 
 
 def test_the_shared_system_temp_dir_is_not_writable(backend: str, work: Path) -> None:
-    target = Path(system.tempfile.gettempdir()) / f"escape-{uuid.uuid4().hex}"
+    target = Path(tempfile.gettempdir()) / f"escape-{uuid.uuid4().hex}"
     attack = f"touch {target}"
     try:
         control = _run(backend, work, attack, jailed=False)
@@ -496,13 +496,13 @@ def test_a_verify_command_cannot_write_outside_the_worktree(
     wt = task_tree.wt
     target = arena / "verify-escape.txt"
     jail = _launch.JailPolicy(network=True)
-    monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (jail, None))
+    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (jail, None))
     cmd = f"touch inside-verify && echo escaped > {target}"
     code, output = _post_hop._run_in_envelope("proj", "verify", cmd, str(wt), 60)
     assert (wt / "inside-verify").exists(), f"the verify command never ran: {output}"
     assert not target.exists(), "a verifyCmd wrote outside its worktree"
     assert code != 0
-    monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (None, None))
+    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (None, None))
     host_code, _ = _post_hop._run_in_envelope("proj", "verify", cmd, str(wt), 60)
     assert host_code == 0 and target.exists()
 
@@ -573,11 +573,11 @@ def test_a_prepared_cache_entry_is_readable_but_not_writable_to_a_jailed_gate(
     entry = _install_into(task_tree.wt, task_tree.main)
     cmd = "cat node_modules/tool > read.txt; echo planted > node_modules/planted"
     jail = _launch.JailPolicy(network=True)
-    monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (jail, None))
+    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (jail, None))
     _post_hop._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
     assert (task_tree.wt / "read.txt").read_text() == "installed\n", "the entry was unreadable"
     assert not (entry / "node_modules" / "planted").exists(), "a gate wrote the cache entry"
-    monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (None, None))
+    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (None, None))
     _post_hop._run_in_envelope("proj", "verify", cmd, str(task_tree.wt), 60)
     assert (entry / "node_modules" / "planted").exists(), "control: unjailed can write"
 
@@ -596,9 +596,7 @@ def test_the_prepare_launch_has_the_network_a_gate_under_network_none_lacks(
             "s.sendall(b'hello')\""
         )
     pods_jail = _launch.JailPolicy(network=False)
-    monkeypatch.setattr(
-        _dispatch._dr, "resolve_command_jail", lambda project, label: (pods_jail, None)
-    )
+    monkeypatch.setattr(_dr, "resolve_command_jail", lambda project, label: (pods_jail, None))
     try:
         _queue._run_prepare_command("proj", attack, str(task_tree.wt))
         for _ in range(50):

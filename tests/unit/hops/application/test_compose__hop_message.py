@@ -1,4 +1,4 @@
-"""``core/dispatch.py::_hop_message`` -- the four built-in roles carry their own fixed
+"""``hops/application/compose.py::_hop_message`` -- the four built-in roles carry their own fixed
 instruction text, a custom role's instruction comes from its archetype (declared or
 generated from `gateContract`), and a step's own `instructions` overrides whichever the
 target role would carry, for every role including the Lead: its instruction resolves
@@ -131,7 +131,7 @@ class TestStepInstructionsOverride:
 
     def test_lead_message_resolves_through_the_lead_archetype(self) -> None:
         # No step override -- the Lead's instruction now comes from
-        # `core.archetypes.resolve_hop_instruction` against the built-in `lead`
+        # `teams.roles.resolve_hop_instruction` against the built-in `lead`
         # archetype, not a literal string in `_hop_message` itself. An overlay
         # of `lead` changes the Lead's hop message.
         _arch.add_user_archetype(

@@ -2,10 +2,10 @@
 
 The call is validated through ``QuestionV11`` (operator-v1.1) and then, by approval mode:
 ``wait`` has nobody to ask and answers "no answer; decide yourself"; ``refuse``/``park`` trace
-the event and raise ``ConsultUnavailable``, which ``core/tools.py`` renders as the
+the event and raise ``ConsultUnavailable``, which ``agent/tools/registry.py`` renders as the
 ``approval_unavailable`` stop.
 In pod dispatch (``ctx.consult_park``) a non-refuse consult raises ``ConsultParked`` instead:
-the hop ends, the task parks ``waiting_input`` and ``core.answers`` re-enters the same role.
+the hop ends, the task parks ``waiting_input`` and ``tasks.application.answers`` re-enters the same role.
 The per-task count lives on the task; dispatch passes the remaining budget to each hop.
 
 Tool-visible failures are ordinary error results, never exceptions, so the model can adapt.
@@ -48,7 +48,7 @@ _REQUESTED_SCHEMA: dict[str, Any] = {
 
 @dataclass
 class ConsultOutcome:
-    """What a consult call produced; ``core/tools.py`` wraps it as its ``ConsultOutcome``."""
+    """What a consult call produced; ``agent/tools/registry.py`` wraps it as its ``ConsultOutcome``."""
 
     ok: bool
     content: str = ""
@@ -67,7 +67,7 @@ def _parked_file(question_id: str) -> Path:
 
 
 def park_token(question: QuestionV11) -> str:
-    """Persist the parked question (``edges/store.py``, 0600) and return ``consult:<id>``. The
+    """Persist the parked question (``platform/store.py``, 0600) and return ``consult:<id>``. The
     token never carries question text, so no error string or trace field holds it unredacted."""
     if not _QUESTION_ID.fullmatch(question.id):
         raise ConsultUnavailable(f"cannot park question id {question.id!r}")

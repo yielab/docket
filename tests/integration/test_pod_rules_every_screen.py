@@ -34,7 +34,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _runner = CliRunner()
 

@@ -1,4 +1,4 @@
-"""Agent Skills discovery and frontmatter parsing (`core/skills.py`).
+"""Agent Skills discovery and frontmatter parsing (`agent/skills.py`).
 
 Pins the Agent Skills shape (ADR 0013 §3 rule 8): `SKILL.md` frontmatter naming a skill and
 describing it in one sentence, and the three-scope, nearest-wins discovery order a live turn's

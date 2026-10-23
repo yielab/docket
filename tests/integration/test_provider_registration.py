@@ -3,8 +3,8 @@
 Registration verifies `<base-url>/models` **with the resolved credential** and classifies the
 result (ADR 0011 §4) instead of collapsing it to a boolean: only a transport failure refuses;
 every HTTP status registers, with a warning when it is not a clean 200.
-`core.provider.verify_endpoint` is the pure classifier; `edges.adapters.llm.probe_models` is the
-one function that opens a socket; `core.provider.register_provider` wires them together and
+`models.catalog.verify_endpoint` is the pure classifier; `models.adapters.openai_http.probe_models` is the
+one function that opens a socket; `models.catalog.register_provider` wires them together and
 persists only when reachable. See specs/functional/model-profiles.spec.md "Provider readiness".
 """
 
@@ -26,7 +26,7 @@ from docket.kernel.home import Home, use_home
 from docket.models import catalog as _prov
 from docket.models.adapters.openai_http import ProbeResult
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.models"
 
 _runner = CliRunner()
 

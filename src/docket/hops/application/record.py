@@ -436,7 +436,7 @@ def _build_hop_result(
     )
 
 
-# `core.agent_loop.approval_parked_error` owns this string's format (quoted
+# `agent.loop.approval_parked_error` owns this string's format (quoted
 # key=value pairs) -- TurnResult carries no structured field for a parked call's
 # token, so this is the one place dispatch.py re-derives it. Only the token is
 # needed here, so this stays a narrow, single-field parser.
@@ -589,7 +589,7 @@ def _persist_hop_and_trace(
                 reason=f"{role} hop failed: consult_question_missing (the parked consultation carried no question)",
             )
         if parked_token is not None:
-            # Reuses the pre-hop gate's own event type (core/trace.py's
+            # Reuses the pre-hop gate's own event type (observability/trace.py's
             # EVENT_TYPES is not this card's to extend): both mean exactly
             # "a require_approval-equivalent gate fired; task ->
             # waiting_approval", whether the trigger was a pre-hop gate or, as

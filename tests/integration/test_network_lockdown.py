@@ -27,7 +27,7 @@ from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
-SUBJECT = "docket.edges.adapters.system"
+SUBJECT = "docket.sandbox.launch"
 
 needs_landlock = pytest.mark.skipif(
     not landlock.landlock_available(), reason="landlock is not available on this host"

@@ -20,6 +20,7 @@ from tests.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.commands import pod as _pod
+from docket.interfaces.http import server as _http_server
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
@@ -283,11 +284,9 @@ class TestConfigSetSchedule:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Acceptance oracle: `config set schedule` writes exactly what
-        `serve.py::_check_schedules` reads -- no separate wiring needed for the sweep to
+        `interfaces/http/server.py::_check_schedules` reads -- no separate wiring needed for the sweep to
         pick it up."""
         import time as _time
-
-        from docket.pipeline.application import schedule as _sched
 
         with _build(tmp_path):
             _pod.set_setting("proj", "schedule", "@every 1s")
@@ -298,7 +297,7 @@ class TestConfigSetSchedule:
                 "docket.tasks.application.sweep.dispatch_pod",
                 lambda proj, **kw: dispatched.append(proj) or [],
             )
-            _sched._check_schedules(_time.time())
+            _http_server._check_schedules(_time.time())
             deadline = _time.time() + 2
             while not dispatched and _time.time() < deadline:
                 _time.sleep(0.05)

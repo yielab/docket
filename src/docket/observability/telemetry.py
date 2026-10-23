@@ -1,9 +1,9 @@
 """Neutral span model over the trace vocabulary, and the policy that reduces a payload
 before export. ``Span``/``SpanEvent``/``project``/``flush_open``/``ExportPolicy`` are pure: no
-socket, no queue, no vendor knowledge -- ``project`` turns ``core/trace.py`` records into spans
+socket, no queue, no vendor knowledge -- ``project`` turns ``observability/trace.py`` records into spans
 deterministically, so a retried record never produces a duplicate one. ``Pipeline`` and the
 module-level registry below them are the one impure part of this module: a bounded queue and a
-background sender per enabled exporter, wired to ``core.trace.add_subscriber``."""
+background sender per enabled exporter, wired to ``observability.trace.add_subscriber``."""
 
 from __future__ import annotations
 
@@ -736,7 +736,7 @@ def flush_open(state: ProjectionState) -> list[Span]:
 # `SpanSink` object and never constructs one itself (`edges/adapters/exporters` does that).
 
 
-# Matched structurally against edges/adapters/exporters/otlp_http.py::SinkResult's field names,
+# Matched structurally against observability/adapters/otlp_http.py::SinkResult's field names,
 # never imported by name, so this module still never imports anything from edges/. Declared as
 # read-only properties, not plain attributes: a frozen dataclass only satisfies a Protocol that
 # asks for a get, never one that also demands a set.
@@ -790,7 +790,7 @@ _STOP = object()
 
 
 # `offer` runs `policy.admit` and `project` in the caller's thread (whichever thread
-# `core.trace.trace_event` runs on) and enqueues the spans it closes with `put_nowait`; a full
+# `observability.trace.trace_event` runs on) and enqueues the spans it closes with `put_nowait`; a full
 # queue increments `dropped` and returns rather than blocking the caller. One daemon thread
 # drains the queue in batches (up to `batch_max` items, or `batch_wait_s` since the first item
 # in a forming batch) and calls `sink.emit`, folding the result into `PipelineStats`.
@@ -949,7 +949,7 @@ def _events_for(spec: Any) -> frozenset[str] | None:
 
 
 def load_enabled_exporters() -> list[Any]:
-    """Every entry in the exporter catalog (`core.exporter.load_catalog`) with `enabled: true`
+    """Every entry in the exporter catalog (`observability.exporter.load_catalog`) with `enabled: true`
     -- credential resolution is `start`'s job, not this loader's, so a caller can hand this
     straight to `start` every turn without duplicating that check."""
     return [spec for spec in _exporter.load_catalog().entries.values() if spec.enabled]
@@ -967,7 +967,7 @@ def _fan_out(record: dict[str, Any]) -> None:
 # registry is already started -- this registry starts at most once per process.
 def start(specs: Sequence[Any], sink_for: SinkFactory) -> int:
     """Build one `Pipeline` per *specs* entry that is enabled and whose credentials all resolve,
-    subscribing one fan-out sink through `core.trace.add_subscriber`. Returns the count of
+    subscribing one fan-out sink through `observability.trace.add_subscriber`. Returns the count of
     pipelines actually started."""
     global _UNSUBSCRIBE
     if _process.no_export():
@@ -1040,8 +1040,8 @@ def capture_classes() -> frozenset[str]:
 
 def health() -> dict[str, dict[str, Any]]:
     """Every started exporter's current counters, in `Home.exporters_health_file`'s shape --
-    the caller (`edges/adapters/docket_runtime.py::run_turn`) writes this through
-    `edges/store.py`; this function itself performs no I/O."""
+    the caller (`agent/driver.py::run_turn`) writes this through
+    `platform/store.py`; this function itself performs no I/O."""
     with _REGISTRY_LOCK:
         items = list(_REGISTRY.items())
     return _health_of(items)

@@ -1,4 +1,4 @@
-"""`core/orchestrator.py` — the pipeline executor's planning layer.
+"""`pipeline/domain/plan.py` — the pipeline executor's planning layer.
 
 Covers `resolve_plan`'s determinism, gate resolution (a step's own `gate`
 wins over its archetype's `gateContract`), `parse_verdict`'s marker

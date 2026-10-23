@@ -1,4 +1,4 @@
-"""docket.edges.adapters.system — docker/git wrappers.
+"""docket.platform.git, docket.platform.process and docket.sandbox.docker -- docker/git wrappers.
 
 Fakes `subprocess.run` with monkeypatch so no real docker/git is ever invoked. Covers docker
 availability, git branch lookup, and git changed-files probe.
@@ -15,7 +15,7 @@ import pytest
 from docket.platform import git, process
 from docket.sandbox import docker
 
-SUBJECT = "docket.edges.adapters"
+SUBJECT = "docket.platform.git"
 
 
 class _FakeCompleted:

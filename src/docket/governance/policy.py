@@ -6,7 +6,7 @@ wins); ``policy_eval_detail`` the full :class:`PolicyHit` for attribution. A fil
 validation is never silently skipped: it evaluates as ``block`` within its readable scope,
 attributed to the file (fail closed, spec requirement 7). Never emits traces itself.
 Live-path wiring: ``pre_input`` runs once at task enqueue; ``pre_output`` on every hop's output;
-``pre_tool_call`` in-turn inside ``core/tools.py``'s ``dispatch_tool`` chokepoint, where a
+``pre_tool_call`` in-turn inside ``agent/tools/registry.py``'s ``dispatch_tool`` chokepoint, where a
 ``when`` predicate can also see the call itself via :class:`ToolCallFacts`."""
 
 from __future__ import annotations

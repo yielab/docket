@@ -220,7 +220,7 @@ class TestAgentTurnBashCancellation:
         self, workspace: Path
     ) -> None:
         """A `bash` call's real process group is registered against the current run
-        (`ToolContext.on_process`, mirroring `edges/adapters/docket_runtime.py`'s production
+        (`ToolContext.on_process`, mirroring `agent/driver.py`'s production
         wiring) while it is in flight, so `docket task cancel` reaches it and the turn's own
         cooperative check (the same persisted signal) reports the kill as `process_exited`
         with `signal`, not `exitCode`."""

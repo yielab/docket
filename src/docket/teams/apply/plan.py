@@ -1,9 +1,9 @@
-"""``docket pod update <dir>``: compose the pre-existing writers (``core.archetypes.
-add_user_archetype``, member provisioning, the pipeline bind, and ``core.pod.PodSettings``)
+"""``docket pod update <dir>``: compose the pre-existing writers (``teams.roles.
+add_user_archetype``, member provisioning, the pipeline bind, and ``teams.pod.PodSettings``)
 into one operation, driven by a small ``pod.yaml`` manifest (``members``, ``settings``,
 ``pipeline``) alongside the same ``roles/*.yaml``/``pipeline.yaml`` shape the shipped recipes
 already ship. A role goes into *project*'s own pod-scoped overlay (``core.config.
-pod_config_dir(project)/roles.json``), never the global one: ``core/pod.py``'s roster helpers
+pod_config_dir(project)/roles.json``), never the global one: ``teams/pod.py``'s roster helpers
 (``_role_names``/``parse_member_id``, which ``pod_full_roster``/``members_of`` depend on to
 resolve a pipeline's roster) resolve that pod overlay too (see ``_plan_roles``), matching what
 ``docket pod update roles/<file>.yaml`` already did by hand. ``plan_apply`` is
@@ -56,7 +56,7 @@ _MANIFEST_KEYS = frozenset(
     }
 )
 
-# The same name shape `core.exporter.ExporterSpec` validates -- checked here too so a
+# The same name shape `observability.exporter.ExporterSpec` validates -- checked here too so a
 # credential-shaped string or a URL is refused for what it is, before a catalog lookup
 # (`Catalog.get` on a non-string would raise `TypeError` on the dict membership test).
 
@@ -173,7 +173,7 @@ class ApplyPlan:
 class ApplyResult:
     """What ``apply`` actually did -- the same items ``plan_apply`` returned, now written.
     ``exporters`` is this pod's recorded destination names (ADR 0014 rule 7) -- reported, not
-    activated; the CLI renders each one's state from ``core.exporter.activation_state``."""
+    activated; the CLI renders each one's state from ``observability.exporter.activation_state``."""
 
     project: str
     items: tuple[ApplyItem, ...]
@@ -307,7 +307,7 @@ def _recipe_pipeline_file(directory: Path, pipeline_name: str | None) -> Path | 
 
 def _config_glob(directory: Path) -> list[Path]:
     """Every ``*.yaml``/``*.yml``/``*.json`` directly under *directory* -- the same file set
-    ``core.config_docs.discover_config_paths`` counts for ``roles/``/``policies/``."""
+    ``teams.config_docs.discover_config_paths`` counts for ``roles/``/``policies/``."""
     return [p for pattern in ("*.yaml", "*.yml", "*.json") for p in directory.glob(pattern)]
 
 
@@ -470,8 +470,8 @@ def _plan_roles(
 
 def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PolicyWrite]]:
     """Plan ``policies/*.json|*.yaml|*.yml`` into *project*'s own policy directory -- the same
-    one ``core.policy.policy_files`` reads and ``_export_policies`` copies, never the fleet-wide
-    ``$POLICIES_DIR``. Each file must pass ``core.policy.validate_policy`` first."""
+    one ``governance.policy.policy_files`` reads and ``_export_policies`` copies, never the fleet-wide
+    ``$POLICIES_DIR``. Each file must pass ``governance.policy.validate_policy`` first."""
     items: list[ApplyItem] = []
     writes: list[_PolicyWrite] = []
     policies_dir = directory / "policies"
@@ -501,7 +501,7 @@ def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list
 
 def _plan_plugins(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PluginWrite]]:
     """Plan ``plugins/*.py`` into *project*'s own ``config/plugins/`` -- the same directory
-    ``core.plugins.discover`` reads and ``_export_plugins`` copies back, by sha256: an installed
+    ``governance.plugins.discover`` reads and ``_export_plugins`` copies back, by sha256: an installed
     copy with the same hash is left alone, any other content is replaced."""
     items: list[ApplyItem] = []
     writes: list[_PluginWrite] = []
@@ -1366,7 +1366,7 @@ def _export_roles(project: str, directory: Path) -> None:
 
 def _export_policies(project: str, directory: Path) -> None:
     """Write *project*'s own policy directory's files as short-form YAML ``policies/<stem>.yaml``
-    (``core.policy.to_short_policy``, the inverse of ``normalize_policy``) -- never a file from
+    (``governance.policy.to_short_policy``, the inverse of ``normalize_policy``) -- never a file from
     the fleet-wide ``$POLICIES_DIR``."""
     src_dir = current_home().pod_config_dir(project) / "policies"
     files = (

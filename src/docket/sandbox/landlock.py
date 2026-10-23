@@ -436,7 +436,7 @@ def landlock_argv(
     network: bool = True,
     read_only: tuple[Path, ...] = (),
 ) -> list[str]:
-    """The argv running *command* under ``python -m docket.jail``: the roots (and their repository
+    """The argv running *command* under ``python -m docket.sandbox.jail``: the roots (and their repository
     dirs) read-write, *read_only* readable, nothing else of the host. The first root is the cwd."""
     return [*_landlock_prefix(roots, network, read_only), "/bin/sh", "-c", command]
 

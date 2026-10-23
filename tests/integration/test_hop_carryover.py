@@ -2,7 +2,7 @@
 ``core/dispatch.py``'s ``_hop_message`` does not concatenate every prior hop's full raw output
 into the next hop's prompt, nor cap total bytes with one process-wide constant and truncate
 blindly once a hop's share is exceeded. Instead, each rendered ``HandoffArtifact`` is fit to a
-per-role token budget via ``core/context.py``'s ``compile_artifact``, which sheds the
+per-role token budget via ``agent/context.py``'s ``compile_artifact``, which sheds the
 artifact's less-valuable fields (``DROP_ORDER``) before truncating ``summary`` itself; there is
 no byte-cap machinery left. Covers: TestHopMessageCap (``_hop_message`` against the
 token-budget compiler: small tasks unchanged, the task description never truncated, truncation
@@ -31,7 +31,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_dispatch.py / test_verify_gate.py) ─────────
 
@@ -190,7 +190,7 @@ class TestHopMessageCap:
 
 class _BigOutputRunner:
     """Large fixed ``*`` output, to force carryover truncation without tripping
-    ``core.trace.redact``'s secret-shaped patterns, which backtrack badly on a
+    ``observability.trace.redact``'s secret-shaped patterns, which backtrack badly on a
     single repeated letter or digit run this long."""
 
     def __init__(self, size: int = 50_000) -> None:

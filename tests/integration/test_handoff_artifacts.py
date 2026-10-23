@@ -26,16 +26,16 @@ from tests.pods import build_pod
 
 from docket.agent import context as _context
 from docket.agent import handoff as _handoff
-from docket.core import dispatch as _dispatch
 from docket.hops.application import record as _record
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.pipeline.application import executor as _executor
+from docket.pipeline.domain import plan as _plan
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 # ── HandoffArtifact: the pure model ──────────────────────────────────────────
 
@@ -459,14 +459,14 @@ class TestDispatchBuildsTypedArtifacts:
             records = [_record._hop_record(h) for h in prior_hops]
             resumed_hops = [_record._hop_from_record(r) for r in records]
 
-            real_parse_verdict = _dispatch._orch.parse_verdict
+            real_parse_verdict = _plan.parse_verdict
 
             def _reject_reparse(gate: _pipeline.VerdictGate, output: str) -> str | None:
                 if output == "APPROVE - solid":
                     raise AssertionError("resume reparsed persisted reviewer prose")
                 return real_parse_verdict(gate, output)
 
-            monkeypatch.setattr(_dispatch._orch, "parse_verdict", _reject_reparse)
+            monkeypatch.setattr(_plan, "parse_verdict", _reject_reparse)
 
             calls: list[tuple[str, str]] = []
 

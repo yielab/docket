@@ -1,4 +1,4 @@
-"""The lights-out decision is a pure function over its facts (core/profile.py)."""
+"""The lights-out decision is a pure function over its facts (governance/profile.py)."""
 
 from __future__ import annotations
 

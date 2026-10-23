@@ -1,11 +1,11 @@
-"""Loader and evaluator for operator-scoped predicate plugins (see ``docket.plugins`` for the
+"""Loader and evaluator for operator-scoped predicate plugins (see ``docket.governance.plugin_api`` for the
 public API a plugin file imports). Discovery is restricted to ``PLUGINS_DIR`` (global) and a
 pod's own ``config/plugins/`` -- never a codebase -- because a policy runs inside the gate on
 every tool call the agent itself makes, and a plugin loaded from the codebase would let an
 agent rewrite its own gate for the next turn.
 
 ``discover`` imports each ``*.py`` with ``importlib.util.spec_from_file_location``, draining
-``docket.plugins.REGISTRY`` after each file; a cache keyed by ``(mtime_ns, size)`` skips
+``docket.governance.plugin_api.REGISTRY`` after each file; a cache keyed by ``(mtime_ns, size)`` skips
 re-importing an unchanged file. ``evaluate`` runs one predicate under a wall-clock budget and
 never raises; every call is audited as ``policy.plugin``.
 """

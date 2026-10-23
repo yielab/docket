@@ -1,8 +1,8 @@
 """Per-role tool sets + identity composition.
 
-`core/archetypes.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
-called once per turn by `core/agent_loop.py`) make a Reviewer structurally *unable* to edit code,
-not just told not to via SOUL.md prose. `core/identity.py`'s `compose_agent_prompt` reads
+`teams/roles.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
+called once per turn by `agent/loop.py`) make a Reviewer structurally *unable* to edit code,
+not just told not to via SOUL.md prose. `agent/identity.py`'s `compose_agent_prompt` reads
 SOUL.md, the member's AGENTS.md and bounded MEMORY.md state
 into one runtime-safe prompt, without replaying manual private-file instructions or widening roots.
 
@@ -37,7 +37,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
 from docket.teams import roles as _archetypes
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.agent"
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -348,7 +348,7 @@ class TestReviewerCannotDispatchAWrite:
 
 
 class TestComposeSystemPrompt:
-    """Pure composition -- `core.identity.compose_system_prompt`."""
+    """Pure composition -- `agent.identity.compose_system_prompt`."""
 
     def test_empty_everything_composes_to_empty(self) -> None:
         assert _identity.compose_system_prompt("", "") == ""

@@ -26,7 +26,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.evidence"
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 
 
 @pytest.fixture(autouse=True)

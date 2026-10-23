@@ -1,4 +1,4 @@
-"""``core/repo_map.py``: the derived repository map and the task root block."""
+"""``hops/workspace/repo_map.py``: the derived repository map and the task root block."""
 
 from __future__ import annotations
 

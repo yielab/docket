@@ -1,9 +1,9 @@
 """The public API a predicate plugin file imports. Nothing here imports from ``core/``: a
-plugin is operator code loaded by convention (see ``core/plugins.py``'s loader), never part of
+plugin is operator code loaded by convention (see ``governance/plugins.py``'s loader), never part of
 the policy engine itself.
 
 A predicate is ``fn(call: ToolCall, ctx: PolicyContext, **with_) -> bool``, registered by
-decorating it with ``@predicate("name")``; ``core/plugins.py::discover`` drains ``REGISTRY``
+decorating it with ``@predicate("name")``; ``governance/plugins.py::discover`` drains ``REGISTRY``
 after importing each file.
 """
 
@@ -15,7 +15,7 @@ from typing import Any
 
 PLUGIN_API_VERSION = "1.0.0"
 
-# Drained by core/plugins.py::discover after each file import; a plugin file registers into
+# Drained by governance/plugins.py::discover after each file import; a plugin file registers into
 # this same process-wide list regardless of which directory loaded it.
 REGISTRY: list[tuple[str, Callable[..., bool]]] = []
 

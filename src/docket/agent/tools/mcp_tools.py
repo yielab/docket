@@ -1,15 +1,15 @@
 """MCP client: pluggable external tool servers, gated like a built-in. docket owns the loop, the tool
 registry, tool dispatch and every gate; MCP is only a tool *transport*, rented -- docket stays the
-dispatcher. This module adapts a configured server's tools into ordinary ``core.tools.Tool``
+dispatcher. This module adapts a configured server's tools into ordinary ``agent.tools.registry.Tool``
 objects, registered into a ``ToolRegistry`` so every call still passes through
-``core.tools.dispatch_tool``. **Wired to the live turn path**: ``DocketDriver.run_turn`` loads MCP
-tools before ``core/agent_loop.py``'s role-narrowing step; every adapted tool registers its
+``agent.tools.registry.dispatch_tool``. **Wired to the live turn path**: ``DocketDriver.run_turn`` loads MCP
+tools before ``agent/loop.py``'s role-narrowing step; every adapted tool registers its
 server's declared ``kind`` (:func:`_build_tool`, ``McpServerConfig.kind``, defaulting to
 ``"write"``), so a role denied ``write`` loses every MCP tool from a server left at the default.
 A server may also narrow *which* of its tools get registered via ``McpServerConfig.tools``. See
 specs/functional/mcp-client.spec.md for the namespacing rule, failure isolation
 (:func:`load_mcp_tools` never raises), and untrusted-description screening through
-``core.policy.policy_eval_detail(role, "pre_input", ..., trusted=False)`` before registration."""
+``governance.policy.policy_eval_detail(role, "pre_input", ..., trusted=False)`` before registration."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ NAMESPACE_PREFIX = "mcp__"
 _NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
 
 
-# ── config: docket-owned state, persisted through edges/store.py ────────────
+# ── config: docket-owned state, persisted through platform/store.py ────────────
 
 
 class McpServerConfig(BaseModel):
@@ -137,7 +137,7 @@ def load_mcp_servers(project: str = "") -> list[McpServerConfig]:
 
 
 def write_pod_mcp_servers(project: str, servers: list[McpServerConfig]) -> None:
-    """Replace *project*'s pod-scoped server file with *servers*, through ``edges/store.py``."""
+    """Replace *project*'s pod-scoped server file with *servers*, through ``platform/store.py``."""
     path = pod_mcp_servers_file(project)
     path.parent.mkdir(parents=True, exist_ok=True)
     _store.write_json(path, McpServerRegistry(servers=servers))
@@ -231,7 +231,7 @@ def load_mcp_server_document(path: str | Path) -> McpServerConfig:
 def add_mcp_server(config: McpServerConfig) -> None:
     """Add one server config. Raises ``ValueError`` on a bad/duplicate name.
 
-    Lock-safe: uses ``edges/store.py``'s ``read_modify_write`` so two concurrent ``add`` calls
+    Lock-safe: uses ``platform/store.py``'s ``read_modify_write`` so two concurrent ``add`` calls
     cannot race each other into losing an entry."""
     if not config.name:
         raise InvalidInput("MCP server name is required")
@@ -296,7 +296,7 @@ class McpListResult:
     error: str = ""
 
 
-# The two operations `edges/adapters/mcp_client.py` implements. Injectable so
+# The two operations `agent/tools/mcp_client.py` implements. Injectable so
 # this module's own tests never touch the real SDK/a subprocess -- the
 # "stub at the SDK boundary" this card's tests are required to use.
 @dataclass(frozen=True)
@@ -391,7 +391,7 @@ def _build_tool(
     call_tool: CallToolFn,
     timeout: float,
 ) -> Tool:
-    """Adapt one remote tool into an ordinary ``core.tools.Tool``.
+    """Adapt one remote tool into an ordinary ``agent.tools.registry.Tool``.
 
     ``kind`` is the *server's* declared ``McpServerConfig.kind`` -- ``"read"`` or ``"write"``,
     defaulting to ``"write"`` -- never ``"exec"``: `evaluate_tool_call` routes ``exec``-kind tools
@@ -420,7 +420,7 @@ def _build_tool(
     )
 
 
-# ── the orchestration `core/agent_loop.py` calls ───────────────────────────
+# ── the orchestration `agent/loop.py` calls ───────────────────────────
 
 
 @dataclass(frozen=True)
@@ -455,16 +455,16 @@ def load_mcp_tools(
     launch: StdioLaunch | None = None,
 ) -> list[McpServerLoadResult]:
     """Connect to every configured MCP server, enumerate its tools, and register each as a
-    namespaced :class:`~docket.core.tools.Tool` into *registry* via its public
-    :meth:`~docket.core.tools.ToolRegistry.register`.
+    namespaced :class:`~docket.agent.tools.registry.Tool` into *registry* via its public
+    :meth:`~docket.agent.tools.registry.ToolRegistry.register`.
 
     Intended to be called once against a freshly built registry (typically
-    ``core.tools.builtin_registry()``) -- built-ins should already be present, since a namespaced
+    ``agent.tools.registry.builtin_registry()``) -- built-ins should already be present, since a namespaced
     MCP name can never collide with one (see specs/functional/mcp-client.spec.md's "Namespacing"
     section), but a name already present in *registry* for any other reason is skipped, never
     overwritten: this function only ever adds. Never raises. *servers* defaults to
     :func:`load_mcp_servers`; *list_tools*/*call_tool* default to the real
-    ``edges/adapters/mcp_client.py`` implementations, resolved lazily so importing this module
+    ``agent/tools/mcp_client.py`` implementations, resolved lazily so importing this module
     never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead. *launch*, when given, is how every stdio server is
     started for this load and for the calls it adapts; it is never stored."""
     if servers is None:

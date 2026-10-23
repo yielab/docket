@@ -32,7 +32,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.observability import trace as _trace
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.governance"
 
 _TEST_TOKEN = "test-serve-token-fd4-xyz789"
 
@@ -367,7 +367,7 @@ class TestAuditFailureNeverBreaksApproval:
     def test_audit_write_failure_does_not_raise(self, home: Path) -> None:
         """A missing AUDIT_LOG parent dir is best-effort created rather than raising or losing
         the entry -- nothing external bootstraps DOCKET_HOME, so a missing parent just means
-        "first write" (see `core/audit.py`'s `audit_log()` docstring)."""
+        "first write" (see `governance/audit.py`'s `audit_log()` docstring)."""
         missing = dataclasses.replace(
             current_home(), root=home / "nope", approvals_dir_override=home / "approvals"
         )

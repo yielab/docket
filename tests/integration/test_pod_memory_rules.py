@@ -1,4 +1,4 @@
-"""`core/pod_memory.py`: deciding, storing and rendering entries against a real git repository."""
+"""`teams/memory.py`: deciding, storing and rendering entries against a real git repository."""
 
 from __future__ import annotations
 

@@ -26,22 +26,22 @@ empty section. ``brief`` (a Lead's typed intake, ADR 0016 §4) is excluded from
 for this. ``estimate_tokens`` reuses the project's existing,
 already-documented chars-per-token approximation
 (``Home.context_bytes_per_token``, default 4 bytes/token — the same ratio
-``core/identity.py``'s prompt budget already uses for
+``agent/identity.py``'s prompt budget already uses for
 its own context-size guards) rather than inventing a second,
 independently-tunable ratio that could quietly drift from the first. This is
 an honest approximation good enough to bound a prompt deterministically —
 never claimed as an exact count, and never a basis for billing.
 
 Per-role budgets live on the role archetype itself
-(``core/archetypes.py``'s ``RoleArchetype.token_budget``), not a second,
+(``teams/roles.py``'s ``RoleArchetype.token_budget``), not a second,
 parallel registry — roles are declarative data for exactly this kind of
 extension. ``budget_for_role`` resolves a role name against the live
 archetype registry, falling back to ``DEFAULT_TOKEN_BUDGET`` for a role the
 registry doesn't know (e.g. a hand-built test archetype that predates this
 field, or a pipeline step targeting an unregistered role name).
 
-This module is a pure leaf, the same shape as ``core/handoff.py``: no
-filesystem I/O of its own beyond ``core/archetypes.py``'s existing registry
+This module is a pure leaf, the same shape as ``agent/handoff.py``: no
+filesystem I/O of its own beyond ``teams/roles.py``'s existing registry
 read, no subprocess, no import of ``core/dispatch.py``. ``core/dispatch.py``'s
 ``_hop_message`` is the one production caller — it composes the final hop
 message (the task description, any rework note, then the recency-ordered
@@ -90,7 +90,7 @@ TOOL_SCHEMA_RESERVE_TOKENS = 1500
 #: Share of the resolved model window (after the output-token reserve and
 #: ``TOOL_SCHEMA_RESERVE_TOKENS``) a budget may claim once nothing overrides
 #: it. Chosen so today's only registered window (16384 tokens, 8192 reserved
-#: for output — see ``core/provider.py``'s local-endpoint defaults) still
+#: for output — see ``models/catalog.py``'s local-endpoint defaults) still
 #: resolves to each budget's existing floor: half of the ~6.7K tokens left
 #: after reserving output and tool-schema room is well under the 6000-token
 #: floor, so a 16k endpoint's behaviour is unchanged. A large hosted window
@@ -127,7 +127,7 @@ def estimate_tokens(text: str) -> int:
     """Approximate *text*'s token count.
 
     ``len(text.encode("utf-8")) // Home.context_bytes_per_token`` — the
-    same bytes-per-token approximation (default 4) ``core/identity.py``'s
+    same bytes-per-token approximation (default 4) ``agent/identity.py``'s
     prompt budget already uses for its own context-size guards. This is honestly an approximation, not a real count
     from the model's own tokenizer — good enough to bound a prompt
     deterministically, never a basis for billing.
@@ -147,7 +147,7 @@ def budget_for_role(
     Falls back to a window-share of ``DEFAULT_TOKEN_BUDGET`` when *role* isn't
     in the live archetype registry, or resolves a non-positive ``token_budget``.
     When *project* is provided, resolves via the project-scoped registry first
-    (same nearest-wins layering as ``core.archetypes.load_registry(project)``);
+    (same nearest-wins layering as ``teams.roles.load_registry(project)``);
     otherwise uses the global registry only.
     """
     # An archetype's own declared token_budget always wins -- data set on purpose,
@@ -241,7 +241,7 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        (``diff_ref``, then ``files_changed``, then
        ``verdict``), re-measuring after each drop and stopping the moment it
        fits. A field that is already empty (``files_changed``/``diff_ref`` are only
-       populated for a successful Implementer hop, see `core/handoff.py`/
+       populated for a successful Implementer hop, see `agent/handoff.py`/
        `core/dispatch.py`) is skipped rather than reported as "dropped": there
        was nothing there to shed, so claiming otherwise in the trace would be
        dishonest. ``dropped_fields`` therefore only ever names a field that

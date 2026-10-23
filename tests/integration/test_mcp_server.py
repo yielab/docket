@@ -1,4 +1,4 @@
-"""Docket as an MCP server — the tool layer (`cli/_mcp.py`).
+"""Docket as an MCP server — the tool layer (`interfaces/cli/commands/mcp.py`).
 
 Exercises the ``tool_*`` functions directly — plain Python with no dependency on the ``mcp``
 SDK — covering every tool's happy path, that every call writes an audit entry, and that the
@@ -36,7 +36,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 _ASK_PIPELINE_YAML = """\
 name: ask
@@ -249,7 +249,7 @@ class TestToolDelegate:
     def test_calls_the_real_enqueue_task_once_no_duplicated_logic(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Proves the tool defers to `core.dispatch.enqueue_task_once` rather than
+        """Proves the tool defers to `tasks.application.queue.enqueue_task_once` rather than
         re-implementing the queue write itself."""
         with _seed_pod(tmp_path, project="demo"):
             calls: list[tuple[str, str, str]] = []
@@ -262,7 +262,7 @@ class TestToolDelegate:
                 assert channel == "mcp"
                 return real(project, description, priority, channel=channel)
 
-            monkeypatch.setattr(_mcp._dispatch, "enqueue_task_once", _spy)
+            monkeypatch.setattr(_mcp._queue, "enqueue_task_once", _spy)
             _mcp.tool_delegate("demo", "task", priority="low")
             assert calls == [("demo", "task", "low")]
 
@@ -379,7 +379,7 @@ class TestToolDispatch:
     def test_resume_and_timeout_are_threaded_through_to_dispatch_pod(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Proves this tool is a thin wrapper over `core.dispatch.dispatch_pod`
+        """Proves this tool is a thin wrapper over `tasks.application.sweep.dispatch_pod`
         (same gates, same knobs) rather than a parallel dispatch path."""
         with _seed_pod(tmp_path, project="demo"):
             seen: dict[str, object] = {}
@@ -537,7 +537,7 @@ class TestToolApprovalsGrantDeny:
             assert _approval.approval_get(token)["state"] == "denied"
 
     def test_grant_uses_the_real_approval_grant_tagged_channel_mcp(self, tmp_path: Path) -> None:
-        """The no-bypass guarantee: this tool calls `core.approval.approval_grant`
+        """The no-bypass guarantee: this tool calls `governance.approval.approval_grant`
         (the exact function the CLI's `docket task approve` and the HTTP webhook call)
         with channel="mcp" — never a parallel/duplicated grant path."""
         with self._seed(tmp_path) as token:

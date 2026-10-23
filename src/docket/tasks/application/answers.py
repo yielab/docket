@@ -2,9 +2,9 @@
 
 ``answer_task`` is the one place an answer becomes real: it validates *content* against the
 question's own schema (``operator_contract.validate_answer``), screens every string through the
-same ``pre_input`` evaluator ``core/telegram.py``'s ``/delegate`` uses, appends the answer to the
+same ``pre_input`` evaluator ``interfaces/telegram/bot.py``'s ``/delegate`` uses, appends the answer to the
 task's durable ``answers[]``, and resumes the pipeline at the step's own ``on:`` route -- mirroring
-exactly what a live routed hop does inside ``core.dispatch._run_pipeline``, since answering happens
+exactly what a live routed hop does inside ``pipeline.application.executor._run_pipeline``, since answering happens
 outside any live dispatch call. ``sweep_expired_questions`` is the fail-closed-but-never-fails
 counterpart: an unanswered question past its deadline blocks the task, it never fails it.
 """
@@ -61,7 +61,7 @@ class AnswerRejected(Refused):
 
 def _all_projects() -> list[str]:
     """Every project with at least one registered pod member -- the same enumeration
-    ``core.inbox`` uses, copied rather than imported to avoid a cycle risk."""
+    ``operator.inbox`` uses, copied rather than imported to avoid a cycle risk."""
     all_ids = [a.id for a in _fleet.list_agents()]
     return sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
 
@@ -74,7 +74,7 @@ def _resolve_route(
     step_id: str,
     pipeline_index: int,
 ) -> tuple[str | None, str]:
-    """Resolve *label* against *on* like ``core.dispatch._route_outcome`` does for a live hop,
+    """Resolve *label* against *on* like ``pipeline.application.executor._route_outcome`` does for a live hop,
     minus its tracing. Returns ``(next_step, terminal)``; *terminal* is
     ``"failed"``/``"done"``/``""`` (ordinary advance)."""
     route = _post_hop._match_on_route(on, label)

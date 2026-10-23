@@ -1,7 +1,7 @@
 """Standard Webhooks delivery for a `kind: channel` document whose dialect is `webhook`
 (ADR 0016 SS1/SS7): POST the CloudEvent as `application/cloudevents+json` with
 `webhook-id`/`webhook-timestamp`/`webhook-signature` headers. Stdlib `urllib` only, modelled
-on `edges/adapters/exporters/otlp_http.py`.
+on `observability/adapters/otlp_http.py`.
 
 `DeliveryResult` is the shared outcome shape every dialect in this package returns --
 `command.py`/`console.py` import it from here rather than redefining it.

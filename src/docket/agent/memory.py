@@ -5,7 +5,7 @@ layout and specs/functional/pod-dispatch.spec.md for the HEARTBEAT.md dispatch-l
 reconciliation (``write_dispatch_tasks``/``sync_dispatch_tasks``,
 ``DISPATCH_BLOCK_BEGIN``/``_END``), and specs/functional/agent-loop.spec.md for how the turn
 loop composes SOUL.md and a runtime-safe ``WORKFLOW_AUTO.md`` projection into the
-system message every turn. What a pod learns by itself lives in ``core/pod_memory.py``; this
+system message every turn. What a pod learns by itself lives in ``teams/memory.py``; this
 module keeps no daily log and distills nothing. One clock: all day math is **UTC**, matching
 ``.docket-meta.json``'s ``created`` and the trace/audit timestamps."""
 
@@ -37,7 +37,7 @@ HEARTBEAT_FILE = "HEARTBEAT.md"
 #: v4 adds a manual-path header: this file's `cd`/write-HEARTBEAT instructions
 #: are for an agent reading it directly, outside Docket's own turn loop, which
 #: never sends this raw text and applies its own read-only runtime contract
-#: instead (`core/identity.py`).
+#: instead (`agent/identity.py`).
 CONTRACT_VERSION = 4
 _CONTRACT_MARKER = f"<!-- docket-contract: v{CONTRACT_VERSION} -->"
 

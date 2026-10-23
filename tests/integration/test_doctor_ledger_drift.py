@@ -1,5 +1,5 @@
 """``docket setup --fix``'s TASK_LIST.json <-> HEARTBEAT.md dispatch-ledger
-divergence check (``cli/_setup_check.py``'s ``_check_dispatch_ledger``).
+divergence check (``interfaces/cli/commands/setup_check.py``'s ``_check_dispatch_ledger``).
 
 Dispatch itself keeps the two in sync mechanically (see
 ``test_dispatch_heartbeat_and_conversation_sync.py``); this file proves the *doctor* side: it

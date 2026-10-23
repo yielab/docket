@@ -1,4 +1,4 @@
-"""The operator-v1 contract (`core/operator_contract.py`).
+"""The operator-v1 contract (`operator/contract.py`).
 
 Pure-function/model tests: the A2A 1.0.0 task-state mapping, `TaskBrief`'s field
 validation, the MCP-elicitation-shaped question/answer pair, the operator-facing

@@ -355,7 +355,7 @@ def _run_input_step(
 ) -> _UnitOutcome:
     """Park the task for an operator question minted from *node.input*, trace
     ``input_requested``, and stop ``waiting_input`` -- no hop persisted for this attempt.
-    Resumed only by ``core.answers.answer_task``. See pod-dispatch.spec.md."""
+    Resumed only by ``tasks.application.answers.answer_task``. See pod-dispatch.spec.md."""
     assert node.input is not None
     spec = node.input
     # When the `from` step's latest hop carries a Lead intake brief with its own

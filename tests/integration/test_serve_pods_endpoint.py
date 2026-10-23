@@ -2,7 +2,7 @@
 
 Unlike most routes, not a thin wrapper over a pre-existing `core/` function: the real
 provisioning path prints through `ui.py`, and `serve.py` never imports `docket.cli`.
-`core.pod_provisioning.provision_pod` is the UI-free extraction of that path's decisions and
+`teams.pod_provisioning.provision_pod` is the UI-free extraction of that path's decisions and
 effects; `docket pod add`'s pod path and this route both call it, so the two cannot drift apart.
 Covers auth (401), bad requests (400, nothing touched), the happy path (workspaces really exist on
 disk), idempotence (409, existing pod untouched), rollback (a real induced mid-provisioning
@@ -33,7 +33,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import report as _pod_report
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.teams"
 
 _TEST_TOKEN = "test-serve-token-pods-p22-5"
 
@@ -438,7 +438,7 @@ class TestSharedProvisioningPath:
 
         monkeypatch.setattr(_pp, "provision_pod", spy)
 
-        # The CLI path: what cli/_agents.py::run_add calls for the interactive
+        # The CLI path: what interfaces/cli/commands/agents.py::run_add calls for the interactive
         # flow (build_pod_from_blueprint is a thin rendering wrapper over
         # provision_pod).
         cli_created = _pod.build_pod_from_blueprint(

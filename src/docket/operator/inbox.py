@@ -35,7 +35,7 @@ _NEEDS_YOU_STATUSES = frozenset({"blocked"})
 
 def _all_projects() -> list[str]:
     """Every project with at least one registered pod member. Broader than
-    ``core.dispatch.dispatchable_pods`` (which requires a Lead at the canonical member id), so a
+    ``tasks.application.queue.dispatchable_pods`` (which requires a Lead at the canonical member id), so a
     paused or otherwise partially-provisioned pod is never dropped from the inbox."""
     all_ids = [a.id for a in _fleet.list_agents()]
     return sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})

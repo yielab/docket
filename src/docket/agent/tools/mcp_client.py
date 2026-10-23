@@ -1,9 +1,9 @@
 """MCP client adapter.
 
-The one shipped implementation of ``core/mcp_tools.py``'s two-function port
+The one shipped implementation of ``agent/tools/mcp_tools.py``'s two-function port
 (``ListToolsFn``/``CallToolFn``) -- the only module in docket that knows the
 MCP wire protocol exists, or that a subprocess is involved at all. Mirrors
-``edges/adapters/llm.py``'s split: the port's pure types live in ``core/``,
+``models/adapters/openai_http.py``'s split: the port's pure types live in ``core/``,
 every protocol/SDK-specific detail lives here.
 
 **Subprocess-per-exchange, on purpose.** Each public function here spawns a
@@ -19,13 +19,13 @@ cancelled and reported as unavailable rather than left to block a turn.
 **Optional dependency.** The official ``mcp`` SDK (``docket[mcp]``, see
 ``pyproject.toml``) is not a base dependency. Both public functions probe for
 it and import it lazily, guarded by ``try``/``except ImportError`` -- the same
-pattern ``cli/_mcp.py`` already uses on the server side. A missing SDK comes
+pattern ``interfaces/cli/commands/mcp.py`` already uses on the server side. A missing SDK comes
 back as ordinary data (``MISSING_SDK_HINT`` in the result's ``error``), never
 a bare traceback.
 
 **Never raises.** A bad server, a missing SDK, a timeout, or a malformed
-response all come back as an ordinary failed result. ``core/mcp_tools.py``'s
-``load_mcp_tools`` and, for a call, ``core/tools.py``'s ``dispatch_tool`` (via
+response all come back as an ordinary failed result. ``agent/tools/mcp_tools.py``'s
+``load_mcp_tools`` and, for a call, ``agent/tools/registry.py``'s ``dispatch_tool`` (via
 the ``Tool.handler`` built from this module's ``call_remote_tool``) both
 expect "the server is unavailable" to be data, not an exception that unwinds
 a turn.
@@ -223,11 +223,11 @@ def call_remote_tool(
 ) -> ToolOutcome:
     """Connect to *config*, call one tool, disconnect. Never raises.
 
-    This is the function ``core/mcp_tools.py`` closes over to build each
-    adapted ``Tool``'s handler -- by the time it runs, ``core/tools.py``'s
+    This is the function ``agent/tools/mcp_tools.py`` closes over to build each
+    adapted ``Tool``'s handler -- by the time it runs, ``agent/tools/registry.py``'s
     ``dispatch_tool`` has already gated the call; this function only performs
     the underlying protocol exchange, exactly as a built-in tool's handler in
-    ``edges/adapters/toolbox.py`` only performs its own I/O.
+    ``agent/tools/builtins/toolbox.py`` only performs its own I/O.
     """
     if not _sdk_available():
         return ToolOutcome(False, error=MISSING_SDK_HINT)

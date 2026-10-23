@@ -18,9 +18,9 @@ import pytest
 from tests.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
-from docket.core import dispatch as _dispatch
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
+from docket.governance import profile as _profile
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import actions as _actions
@@ -28,7 +28,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _PIPELINE = (
     "name: two\nsteps:\n  - id: lead\n    role: lead\n  - id: implementer\n    role: implementer\n"
@@ -117,7 +117,7 @@ def _resolve(token: str, decision: str) -> None:
 
 def _lights_out(monkeypatch: pytest.MonkeyPatch) -> None:
     _fleet.set_profile("lights-out")
-    monkeypatch.setattr(_dispatch._profile, "project_violations", lambda project, steps: [])
+    monkeypatch.setattr(_profile, "project_violations", lambda project, steps: [])
 
 
 def test_a_lights_out_task_that_edits_package_json_parks_naming_it(

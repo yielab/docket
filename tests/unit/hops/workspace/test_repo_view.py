@@ -1,4 +1,4 @@
-"""The base-commit reader a turn registers for its worktree (`core/repo_view.py`).
+"""The base-commit reader a turn registers for its worktree (`hops/workspace/repo_view.py`).
 
 Pins that a registered view is local to the turn that registered it: the children of a
 ``parallel`` group run concurrently in one task worktree, so one child ending its turn must

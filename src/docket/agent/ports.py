@@ -7,7 +7,7 @@ outside ``edges/adapters/`` needs to know what a session record, a driver
 invocation, or a cost figure actually looks like on disk.
 
 ROADMAP §4.5 bans an ``AbstractBackend``; this module revises that ban, not repeals
-it: **one typed port, one shipped driver** (``edges.adapters.docket_runtime.
+it: **one typed port, one shipped driver** (``agent.driver.
 DocketDriver``), plus a ``FakeDriver`` test double. This is containment of
 coupling, not speculative plugin-framework generality — a second real driver still
 needs a §4.5 trigger (upstream stall/breakage) or a paying user.
@@ -109,7 +109,7 @@ class TurnResult:
     # Measured endpoint token counts for this turn (never an estimate); ``None`` when the
     # driver reports none (evidence-v1 then records null usage for the hop).
     usage: TokenUsage | None = field(default=None, kw_only=True)
-    # The turn loop's own stop reason (``core.agent_loop.StopReason``: ``approval_unavailable``,
+    # The turn loop's own stop reason (``agent.loop.StopReason``: ``approval_unavailable``,
     # ``max_iterations``, ...), finer than ``failure_kind``; ``""`` when the driver gave none.
     stop_reason: str = field(default="", kw_only=True)
     # Repository files this turn's prompt and skill reads were served from the task's base commit:

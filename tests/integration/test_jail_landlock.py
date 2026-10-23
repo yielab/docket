@@ -1,6 +1,6 @@
 """The Landlock jail on a real kernel: filesystem rights and network, judged by the child's own result.
 
-Skips cleanly when the kernel has no Landlock. The jail is the real ``python -m docket.jail``
+Skips cleanly when the kernel has no Landlock. The jail is the real ``python -m docket.sandbox.jail``
 entry run in a subprocess; nothing is stubbed. See specs/functional/security-gates.spec.md item 10.
 """
 

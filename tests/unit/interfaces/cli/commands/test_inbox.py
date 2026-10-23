@@ -1,4 +1,4 @@
-"""``docket inbox``: renders `core.inbox.build_inbox`, owns the on-disk cursor and puts the
+"""``docket inbox``: renders `operator.inbox.build_inbox`, owns the on-disk cursor and puts the
 exact `docket task ...` command on every item. `INBOX_CURSOR_FILE` is not one of
 `tests/conftest.py`'s autouse-isolated paths, so every test repoints it explicitly.
 """

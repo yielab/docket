@@ -9,7 +9,7 @@ with ``DOCKET_NO_TRACE=1``.
 
 Exempt from the store.py single-writer rule: appends are line-independent,
 not a read-modify-write of a whole document, so this module writes JSONL
-directly rather than through ``edges/store.py``.
+directly rather than through ``platform/store.py``.
 """
 
 from __future__ import annotations
@@ -88,8 +88,8 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "command_step",  # a `run` (command) step executed, with its exit code
         "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
         "input_requested",  # an `input` step parked the task, waiting on an operator question
-        "input_answered",  # `core.answers.answer_task` resumed a parked `input` step
-        "question_asked",  # a `consult` call posed a QuestionV11 to the operator (core/consult.py)
+        "input_answered",  # `tasks.application.answers.answer_task` resumed a parked `input` step
+        "question_asked",  # a `consult` call posed a QuestionV11 to the operator (tasks/application/consult.py)
         "input_expired",  # an unanswered question passed its deadline; task -> blocked
         "llm_call",  # one backend chat-completions exchange: model, tokens, latency
         "hop_started",  # a pod-dispatch hop began: step, member, model, provider, cycle
@@ -210,9 +210,9 @@ def _parse_record(line: str) -> dict[str, Any] | None:
 
 # Same list, same lock, same semantics as subscribe() below (now expressed over this, byte for
 # byte the same behaviour): a raising sink is suppressed (mirrors _emit_trace's best-effort rule
-# in core/approval.py) and never changes trace_event's return value; the returned callable
+# in governance/approval.py) and never changes trace_event's return value; the returned callable
 # removes exactly the one instance added even if subscribed twice. Built for a long-lived
-# subscriber (core/telemetry.py's export pipeline) that has no single `with` block to own.
+# subscriber (observability/telemetry.py's export pipeline) that has no single `with` block to own.
 def add_subscriber(sink: TraceSink) -> Callable[[], None]:
     """Non-context-manager form of ``subscribe``: register *sink* and return a callable that
     unregisters it."""
@@ -397,7 +397,7 @@ def expire_old_traces(
     *retention_s* defaults to ``Home.trace_retention_s``; *dry_run*
     reports without deleting or touching any index; *project* restricts the
     sweep to one project. Never touches ``audit.log`` -- out of scope by
-    design (see ``core/audit.py``); only ever globs ``TRACES_DIR``.
+    design (see ``governance/audit.py``); only ever globs ``TRACES_DIR``.
     """
     window = current_home().trace_retention_s if retention_s is None else retention_s
     traces_root = current_home().traces_dir

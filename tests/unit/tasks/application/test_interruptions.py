@@ -1,4 +1,4 @@
-"""``core.interruptions`` -- the interruption forecast and pre-grants from intake
+"""``tasks.application.interruptions`` -- the interruption forecast and pre-grants from intake
 (ADR 0016 SS10).
 """
 

@@ -1,5 +1,5 @@
 """A stdio MCP server spawned for a turn starts in that turn's resolved root
-(`edges/adapters/mcp_client.py`, `core/mcp_tools.py`, `DocketDriver.run_turn`)."""
+(`agent/tools/mcp_client.py`, `agent/tools/mcp_tools.py`, `DocketDriver.run_turn`)."""
 
 from __future__ import annotations
 

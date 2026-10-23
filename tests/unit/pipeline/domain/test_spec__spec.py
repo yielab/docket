@@ -1,6 +1,6 @@
 """docket-native pipeline spec.
 
-``core/pipeline.py`` defines the format only, a Pydantic model for the
+``pipeline/domain/spec.py`` defines the format only, a Pydantic model for the
 YAML dialect the executor runs pods through; tests the model and its
 validation only, not dispatch behavior. See
 specs/functional/pipeline-format.spec.md for the zero-migration contract.

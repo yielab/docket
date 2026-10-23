@@ -1,7 +1,7 @@
 """POST /tasks/<id>/pregrants — recording a single-use pre-grant over HTTP.
 
 The HTTP counterpart of `docket task approve <id> --for` and the MCP `task_pregrant` tool: same
-`core.interruptions.record_pregrant` call (`channel="http"`), so the recorded pre-grant is
+`tasks.application.interruptions.record_pregrant` call (`channel="http"`), so the recorded pre-grant is
 byte-for-byte identical to every other surface. Covers auth, the happy path (the token, and the
 task's own `pregrants` list), and the error mappings (`404`/`400`).
 """
@@ -25,7 +25,7 @@ from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import queue as _queue
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _TEST_TOKEN = "test-serve-token-task-pregrant-p34-15"
 

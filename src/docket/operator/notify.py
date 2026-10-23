@@ -6,7 +6,7 @@ against the persisted dedupe snapshot, saves the new snapshot BEFORE delivering 
 mid-delivery must never re-emit: at-most-once, not at-least-once), then hands each event to
 whatever ``sink_for`` returns for a channel's dialect. This module never imports
 ``edges/adapters`` itself -- it receives a sink factory from its caller, the same seam
-``core/telemetry.py``'s ``start(specs, sink_for)`` uses. A failed delivery is recorded in
+``observability/telemetry.py``'s ``start(specs, sink_for)`` uses. A failed delivery is recorded in
 ``channels-health.json`` and is never retried on a later flush -- only within the one flush
 call that discovered it.
 """
@@ -91,7 +91,7 @@ class FlushReport:
 
 class DeliveryOutcome(Protocol):
     """The shape `flush` reads off whatever a `Deliver` call returns. Matched structurally
-    against `edges/adapters/channels/webhook.py::DeliveryResult`'s field names, never imported
+    against `operator/adapters/webhook.py::DeliveryResult`'s field names, never imported
     by name -- this module never imports `edges/adapters` (see the module docstring)."""
 
     @property
@@ -317,7 +317,7 @@ def build_test_event(spec: Any, *, now: str) -> CloudEvent:
 
 
 def read_state() -> dict[str, Any]:
-    """The persisted dedupe snapshot (`Home.notify_state_file`), through `edges/store.py`
+    """The persisted dedupe snapshot (`Home.notify_state_file`), through `platform/store.py`
     like every other docket-owned JSON read. `{}` before the first flush."""
     return _store.read_json(current_home().notify_state_file)
 
@@ -332,7 +332,7 @@ def _load_health() -> dict[str, Any]:
 
 
 def resolve_secret(spec: Any) -> str | None:
-    """The credential *value* named by `spec.secret`, through `core.secrets.secret_value` --
+    """The credential *value* named by `spec.secret`, through `governance.secrets.secret_value` --
     a channel document only ever stores a credential name."""
     name = getattr(spec, "secret", None)
     if not name:
@@ -461,8 +461,8 @@ def _flush(
 
 
 def _flush_notify_channels() -> None:
-    """One `core.notify.flush` call over every catalog channel -- the periodic half of
-    delivery; `cli/_pod.py::_pod_dispatch` runs the other, foreground half."""
+    """One `operator.notify.flush` call over every catalog channel -- the periodic half of
+    delivery; `interfaces/cli/commands/pod.py::_pod_dispatch` runs the other, foreground half."""
     from docket.operator import adapters as _channels
     from docket.operator import channel as _channel
     from docket.operator import notify as _notify

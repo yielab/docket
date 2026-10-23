@@ -1,4 +1,4 @@
-"""The channel catalog (`core/channel.py`).
+"""The channel catalog (`operator/channel.py`).
 
 Covers ``load_channel_document`` (the `kind: channel` document loader,
 specs/functional/operator-loop.spec.md "Notifications"), the built-in + global catalog merge

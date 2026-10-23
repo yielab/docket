@@ -1,9 +1,9 @@
 """Pod blueprints: objective-scoped provisioning.
 
 A *blueprint* is a named, versioned pod shape: an archetype roster (role names
-resolved against ``core/archetypes.py``'s registry), a default pipeline
-(``core/pipeline.py``'s format, resolved and executed by
-``core/dispatch.py::effective_pipeline`` through the Lead's ``blueprint`` meta whenever a
+resolved against ``teams/roles.py``'s registry), a default pipeline
+(``pipeline/domain/spec.py``'s format, resolved and executed by
+``pipeline/application/steps.py::effective_pipeline`` through the Lead's ``blueprint`` meta whenever a
 dispatch runs with no caller-supplied spec), a workspace kind
 (``codebase`` — a git-tracked project directory — or ``workdir`` — a plain
 working directory with no codebase assumption), and an optional default
@@ -15,7 +15,7 @@ field to drift from it.
 Built-ins (``BUILTIN_BLUEPRINTS``):
 
 - ``software`` — today's pod, unchanged: Lead + Implementer against a
-  codebase. Its ``default_pipeline`` is exactly ``core.pipeline.default_pipeline()``
+  codebase. Its ``default_pipeline`` is exactly ``pipeline.domain.spec.default_pipeline()``
   (the same object dispatch.py's hardcoded order already matches) and it sets
   no default budget cap — provisioning through this blueprint is behaviorally
   identical to the plain default `docket init`.
@@ -31,8 +31,8 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
 - ``agentic-product`` — Lead, Implementer, Reviewer, Tester (codebase): the
   pod shape for a product that itself ships an agent to end users, not just
   an internal tool. Its ``default_pipeline`` is the same
-  ``core.pipeline.default_pipeline()`` object ``software`` attaches, but
-  because the roster carries Reviewer and Tester (``core/pod.py``'s existing
+  ``pipeline.domain.spec.default_pipeline()`` object ``software`` attaches, but
+  because the roster carries Reviewer and Tester (``teams/pod.py``'s existing
   ``FULL_POD_ROLES``, not a new roster shape), both steps actually gate a hop
   at dispatch time instead of going unreached the way they do behind
   ``software``'s lean default roster. That is a deliberate, data-only
@@ -46,18 +46,18 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   ``description`` below).
 
 ``workspace_kind`` is a closed enum (``WORKSPACE_KINDS``) — same discipline
-as ``core/archetypes.py``'s ``scope``/``modelClass``/``gateContract.kind``,
+as ``teams/roles.py``'s ``scope``/``modelClass``/``gateContract.kind``,
 avoiding an open-ended set of workspace shapes that would otherwise need
 special-casing elsewhere. A blueprint's *roster* references
 the archetype registry by name (open — any built-in,
-starter-library, or user-defined archetype), exactly like ``core/pod.py``'s
+starter-library, or user-defined archetype), exactly like ``teams/pod.py``'s
 pre-existing ``DEFAULT_POD_ROLES``/``FULL_POD_ROLES`` tuples already do; this
 module does not re-validate role names against that registry itself —
-``core/pod.py``'s ``plan_pod``/``normalize_role`` already does, the first time
+``teams/pod.py``'s ``plan_pod``/``normalize_role`` already does, the first time
 a blueprint's roster is actually provisioned.
 
 Blueprints are Python literals in this module (the same "workspace prose is
-generated inline in Python" convention ``core/archetypes.py`` follows for its
+generated inline in Python" convention ``teams/roles.py`` follows for its
 own built-ins) — there is no user-authored blueprint YAML format yet (unlike
 ``docket pod update``); the five built-ins are the whole registry today.
 """
@@ -85,7 +85,7 @@ class PodBlueprint:
     """A named, versioned pod shape — archetype roster + default pipeline.
 
     ``roles`` is ordered and its first entry MUST be ``"lead"`` — a pod has
-    exactly one orchestrator (``core/pod.py``'s ``_SINGLETON_POD_ROLES``
+    exactly one orchestrator (``teams/pod.py``'s ``_SINGLETON_POD_ROLES``
     invariant, unchanged by this module). Per-role org-vs-pod scope is
     whatever each referenced archetype's own ``scope`` field says (inherited,
     not re-declared here) — every built-in/starter archetype today is

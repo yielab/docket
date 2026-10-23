@@ -22,7 +22,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.models import catalog as _prov
 from docket.models import selection as _models_policy
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 
 @pytest.fixture(autouse=True)

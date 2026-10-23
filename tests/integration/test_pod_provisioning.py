@@ -371,7 +371,7 @@ class TestPodAddRemoveAudit:
 
 
 class TestMemberSync:
-    """`core.pod_provisioning.member_sync_status`/`resync_member` -- re-rendering an
+    """`teams.pod_provisioning.member_sync_status`/`resync_member` -- re-rendering an
     existing pod member's managed files from the current archetype + metadata."""
 
     def test_freshly_provisioned_member_is_not_stale(self, tmp_path: Path) -> None:

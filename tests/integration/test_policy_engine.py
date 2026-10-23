@@ -1,6 +1,6 @@
 """Policy engine on the live path.
 
-Exercises ``core/policy.py``'s ``pre_input``/``pre_output`` hooks wired into the real dispatch
+Exercises ``governance/policy.py``'s ``pre_input``/``pre_output`` hooks wired into the real dispatch
 path, not just the CLI's dry-run printer. TestInstallPolicies covers the shared
 ``install_policies()`` producer; TestPolicyEvalDetail covers the ``PolicyHit``-returning evaluator
 underneath ``policy_test``; TestEnqueuePreInputGate and TestPreOutputGate cover the hooks themselves: block
@@ -32,7 +32,7 @@ from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks"
 
 # ── hermetic environment (mirrors test_approval_gated_dispatch.py) ────────────
 
@@ -136,7 +136,7 @@ class _RecordingRunner:
 
 def _shipped_template_files() -> list[Path]:
     """Every shipped template -- JSON or YAML, since the baseline templates ship as short-form
-    YAML -- sorted the same way ``core.policy.install_policies`` iterates them."""
+    YAML -- sorted the same way ``governance.policy.install_policies`` iterates them."""
     return sorted(
         p
         for pattern in ("*.json", "*.yaml", "*.yml")

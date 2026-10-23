@@ -32,7 +32,7 @@ def pod_recorded_cost(project: str) -> float:
 def _pod_settings(project: str) -> _pod.PodSettings:
     """Load this pod's validated Lead-meta settings, or raise ``DispatchError``
     naming the offending key -- never a silently substituted default (see
-    ``core.pod.PodSettings``)."""
+    ``teams.pod.PodSettings``)."""
     try:
         return _pod.PodSettings.load_for(project)
     except _pod.PodSettingsError as exc:

@@ -2,16 +2,16 @@
 
 A role archetype is data, not code: name, scope, model class, SOUL/AGENTS prose
 templates, a gate contract, a tool profile, and an enforced tool
-denylist. `core/pod.py` resolves pod roles against this registry instead of a
+denylist. `teams/pod.py` resolves pod roles against this registry instead of a
 hardcoded 4-tuple, so a new role is data, never a hardcoded string in
-`core/pod.py`/`cli/_pod.py`.
+`teams/pod.py`/`interfaces/cli/commands/pod.py`.
 
 `tool_profile` is prose -- descriptive, never enforced (a real gap: a Reviewer
 was once *told* "read-only" in SOUL.md but handed the full tool registry
 anyway). `denied_tools` closes that gap as data: built-in tool names a role
 may never call. `registry_for_role` is the sole consumer -- it removes exactly
 those names via `ToolRegistry.without()`, called once per turn by
-`core/agent_loop.py` before advertising tools or dispatching a call. No caller
+`agent/loop.py` before advertising tools or dispatching a call. No caller
 ever branches on a role's name.
 
 Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's four pod roles --
@@ -20,12 +20,12 @@ lead, implementer, reviewer, tester (golden-tested; see
 researcher, analyst, writer, critic, operator, monitor.
 
 `model_class` (cheap|strong) slots into the role->model policy
-(`core/models_policy.py`): an archetype's model row is its own name; a
+(`models/selection.py`): an archetype's model row is its own name; a
 pod-scoped archetype with no row resolves through its own `model_class`
 against the live rank anchors instead.
 
 `token_budget` is the role's context-compiler budget -- how many approximate
-tokens of prior-hop carryover `core/context.py` may thread into that role's
+tokens of prior-hop carryover `agent/context.py` may thread into that role's
 hop prompt. It lives on the archetype, not a second registry, so identity and
 resource budget cannot drift apart; defaults to 6000 when unset.
 
@@ -81,7 +81,7 @@ class ArchetypeError(InvalidInput):
 class GateContract:
     """Closed typed union over the four gate-contract kinds; `regexes` applies only to
     `kind == "verdict"` (e.g. reviewer APPROVE/REQUEST-CHANGES, tester PASS/FAIL). Real,
-    consumed data: `core.orchestrator.resolve_gate` falls back to it when a step omits its own."""
+    consumed data: `pipeline.domain.plan.resolve_gate` falls back to it when a step omits its own."""
 
     kind: str
     regexes: tuple[str, ...] = ()
@@ -122,7 +122,7 @@ class RoleArchetype:
     tool_profile: str  # open prose (not enforced; descriptive only)
     description: str = ""  # open one-line prose, shown by `docket pod roles`
     # This role's context-compiler token budget — see
-    # the module docstring's "token_budget" paragraph and `core/context.py`.
+    # the module docstring's "token_budget" paragraph and `agent/context.py`.
     token_budget: int = 6000
     # Built-in tool names this role may never call —
     # see the module docstring's "Per-role tool sets" section. Open (like
@@ -443,11 +443,11 @@ BUILTIN_ROLE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "teste
 # ── Starter library: six generic pod roles for non-coding objectives ──────────
 #
 # These ship as data, proving "a research pod, a content pod, an ops pod" are
-# expressible without a new hardcoded role string anywhere in core/pod.py or
-# cli/_pod.py. They participate in `docket pod roles`/`normalize_role`/`member_id`,
-# in pod composition presets (`core/blueprints.py`'s research/content/ops
+# expressible without a new hardcoded role string anywhere in teams/pod.py or
+# interfaces/cli/commands/pod.py. They participate in `docket pod roles`/`normalize_role`/`member_id`,
+# in pod composition presets (`teams/blueprints.py`'s research/content/ops
 # blueprints), and — via `gate_contract` — in the dispatch executor's gate
-# resolution (`core/orchestrator.py`).
+# resolution (`pipeline/domain/plan.py`).
 
 _STARTER_SOUL_HEAD = (
     "# SOUL.md — ${project} · ${role}\n\n"
@@ -740,10 +740,10 @@ BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
 
 
 # A bad stored value degrades to "no additional pod-level denial" rather than raising --
-# mirroring `edges/adapters/docket_runtime.py`'s `_resolve_allow_commands` fail-open
+# mirroring `agent/driver.py`'s `_resolve_allow_commands` fail-open
 # pattern for a different pod setting: this runs once per turn on the live agent-loop
 # path and must never crash it, and the write path (`PodSettings.coerce`) is what
-# refuses a bad value before it can ever reach here. Deferred import: `core.pod`
+# refuses a bad value before it can ever reach here. Deferred import: `teams.pod`
 # imports this module at module scope, so importing it back here would be circular --
 # by the time any real turn calls this function both modules are already loaded.
 def _pod_denied_tools(project: str) -> tuple[str, ...]:
@@ -765,9 +765,9 @@ def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolR
     Looks *role* up in the live archetype registry (*project*'s pod overlay, when
     given, resolving nearest-wins above the global overlay -- see `load_registry`) and
     removes every name in the **union** of its `denied_tools` and *project*'s own
-    `deniedTools` pod setting (`core.pod.PodSettings`, see `_pod_denied_tools`) via the
+    `deniedTools` pod setting (`teams.pod.PodSettings`, see `_pod_denied_tools`) via the
     public `ToolRegistry.without()` API -- data-driven, not a per-role branch
-    (`core/agent_loop.py` is the one caller, once per turn, passing the turn's
+    (`agent/loop.py` is the one caller, once per turn, passing the turn's
     `ToolContext.project`). A pod-level denial is therefore as strong as an
     archetype-declared one: a pod's `deniedTools` naming `fetch` removes it from
     every role in that pod, not only the ones whose own archetype already denied it.
@@ -786,7 +786,7 @@ def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolR
     those kinds whose name is not a built-in. A built-in is removed only by its own
     name: denying `fetch` leaves `read`. A role denied `write` can never regain a
     write-capable tool just because it arrived through MCP instead of
-    `core.tools.builtin_registry()`.
+    `agent.tools.registry.builtin_registry()`.
     """
     archetype = load_registry(project).get(role)
     role_denied = archetype.denied_tools if archetype is not None else ()
@@ -951,7 +951,7 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
 
 def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
     """Inverse of `normalize_role`: the short-form document and its paired instructions
-    Markdown text, the shape `core.pod_apply._export_roles` writes as `<name>.yaml`/
+    Markdown text, the shape `teams.apply.plan._export_roles` writes as `<name>.yaml`/
     `<name>.md`."""
     doc: dict[str, Any] = {"kind": "role", "name": arch.name}
     if arch.description:

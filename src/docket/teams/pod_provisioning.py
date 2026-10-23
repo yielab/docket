@@ -1,9 +1,9 @@
 """Pod provisioning: the create-a-pod side effects, UI-free.
 
-Split out of ``cli/_pod.py``/``cli/_agents.py``: ``core/`` must never import
+Split out of ``interfaces/cli/commands/pod.py``/``interfaces/cli/commands/agents.py``: ``core/`` must never import
 ``ui.py`` or print, and ``POST /pods`` (``serve.py``) needs the same effectful
 path ``docket init`` uses, so both callers of ``provision_pod`` share this file.
-Kept separate from ``core/provisioning.py``, whose docstring promises pure,
+Kept separate from ``teams/provisioning.py``, whose docstring promises pure,
 I/O-free UX helpers -- nearly everything here writes files and shells to git.
 
 Rollback contract: see specs/data/serve-read-api.spec.md (POST /pods) and
@@ -40,7 +40,7 @@ from docket.teams import roles as _arch
 # Bump when the pod-member templates change (doctor flags older members).
 # v3: built-in/starter AGENTS.md templates no longer instruct a private
 # HEARTBEAT.md write -- it contradicted the live runtime contract (see
-# core/archetypes.py's Red Lines templates).
+# teams/roles.py's Red Lines templates).
 # v4: SOUL.md names no path, AGENTS.md carries the shared method and no private-file
 # reads, and no template asks for a completion promise.
 POD_TEMPLATE_VERSION = 5
@@ -419,7 +419,7 @@ def provision_member(
         budget_usd=budget_usd,
     )
     # Registration is fleet.json only -- there is no daemon to register with
-    # (see cli/_agents.py's run_add for the identical reasoning).
+    # (see interfaces/cli/commands/agents.py's run_add for the identical reasoning).
     _fleet.add_agent(member.member_id)
     return (True, "")
 
@@ -835,10 +835,10 @@ def provision_pod(
     Raises:
       ``PodAlreadyExistsError`` -- pod already exists; checked before anything
         else is resolved.
-      ``core.blueprints.BlueprintError`` -- unknown blueprint name.
+      ``teams.blueprints.BlueprintError`` -- unknown blueprint name.
       ``VerifyCmdError`` -- ``verify_cmd`` fails validation.
       ``PodProvisionError`` -- a member failed to provision after rollback.
-      ``core.provisioning.ProjectIdError`` -- ``project`` fails ``validate_project_id``;
+      ``teams.provisioning.ProjectIdError`` -- ``project`` fails ``validate_project_id``;
         checked before the lock and before any path is built.
     """
     project = _prov.validate_project_id(project)
@@ -894,7 +894,7 @@ def provision_pod(
 #
 # A pod member's SOUL.md/AGENTS.md/TOOLS.md are generated wholesale from its
 # archetype + stored metadata and may be freely overwritten -- an operator's
-# own notes belong in INSTRUCTIONS.md (core/identity.py), which nothing here
+# own notes belong in INSTRUCTIONS.md (agent/identity.py), which nothing here
 # ever reads, writes, or diffs.
 
 

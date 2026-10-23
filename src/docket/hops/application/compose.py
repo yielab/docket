@@ -162,7 +162,7 @@ def _hop_message(
     step_instructions: str = "",
     project: str = "",
 ) -> tuple[str, _HopComposition]:
-    """Build one role's message via ``core/context.py``'s token-budget compiler (see
+    """Build one role's message via ``agent/context.py``'s token-budget compiler (see
     pod-dispatch.spec.md, "Bounded hop prompts"). The task description is never truncated;
     each prior artifact is fit to a per-role share, shedding ``DROP_ORDER`` fields before
     ``summary``, which is only ever truncated with a marker, never silently dropped.
@@ -313,7 +313,7 @@ _ANSWERS_CHAR_BUDGET = 4000
 
 def _render_answer_value(entry: dict[str, Any]) -> str:
     """One answered entry's ``A: ...`` line: the single ``answer`` property's value for an
-    ``accept``, else a plain marker -- see ``core.answers.answer_task``."""
+    ``accept``, else a plain marker -- see ``tasks.application.answers.answer_task``."""
     action = str(entry.get("action", ""))
     if action == "accept":
         content = entry.get("content")
@@ -447,7 +447,7 @@ def _compose_hop(
         if resolved_mode == "park":
             # This hop's own deadline for a call it parks (ADR 0016 SS2) --
             # popped by DocketDriver into ToolContext.approval_expires_at,
-            # stamped on the parked record by core/tools.py's `_park_call`.
+            # stamped on the parked record by agent/tools/registry.py's `_park_call`.
             # Computed fresh per hop (not once per task) so a long-running
             # earlier hop never shortens a later one's window.
             expiry_hours = _pod_settings(ctx.project).approval_expiry_hours

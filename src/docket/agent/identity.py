@@ -4,7 +4,7 @@ docket owns an agent's identity as a pure function of its ``.docket-meta.json``:
 agent's *role* is its identity. This module composes a turn's system prompt from this
 agent's own on-disk identity files; the pure string logic does no I/O.
 
-Without this module, ``core/agent_loop.py`` would compose no system prompt at all —
+Without this module, ``agent/loop.py`` would compose no system prompt at all —
 ``SOUL.md`` (identity, scope, session key), the member's ``AGENTS.md`` (method) and a
 runtime-safe projection of ``WORKFLOW_AUTO.md``'s resume/durability contract would
 never reach the model. Layers run stable first and carry no task data: the project roots and
@@ -38,7 +38,7 @@ from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
 
 #: A composed prompt section's fit outcome, for the ``prompt_composed`` trace event
-#: `core/agent_loop.py` emits -- this module stays trace-free and only reports data.
+#: `agent/loop.py` emits -- this module stays trace-free and only reports data.
 PromptSectionStatus = Literal["full", "truncated", "omitted"]
 
 #: The identity file `compose_agent_prompt` reads alongside
@@ -149,7 +149,7 @@ def compose_system_prompt(
     to budget by the caller) is placed right after the SOUL section and *agents_text* (also
     pre-fit) right after it, ahead of the runtime contract.
     Empty inputs degrade gracefully: no ``SOUL.md`` and no runtime contract composes to
-    ``""``, which ``core/agent_loop.py`` treats as "no system message this turn" rather
+    ``""``, which ``agent/loop.py`` treats as "no system message this turn" rather
     than sending the model an empty one."""
     effective_soul = soul_text.strip()
     instructions = instructions_text.strip()
@@ -270,7 +270,7 @@ def resolve_static_context_budget(
     """
     # An explicit override (CONTEXT_TOKEN_BUDGET in the environment, or a Home that sets it)
     # always wins. Otherwise the budget is a documented share of the resolved window (see
-    # core.context.resolve_window_share_tokens), floored at today's plain default so an
+    # agent.context.resolve_window_share_tokens), floored at today's plain default so an
     # absent or unregistered window resolves to exactly today's behaviour.
     home = current_home()
     if home.context_token_budget_override is not None:
@@ -377,7 +377,7 @@ def _runtime_workspace_context(
     return "".join(parts), tuple(reports)
 
 
-# Reuses core.mcp_tools._screen_description's exact verdict handling for an untrusted
+# Reuses agent.tools.mcp_tools._screen_description's exact verdict handling for an untrusted
 # remote tool description -- this is the second caller of that same shape, never a
 # second screen. block/require_approval excludes *text* (an audited marker instead);
 # warn/redact still composes it (audited); allow is silent. Always trusted=False:
@@ -557,7 +557,7 @@ def compose_agent_prompt(
     max_output_tokens: int | None = None,
 ) -> PromptComposition:
     """Read *agent_id*'s identity plus bounded private state and compose a prompt — the
-    one I/O entry point ``core/agent_loop.py`` needs. An unprovisioned agent composes to
+    one I/O entry point ``agent/loop.py`` needs. An unprovisioned agent composes to
     an empty ``PromptComposition`` rather than raising: a turn must still run."""
     # context_window_tokens/max_output_tokens are the resolved model window and output
     # reserve for this turn, when known (None for an unresolvable/unregistered model) --

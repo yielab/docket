@@ -1,7 +1,7 @@
 """Pod runtime-resource allocation.
 
-Pure logic — no I/O. The CLI layer (cli/_pod.py) calls these helpers and
-writes the allocation table via edges/store.py.
+Pure logic — no I/O. The CLI layer (interfaces/cli/commands/pod.py) calls these helpers and
+writes the allocation table via platform/store.py.
 
 Each pod gets a reserved, non-overlapping **port range** (100 ports by default)
 and an isolated **scratch data directory**. Ranges are tracked in a flat JSON

@@ -1,4 +1,4 @@
-"""``core/archetypes.py``'s pure, non-registry pieces: ``hop_instruction``'s wire
+"""``teams/roles.py``'s pure, non-registry pieces: ``hop_instruction``'s wire
 round-trip, ``resolve_hop_instruction``'s gateContract-derived fallback, and that
 every built-in/starter role's generated prose agrees with the live runtime contract.
 """
@@ -148,7 +148,7 @@ def _instructs_a_private_write(prompt: str) -> str:
 class TestGeneratedInstructionsAgreeWithRuntimeContract:
     """No built-in/starter archetype's rendered SOUL.md + AGENTS.md may instruct the
     model to write HEARTBEAT.md or memory/ itself -- that contradicts
-    `core/identity.py`'s live runtime contract, composed into the same turn."""
+    `agent/identity.py`'s live runtime contract, composed into the same turn."""
 
     def test_no_archetype_instructs_a_private_write(self) -> None:
         offenders: dict[str, str] = {}

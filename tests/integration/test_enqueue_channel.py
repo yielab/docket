@@ -19,7 +19,7 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 _TOKEN = "test-serve-token-channel"
 

@@ -20,7 +20,7 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.platform import store as _store
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _TOKEN = "test-serve-token-inbox-options"
 _SCHEMA = Path(__file__).resolve().parents[2] / "docs/contracts/operator-v1/inbox.schema.json"

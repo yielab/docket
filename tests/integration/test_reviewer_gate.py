@@ -33,7 +33,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.pipeline"
 
 # ── hermetic helpers (mirror test_verify_gate.py) ─────────────────────────────
 
@@ -98,7 +98,7 @@ def _role_of(agent_id: str) -> str:
 
 class TestParseReviewerVerdict:
     """Reviewer marker parsing is not a dispatch-private regex: gate execution reads
-    ``core.orchestrator.parse_verdict`` against a step's ``VerdictGate`` generically. Exercises
+    ``pipeline.domain.plan.parse_verdict`` against a step's ``VerdictGate`` generically. Exercises
     that parser against the reviewer step's gate from the default pipeline, the source of truth."""
 
     @staticmethod

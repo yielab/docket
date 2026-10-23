@@ -1,4 +1,4 @@
-"""Standard Webhooks delivery (`edges/adapters/channels/webhook.py`).
+"""Standard Webhooks delivery (`operator/adapters/webhook.py`).
 
 Placed under `tests/unit/edges/adapters/channels/` -- not the flatter
 `tests/unit/edges/test_channel_webhook.py` path a plain reading of the card text suggests --

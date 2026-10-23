@@ -274,7 +274,7 @@ class TestPolicyGates:
 
 
 class TestTrustedFlag:
-    """core.policy._INJECTION_IDS ("prompt-injection") is skipped exactly when
+    """governance.policy._INJECTION_IDS ("prompt-injection") is skipped exactly when
     trusted=True -- matching the CLI/MCP callers, since enqueue_task_once's
     default (no `trusted` in the request body) preserves trusted=True."""
 

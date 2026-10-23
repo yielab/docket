@@ -1,4 +1,4 @@
-"""Privacy classes and levels: the pure resolve/describe lookups (core/privacy.py)."""
+"""Privacy classes and levels: the pure resolve/describe lookups (governance/privacy.py)."""
 
 from __future__ import annotations
 

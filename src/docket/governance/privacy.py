@@ -1,6 +1,6 @@
 """Named privacy classes and levels for what a trace export may share beyond bare
 structure (ADR 0015). Pure data plus two lookups -- imports nothing from ``core/``
-so both ``core/telemetry.py`` and ``core/exporter.py`` can depend on it without a cycle."""
+so both ``observability/telemetry.py`` and ``observability/exporter.py`` can depend on it without a cycle."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ CONTENT_CLASSES: tuple[str, ...] = (
 )
 
 # The illustrative attribute names ADR 0015 §1's table lists per class -- for CLI display
-# only (`describe`). `core/telemetry.py::ATTRIBUTE_CLASSES` is the real enforcement table;
+# only (`describe`). `observability/telemetry.py::ATTRIBUTE_CLASSES` is the real enforcement table;
 # this module never imports it, so the two are kept in sync by hand against the same ADR.
 _CLASS_ATTRIBUTES: dict[str, tuple[str, ...]] = {
     "toolArguments": ("gen_ai.tool.call.arguments", "docket.approval.action"),

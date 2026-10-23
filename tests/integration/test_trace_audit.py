@@ -20,7 +20,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as trace_core
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.governance"
 
 
 @pytest.fixture()

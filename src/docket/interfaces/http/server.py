@@ -41,7 +41,6 @@ from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.operator import contract as _oc
 from docket.operator.notify import _flush_notify_channels
-from docket.pipeline.application.schedule import _check_schedules
 from docket.tasks.domain import options as _task_options
 from docket.teams import fleet
 from docket.teams import provisioning as _prov
@@ -50,7 +49,7 @@ DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
 
 # The channels the HTTP transport itself may claim on POST /approvals/<token>.
-# This is narrower than core.approval.APPROVAL_CHANNELS: "cli", "mcp" and
+# This is narrower than governance.approval.APPROVAL_CHANNELS: "cli", "mcp" and
 # "telegram" belong to their own surfaces, and "timeout" is the fail-closed
 # expiry path -- an HTTP Bearer holder must not be able to forge a decision
 # as coming from any of those. "tack" is the one named HTTP client (Tack's
@@ -82,6 +81,51 @@ _sweep_run_ids: dict[str, str] = {}
 _sweep_stop = threading.Event()
 # How long a second stop signal waits for cancelled sweep runs to settle before exiting anyway.
 SWEEP_ABANDON_WAIT_S = 5.0
+
+
+def _check_schedules(now_ts: float) -> None:
+    """Trigger dispatch for pods whose schedule spec is due (also recognizes a standard 5-field
+    cron expression, not just ``@every``/``HH:MM`` -- see ``pipeline/application/schedule.py``). The last-run
+    timestamp is read from, and written back into, ``Home.schedule_file`` itself rather than an
+    in-memory dict, so a restart does not re-fire every schedule on its first sweep. Each due
+    project's run record is created before its daemon-thread dispatch starts, so the sweep loop
+    is never blocked and no outcome is silently discarded."""
+    from docket.pipeline.application import schedule as _sched
+    from docket.tasks.application import runs as _runs
+    from docket.tasks.application import sweep as _sweep
+
+    schedules = _sched.load_schedules(current_home().schedule_file)
+    last_run_map = _sched.load_last_run(current_home().schedule_file)
+    for project, spec in schedules.items():
+        reason = _sched.describe_spec_error(spec)
+        if reason:
+            # `is_schedule_due` would otherwise treat this as silently never-due, forever
+            # -- print once per sweep so an operator running `docket start` sees the drop
+            # instead of a schedule that quietly never fires (see `docket setup --fix` for the
+            # equivalent standing report).
+            print(f"[serve] sweep: schedule '{project}' skipped — {reason}")
+            continue
+        last_run = last_run_map.get(project, 0.0)
+        if not _sched.is_schedule_due(spec, last_run, now_ts):
+            continue
+        _sched.record_last_run(current_home().schedule_file, project, now_ts)
+
+        record = _runs.create_run("schedule", project)
+
+        def _run(proj: str = project, run_id: str = record["id"]) -> None:
+            # Process-wide timeout knobs (unset = no override) run inside the
+            # run record, so a scheduled dispatch is both configurable and
+            # observable rather than fire-and-forget.
+            _runs.execute(
+                run_id,
+                lambda: _sweep.dispatch_pod(
+                    proj,
+                    turn_timeout=current_home().dispatch_turn_timeout_s,
+                    verify_timeout=current_home().dispatch_verify_timeout_s,
+                ),
+            )
+
+        _threads.start_thread(_run)
 
 
 def _sweep_one_pod(project: str) -> None:
@@ -231,7 +275,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
 
     When *dispatch* is set (opt-in, real budget-gated agent turns, never part of the read-only
     monitor), also refreshes the limits each registered provider's ``/models`` publishes (once a
-    day per provider; ``core.provider.refresh_observed_models_due``) and drains every dispatchable pod's queue (one run record per pod, source
+    day per provider; ``models.catalog.refresh_observed_models_due``) and drains every dispatchable pod's queue (one run record per pod, source
     ``"sweep"``) and checks due schedules. Each pod is swept on a pool worker (at most
     ``DISPATCH_SWEEP_WORKERS`` at once) and a pod whose previous sweep is still running is
     skipped, so this returns without waiting for the turns; ``_drain_sweeps`` waits."""
@@ -593,7 +637,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         from docket.tasks.application import actions as _actions
 
         # `channel` identifies the surface this decision came through, tagged
-        # onto the hash-chained audit log entry (`core/approval.py`'s
+        # onto the hash-chained audit log entry (`governance/approval.py`'s
         # `approval_grant`/`approval_deny`). Default stays "http" (every caller
         # before this field existed keeps identical behaviour). Validated
         # against `_HTTP_APPROVAL_CHANNELS`, not the full `approval.
@@ -723,7 +767,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         priority_raw = task_body.get("priority", "normal")
         priority = str(priority_raw) if priority_raw else "normal"
         # `trusted` (optional) overrides the `pre_input` policy check's trust
-        # flag for this enqueue only — see core.dispatch.enqueue_task_once. Absent
+        # flag for this enqueue only — see tasks.application.queue.enqueue_task_once. Absent
         # (None) leaves every existing caller's behaviour byte-for-byte
         # unchanged; this is the only place that field is threaded through.
         trusted_raw = task_body.get("trusted")
@@ -993,7 +1037,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
         # The request body (a plain {name: value} JSON object) is the
         # webhook's params — bound into the pod's effective pipeline's
-        # declared `variables` namespace (core.pipeline.resolve_variables)
+        # declared `variables` namespace (pipeline.domain.spec.resolve_variables)
         # before anything is dispatched. A missing body (no Content-Length)
         # is the same as `{}`, so an omitted body still behaves as a
         # no-params dispatch.

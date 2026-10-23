@@ -18,14 +18,14 @@ from docket.sandbox.seatbelt import seatbelt_argv, seatbelt_available
 
 # ── exec sandbox ─────────────────────────────────────────────────────────────
 #
-# `edges/adapters/toolbox.py`'s `run_bash` has no jail of its own -- the
+# `agent/tools/builtins/toolbox.py`'s `run_bash` has no jail of its own -- the
 # gate decides whether a command may run at all, not what it can reach once
 # it does. These functions are the mechanism half of that: detecting which
 # jail backend is actually usable on this host (not just installed) and
 # building the argv that applies it. The *decision* to ask for one lives on
-# `ToolContext.sandbox` (`core/tools.py`, opt-in, default "off") -- this
+# `ToolContext.sandbox` (`agent/tools/registry.py`, opt-in, default "off") -- this
 # module never decides, only detects and constructs, matching the existing
-# split with `core.security`'s classifier.
+# split with `governance.security`'s classifier.
 
 SandboxBackend = Literal["landlock", "seatbelt", "docker", "none"]
 
@@ -215,7 +215,7 @@ def run_command(
     missing binary, or OS error returns ``None`` with a short error string
     instead. The status is the process's own, never a value the command wrote.
 
-    *cmd* is classified against ``core.security``'s high-risk classes and
+    *cmd* is classified against ``governance.security``'s high-risk classes and
     fails closed -- refused outright, never run -- before the subprocess
     starts. That is the only honest posture here: this call is synchronous
     inside a dispatch hop, with no interactive approver reachable (see

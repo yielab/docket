@@ -54,23 +54,23 @@ def _esc(s: Any) -> str:
 # *reads* trace JSONL and the audit log to compute counters, it never writes
 # through them and never routes a metric back into either.
 
-# core/tools.py's `_audit_tool_decision` embeds the raw pre_tool_call
+# agent/tools/registry.py's `_audit_tool_decision` embeds the raw pre_tool_call
 # policy hit as a fixed `policy_id='...' policy_action='...'` pair right
 # after the agent/role/project prefix, specifically so this can be parsed
 # without scraping the free-text reason that follows it.
 _POLICY_AUDIT_RE = re.compile(r"policy_id='([^']*)' policy_action='([^']*)'")
 # approval.grant/approval.deny's detail is `token=... project=... channel=...`
-# (core/approval.py) -- channel is always one of a small, code-controlled set
+# (governance/approval.py) -- channel is always one of a small, code-controlled set
 # (cli/http/mcp/telegram/timeout), never free text a caller supplies.
 _CHANNEL_AUDIT_RE = re.compile(r"channel=(\S+)")
 
-# The four `core/tools.py` audit actions that can carry a pre_tool_call
+# The four `agent/tools/registry.py` audit actions that can carry a pre_tool_call
 # policy hit (`tool.deny`/`tool.ask` may also be a bare command-classifier
 # decision with no policy involved at all -- see `_collect_audit_loop_metrics`).
 _TOOL_GATE_ACTIONS: frozenset[str] = frozenset(
     {"tool.deny", "tool.ask", "tool.warn", "tool.redact"}
 )
-# core/approval.py's two terminal audit actions -> the outcome label. A
+# governance/approval.py's two terminal audit actions -> the outcome label. A
 # fail-closed timeout resolves via `approval.deny` with `channel=timeout`
 # (never `approval.grant`), so "timed out" surfaces here as
 # `channel="timeout",outcome="denied"` -- exactly what the audit log records,
@@ -99,7 +99,7 @@ class LoopMetrics:
 
 def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
     """Fold every project's trace JSONL into *m*. Mirrors
-    ``core.trace.sweep_all``'s ``*/*.jsonl`` glob -- every project, not one.
+    ``observability.trace.sweep_all``'s ``*/*.jsonl`` glob -- every project, not one.
     """
     traces_dir = current_home().traces_dir
     if not traces_dir.is_dir():
@@ -259,14 +259,14 @@ def render_metrics() -> str:
     #
     # 1. Audit-derived (all of docket_approvals_total, and the pre_tool_call
     #    slice of docket_policy_hits_total) see only $DOCKET_HOME/audit.log's
-    #    CURRENT generation. core/audit.py rotates that file to a single backup
+    #    CURRENT generation. governance/audit.py rotates that file to a single backup
     #    (audit.log.1, itself overwritten by the next rotation) once it exceeds
     #    AUDIT_LOG_MAX_BYTES, and read_audit() reads only the current file --
     #    so a rotation silently drops whatever history was in the backup.
     # 2. Trace-derived (docket_tool_calls_total, the pre_input/pre_output half
     #    of docket_policy_hits_total, and the turn-duration pair below) had no
     #    such gap while traces were only ever appended to. They now expire:
-    #    core/trace.py's expire_old_traces() deletes terminated traces
+    #    observability/trace.py's expire_old_traces() deletes terminated traces
     #    past TRACE_RETENTION_S. Retention bounds storage growth, which was the
     #    point, but it means these counters drop when a trace file ages out.
     #

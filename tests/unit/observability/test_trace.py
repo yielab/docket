@@ -1,4 +1,4 @@
-"""Secret-shape redaction and the subscriber seam (core/trace.py)."""
+"""Secret-shape redaction and the subscriber seam (observability/trace.py)."""
 
 from __future__ import annotations
 

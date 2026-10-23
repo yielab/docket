@@ -1,4 +1,4 @@
-"""OTLP/HTTP JSON encoding and transport (edges/adapters/exporters/otlp_http.py)."""
+"""OTLP/HTTP JSON encoding and transport (observability/adapters/otlp_http.py)."""
 
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from docket.observability.adapters import otlp_http
 SUBJECT = "docket.observability.adapters.otlp_http"
 
 _TRACE_FIXTURE = (
-    Path(__file__).resolve().parents[4] / "fixtures" / "traces" / "dispatch-3-hops.jsonl"
+    Path(__file__).resolve().parents[3] / "fixtures" / "traces" / "dispatch-3-hops.jsonl"
 )
-_GOLDEN = Path(__file__).resolve().parents[4] / "fixtures" / "otlp-v1" / "dispatch-3-hops.json"
+_GOLDEN = Path(__file__).resolve().parents[3] / "fixtures" / "otlp-v1" / "dispatch-3-hops.json"
 
 
 def _projected_spans() -> list[telemetry.Span]:

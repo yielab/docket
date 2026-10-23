@@ -21,7 +21,7 @@ from tests.pods import build_pod
 
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.core.dispatch"
+SUBJECT = "docket.tasks.application.queue"
 
 
 # ── TestInboxEndpoint: GET /inbox, live over HTTP ─────────────────────────────

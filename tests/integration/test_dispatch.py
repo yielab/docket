@@ -17,6 +17,7 @@ import dataclasses
 import json
 import threading
 import time
+import time as _time
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -34,7 +35,6 @@ from docket.agent import ports as _rd
 from docket.agent import session as _session
 from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
-from docket.core import dispatch as _dispatch
 from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
 from docket.hops.application import record as _record
@@ -57,7 +57,7 @@ from docket.teams import resources as _res
 from docket.teams import settings as _settings
 from docket.teams.models import AgentMeta as _AgentMeta
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.tasks.application.queue"
 
 # ── hermetic environment (mirrors test_pod_provisioning) ─────────────────────────
 
@@ -188,8 +188,8 @@ class TestEnqueueTaskPreBrief:
 
 # There is no daemon-facing driver, no subprocess-backed `agent_run`, and no
 # daemon JSON shape to shell out to any more. The equivalent coverage lives
-# in `edges/adapters/llm.py`'s `OpenAIChatClient` (response parsing, see
-# test_llm_port.py) and `edges/adapters/docket_runtime.py`'s
+# in `models/adapters/openai_http.py`'s `OpenAIChatClient` (response parsing, see
+# test_llm_port.py) and `agent/driver.py`'s
 # `DocketDriver` (env passed through to a tool call, see
 # test_docket_driver.py's `test_env_kwarg_reaches_a_tool_call` and
 # `test_on_spawn_is_accepted_and_ignored`).
@@ -576,8 +576,8 @@ class TestHopEnvInjection:
 # ── end-to-end: driver → real agent_loop → real gated tool chokepoint ────────────
 #
 # No injected runner means `dispatch_pod` resolves
-# `edges.adapters.docket_runtime.default_driver()`: docket's own
-# `core/agent_loop.py`, dispatching every tool call through `core/tools.py`'s
+# `agent.driver.default_driver()`: docket's own
+# `agent/loop.py`, dispatching every tool call through `agent/tools/registry.py`'s
 # gated chokepoint. `TestEndToEnd` below proves a real dispatch actually
 # executes through it.
 
@@ -677,7 +677,7 @@ class TestEndToEnd:
             install_policies()
             _fleet.meta_set("demo-lead", "approvalMode", "refuse")
 
-            # "lead" denies the `bash` tool outright (core/archetypes.py); the gated call has
+            # "lead" denies the `bash` tool outright (teams/roles.py); the gated call has
             # to be the Implementer's, so the Lead's turn gets an ordinary final response first.
             call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
             backend = _ScriptedBackend(
@@ -925,7 +925,7 @@ class TestEndToEnd:
             assert token
 
             # Force this record's own expiresAt into the past -- the parked
-            # record carries its own deadline (core/tools.py's `_park_call`),
+            # record carries its own deadline (agent/tools/registry.py's `_park_call`),
             # never the generic APPROVAL_TIMEOUT.
             rec_path = current_home().approvals_dir / f"{token}.json"
             rec = json.loads(rec_path.read_text(encoding="utf-8"))
@@ -1393,7 +1393,7 @@ class TestDeterministicRefusalSettlesTheClaim:
                 monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
                 action = "isolation.refused"
             slept: list[float] = []
-            monkeypatch.setattr(_dispatch._time, "sleep", slept.append)
+            monkeypatch.setattr(_time, "sleep", slept.append)
             calls: list[str] = []
 
             def _never(model: str) -> Any:

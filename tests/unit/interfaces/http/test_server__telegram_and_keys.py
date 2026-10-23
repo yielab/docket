@@ -12,9 +12,9 @@ import threading
 
 import pytest
 
-import docket.serve as serve
 from docket.interfaces.http import server
 from docket.interfaces.telegram import poll
+from docket.kernel import threads as _threads
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -44,7 +44,7 @@ def _fast_backoffs(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestRunServeTelegramFlag:
     def test_telegram_true_starts_the_poll_thread(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
 
         started = threading.Event()
@@ -57,7 +57,7 @@ class TestRunServeTelegramFlag:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
 
         started = threading.Event()
@@ -70,7 +70,7 @@ class TestRunServeTelegramFlag:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
+        monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setattr(poll, "_telegram_poll_loop", lambda stop: None, raising=True)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
 

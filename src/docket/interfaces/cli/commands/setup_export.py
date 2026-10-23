@@ -441,7 +441,7 @@ def _newest_trace_file() -> Path | None:
 
 
 def _events_for(spec: _exp.ExporterSpec) -> frozenset[str] | None:
-    """Mirrors `core.telemetry.start`'s own inline resolution -- nothing is factored out of
+    """Mirrors `observability.telemetry.start`'s own inline resolution -- nothing is factored out of
     `start` itself, this call site just reads the same three fields it reads."""
     if spec.events == "all":
         return None

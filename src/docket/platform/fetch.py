@@ -4,7 +4,7 @@
 That gap has been measured precisely: `curl`/`wget` correctly ask for approval
 through the `bash` tool's command classifier, but `python3 -c
 "import urllib..."`, `node`, and `git clone <url>` are all on the curated
-exec allowlist (`core/security.py`'s `SAFE_BINS`) and reach the network
+exec allowlist (`governance/security.py`'s `SAFE_BINS`) and reach the network
 unattended today. Closing that would mean a `--network none`/`--unshare-net`
 sandbox lockdown, which was deliberately **deferred** — it is off by
 default, it breaks `npm install`/`pip`/`git clone` when turned on, and it
@@ -13,17 +13,17 @@ that decision instead: a first-class tool that gives an agent an
 *inspectable* way to reach the network, so reaching for `fetch` never has to
 mean reaching for the escape hatch.
 
-**Mechanism, not a gate — same discipline as `edges/adapters/toolbox.py`.**
+**Mechanism, not a gate — same discipline as `agent/tools/builtins/toolbox.py`.**
 The domain allowlist, response-size cap, and timeout enforced here are
 containment, exactly the way `toolbox.resolve_within` contains a file path:
-real, load-bearing, and independent of whatever `core/tools.py`'s chokepoint
+real, load-bearing, and independent of whatever `agent/tools/registry.py`'s chokepoint
 (`evaluate_tool_call` / `dispatch_tool`) decided before this function was
 ever called. This module holds no approval/policy vocabulary and consults no
 gate of its own — a second module that could decide whether to run is a
-second place a gate can be forgotten (see `core/tools.py`'s module docstring).
+second place a gate can be forgotten (see `agent/tools/registry.py`'s module docstring).
 
 **Zero new dependencies, on purpose** — the same stdlib-`urllib` choice
-`edges/adapters/llm.py` already made, for the same reason: pulling in
+`models/adapters/openai_http.py` already made, for the same reason: pulling in
 an HTTP client library for a GET request would be the exact kind of
 dependency creep ROADMAP §4.5's anti-overengineering guardrails exist to
 block.
@@ -113,7 +113,7 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     same "fail before any side effect" shape `dispatch_tool` already uses for
     a half-specified call. A non-positive *timeout* falls back to
     `Home.fetch_timeout_s`, matching `run_bash`'s own
-    `_int_arg(..., ctx.timeout) or ctx.timeout` pattern in `core/tools.py`.
+    `_int_arg(..., ctx.timeout) or ctx.timeout` pattern in `agent/tools/registry.py`.
     """
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ("http", "https"):

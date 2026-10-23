@@ -1,4 +1,4 @@
-"""The exporter catalog (`core/exporter.py`).
+"""The exporter catalog (`observability/exporter.py`).
 
 Covers ``load_exporter_document`` (the `kind: exporter` document loader,
 specs/functional/observability-export.spec.md "Exporter documents"), the built-in + global

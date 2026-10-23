@@ -16,7 +16,7 @@ from docket.pipeline.application import steps as _steps
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.core"
+SUBJECT = "docket.interfaces"
 
 _VALID_PIPELINE = """\
 kind: pipeline
@@ -197,7 +197,7 @@ class TestPipelinePlanCli:
         assert _plan("--pipeline", str(f)).exit_code == 1
 
     def test_plan_renders_from_the_real_executor_not_a_second_printer(self) -> None:
-        """`plan`'s output must come from core.orchestrator.render_plan/resolve_plan -- the
+        """`plan`'s output must come from pipeline.domain.plan.render_plan/resolve_plan -- the
         exact same function the real executor calls."""
         from docket.pipeline.domain import plan as _orch
         from docket.teams import roles as _archetypes

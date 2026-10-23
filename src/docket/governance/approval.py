@@ -1,13 +1,13 @@
 """Durable pending-approval store for HITL gating. Records persist to
 ``$APPROVALS_DIR/<token>.json`` (atomic, 0600); as docket-owned artefacts, writes go through
-``edges/store.py``. ``context`` is optional caller data stored verbatim, a seam letting a
+``platform/store.py``. ``context`` is optional caller data stored verbatim, a seam letting a
 later resolver (e.g. ``core/dispatch.py``) find what a token gated. Trace and redaction are
 best-effort behind ``_emit_trace``/``_redact`` so tests can stub them; grant/deny also
 audit-log the calling channel, restricted to the closed ``APPROVAL_CHANNELS`` set so a caller
 (e.g. ``serve.py``) cannot inject an arbitrary string into the record. The expiry sweep
 resolves a stale pending record to **denied** (fail-closed, not ``"expired"``) and notifies
 ``core/dispatch.py`` so a waiting task is not left stranded. ``wait_for_approval`` blocks the
-calling thread instead for ``core/tools.py``'s in-turn gate, sharing the same fail-closed
+calling thread instead for ``agent/tools/registry.py``'s in-turn gate, sharing the same fail-closed
 resolution via ``_resolve_timeout_as_denied``.
 """
 
@@ -129,7 +129,7 @@ def _emit_trace(
     event_type: str,
     payload: dict[str, Any],
 ) -> None:
-    """Best-effort trace hook to docket.core.trace.trace_event; any failure is swallowed
+    """Best-effort trace hook to docket.observability.trace.trace_event; any failure is swallowed
     so a trace problem never breaks the approval. Local import avoids a cycle."""
     try:
         from docket.observability import trace as _trace
@@ -648,7 +648,7 @@ def wait_for_approval(
 
     Unlike ``core/dispatch.py``'s require_approval gate — which creates a token and leaves
     the task ``waiting_approval`` for a later call to resolve — an in-turn tool call
-    (``core/tools.py``'s ``dispatch_tool``) has nowhere else to go while it waits: the model
+    (``agent/tools/registry.py``'s ``dispatch_tool``) has nowhere else to go while it waits: the model
     is blocked on this exact answer. So this function polls the record every
     *poll_interval* seconds (default ``Home.tool_approval_poll_interval_s``; never
     busy-spins) until it resolves or *timeout* seconds elapse (default

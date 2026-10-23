@@ -1,8 +1,8 @@
 """`docket pod show` -- the pod and a member's effective configuration, with provenance.
 
-Composes existing resolvers only (model policy, `core.identity`'s prompt composer,
-role/tool denial, the guardrail policy engine, `core.pod.PodSettings`, and
-`core.dispatch.effective_pipeline_source`); writes nothing and adds no new core
+Composes existing resolvers only (model policy, `agent.identity`'s prompt composer,
+role/tool denial, the guardrail policy engine, `teams.pod.PodSettings`, and
+`pipeline.application.steps.effective_pipeline_source`); writes nothing and adds no new core
 surface. See specs/data/cli-json-shapes.spec.md, "`docket pod show --json`". The oracle
 case (`TestPodShowMatchesRealDispatch`) cross-checks the reports against what a real pod
 dispatch (FakeDriver) actually used for the hop.
@@ -456,7 +456,7 @@ class TestPodShowProvider:
 
 class TestPodShowPod:
     """The pod view names each member's verify command and the approval mode the dispatcher
-    resolves, pinned to ``core.dispatch.pod_approval_mode`` itself."""
+    resolves, pinned to ``teams.settings.pod_approval_mode`` itself."""
 
     def test_pod_view_names_the_verify_command_and_the_dispatchers_approval_mode(
         self, tmp_path: Path

@@ -11,7 +11,7 @@ call — ``start --mcp``'s ``dispatch`` tool) a run record is
 created *before* the work starts and folded to a terminal state when it
 finishes — successfully or not. Records persist to ``Home.runs_file`` (a single
 docket-owned JSON document, one list of records) through
-``edges/store.py``'s locked read-modify-write, the same pattern used for
+``platform/store.py``'s locked read-modify-write, the same pattern used for
 the pod task queue, since multiple threads (webhook handler, schedule thread,
 sweep loop) and the CLI can all be appending/updating concurrently.
 
@@ -27,7 +27,7 @@ run id is currently executing" via a ``contextvars.ContextVar`` for the
 duration of *fn* — ``core/dispatch.py``'s production-driver hop call site
 reads it (``current_run_id()``) to know which run to record a spawned
 subprocess's pid against (``add_hop_pid``/``remove_hop_pid``), and
-``core.orchestrator.run_group`` explicitly propagates that context into a
+``pipeline.domain.plan.run_group`` explicitly propagates that context into a
 parallel group's worker threads (``ThreadPoolExecutor.submit`` does not do
 this on its own). ``pids`` is a *list* on the run record, not a scalar,
 because a parallel step can have more than one hop genuinely in flight at
@@ -407,7 +407,7 @@ def prune_terminal(
     *project*, only that pod's. Returns the count removed (or, under *dry_run*, that would be)."""
     # queued/running records are never touched regardless of age -- this must never
     # delete evidence of live work. A record with no parseable finishedAt (malformed)
-    # is kept, never guessed at. Sharing TRACE_RETENTION_S with core/trace.py's own
+    # is kept, never guessed at. Sharing TRACE_RETENTION_S with observability/trace.py's own
     # expiry keeps every docket-owned store bounded by one operator-facing knob.
     window = current_home().trace_retention_s if retention_s is None else retention_s
     cutoff = (now if now is not None else _clock.epoch()) - window
@@ -582,8 +582,8 @@ def cancel_run(run_id: str, *, source: str = _CANCELLATION_SOURCE) -> CancelOutc
 
 def _emit_error_trace(project: str, run_id: str, source: str, error_text: str) -> None:
     """Best-effort ``error`` trace event for a failed dispatch invocation.
-    Local import avoids a cycle with ``core/trace.py``; a trace failure must
-    never break run recording (mirrors ``core/approval.py``'s ``_emit_trace``)."""
+    Local import avoids a cycle with ``observability/trace.py``; a trace failure must
+    never break run recording (mirrors ``governance/approval.py``'s ``_emit_trace``)."""
     try:
         import json as _json
 

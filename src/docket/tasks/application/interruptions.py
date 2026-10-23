@@ -3,7 +3,7 @@ pre-grant for an expected risky action ahead of time (ADR 0016 SS10).
 
 `forecast` is a pure derivation over a pod's already-effective policies, security classifier,
 pipeline gates, `approvalMode` and notifying channels. `record_pregrant`
-calls `core.approval.create_pregrant` exactly as the in-turn park path does, then appends the
+calls `governance.approval.create_pregrant` exactly as the in-turn park path does, then appends the
 grant to the task's own `pregrants` list -- the same shape a live park already produces.
 """
 

@@ -4,7 +4,7 @@
 approval, so an operator watching a TTY has no way to learn it is waiting
 or to answer it without a second terminal and the token. This module renders
 one stderr line per trace event worth surfacing (see ``render_event``) while
-``core.dispatch.dispatch_pod`` runs on a worker thread, and -- when stdin is
+``tasks.application.sweep.dispatch_pod`` runs on a worker thread, and -- when stdin is
 also a TTY and the caller did not opt out -- reads an in-place answer from a
 second thread. Rendering and answer-parsing are pure; ``dispatch_with_progress``
 is the one function that owns the threads.

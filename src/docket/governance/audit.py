@@ -9,7 +9,7 @@ checked against the single backup (``audit.log.1``); an unsubstantiated claim is
 evident, not prevented, since deleting both files together still yields an indistinguishable
 fresh genesis (specs/functional/audit.spec.md Requirement 9). Recording is best-effort (never
 raises) with no environment kill switch (see that spec). Exempt from the store.py single-writer
-rule: appends are line-independent, so this writes JSONL directly, not through ``edges/store.py``.
+rule: appends are line-independent, so this writes JSONL directly, not through ``platform/store.py``.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from docket.platform import store
 # structurally uniform with every other entry.
 GENESIS_HASH = "0" * 64
 
-# Kept private and deliberately independent from edges/store.py's directory
+# Kept private and deliberately independent from platform/store.py's directory
 # lock: audit is JSONL, and this one lock protects only its rotate/head/append
 # transition. Tests lower it to make a timeout deterministic.
 _AUDIT_LOCK_TIMEOUT = 5

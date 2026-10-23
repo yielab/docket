@@ -1,4 +1,4 @@
-"""``core.document_fields`` -- the field checks the provider, exporter and channel documents share."""
+"""``kernel.document_fields`` -- the field checks the provider, exporter and channel documents share."""
 
 from __future__ import annotations
 
