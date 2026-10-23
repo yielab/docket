@@ -2025,6 +2025,19 @@ class TestIntakeRecipeTaskBrief:
         # No Implementer hop was ever attempted -- the check happens before that turn.
         assert [h["role"] for h in task["hops"]] == ["lead"]
 
+    def test_a_resources_block_does_not_stop_the_run_from_claiming_the_next_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        _bind_intake_pipeline("demo")
+        _dispatch.enqueue_task("demo", "call the API", channel="cli")
+        _dispatch.enqueue_task("demo", "do the plain thing", channel="cli")
+        runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY, _LEAD_READY_NO_BRIEF_REPLY])
+
+        results = _dispatch.dispatch_pod("demo", runner=runner)
+
+        assert [r.status for r in results] == ["blocked", "done"]
+
     def test_a_configured_secret_is_not_reported_missing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -195,9 +195,8 @@ This specification does NOT cover:
    validated bound pipeline copy; the `docket-schedules.json` entry); the recorded keys
    (`configSource`, `configDigest`, `exporters`) are refused, naming `docket pod update` as their
    writer; an unknown key exits 1 listing the valid ones.
-2. `budgetUsd` is a setting like the rest: setting a cap (non-zero) clears the Lead's
-   `paused`/`pausedReason` and re-queues the pod's budget-blocked tasks; `0`, or `unset`, removes
-   the cap and re-queues them.
+2. `budgetUsd` is a setting like the rest: setting a cap, `0` or `unset` included, clears
+   the Lead's `paused`/`pausedReason` and re-queues the pod's blocked tasks.
 3. `verify` is the one key that belongs to a member, not the pod: `docket pod set verify "<cmd>"
    --member <id>` writes that Implementer's `verifyCmd` (validated: no NUL or newline, at most
    2000 characters; audited `pod.set-verify`; `TOOLS.md` re-rendered) and `docket pod unset verify

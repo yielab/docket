@@ -1490,47 +1490,10 @@ def _replay_pipeline_position(
     )
 
 
-def _pod_requires_approval(project: str, role: str) -> bool:
-    """The pod-level require_approval source: Lead's ``requireApprovalRoles`` meta, a
-    comma-separated case-insensitive role list; blank/missing means no gate. See
-    pod-dispatch.spec.md ("require_approval gate and waiting_approval")."""
-    lead_id = _pod.member_id(project, "lead")
-    raw = _fleet.meta_get(lead_id, "requireApprovalRoles", "")
-    if not raw:
-        return False
-    roles = {r.strip().lower() for r in raw.split(",") if r.strip()}
-    return role.lower() in roles
-
-
-def _policy_requires_approval(project: str, role: str, task: dict[str, Any]) -> bool:
-    """An explicit seam that always returns ``False`` today; kept as a real function, not
-    deleted, so ``_hop_requires_approval``'s three-source shape stays intact for a future
-    per-hop policy source. See pod-dispatch.spec.md ("require_approval gate and waiting_approval")."""
-    return False
-
-
 def _pipeline_step_requires_approval(gate: _pipeline.Gate | None) -> bool:
     """The pipeline-defined ``approval`` step source: *gate* is the current position's
-    resolved gate; an ``ApprovalGate`` requires a human decision, same as the pod-level
-    ``requireApprovalRoles`` source."""
+    resolved gate; an ``ApprovalGate`` requires a human decision."""
     return isinstance(gate, _pipeline.ApprovalGate)
-
-
-def _hop_requires_approval(
-    project: str,
-    role: str,
-    task: dict[str, Any],
-    pipeline_index: int,
-    gate: _pipeline.Gate | None,
-) -> bool:
-    """Whether the require_approval gate fires: an OR of three independent sources (pod-level
-    ``requireApprovalRoles``, the ``_policy_requires_approval`` seam, a pipeline ``approval``
-    step) -- any one firing is enough. See pod-dispatch.spec.md ("require_approval gate")."""
-    return (
-        _pod_requires_approval(project, role)
-        or _policy_requires_approval(project, role, task)
-        or _pipeline_step_requires_approval(gate)
-    )
 
 
 def _approval_action_text(role: str, task: dict[str, Any]) -> str:
@@ -1803,7 +1766,7 @@ def _gate_pre_hop_approval(
     if index_for_context == ctx.override_index:
         ctx.override_index = None
         return None
-    if not _hop_requires_approval(ctx.project, role, ctx.task, index_for_context, node.gate):
+    if not _pipeline_step_requires_approval(node.gate):
         return None
     action = _approval_action_text(role, ctx.task)
     token = _ap.approval_create(
@@ -4294,7 +4257,7 @@ def cancel_task(
     messages: list[str] = []
     warnings: list[str] = []
     for run_id in _live_run_ids(project, task_id, task.get("status")):
-        result = _runs.cancel_run(run_id)
+        result = _runs.cancel_run(run_id, source=channel)
         if result.ok:
             stopped.append(run_id)
             messages.append(result.message)
@@ -4604,7 +4567,6 @@ def dispatch_pod(
     spec: _pipeline.PipelineSpec | None = None,
     variables: dict[str, Any] | None = None,
     approval_default: Literal["wait", "park"] = "wait",
-    approval_timeout: int | None = None,
     stop: Callable[[], bool] | None = None,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first), looping
@@ -4679,11 +4641,10 @@ def dispatch_pod(
             spec=spec if source == "default" else run_spec,
             variables=run_vars,
             approval_default=approval_default,
-            approval_timeout=approval_timeout,
         )
         _finalize_task(project, task_id, res)
         results.append(res)
-        if res.status == "blocked":
+        if res.status == "blocked" and res.blocked_reason != "resources":
             break  # budget is pod-wide; no point trying further tasks this run
     return results
 

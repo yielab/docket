@@ -3,8 +3,7 @@
 Wires ``core/approval.py``'s ``approval_create`` into ``core/dispatch.py`` end to end: creates,
 waits on, and resolves a real approval rather than sitting with zero production callers.
 
-  * TestGateSources — pod-level ``requireApprovalRoles``, the policy seam (always False), and
-    the pipeline-gate seam, each in isolation.
+  * TestGateSources — the pipeline ``approval`` gate is the one source of a pre-hop gate.
   * TestGateFiresPreHop — a required hop stops *before* its turn runs, persists
     ``waiting_approval`` with a token + exact pipeline position, and traces ``approval_required``.
   * TestNotClaimableConcurrently — a ``waiting_approval`` task is invisible to every claim path
@@ -30,6 +29,7 @@ waits on, and resolves a real approval rather than sitting with zero production 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import time
@@ -50,6 +50,7 @@ from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pipeline as _pipeline
+from docket.core import pod as _pod
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.core.llm import ToolCall
@@ -94,16 +95,40 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     _fleet.add_agent(member_id)
 
 
-def _seed_lean_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = None) -> None:
-    _write_meta(f"{project}-lead", lead_extra)
+def _bind_gated_implementer(project: str) -> None:
+    """Bind a pod pipeline that is the default one with an ``approval`` gate on the Implementer."""
+    spec = _pipeline.default_pipeline()
+    steps = [
+        step.model_copy(update={"gate": _pipeline.ApprovalGate()})
+        if step.role == "implementer"
+        else step
+        for step in spec.steps
+    ]
+    text = json.dumps(
+        spec.model_copy(update={"steps": steps}).model_dump(mode="json", by_alias=True)
+    )
+    path = _pod.bound_pipeline_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    _fleet.meta_set(
+        _pod.member_id(project, "lead"), "pipeline", hashlib.sha256(text.encode()).hexdigest()
+    )
+
+
+def _seed_lean_pod(project: str = "myapp", *, gated: bool = False) -> None:
+    _write_meta(f"{project}-lead")
     _write_meta(f"{project}-implementer")
+    if gated:
+        _bind_gated_implementer(project)
 
 
-def _seed_full_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = None) -> None:
-    _write_meta(f"{project}-lead", lead_extra)
+def _seed_full_pod(project: str = "myapp", *, gated: bool = False) -> None:
+    _write_meta(f"{project}-lead")
     _write_meta(f"{project}-implementer")
     _write_meta(f"{project}-reviewer")
     _write_meta(f"{project}-tester")
+    if gated:
+        _bind_gated_implementer(project)
 
 
 def _trace_events(project: str) -> list[dict[str, Any]]:
@@ -192,28 +217,10 @@ class _OneReworkThenGateAgainRunner:
         return _rd.TurnResult(True, output, 0.01, {"output": output})
 
 
-# ── pod-level gate source + the policy/pipeline gate seams ──────────────────────
+# ── the pipeline gate source ───────────────────────────────────────────────────
 
 
 class TestGateSources:
-    def test_pod_requires_approval_matches_configured_role(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        assert _dispatch._pod_requires_approval("myapp", "implementer") is True
-        assert _dispatch._pod_requires_approval("myapp", "lead") is False
-
-    def test_pod_requires_approval_case_and_whitespace_insensitive(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": " Implementer , Reviewer "})
-        assert _dispatch._pod_requires_approval("myapp", "implementer") is True
-        assert _dispatch._pod_requires_approval("myapp", "reviewer") is True
-        assert _dispatch._pod_requires_approval("myapp", "tester") is False
-
-    def test_pod_requires_approval_blank_gates_nothing(self) -> None:
-        _seed_lean_pod()
-        assert _dispatch._pod_requires_approval("myapp", "implementer") is False
-
-    def test_policy_seam_always_false(self) -> None:
-        assert _dispatch._policy_requires_approval("myapp", "implementer", {}) is False
-
     def test_pipeline_step_seam_is_now_wired(self) -> None:
         """This seam reflects the current pipeline position's *resolved* gate —
         real for any step whose gate is `approval` (declared directly, or via an
@@ -222,30 +229,13 @@ class TestGateSources:
         assert _dispatch._pipeline_step_requires_approval(_pipeline.MechanicalGate()) is False
         assert _dispatch._pipeline_step_requires_approval(_pipeline.ApprovalGate()) is True
 
-    def test_hop_requires_approval_is_an_or_of_all_sources(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        assert _dispatch._hop_requires_approval("myapp", "implementer", {}, 1, None) is True
-        assert _dispatch._hop_requires_approval("myapp", "lead", {}, 0, None) is False
-
-    def test_hop_requires_approval_fires_from_pipeline_gate_alone(self) -> None:
-        """A step with no pod-level/policy source still gates when its own
-        resolved gate is `approval` — the pipeline gate seam operating
-        independently of the pod-level `requireApprovalRoles` source."""
-        _seed_lean_pod()
-        assert (
-            _dispatch._hop_requires_approval(
-                "myapp", "implementer", {}, 1, _pipeline.ApprovalGate()
-            )
-            is True
-        )
-
 
 # ── the gate fires pre-hop ────────────────────────────────────────────────────────
 
 
 class TestGateFiresPreHop:
     def test_gate_stops_before_the_gated_hop_runs(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner()
         results = _dispatch.dispatch_pod("myapp", runner=runner)
@@ -255,7 +245,7 @@ class TestGateFiresPreHop:
         assert runner.calls == ["lead"]
 
     def test_waiting_approval_persists_token_and_pipeline_position(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
@@ -270,7 +260,7 @@ class TestGateFiresPreHop:
         assert [h["role"] for h in task["hops"]] == ["lead"]
 
     def test_gate_creates_a_real_approval_record(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         task = _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
@@ -285,7 +275,7 @@ class TestGateFiresPreHop:
         assert rec["context"] == {"taskId": task["id"], "pipelineIndex": 1}
 
     def test_approval_required_trace_event_emitted(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
@@ -308,7 +298,7 @@ class TestGateFiresPreHop:
 
 class TestNotClaimableConcurrently:
     def test_second_dispatch_pod_call_does_not_reclaim_it(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         assert _dispatch.read_tasks("myapp")[0]["status"] == "waiting_approval"
@@ -320,7 +310,7 @@ class TestNotClaimableConcurrently:
         assert _dispatch.read_tasks("myapp")[0]["status"] == "waiting_approval"
 
     def test_claim_next_task_directly_returns_none(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
@@ -332,7 +322,7 @@ class TestNotClaimableConcurrently:
     def test_stale_claim_sweep_does_not_touch_a_waiting_approval_task(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
@@ -349,7 +339,7 @@ class TestNotClaimableConcurrently:
 
 class TestGrantResumesAtHop:
     def _gate_then_grant(self) -> str:
-        _seed_full_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_full_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = _dispatch.read_tasks("myapp")[0]["approvalToken"]
@@ -420,7 +410,7 @@ class TestGrantResumesAtHop:
 
 class TestDenyFailsTerminally:
     def _gate(self) -> str:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         return str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
@@ -505,7 +495,7 @@ class TestExpirySweepDenies:
         )
 
     def test_sweep_fails_the_waiting_dispatch_task(self) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
@@ -555,7 +545,7 @@ def _post(url: str, body: dict[str, Any], token: str) -> tuple[int, dict[str, An
 
 class TestHttpApprovalEndpoint:
     def test_post_grant_resumes_the_dispatch_task(self, live_server: str) -> None:
-        _seed_full_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_full_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
@@ -574,7 +564,7 @@ class TestHttpApprovalEndpoint:
         assert runner.calls == ["implementer", "reviewer", "tester"]
 
     def test_post_deny_fails_the_dispatch_task(self, live_server: str) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
@@ -593,7 +583,7 @@ class TestHttpApprovalEndpoint:
 
 class TestReworkReGatesAfterResume:
     def test_rework_cycle_re_gates_the_second_implementer_hop(self) -> None:
-        _seed_full_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_full_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         first_token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
@@ -633,7 +623,7 @@ class TestBudgetGateTakesPrecedence:
     def test_budget_blocked_hop_never_reaches_the_approval_gate(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
+        _seed_lean_pod(gated=True)
         _dispatch.enqueue_task("myapp", "Too expensive", channel="cli")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)

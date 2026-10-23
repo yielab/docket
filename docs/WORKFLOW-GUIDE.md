@@ -193,7 +193,7 @@ docket run
 ```
 
 Over-budget tasks are blocked **between hops**, not abandoned mid-write, and the pod's Lead is
-paused so no further task is claimed. Raising the Lead's cap un-blocks the pod's budget-blocked
+paused so no further task is claimed. Changing the Lead's cap un-blocks the pod's blocked
 tasks and clears the pause; then re-dispatch:
 
 ```bash
@@ -282,7 +282,7 @@ docket start               # READ-ONLY monitor — health checks only, never dis
 > dispatch — an over-budget pod's tasks are set to `blocked` (not `pending`) and the pod's Lead
 > is paused. A blocked task does **not** resume on its own: raise the Lead's cap
 > (`docket pod set budgetUsd N`) or run `docket run --resume`, either of
-> which unpauses the Lead and unblocks the pod's budget-blocked tasks, or requeue one with
+> which unpauses the Lead and unblocks the pod's blocked tasks, or requeue one with
 > `docket task retry <task-id>`.
 > Leaving them blocked is deliberate — rewriting them straight back to `pending` would let a
 > budget-capped task retry forever on every sweep.
@@ -412,7 +412,7 @@ it asks a question before one runs — and what each does to the task:
 |---|---|---|
 | `mechanical` | Implementer's `verifyCmd` by default (or a `command` you set) | Task → **failed**, a `verification_failed` trace event, no advance to the next step. An unset command is never silently skipped — it prints `verification skipped — verifyCmd not set for <id>` and emits its own trace event |
 | `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
-| `approval` | A pipeline `approval` step, or a pod-level `requireApprovalRoles` list | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
+| `approval` | A pipeline `approval` step | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
 | `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <task-id>`; unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
 
 ### Declared variables — interpolated into step instructions

@@ -52,15 +52,15 @@ pod-dispatch.spec.md).
    `.docket-meta.json`.
 2. A cap of `0` **MUST** mean "no cap": a stored `0` reads back as unset. `docket pod unset
    budgetUsd` clears the cap too.
-3. Setting a non-zero budget **MUST** clear a prior `paused` state, and unblock the pod's
-   budget-blocked tasks (see pod-dispatch.spec.md). Setting `0` or unsetting unblocks those tasks
-   but leaves `paused` as it is.
+3. Setting a budget, `0` included, or unsetting it **MUST** clear a prior `paused` state and
+   unblock the pod's blocked tasks (see pod-dispatch.spec.md), so no task is refused at claim by
+   a pause the cap no longer justifies.
 4. The budget value **MUST** be a non-negative number; anything else exits `1` naming the setting.
 5. Budget fields (`budgetUsd`, `paused`, `pausedReason`) are docket-local (decision D-9).
    Enforcement therefore exists only where docket itself is in the execution path.
 6. `docket run --resume` **MUST** clear `paused`/`pausedReason` on the pod's Lead and **MUST**
    write a `run.resume` audit-log entry when the Lead was paused. It also unblocks that pod's
-   budget-blocked tasks whether or not the Lead was paused, then reclaims stale claims: a resume
+   blocked tasks whether or not the Lead was paused, then reclaims stale claims: a resume
    that left the tasks queued up behind the pause permanently `blocked` would not actually resume
    anything.
 
@@ -123,7 +123,7 @@ docket status --all --json        # Machine-readable (see cli-json-shapes.spec.m
 docket status --history [--days N]  # Daily history (see "Known gap" below)
 docket pod set budgetUsd <USD>    # Set/clear a cap (0 = none)
 docket pod unset budgetUsd        # Clear the cap
-docket run --resume               # Clear an auto-pause, unblock budget-blocked tasks, reclaim stale claims
+docket run --resume               # Clear an auto-pause, unblock blocked tasks, reclaim stale claims
 docket setup                      # Includes budget/runaway check (display only)
 ```
 
@@ -168,7 +168,7 @@ $ docket run --pod myproject
 ! [<task-id>] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 
 $ docket run --resume
--> Unblocked 1 budget-blocked task(s) in pod 'myproject'
+-> Unblocked 1 blocked task(s) in pod 'myproject'
 ```
 
 ## Validation

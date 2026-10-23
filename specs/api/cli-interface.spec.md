@@ -319,7 +319,7 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
 - `show <ref> [--json] [--pod <p>]`: Status, hop evidence (evidence-v1), the
   runs that worked the task, its corrections, and the interruption forecast (what could pause
   it: matching `require_approval` policies, pipeline approval and `input` steps,
-  `requireApprovalRoles`, the resolved `approvalMode`, the always-on high-risk classes, notifying
+  the resolved `approvalMode`, the always-on high-risk classes, notifying
   channels). A task with a recorded, unpruned worktree also prints its path, branch, base commit
   and the exact diff and merge commands (`git -C <path> diff <base>`, or, when the task record
   holds the git dirs docket recorded, `GIT_DIR=<gitDir> GIT_COMMON_DIR=<commonDir> GIT_WORK_TREE=<path> git diff <base>` (naming the common dir too, because the worktree's own `commondir` file is agent-writable), so

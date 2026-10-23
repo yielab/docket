@@ -251,7 +251,7 @@ each of these keys that was set and omits the rest: `externalRef`, `idempotencyK
 
 `task.worktree` is `{ "path", "branch", "baseCommit", "diff", "merge" }` (`diff` and `merge` are
 the exact shell commands) or `null`. `interruptions` is the forecast of what could pause the task;
-`kind` is one of `policy`, `pipeline_gate`, `role_gate`, `high_risk_class`, `mode` or `channel`.
+`kind` is one of `policy`, `pipeline_gate`, `high_risk_class`, `mode` or `channel`.
 A `<ref>` that is a run id whose run failed exits 1 after printing the document.
 
 Each run record carries the run registry fields (the same record `GET /runs` returns):

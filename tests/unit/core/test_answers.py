@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from tests.fakes import FakeDriver
 
+import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import answers as _answers
 from docket.core import audit as _audit
@@ -140,6 +141,32 @@ class TestAnswerTaskPreInputScreen:
 
         assert calls == 0
         assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
+
+
+class TestAnswerTaskPlacement:
+    def test_a_task_parked_in_its_own_named_pipeline_is_answered_against_that_pipeline(
+        self,
+    ) -> None:
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        pipelines = _cfg.pod_config_dir("demo") / "pipelines"
+        pipelines.mkdir(parents=True)
+        (pipelines / "ask.yaml").write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
+        _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
+        path = _dispatch.pod_task_list_path("demo")
+        doc = _store.read_json(path)
+        doc["tasks"][0]["pipeline"] = "ask"
+        _store.write_json(path, doc)
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        parked = _dispatch.read_tasks("demo")[0]
+        assert parked["status"] == "waiting_input"
+
+        _answers.answer_task(
+            "demo", parked["id"], "accept", {"answer": "ship it"}, channel="cli", actor="op"
+        )
+
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["status"] == "pending"
+        assert after["answers"][0]["step"] == "ask"
 
 
 class TestAnswerTaskAudit:

@@ -45,11 +45,23 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "d
     return home
 
 
-def _bind_ask_pipeline(project: str) -> None:
-    digest = hashlib.sha256(_ASK_PIPELINE_YAML.encode("utf-8")).hexdigest()
+_GATED_PIPELINE_YAML = """\
+name: gated
+steps:
+  - id: lead
+    role: lead
+  - id: implementer
+    role: implementer
+    gate:
+      type: approval
+"""
+
+
+def _bind_ask_pipeline(project: str, text: str = _ASK_PIPELINE_YAML) -> None:
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     path = _pod.pod.bound_pipeline_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
 
 
@@ -355,11 +367,11 @@ class TestTaskAdd:
 
         assert _interruptions.NOTHING_WILL_ASK in result.output
 
-    def test_a_role_gate_is_named_in_the_summary(
+    def test_a_pipeline_gate_is_named_in_the_summary(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+        _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
 
         result = _runner.invoke(app, ["task", "add", "x", "--pod", "demo"])
 
@@ -375,11 +387,11 @@ class TestTaskAdd:
                 f"kind: policy\nname: {name}\nappliesTo: [implementer]\n"
                 "when:\n  tool: bash\nthen: ask\n"
             )
-        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+        _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
 
         result = _runner.invoke(app, ["task", "add", "x", "--pod", "demo"])
 
-        assert "May ask you: 2 policies, 1 role gate -- see" in result.output
+        assert "May ask you: 1 pipeline gate, 2 policies -- see" in result.output
 
     def test_the_six_addressing_flags_are_stored_on_the_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -446,29 +458,29 @@ def test_task_verb_help_example_uses_a_task_id(verb: str) -> None:
 
 
 class TestShowForecast:
-    def test_a_role_gate_is_listed_with_the_park_posture(
+    def test_a_pipeline_gate_is_listed_with_the_park_posture(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+        _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
         task = _dispatch.enqueue_task("demo", "x", channel="cli")
 
         result = _runner.invoke(app, ["task", "show", task["id"], "--pod", "demo"])
 
-        assert "requireApprovalRoles" in result.output
+        assert "step 'implementer' has an approval gate" in result.output
         assert "approvalMode resolves to" in result.output
 
     def test_json_lists_the_interruption_kinds(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+        _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
         task = _dispatch.enqueue_task("demo", "x", channel="cli")
 
         result = _runner.invoke(app, ["task", "show", task["id"], "--json", "--pod", "demo"])
 
         kinds = {i["kind"] for i in json.loads(result.output)["interruptions"]}
-        assert {"role_gate", "mode"} <= kinds
+        assert {"pipeline_gate", "mode"} <= kinds
 
 
 def _write_trace(task_id: str, *events: tuple[str, dict[str, Any]]) -> None:

@@ -657,14 +657,13 @@ def _lead_for_settings(project: str) -> str:
     return pod.member_id(project, "lead")
 
 
-def _budget_changed(project: str, lead_id: str, *, cap_removed: bool) -> None:
-    """A new budget re-queues the pod's budget-blocked tasks and lifts an auto-pause."""
+def _budget_changed(project: str, lead_id: str) -> None:
+    """A changed budget re-queues the pod's blocked tasks and lifts the budget auto-pause."""
     unblocked = _dispatch.unblock_pod(project)
     if unblocked:
-        ui.info(f"Unblocked {unblocked} budget-blocked task(s)")
-    if not cap_removed:
-        _fleet.meta_set(lead_id, "paused", False)
-        _fleet.meta_set(lead_id, "pausedReason", "")
+        ui.info(f"Unblocked {unblocked} blocked task(s)")
+    _fleet.meta_set(lead_id, "paused", False)
+    _fleet.meta_set(lead_id, "pausedReason", "")
 
 
 def set_setting(project: str, key: str, value: str, *, member: str | None = None) -> None:
@@ -699,7 +698,7 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     audit_log("pod.config", f"project={project} action=set key={key} value={coerced!r}")
     ui.success(f"Set {key}={coerced} for pod '{project}'")
     if key == "budgetUsd":
-        _budget_changed(project, lead_id, cap_removed=not coerced)
+        _budget_changed(project, lead_id)
 
 
 def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
@@ -725,7 +724,7 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
     audit_log("pod.config", f"project={project} action=unset key={key}")
     ui.success(f"Unset {key} for pod '{project}'; it falls back to its default")
     if key == "budgetUsd":
-        _budget_changed(project, lead_id, cap_removed=True)
+        _budget_changed(project, lead_id)
 
 
 @pod_app.command("set")

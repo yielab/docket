@@ -2,7 +2,7 @@
 pre-grant for an expected risky action ahead of time (ADR 0016 SS10).
 
 `forecast` is a pure derivation over a pod's already-effective policies, security classifier,
-pipeline gates, `requireApprovalRoles`, `approvalMode` and notifying channels. `record_pregrant`
+pipeline gates, `approvalMode` and notifying channels. `record_pregrant`
 calls `core.approval.create_pregrant` exactly as the in-turn park path does, then appends the
 grant to the task's own `pregrants` list -- the same shape a live park already produces.
 """
@@ -16,7 +16,6 @@ from typing import Any, Literal
 from docket.core import approval as _approval
 from docket.core import channel as _channel
 from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
 from docket.core import operator_contract as _oc
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
@@ -30,7 +29,7 @@ from docket.kernel.errors import NotFound
 # The kinds that can actually pause a task on a human answer -- everything else
 # ("mode", "high_risk_class", "channel") is context shown alongside, not counted
 # toward "nothing will ask" (see `forecast`'s docstring, item 3 in the spec).
-ASK_KINDS: frozenset[str] = frozenset({"policy", "pipeline_gate", "role_gate"})
+ASK_KINDS: frozenset[str] = frozenset({"policy", "pipeline_gate"})
 
 NOTHING_WILL_ASK = "Nothing in this pod will ask you."
 
@@ -81,12 +80,6 @@ def _iter_leaf_steps(steps: list[_pipeline.Step]) -> list[_pipeline.Step]:
         else:
             leaves.append(step)
     return leaves
-
-
-def _require_approval_roles(project: str) -> list[str]:
-    lead_id = _pod.member_id(project, "lead")
-    raw = _fleet.meta_get(lead_id, "requireApprovalRoles", "")
-    return sorted({r.strip().lower() for r in raw.split(",") if r.strip()})
 
 
 def _approval_expiry_hours(project: str) -> int:
@@ -146,15 +139,6 @@ def forecast(
                     detail=step.id,
                 )
             )
-
-    for role in _require_approval_roles(project):
-        items.append(
-            Interruption(
-                kind="role_gate",
-                description=f"role '{role}' always asks (requireApprovalRoles)",
-                detail=role,
-            )
-        )
 
     mode = _dispatch.pod_approval_mode(project, caller_default=caller_default)
     expiry_hours = _approval_expiry_hours(project)

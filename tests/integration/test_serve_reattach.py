@@ -7,6 +7,7 @@ A restart is one `ThreadingHTTPServer` shut down and a second started over the s
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import threading
 import urllib.error
@@ -25,6 +26,7 @@ from docket.core import answers as _answers
 from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import pipeline as _pipeline
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
@@ -89,9 +91,23 @@ def _task_list(project: str = "demo") -> list[dict[str, Any]]:
     return list(json.loads(path.read_text())["tasks"])
 
 
-def _gated_pod(roles: str = "implementer") -> None:
+def _gated_pod() -> None:
+    """A full pod whose pipeline is the default one with an approval gate on the Implementer."""
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    _fleet.meta_set("demo-lead", "requireApprovalRoles", roles)
+    spec = _pipeline.default_pipeline()
+    steps = [
+        step.model_copy(update={"gate": _pipeline.ApprovalGate()})
+        if step.role == "implementer"
+        else step
+        for step in spec.steps
+    ]
+    text = json.dumps(
+        spec.model_copy(update={"steps": steps}).model_dump(mode="json", by_alias=True)
+    )
+    path = _pod.pod.bound_pipeline_path("demo")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    _fleet.meta_set("demo-lead", "pipeline", hashlib.sha256(text.encode()).hexdigest())
 
 
 class _Backend:

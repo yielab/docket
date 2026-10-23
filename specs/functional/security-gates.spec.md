@@ -353,8 +353,8 @@ where it applies to commands docket itself launches.
      later hops **MUST NOT** run).
    - `warn` and `allow` **MUST** pass the output through unchanged.
    - `require_approval` is not a `pre_output` outcome: the hop has already run, so there is no
-     "before" moment left to gate; an operator who wants a human before a role runs uses the pod's
-     `requireApprovalRoles` gate or the `pre_input` enqueue gate. A `pre_output` policy declaring
+     "before" moment left to gate; an operator who wants a human before a role runs uses a pipeline
+     `approval` gate or the `pre_input` enqueue gate. A `pre_output` policy declaring
      `require_approval` **MUST** behave exactly like `warn` (logged, not gated).
    - The same evaluation **MUST** classify the hop's output against `match_high_risk`
      (Docket-launched process classification 3-4).
@@ -1225,7 +1225,7 @@ docket pod validate [PATH]          # schema-check a policy file, or a directory
 
 ### A dispatch gate, granted and denied
 
-A pod whose `requireApprovalRoles` includes `implementer` parks the task before that hop:
+A pod whose pipeline gives the `implementer` step an `approval` gate parks the task before that hop:
 `docket run` reports it `waiting_approval` with its token, `docket inbox` shows the exact approve
 line, `docket task approve <id>` grants it and the next `docket run` finishes the task. An
 unanswered token fails closed: under `docket start`, `approval_sweep_expired` resolves it to
