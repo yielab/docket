@@ -763,16 +763,7 @@ class TestAgentAddDeleteAudit:
         repoint_docket_home(monkeypatch, home)
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(
-            json.dumps(
-                {
-                    "id": "declaredagent",
-                    "name": "Declared",
-                    "codebase": "",
-                    "stack": "",
-                    "model": "",
-                    "description": "",
-                }
-            )
+            json.dumps({"id": "declaredpod", "blueprint": "software", "codebase": str(tmp_path)})
         )
 
         rc = run_init(InitRequest(from_file=str(spec_file)))
@@ -780,7 +771,7 @@ class TestAgentAddDeleteAudit:
 
         entries = _entries("agent.add")
         assert len(entries) == 1
-        assert entries[0]["detail"].startswith("declaredagent model=")
+        assert entries[0]["detail"].startswith("declaredpod blueprint=software")
         assert entries[0]["detail"].endswith("source=declarative")
 
     def test_pod_delete_writes_one_entry(

@@ -2,8 +2,7 @@
 
 **Version**: 2.0.0
 **Status**: Implemented for project/pod ids, model ids, command verbs and arguments, credential
-values and `AgentMeta`. Three gaps in what reaches those checks are recorded under the rules they
-affect (flat `docket init --from` entries; an over-long directory name given to `docket init`).
+values and `AgentMeta`.
 **Last Updated**: 2026-10-22
 
 ## Purpose
@@ -41,18 +40,20 @@ path segment.
 
 **Enforcement**: `validate_project_id` returns the id unchanged or raises `ProjectIdError` naming
 the rule. Pod provisioning (`provision_pod`) calls it first, before the per-project lock and
-before any workspace path is built. A blueprint entry of `docket init --from` reports the error,
+before any workspace path is built. A `docket init --from` entry reports the error,
 skips the entry and makes the command exit 1; `POST /pods` answers `400`. Every other HTTP route
 with a project path segment calls it right after authentication and answers `400 {"error": ...}`.
 
-A `docket init --from` entry **without** a `blueprint` field provisions a single flat agent, and
-its `id` is not checked by this rule.
+`docket init` slugifies its pod name and applies this rule before anything is created: an empty slug
+or one longer than 64 characters is refused with the rule printed verbatim (bracketed pattern
+included) and exit 2, as a `{"status": "invalid", "reason"}` object under `--json`. A `docket init`
+location is stored absolute and a `codebase` that is not an existing directory is refused the same
+way.
 
 ### 2. Model id
 
 **Field**: model.
-**Used By**: `docket setup model set <role|default> <provider/model>`; `docket init --from` flat
-entries carry a `model` through the same check but keep the value as given when it fails (below).
+**Used By**: `docket setup model set <role|default> <provider/model>`.
 
 **Rules**:
 - **MUST** be a well-formed `provider/model` id matching `^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$`
@@ -73,9 +74,6 @@ entries carry a `model` through the same check but keep the value as given when 
 docket setup model set implementer anthropic/claude-sonnet-4-5   # accepted
 docket setup model set implementer gpt-5                         # rejected: no provider/ prefix
 ```
-
-In `docket init --from`, a flat entry's `model` is passed through the check and, when the check
-raises, the value is stored as written.
 
 ### 3. Command verbs and arguments
 
@@ -199,7 +197,7 @@ Where the names above live today:
 - `src/docket/core/models.py`: `AgentMeta`, `AgentKind`, `AgentScope`, `WorkspaceKind`
 - `src/docket/core/fleet.py`: `meta_set` (validates the record before writing)
 - `src/docket/serve.py`: the project-segment check on every route with a project segment, and `POST /pods`
-- `src/docket/cli/_agents.py`: `docket init`, `docket init --from` (blueprint and flat entries)
+- `src/docket/cli/_agents.py`: `docket init`, `docket init --from`
 - `src/docket/cli/_pod.py`: `build_pod_from_blueprint`, `docket pod set verify`
 - `src/docket/cli/_setup_model.py`: `docket setup model set`, `docket setup provider add|rotate`, the credential prefix check and name derivation
 - `src/docket/cli/__init__.py`: the command and group registry that declares the verbs

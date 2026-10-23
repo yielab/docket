@@ -522,6 +522,15 @@ def free_pod_resources(project: str) -> None:
     shutil.rmtree(_provision_lock_dir(project), ignore_errors=True)
 
 
+def release_implementer_resources(project: str) -> None:
+    """Release the port range and remove the scratch and cache directories of a pod that has
+    no implementer left; the pod's memory, configuration and working directory stay."""
+    with _project_provision_lock(project):
+        _free_pod_allocation(project)
+        shutil.rmtree(_cfg.pod_scratch_dir(project), ignore_errors=True)
+        shutil.rmtree(_cfg.pod_cache_dir(project), ignore_errors=True)
+
+
 def purge_pod_history(project: str, member_ids: list[str]) -> None:
     """Remove durable sessions and traces owned by a deleted pod.
 
@@ -847,10 +856,12 @@ def provision_pod(
             codebase = location
         else:
             work_dir = location or str(_cfg.pod_work_dir(project))
-            work_dir_created = not location and not Path(work_dir).exists()
+            work_dir_new = not Path(work_dir).exists()
+            work_dir_created = not location and work_dir_new
             Path(work_dir).mkdir(parents=True, exist_ok=True)
-            with contextlib.suppress(OSError):
-                Path(work_dir).chmod(0o700)
+            if work_dir_new:
+                with contextlib.suppress(OSError):
+                    Path(work_dir).chmod(0o700)
 
         effective_budget = budget_usd if budget_usd is not None else blueprint.default_budget_usd
 

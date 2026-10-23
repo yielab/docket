@@ -334,9 +334,11 @@ class TestUnknownBlueprintFailsCleanly:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed(tmp_path, monkeypatch)
+        good = tmp_path / "goodagent"
+        good.mkdir()
         spec = [
             {"id": "bad-pod", "blueprint": "wizard-pod"},
-            {"id": "goodagent", "codebase": "/src/goodagent"},
+            {"id": "goodagent", "blueprint": "software", "codebase": str(good)},
         ]
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
@@ -345,7 +347,7 @@ class TestUnknownBlueprintFailsCleanly:
 
         assert rc == 0
         ids = _ids(oc_dir)
-        assert "goodagent" in ids
+        assert "goodagent-lead" in ids
         assert not any(i.startswith("bad-pod") for i in ids)
 
 
@@ -387,7 +389,9 @@ class TestFromSpecBlueprint:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed(tmp_path, monkeypatch)
-        spec = {"id": "demo", "blueprint": "software", "codebase": "/src/demo", "stack": "Python"}
+        code = tmp_path / "demo"
+        code.mkdir()
+        spec = {"id": "demo", "blueprint": "software", "codebase": str(code), "stack": "Python"}
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
 
@@ -395,14 +399,16 @@ class TestFromSpecBlueprint:
 
         assert rc == 0
         assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
-        assert _meta(oc_dir, "demo-lead")["codebase"] == "/src/demo"
+        assert _meta(oc_dir, "demo-lead")["codebase"] == str(code)
 
     def test_from_spec_existing_pod_is_skipped_not_recreated(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed(tmp_path, monkeypatch)
-        _pod.build_pod_from_blueprint("demo", "software", location="/src/demo")
-        spec = [{"id": "demo", "blueprint": "software", "codebase": "/src/demo"}]
+        code = tmp_path / "demo"
+        code.mkdir()
+        _pod.build_pod_from_blueprint("demo", "software", location=str(code))
+        spec = [{"id": "demo", "blueprint": "software", "codebase": str(code)}]
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
 
@@ -426,21 +432,3 @@ class TestFromSpecBlueprint:
 
         assert rc == 1
         assert _ids(oc_dir) == []
-
-    def test_from_spec_without_blueprint_field_is_unaffected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # No `blueprint` key at all — must take the original single-flat-agent
-        # path (_provision_agent), never a pod.
-        oc_dir = _seed(tmp_path, monkeypatch)
-        spec = [{"id": "legacyagent", "codebase": "/src/legacyagent", "stack": "Go"}]
-        spec_file = tmp_path / "spec.json"
-        spec_file.write_text(json.dumps(spec))
-
-        rc = _agents.run_init(_agents.InitRequest(from_file=str(spec_file)))
-
-        assert rc == 0
-        assert _ids(oc_dir) == ["legacyagent"]
-        meta = _meta(oc_dir, "legacyagent")
-        assert "blueprint" not in meta
-        assert "pod" not in meta

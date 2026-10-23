@@ -2,7 +2,6 @@
   "agents": [
     {
       "id": "webapp",
-      "name": "Web Application",
       "blueprint": "software",
       "codebase": "~/Sites/webapp",
       "description": "Customer-facing web app.",
@@ -10,9 +9,8 @@
     },
     {
       "id": "research",
-      "name": "Research Bot",
-      "model": "anthropic/claude-haiku-4-5",
-      "description": "Web research and file automation — a flat agent, no pod."
+      "blueprint": "research",
+      "description": "Web research and file automation."
     }
   ]
 }

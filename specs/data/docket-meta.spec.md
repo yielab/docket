@@ -41,15 +41,9 @@ model is **not closed**: it declares `extra="allow"` so unknown keys round-trip.
 does not reject an undeclared key name. The pod settings and `requireApprovalRoles` (see below)
 rely on this: none of them is an `AgentMeta` attribute.
 
-Two kinds of file exist:
-
-- **Pod member files**, written by provisioning (`docket init`, `docket init --from` with a
-  `blueprint`, `docket pod add`, `POST /pods`). They carry every row of the agent table that applies
-  to the member's role and blueprint.
-- **Flat agent files**, written by `docket init --from <spec>` for an entry with no `blueprint`.
-  They carry `kind`, `name`, `codebase`, `stack`, `model`, `description`, `sessionKey`,
-  `projectKey`, `templateVersion`, and `budgetUsd` when the entry gave one; they have no `role`,
-  `pod`, `scope` or `created`. A flat agent is not a pod member.
+Pod member files are written by provisioning (`docket init`, `docket init --from`, `docket pod
+add`, `POST /pods`). They carry every row of the agent table that applies to the member's role and
+blueprint.
 
 ## Schema
 
@@ -65,17 +59,17 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 | `role` | string | none | pod members | provisioning | Pod-member role (`lead`, `implementer`, `reviewer`, `tester`, or a blueprint's role such as `researcher`) |
 | `pod` | string | pod id | pod members | provisioning | The pod this member belongs to. Read first by `docket status`, the cwd-to-pod lookup and `pod_of`, which fall back to parsing the `<pod>-<role>` id only when it is absent. **Not an `AgentMeta` attribute**; it round-trips through `extra="allow"` |
 | `name` | string | none | Yes (written always; `AgentMeta` defaults it to empty) | provisioning | Human-readable display name |
-| `codebase` | string | path | pod members and flat agents | provisioning | The project path as the operator gave it, with `~` expanded; empty for a `workdir`-kind member. Stored as given: provisioning checks neither that it is absolute nor that it exists |
+| `codebase` | string | path | pod members | provisioning | The project path with `~` expanded; empty for a `workdir`-kind member. `docket init` stores it absolute (a relative path is taken from the current directory) and refuses one that is not an existing directory; `POST /pods` stores it as given |
 | `workspaceKind` | enum | `codebase` or `workdir` | No (absent means `codebase`) | provisioning (blueprints with a working directory) | Whether the workspace is anchored to a codebase or a plain working directory. Only ever written as the literal `workdir` |
 | `workDir` | string | path | `workdir`-kind members | provisioning | The pod's shared working directory, stored as given. Present only with `workspaceKind: workdir`, and then `codebase` is `""` |
-| `blueprint` | string | none | No | provisioning | Name of the pod blueprint that provisioned the member (`software`, `research`, `content`, `ops`, `agentic-product`). Absent on a flat agent (see pod-blueprints.spec.md) |
+| `blueprint` | string | none | No | provisioning | Name of the pod blueprint that provisioned the member (`software`, `research`, `content`, `ops`, `agentic-product`). |
 | `stack` | string | none | No | provisioning | Comma-separated detected stack (`Docker,git`), `unknown` when a codebase shows none, and empty for a `workdir`-kind member (nothing to inspect) |
 | `model` | string | `provider/model-id` | Yes (written always; `AgentMeta` defaults it to empty) | provisioning, `docket setup model` | Provider-qualified model id. Provisioning resolves it from the role-to-model policy; re-resolving the policy rewrites it |
 | `description` | string | none | No | provisioning | Free-text purpose; empty when none was given |
-| `created` | string | ISO-8601 UTC | pod members | provisioning | Creation timestamp. Absent on a flat agent |
+| `created` | string | ISO-8601 UTC | pod members | provisioning | Creation timestamp |
 | `sessionKey` | string | `agent:<pod>:<projectKey>` | Yes (written always) | provisioning | Base session scope key. Pod dispatch derives its per-turn session keys itself and does not read this value |
 | `projectKey` | string | none | Yes (written always) | provisioning | Last component of `sessionKey` (default `default`) |
-| `budgetUsd` | number or numeric string | at least 0 | No | `docket pod set` / `unset` (Lead), provisioning (Lead, when a budget was requested) | Per-pod spend cap in USD, read from the Lead only. `pod set` writes a JSON number; provisioning with a requested budget writes it as a string (`"20.0"`) and a flat agent keeps the string it was given. Both read back the same. `pod unset` stores `null`, which reads as the default (`0`, unlimited). See "Pod settings on the Lead" |
+| `budgetUsd` | number or numeric string | at least 0 | No | `docket pod set` / `unset` (Lead), provisioning (Lead, when a budget was requested) | Per-pod spend cap in USD, read from the Lead only. `pod set` writes a JSON number; provisioning with a requested budget writes it as a string (`"20.0"`). Both read back the same. `pod unset` stores `null`, which reads as the default (`0`, unlimited). See "Pod settings on the Lead" |
 | `paused` | bool | none | No | dispatch budget gate (sets `true`); `docket pod set budgetUsd <n>` and `docket run --resume` (set `false`) | Whether the pod is paused. Set on the Lead when the pod's usage-derived cost estimate reaches `budgetUsd`; dispatch then refuses every further claim for that pod and traces `paused_refused`. Read through `AgentMeta.is_paused` / `AgentMeta.coerce_paused` (a real `bool`, tolerant of a stringified `"true"`/`"false"`), never a raw string compare |
 | `pausedReason` | string | none | No | same as `paused` | Human-readable pause reason. The only writer sets the literal `"budget"`; the clearing writers set `""` |
 | `portRangeStart` | number | integer at least 0 | No (implementer only) | provisioning | First port of the pod's reserved range. Absent on non-implementers. A shared locked allocation gives concurrently created pods distinct ranges |
@@ -286,23 +280,6 @@ a string:
 }
 ```
 
-A flat agent from `docket init --from spec.json` for an entry with no `blueprint`:
-
-```json
-{
-  "kind": "project",
-  "name": "Flat One",
-  "codebase": "/home/user/Sites/myshop",
-  "stack": "",
-  "model": "anthropic/claude-sonnet-4-6",
-  "description": "",
-  "sessionKey": "agent:flat1:default",
-  "projectKey": "default",
-  "templateVersion": "5",
-  "budgetUsd": "7"
-}
-```
-
 ## Phase 46 amendments
 
 Phase 46 (ADR 0030) moves the pod's settings off the Lead's file. Until then the requirements above
@@ -323,7 +300,7 @@ stand as written; these change when the cards land.
 - `src/docket/core/fleet.py`: `meta_get`, `meta_set`, `meta_read`, `set_model_both`
 - `src/docket/core/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`, `value_and_source`), `PodSettingsError`, `pod_of`, `member_id`, `bound_pipeline_path`
 - `src/docket/core/pod_provisioning.py`: pod-member provisioning, `POD_TEMPLATE_VERSION`, `validate_verify_cmd`, `parse_budget_usd`
-- `src/docket/cli/_agents.py`: `docket init`, the flat-agent writer for `docket init --from`
+- `src/docket/cli/_agents.py`: `docket init`, `docket init --from`
 - `src/docket/cli/_pod.py`: `docket pod set` / `unset` / `add`, `verifyCmd` setters
 - `src/docket/cli/_run.py`: `docket run --resume` (clears the pause)
 - `src/docket/core/dispatch.py`: pod-settings readers, the budget gate, `hop_env` (port and scratch injection), `requireApprovalRoles` gate

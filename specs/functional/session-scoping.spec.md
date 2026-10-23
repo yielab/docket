@@ -26,7 +26,7 @@ trace contract (see `pod-dispatch.spec.md`).
 ### Session key
 
 1. Every agent's metadata **MUST** have a base session key of the form `agent:<id>:<project>`,
-   where `<id>` is the agent's own id for a standalone agent and the pod's name for a pod member.
+   where `<id>` is the pod's name.
 2. The `<project>` component **MUST** equal the agent's `projectKey` field.
 3. The default project key **MUST** be `default`.
 4. `sessionKey` and `projectKey` **MUST** be stored in the agent's `.docket-meta.json`, docket's
@@ -47,8 +47,8 @@ trace contract (see `pod-dispatch.spec.md`).
 
 ## Interface Contracts
 
-Provisioning writes `sessionKey` and `projectKey` into the metadata of each agent it creates: a
-standalone agent at declarative `init`, and every pod member at pod provisioning and pod apply.
+Provisioning writes `sessionKey` and `projectKey` into the metadata of each pod member it
+creates, at pod provisioning and pod apply.
 No public command reads the base key as a history key, and no command sets it: the pod settings
 command rejects both `sessionKey` and `projectKey` as unknown settings.
 
@@ -60,14 +60,6 @@ The Lead of pod `mywebsite` (default project key):
 
 ```json
 {"projectKey": "default", "sessionKey": "agent:mywebsite:default"}
-```
-
-### A standalone agent's derived key
-
-The standalone agent `mywebsite-lead` (default project key):
-
-```json
-{"projectKey": "default", "sessionKey": "agent:mywebsite-lead:default"}
 ```
 
 ## Validation
@@ -83,7 +75,6 @@ The standalone agent `mywebsite-lead` (default project key):
 - `src/docket/core/pod.py`: `session_key`, `PodMember.session_key`, `PodSettings.KEYS`
 - `src/docket/core/pod_provisioning.py`: `provision_member` (writes `sessionKey` and `projectKey` for each pod member)
 - `src/docket/core/pod_apply.py`: pod apply reads `projectKey` from the Lead and re-derives each member's key
-- `src/docket/cli/_agents.py`: `_provision_agent` (standalone agent at declarative `init`), `_create_workspace` (renders the SOUL.md session line)
 - `src/docket/core/dispatch.py`: `step_session_key` (the per-hop durable history key)
 - `src/docket/core/fleet.py`: `meta_set` (generic metadata write; no caller sets either key)
 - `src/docket/core/models.py`: `AgentMeta.session_key`, `AgentMeta.project_key`

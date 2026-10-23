@@ -2,8 +2,8 @@
 
 **Version**: 3.0.0
 **Status**: Complete. Pods and their members are created, shown, added to, reset, removed and
-deleted as described below; `docket init --from` also still provisions a standalone agent that
-belongs to no pod (see Declarative Provisioning).
+deleted as described below; `docket init --from` provisions pods from a spec file (see
+Declarative Provisioning).
 **Last Updated**: 2026-10-22
 
 ## Purpose
@@ -36,11 +36,15 @@ This specification does NOT cover:
 
 1. **MUST** create a unique pod identifier: the slug of the project name argument (or of the
    current directory's name), refusing with exit 1 when a project or pod with that id already
-   exists. `docket init` asks nothing interactively
+   exists, and with exit 2, before anything is created, when the slug is empty or longer than 64
+   characters (input-validation.spec.md section 1). `docket init` asks nothing interactively
 2. **MUST** take the codebase (for a `codebase`-kind blueprint, `software` by default) or the
    working directory (for a `workdir`-kind blueprint: `research`/`content`/`ops`) from the
-   `location` argument, defaulting to the current directory. `docket init` does not check that a
-   codebase path exists or is a git repository; a `workdir` location is created when missing. A
+   `location` argument, defaulting to the current directory, and **MUST** store it absolute (a
+   relative path is taken from the current directory). A `codebase` that is not an existing
+   directory is refused with exit 2 before anything is created; `docket init` does not check that
+   it is a git repository. A `workdir` location is created when missing, and provisioning
+   **MUST NOT** change the mode of a working directory it did not create. A
    `--from` entry for a `workdir`-kind blueprint with no `workDir` auto-provisions the pod's own
    working directory (see pod-blueprints.spec.md)
 3. **MUST** create an isolated workspace directory for every member
@@ -66,7 +70,7 @@ This specification does NOT cover:
     `description` field; `docket init` has no description option
 12. **MUST** stamp the active template version into each member's metadata so prompt drift is
     detectable
-13. **MAY** provision one or more pods (and standalone agents) declaratively from a spec file
+13. **MAY** provision one or more pods declaratively from a spec file
     (`docket init --from <file>`)
 14. **MUST** select a pod blueprint (`--blueprint <name>`, default `software`) before
     provisioning and **MUST** fail cleanly with exit 1, before anything is created, if the name is
@@ -80,19 +84,17 @@ This specification does NOT cover:
 2. **MUST** support a list of entries, a `{agents: [...]}` mapping, or a single entry mapping
 3. **MUST** require an `id` on every entry; an entry without one is skipped with a warning. The
    id is not derived from a `name`
-4. **MUST** be idempotent: an entry whose pod already has members, or whose standalone agent
-   workspace (`<id>`) already exists, is skipped with a warning, not recreated
-5. **MUST** skip an entry with an unknown blueprint, an invalid pod id or an existing target
-   without aborting the rest of the spec file; an invalid pod id makes the command exit 1 once
-   every entry has been processed
-6. **MAY** carry a `telegram` field on any entry, binding the pod's Lead (or the standalone agent)
-   to that Telegram group
-7. **MAY** carry a `blueprint` field on any entry, provisioning a pod (see pod-blueprints.spec.md)
-   with the entry's `codebase` (or `workDir` for a `workdir`-kind blueprint), `stack`,
-   `description`, `projectKey` and `budgetUsd`. An entry with no `blueprint` field provisions a
-   standalone agent that belongs to no pod: it takes `name`, `codebase`, `stack`, `model`,
-   `description`, `projectKey` and `budgetUsd`, gets the id exactly as written (no slugging and no
-   validation), registers in `fleet.json` and writes an `agent.add` audit entry
+4. **MUST** be idempotent: an entry whose pod already has members is skipped with a warning, not
+   recreated
+5. **MUST** skip an entry with an unknown blueprint, an invalid pod id, an unusable location or an
+   existing target without aborting the rest of the spec file; an invalid pod id makes the command
+   exit 1 once every entry has been processed
+6. **MAY** carry a `telegram` field on any entry, binding the pod's Lead to that Telegram group
+7. **MUST** carry a `blueprint` field on every entry; the entry provisions a pod (see
+   pod-blueprints.spec.md) with its `codebase` (or `workDir` for a `workdir`-kind blueprint),
+   `stack`, `description`, `projectKey` and `budgetUsd`. An entry with no `blueprint` is refused
+   and nothing is created for it, and a location that is not usable is refused the same way; the
+   command exits 2 once every entry has been processed
 
 ### Agent States
 
@@ -140,7 +142,9 @@ write anything.
 3. **MUST** refuse an id that is not a member of the pod
 4. **MUST** deregister the member from `fleet.json`, remove its workspace and its task
    worktrees (requirement 9 of Pod Deletion applies to its branch), write one `pod.remove` audit
-   entry, and free the pod's runtime resources when it was the last implementer
+   entry, and, when it was the last implementer, release the pod's port range and remove its
+   scratch and cache directories. It **MUST NOT** remove the pod's `memory.json`, its `config/`
+   directory or its working directory
 
 ### Member Reset (docket pod reset)
 
@@ -195,8 +199,7 @@ write anything.
 # to it. The recipe and apply options are pod-blueprints.spec.md's.
 docket init [<project>] [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
 
-# Provision one or more pods (or, without a `blueprint` field, standalone agents)
-# declaratively from a spec file; excludes every other option
+# Provision one or more pods declaratively from a spec file; excludes every other option
 docket init --from <agents.yaml|agents.json>
 
 # The roster. The pod comes from --pod/-p, DOCKET_POD, then the current directory.
@@ -273,13 +276,12 @@ After successful creation:
 Where the names above live today; the only place this spec names a path.
 
 - `src/docket/cli/_agents.py`: `run_init`, `InitRequest`, `cmd_init`, the declarative path
-  (`_cmd_add_declarative`, `_provision_pod_from_spec`) and the standalone-agent path
-  (`_provision_agent`, `_create_workspace`)
+  (`_cmd_add_declarative`, `_provision_pod_from_spec`), `_stored_location`
 - `src/docket/cli/_pod.py`: `cmd_show`, `cmd_add`, `cmd_remove`, `cmd_reset`, `cmd_delete`,
   `add_members`, `remove_member`, `reset_member`, `build_pod_from_blueprint`
 - `src/docket/cli/_contract.py`: `confirm`
 - `src/docket/core/pod_provisioning.py`: `provision_pod`, `provision_members`, `teardown_member`,
-  `allocate_pod_resources`, `free_pod_resources`, `purge_pod_history`, `rendered_member_files`,
+  `allocate_pod_resources`, `release_implementer_resources`, `free_pod_resources`, `purge_pod_history`, `rendered_member_files`,
   `POD_TEMPLATE_VERSION`
 - `src/docket/core/pod.py`: `session_key`, `plan_added_member`, `normalize_role`
 - `src/docket/core/pod_report.py`: `pod_report`, `member_report`
