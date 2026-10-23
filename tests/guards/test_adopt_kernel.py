@@ -331,7 +331,16 @@ def test_config_reads_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 TEST_REL = "tests/integration/test_sample.py"
 HOME_IMPORTS = "from docket.kernel.home import Home\nfrom docket.kernel.home import use_home\n"
-HEAD = "import pytest\nfrom tests.conftest import repoint_docket_home\n\n\n"
+HEAD = "import pytest\nfrom toy_conftest import repoint_docket_home\n\n\n"
+
+
+@pytest.fixture(autouse=True)
+def _toy_conftest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The toy sources import the repointer from a module of their own, so running a rewrite
+    never depends on what the real tests/conftest.py still defines."""
+    stub = types.ModuleType("toy_conftest")
+    stub.repoint_docket_home = None  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "toy_conftest", stub)
 
 
 def _repoint(source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -981,7 +990,7 @@ def test_each_home_rule_builds_on_the_one_before_it_in_one_test(
 
     source = (
         "import docket.config as _cfg\n"
-        "from tests.conftest import repoint_docket_home\n\n\n"
+        "from toy_conftest import repoint_docket_home\n\n\n"
         "def test_a(monkeypatch, tmp_path):\n"
         "    repoint_docket_home(monkeypatch, tmp_path / 'h')\n"
         "    monkeypatch.setattr(_cfg, 'TRACES_DIR', _cfg.DOCKET_HOME / 'elsewhere')\n"
@@ -1021,7 +1030,7 @@ def test_the_stages_rewrite_a_tree_in_the_order_that_keeps_it_correct(
     test_file.parent.mkdir(parents=True)
     test_file.write_text(
         "import docket.config as _cfg\n"
-        "from tests.conftest import repoint_docket_home\n\n\n"
+        "from toy_conftest import repoint_docket_home\n\n\n"
         "def test_a(monkeypatch, tmp_path):\n"
         "    repoint_docket_home(monkeypatch, tmp_path / 'h')\n"
         "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
@@ -1044,7 +1053,7 @@ def test_a_repoint_after_a_patch_is_left_for_hand_not_converted_the_wrong_way_ro
     """Run the other way round, the repoint's Home would silently replace the patched one."""
     source = (
         "import docket.config as _cfg\n"
-        "from tests.conftest import repoint_docket_home\n\n\n"
+        "from toy_conftest import repoint_docket_home\n\n\n"
         "def test_a(monkeypatch, tmp_path):\n"
         "    monkeypatch.setattr(_cfg, 'TOOL_APPROVAL_TIMEOUT', 7)\n"
         "    repoint_docket_home(monkeypatch, tmp_path / 'h')\n"
