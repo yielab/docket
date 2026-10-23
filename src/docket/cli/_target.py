@@ -11,13 +11,14 @@ import typer
 import docket.config as _cfg
 from docket.core.utils import project_ids
 from docket.edges import store
+from docket.kernel.errors import InvalidInput
 
 POD_OPTION_HELP = (
     "Pod name; default: DOCKET_POD, then the pod whose codebase contains the current directory"
 )
 
 
-class TargetError(Exception):
+class TargetError(InvalidInput):
     """No single pod could be chosen."""
 
 

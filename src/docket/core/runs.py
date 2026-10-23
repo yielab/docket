@@ -55,6 +55,7 @@ from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel import text as _text
+from docket.kernel.errors import InvalidInput
 
 RunSource = Literal["cli", "webhook", "schedule", "sweep", "mcp"]
 RunState = Literal[
@@ -178,7 +179,7 @@ class CancelOutcome:
     killed_pids: list[int] = field(default_factory=list)
 
 
-class RunError(Exception):
+class RunError(InvalidInput):
     """Raised for an invalid run source/state or other misuse of this API."""
 
 

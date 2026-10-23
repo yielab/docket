@@ -11,6 +11,7 @@ from typing import Any
 import docket.config as _cfg
 from docket.core import trace as _trace
 from docket.kernel import clock as _clock
+from docket.kernel.errors import InvalidInput
 
 __all__ = ["read", "record", "utc_cursor", "utc_z"]
 
@@ -68,7 +69,7 @@ def utc_cursor(ts: str) -> str:
     """*ts* as the ledger writes it (UTC `isoformat()`); ValueError unless it carries an offset."""
     stamp = _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
     if stamp.tzinfo is None:
-        raise ValueError(f"naive timestamp: {ts}")
+        raise InvalidInput(f"naive timestamp: {ts}")
     return stamp.astimezone(_dt.UTC).isoformat()
 
 

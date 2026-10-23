@@ -34,6 +34,7 @@ from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
+from docket.kernel.errors import Conflict, InvalidInput, Unavailable
 
 # Bump when the pod-member templates change (doctor flags older members).
 # v3: built-in/starter AGENTS.md templates no longer instruct a private
@@ -55,17 +56,17 @@ TASK_WORKTREES_DIRNAME = "tasks"
 _MAX_VERIFY_CMD_LEN = 2000
 
 
-class VerifyCmdError(ValueError):
+class VerifyCmdError(InvalidInput):
     """A verify command failed validation before being stored."""
 
 
-class PodAlreadyExistsError(Exception):
+class PodAlreadyExistsError(Conflict):
     """``project`` already has at least one registered pod member.
 
     Idempotence contract: skip, don't clobber. Raised before anything is touched."""
 
 
-class PodProvisionError(Exception):
+class PodProvisionError(Unavailable):
     """A fresh pod failed to fully provision.
 
     Raised only after rollback removes every member/resource the failing call created."""

@@ -26,6 +26,7 @@ from typing import Any
 import docket.config as _cfg
 import docket.plugins as _plugin_api
 from docket.core import plugins as _plugins
+from docket.kernel.errors import InvalidInput
 
 VALID_HOOKS: frozenset[str] = frozenset({"pre_input", "pre_tool_call", "pre_output"})
 VALID_ACTIONS: frozenset[str] = frozenset({"allow", "warn", "redact", "require_approval", "block"})
@@ -151,7 +152,7 @@ def normalize_policy(short: dict[str, Any]) -> dict[str, Any]:
     # the expected one.
     kind = doc.pop("kind", None)
     if kind is not None and kind != "policy":
-        raise ValueError(f"expected kind: policy, got kind: {kind!r}")
+        raise InvalidInput(f"expected kind: policy, got kind: {kind!r}")
 
     canonical: dict[str, Any] = dict(doc)
 
@@ -260,7 +261,7 @@ def read_policy(path: Path) -> dict[str, Any]:
         }
         doc = _yaml.load(text, Loader=_PolicyLoader)
     if not isinstance(doc, dict):
-        raise ValueError(f"{path}: policy document must be a mapping")
+        raise InvalidInput(f"{path}: policy document must be a mapping")
     return normalize_policy(doc)
 
 
@@ -278,14 +279,14 @@ def task_policy_document(doc: Any) -> dict[str, Any]:
     """*doc* (short or canonical) as a validated canonical block policy under ``TASK_POLICY_ID``;
     raises ``ValueError`` for anything invalid or whose action is not ``block``."""
     if not isinstance(doc, dict):
-        raise ValueError("a task policy must be a mapping")
+        raise InvalidInput("a task policy must be a mapping")
     canonical = normalize_policy(doc)
     canonical["id"] = TASK_POLICY_ID
     error = _validate_doc(canonical, TASK_POLICY_ID)
     if error:
-        raise ValueError(error)
+        raise InvalidInput(error)
     if canonical["action"] != "block":
-        raise ValueError(f"a task policy may only block, got action {canonical['action']!r}")
+        raise InvalidInput(f"a task policy may only block, got action {canonical['action']!r}")
     return canonical
 
 

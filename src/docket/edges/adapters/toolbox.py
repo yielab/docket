@@ -29,6 +29,7 @@ from docket.edges.adapters import system as _system
 from docket.edges.adapters.system import SandboxAvailability, SandboxBackend
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel.errors import Refused
 
 SandboxMode = Literal["off", "auto"]
 
@@ -56,7 +57,7 @@ READ_DEFAULT_CHARS = 6000
 _CANCEL_POLL_INTERVAL_S = 0.1
 
 
-class PathEscapeError(ValueError):
+class PathEscapeError(Refused):
     """A tool was asked to touch a path outside every allowed root."""
 
 

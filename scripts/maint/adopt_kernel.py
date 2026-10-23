@@ -543,6 +543,79 @@ def clock(tree: ast.Module, source: str, rel: str) -> Outcome:
     return out
 
 
+# errors ----------------------------------------------------------------------------------------
+
+ERRORS_MODULE = "docket.kernel.errors"
+BUILTIN_ERRORS: frozenset[str] = MEASURE.BUILTIN_ERRORS  # type: ignore[attr-defined]
+# A raised builtin and the one kind that replaces it without changing what catchers see.
+RAISE_KINDS = {"ValueError": "InvalidInput"}
+# Public class name -> the kind it derives from; a class absent here is left for a decision.
+CLASS_KINDS: dict[str, str] = {}
+OWN_RENDERING = frozenset({"__init__", "__str__"})
+
+
+def _raised_builtin(node: ast.Raise) -> str | None:
+    exc = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+    return exc.id if isinstance(exc, ast.Name) and exc.id in BUILTIN_ERRORS else None
+
+
+def _raise_refusal(node: ast.Raise, name: str) -> str | None:
+    """Why ``raise name(...)`` cannot just swap the name, else ``None``."""
+    call = node.exc
+    if name not in RAISE_KINDS:
+        return f"raise {name}: no kind replaces it one for one"
+    if not isinstance(call, ast.Call):
+        return f"bare raise {name}: there is no message to carry"
+    if not call.args and not call.keywords:
+        return f"raise {name}() without a message; a kind needs one (TypeError)"
+    if len(call.args) != 1 or call.keywords or isinstance(call.args[0], ast.Starred):
+        return f"raise {name} with other than one positional; a kind's second is the hint"
+    return None
+
+
+def _class_refusal(node: ast.ClassDef) -> str | None:
+    """Why ``node`` cannot just swap its builtin base for a kind, else ``None``."""
+    if node.name not in CLASS_KINDS:
+        return f"class {node.name}: not in CLASS_KINDS"
+    if len(node.bases) != 1 or node.keywords:
+        return f"class {node.name}: more than one base or a class keyword"
+    defined = {s.name for s in node.body if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    if defined & OWN_RENDERING:
+        return f"class {node.name}: defines {', '.join(sorted(defined & OWN_RENDERING))}; by hand"
+    return None
+
+
+def errors(tree: ast.Module, source: str, rel: str) -> Outcome:
+    """Single-message builtin raises and listed builtin-based classes take a ``kernel.errors`` kind."""
+    out = Outcome()
+    raised = {line for line, _ in MEASURE.error_raises(tree, rel)}  # type: ignore[attr-defined]
+    classed = {line for line, _ in MEASURE.error_classes(tree, rel)}  # type: ignore[attr-defined]
+    kinds: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise) and node.lineno in raised:
+            name = _raised_builtin(node)
+            if name is None:
+                continue
+            if (why := _raise_refusal(node, name)) is not None:
+                out.unmappable.append((node.lineno, why))
+                continue
+            call = node.exc
+            assert isinstance(call, ast.Call)
+            kind = RAISE_KINDS[name]
+            out.edits.append(Edit(*span(call.func, source), kind, f"{name} -> {kind}"))
+            kinds.add(kind)
+        elif isinstance(node, ast.ClassDef) and node.lineno in classed:
+            if (why := _class_refusal(node)) is not None:
+                out.unmappable.append((node.lineno, why))
+                continue
+            base, kind = node.bases[0], CLASS_KINDS[node.name]
+            assert isinstance(base, ast.Name)
+            out.edits.append(Edit(*span(base, source), kind, f"{base.id} -> {kind}"))
+            kinds.add(kind)
+    out.imports += [f"from {ERRORS_MODULE} import {k}" for k in sorted(kinds)]
+    return out
+
+
 # wrappers --------------------------------------------------------------------------------------
 #
 # A wrapper is a parameterless module-level ``def`` whose whole body is one kernel call. Deleting
@@ -783,6 +856,7 @@ RULES: dict[str, tuple[Rule, str]] = {
     "ids": (ids, "uuid"),
     "text": (text, ""),
     "clock": (clock, "time"),
+    "errors": (errors, "Error"),
 }
 # rules that read the whole tree first: rule -> the rewrite it wants per file
 PROJECT_RULES: dict[str, Callable[[], dict[str, Outcome]]] = {"wrappers": wrappers}
@@ -818,9 +892,11 @@ def _bound_names(tree: ast.Module) -> set[str]:
 
 def _conflicts(statement: str, tree: ast.Module, aliases: dict[str, str]) -> bool:
     """True when the import's local name is already taken by something it does not stand for."""
-    alias = ast.parse(statement).body[0].names[0]  # type: ignore[attr-defined]
+    stmt = ast.parse(statement).body[0]
+    assert isinstance(stmt, ast.ImportFrom)
+    alias = stmt.names[0]
     local = alias.asname or alias.name
-    target = f"docket.kernel.{alias.name}"
+    target = f"{stmt.module}.{alias.name}"
     if aliases.get(local) == target:
         return False
     return local in aliases or local in _bound_names(tree)
@@ -908,8 +984,10 @@ def plan_outcomes(
 
 
 def _present(statement: str, aliases: dict[str, str]) -> bool:
-    alias = ast.parse(statement).body[0].names[0]  # type: ignore[attr-defined]
-    return aliases.get(alias.asname or alias.name) == f"docket.kernel.{alias.name}"
+    stmt = ast.parse(statement).body[0]
+    assert isinstance(stmt, ast.ImportFrom)
+    alias = stmt.names[0]
+    return aliases.get(alias.asname or alias.name) == f"{stmt.module}.{alias.name}"
 
 
 def plan_project(rule: str) -> list[FilePlan]:

@@ -20,6 +20,7 @@ from typing import Literal
 import docket.config as _cfg
 from docket.core.audit import audit_log
 from docket.core.repo_view import RepoView, view_for
+from docket.kernel.errors import DocumentError
 
 SkillScope = Literal["codebase", "pod", "global", ""]
 
@@ -27,16 +28,10 @@ _NAME_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 _MAX_DESCRIPTION_LENGTH = 1024
 
 
-class SkillError(ValueError):
-    """*path*'s ``SKILL.md`` violates the Agent Skills shape; ``field`` names the offending
+class SkillError(DocumentError):
+    """*file*'s ``SKILL.md`` violates the Agent Skills shape; ``field`` names the offending
     key. Raised only by ``parse_skill_file``; ``discover_skills`` catches it, skips the
     skill, and audits once -- never raised into a turn."""
-
-    def __init__(self, path: Path, field: str, message: str) -> None:
-        self.path = path
-        self.field = field
-        self.message = message
-        super().__init__(f"{path}: {field}: {message}")
 
 
 @dataclass(frozen=True)

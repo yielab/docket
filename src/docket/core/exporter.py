@@ -25,6 +25,7 @@ import docket.config as _cfg
 from docket.core import privacy as _privacy
 from docket.core.trace import EVENT_TYPES
 from docket.edges import store as _store
+from docket.kernel.errors import DocumentError, InvalidInput
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -34,24 +35,8 @@ _RESERVED_HEADERS = frozenset({"authorization", "content-type", "accept"})
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
 
 
-class ExporterError(Exception):
-    """*file*: *field*: *message* (valid: ...) -- an exporter document failed to load or a
-    catalog write was rejected. ``valid`` is populated only for a closed-vocabulary failure."""
-
-    def __init__(
-        self, file: Path | str, field: str, message: str, valid: tuple[str, ...] = ()
-    ) -> None:
-        self.file = Path(file)
-        self.field = field
-        self.message = message
-        self.valid = tuple(valid)
-        super().__init__(str(self))
-
-    def __str__(self) -> str:
-        rendered = f"{self.file}: {self.field}: {self.message}"
-        if self.valid:
-            rendered = f"{rendered} (valid: {', '.join(self.valid)})"
-        return rendered
+class ExporterError(DocumentError):
+    """An exporter document failed to load, or a catalog write was rejected."""
 
 
 def _validate_credential_names(value: list[str]) -> list[str]:
@@ -59,11 +44,11 @@ def _validate_credential_names(value: list[str]) -> list[str]:
         if _CREDENTIAL_NAME_RE.match(name):
             continue
         if _CREDENTIAL_VALUE_RE.match(name):
-            raise ValueError(
+            raise InvalidInput(
                 f"'{name}' looks like a credential VALUE, not a name -- "
                 "auth.credentials names a stored secret, it never carries one"
             )
-        raise ValueError(f"'{name}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
+        raise InvalidInput(f"'{name}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
     return value
 
 
@@ -89,7 +74,7 @@ class ExporterAuth(BaseModel):
     @model_validator(mode="after")
     def _header_required_for_header_auth(self) -> ExporterAuth:
         if self.type == "header" and not self.header:
-            raise ValueError("auth.header is required when auth.type is 'header'")
+            raise InvalidInput("auth.header is required when auth.type is 'header'")
         return self
 
     @model_validator(mode="after")
@@ -97,7 +82,7 @@ class ExporterAuth(BaseModel):
         expected = _AUTH_ARITY[self.type]
         if len(self.credentials) != expected:
             noun = "credential name" if expected == 1 else "credential names"
-            raise ValueError(
+            raise InvalidInput(
                 f"auth.type '{self.type}' requires exactly {expected} {noun}, "
                 f"got {len(self.credentials)}"
             )
@@ -131,7 +116,7 @@ class ExporterSpec(BaseModel):
         try:
             _privacy.resolve(self.privacy, self.share)
         except ValueError as exc:
-            raise ValueError(str(exc)) from exc
+            raise InvalidInput(str(exc)) from exc
         return self
 
     @property
@@ -152,14 +137,14 @@ class ExporterSpec(BaseModel):
     @classmethod
     def _valid_name(cls, value: str) -> str:
         if not _NAME_RE.match(value):
-            raise ValueError(f"'{value}' is not a valid exporter name (^[a-z0-9][a-z0-9-]*$)")
+            raise InvalidInput(f"'{value}' is not a valid exporter name (^[a-z0-9][a-z0-9-]*$)")
         return value
 
     @field_validator("endpoint")
     @classmethod
     def _valid_endpoint(cls, value: str) -> str:
         if not (value.startswith("http://") or value.startswith("https://")):
-            raise ValueError(f"'{value}' must be an http:// or https:// URL")
+            raise InvalidInput(f"'{value}' must be an http:// or https:// URL")
         return value
 
     @field_validator("headers")
@@ -167,7 +152,7 @@ class ExporterSpec(BaseModel):
     def _no_reserved_headers(cls, value: dict[str, str]) -> dict[str, str]:
         for key in value:
             if key.strip().lower() in _RESERVED_HEADERS:
-                raise ValueError(
+                raise InvalidInput(
                     f"'{key}' is a reserved header name "
                     "(authorization, content-type, accept are sent by docket itself)"
                 )
@@ -179,7 +164,7 @@ class ExporterSpec(BaseModel):
         if isinstance(value, list):
             for event in value:
                 if event not in EVENT_TYPES:
-                    raise ValueError(f"'{event}' is not a known trace event type")
+                    raise InvalidInput(f"'{event}' is not a known trace event type")
         return value
 
 

@@ -30,6 +30,7 @@ import docket.config as _cfg
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel.errors import Unavailable
 
 
 def _epoch_from_iso(ts: str) -> float | None:
@@ -252,7 +253,7 @@ def load(path: Path | None = None) -> ConversationRegistry:
 # --- durable mutations --------------------------------------------------------
 
 
-class ConversationRegistryError(RuntimeError):
+class ConversationRegistryError(Unavailable):
     """The existing registry cannot safely be transformed."""
 
 

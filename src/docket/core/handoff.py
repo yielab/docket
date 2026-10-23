@@ -66,6 +66,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docket.core.operator_contract import TaskBrief
+from docket.kernel.errors import InvalidInput
 
 #: The Lead's typed intake output is the LAST ```json fenced block in its reply -- a
 #: reply may reason in prose first and only commit to the brief at the end.
@@ -217,5 +218,5 @@ class HandoffArtifact(BaseModel):
         rendered artifact fits its token budget.
         """
         if field not in self._EMPTY_VALUES:
-            raise ValueError(f"{field!r} is not a droppable HandoffArtifact field")
+            raise InvalidInput(f"{field!r} is not a droppable HandoffArtifact field")
         return self.model_copy(update={field: self._EMPTY_VALUES[field]})

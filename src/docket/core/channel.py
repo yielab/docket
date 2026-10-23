@@ -32,6 +32,7 @@ from pydantic import (
 import docket.config as _cfg
 from docket.core.operator_contract import EVENT_KINDS
 from docket.edges import store as _store
+from docket.kernel.errors import DocumentError, InvalidInput
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -90,24 +91,8 @@ def _format_loc(loc: tuple[Any, ...]) -> str:
     return ".".join(parts)
 
 
-class ChannelError(Exception):
-    """*file*: *field*: *message* (valid: ...) -- a channel document failed to load or a
-    catalog write was rejected. ``valid`` is populated only for a closed-vocabulary failure."""
-
-    def __init__(
-        self, file: Path | str, field: str, message: str, valid: tuple[str, ...] = ()
-    ) -> None:
-        self.file = Path(file)
-        self.field = field
-        self.message = message
-        self.valid = tuple(valid)
-        super().__init__(str(self))
-
-    def __str__(self) -> str:
-        rendered = f"{self.file}: {self.field}: {self.message}"
-        if self.valid:
-            rendered = f"{rendered} (valid: {', '.join(self.valid)})"
-        return rendered
+class ChannelError(DocumentError):
+    """A channel document failed to load, or a catalog write was rejected."""
 
 
 class ChannelSpec(BaseModel):
@@ -143,7 +128,7 @@ class ChannelSpec(BaseModel):
     @classmethod
     def _valid_name(cls, value: str) -> str:
         if not _NAME_RE.match(value):
-            raise ValueError(f"'{value}' is not a valid channel name (^[a-z0-9][a-z0-9-]*$)")
+            raise InvalidInput(f"'{value}' is not a valid channel name (^[a-z0-9][a-z0-9-]*$)")
         return value
 
     @field_validator("capabilities")
@@ -156,7 +141,7 @@ class ChannelSpec(BaseModel):
         for idx, cap in enumerate(value):
             if cap not in allowed:
                 maximum = ", ".join(sorted(allowed)) or "none"
-                raise ValueError(
+                raise InvalidInput(
                     f"capabilities[{idx}]: '{cap}' exceeds the maximum for dialect "
                     f"{dialect!r} ({maximum})"
                 )
@@ -167,7 +152,7 @@ class ChannelSpec(BaseModel):
     def _valid_on(cls, value: list[str]) -> list[str]:
         for idx, entry in enumerate(value):
             if entry not in ON_KINDS:
-                raise ValueError(f"on[{idx}]: '{entry}' is not a known event type or shorthand")
+                raise InvalidInput(f"on[{idx}]: '{entry}' is not a known event type or shorthand")
         return value
 
     @model_validator(mode="after")
@@ -179,7 +164,7 @@ class ChannelSpec(BaseModel):
             return self
         for needed in ("decide", "converse"):
             if needed in self.capabilities:
-                raise ValueError(
+                raise InvalidInput(
                     f"capabilities include '{needed}', which requires a non-empty 'actors' "
                     f"list when enabled (dialect {self.dialect!r})"
                 )
@@ -193,11 +178,11 @@ class ChannelSpec(BaseModel):
         if _CREDENTIAL_NAME_RE.match(value):
             return value
         if _CREDENTIAL_VALUE_RE.match(value):
-            raise ValueError(
+            raise InvalidInput(
                 f"'{value}' looks like a credential VALUE, not a name -- "
                 "'secret' names a stored secret, it never carries one"
             )
-        raise ValueError(f"'{value}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
+        raise InvalidInput(f"'{value}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
 
 
 def _validation_to_channel_error(path: Path | str, exc: ValidationError) -> ChannelError:

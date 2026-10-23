@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from docket.kernel.errors import InvalidInput
+
 # Every content class an exported span can carry beyond structure, in the order ADR 0015's
 # table lists them. "structure" itself is not a member here: it is always sent and is never
 # named on an exporter document.
@@ -48,18 +50,18 @@ def resolve(privacy: str | None, share: Sequence[str] | None) -> tuple[str, froz
     ``(label, classes)`` -- neither given resolves to ``minimal``, and ``share`` returns
     the level name it happens to equal, or ``"custom"``. Raises ``ValueError`` on a bad input."""
     if privacy is not None and share is not None:
-        raise ValueError("'privacy' and 'share' are mutually exclusive")
+        raise InvalidInput("'privacy' and 'share' are mutually exclusive")
     if privacy is not None:
         if privacy not in LEVELS:
             valid = ", ".join(LEVELS)
-            raise ValueError(f"'{privacy}' is not a known privacy level (valid: {valid})")
+            raise InvalidInput(f"'{privacy}' is not a known privacy level (valid: {valid})")
         return privacy, LEVELS[privacy]
     if share is not None:
         classes = frozenset(share)
         for cls in classes:
             if cls not in CONTENT_CLASSES:
                 valid = ", ".join(CONTENT_CLASSES)
-                raise ValueError(f"'{cls}' is not a known privacy class (valid: {valid})")
+                raise InvalidInput(f"'{cls}' is not a known privacy class (valid: {valid})")
         for label, level_classes in LEVELS.items():
             if level_classes == classes:
                 return label, classes

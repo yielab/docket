@@ -25,6 +25,7 @@ from docket.core import security as _security
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel.errors import NotFound
 
 # The kinds that can actually pause a task on a human answer -- everything else
 # ("mode", "high_risk_class", "channel") is context shown alongside, not counted
@@ -34,7 +35,7 @@ ASK_KINDS: frozenset[str] = frozenset({"policy", "pipeline_gate", "role_gate"})
 NOTHING_WILL_ASK = "Nothing in this pod will ask you."
 
 
-class InterruptionsError(ValueError):
+class InterruptionsError(NotFound):
     """A pre-grant could not be recorded: the named task is not in this pod's own queue."""
 
 

@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import docket.config as _cfg
 from docket.core.models import AgentMeta
 from docket.edges import store
+from docket.kernel.errors import InvalidInput
 
 _LENIENT = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -269,7 +270,7 @@ def network_mode_recorded(cfg: FleetConfig | None = None) -> bool:
 def set_network_mode(mode: str) -> None:
     """Record the fleet's network mode: 'none' or 'open'."""
     if mode not in ("none", "open"):
-        raise ValueError(f"network mode must be 'none' or 'open', not {mode!r}")
+        raise InvalidInput(f"network mode must be 'none' or 'open', not {mode!r}")
     cfg = load_fleet()
     cfg.security.network_mode = mode
     _save_fleet(cfg)
@@ -284,7 +285,7 @@ def get_profile(cfg: FleetConfig | None = None) -> str:
 def set_profile(profile: str) -> None:
     """Record the fleet's profile: 'lights-out', or 'attended' (which clears the record)."""
     if profile not in ("lights-out", "attended"):
-        raise ValueError(f"profile must be 'lights-out' or 'attended', not {profile!r}")
+        raise InvalidInput(f"profile must be 'lights-out' or 'attended', not {profile!r}")
     cfg = load_fleet()
     cfg.security.profile = "lights-out" if profile == "lights-out" else "unset"
     _save_fleet(cfg)
@@ -299,7 +300,7 @@ def get_sandbox_backend(cfg: FleetConfig | None = None) -> str:
 def set_sandbox_backend(choice: str) -> None:
     """Record the sandbox backend choice: 'auto' or 'docker'."""
     if choice not in ("auto", "docker"):
-        raise ValueError(f"sandbox backend must be 'auto' or 'docker', not {choice!r}")
+        raise InvalidInput(f"sandbox backend must be 'auto' or 'docker', not {choice!r}")
     cfg = load_fleet()
     cfg.security.sandbox_backend = choice
     _save_fleet(cfg)
@@ -330,7 +331,7 @@ def add_read_only(path: str) -> Path:
     candidate = Path(path)
     refusal = _read_only_refusal(candidate)
     if refusal is not None:
-        raise ValueError(f"{path} {refusal}")
+        raise InvalidInput(f"{path} {refusal}")
     resolved = candidate.resolve()
     cfg = load_fleet()
     if str(resolved) not in cfg.security.read_only:
@@ -347,7 +348,7 @@ def remove_read_only(path: str) -> str:
             cfg.security.read_only.remove(candidate)
             _save_fleet(cfg)
             return candidate
-    raise ValueError(f"{path} is not a recorded read-only grant")
+    raise InvalidInput(f"{path} is not a recorded read-only grant")
 
 
 def set_sandbox_isolation(mode: str = "non-main") -> None:

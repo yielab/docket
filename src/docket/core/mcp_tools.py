@@ -28,6 +28,7 @@ from docket.core.audit import audit_log
 from docket.core.tools import Tool, ToolContext, ToolRegistry, screen_tool_result
 from docket.edges import store as _store
 from docket.edges.adapters.toolbox import ToolOutcome
+from docket.kernel.errors import InvalidInput
 
 __all__ = [
     "NAMESPACE_PREFIX",
@@ -154,7 +155,7 @@ def pod_scoped_owner(name: str, *, exclude: str = "") -> str:
     return ""
 
 
-class McpServerDocError(ValueError):
+class McpServerDocError(InvalidInput):
     """A ``kind: mcp-server`` document is unreadable or invalid; the message names the file."""
 
 
@@ -233,16 +234,16 @@ def add_mcp_server(config: McpServerConfig) -> None:
     Lock-safe: uses ``edges/store.py``'s ``read_modify_write`` so two concurrent ``add`` calls
     cannot race each other into losing an entry."""
     if not config.name:
-        raise ValueError("MCP server name is required")
+        raise InvalidInput("MCP server name is required")
     if not _NAME_RE.fullmatch(config.name):
-        raise ValueError(
+        raise InvalidInput(
             f"MCP server name {config.name!r} must contain only letters, digits, '-' or '_'"
         )
 
     def _add(current: dict[str, Any]) -> dict[str, Any]:
         reg = McpServerRegistry.model_validate(current)
         if any(s.name == config.name for s in reg.servers):
-            raise ValueError(f"an MCP server named {config.name!r} is already configured")
+            raise InvalidInput(f"an MCP server named {config.name!r} is already configured")
         reg.servers.append(config)
         return reg.model_dump(by_alias=True)
 

@@ -17,6 +17,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from docket.kernel.errors import InvalidInput
+
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -52,9 +54,9 @@ class ReworkEdge(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> ReworkEdge:
         if not self.to.strip():
-            raise ValueError("rework edge 'to' must name a step id")
+            raise InvalidInput("rework edge 'to' must name a step id")
         if not self.when:
-            raise ValueError("rework edge 'when' must list at least one triggering verdict value")
+            raise InvalidInput("rework edge 'when' must list at least one triggering verdict value")
         return self
 
 
@@ -86,19 +88,19 @@ class VerdictGate(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> VerdictGate:
         if not self.pattern.strip():
-            raise ValueError("verdict gate 'pattern' must not be empty")
+            raise InvalidInput("verdict gate 'pattern' must not be empty")
         try:
             re.compile(self.pattern)
         except re.error as exc:
-            raise ValueError(f"verdict gate 'pattern' is not a valid regex: {exc}") from exc
+            raise InvalidInput(f"verdict gate 'pattern' is not a valid regex: {exc}") from exc
         if not self.pass_values:
-            raise ValueError("verdict gate 'passValues' must list at least one passing value")
+            raise InvalidInput("verdict gate 'passValues' must list at least one passing value")
         norm = {v if self.case_sensitive else v.lower() for v in self.pass_values}
         if self.rework is not None:
             rework_when = {v if self.case_sensitive else v.lower() for v in self.rework.when}
             overlap = norm & rework_when
             if overlap:
-                raise ValueError(
+                raise InvalidInput(
                     "verdict gate values cannot be both passing and rework-triggering: "
                     f"{sorted(overlap)}"
                 )
@@ -139,17 +141,19 @@ class ExternalGate(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> ExternalGate:
         if not self.command.strip():
-            raise ValueError("external gate 'command' must not be empty")
+            raise InvalidInput("external gate 'command' must not be empty")
         if set(self.exit_map) != set(_EXTERNAL_LABELS):
-            raise ValueError(f"external gate 'exitMap' must name exactly {list(_EXTERNAL_LABELS)}")
+            raise InvalidInput(
+                f"external gate 'exitMap' must name exactly {list(_EXTERNAL_LABELS)}"
+            )
         seen: dict[int, str] = {}
         for label in _EXTERNAL_LABELS:
             codes = self.exit_map[label]
             if not codes:
-                raise ValueError(f"external gate 'exitMap' {label!r} must list at least one code")
+                raise InvalidInput(f"external gate 'exitMap' {label!r} must list at least one code")
             for code in codes:
                 if code in seen:
-                    raise ValueError(
+                    raise InvalidInput(
                         f"external gate 'exitMap' code {code} is in both {seen[code]!r} "
                         f"and {label!r}"
                     )
@@ -188,9 +192,9 @@ class When(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> When:
         if (self.var is None) != (self.is_ is None):
-            raise ValueError("'when.var' and 'when.is' must be set together")
+            raise InvalidInput("'when.var' and 'when.is' must be set together")
         if self.changed is None and self.var is None and self.member_present is None:
-            raise ValueError(
+            raise InvalidInput(
                 "'when' must set at least one of 'changed', 'var'+'is', 'memberPresent'"
             )
         return self
@@ -219,15 +223,15 @@ def _check_env(step_id: str, env: dict[str, str]) -> None:
     credentials = _sys.credential_names()
     for name, value in env.items():
         if not _ENV_NAME.match(name):
-            raise ValueError(f"step {step_id!r}: env name {name!r} must match ^[A-Z][A-Z0-9_]*$")
+            raise InvalidInput(f"step {step_id!r}: env name {name!r} must match ^[A-Z][A-Z0-9_]*$")
         if name in _ENV_RESERVED or name.startswith(_ENV_RESERVED_PREFIXES):
-            raise ValueError(f"step {step_id!r}: env name {name!r} is reserved and cannot be set")
+            raise InvalidInput(f"step {step_id!r}: env name {name!r} is reserved and cannot be set")
         if name in credentials:
-            raise ValueError(
+            raise InvalidInput(
                 f"step {step_id!r}: env name {name!r} is a credential and cannot be set"
             )
         if not isinstance(value, str):
-            raise ValueError(f"step {step_id!r}: env {name!r} must be a string")
+            raise InvalidInput(f"step {step_id!r}: env {name!r} must be a string")
 
 
 class Step(BaseModel):
@@ -283,49 +287,53 @@ class Step(BaseModel):
         """``gate: {external: CMD}`` is the short spelling of ``{type: external, command: CMD}``."""
         if isinstance(value, dict) and "external" in value:
             if set(value) != {"external"}:
-                raise ValueError("'gate: {external: CMD}' takes no other key")
+                raise InvalidInput("'gate: {external: CMD}' takes no other key")
             return {"type": "external", "command": value["external"]}
         return value
 
     @model_validator(mode="after")
     def _check_shape(self) -> Step:
         if not self.id.strip():
-            raise ValueError("step 'id' must not be empty")
+            raise InvalidInput("step 'id' must not be empty")
         if self.archetype is not None and not _is_slug(self.archetype):
-            raise ValueError(
+            raise InvalidInput(
                 f"step {self.id!r}: 'archetype' must be a lowercase slug (got {self.archetype!r})"
             )
 
         if self.parallel is not None:
             if self.role is not None or self.agent is not None:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {self.id!r}: a 'parallel' group targets no role/agent of its own"
                 )
             if self.gate is not None:
-                raise ValueError(f"step {self.id!r}: a 'parallel' group carries no gate of its own")
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no gate of its own"
+                )
             if self.retries is not None or self.timeout is not None:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {self.id!r}: a 'parallel' group carries no retries/timeout of its own"
                 )
             if self.instructions is not None:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {self.id!r}: a 'parallel' group carries no instructions of its own"
                 )
             if self.model is not None:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {self.id!r}: a 'parallel' group carries no model of its own"
                 )
             if self.on is not None:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {self.id!r}: a 'parallel' group carries no outcome routing of its own"
                 )
             if self.env is not None:
-                raise ValueError(f"step {self.id!r}: a 'parallel' group carries no env of its own")
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no env of its own"
+                )
             if not self.parallel:
-                raise ValueError(f"step {self.id!r}: 'parallel' must list at least one step")
+                raise InvalidInput(f"step {self.id!r}: 'parallel' must list at least one step")
             for child in self.parallel:
                 if child.parallel is not None:
-                    raise ValueError(
+                    raise InvalidInput(
                         f"step {self.id!r}: nested 'parallel' groups are not supported "
                         f"(child {child.id!r} declares its own 'parallel')"
                     )
@@ -333,11 +341,11 @@ class Step(BaseModel):
 
         if self.run is not None:
             if not self.run.strip():
-                raise ValueError(f"step {self.id!r}: 'run' must not be empty")
+                raise InvalidInput(f"step {self.id!r}: 'run' must not be empty")
             if self.env is not None:
                 _check_env(self.id, self.env)
             if self.role is not None or self.agent is not None:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {self.id!r}: 'run' is exclusive of 'role'/'agent' "
                     "(a command step targets no member)"
                 )
@@ -349,14 +357,14 @@ class Step(BaseModel):
                 ("model", self.model),
             ):
                 if value is not None:
-                    raise ValueError(
+                    raise InvalidInput(
                         f"step {self.id!r}: a 'run' (command) step carries no {field_name!r}"
                     )
             return self
 
         if self.input is not None:
             if self.env is not None:
-                raise ValueError(f"step {self.id!r}: an 'input' step carries no 'env'")
+                raise InvalidInput(f"step {self.id!r}: an 'input' step carries no 'env'")
             for field_name, value in (
                 ("role", self.role),
                 ("agent", self.agent),
@@ -369,34 +377,36 @@ class Step(BaseModel):
                 ("model", self.model),
             ):
                 if value is not None:
-                    raise ValueError(f"step {self.id!r}: an 'input' step carries no {field_name!r}")
+                    raise InvalidInput(
+                        f"step {self.id!r}: an 'input' step carries no {field_name!r}"
+                    )
             return self
 
         if self.env is not None:
-            raise ValueError(f"step {self.id!r}: only a 'run' (command) step carries 'env'")
+            raise InvalidInput(f"step {self.id!r}: only a 'run' (command) step carries 'env'")
         if self.role is None and self.agent is None:
-            raise ValueError(f"step {self.id!r}: must target exactly one of 'role' or 'agent'")
+            raise InvalidInput(f"step {self.id!r}: must target exactly one of 'role' or 'agent'")
         if self.role is not None and self.agent is not None:
-            raise ValueError(f"step {self.id!r}: 'role' and 'agent' are mutually exclusive")
+            raise InvalidInput(f"step {self.id!r}: 'role' and 'agent' are mutually exclusive")
         if self.role is not None and not _is_slug(self.role):
-            raise ValueError(
+            raise InvalidInput(
                 f"step {self.id!r}: 'role' must be a lowercase slug (got {self.role!r})"
             )
         if self.agent is not None and not self.agent.strip():
-            raise ValueError(f"step {self.id!r}: 'agent' must not be empty")
+            raise InvalidInput(f"step {self.id!r}: 'agent' must not be empty")
         if (
             self.model is not None
             and self.model not in _MODEL_RANKS
             and not _is_model_literal(self.model)
         ):
-            raise ValueError(
+            raise InvalidInput(
                 f"step {self.id!r}: 'model' must be 'cheap', 'strong', or a "
                 f"'<provider>/<id>' literal (got {self.model!r})"
             )
         if isinstance(self.gate, ExternalGate) and self.on:
             invalid = {str(k).lower() for k in self.on} - EXTERNAL_OUTCOMES
             if invalid:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {self.id!r}: an external gate's 'on' keys must be a subset of "
                     f"{sorted(EXTERNAL_OUTCOMES)}; got invalid key(s): {sorted(invalid)}"
                 )
@@ -423,11 +433,11 @@ class Variable(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> Variable:
         if self.required and self.default is not None:
-            raise ValueError("a required variable must not declare a default")
+            raise InvalidInput("a required variable must not declare a default")
         return self
 
 
-class VariableError(Exception):
+class VariableError(InvalidInput):
     """Raised by :func:`resolve_variables` when a required variable has no value at all --
     neither a caller-supplied one nor a default, since a required variable is defined to
     have no default (see ``Variable._check``)."""
@@ -534,7 +544,7 @@ def _route_shape(step_id: str, label: str, route: Any) -> tuple[str, Any, bool]:
         and not (set(route) - {"goto", "max"})
     ):
         return route["goto"], route.get("max"), "max" in route
-    raise ValueError(f"step {step_id!r}: 'on' entry {label!r} is malformed")
+    raise InvalidInput(f"step {step_id!r}: 'on' entry {label!r} is malformed")
 
 
 # ── Pipeline ───────────────────────────────────────────────────────────────────
@@ -555,13 +565,13 @@ class PipelineSpec(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> PipelineSpec:
         if not self.name.strip():
-            raise ValueError("pipeline 'name' must not be empty")
+            raise InvalidInput("pipeline 'name' must not be empty")
         if not self.steps:
-            raise ValueError("pipeline 'steps' must not be empty")
+            raise InvalidInput("pipeline 'steps' must not be empty")
 
         for var_name in self.variables:
             if not _VAR_NAME_RE.match(var_name):
-                raise ValueError(f"variable {var_name!r} is not a valid identifier")
+                raise InvalidInput(f"variable {var_name!r} is not a valid identifier")
 
         all_ids: list[str] = []
         for s in self.steps:
@@ -571,7 +581,7 @@ class PipelineSpec(BaseModel):
         seen: set[str] = set()
         for sid in all_ids:
             if sid in seen:
-                raise ValueError(f"duplicate step id {sid!r}")
+                raise InvalidInput(f"duplicate step id {sid!r}")
             seen.add(sid)
 
         top_index = {s.id: i for i, s in enumerate(self.steps)}
@@ -579,19 +589,19 @@ class PipelineSpec(BaseModel):
             if s.parallel:
                 for child in s.parallel:
                     if isinstance(child.gate, VerdictGate) and child.gate.rework is not None:
-                        raise ValueError(
+                        raise InvalidInput(
                             f"step {child.id!r}: a rework edge inside a 'parallel' group "
                             "is not supported (target a top-level step instead)"
                         )
                 continue
             if s.input is not None:
                 if s.input.from_ not in top_index:
-                    raise ValueError(
+                    raise InvalidInput(
                         f"step {s.id!r}: input 'from' references {s.input.from_!r}, "
                         "which is not a step id"
                     )
                 if top_index[s.input.from_] >= i:
-                    raise ValueError(
+                    raise InvalidInput(
                         f"step {s.id!r}: input 'from' {s.input.from_!r} must be an earlier step"
                     )
                 if s.on:
@@ -599,7 +609,7 @@ class PipelineSpec(BaseModel):
                     on_keys = {str(k).lower() for k in s.on}
                     invalid = on_keys - valid_keys
                     if invalid:
-                        raise ValueError(
+                        raise InvalidInput(
                             f"step {s.id!r}: input step 'on' keys must be a subset of "
                             f"{sorted(valid_keys)}; got invalid key(s): {sorted(invalid)}"
                         )
@@ -608,11 +618,11 @@ class PipelineSpec(BaseModel):
                 continue
             rework = s.gate.rework
             if rework.to not in top_index:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {s.id!r}: rework target {rework.to!r} is not a top-level step id"
                 )
             if top_index[rework.to] >= i:
-                raise ValueError(
+                raise InvalidInput(
                     f"step {s.id!r}: rework target {rework.to!r} must be an earlier step"
                 )
 
@@ -624,11 +634,11 @@ class PipelineSpec(BaseModel):
                 if target in ("fail", "stop"):
                     continue
                 if target not in top_index:
-                    raise ValueError(f"step {s.id!r}: 'on' target {target!r} is not a step id")
+                    raise InvalidInput(f"step {s.id!r}: 'on' target {target!r} is not a step id")
                 if top_index[target] <= i and (
                     not has_max or not isinstance(max_value, int) or max_value < 1
                 ):
-                    raise ValueError(
+                    raise InvalidInput(
                         f"step {s.id!r}: backward or self route to {target!r} requires 'max' >= 1"
                     )
                 nxt = self.steps[i + 1] if i + 1 < len(self.steps) else None
@@ -641,7 +651,7 @@ class PipelineSpec(BaseModel):
                     and isinstance(s.gate, (MechanicalGate, ExternalGate))
                     and "pass" not in {str(k).lower() for k in s.on}
                 ):
-                    raise ValueError(
+                    raise InvalidInput(
                         f"step {s.id!r} routes {label!r} to the input step {target!r} right after "
                         "it, so a passing outcome would enter it too; route 'pass' explicitly "
                         "(for example 'pass: stop', or the step that should follow)"
@@ -666,7 +676,7 @@ class PipelineSpec(BaseModel):
                     frontier.append(t)
         for i, s in enumerate(self.steps):
             if i not in reachable:
-                raise ValueError(f"step {s.id!r} is not reachable")
+                raise InvalidInput(f"step {s.id!r} is not reachable")
         return self
 
 

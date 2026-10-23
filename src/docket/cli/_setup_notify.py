@@ -26,6 +26,7 @@ from docket.core.audit import audit_log
 from docket.edges.adapters import channels as _channels
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
+from docket.kernel.errors import InvalidInput
 
 notify_app = typer.Typer(
     name="notify",
@@ -37,7 +38,7 @@ _LEVELS = ("minimal", "actions", "conversation")
 _TOKEN_NAME = _cfg.TELEGRAM_BOT_TOKEN_KEY
 
 
-class NotifySetupError(Exception):
+class NotifySetupError(InvalidInput):
     """A setup step that cannot proceed; nothing was written."""
 
 

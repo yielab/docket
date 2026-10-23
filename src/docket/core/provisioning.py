@@ -13,13 +13,15 @@ from __future__ import annotations
 import re as _re
 from pathlib import Path
 
+from docket.kernel.errors import InvalidInput
+
 
 def slugify(name: str) -> str:
     """Lowercase, hyphenated agent-id slug (shared by every add path)."""
     return _re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-class ProjectIdError(ValueError):
+class ProjectIdError(InvalidInput):
     """A project/pod id failed ``validate_project_id``. ``core/`` raises, never prints --
     see specs/validation/input-validation.spec.md §1."""
 

@@ -6,12 +6,13 @@ from dataclasses import dataclass, field
 
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
+from docket.kernel.errors import NotFound
 
 SHORT_ID_LEN = 18
 LEAD_STEP_ID = "lead"
 
 
-class TaskRefError(Exception):
+class TaskRefError(NotFound):
     """The reference matched no task, or more than one."""
 
 

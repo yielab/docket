@@ -53,6 +53,7 @@ from typing import Any
 import docket.config as cfg
 from docket.core.tools import ToolKind, ToolRegistry
 from docket.edges import store as _store
+from docket.kernel.errors import InvalidInput
 
 SCOPES: frozenset[str] = frozenset({"org", "pod"})
 MODEL_CLASSES: frozenset[str] = frozenset({"cheap", "strong"})
@@ -73,7 +74,7 @@ _NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _AGENTS_HEADING_RE = re.compile(r"(?m)^## AGENTS[ \t]*$\n?")
 
 
-class ArchetypeError(ValueError):
+class ArchetypeError(InvalidInput):
     """Invalid archetype definition, reference, or template."""
 
 

@@ -21,6 +21,7 @@ from filelock import FileLock
 import docket.config as _cfg
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
+from docket.kernel.errors import InvalidInput
 
 LOCKFILES: tuple[tuple[str, str], ...] = (
     ("package-lock.json", "npm ci"),
@@ -41,9 +42,9 @@ def check_command(value: object) -> str:
     """The command as one stripped line; raises ``ValueError`` for a NUL, a newline or too long."""
     text = str(value or "").strip()
     if "\x00" in text or "\n" in text or "\r" in text:
-        raise ValueError("must be one line without a NUL byte")
+        raise InvalidInput("must be one line without a NUL byte")
     if len(text) > MAX_COMMAND_CHARS:
-        raise ValueError(f"must be at most {MAX_COMMAND_CHARS} characters")
+        raise InvalidInput(f"must be at most {MAX_COMMAND_CHARS} characters")
     return text
 
 

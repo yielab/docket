@@ -35,16 +35,17 @@ from docket.core.operator_contract import (
 )
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
+from docket.kernel.errors import Conflict, Refused
 
 __all__ = ["AnswerError", "AnswerRejected", "answer_task", "sweep_expired_questions"]
 
 
-class AnswerError(Exception):
+class AnswerError(Conflict):
     """*task_id* has no live question to answer: not found, not ``waiting_input``, its parked
     question does not match the pipeline position, or *content* fails schema validation."""
 
 
-class AnswerRejected(Exception):
+class AnswerRejected(Refused):
     """An answer's *content* was screened by ``pre_input`` and blocked. Nothing is written."""
 
     def __init__(self, policy_id: str) -> None:

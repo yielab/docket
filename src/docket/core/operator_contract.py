@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from docket.kernel import ids as _ids
+from docket.kernel.errors import InvalidInput
 
 A2A_STATES: tuple[str, ...] = (
     "SUBMITTED",
@@ -60,13 +61,13 @@ def a2a_state(
         return "REJECTED" if failure_kind == "rejected" else "FAILED"
     if status == "cancelled":
         return "CANCELED"
-    raise ValueError(f"unknown task status: {status!r}")
+    raise InvalidInput(f"unknown task status: {status!r}")
 
 
 def _validate_resource(value: str) -> str:
     if value == "verify" or value.startswith("secret:") or value.startswith("path:"):
         return value
-    raise ValueError(f"resource must be 'verify' or start with 'secret:'/'path:': {value!r}")
+    raise InvalidInput(f"resource must be 'verify' or start with 'secret:'/'path:': {value!r}")
 
 
 class TaskBrief(BaseModel):
@@ -89,7 +90,7 @@ class TaskBrief(BaseModel):
     @classmethod
     def _objective_non_empty(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("objective must not be empty")
+            raise InvalidInput("objective must not be empty")
         return v
 
     @field_validator("resources")
@@ -102,30 +103,30 @@ def validate_requested_schema(d: dict[str, Any]) -> dict[str, Any]:
     """Validate a raw MCP elicitation ``requestedSchema``: a flat object of primitive
     properties. Raises ``ValueError`` naming the problem; returns *d* unchanged."""
     if not isinstance(d, dict):
-        raise ValueError("requestedSchema must be an object")
+        raise InvalidInput("requestedSchema must be an object")
     if d.get("type") != "object":
-        raise ValueError("requestedSchema.type must be 'object'")
+        raise InvalidInput("requestedSchema.type must be 'object'")
     properties = d.get("properties")
     if not isinstance(properties, dict) or not properties:
-        raise ValueError("requestedSchema.properties must be a non-empty object")
+        raise InvalidInput("requestedSchema.properties must be a non-empty object")
     for name, prop in properties.items():
         if not isinstance(prop, dict):
-            raise ValueError(f"requestedSchema.properties.{name} must be an object")
+            raise InvalidInput(f"requestedSchema.properties.{name} must be an object")
         prop_type = prop.get("type")
         if prop_type not in _PRIMITIVE_TYPES:
-            raise ValueError(
+            raise InvalidInput(
                 f"requestedSchema.properties.{name}.type must be one of {_PRIMITIVE_TYPES}"
             )
         enum = prop.get("enum")
         if enum is not None and not isinstance(enum, list):
-            raise ValueError(f"requestedSchema.properties.{name}.enum must be a list")
+            raise InvalidInput(f"requestedSchema.properties.{name}.enum must be a list")
     required = d.get("required", [])
     if not isinstance(required, list):
-        raise ValueError("requestedSchema.required must be a list")
+        raise InvalidInput("requestedSchema.required must be a list")
     missing = [r for r in required if r not in properties]
     if missing:
         noun = "property" if len(missing) == 1 else "properties"
-        raise ValueError(f"requestedSchema.required names undefined {noun}: {missing}")
+        raise InvalidInput(f"requestedSchema.required names undefined {noun}: {missing}")
     return d
 
 
@@ -214,14 +215,14 @@ class QuestionV11(Question):
         ids = [o.id for o in v]
         dupes = sorted({i for i in ids if ids.count(i) > 1})
         if dupes:
-            raise ValueError(f"duplicate option ids: {dupes}")
+            raise InvalidInput(f"duplicate option ids: {dupes}")
         return v
 
     @model_validator(mode="after")
     def _recommendation_names_option(self) -> QuestionV11:
         rec = self.recommendation
         if rec is not None and rec.option_id not in {o.id for o in self.options}:
-            raise ValueError(f"recommendation optionId {rec.option_id!r} names no option")
+            raise InvalidInput(f"recommendation optionId {rec.option_id!r} names no option")
         return self
 
 
@@ -253,7 +254,7 @@ def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
     content = result.content or {}
     for name in required:
         if name not in content:
-            raise ValueError(f"missing required property: {name!r}")
+            raise InvalidInput(f"missing required property: {name!r}")
     for name, value in content.items():
         prop = properties.get(name)
         if prop is None:
@@ -261,10 +262,10 @@ def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
         expected_type = prop.get("type")
         checker = _TYPE_CHECKERS.get(expected_type)
         if checker is not None and not checker(value):
-            raise ValueError(f"property {name!r} does not match type {expected_type!r}")
+            raise InvalidInput(f"property {name!r} does not match type {expected_type!r}")
         enum = prop.get("enum")
         if enum is not None and value not in enum:
-            raise ValueError(f"property {name!r} is not one of {enum!r}")
+            raise InvalidInput(f"property {name!r} is not one of {enum!r}")
     return result
 
 
@@ -273,9 +274,9 @@ def validate_answer_v11(question: QuestionV11, answer: AnswerResultV11) -> Answe
     options MUST carry an ``optionId`` naming one. Raises ``ValueError``."""
     if answer.action == "accept" and question.options:
         if answer.option_id is None:
-            raise ValueError("accept requires optionId when the question has options")
+            raise InvalidInput("accept requires optionId when the question has options")
         if answer.option_id not in {o.id for o in question.options}:
-            raise ValueError(f"optionId {answer.option_id!r} names no option")
+            raise InvalidInput(f"optionId {answer.option_id!r} names no option")
     validate_answer(question, answer)
     return answer
 
@@ -351,7 +352,7 @@ def make_event(
     """Build one CloudEvent for *kind* (must be in ``EVENT_KINDS``); ``id`` is a stable
     digest of the event type, *subject* and *version*, so redelivery never mints a second."""
     if kind not in EVENT_KINDS:
-        raise ValueError(f"unknown event kind: {kind!r}")
+        raise InvalidInput(f"unknown event kind: {kind!r}")
     event_type = f"dev.docket.{kind}"
     digest = hashlib.sha256(f"{event_type}|{subject}|{version}".encode()).hexdigest()[:32]
     return CloudEvent(

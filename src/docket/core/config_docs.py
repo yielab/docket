@@ -23,6 +23,7 @@ from docket.core import pipeline as _pipeline
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
 from docket.core import provider as _provider
+from docket.kernel.errors import InvalidInput
 
 KINDS: tuple[str, ...] = (
     "role",
@@ -210,7 +211,7 @@ class Document:
     deprecated: bool
 
 
-class ConfigDocError(ValueError):
+class ConfigDocError(InvalidInput):
     """*path* (at *line*, in *field*) failed to load or validate. ``valid``/``suggestion`` are
     only populated for a closed-vocabulary failure (an unknown ``kind``)."""
 
@@ -227,10 +228,10 @@ class ConfigDocError(ValueError):
         self.path = Path(path)
         self.line = line
         self.field = field
-        self.message = message
         self.valid = tuple(valid)
         self.suggestion = suggestion
-        super().__init__(str(self))
+        super().__init__(message)
+        Exception.__init__(self, str(self))
 
     def __str__(self) -> str:
         head = f"{self.path}:{self.line}"

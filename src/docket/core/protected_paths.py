@@ -14,6 +14,7 @@ from collections.abc import Collection, Iterable
 
 from docket.core import prepare as _prepare
 from docket.edges.adapters import system as _sys
+from docket.kernel.errors import InvalidInput
 
 DEFAULT_PATTERNS: tuple[str, ...] = (
     *(name for name, _command in _prepare.LOCKFILES),
@@ -43,13 +44,13 @@ def check_pattern(value: object) -> str:
     one holding a comma, NUL or newline."""
     text = str(value or "").strip()
     if not text:
-        raise ValueError("must not be empty")
+        raise InvalidInput("must not be empty")
     if len(text) > MAX_PATTERN_CHARS:
-        raise ValueError(f"must be at most {MAX_PATTERN_CHARS} characters")
+        raise InvalidInput(f"must be at most {MAX_PATTERN_CHARS} characters")
     if any(ch in text for ch in (",", "\x00", "\n", "\r")):
-        raise ValueError("must not contain a comma, NUL or newline")
+        raise InvalidInput("must not contain a comma, NUL or newline")
     if text.startswith("/") or ".." in text.split("/"):
-        raise ValueError("must be a path inside the repository")
+        raise InvalidInput("must be a path inside the repository")
     return text
 
 

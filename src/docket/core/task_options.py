@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, Validat
 from docket.core import archetypes as _archetypes
 from docket.core import policy as _policy
 from docket.core import prepare as _prepare
+from docket.kernel.errors import InvalidInput
 
 _GATE_LABELS = ("pass", "fail", "needs_human")
 TASK_STATUSES = frozenset(
@@ -31,7 +32,7 @@ TASK_STATUSES = frozenset(
 _REF_MAX = 200
 
 
-class TaskOptionsError(Exception):
+class TaskOptionsError(InvalidInput):
     """A task option has the wrong shape (HTTP 400)."""
 
 

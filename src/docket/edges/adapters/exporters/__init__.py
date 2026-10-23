@@ -16,6 +16,7 @@ from collections.abc import Callable
 from docket.core.exporter import ExporterSpec
 from docket.core.telemetry import SpanSink
 from docket.edges.adapters.exporters.otlp_http import AuthHeader, OtlpHttpSink
+from docket.kernel.errors import InvalidInput
 
 
 def _auth_header(spec: ExporterSpec, values: list[str]) -> AuthHeader:
@@ -32,7 +33,7 @@ def _auth_header(spec: ExporterSpec, values: list[str]) -> AuthHeader:
         return ("Authorization", f"Basic {base64.b64encode(pair).decode('ascii')}")
     if auth_type == "header":
         return (spec.auth.header, values[0])
-    raise ValueError(f"unknown auth type: {auth_type!r}")  # pragma: no cover - closed by pydantic
+    raise InvalidInput(f"unknown auth type: {auth_type!r}")  # pragma: no cover - closed by pydantic
 
 
 def _otlp_sink(spec: ExporterSpec, auth_header: AuthHeader) -> SpanSink:
@@ -54,5 +55,5 @@ def sink_for(spec: ExporterSpec, values: list[str]) -> SpanSink:
     `ExporterSpec.dialect` is a closed `Literal`, but the check is not conditioned on that."""
     factory = _DIALECTS.get(spec.dialect)
     if factory is None:
-        raise ValueError(f"unknown exporter dialect: {spec.dialect!r}")
+        raise InvalidInput(f"unknown exporter dialect: {spec.dialect!r}")
     return factory(spec, _auth_header(spec, values))

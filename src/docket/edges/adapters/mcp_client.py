@@ -42,6 +42,7 @@ from docket.edges.adapters import system as _system
 from docket.edges.adapters.toolbox import ToolOutcome
 from docket.kernel import ids as _ids
 from docket.kernel import text as _text
+from docket.kernel.errors import Refused, Unavailable
 
 MISSING_SDK_HINT = (
     "The 'mcp' package is not installed -- an MCP tool server needs the optional MCP extra.\n"
@@ -88,7 +89,7 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
     no spawn rather than an unjailed one."""
     roots = launch.roots or ((Path(launch.cwd),) if launch.cwd else ())
     if not roots:
-        raise RuntimeError("isolation is on but the turn has no root to jail the server to")
+        raise Refused("isolation is on but the turn has no root to jail the server to")
     backend = _system.sandbox_availability().backend
     server = [config.command, *config.args]
     if backend in ("landlock", "seatbelt"):
@@ -106,7 +107,7 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
             name, roots, server, dict(config.env), launch.network, launch.read_only
         )
     else:
-        raise RuntimeError(
+        raise Unavailable(
             "isolation is on but no sandbox backend is usable; use Linux 5.13+ (landlock) or "
             "macOS (seatbelt), or choose docker with 'docket setup sandbox backend docker'"
         )

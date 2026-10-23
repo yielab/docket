@@ -64,6 +64,7 @@ from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
+from docket.kernel.errors import InvalidInput
 
 # Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
 PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
@@ -112,7 +113,7 @@ def step_session_key(member_id: str, project: str, task_id: str, step_id: str) -
 # here would drift from that single source of truth (see `tests/unit/core/test_pipeline__spec.py`).
 
 
-class DispatchError(Exception):
+class DispatchError(InvalidInput):
     """A pod cannot be dispatched (no pod, no lead, …)."""
 
 
@@ -679,7 +680,7 @@ def _task_gate(task: dict[str, Any]) -> _pipeline.ExternalGate | None:
     try:
         for code_text, label in dict(mapping).items():
             if label not in exit_map:
-                raise ValueError(f"unknown label {label!r}")
+                raise InvalidInput(f"unknown label {label!r}")
             code = int(code_text)
             for codes in exit_map.values():
                 if code in codes:

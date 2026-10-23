@@ -31,6 +31,7 @@ import docket.config as _cfg
 from docket.core import security as _sec
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
+from docket.kernel.errors import InvalidInput
 
 # Kept short so a hung subprocess never blocks a CLI command.
 _QUERY_TIMEOUT = 5
@@ -928,7 +929,7 @@ def jail_launch(
         merged = {**tmp_environment(tmp), **merged}
         build = landlock_argv if backend == "landlock" else seatbelt_argv
         return JailLaunch(build(all_roots, command, network, read_only), jailed_env(merged))
-    raise ValueError(f"no sandbox backend to launch under: {backend}")
+    raise InvalidInput(f"no sandbox backend to launch under: {backend}")
 
 
 def run_verify_cmd(

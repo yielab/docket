@@ -29,6 +29,7 @@ from docket.core import prepare as _prepare
 from docket.core import protected_paths as _protected
 from docket.core import schedule as _schedule
 from docket.core import security as _security
+from docket.kernel.errors import InvalidInput
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
 FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
@@ -46,7 +47,7 @@ def _role_names(project: str = "") -> tuple[str, ...]:
     return _archetypes.load_registry(project).role_names()
 
 
-class PodError(ValueError):
+class PodError(InvalidInput):
     """Invalid pod operation (unknown role, duplicate singleton, …)."""
 
 
@@ -261,7 +262,7 @@ def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = 
     return str(_cfg.workspace_dir(member_id))
 
 
-class PodSettingsError(ValueError):
+class PodSettingsError(InvalidInput):
     """A pod setting's value is invalid: bad type, out of range, or unknown key."""
 
 
@@ -471,11 +472,13 @@ class PodSettings(BaseModel):
             if not name:
                 continue
             if _INVALID_BIN_NAME_CHARS.search(name):
-                raise ValueError(f"{name!r} is not a valid binary basename")
+                raise InvalidInput(f"{name!r} is not a valid binary basename")
             if name in _OPAQUE_COMMAND_NAMES:
-                raise ValueError(f"{name!r} is opaque/scope-changing, cannot be allowlisted")
+                raise InvalidInput(f"{name!r} is opaque/scope-changing, cannot be allowlisted")
             if name in high_risk_bins:
-                raise ValueError(f"{name!r} names a high-risk action class, cannot be allowlisted")
+                raise InvalidInput(
+                    f"{name!r} names a high-risk action class, cannot be allowlisted"
+                )
             if name in _security.SAFE_BINS:
                 continue  # already unattended-safe -- redundant, silently dropped
             kept.setdefault(name, None)
@@ -492,7 +495,7 @@ class PodSettings(BaseModel):
         text = str(value)
         reason = _schedule.describe_spec_error(text)
         if reason:
-            raise ValueError(reason)
+            raise InvalidInput(reason)
         return text
 
     # Rejects the only shapes that could ever resolve outside the codebase root this
@@ -513,11 +516,11 @@ class PodSettings(BaseModel):
             if not name:
                 continue
             if "\x00" in name:
-                raise ValueError(f"{name!r} contains a null byte")
+                raise InvalidInput(f"{name!r} contains a null byte")
             if name.startswith("~") or Path(name).is_absolute():
-                raise ValueError(f"{name!r} is not a relative path inside the codebase root")
+                raise InvalidInput(f"{name!r} is not a relative path inside the codebase root")
             if ".." in Path(name).parts:
-                raise ValueError(f"{name!r} escapes the codebase root")
+                raise InvalidInput(f"{name!r} escapes the codebase root")
             kept.setdefault(name, None)
         return tuple(kept.keys())
 
@@ -546,11 +549,13 @@ class PodSettings(BaseModel):
             if name not in catalog:
                 owner = _mcp_tools.pod_scoped_owner(name, exclude=project)
                 if owner:
-                    raise ValueError(
+                    raise InvalidInput(
                         f"{name!r} is an MCP server of another pod ({owner}); "
                         "a pod selects only global servers and its own"
                     )
-                raise ValueError(f"{name!r} is not a configured MCP server (docket setup mcp list)")
+                raise InvalidInput(
+                    f"{name!r} is not a configured MCP server (docket setup mcp list)"
+                )
             kept.setdefault(name, None)
         return tuple(kept.keys()) or None
 
@@ -571,7 +576,9 @@ class PodSettings(BaseModel):
             if not name:
                 continue
             if name not in known:
-                raise ValueError(f"{name!r} is not a known tool name ({', '.join(sorted(known))})")
+                raise InvalidInput(
+                    f"{name!r} is not a known tool name ({', '.join(sorted(known))})"
+                )
             kept.setdefault(name, None)
         return tuple(kept.keys())
 
@@ -581,7 +588,7 @@ class PodSettings(BaseModel):
         """``none`` or ``open``."""
         name = str(value).strip().lower()
         if name not in ("none", "open"):
-            raise ValueError("must be 'none' or 'open'")
+            raise InvalidInput("must be 'none' or 'open'")
         return name
 
     @field_validator("read_only", mode="before")
@@ -594,7 +601,7 @@ class PodSettings(BaseModel):
         paths = dict.fromkeys(p.strip() for p in text.split(",") if p.strip())
         for path in paths:
             if not Path(path).is_absolute():
-                raise ValueError(f"{path!r} is not an absolute path")
+                raise InvalidInput(f"{path!r} is not an absolute path")
         return ",".join(paths)
 
     @field_validator("prepare", mode="before")
@@ -615,7 +622,7 @@ class PodSettings(BaseModel):
             if str(raw).strip():
                 kept.setdefault(_protected.check_pattern(raw), None)
         if len(kept) > _protected.MAX_PATTERNS:
-            raise ValueError(f"at most {_protected.MAX_PATTERNS} patterns")
+            raise InvalidInput(f"at most {_protected.MAX_PATTERNS} patterns")
         return tuple(kept.keys())
 
     @field_validator("profile", mode="before")
@@ -624,7 +631,7 @@ class PodSettings(BaseModel):
         """``attended`` or ``lights-out``."""
         name = str(value).strip().lower()
         if name not in ("attended", "lights-out"):
-            raise ValueError("must be 'attended' or 'lights-out'")
+            raise InvalidInput("must be 'attended' or 'lights-out'")
         return name
 
     @field_validator("exporters", mode="before")

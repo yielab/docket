@@ -14,13 +14,14 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from docket.core import dispatch as _dispatch
+from docket.kernel.errors import InvalidInput, NotFound
 
 EVIDENCE_V1 = "1.0.0"
 EVIDENCE_V1_1 = "1.1.0"
 EvidenceVersion = Literal["1.0.0", "1.1.0"]
 
 
-class EvidenceNotFound(LookupError):
+class EvidenceNotFound(NotFound):
     """No task with this id exists in the pod's queue."""
 
 
@@ -214,7 +215,7 @@ def task_evidence(project: str, task_id: str, version: EvidenceVersion) -> TaskE
     (``"1.0.0"`` never carries the 1.1.0 fields). Raises ``EvidenceNotFound`` for an unknown
     task and ``ValueError`` for an unknown version."""
     if version not in (EVIDENCE_V1, EVIDENCE_V1_1):
-        raise ValueError(f"unknown evidence version {version!r}")
+        raise InvalidInput(f"unknown evidence version {version!r}")
     for task in _dispatch.read_tasks(project):
         if task.get("id") == task_id:
             records = [h for h in task.get("hops", []) if isinstance(h, dict)]

@@ -17,6 +17,7 @@ from docket.cli import app
 from docket.core import audit as _audit
 from docket.edges.adapters import mcp_client as _client
 from docket.edges.adapters import system
+from docket.kernel.errors import Unavailable
 
 SUBJECT = "docket.edges.adapters.mcp_client"
 
@@ -130,7 +131,7 @@ def test_isolation_on_with_no_backend_refuses_rather_than_starting_unjailed(
 ) -> None:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
     config = _mt.McpServerConfig(name="s", command="srv")
-    with pytest.raises(RuntimeError, match="no sandbox backend"):
+    with pytest.raises(Unavailable, match="no sandbox backend"):
         _client._stdio_params(config, _launch(root))
 
 

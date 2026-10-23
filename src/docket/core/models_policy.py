@@ -9,6 +9,7 @@ from typing import Any, NamedTuple
 import docket.config as cfg
 from docket.core import provider as _provider
 from docket.edges import store as _store
+from docket.kernel.errors import InvalidInput
 
 ALL_ROLES: tuple[str, ...] = (
     "lead",
@@ -269,7 +270,7 @@ def resolve_step_model(model: str) -> str:
         return tiers["economy"] if model == "cheap" else tiers["standard"]
     provider = model.split("/", 1)[0]
     if _provider.load_catalog().get(provider) is None:
-        raise ValueError(f"unknown provider {provider!r} in step model {model!r}")
+        raise InvalidInput(f"unknown provider {provider!r} in step model {model!r}")
     return model
 
 
@@ -319,7 +320,7 @@ def validate_model(model: str) -> tuple[str, list[str]]:
     # 2. Malformed.
     role_models, _, _ = load_registry()
     lines = "\n".join(f"  {r:<12} {role_models.get(r, cfg.DEFAULT_MODEL)}" for r in ALL_ROLES)
-    raise ValueError(
+    raise InvalidInput(
         f"Invalid model: '{model}'\n"
         "Use a full provider/model ID (e.g. anthropic/claude-sonnet-4-6).\n"
         f"Current role policy:\n{lines}\n"

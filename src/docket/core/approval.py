@@ -29,6 +29,7 @@ from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
+from docket.kernel.errors import NotFound
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
 # (see the module docstring). ``timeout`` is the fail-closed expiry path
@@ -78,7 +79,7 @@ APPROVAL_CHANNELS: frozenset[str] = frozenset({"cli", "http", "mcp", "telegram",
 _TERMINAL_APPROVAL_STATES: frozenset[str] = frozenset({"granted", "denied", "expired"})
 
 
-class ApprovalError(Exception):
+class ApprovalError(NotFound):
     """Raised for invalid approval transitions or missing tokens."""
 
 

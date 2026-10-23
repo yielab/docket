@@ -27,6 +27,7 @@ from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 from docket.kernel import clock as _clock
+from docket.kernel.errors import Conflict
 
 KINDS: tuple[str, ...] = ("generated", "command", "pitfall", "convention")
 MEMORY_HEADING = "## Memory"
@@ -108,7 +109,7 @@ _IMPERATIVE_FIRST_WORDS = frozenset(
 )
 
 
-class PodMemoryError(ValueError):
+class PodMemoryError(Conflict):
     """An operator action named no such entry, or one in the wrong state."""
 
 

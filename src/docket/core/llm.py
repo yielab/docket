@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from docket.core.runtime_driver import FailureKind
+from docket.kernel.errors import InvalidInput
 
 __all__ = [
     "ChatBackend",
@@ -38,7 +39,7 @@ __all__ = [
 Role = Literal["system", "user", "assistant", "tool"]
 
 
-class ToolCallArgumentsError(ValueError):
+class ToolCallArgumentsError(InvalidInput):
     """A model emitted tool-call arguments that are not a JSON object. Raised by
     ``ToolCall.parsed_arguments`` since arguments are what ``pre_tool_call`` inspects;
     ``dispatch_tool`` fail-closes to denial rather than executing an unreadable call."""

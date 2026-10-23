@@ -69,13 +69,14 @@ from dataclasses import dataclass, field
 
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
+from docket.kernel.errors import InvalidInput
 
 WORKSPACE_KINDS: frozenset[str] = frozenset({"codebase", "workdir"})
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
-class BlueprintError(ValueError):
+class BlueprintError(InvalidInput):
     """Invalid blueprint definition or unknown blueprint name."""
 
 

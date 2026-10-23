@@ -23,11 +23,12 @@ import docket.config as _cfg
 import docket.plugins as _api
 from docket.core.audit import audit_log
 from docket.kernel import clock as _clock
+from docket.kernel.errors import InvalidInput
 
 DEFAULT_BUDGET_MS = 250
 
 
-class PluginError(ValueError):
+class PluginError(InvalidInput):
     """A plugin file failed to import, or two files registered the same predicate name."""
 
 

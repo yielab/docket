@@ -23,6 +23,7 @@ from docket.core import utils as _utils
 from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
+from docket.kernel.errors import InvalidInput
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
 # the 2.x line's `mcp.server.MCPServer`, the decorator/`add_tool`-based server
@@ -51,7 +52,7 @@ _TOOL_NAMES: tuple[str, ...] = (
 )
 
 
-class McpToolError(RuntimeError):
+class McpToolError(InvalidInput):
     """A tool's domain validation or lookup failed. Raised (never an inline
     ``{"ok": false}``) so success stays the bare shape in specs/api/mcp-server.spec.md;
     the SDK turns the exception into an ``isError`` result carrying the message."""

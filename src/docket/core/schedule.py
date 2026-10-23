@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from docket.edges import store as _store
+from docket.kernel.errors import InvalidInput
 
 
 def parse_interval(spec: str) -> int | None:
@@ -236,7 +237,7 @@ def record_last_run(path: Path, project: str, ts: float) -> None:
     _store.read_modify_write(path, _fn)
 
 
-class ScheduleError(ValueError):
+class ScheduleError(InvalidInput):
     """A schedule spec is not a recognized ``@every``/``HH:MM``/cron format."""
 
 

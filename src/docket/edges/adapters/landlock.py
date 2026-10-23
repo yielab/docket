@@ -13,6 +13,8 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from docket.kernel.errors import Unavailable
+
 SYS_LANDLOCK_CREATE_RULESET = 444
 SYS_LANDLOCK_ADD_RULE = 445
 SYS_LANDLOCK_RESTRICT_SELF = 446
@@ -68,7 +70,7 @@ _BPF_RET_K = 0x06
 _OFF_NR, _OFF_ARCH, _OFF_ARG0 = 0, 4, 16
 
 
-class LandlockError(RuntimeError):
+class LandlockError(Unavailable):
     """The kernel layer could not be built or enforced."""
 
 

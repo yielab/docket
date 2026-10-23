@@ -37,6 +37,7 @@ from docket.core import prepare as _prepare
 from docket.core import protected_paths as _protected
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
+from docket.kernel.errors import InvalidInput
 
 _MANIFEST_KEYS = frozenset(
     {
@@ -60,7 +61,7 @@ _EXPORTER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 ApplyAction = Literal["add", "replace", "skip"]
 
 
-class PodApplyError(ValueError):
+class PodApplyError(InvalidInput):
     """*dir*, or something inside it, cannot be applied to this pod -- an unresolvable role,
     an invalid setting, or a pipeline step the resulting roster cannot run. Raised only by
     ``plan_apply``, before anything is written."""

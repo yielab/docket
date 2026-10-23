@@ -31,6 +31,7 @@ import docket.config as _cfg
 from docket.core.llm import ModelLimits
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
+from docket.kernel.errors import DocumentError, InvalidInput
 
 if TYPE_CHECKING:
     from docket.edges.adapters.llm import ProbeResult
@@ -42,24 +43,8 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _RESERVED_HEADERS = frozenset({"authorization", "content-type", "accept"})
 
 
-class ProviderError(Exception):
-    """*file*: *field*: *message* (valid: ...) -- a provider document failed to load or a
-    catalog write was rejected. ``valid`` is populated only for a closed-vocabulary failure."""
-
-    def __init__(
-        self, file: Path | str, field: str, message: str, valid: tuple[str, ...] = ()
-    ) -> None:
-        self.file = Path(file)
-        self.field = field
-        self.message = message
-        self.valid = tuple(valid)
-        super().__init__(str(self))
-
-    def __str__(self) -> str:
-        rendered = f"{self.file}: {self.field}: {self.message}"
-        if self.valid:
-            rendered = f"{rendered} (valid: {', '.join(self.valid)})"
-        return rendered
+class ProviderError(DocumentError):
+    """A provider document failed to load, or a catalog write was rejected."""
 
 
 class AuthSpec(BaseModel):
@@ -78,13 +63,13 @@ class AuthSpec(BaseModel):
     def _valid_names(cls, value: list[str]) -> list[str]:
         for name in value:
             if not _CREDENTIAL_NAME_RE.match(name):
-                raise ValueError(f"'{name}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
+                raise InvalidInput(f"'{name}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
         return value
 
     @model_validator(mode="after")
     def _header_required_for_header_auth(self) -> AuthSpec:
         if self.type == "header" and not self.header:
-            raise ValueError("auth.header is required when auth.type is 'header'")
+            raise InvalidInput("auth.header is required when auth.type is 'header'")
         return self
 
 
@@ -129,7 +114,7 @@ class Preset(BaseModel):
     @classmethod
     def _valid_name(cls, value: str) -> str:
         if not _NAME_RE.match(value):
-            raise ValueError(f"'{value}' is not a valid preset name (^[a-z0-9][a-z0-9-]*$)")
+            raise InvalidInput(f"'{value}' is not a valid preset name (^[a-z0-9][a-z0-9-]*$)")
         return value
 
     @field_validator("ranks")
@@ -137,7 +122,7 @@ class Preset(BaseModel):
     def _closed_rank_names(cls, value: dict[str, str]) -> dict[str, str]:
         for rank in value:
             if not _RANK_RE.match(rank):
-                raise ValueError(f"'{rank}' is not a valid rank (economy, standard, premium)")
+                raise InvalidInput(f"'{rank}' is not a valid rank (economy, standard, premium)")
         return value
 
 
@@ -166,7 +151,7 @@ class ProviderSpec(BaseModel):
     def _no_reserved_headers(cls, value: dict[str, str]) -> dict[str, str]:
         for key in value:
             if key.strip().lower() in _RESERVED_HEADERS:
-                raise ValueError(
+                raise InvalidInput(
                     f"'{key}' is a reserved header name "
                     "(authorization, content-type, accept are sent by docket itself)"
                 )
@@ -185,21 +170,21 @@ class ProviderSpec(BaseModel):
     @classmethod
     def _valid_name(cls, value: str) -> str:
         if not _NAME_RE.match(value):
-            raise ValueError(f"'{value}' is not a valid provider name (^[a-z0-9][a-z0-9-]*$)")
+            raise InvalidInput(f"'{value}' is not a valid provider name (^[a-z0-9][a-z0-9-]*$)")
         return value
 
     @field_validator("base_url")
     @classmethod
     def _valid_base_url(cls, value: str) -> str:
         if not (value.startswith("http://") or value.startswith("https://")):
-            raise ValueError(f"'{value}' must be an http:// or https:// URL")
+            raise InvalidInput(f"'{value}' must be an http:// or https:// URL")
         return value
 
     @field_validator("prices_as_of")
     @classmethod
     def _valid_prices_as_of(cls, value: str) -> str:
         if value and not _DATE_RE.match(value):
-            raise ValueError(f"'{value}' is not a YYYY-MM-DD date")
+            raise InvalidInput(f"'{value}' is not a YYYY-MM-DD date")
         return value
 
     @field_validator("models")
@@ -208,14 +193,14 @@ class ProviderSpec(BaseModel):
         seen: set[str] = set()
         for row in value:
             if row.id in seen:
-                raise ValueError(f"duplicate model id '{row.id}'")
+                raise InvalidInput(f"duplicate model id '{row.id}'")
             seen.add(row.id)
         return value
 
     @model_validator(mode="after")
     def _prices_as_of_required_with_a_price(self) -> ProviderSpec:
         if not self.prices_as_of and any(row.price is not None for row in self.models):
-            raise ValueError("pricesAsOf is required when any model row carries a price")
+            raise InvalidInput("pricesAsOf is required when any model row carries a price")
         return self
 
 

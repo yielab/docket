@@ -31,6 +31,7 @@ from docket.core.operator_contract import (
 )
 from docket.edges import store as _store
 from docket.kernel import clock as _clock
+from docket.kernel.errors import InvalidInput, Refused
 
 if TYPE_CHECKING:
     from docket.core.tools import ToolContext
@@ -58,7 +59,7 @@ class ConsultOutcome:
     error: str = ""
 
 
-class ConsultUnavailable(Exception):
+class ConsultUnavailable(Refused):
     """Nobody can answer this consultation (``refuse``/``park``); the turn ends blocked."""
 
 
@@ -123,12 +124,12 @@ def build_question(args: dict[str, Any], ctx: ToolContext) -> QuestionV11:
     problem; a consultation always carries at least two options and a recommendation."""
     options = args.get("options")
     if not isinstance(options, list) or len(options) < 2:
-        raise ValueError("options must list at least two options")
+        raise InvalidInput("options must list at least two options")
     if not isinstance(args.get("recommendation"), dict):
-        raise ValueError("a consultation must carry a recommendation {optionId, rationale}")
+        raise InvalidInput("a consultation must carry a recommendation {optionId, rationale}")
     kind = args.get("kind")
     if kind not in ("clarification", "decision"):
-        raise ValueError("kind must be 'clarification' or 'decision'")
+        raise InvalidInput("kind must be 'clarification' or 'decision'")
     return QuestionV11.model_validate(
         {
             "id": new_question_id(),
