@@ -378,13 +378,14 @@ def _prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | No
 
 
 def _claim_next_task(
-    project: str, *, resume: bool
+    project: str, *, resume: bool, skip: frozenset[str] = frozenset()
 ) -> tuple[dict[str, Any], list[HopResult]] | None:
     """Locked claim of the pod's next eligible task (highest priority first; pod-dispatch.spec.md,
     "Claiming", "Mechanical HEARTBEAT ledger"). One filelocked read-pick-flip-write so two
     concurrent callers can never claim the same task; a paused pod refuses every claim outright,
     checked outside the queue lock since pause changes are rare and operator-driven. Returns
-    the claimed task and any recorded hops, or ``None``; also syncs the HEARTBEAT.md ledger."""
+    the claimed task and any recorded hops, or ``None``; also syncs the HEARTBEAT.md ledger.
+    A task id in *skip* (one this run already claimed) is never picked again."""
     lead_id = _pod.member_id(project, "lead")
     if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")):
         _trace.trace_event(
@@ -406,7 +407,11 @@ def _claim_next_task(
             if isinstance(tasks_raw, list)
             else []
         )
-        candidates = [i for i, t in enumerate(tasks) if _eligible_for_claim(t, resume=resume)]
+        candidates = [
+            i
+            for i, t in enumerate(tasks)
+            if t.get("id") not in skip and _eligible_for_claim(t, resume=resume)
+        ]
         if not candidates:
             return None
         candidates.sort(

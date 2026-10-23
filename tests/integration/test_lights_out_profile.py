@@ -180,6 +180,41 @@ class TestRefusals:
         res, _driver = _dispatch_one(_GATED)
         assert res.failure_kind in _queue.RESUMABLE_FAILURE_KINDS
 
+    def test_a_resuming_sweep_refuses_a_task_once_per_run(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _meet_everything(home, monkeypatch)
+        record_isolation_off(home)
+        _queue.enqueue_task_once("demo", "Ship it", channel="cli")
+
+        def _stop() -> bool:
+            return len(_audit.read_audit()) > 50
+
+        results = _sweep.dispatch_pod(
+            "demo", runner=FakeDriver(), spec=_spec(_GATED), resume=True, stop=_stop
+        )
+
+        assert len(results) == 1
+        assert results[0].failure_kind == "dispatch_refused"
+
+    def test_a_resuming_sweep_still_reaches_the_next_task(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _meet_everything(home, monkeypatch)
+        record_isolation_off(home)
+        first = _queue.enqueue_task_once("demo", "First", channel="cli")[0]["id"]
+        second = _queue.enqueue_task_once("demo", "Second", channel="cli")[0]["id"]
+
+        results = _sweep.dispatch_pod(
+            "demo",
+            runner=FakeDriver(),
+            spec=_spec(_GATED),
+            resume=True,
+            stop=lambda: len(_audit.read_audit()) > 50,
+        )
+
+        assert sorted(r.task_id for r in results) == sorted([first, second])
+
 
 class TestPositive:
     def test_every_requirement_met_runs_the_task(

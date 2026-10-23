@@ -78,12 +78,14 @@ def dispatch_pod(
         reclaim_stale_running(project)
 
     results: list[TaskResult] = []
+    claimed_ids: set[str] = set()
     while (max_tasks is None or len(results) < max_tasks) and not (stop is not None and stop()):
-        claim = _claim_next_task(project, resume=resume)
+        claim = _claim_next_task(project, resume=resume, skip=frozenset(claimed_ids))
         if claim is None:
             break
         task, resume_hops = claim
         task_id = str(task.get("id", "task"))
+        claimed_ids.add(task_id)
         refusal = task.pop("claimRefusal", None)
         if refusal is not None:
             results.append(_refuse_claimed_task(project, task, *refusal))

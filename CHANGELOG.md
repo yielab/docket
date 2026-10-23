@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shrink-only list of today's 748 violations, a 700-line ceiling and a local-imports ratchet.
   No behaviour changed: every golden is byte-identical.
 
+### Fixed
+
+- A resuming sweep (`docket start --dispatch`) re-claimed a task it had just refused, in a loop
+  with no pause, until the refusal was cleared: one `dispatch_refused` task (isolation off under a
+  `lights-out` profile) wrote 2,164 audit and trace entries in 3 seconds and held a core at 85%.
+  A task is now claimed at most once per dispatch run. Found by the Phase 46 real run; the loop
+  was already in `develop`.
+
 ### Added
 
 - `scripts/maint/live-dispatch-baseline.sh` records one real dispatch through the HTTP API (task,

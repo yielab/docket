@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.0.2
+**Version**: 9.0.3
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -169,6 +169,9 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    particular, `blocked`, `waiting_approval`, `waiting_input` and a plain `failed` task -- one
    whose failure was a real graded hop or gate outcome -- are never reclaimed by a dispatch run;
    see "blocked and terminal-failure re-entry" below).
+   Within one dispatch run a task is claimed **at most once**: a `dispatch_refused` task that
+   the run just settled is not claimed again by the same run, so a resuming sweep cannot spin on
+   a refusal that only an operator action can clear.
 4. Among eligible tasks, the highest-priority one is claimed first (`high` < `normal` < `low`
    rank); ties are broken by queue order (a stable sort preserves each task's original enqueue
    position).
