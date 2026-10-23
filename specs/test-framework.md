@@ -166,7 +166,9 @@ Requirements:
       a member is told to work in lie inside the roots it is gated against.
     - *Repository hygiene.* No Telegram-ID-shaped literal in `src/` and only sanctioned synthetic
       ones elsewhere; no retired-daemon coupling in product code; no function under `src/docket`
-      exceeds 150 lines except the listed ones, which may not grow (a baseline records them).
+      exceeds 150 lines except the listed ones, which may not grow (a baseline records them); the
+      numbers of definitions no file names, of definitions only a test names and of groups of
+      identical function bodies under `src/docket` may only fall.
 
 11. **Tests mirror the code.** A test file for `src/docket/<path>/<module>.py` lives at
     `tests/<path>/test_<module>.py`, one file per module, and that path is the file's subject. A
@@ -545,6 +547,7 @@ Where the names used above live today.
   unit), `test_agent_lane_budget.py` (`agent_lane_baseline.txt`), `test_comment_hygiene.py` (with
   `scripts/maint/comment_lint.py` and `scripts/maint/comment-baseline.json`),
   `test_function_span.py` (`function_span_baseline.txt`, `scripts/maint/measure_function_spans.py`),
+  `test_dead_code.py` (`dead_code_baseline.txt`, `scripts/maint/measure_dead_code.py`),
   `test_docket_home_isolation.py`, `test_docket_home_repointer.py`, `test_partial_repointers.py`
   (`partial_repointer_baseline.txt`, `scripts/maint/measure_partial_repointers.py`),
   `test_config_single_owner.py`, `test_fleet_registry.py`, `test_no_print_in_core_edges.py`,
