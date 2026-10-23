@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import urllib.parse as _urlparse
 
+from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.observability import trace as _trace
 
@@ -146,3 +148,18 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     if anchor_ts == cursor_ts:
         count_at_anchor += already
     return lines, f"{anchor_ts}:{count_at_anchor}"
+
+
+def get_traces(h: HttpExchange, project: str) -> None:
+    """``GET /traces/<pod>?since=<cursor>``; the bare ``/traces`` is the missing-project `400`."""
+    if not project:
+        h._send_json_error("Missing project", 400)
+        return
+    if h._reject_bad_project_id(project):
+        return
+    query = _urlparse.parse_qs(_urlparse.urlsplit(h.path).query)
+    since_values = query.get("since")
+    since = since_values[0] if since_values else ""
+    events, next_cursor = _traces_page(project, since)
+    body = json.dumps({"events": events, "next": next_cursor}).encode("utf-8")
+    h._send(body, "application/json")

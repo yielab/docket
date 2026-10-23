@@ -22,7 +22,7 @@ from typing import Any
 
 import pytest
 
-from docket.interfaces.http import server
+from docket.interfaces.http import exchange
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
@@ -181,7 +181,7 @@ class TestReadBodyCap:
         return handler
 
     def test_over_cap_sends_413_without_touching_rfile(self) -> None:
-        handler = self._bare_handler(str(server.MAX_POST_BODY_BYTES + 1))
+        handler = self._bare_handler(str(exchange.MAX_POST_BODY_BYTES + 1))
         result = handler._read_body()
         assert result is None
         assert handler.rfile.read_called is False  # type: ignore[attr-defined]
@@ -195,8 +195,8 @@ class TestReadBodyCap:
         assert handler.rfile.read_called is True  # type: ignore[attr-defined]
 
     def test_exactly_at_the_cap_is_still_read_not_rejected(self) -> None:
-        payload = b"x" * server.MAX_POST_BODY_BYTES
-        handler = self._bare_handler(str(server.MAX_POST_BODY_BYTES), data=payload)
+        payload = b"x" * exchange.MAX_POST_BODY_BYTES
+        handler = self._bare_handler(str(exchange.MAX_POST_BODY_BYTES), data=payload)
         result = handler._read_body()
         assert result == payload
         assert handler.rfile.read_called is True  # type: ignore[attr-defined]

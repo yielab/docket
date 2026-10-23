@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from docket.governance import audit as _audit
+from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
@@ -330,3 +331,7 @@ def render_metrics() -> str:
     lines += _escalation_metrics_lines()
 
     return "\n".join(lines)
+
+
+def get_metrics(h: HttpExchange, _arg: str) -> None:
+    h._send((render_metrics() + "\n").encode("utf-8"), "text/plain; version=0.0.4")
