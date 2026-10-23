@@ -322,7 +322,7 @@ $ docket pod validate workflows/broken.yml
 
 ### `docket pod plan` — see what would actually run, without running it
 
-`plan` renders straight from the real executor (`core.orchestrator.resolve_plan`/`render_plan`)
+`plan` renders straight from the real executor (`pipeline.domain.plan.resolve_plan`/`render_plan`)
 — never a second, drift-prone pretty-printer, and never a token spent:
 
 ```bash

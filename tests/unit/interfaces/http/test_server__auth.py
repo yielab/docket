@@ -107,7 +107,7 @@ class TestBindSemanticsDocumented:
         assert "loopback" in (server.__doc__ or "").lower()
 
     def test_run_serve_docstring_documents_bind(self) -> None:
-        assert "127.0.0.1" in (server.run_server.__doc__ or "")
+        assert "127.0.0.1" in (server.run_serve.__doc__ or "")
 
     def test_startup_banner_prints_bind_address(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

@@ -13,12 +13,19 @@ import yaml
 from tests.unit.pipeline.application.test_steps import _unit_context
 
 from docket.governance import secrets as _secrets
+from docket.hops.application import compose as _compose_c
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
+from docket.hops.gates import post_hop as _post_hop_c
+from docket.hops.gates import pre_hop as _pre_hop_c
+from docket.pipeline.application import executor as _executor_c
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain.spec import Step, load_pipeline, normalize_pipeline
+from docket.tasks.application import actions as _actions_c
+from docket.tasks.application import lifecycle as _lifecycle_c
+from docket.tasks.application import queue as _queue_c
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.pipeline.domain.spec"
@@ -99,9 +106,38 @@ class TestExecution:
     ) -> None:
         events: list[tuple[Any, ...]] = []
         monkeypatch.setattr(_runner, "_when_cwd", lambda ctx, prior: str(tmp_path))
+        monkeypatch.setattr(_steps, "_when_cwd", lambda ctx, prior: str(tmp_path))
+        monkeypatch.setattr(_executor_c, "_when_cwd", lambda ctx, prior: str(tmp_path))
         monkeypatch.setattr(_record, "_trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_compose_c, "_trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_runner, "_trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_pre_hop_c, "_trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_post_hop_c, "_trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_steps, "_trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_executor_c, "_trace_locked", lambda *a, **k: events.append(a))
         monkeypatch.setattr(
             _settings, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+        )
+        monkeypatch.setattr(
+            _actions_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+        )
+        monkeypatch.setattr(
+            _queue_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+        )
+        monkeypatch.setattr(
+            _lifecycle_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+        )
+        monkeypatch.setattr(
+            _compose_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+        )
+        monkeypatch.setattr(
+            _pre_hop_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+        )
+        monkeypatch.setattr(
+            _post_hop_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+        )
+        monkeypatch.setattr(
+            _steps, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
         )
         node = _orch.PlannedUnit(
             step_id="check",

@@ -141,7 +141,7 @@ logic lives in `core/` and any I/O goes through `edges/` (`store.py` for docket 
 # src/docket/cli/__init__.py  (or a cli/_<group>.py module for a larger group)
 import typer
 
-from docket import ui
+from docket.interfaces.cli.render import ui
 from docket.cli import app
 
 

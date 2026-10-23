@@ -51,7 +51,7 @@ from docket.observability import trace as _trace
 SUBJECT = "docket.agent.loop"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "core" / "agent_loop.py"
+AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "agent" / "loop.py"
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────

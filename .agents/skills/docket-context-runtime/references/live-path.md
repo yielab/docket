@@ -31,7 +31,7 @@ composition, or MCP/tool output.
 
 ## Budget honestly
 
-- `core.context.estimate_tokens` is an approximation for fitting context, never billed usage.
+- `agent.context.estimate_tokens` is an approximation for fitting context, never billed usage.
 - `TokenUsage` is measured backend usage for the hard turn budget.
 - Bound every model-visible tool result, including MCP, through the same operator-configurable
   ceiling and visible truncation contract. Locate the owning contract and assert its unit, marker,

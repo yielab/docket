@@ -99,7 +99,9 @@ def _pgrep_count(marker: str) -> int:
 class TestSandboxAvailabilityDetection:
     def test_env_override_wins_over_real_probes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
         monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         availability = launch.sandbox_availability("docker")
         assert availability.backend == "none"
@@ -112,13 +114,17 @@ class TestSandboxAvailabilityDetection:
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
         monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         assert launch.sandbox_availability("auto").backend == "landlock"
 
     def test_docker_is_used_when_chosen(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
         monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         assert launch.sandbox_availability("docker").backend == "docker"
 
     def test_none_when_nothing_usable_and_docker_is_not_probed_unless_chosen(
@@ -126,8 +132,11 @@ class TestSandboxAvailabilityDetection:
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: False)
+        monkeypatch.setattr(launch, "landlock_available", lambda: False)
         monkeypatch.setattr(seatbelt, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(launch, "seatbelt_available", lambda: False)
         monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         availability = launch.sandbox_availability("auto")
         assert availability.backend == "none"
         assert availability.docker is False
@@ -263,6 +272,7 @@ class TestSandboxOffIsUnchanged:
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         out = toolbox.run_bash((workspace,), "echo hi")  # sandbox left at the "off" default
         assert out.content == "hi"
         assert "sandbox" not in out.content
@@ -277,8 +287,11 @@ class TestHonestReportingIsDeterministic:
     ) -> None:
         """The gate allowed the command on the promise of a jail, so no jail means no run."""
         monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: False)
+        monkeypatch.setattr(launch, "landlock_available", lambda: False)
         monkeypatch.setattr(seatbelt, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(launch, "seatbelt_available", lambda: False)
         monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: False)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: False)
         out = toolbox.run_bash((workspace,), "touch ran", sandbox="auto")
         assert not out.ok and not (workspace / "ran").exists()
         assert out.error.startswith("not run: no sandbox backend is usable")
@@ -293,7 +306,9 @@ class TestHonestReportingIsDeterministic:
         """A silent 'none' that looks identical whether or not a jail was
         possible is exactly the failure this card exists to prevent."""
         monkeypatch.setattr(sandbox_landlock, "landlock_available", lambda: True)
+        monkeypatch.setattr(launch, "landlock_available", lambda: True)
         monkeypatch.setattr(sandbox_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(launch, "docker_daemon_reachable", lambda: True)
         _fleet.set_sandbox_backend("docker")
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         out = toolbox.run_bash((workspace,), "echo hi", sandbox="auto")

@@ -173,7 +173,7 @@ No command emits any other exit code today.
 # silently going undocumented.
 #
 # What is deliberately NOT here: `DOCKET_APPROVAL_MODE` and `DOCKET_PIPELINE_WORKTREE`
-# (core/runtime_driver.py) look like environment variables and are named like one, but
+# (agent/ports.py) look like environment variables and are named like one, but
 # both are documented at their definition as an "internal env-coordinate route" -- a
 # plain dict passed caller-to-driver through `run_turn`'s `env` argument, never read from
 # the real process environment. Neither name is ever passed to `os.environ.get`/`getenv`,
@@ -184,9 +184,9 @@ _BIN_DOCKET = ROOT / "bin" / "docket"
 
 # Real, but not something an operator tunes for docket's own behavior: PATH is the
 # ordinary OS search path, read only to build a minimal subprocess environment
-# (edges/adapters/toolbox.py, edges/adapters/system.py); DISPLAY and WAYLAND_DISPLAY are the
+# (agent/tools/builtins/toolbox.py, edges/adapters/system.py); DISPLAY and WAYLAND_DISPLAY are the
 # desktop session's own markers, probed once to decide whether `docket init` may offer the
-# `desktop` channel (edges/adapters/system.py::desktop_notifications_available). Excluded by
+# `desktop` channel (platform/process.py::desktop_notifications_available). Excluded by
 # name, not silently dropped, so the exclusion itself is visible to anyone reading this file.
 _ENV_SCAN_EXCLUDE = {"PATH", "DISPLAY", "WAYLAND_DISPLAY"}
 
@@ -282,7 +282,7 @@ def _dispatch_retry_role_names() -> set[str]:
 
 
 def _provider_credential_names() -> set[str]:
-    """Provider API-key env var names, read from the provider catalog (core/provider.py)
+    """Provider API-key env var names, read from the provider catalog (models/catalog.py)
     instead of re-typing them."""
     from docket.models.catalog import load_catalog
 
@@ -331,7 +331,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("SKILLS_DIR",),
-        "The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads",
+        "The operator's own Agent Skills, the outermost of the three scopes `agent.skills.discover_skills` reads",
         "`$DOCKET_HOME/skills`",
     ),
     (
@@ -356,7 +356,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("SESSIONS_DIR",),
-        "Root of durable per-session turn history (`core/session.py`)",
+        "Root of durable per-session turn history (`agent/session.py`)",
         "`$DOCKET_HOME/sessions`",
     ),
     (
@@ -366,33 +366,33 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("PROVIDERS_FILE",),
-        "Global provider catalog scope (`docket setup provider add`, `core/provider.py`)",
+        "Global provider catalog scope (`docket setup provider add`, `models/catalog.py`)",
         "`$DOCKET_HOME/docket-providers.json`",
     ),
     (
         ("EXPORTERS_FILE",),
-        "Global exporter catalog scope (`core/exporter.py`)",
+        "Global exporter catalog scope (`observability/exporter.py`)",
         "`$DOCKET_HOME/docket-exporters.json`",
     ),
     (
         ("EXPORTERS_HEALTH_FILE",),
-        "Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`)",
+        "Per-exporter delivery counters and last-error state (`observability/exporter.py::read_health`)",
         "`$DOCKET_HOME/exporters-health.json`",
     ),
     (
         ("CHANNELS_FILE",),
-        "Global channel catalog scope (`core/channel.py`)",
+        "Global channel catalog scope (`operator/channel.py`)",
         "`$DOCKET_HOME/docket-channels.json`",
     ),
     (
         ("NOTIFY_STATE_FILE",),
-        "`core/notify.py::flush`'s dedupe snapshot, so two flushes over the same state "
+        "`operator/notify.py::flush`'s dedupe snapshot, so two flushes over the same state "
         "deliver each event once",
         "`$DOCKET_HOME/notify-state.json`",
     ),
     (
         ("CHANNELS_HEALTH_FILE",),
-        "Per-channel delivery counters and last-error state (`core/notify.py::flush`)",
+        "Per-channel delivery counters and last-error state (`operator/notify.py::flush`)",
         "`$DOCKET_HOME/channels-health.json`",
     ),
     (
@@ -413,7 +413,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("TOOL_APPROVAL_TIMEOUT",),
-        "The in-turn approval wait (`core/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT`",
+        "The in-turn approval wait (`governance/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT`",
         "`120`",
     ),
     (
@@ -663,7 +663,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
             "TOGETHER_API_KEY",
         ),
         "Per-provider API key, named by a built-in provider document's `auth.credentials` "
-        "(`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a "
+        "(`models/catalog.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a "
         "catalog-resolved credential is already present; also checked against docket's own "
         "secret store (`docket setup provider add`). A provider absent from the catalog falls back to "
         "`<PROVIDER>_API_KEY`",

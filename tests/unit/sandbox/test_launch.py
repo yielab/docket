@@ -100,6 +100,7 @@ class TestJailLaunch:
     @pytest.fixture(autouse=True)
     def _no_identity(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_git, "git_identity_env", lambda root: {})
+        monkeypatch.setattr(_launch, "git_identity_env", lambda root: {})
 
     def test_landlock_argv_roots_extra_rw_and_minimal_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -109,6 +110,7 @@ class TestJailLaunch:
         # /usr/bin/git is the Xcode shim on macOS, whose first run alone can pass 2s.
         monkeypatch.setattr(_landlock, "git_dirs", lambda root: [])
         monkeypatch.setattr(_git, "git_identity_env", lambda root: {})
+        monkeypatch.setattr(_launch, "git_identity_env", lambda root: {})
         cache = tmp_path / "cache"
         launch = _launch.jail_launch(
             (tmp_path,), "echo hi", "landlock", network=False, env={"A": "1"}, extra_rw=(cache,)

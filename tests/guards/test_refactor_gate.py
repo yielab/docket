@@ -48,7 +48,7 @@ def scratch(tmp_path: Path) -> Path:
     spec.parent.mkdir(parents=True)
     spec.write_text(
         "# A\n\n1. A trace is kept.\n\n## Implementation\n\n"
-        "- `src/docket/observability/trace.py::record` and `observability/trace.py`\n- `docket.observability.trace.EVENTS`\n"
+        "- `src/docket/core/trace.py::record` and `core/trace.py`\n- `docket.core.trace.EVENTS`\n"
     )
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-q", "-m", "Add: spec")
@@ -104,9 +104,9 @@ def test_a_path_only_change_to_a_spec_passes(scratch: Path) -> None:
     spec = scratch / "specs" / "functional" / "a.spec.md"
     spec.write_text(
         spec.read_text()
-        .replace("src/docket/observability/trace.py", "src/docket/observe/trace.py")
-        .replace("`observability/trace.py`", "`observe/trace.py`")
-        .replace("docket.observability.trace.EVENTS", "docket.observe.trace.EVENTS")
+        .replace("src/docket/core/trace.py", "src/docket/observe/trace.py")
+        .replace("`core/trace.py`", "`observe/trace.py`")
+        .replace("docket.core.trace.EVENTS", "docket.observe.trace.EVENTS")
     )
     result = _gate(scratch, "--only", "specs-diff")
     assert result.returncode == 0, result.stderr

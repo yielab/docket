@@ -1,13 +1,13 @@
-"""``kernel.document_fields`` -- the field checks the provider, exporter and channel documents share."""
+"""``models.document_fields`` -- the field checks the provider, exporter and channel documents share."""
 
 from __future__ import annotations
 
 import pytest
 
-from docket.kernel import document_fields as documents
 from docket.kernel.errors import InvalidInput
+from docket.models import document_fields as documents
 
-SUBJECT = "docket.kernel.document_fields"
+SUBJECT = "docket.models.document_fields"
 
 
 def test_a_valid_name_passes_and_an_invalid_one_names_what_it_was() -> None:

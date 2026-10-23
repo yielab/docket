@@ -7,10 +7,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from docket_runtime._internal.docket.core.handoff import HandoffArtifact
-from docket_runtime._internal.docket.core.llm import TokenUsage, ToolCall
-from docket_runtime._internal.docket.core.tools import ToolContext, ToolResult
-from docket_runtime._internal.docket.core.trace import trace_event
+from docket_runtime._internal.docket.agent.handoff import HandoffArtifact
+from docket_runtime._internal.docket.agent.llm import TokenUsage, ToolCall
+from docket_runtime._internal.docket.agent.tools.registry import ToolContext, ToolResult
+from docket_runtime._internal.docket.observability.trace import trace_event
 
 ExecutionStopReason = Literal["final_message", "token_budget", "max_tool_calls"]
 Dispatch = Callable[[ToolCall, ToolContext], ToolResult]

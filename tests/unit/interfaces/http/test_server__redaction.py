@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from docket.agent import loop as _loop_c
 from docket.governance import approval as _ap
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
@@ -91,6 +92,7 @@ class TestApprovalTrace:
             raise RuntimeError("trace store down")
 
         monkeypatch.setattr(_trace, "trace_event", _boom, raising=True)
+        monkeypatch.setattr(_loop_c, "trace_event", _boom)
         token = _ap.approval_create("myshop", "programmer", "still works")
         assert token.startswith("apr-")
         assert _ap.approval_get(token)["state"] == "pending"

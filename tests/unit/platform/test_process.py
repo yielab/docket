@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from docket.platform import git as _git_c
 from docket.platform import process as _process
+from docket.sandbox import docker as _docker_c
 
 SUBJECT = "docket.platform.process"
 
@@ -19,18 +21,24 @@ class TestDesktopNotificationsAvailable:
     def test_linux_needs_a_session_and_notify_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_process.sys, "platform", "linux")
         monkeypatch.setattr(_process, "_which", lambda binary: binary == "notify-send")
+        monkeypatch.setattr(_git_c, "_which", lambda binary: binary == "notify-send")
+        monkeypatch.setattr(_docker_c, "_which", lambda binary: binary == "notify-send")
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
         assert _process.desktop_notifications_available() is False
         monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
         assert _process.desktop_notifications_available() is True
         monkeypatch.setattr(_process, "_which", lambda binary: False)
+        monkeypatch.setattr(_git_c, "_which", lambda binary: False)
+        monkeypatch.setattr(_docker_c, "_which", lambda binary: False)
         assert _process.desktop_notifications_available() is False
 
     def test_macos_needs_only_osascript(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_process.sys, "platform", "darwin")
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.setattr(_process, "_which", lambda binary: binary == "osascript")
+        monkeypatch.setattr(_git_c, "_which", lambda binary: binary == "osascript")
+        monkeypatch.setattr(_docker_c, "_which", lambda binary: binary == "osascript")
         assert _process.desktop_notifications_available() is True
 
 

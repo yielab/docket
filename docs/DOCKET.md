@@ -777,7 +777,7 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
   brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket task answer
   <task-id>`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
-  all resolve it through one `core.answers.answer_task` function, which routes the step's own
+  all resolve it through one `tasks.application.answers.answer_task` function, which routes the step's own
   `on:` outcome (`answered`/`declined`) and reopens the task `pending`. An unanswered question
   past its own deadline moves the task to `blocked` (`blockedReason: "input_expired"`), never
   `failed`.

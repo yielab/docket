@@ -13,12 +13,17 @@ from dataclasses import dataclass, field
 from threading import RLock
 
 from docket_runtime._execution import ExecutionLimits, ExecutionResult, GovernedExecution
-from docket_runtime._internal.docket.core import approval as _approval
-from docket_runtime._internal.docket.core.handoff import HandoffArtifact
-from docket_runtime._internal.docket.core.llm import TokenUsage, ToolCall, ToolSpec
-from docket_runtime._internal.docket.core.tools import Tool, ToolContext, ToolRegistry, ToolResult
-from docket_runtime._internal.docket.core.tools import dispatch_tool as _dispatch_tool
-from docket_runtime._internal.docket.edges.adapters.toolbox import ToolOutcome
+from docket_runtime._internal.docket.agent.handoff import HandoffArtifact
+from docket_runtime._internal.docket.agent.llm import TokenUsage, ToolCall, ToolSpec
+from docket_runtime._internal.docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket_runtime._internal.docket.agent.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolRegistry,
+    ToolResult,
+)
+from docket_runtime._internal.docket.agent.tools.registry import dispatch_tool as _dispatch_tool
+from docket_runtime._internal.docket.governance import approval as _approval
 
 __version__ = "0.3.0"
 __all__ = [

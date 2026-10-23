@@ -30,9 +30,9 @@ from pydantic import (
 )
 
 import docket.kernel.templates as _templates
-from docket.kernel import document_fields as _documents
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
+from docket.models import document_fields as _documents
 from docket.operator.contract import EVENT_KINDS
 from docket.platform import store as _store
 

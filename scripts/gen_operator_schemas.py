@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """gen_operator_schemas.py -- render docs/contracts/operator-v1/{task,question,answer,approval,
-inbox,brief,event}.schema.json from the Pydantic models in ``core.operator_contract``;
+inbox,brief,event}.schema.json from the Pydantic models in ``operator.contract``;
 also docs/contracts/operator-v1.1/{question,answer}.schema.json.
 
 ``question.schema.json``'s ``requestedSchema`` property is rendered from

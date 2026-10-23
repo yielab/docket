@@ -26,9 +26,9 @@ from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace import protected_paths as _protected
-from docket.kernel import document_fields as _documents
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
+from docket.models import document_fields as _documents
 from docket.models import selection as _mp
 from docket.observability import exporter as _exporter
 from docket.pipeline.application import schedule as _sched

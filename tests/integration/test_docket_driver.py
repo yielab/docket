@@ -1789,6 +1789,7 @@ class TestIsolationWiring:
         # last word, exactly as it already is for `toolbox.run_bash`.
         _write_meta("solo-agent")
         monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)

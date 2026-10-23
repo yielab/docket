@@ -925,7 +925,7 @@ No command emits any other exit code today.
 | `TRACES_DIR` | Root of per-session trace JSONL files (`docket task trace`) | `$DOCKET_HOME/traces` |
 | `POLICIES_DIR` | Root of installed/edited policy JSON (`docket pod policies`, `docket setup sandbox`) | `$DOCKET_HOME/policies` |
 | `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket pod policies --plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
-| `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
+| `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `agent.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
 | `APPROVALS_DIR` | Where `docket task approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
 | `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/corrections` |
 | `SCHEDULE_FILE` | The persisted pod schedules (`docket pod set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
@@ -934,10 +934,10 @@ No command emits any other exit code today.
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket setup mcp`) | `$DOCKET_HOME/docket-mcp-servers.json` |
 | `PROVIDERS_FILE` | Global provider catalog scope (`docket setup provider add`, `models/catalog.py`) | `$DOCKET_HOME/docket-providers.json` |
 | `EXPORTERS_FILE` | Global exporter catalog scope (`observability/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
-| `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
+| `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`observability/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
 | `CHANNELS_FILE` | Global channel catalog scope (`operator/channel.py`) | `$DOCKET_HOME/docket-channels.json` |
-| `NOTIFY_STATE_FILE` | `core/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/notify-state.json` |
-| `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`core/notify.py::flush`) | `$DOCKET_HOME/channels-health.json` |
+| `NOTIFY_STATE_FILE` | `operator/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/notify-state.json` |
+| `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`operator/notify.py::flush`) | `$DOCKET_HOME/channels-health.json` |
 | `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket log`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |

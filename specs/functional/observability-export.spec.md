@@ -980,7 +980,7 @@ ok Exporter privacy updated: langfuse
 - `src/docket/kernel/home.py`: the `Home` members `exporters_file`, `exporters_health_file`,
   `export_queue_max`, `export_flush_timeout_s`, `dispatch_retry_max_wait_s`, `traces_dir`
 - `src/docket/kernel/templates.py`: `EXPORTER_TEMPLATES_DIR`
-- `src/docket/kernel/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
+- `src/docket/models/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
 - `src/docket/edges/adapters/system.py`: `no_export` (`DOCKET_NO_EXPORT`, read live)
 - `src/docket/templates/exporters/`: the five built-in documents
 - `src/docket/interfaces/cli/commands/setup_export.py`: `docket setup export` (requirements 60-63, 90-102)

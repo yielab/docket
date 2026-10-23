@@ -26,6 +26,8 @@ from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, current_home, use_home
 from docket.models import selection as _mp
+from docket.pipeline.application import executor as _executor_c
+from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
@@ -141,7 +143,10 @@ class TestAutoPauseDispatch:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
             monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
 
             results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
             assert results[0].status == "blocked"
@@ -157,7 +162,10 @@ class TestAutoPauseDispatch:
             _queue.enqueue_task_once("demo", "One", channel="cli")
             _queue.enqueue_task_once("demo", "Two", channel="cli")
             monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
             _sweep.dispatch_pod("demo", runner=_RecordingRunner())
 
             # Second dispatch: the pod is now paused — nothing should even be
@@ -215,6 +223,7 @@ class TestEstimateFallback:
     ) -> None:
         with _seed_pod(tmp_path):
             monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 3.5)
+            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 3.5)
             spent, estimated = _pre_hop.pod_gating_cost("demo")
             assert spent == 3.5
             assert estimated is False

@@ -21,9 +21,9 @@ _SRC = _REPO / "src" / "docket"
 
 # Modules allowed to write JSON outside the platform/store.py chokepoint.
 _EXEMPT = {
-    _SRC / "edges" / "store.py",  # the chokepoint itself
-    _SRC / "core" / "trace.py",  # append-only JSONL (D-12 exemption)
-    _SRC / "core" / "audit.py",  # append-only JSONL (D-12 exemption)
+    _SRC / "platform" / "store.py",  # the chokepoint itself
+    _SRC / "observability" / "trace.py",  # append-only JSONL (D-12 exemption)
+    _SRC / "governance" / "audit.py",  # append-only JSONL (D-12 exemption)
 }
 
 # A write_text( call whose argument (within a generous window, to tolerate a
@@ -63,9 +63,9 @@ def test_exempt_modules_still_exist() -> None:
     _EXEMPT should still be a real file, not a dead entry left behind after
     the module it named is removed."""
     always_present = {
-        _SRC / "edges" / "store.py",
-        _SRC / "core" / "trace.py",
-        _SRC / "core" / "audit.py",
+        _SRC / "platform" / "store.py",
+        _SRC / "observability" / "trace.py",
+        _SRC / "governance" / "audit.py",
     }
     for path in always_present:
         assert path.is_file(), f"expected exempt module missing: {path}"

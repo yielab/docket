@@ -22,10 +22,12 @@ from tests.pods import build_pod
 
 from docket.agent import ports as _rd
 from docket.hops.application import runner as _application_runner
+from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor
+from docket.pipeline.application import steps as _steps_c
 from docket.sandbox import launch as _launch
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
@@ -529,7 +531,10 @@ class TestExistingStateMachineBehaviourUnaffected:
         _seed_pod(tmp_path)
         _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
         monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+        monkeypatch.setattr(_pre_hop_c, "pod_recorded_cost", lambda _p: 5.0)
 
         def _runner(
             agent_id: str,

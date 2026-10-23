@@ -528,7 +528,7 @@ Three ways to avoid it:
 **Policies** (`~/.docket/policies/*.yaml|yml|json`, relocatable with `POLICIES_DIR`). Every file
 in the directory is loaded, and all of them are re-read on every call, so a new file is live
 immediately. Write the short form (the shipped templates under `policies/` are examples);
-`core.policy.normalize_policy` turns it into the canonical shape the evaluator actually reads —
+`governance.policy.normalize_policy` turns it into the canonical shape the evaluator actually reads —
 see `security-gates.spec.md`, "Policy format v1" for that mapping and the canonical field names:
 
 ```yaml
@@ -1131,7 +1131,7 @@ answers, prompts once per schema property on a TTY, then answers) or non-interac
 task answer <task-id> [text] [--field name=value]... [--decline]` — a bare `text` fills a
 single-property question, `--field` names each property of a richer one. Both, plus `POST
 /tasks/<id>/answer` and the MCP `task_answer` tool, resolve through the same
-`core.answers.answer_task` function, so an answer is screened by the same input policy hook
+`tasks.application.answers.answer_task` function, so an answer is screened by the same input policy hook
 regardless of which surface sent it.
 
 ## 4. File reference
@@ -1155,8 +1155,8 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `setup export enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
 | `exporters-health.json` | `{<name>: {exported,dropped,failed,…}}` | the export pipeline, after every turn | `setup export show`, `setup` | no |
 | `docket-channels.json` | `channels{<name>: kind: channel override}` — only the keys you changed (`enabled`, `capabilities`, `on`, `content`, `actors`, `config`, `secret`) over the built-in | `setup notify enable/disable/privacy/add/remove` | `docket setup notify flush`, `docket start`'s sweep and a foreground `docket run`, each after their own work: which channels run, and how much they carry (§3.15) | via command. A hand edit that widens `content` skips the confirmation and audit entry. |
-| `channels-health.json` | `{<name>: {delivered,failed,lastOk,lastError,…}}` | `core.notify.flush`, after every delivery attempt | nothing yet — no CLI surface reads it back | no |
-| `notify-state.json` | `{<dedupe-key>: version}` plus an `expiring` list | `core.notify.flush`, saved before delivering | `core.notify.diff_events` on the next flush, to avoid re-sending an unchanged item | no |
+| `channels-health.json` | `{<name>: {delivered,failed,lastOk,lastError,…}}` | `operator.notify.flush`, after every delivery attempt | nothing yet — no CLI surface reads it back | no |
+| `notify-state.json` | `{<dedupe-key>: version}` plus an `expiring` list | `operator.notify.flush`, saved before delivering | `operator.notify.diff_events` on the next flush, to avoid re-sending an unchanged item | no |
 | `inbox-cursor.json` | `{"next": "<iso timestamp>"}` | a plain `docket inbox` call | the next plain `docket inbox` call's `doneSince` filter | no |
 | `docket-schedules.json` | `schedules{pod: spec}`, `lastRun{pod: epoch}` | `pod set/unset schedule`, `docket start` (`lastRun`) | `docket start --dispatch` sweep | via command; `docket setup` names a bad hand edit |
 | `secrets.json` / `secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `setup provider add/rotate/remove` | endpoint key lookup (after env) | no |

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gen_evidence_schema.py -- render the evidence contract's schema.json (1.1.0).
 
-``core.evidence``'s Pydantic models are the source of truth; this script only serializes
+``tasks.application.evidence``'s Pydantic models are the source of truth; this script only serializes
 them, so `--check` failing means the wire shape moved without regenerating the published
 artifact in the same change.
 

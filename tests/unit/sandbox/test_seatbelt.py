@@ -130,6 +130,7 @@ class TestSeatbeltBackend:
         monkeypatch.setattr(_seatbelt.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
         monkeypatch.setattr(_launch, "landlock_available", lambda: False)
         monkeypatch.setattr(_docker, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(_launch, "docker_daemon_reachable", lambda: True)
         availability = _launch.sandbox_availability("auto")
         assert availability.backend == "seatbelt"
         assert availability.landlock is False

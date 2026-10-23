@@ -32,11 +32,15 @@ class _FakeCompleted:
 
 def test_docker_available_true(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(process, "_which", lambda b: b == "docker")
+    monkeypatch.setattr(git, "_which", lambda b: b == "docker")
+    monkeypatch.setattr(docker, "_which", lambda b: b == "docker")
     assert docker.docker_available() is True
 
 
 def test_docker_available_false(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(process, "_which", lambda b: False)
+    monkeypatch.setattr(git, "_which", lambda b: False)
+    monkeypatch.setattr(docker, "_which", lambda b: False)
     assert docker.docker_available() is False
 
 

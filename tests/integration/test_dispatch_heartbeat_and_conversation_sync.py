@@ -26,9 +26,12 @@ from docket.agent import conversations as _conv
 from docket.agent import memory as _mem
 from docket.agent import ports as _rd
 from docket.hops.application import record as _record
+from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
+from docket.pipeline.application import executor as _executor_c
+from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
@@ -97,7 +100,10 @@ class TestHeartbeatLedgerLifecycle:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
             monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+            monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_pre_hop_c, "pod_recorded_cost", lambda _p: 5.0)
             ws = _lead_ws()
             res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
             assert res.status == "blocked"

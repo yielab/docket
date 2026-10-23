@@ -55,6 +55,8 @@ from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.observability import trace as _trace
+from docket.pipeline.application import executor as _executor_c
+from docket.pipeline.application import steps as _steps_c
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
@@ -633,7 +635,10 @@ class TestBudgetGateTakesPrecedence:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Too expensive", channel="cli")
         monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+        monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
 
         results = _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
         assert results[0].status == "blocked"

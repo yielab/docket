@@ -22,9 +22,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 import docket.kernel.templates as _templates
 from docket.governance import privacy as _privacy
-from docket.kernel import document_fields as _documents
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
+from docket.models import document_fields as _documents
 from docket.observability.trace import EVENT_TYPES
 from docket.platform import process as _process
 from docket.platform import store as _store
