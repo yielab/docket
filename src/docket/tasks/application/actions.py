@@ -13,6 +13,8 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.platform import read_modify_write
+from docket.tasks.application import transitions as _transitions
+from docket.tasks.domain import state as _state
 from docket.teams import pod as _pod
 from docket.teams.settings import _pod_settings, pod_task_list_path
 
@@ -89,16 +91,12 @@ def resolve_waiting_approval_detail(
                 return None
             resolved_task_id = str(t.get("id", ""))
             pending_index = t.get("pendingApprovalIndex")
-            t.pop("approvalToken", None)
-            t.pop("pendingApprovalIndex", None)
             if decision == "granted" and check_changed:
-                t["status"] = "done"
-                t["reason"] = "check_changed approved"
-                t["completedAt"] = _clock.iso()
-                t["claimId"] = None
-                t.pop("taskGrants", None)
+                _transitions.apply_to_task(
+                    t, _state.Status.done, now=_clock.iso(), reason="check_changed approved"
+                )
             elif decision == "granted":
-                t["status"] = "pending"
+                _transitions.apply_to_task(t, _state.Status.pending)
                 if parked:
                     pregrants_raw = t.get("pregrants")
                     pregrants = list(pregrants_raw) if isinstance(pregrants_raw, list) else []
@@ -117,12 +115,17 @@ def resolve_waiting_approval_detail(
                 else:
                     t["gateOverridePipelineIndex"] = pending_index
             else:
-                t["status"] = "failed"
-                t["reason"] = f"approval denied: {reason}" if reason else "approval denied"
-                t["failureKind"] = "check_changed" if check_changed else "approval_denied"
-                t["completedAt"] = _clock.iso()
-                t["claimId"] = None
-                t.pop("taskGrants", None)
+                _transitions.apply_to_task(
+                    t,
+                    _state.Status.failed,
+                    now=_clock.iso(),
+                    reason=f"approval denied: {reason}" if reason else "approval denied",
+                    failure_kind=(
+                        _state.FailureKind.check_changed
+                        if check_changed
+                        else _state.FailureKind.approval_denied
+                    ),
+                )
             updated = True
             return {"tasks": tasks}
         return None

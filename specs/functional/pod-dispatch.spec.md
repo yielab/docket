@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.0.3
+**Version**: 9.1.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1893,6 +1893,20 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    `gate_needs_human`, `gate_error`, `approval_denied`, `check_changed`, or absent for an ordinary
    graded hop or gate failure (a hop's own `TurnResult.failure_kind`, see "Retries", is not copied
    onto the task). A new terminal result replaces any earlier `failureKind`.
+10. Transitions. A task's `status` **MUST** change only through `tasks.domain.state.decide`, applied by
+    `tasks.application.transitions.apply_to_task` (the one assignment of `status`; an architecture
+    test refuses a second). `decide` is pure: given the record's status, the target and the facts
+    (time, reason, failure kind, ...), it returns the fields to set and drop, or raises
+    `IllegalTransition` before the record is touched. The table is: a pipeline result or an operator
+    action may end a task `waiting_input`, `waiting_approval`, `blocked`, `done`, `failed` or
+    `cancelled` from whatever status the record holds (a stale sweep or a retry can race the run still
+    finishing, and the record takes the run's outcome); a claim moves `pending` or `failed` to
+    `running`; `blocked`, `failed`, `waiting_input` and `waiting_approval` move to `pending`. Nothing
+    else is a transition: no status leads into `in_progress`, and a `done` or `cancelled` task never
+    moves to `pending` or `running`. A `stale_claim` failure is evidence of a lost claim: it stamps
+    no `completedAt` and keeps the claim's pid and the task's grants. A `retry` move clears the
+    previous outcome (`reason`, `failureKind`, `completedAt`, `blockedReason`); an `unblock` clears
+    only `blockedReason`.
 
 ### Evidence v1 (ADR 0018)
 
@@ -2310,6 +2324,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `git_worktree_add`, `git_commit_all`, `git_snapshot_commit`, `git_changed_files`,
   `git_current_branch`, `git_merge_base`, `git_diff_stat`, `git_diff_names`, `git_ls_files`
 - `src/docket/platform/store.py`: `read_modify_write`
+- `src/docket/tasks/domain/state.py`: `Status`, `FailureKind`, `decide`; `src/docket/tasks/application/transitions.py`: `apply_to_task`
 - `src/docket/kernel/home.py`: the `Home` members `claim_stale_timeout`, `dispatch_retries_default`,
   `dispatch_retries_per_role`, `dispatch_retry_backoff_s`, `dispatch_retry_max_wait_s`,
   `dispatch_turn_timeout_s`, `dispatch_verify_timeout_s`, `dispatch_sweep_workers`,

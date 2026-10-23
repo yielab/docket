@@ -24,6 +24,7 @@ from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
 from docket.operator import contract as _oc
 from docket.platform import read_json, read_modify_write
+from docket.tasks.application import transitions as _transitions
 from docket.tasks.domain import options as _task_options
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import (
@@ -198,9 +199,9 @@ def enqueue_task_once(
         token = _ap.approval_create(
             project, "lead", action_text, context={"taskId": task_id, "pipelineIndex": 0}
         )
-        task["status"] = "waiting_approval"
-        task["approvalToken"] = token
-        task["pendingApprovalIndex"] = 0
+        _transitions.apply_to_task(
+            task, _state.Status.waiting_approval, approval_token=token, pending_index=0
+        )
         _trace.trace_event(
             project,
             session_id,
@@ -259,28 +260,37 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     return bool(resume and status == "failed" and t.get("failureKind") in RESUMABLE_FAILURE_KINDS)
 
 
-def _refuse_claimed_task(
-    project: str, task: dict[str, Any], failure_kind: str, reason: str
-) -> TaskResult:
-    """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
-    runs: clear the claim, keep the recorded hops, and trace ``dispatch_refused``."""
-    task_id = str(task.get("id", "task"))
+def apply_transition(project: str, task_id: str, to: _state.Status, **facts: Any) -> dict[str, Any]:
+    """Move one task of *project*'s queue to *to* under the queue lock (``decide``'s *facts*
+    are the keywords) and return the queue document. A task that is not queued is left alone."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
         tasks = tasks_raw if isinstance(tasks_raw, list) else []
         for t in tasks:
             if isinstance(t, dict) and t.get("id") == task_id:
-                t["status"] = "failed"
-                t["failureKind"] = failure_kind
-                t["reason"] = reason
-                t["completedAt"] = _clock.iso()
-                t["claimId"] = None
-                t.pop("claimPid", None)
+                _transitions.apply_to_task(t, to, **facts)
                 return {"tasks": tasks}
         return None
 
-    doc = read_modify_write(pod_task_list_path(project), _fn)
+    return read_modify_write(pod_task_list_path(project), _fn)
+
+
+def _refuse_claimed_task(
+    project: str, task: dict[str, Any], failure_kind: str, reason: str
+) -> TaskResult:
+    """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
+    runs: clear the claim, keep the recorded hops, and trace ``dispatch_refused``."""
+    task_id = str(task.get("id", "task"))
+    doc = apply_transition(
+        project,
+        task_id,
+        _state.Status.failed,
+        now=_clock.iso(),
+        reason=reason,
+        failure_kind=failure_kind,
+        keep_grants=True,
+    )
     _trace.trace_event(
         project,
         f"agent:{project}:{task_id}",
@@ -424,12 +434,13 @@ def _claim_next_task(
             key=lambda i: _PRIORITY_RANK.get(str(tasks[i].get("priority", "normal")), 1)
         )
         t = tasks[candidates[0]]
-        t["status"] = "running"
-        t["startedAt"] = _clock.iso()
-        t["claimId"] = _ids.new_uuid()
-        t["claimedAt"] = _clock.iso()
-        t["claimPid"] = _os.getpid()
-        t.pop("failureKind", None)
+        _transitions.apply_to_task(
+            t,
+            _state.Status.running,
+            now=_clock.iso(),
+            claim_id=_ids.new_uuid(),
+            pid=_os.getpid(),
+        )
         claimed = dict(t)
         # A granted approval's gate-override is single-use — captured
         # into the claimed copy above, then cleared from the *stored* record
