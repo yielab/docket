@@ -8,7 +8,6 @@ answers -- is the `git_host` fixture (`tests/support/git.py`); no real git proce
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -114,7 +113,7 @@ class TestGitHeadSha:
         git_host.available = True
 
         def raise_timeout(*_a: Any, **_k: Any) -> _FakeCompleted:
-            raise subprocess.TimeoutExpired(cmd="git", timeout=5)
+            raise _git.subprocess.TimeoutExpired(cmd="git", timeout=5)
 
         git_host.run = raise_timeout
         assert _git.git_head_sha("/tmp/repo") is None

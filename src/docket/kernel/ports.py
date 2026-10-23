@@ -13,7 +13,6 @@ Real adapters: ``platform.git``, ``platform.process`` and ``sandbox.launch.Launc
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -71,6 +70,14 @@ class _Proxy:
 # ── git ──────────────────────────────────────────────────────────────────────
 
 
+class GitResult(Protocol):
+    """What a caller reads of a finished git command (``subprocess.CompletedProcess`` fits)."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+
+
 class Git(Protocol):
     def git_available(self) -> bool: ...
     def git_identity_env(self, root: Path) -> dict[str, str]: ...
@@ -79,7 +86,7 @@ class Git(Protocol):
         """The ``(git dir, common dir)`` docket recorded for the worktree at *path*, if any."""
         ...
 
-    def git_plain(self, cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    def git_plain(self, cwd: str, args: list[str]) -> GitResult | None:
         """``git -C cwd <args>`` with no trusted-tree handling; ``None`` when git cannot run."""
         ...
 
