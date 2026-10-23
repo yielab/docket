@@ -40,6 +40,7 @@ is written).
 from __future__ import annotations
 
 import argparse
+import ast
 import dataclasses
 import json
 import os
@@ -387,6 +388,98 @@ class ModuleRefs:
         return [i for i, stmt in enumerate(self.module.body) if name in stmt_names(stmt)]
 
 
+class _TopLevelNames(cst.CSTVisitor):
+    """Names bound at module level, without entering functions, classes or comprehensions."""
+
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+
+    def _target(self, node: cst.CSTNode) -> None:
+        if isinstance(node, cst.Name):
+            self.names.add(node.value)
+        elif isinstance(node, (cst.Tuple, cst.List)):
+            for element in node.elements:
+                self._target(element.value)
+        elif isinstance(node, cst.StarredElement):
+            self._target(node.value)
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> bool:
+        self.names.add(node.name.value)
+        return False
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool:
+        self.names.add(node.name.value)
+        return False
+
+    def visit_Lambda(self, node: cst.Lambda) -> bool:
+        return False
+
+    def visit_AssignTarget(self, node: cst.AssignTarget) -> bool:
+        self._target(node.target)
+        return True
+
+    def visit_AnnAssign(self, node: cst.AnnAssign) -> bool:
+        self._target(node.target)
+        return True
+
+    def visit_AugAssign(self, node: cst.AugAssign) -> bool:
+        self._target(node.target)
+        return True
+
+    def visit_For(self, node: cst.For) -> bool:
+        self._target(node.target)
+        return True
+
+    def visit_AsName(self, node: cst.AsName) -> bool:
+        self._target(node.name)
+        return True
+
+    def visit_ImportAlias(self, node: cst.ImportAlias) -> bool:
+        if node.asname is None:
+            text = dotted_text(node.name)
+            if text:
+                self.names.add(text.split(".")[0])
+        return True
+
+    def visit_ListComp(self, node: cst.ListComp) -> bool:
+        return False
+
+    def visit_SetComp(self, node: cst.SetComp) -> bool:
+        return False
+
+    def visit_DictComp(self, node: cst.DictComp) -> bool:
+        return False
+
+    def visit_GeneratorExp(self, node: cst.GeneratorExp) -> bool:
+        return False
+
+
+def top_level_names(module: cst.Module) -> set[str]:
+    visitor = _TopLevelNames()
+    module.visit(visitor)
+    return visitor.names
+
+
+class _GlobalNames(cst.CSTVisitor):
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+
+    def visit_Global(self, node: cst.Global) -> bool:
+        self.names.update(item.name.value for item in node.names)
+        return False
+
+
+def check_globals(path: str, text: str, problems: list[str]) -> None:
+    """A ``global`` name must be bound at module level in the file that declares it."""
+    if "global " not in text:
+        return
+    module = cst.parse_module(text)
+    visitor = _GlobalNames()
+    module.visit(visitor)
+    for name in sorted(visitor.names - top_level_names(module)):
+        problems.append(f"{path}: `global {name}` but {name} is not defined in this module")
+
+
 def insert_position(body: Sequence[cst.CSTNode]) -> int:
     last = -1
     for i, stmt in enumerate(body):
@@ -463,6 +556,7 @@ class Scan:
     """Module aliases and names a file binds from modules that lose definitions."""
 
     alias_of: dict[str, str] = dataclasses.field(default_factory=dict)
+    top_level: set[str] = dataclasses.field(default_factory=set)
     name_from: dict[str, tuple[str, str]] = dataclasses.field(default_factory=dict)
     names: set[str] = dataclasses.field(default_factory=set)
     used: dict[str, set[str]] = dataclasses.field(default_factory=lambda: defaultdict(set))
@@ -474,6 +568,21 @@ class _Scanner(cst.CSTVisitor):
         self.rn = rn
         self.package = package
         self.scan = Scan()
+        self.depth = 0
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> bool:
+        self.depth += 1
+        return True
+
+    def leave_FunctionDef(self, original_node: cst.FunctionDef) -> None:
+        self.depth -= 1
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool:
+        self.depth += 1
+        return True
+
+    def leave_ClassDef(self, original_node: cst.ClassDef) -> None:
+        self.depth -= 1
 
     def visit_Name(self, node: cst.Name) -> bool:
         self.scan.names.add(node.value)
@@ -504,6 +613,8 @@ class _Scanner(cst.CSTVisitor):
             full = f"{module}.{alias.name.value}"
             if full in self.rn.known:
                 self.scan.alias_of[local] = full
+                if self.depth == 0:
+                    self.scan.top_level.add(local)
             elif module in self.rn.defs:
                 self.scan.name_from[local] = (module, alias.name.value)
         return False
@@ -517,6 +628,8 @@ class _Scanner(cst.CSTVisitor):
                 self.scan.names.add(alias.asname.name.value)
                 if name in self.rn.known:
                     self.scan.alias_of[alias.asname.name.value] = name
+                    if self.depth == 0:
+                        self.scan.top_level.add(alias.asname.name.value)
             elif name in self.rn.defs:
                 self.scan.bad.append(
                     f"`import {name}` without an alias: use `from ... import` or `as`"
@@ -558,8 +671,12 @@ def dest_aliases(scan: Scan, rn: RenameSet) -> tuple[dict[str, str], dict[str, l
     """Local name per destination module, and the destinations that need a new import per source."""
     underscore = any(a.startswith("_") for a, m in scan.alias_of.items() if m in rn.defs)
     reuse: dict[str, str] = {}
+    same: dict[str, str] = {}
     for local, module in scan.alias_of.items():
-        reuse.setdefault(rn.map_module(module) or module, local)
+        final = rn.map_module(module) or module
+        same.setdefault(final, local)
+        if local in scan.top_level:
+            reuse.setdefault(final, local)
     taken = set(scan.names)
     alias: dict[str, str] = {}
     needs: dict[str, list[str]] = defaultdict(list)
@@ -574,7 +691,9 @@ def dest_aliases(scan: Scan, rn: RenameSet) -> tuple[dict[str, str], dict[str, l
             parent, _, last = dest.rpartition(".")
             lead = "_" if underscore else ""
             choices = [f"{lead}{last}", f"{lead}{parent.rpartition('.')[2]}_{last}"]
-            pick = next((c for c in choices if c not in taken), None)
+            if dest in same:
+                choices.insert(0, same[dest])
+            pick = next((c for c in choices if c not in taken or c == same.get(dest)), None)
             if pick is None:
                 scan.bad.append(f"no free local name for {dest}")
                 continue
@@ -919,6 +1038,38 @@ def _copy_import(
     return None
 
 
+def import_bindings(stmt: cst.CSTNode) -> dict[str, str]:
+    """Local name to what it imports, for one import statement."""
+    node = small(stmt)
+    out: dict[str, str] = {}
+    if isinstance(node, cst.Import):
+        for alias in node.names:
+            text = dotted_text(alias.name) or ""
+            if alias.asname and isinstance(alias.asname.name, cst.Name):
+                out[alias.asname.name.value] = f"import {text}"
+            else:
+                out[text.split(".")[0]] = f"import {text.split('.')[0]}"
+    elif isinstance(node, cst.ImportFrom) and not isinstance(node.names, cst.ImportStar):
+        base = ("." * len(node.relative)) + (dotted_text(node.module) or "")
+        for alias in node.names:
+            name = dotted_text(alias.name) or ""
+            local = (
+                alias.asname.name.value
+                if alias.asname and isinstance(alias.asname.name, cst.Name)
+                else name
+            )
+            out[local] = f"from {base} import {name}"
+    return out
+
+
+def _dest_imports(dest: cst.Module) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for stmt in dest.body:
+        if isinstance(stmt, cst.SimpleStatementLine) and is_import_line(stmt):
+            out.update(import_bindings(stmt))
+    return out
+
+
 def _import_key(line: cst.SimpleStatementLine) -> str:
     return cst.Module(body=[line]).code.strip()
 
@@ -946,14 +1097,15 @@ def move_definitions(
     dest_text = tree.files.get(dest_old_path)
     dest = cst.parse_module(dest_text) if dest_text is not None else None
     dest_refs = ModuleRefs(dest) if dest is not None else None
+    dest_bound = top_level_names(dest) if dest is not None else set()
     pending: list[tuple[str, int]] = []
     for name in move.names:
         found = refs.defining(name)
         if len(found) > 1:
             problems.append(f"{source_old}.{name}: defined {len(found)} times")
         elif found:
-            if dest_refs is not None and dest_refs.defining(name):
-                problems.append(f"{move.dst}.{name}: already defined in the destination")
+            if name in dest_bound:
+                problems.append(f"{move.dst}.{name}: the name is already bound in the destination")
             pending.append((name, found[0]))
         elif not (dest_refs is not None and dest_refs.defining(name)):
             problems.append(f"{source_old}.{name}: not found in the source or the destination")
@@ -999,14 +1151,27 @@ def move_definitions(
     chunk[0] = chunk[0].with_changes(leading_lines=[cst.EmptyLine(), cst.EmptyLine(), *lead])
     if dest is None:
         head = [future_line()] if future else []
+        for line in needed:
+            clash = top_level_names(cst.Module(body=[line])) & moved_names
+            if clash:
+                problems.append(f"{move.dst}: {sorted(clash)} is both imported and moved there")
         out = cst.Module(body=[*head, *needed, *chunk])
     else:
-        have = {
-            _import_key(s)
-            for s in dest.body
-            if isinstance(s, cst.SimpleStatementLine) and is_import_line(s)
-        }
-        out = add_imports(dest, [line for line in needed if _import_key(line) not in have])
+        have = _dest_imports(dest)
+        fresh = []
+        for line in needed:
+            wanted = import_bindings(line)
+            if all(have.get(local) == what for local, what in wanted.items()):
+                continue
+            clash = {n for n, what in wanted.items() if have.get(n, what) != what}
+            clash |= set(wanted) & ((dest_bound - set(have)) | moved_names)
+            if clash:
+                problems.append(
+                    f"{move.dst}: {sorted(clash)} imported for {sorted(moved_names)} is already "
+                    "bound there by something else"
+                )
+            fresh.append(line)
+        out = add_imports(dest, fresh)
         if future and not any(is_future(s) for s in dest.body):
             out = add_future(out)
         out = out.with_changes(body=[*out.body, *chunk])
@@ -1024,6 +1189,7 @@ class TestPlan:
     origin: dict[str, str] = dataclasses.field(default_factory=dict)
     homes: dict[str, dict[str, str]] = dataclasses.field(default_factory=lambda: defaultdict(dict))
     landed: dict[str, dict[str, set[str]]] = dataclasses.field(default_factory=dict)
+    pseudo: set[str] = dataclasses.field(default_factory=set)
 
 
 def _is_subject(node: cst.BaseSmallStatement) -> cst.Assign | None:
@@ -1171,9 +1337,45 @@ def plan_tests(tree: Tree, rn: RenameSet, problems: list[str], notes: list[str])
             final_subject = rn.map_module(subject) or subject
             if final_subject != subject:
                 plan.renames[path] = mirror_path(final_subject, suffix)
+                taken.add(plan.renames[path])
             continue
         _plan_split(tree, rn, (path, module, subject, suffix), plan, taken, (problems, notes))
     return plan
+
+
+def _group_referenced_units(
+    units: Sequence[int],
+    refs: ModuleRefs,
+    counts: dict[int, Counter[str]],
+    group: dict[str, list[int]],
+    order: Sequence[str],
+) -> None:
+    """Units that name each other stay in one part: the one most of them touch."""
+    parent = {i: i for i in units}
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            i = parent[i]
+        return i
+
+    for i in units:
+        for _, other in refs.uses.get(i, ()):
+            if other in parent:
+                parent[find(i)] = find(other)
+    members: dict[int, list[int]] = defaultdict(list)
+    for i in units:
+        members[find(i)].append(i)
+    where = {i: d for d, items in group.items() for i in items}
+    for items in members.values():
+        if len(items) < 2 or len({where[i] for i in items}) < 2:
+            continue
+        total: Counter[str] = Counter()
+        for i in items:
+            total.update(counts[i])
+        pick = max(order, key=lambda d: (total[d], -order.index(d)))
+        for i in items:
+            group[where[i]].remove(i)
+            group[pick].append(i)
 
 
 def _plan_split(
@@ -1210,6 +1412,7 @@ def _plan_split(
                 f"{path}: {_unit_name(body[i])} touches {sorted(ranked)}; placed with {ranked[0]}"
             )
         group[ranked[0] if ranked else primary].append(i)
+    _group_referenced_units(units, refs, counts, group, order)
     if order == [final_subject] and mirror_path(final_subject, suffix) == path:
         return
     names: dict[str, int] = {}
@@ -1254,16 +1457,19 @@ def _plan_split(
         )
         if rank == 0 and target != path:
             plan.renames[path] = target
+            taken.add(target)
             tree.files[path] = part.code
         elif target == path:
             tree.files[path] = part.code
-        elif target in taken:
-            problems.append(f"{path}: split target {target} already exists")
-            continue
         else:
+            key = target
+            if target in taken:
+                key = f"{target}.part{len(plan.pseudo) + 1}.py"
+                plan.pseudo.add(key)
+                plan.renames[key] = target
             taken.add(target)
-            plan.new_files[target] = part.code
-            plan.origin[target] = path
+            plan.new_files[key] = part.code
+            plan.origin[key] = path
         plan.landed.setdefault(path, {})[target] = {_unit_name(body[i]) for i in group[dest]}
         for i in sorted(keep - set(units)):
             for name in stmt_names(body[i]):
@@ -1427,7 +1633,11 @@ def build_plan(root: Path, mapping: Mapping) -> Plan:
         tree.origin_of[path] = tests.origin[path]
 
     rn.modules.update(
-        {module_of_path(old): module_of_path(new) for old, new in tests.renames.items()}
+        {
+            module_of_path(old): module_of_path(new)
+            for old, new in tests.renames.items()
+            if old not in tests.pseudo
+        }
     )
     rn.defs.update(tests.homes)
     py_before = tree.py_paths()
@@ -1437,7 +1647,11 @@ def build_plan(root: Path, mapping: Mapping) -> Plan:
         moving = module_of_path(context) != module_of_path(final)
         tree.files[path] = rewrite_python(tree.files[path], rn, context, moving, problems)
 
-    file_moves = dict(tree.renames)
+    merge_collisions(tree, tests, problems)
+    for path in sorted(tree.files):
+        if path.endswith(".py") and tree.disk.get(path) != tree.files[path]:
+            check_globals(tree.final_path(path), tree.files[path], problems)
+    file_moves = {k: v for k, v in tree.renames.items() if k not in tests.pseudo}
     for old, new in module_renames.items():
         file_moves[old] = new
     for path in sorted(tree.files):
@@ -1445,6 +1659,8 @@ def build_plan(root: Path, mapping: Mapping) -> Plan:
             tree.files[path] = rewrite_text(tree.files[path], rn, file_moves)
 
     after = _finalize(tree)
+    for cycle in import_cycles(after):
+        notes.append(f"top-level import cycle of {len(cycle)} modules: {', '.join(cycle[:6])}")
     _ruff_changed(root, tree, after)
     id_map, retired = id_moves(before_ids, tree.renames, after, tests.landed)
     if retired:
@@ -1455,6 +1671,124 @@ def build_plan(root: Path, mapping: Mapping) -> Plan:
                 lines.append(entry)
         after[RETIRED_FILE] = "\n".join(lines) + "\n"
     return Plan(root, dict(tree.disk), after, dict(tree.renames), problems, notes, id_map, retired)
+
+
+def _canonical(stmt: cst.CSTNode) -> str:
+    bare = stmt.with_changes(leading_lines=[]) if hasattr(stmt, "leading_lines") else stmt
+    return cst.Module(body=[bare]).code  # type: ignore[list-item]
+
+
+def merge_modules(parts: Sequence[tuple[str, str]], problems: list[str]) -> str:
+    """One module from several, in order: imports unioned, equal names kept once."""
+    first_path, first_text = parts[0]
+    merged = cst.parse_module(first_text)
+    seen: dict[str, tuple[str, str]] = {}
+    imports = {
+        _import_key(s)
+        for s in merged.body
+        if isinstance(s, cst.SimpleStatementLine) and is_import_line(s)
+    }
+    for stmt in merged.body:
+        for name in stmt_names(stmt):
+            seen.setdefault(name, (_canonical(stmt), first_path))
+    fresh: list[cst.SimpleStatementLine] = []
+    extra: list[cst.CSTNode] = []
+    for path, text in parts[1:]:
+        for stmt in cst.parse_module(text).body:
+            if isinstance(stmt, cst.SimpleStatementLine) and is_import_line(stmt):
+                key = _import_key(stmt)
+                if key not in imports:
+                    imports.add(key)
+                    fresh.append(stmt.with_changes(leading_lines=[]))
+                continue
+            names = stmt_names(stmt)
+            if is_docstring(stmt) or names[:1] == ["SUBJECT"]:
+                continue
+            if names:
+                code = _canonical(stmt)
+                if names[0] in seen:
+                    other_code, other = seen[names[0]]
+                    if other_code != code:
+                        problems.append(f"{names[0]} differs in {other} and {path}")
+                    continue
+                seen[names[0]] = (code, path)
+            extra.append(stmt)
+    merged = add_imports(merged, fresh)
+    return merged.with_changes(body=[*merged.body, *extra]).code
+
+
+def merge_collisions(tree: Tree, tests: TestPlan, problems: list[str]) -> None:
+    """Fold files that end at one path into the first of them; whole modules before halves."""
+    groups: dict[str, list[str]] = defaultdict(list)
+    for key in tree.files:
+        if key.endswith(".py"):
+            groups[tree.final_path(key)].append(key)
+    halves = set(tests.origin) | set(tests.landed)
+    for final, keys in groups.items():
+        if len(keys) < 2:
+            continue
+        keys.sort(key=lambda k: (k in halves, k))
+        named = [(tree.origin_of.get(k, k), tree.files[k]) for k in keys]
+        tree.files[keys[0]] = merge_modules(named, problems)
+        for key in keys[1:]:
+            del tree.files[key]
+            tree.renames.pop(key, None)
+            tree.origin_of.pop(key, None)
+        if keys[0] != final:
+            tree.renames[keys[0]] = final
+
+
+def import_cycles(files: dict[str, str]) -> list[list[str]]:
+    """Strongly connected sets of ``docket`` modules by top-level imports, largest first."""
+    modules = {module_of_path(p): p for p in files if p.startswith(SRC_PREFIX)}
+    edges: dict[str, set[str]] = {}
+    for name, path in modules.items():
+        try:
+            tree = ast.parse(files[path])
+        except SyntaxError:
+            continue
+        found: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                found.add(node.module)
+                found.update(f"{node.module}.{a.name}" for a in node.names)
+            elif isinstance(node, ast.Import):
+                found.update(a.name for a in node.names)
+        edges[name] = {m for m in found if m in modules and m != name}
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    stack: list[str] = []
+    on: set[str] = set()
+    out: list[list[str]] = []
+    counter = [0]
+
+    def visit(v: str) -> None:
+        index[v] = low[v] = counter[0]
+        counter[0] += 1
+        stack.append(v)
+        on.add(v)
+        for w in sorted(edges.get(v, ())):
+            if w not in index:
+                visit(w)
+                low[v] = min(low[v], low[w])
+            elif w in on:
+                low[v] = min(low[v], index[w])
+        if low[v] == index[v]:
+            part = []
+            while True:
+                w = stack.pop()
+                on.discard(w)
+                part.append(w)
+                if w == v:
+                    break
+            if len(part) > 1:
+                out.append(sorted(part))
+
+    sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
+    for v in sorted(edges):
+        if v not in index:
+            visit(v)
+    return sorted(out, key=len, reverse=True)
 
 
 def _finalize(tree: Tree) -> dict[str, str]:
