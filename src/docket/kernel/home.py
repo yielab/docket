@@ -524,8 +524,8 @@ def reset_default() -> None:
 
 @contextmanager
 def use_home(home: Home) -> Iterator[Home]:
-    """Make *home* current for the block. A new thread starts without it: run the thread's
-    work through contextvars.copy_context().run so it sees the home that started it."""
+    """Make *home* current for the block. A bare thread starts without it: start threads with
+    kernel.threads so they see the home that started them."""
     token = _CURRENT.set(home)
     try:
         yield home

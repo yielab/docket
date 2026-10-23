@@ -22,6 +22,7 @@ from docket.core import exporter as _exporter
 from docket.core import trace
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
+from docket.kernel import threads as _threads
 
 AttrValue = str | int | bool
 Attributes = dict[str, AttrValue]
@@ -824,8 +825,7 @@ class Pipeline:
         self._project_lock = threading.Lock()
         self._stats_lock = threading.Lock()
         self._stats = PipelineStats()
-        self._thread = threading.Thread(target=self._drain, daemon=True)
-        self._thread.start()
+        self._thread = _threads.start_thread(self._drain)
 
     def offer(self, record: dict[str, Any]) -> None:
         """Admit *record* through `policy`, project it, and enqueue any spans it closes."""

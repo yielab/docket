@@ -146,7 +146,7 @@ class TestTokenFileOption:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "fixed-test-token-abc")
 
         token_path = tmp_path / "serve-token.txt"
@@ -163,7 +163,7 @@ class TestTokenFileOption:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "should-not-appear-on-stdout")
 
         token_path = tmp_path / "serve-token.txt"
@@ -180,7 +180,7 @@ class TestTokenFileOption:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "printed-token-xyz")
 
         serve.run_serve(port=0, interval=30)
@@ -192,7 +192,7 @@ class TestTokenFileOption:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "nested-dir-token")
 
         token_path = tmp_path / "nested" / "dir" / "serve-token.txt"
@@ -217,7 +217,7 @@ class TestBindSemanticsDocumented:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "banner-test-token")
 
         serve.run_serve(port=0, interval=30)
@@ -229,7 +229,7 @@ class TestBindSemanticsDocumented:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: None)
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "warn-test-token")
 
         serve.run_serve(port=0, interval=30, bind="0.0.0.0")

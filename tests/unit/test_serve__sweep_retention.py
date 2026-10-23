@@ -162,7 +162,7 @@ class TestSweepWiring:
             def server_close(self) -> None:
                 pass
 
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        monkeypatch.setattr(serve._threads, "ContextHTTPServer", _FakeServer)
         serve.run_serve(port=0, interval=30)
         assert ran == ["startup"]
 

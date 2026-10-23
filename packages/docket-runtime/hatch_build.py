@@ -62,6 +62,7 @@ _RUNTIME_FILES = (
     "kernel/home.py",
     "kernel/ids.py",
     "kernel/text.py",
+    "kernel/threads.py",
 )
 
 

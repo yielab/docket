@@ -15,7 +15,6 @@ from __future__ import annotations
 import datetime as _dt
 import queue as _queue
 import sys
-import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, TextIO
@@ -27,6 +26,7 @@ from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.task_ref import short_id
 from docket.kernel import clock as _clock
+from docket.kernel import threads as _threads
 
 _POLL_TIMEOUT_S = 0.2
 _RENDERABLE_EVENT_TYPES = frozenset(
@@ -204,9 +204,9 @@ def dispatch_with_progress(
         with _trace.subscribe(_sink):
             outcome.append(_runs.execute(run_id, fn))
 
-    worker = threading.Thread(target=_worker, daemon=True)
+    worker = _threads.new_thread(_worker)
     if prompt:
-        threading.Thread(target=stdin_reader_loop, args=(stdin, answers), daemon=True).start()
+        _threads.start_thread(stdin_reader_loop, (stdin, answers))
     worker.start()
 
     current_token: str | None = None

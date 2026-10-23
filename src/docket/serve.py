@@ -26,7 +26,7 @@ import threading
 import urllib.parse as _urlparse
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,7 @@ from docket.core import provisioning as _prov
 from docket.core import task_options as _task_options
 from docket.core import trace as _trace
 from docket.kernel import clock as _clock
+from docket.kernel import threads as _threads
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
@@ -515,8 +516,7 @@ def _check_schedules(now_ts: float) -> None:
                 ),
             )
 
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
+        _threads.start_thread(_run)
 
 
 def _flush_notify_channels() -> None:
@@ -590,7 +590,7 @@ def _submit_pod_sweep(project: str) -> bool:
                     max_workers=workers, thread_name_prefix="docket-sweep"
                 ),
             )
-        _sweep_inflight[project] = _sweep_pool[1].submit(_sweep_one_pod, project)
+        _sweep_inflight[project] = _threads.submit(_sweep_pool[1], _sweep_one_pod, project)
     if stale is not None:
         stale[1].shutdown(wait=False)
     return True
@@ -656,11 +656,11 @@ class _StopController:
                 f"stopping: waiting for {self._pending()} pod sweep(s); signal again to abandon",
                 flush=True,
             )
-            threading.Thread(target=self._shutdown_server, daemon=True).start()
+            _threads.start_thread(self._shutdown_server)
         elif self._signals == 2:
             self.exit_code = 128 + signum
             self.abandon.set()
-            threading.Thread(target=self._on_abandon, daemon=True).start()
+            _threads.start_thread(self._on_abandon)
 
     def install(self) -> dict[int, Any]:
         """Install SIGINT/SIGTERM handlers (main thread only); returns the previous handlers."""
@@ -1680,7 +1680,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        threading.Thread(target=_run, daemon=True).start()
+        _threads.start_thread(_run)
         resp_body = json.dumps(
             {"ok": True, "run": record["id"], "project": project, "status": "dispatched"}
         ).encode()
@@ -1941,7 +1941,7 @@ def run_serve(
     global _sweep_stop
     stop = _sweep_stop = threading.Event()
     server_ready = threading.Event()
-    servers: list[ThreadingHTTPServer] = []
+    servers: list[_threads.ContextHTTPServer] = []
 
     def _shutdown_server() -> None:
         server_ready.wait()
@@ -1950,14 +1950,12 @@ def run_serve(
     controller = _StopController(stop, _shutdown_server, _abandon_sweeps)
     previous = controller.install()
     _run_sweeps(dispatch)
-    sweeper = threading.Thread(target=_sweep_loop, args=(interval, stop, dispatch), daemon=True)
-    sweeper.start()
+    sweeper = _threads.start_thread(_sweep_loop, (interval, stop, dispatch))
 
     if telegram:
-        tg_thread = threading.Thread(target=_telegram_poll_loop, args=(stop,), daemon=True)
-        tg_thread.start()
+        _threads.start_thread(_telegram_poll_loop, (stop,))
 
-    server = ThreadingHTTPServer((bind, actual_port), _BoundHandler)
+    server = _threads.ContextHTTPServer((bind, actual_port), _BoundHandler)
     servers.append(server)
     server_ready.set()
     disp = "  dispatch=on" if dispatch else ""
