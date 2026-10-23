@@ -144,6 +144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `docket start` banner lists every route the server answers, printed from the route table
+  (`interfaces/http/routes/table.py`), where it named 6 of them.
 - The shipped `anthropic` provider template no longer declares `contextWindow`/`maxTokens`
   (prices, `pricesAsOf` and presets stay: no provider publishes them). `setup provider add
   --ctx/--max-tokens` no longer default to 16384/8192; absent means observed, else unknown.

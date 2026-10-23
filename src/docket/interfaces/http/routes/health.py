@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.teams import fleet, utils
@@ -81,3 +82,11 @@ def build_status() -> dict[str, Any]:
 def render_status() -> str:
     """Render the /status.json body (indent=2, matching cmd_snapshot)."""
     return json.dumps(build_status(), indent=2)
+
+
+def get_status(h: HttpExchange, _arg: str) -> None:
+    h._send(render_status().encode("utf-8"), "application/json")
+
+
+def get_health(h: HttpExchange, _arg: str) -> None:
+    h._send(h._render_health().encode("utf-8"), "application/json")
