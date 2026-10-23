@@ -182,6 +182,39 @@ def test_reported_token_budget_terminalizes_before_mutation(
     _assert_consumer(runtime_artifacts, source, tmp_path=tmp_path)
 
 
+def test_token_budget_counts_new_tokens_as_the_loop_does(
+    runtime_artifacts: RuntimeArtifacts, tmp_path: Path
+) -> None:
+    source = _consumer(
+        """
+        runtime = Runtime()
+        runtime.register(Tool("mutate", "mutate state", parameters, mutate, kind="write"))
+        execution = runtime.start_execution(
+            context, ExecutionLimits(token_budget=10, max_tool_calls=3)
+        )
+        call = ToolCall("cached", "mutate", json.dumps({"value": "changed"}))
+
+        reported = TokenUsage(
+            input_tokens=100, output_tokens=3, cached_tokens=95, cache_write_tokens=7
+        )
+        assert reported.counted_tokens == 8
+        assert execution.record_response(reported, (call,)) is None
+        assert execution.dispatch(call).executed
+
+        second = TokenUsage(input_tokens=50, output_tokens=1, cached_tokens=48, cache_write_tokens=2)
+        terminal = execution.record_response(second, ())
+
+        assert terminal is not None
+        assert terminal.stop_reason == "token_budget"
+        assert terminal.usage.counted_tokens == 8 + 3
+        assert terminal.usage.input_tokens == 150
+        assert terminal.usage.cached_tokens == 143
+        assert terminal.usage.cache_write_tokens == 9
+        """
+    )
+    _assert_consumer(runtime_artifacts, source, tmp_path=tmp_path)
+
+
 def test_tool_call_budget_refuses_complete_next_batch(
     runtime_artifacts: RuntimeArtifacts, tmp_path: Path
 ) -> None:

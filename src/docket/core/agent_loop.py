@@ -924,7 +924,7 @@ class _TurnState:
             output_reserve_tokens=output_reserve,
         )
         system_prompt = composition.text
-        if composition.sections:
+        if composition.text:
             _trace_prompt_composed(
                 project,
                 trace_key,

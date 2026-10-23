@@ -2006,7 +2006,8 @@ def _run_hop_turn(
             # test double's exact shape); calling the concrete production
             # driver directly here (rather than through `ctx.run`) is what
             # lets it take the extra `on_spawn` kwarg type-safely.
-            run_res = _dr.default_driver().run_turn(
+            driver: _rd.RuntimeDriver = _dr.default_driver()
+            run_res = driver.run_turn(
                 member_id,
                 history_session_key,
                 message,

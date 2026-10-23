@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from docket.core.runtime_driver import (
     DriverCapabilities,
     FailureKind,
-    SessionSlice,
     SessionSummary,
     TurnResult,
     UsageReport,
@@ -87,17 +86,6 @@ class FakeDriver:
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         return list(self.sessions_by_agent.get(agent_id, []))
-
-    def read_new_turns(self, agent_id: str, session_id: str, offset: int) -> SessionSlice:
-        """No canned session content by default — a no-op slice."""
-        return SessionSlice(
-            session_id=session_id,
-            had_new_content=False,
-            session_start_ts="",
-            turns=[],
-            last_ts=None,
-            next_offset=offset,
-        )
 
     def usage(self, agent_id: str) -> UsageReport:
         return self.usage_by_agent.get(agent_id, UsageReport(totals=UsageTotals()))

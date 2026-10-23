@@ -75,8 +75,9 @@ class GovernedExecution:
             input_tokens=self._usage.input_tokens + usage.input_tokens,
             output_tokens=self._usage.output_tokens + usage.output_tokens,
             cached_tokens=self._usage.cached_tokens + usage.cached_tokens,
+            cache_write_tokens=self._usage.cache_write_tokens + usage.cache_write_tokens,
         )
-        if self._usage.total_tokens > self._limits.token_budget:
+        if self._usage.counted_tokens > self._limits.token_budget:
             return self._stop("token_budget", "reported token budget exceeded")
         if self._tool_calls_executed + len(calls) > self._limits.max_tool_calls:
             return self._stop("max_tool_calls", "tool-call budget exceeded")

@@ -914,6 +914,45 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         soul_section = next(s for s in events[0]["sections"] if s["name"] == "SOUL.md")
         assert soul_section["status"] == "truncated"
 
+    def test_a_runtime_contract_only_composition_still_emits_prompt_composed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A workspace holding only the startup contract composes a system prompt, so the
+        turn traces it with an empty section list."""
+        ws = _write_meta("contract-only-agent")
+        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO.md\nresume rules\n")
+        roots = tmp_path / "code4d"
+        roots.mkdir()
+        ctx = ToolContext(
+            agent_id="contract-only-agent", role="implementer", project="demo", roots=(roots,)
+        )
+        backend = _ScriptedBackend([_final("hi")])
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "prompt_composed":
+                events.append(json.loads(payload))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+
+        _loop.run_agent_turn(
+            backend, builtin_registry(), ctx, "agent:contract-only-agent:default", "go"
+        )
+
+        assert backend.calls[0][0].role == "system"
+        assert len(events) == 1
+        assert events[0]["sections"] == []
+        assert events[0]["budgetSource"] == "default"
+
     def test_no_identity_files_means_no_prompt_composed_event(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
