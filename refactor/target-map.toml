@@ -14,10 +14,6 @@ from = "docket.cli._contract"
 to = "docket.interfaces.cli.commands.contract"
 
 [[module]]
-from = "docket.cli._flags"
-to = "docket.interfaces.cli.commands.flags"
-
-[[module]]
 from = "docket.cli._help"
 to = "docket.interfaces.cli.render.help"
 
@@ -577,10 +573,7 @@ to = "docket.hops.gates.pre_hop"
 names = [
     "pod_gating_cost",
     "_pause_lead_for_budget",
-    "_pod_requires_approval",
-    "_policy_requires_approval",
     "_pipeline_step_requires_approval",
-    "_hop_requires_approval",
     "_approval_action_text",
     "_hop_network",
     "_task_token_budget",
@@ -806,7 +799,6 @@ names = [
     "git_is_repo",
     "git_changed_files",
     "git_worktree_changes",
-    "git_worktree_fingerprint",
     "git_worktree_add",
     "git_info_exclude",
     "git_worktree_remove",
@@ -887,8 +879,6 @@ names = [
     "SandboxAvailability",
     "sandbox_availability",
     "_VERIFY_MAX_OUTPUT",
-    "_REGISTERED_CREDENTIAL_NAMES",
-    "register_credential_name",
     "credential_names",
     "_CACHE_ENV_VARS",
     "cache_environment",
