@@ -251,23 +251,23 @@ class TestToolDelegate:
         _mcp.tool_delegate("demo", "task")
         assert len(_audit_actions("mcp.delegate")) == 1
 
-    def test_calls_the_real_enqueue_task_no_duplicated_logic(
+    def test_calls_the_real_enqueue_task_once_no_duplicated_logic(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Proves the tool defers to `core.dispatch.enqueue_task` rather than
+        """Proves the tool defers to `core.dispatch.enqueue_task_once` rather than
         re-implementing the queue write itself."""
         _seed_pod(tmp_path, monkeypatch, project="demo")
         calls: list[tuple[str, str, str]] = []
-        real = _dispatch.enqueue_task
+        real = _dispatch.enqueue_task_once
 
         def _spy(
             project: str, description: str, priority: str = "normal", *, channel: str
-        ) -> dict[str, Any]:
+        ) -> tuple[dict[str, Any], bool]:
             calls.append((project, description, priority))
             assert channel == "mcp"
             return real(project, description, priority, channel=channel)
 
-        monkeypatch.setattr(_mcp._dispatch, "enqueue_task", _spy)
+        monkeypatch.setattr(_mcp._dispatch, "enqueue_task_once", _spy)
         _mcp.tool_delegate("demo", "task", priority="low")
         assert calls == [("demo", "task", "low")]
 

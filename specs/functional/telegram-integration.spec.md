@@ -47,11 +47,13 @@ public endpoint. Two independent checks stand between an inbound message and any
    allowlist and no per-user check beyond it. The binding is read fresh on every message. An
    unbound chat's message is refused (`"This chat is not wired to a docket agent."`) and the
    attempt is audited (`telegram.unauthorized`, carrying the chat id and update id, never the
-   message body) — never silently dropped, never granted. `/approve` and `/deny` act on the token
-   the message names; the binding does not restrict them to the bound agent's own pod.
+   message body) — never silently dropped, never granted. `/approve` and `/deny` act only on a token
+   whose approval belongs to the bound agent's own pod (a pod member's pod, else the agent id
+   itself): a token of any other pod is refused, left pending, and audited as
+   `telegram.cross_pod_refused`, and the reply does not name the other pod.
 2. **Content screening.** Text that is about to become agent input (a `/delegate` task
    description) is run through the `pre_input` policy hook as untrusted text (`trusted=False`,
-   role `lead`) before `enqueue_task` is ever called — the same evaluator and the same
+   role `lead`) before `enqueue_task_once` is ever called — the same evaluator and the same
    untrusted-external-text reasoning the MCP client applies to a remote server's tool
    descriptions. `block`/`require_approval` refuse outright (there is no per-message
    human-approval channel for a chat message the way there is for a tool call); `warn`/`redact`
@@ -87,8 +89,10 @@ blocked policy verdict never default to granting or denying anything.
    token (`--token`, then `TELEGRAM_BOT_TOKEN` in the environment, then a hidden prompt on a TTY;
    a stored token is kept when none is given), enables the `telegram` channel with `actors` set to
    the chat ids, upserts one binding per pod Lead (to the first chat id), and prints what it wrote
-   in each store. Every precondition (a chat id, a token) **MUST** be checked before the first
-   write, so a refusal writes nothing.
+   in each store. Every precondition (a chat id, a token, and a credential backend that can take
+   the write: `DOCKET_SECRETS_BACKEND=keyring` without `secret-tool` on `PATH` refuses rather
+   than falling back to `secrets.json`) **MUST** be checked before the first write, so a refusal
+   writes nothing.
 9. `enable telegram` **MUST NOT** send any message unless `--test` is passed; with `--test` it
    sends one test event to the channel's `actors` and exits 1 if that delivery fails. The inbound
    bot still never messages a wired chat first (requirement 7 of the command grammar).
@@ -109,8 +113,9 @@ blocked policy verdict never default to granting or denying anything.
 1. **MUST** be opt-in (`docket start --telegram`), matching the existing `--dispatch` flag's
    shape — a real externally-reachable channel is not something `docket start` starts
    unconditionally.
-2. **MUST** read the bot token from docket's own secrets store (`docket setup notify
-   enable telegram`) — never a bespoke config file, never a CLI argument (which would land in
+2. **MUST** read the bot token through the secrets backend (`secret_value`, so a keyring-stored
+   token resolves, not the empty index entry in `secrets.json`) that `docket setup notify
+   enable telegram` wrote — never a bespoke config file, never a CLI argument (which would land in
    shell history), never the environment.
 3. **MUST** degrade to an idle, periodically-retried wait (re-checked about every 30 seconds, so a
    token added while `docket start` runs is picked up) — never crash `docket start` — when no
@@ -122,7 +127,7 @@ blocked policy verdict never default to granting or denying anything.
    start` restart resumes forward rather than Telegram redelivering the whole backlog.
 6. **MUST NOT** let an unexpected exception in one poll iteration crash the loop or the server —
    caught, printed, and the loop continues (D-17: a bare `contextlib.suppress(Exception)` around
-   the delegate path's `enqueue_task` call is banned; the exception must be *visible*, not merely
+   the delegate path's `enqueue_task_once` call is banned; the exception must be *visible*, not merely
    survived).
 7. The long-poll wait is `TELEGRAM_POLL_TIMEOUT_S` (default 25) and the process's own socket
    timeout is `TELEGRAM_REQUEST_TIMEOUT_S` (default 35). The socket timeout **MUST** exceed the
@@ -134,7 +139,8 @@ blocked policy verdict never default to granting or denying anything.
 1. **MUST** recognize five operational verbs: `/approve <token> [task]`, `/deny <token>`,
    `/status`, `/delegate <task description>` and `/answer <task-id> <answer text>`, plus the inert
    `/wire <code>` setup handshake. Each verb **MUST** also be accepted with a bot-name suffix
-   (`/status@my_bot`). `/wire` never creates or changes a binding inside the bot; after the CLI
+   (`/status@my_bot`); a verb followed directly by other characters (`/delegatefoo`) is not that
+   verb and is unrecognized. `/wire` never creates or changes a binding inside the bot; after the CLI
    has bound the group, the normal poller acknowledges the retained setup message with a plain
    confirmation. No inline keyboards, no Markdown/HTML rich replies — a plain text reply is the
    entire UI surface.
@@ -155,7 +161,7 @@ blocked policy verdict never default to granting or denying anything.
    or pending approvals. The reply lists needs-you items (waiting/blocked tasks and pending
    approvals not already carried by a task) first, then failed tasks, and says nothing needs the
    operator when both are empty; it stays plain text.
-4. **MUST** refuse `/delegate` when the bound agent is not a pod Lead (`enqueue_task` requires a
+4. **MUST** refuse `/delegate` when the bound agent is not a pod Lead (`enqueue_task_once` requires a
    pod task queue, which only a Lead has).
 5. **MUST** reply with a usage message (not a silent drop, not a guess) on a recognized verb with
    a missing/malformed argument (e.g. `/approve` with no token).
@@ -358,7 +364,7 @@ Where the names above live today:
 - `src/docket/core/fleet.py`: `find_binding`, `upsert_binding`, `remove_binding`
 - `src/docket/core/approval.py`, `src/docket/core/dispatch.py`, `src/docket/core/answers.py`,
   `src/docket/core/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`
-  and `enqueue_task`, `answer_task`, `build_inbox`
+  and `enqueue_task_once`, `answer_task`, `build_inbox`
 - `src/docket/templates/channels/07-telegram.yaml`: the built-in `telegram` channel document
 - `tests/integration/test_telegram_channel.py`, `tests/integration/test_delete_bind_unbind.py`,
   `tests/unit/test_serve__telegram_and_keys.py`: the bot, bind/unbind and poll-loop tests

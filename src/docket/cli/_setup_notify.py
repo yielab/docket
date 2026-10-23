@@ -26,7 +26,7 @@ from docket.core.audit import audit_log
 from docket.edges.adapters import channels as _channels
 from docket.edges.adapters import system as _system
 from docket.kernel import clock as _clock
-from docket.kernel.errors import InvalidInput
+from docket.kernel.errors import InvalidInput, Unavailable
 
 notify_app = typer.Typer(
     name="notify",
@@ -95,10 +95,19 @@ def send_test(name: str) -> int:
     return 1
 
 
+def _backend() -> str:
+    """The credential backend a write goes to; a requested keyring that is missing refuses."""
+    try:
+        return _secrets.store_backend()
+    except Unavailable as exc:
+        raise NotifySetupError(f"{exc.message}. {exc.hint}") from exc
+
+
 def store_secret(name: str, value: str) -> None:
     """Write one credential to the 0600 secret store (or the OS keyring when requested)."""
+    backend = _backend()
     secrets = _secrets.load_secrets()
-    keyring = _cfg.secrets_backend_requested() == "keyring" and _system.secret_tool_available()
+    keyring = backend == "keyring"
     if keyring:
         if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
             raise NotifySetupError(f"the OS keyring refused {name}; nothing was written")
@@ -135,6 +144,8 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
         raise NotifySetupError("telegram needs at least one chat id; pass --chat <id>")
     if token is None and _secrets.secret_value(_TOKEN_NAME) is None:
         raise NotifySetupError(f"no {_TOKEN_NAME} is stored; pass --token or set it in the env")
+    if token is not None:
+        _backend()
     try:
         spec = _chan.enable_channel("telegram", {"actors": chats})
     except _chan.ChannelError as exc:
@@ -543,6 +554,9 @@ def cmd_flush(
         return
     specs = list(_chan.load_catalog().entries.values())
     report = _notify.flush(specs, _channels.sink_for, now=now)
+    if report.error:
+        ui.error(f"Notify flush failed: {report.error}")
+        raise typer.Exit(1)
     if report.events == 0:
         ui.dim("Nothing to send.")
         return

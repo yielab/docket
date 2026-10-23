@@ -300,7 +300,10 @@ CloudEvents 1.0 structured-mode shape. Area 6.1 holds the remaining dialects.
     channel whose dialect has no `deliver` as `skipped`; and record the outcome in
     `channels-health.json` under `DOCKET_HOME` (`delivered`/`failed` counters,
     `lastOk`/`lastError`/`lastErrorAt`). `flush` MUST NOT import the delivery adapters itself —
-    `sink_for` is supplied by its caller. A dialect that raises MUST count as a failed attempt.
+    `sink_for` is supplied by its caller. A dialect that raises MUST count as a failed attempt;
+    a sink factory or secret lookup that raises MUST count as one failed delivery without
+    stopping the other channels; a failing inbox build or store read or write MUST end the flush
+    with `FlushReport.error` set, and `flush` MUST NOT raise.
 13. The `webhook` dialect MUST POST the `CloudEvent` as `application/cloudevents+json` to
     `config["url"]` with the Standard Webhooks headers: `webhook-id` (the event's `id`),
     `webhook-timestamp` (Unix seconds), and, when a secret is resolved, `webhook-signature:
@@ -318,8 +321,9 @@ CloudEvents 1.0 structured-mode shape. Area 6.1 holds the remaining dialects.
 16. Bare `docket setup notify` MUST print usage without calling `flush`, and an undeclared
     action MUST exit 2. `docket setup notify flush` MUST call `flush` over the full channel
     catalog and print the event, delivered, failed and skipped counts (or `Nothing to send.`),
-    exiting 1 when a delivery failed; `--dry-run` MUST print each pending event's kind, pod and
-    subject from `diff_events` without delivering or saving the snapshot. `docket setup notify
+    exiting 1 when a delivery failed or the flush reported an `error` (printed); `--dry-run`
+    MUST print each pending event's kind, pod and subject from `diff_events` without delivering
+    or saving the snapshot. `docket setup notify
     test <name>` MUST build one synthetic `channel.test` event (`build_test_event`) and deliver
     it once through that one channel's dialect, regardless of its `on` subscription or `enabled`
     flag, reporting success or failure (exit 1). Every periodic sweep of `docket start` (with or
@@ -367,12 +371,16 @@ failure as a failed `DeliveryResult` without raising.
    (both JSON-quoted), elsewhere `notify-send <title> <body>`. The binary MUST be located on
    `PATH` first; a missing binary, a timeout or a non-zero exit MUST report a failed
    `DeliveryResult`. It MUST never run through a shell.
-3. The `email` dialect MUST send one SMTP message. `config` MUST contain `host`, `user` and `to`
-   (non-empty) and MAY set `port` (default `587`, which MUST parse as an integer), and a secret
-   MUST resolve; any of these missing MUST report a failed `DeliveryResult`. The `Subject` MUST
-   be `[docket] <title>`, `From` the `user`, `To` the `to`, and the body `<body>` unchanged, all
-   from `render_text`. The connection MUST be SMTP with STARTTLS, logging in as `user` with the
-   secret; any exception in that sequence MUST report a failed `DeliveryResult`.
+3. The `email` dialect MUST send one SMTP message. `config` MUST contain `smtpHost`, `from` and
+   `to` (non-empty, the keys of the built-in document) and MAY set `port` (default `587`, which
+   MUST parse as an integer) and `user`; any of these missing or malformed MUST report a failed
+   `DeliveryResult`. The `Subject` MUST be `[docket] <title>`, `From` the `from`, `To` the `to`,
+   and the body `<body>` unchanged, all from `render_text`. The connection MUST use STARTTLS
+   when the server offers it. A secret is needed only for a channel whose `secret` names one: the
+   dialect MUST log in as `user` (else `from`) with it, MUST report a failed `DeliveryResult`
+   when the named secret did not resolve, and MUST NOT send it over a connection that does not
+   offer STARTTLS. A channel with no `secret` sends without logging in. Any exception in the
+   sequence MUST report a failed `DeliveryResult`.
 4. The dialects in this area MUST use the Python standard library only (no third-party package).
 5. Content privacy (area 6 item 11) MUST be enforced upstream by `render_data`/`render_text`,
    not by these dialects — they deliver only what they are given and apply no redaction of

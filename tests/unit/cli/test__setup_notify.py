@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -125,7 +126,46 @@ class TestBind:
         assert _bindings() == {"alpha-lead": "9"}
 
 
+class TestStoreSecretBackend:
+    def test_keyring_requested_without_secret_tool_refuses_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        empty = tmp_path / "empty-path"
+        empty.mkdir()
+        monkeypatch.setenv("PATH", str(empty))
+        monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
+        with pytest.raises(_setup_notify.NotifySetupError, match="secret-tool"):
+            _setup_notify.store_secret("TELEGRAM_BOT_TOKEN", "123:plaintext-must-not-land")
+        assert _secrets.load_secrets() == {}
+        assert not _secrets.SECRETS_FILE.exists()
+
+    def test_enable_telegram_checks_the_backend_before_it_enables_the_channel(
+        self, tmp_path: Path, two_pods: list[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        empty = tmp_path / "empty-path"
+        empty.mkdir()
+        monkeypatch.setenv("PATH", str(empty))
+        monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
+        with pytest.raises(_setup_notify.NotifySetupError, match="secret-tool"):
+            _setup_notify.enable_telegram(["7"], "123:token", test=False)
+        spec = _chan.load_catalog().get("telegram")
+        assert spec is not None and not spec.enabled
+        assert _bindings() == {}
+
+
 class TestFlush:
+    def test_a_failing_inbox_exits_1_and_names_the_error(
+        self, sink: list[Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _boom(**_kw: Any) -> Any:
+            raise OSError("pods dir unreadable")
+
+        monkeypatch.setattr(_setup_notify._inbox, "build_inbox", _boom)
+        result = _runner.invoke(app, ["setup", "notify", "flush"])
+        assert result.exit_code == 1
+        assert "pods dir unreadable" in result.output
+        assert sink == []
+
     def test_dry_run_delivers_nothing(self, sink: list[Any]) -> None:
         result = _runner.invoke(app, ["setup", "notify", "flush", "--dry-run"])
         assert result.exit_code == 0, result.output

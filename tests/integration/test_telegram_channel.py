@@ -278,6 +278,57 @@ class TestApproveDeny:
         assert len(domain_entries) == 1
 
 
+class TestADecisionStaysInTheChatsOwnPod:
+    def _two_pods(self) -> tuple[str, str]:
+        _seed_pod("demo")
+        _seed_pod("other")
+        _bind("demo-lead", "-100300")
+        own = _approval.approval_create("demo", "implementer", "deploy demo")
+        foreign = _approval.approval_create("other", "implementer", "deploy other")
+        return own, foreign
+
+    def test_approve_refuses_another_pods_token_and_leaves_it_pending(self) -> None:
+        _own, foreign = self._two_pods()
+
+        outcome = _tg.handle_message(_msg("-100300", f"/approve {foreign}"))
+
+        assert not outcome.ok
+        assert outcome.authorized
+        assert outcome.action == "approve"
+        assert _approval.approval_get(foreign)["state"] == "pending"
+        assert not [e for e in _read_audit() if e.get("action") == "approval.grant"]
+        assert [e for e in _read_audit() if e.get("action") == "telegram.cross_pod_refused"]
+
+    def test_deny_refuses_another_pods_token_and_leaves_it_pending(self) -> None:
+        _own, foreign = self._two_pods()
+
+        outcome = _tg.handle_message(_msg("-100300", f"/deny {foreign}"))
+
+        assert not outcome.ok
+        assert _approval.approval_get(foreign)["state"] == "pending"
+        assert not [e for e in _read_audit() if e.get("action") == "approval.deny"]
+
+    def test_the_refusal_does_not_echo_the_other_pods_name(self) -> None:
+        _own, foreign = self._two_pods()
+        outcome = _tg.handle_message(_msg("-100300", f"/approve {foreign}"))
+        assert "other" not in outcome.reply
+
+    def test_the_chats_own_pod_token_still_grants(self) -> None:
+        own, _foreign = self._two_pods()
+        outcome = _tg.handle_message(_msg("-100300", f"/approve {own}"))
+        assert outcome.ok
+        assert _approval.approval_get(own)["state"] == "granted"
+
+    def test_a_non_lead_member_binding_decides_for_its_own_pod_only(self) -> None:
+        _seed_pod("demo")
+        _seed_pod("other")
+        _bind("demo-implementer", "-100301")
+        own = _approval.approval_create("demo", "implementer", "deploy demo")
+        foreign = _approval.approval_create("other", "implementer", "deploy other")
+        assert _tg.handle_message(_msg("-100301", f"/approve {foreign}")).ok is False
+        assert _tg.handle_message(_msg("-100301", f"/approve {own}", update_id=2)).ok is True
+
+
 # ── status ────────────────────────────────────────────────────────────────
 
 
@@ -336,6 +387,31 @@ class TestDelegate:
         outcome = _tg.handle_message(_msg("-100200", "/delegate do a security audit"))
         assert not outcome.ok
         assert "not a pod Lead" in outcome.reply
+
+    def test_a_word_glued_to_the_verb_is_not_a_delegate(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+
+        outcome = _tg.handle_message(_msg("-100300", "/delegatefoo bar"))
+
+        assert outcome.action == "unparseable"
+        assert _dispatch.read_tasks("demo") == []
+
+    def test_delegate_accepts_the_bot_suffix_and_a_multiline_description(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+
+        outcome = _tg.handle_message(_msg("-100300", "/delegate@docket_bot\nline one\nline two"))
+
+        assert outcome.ok
+        assert _dispatch.read_tasks("demo")[0]["description"] == "line one\nline two"
+
+    def test_a_bare_delegate_gets_the_usage_reply(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+        outcome = _tg.handle_message(_msg("-100300", "/delegate"))
+        assert outcome.action == "delegate"
+        assert "Usage" in outcome.reply
 
     def test_empty_delegate_text_is_refused(self) -> None:
         _seed_pod("demo")
@@ -608,6 +684,49 @@ def _fake_get_updates_capturing(
         return _tg.GetUpdatesResult(True, updates=())
 
     return _fake
+
+
+class TestTheBotReadsItsTokenThroughTheSecretsBackend:
+    def test_a_keyring_stored_token_reaches_get_updates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.edges.adapters import system as _system
+
+        monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
+        monkeypatch.setattr(_system, "secret_tool_available", lambda: True)
+        monkeypatch.setattr(
+            _system,
+            "secret_tool_lookup",
+            lambda service, key: "999:from-keyring" if key == "TELEGRAM_BOT_TOKEN" else None,
+        )
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": ""})  # the keyring backend's index entry
+
+        seen: list[str] = []
+
+        def _get_updates(token: str, **_kw: object) -> _tg.GetUpdatesResult:
+            seen.append(token)
+            return _tg.GetUpdatesResult(True, updates=())
+
+        summary = _tg.poll_once(get_updates=_get_updates, send_message=lambda *a, **k: True)
+
+        assert summary.configured
+        assert seen == ["999:from-keyring"]
+        assert _tg.wire_discovery_configured()
+
+
+class TestOneEnqueueEntryPoint:
+    def test_telegram_and_the_mcp_tools_call_enqueue_task_once_not_enqueue_task(self) -> None:
+        from docket.cli import _mcp
+
+        for module in (_tg, _mcp):
+            tree = ast.parse(Path(module.__file__ or "").read_text(encoding="utf-8"))
+            called = {
+                node.func.attr
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            }
+            assert "enqueue_task" not in called, module.__name__
+            assert "enqueue_task_once" in called, module.__name__
 
 
 class TestRequestTimeoutIsThreadedFromConfig:
@@ -918,7 +1037,9 @@ class TestOutboundOnlyThroughTheChannel:
         """spec: Command grammar 8 -- the channel queues work, it does not carry results."""
         monkeypatch.setattr(_tg, "_lead_project", lambda _aid: "demo")
         monkeypatch.setattr(_tg._policy, "policy_eval_detail", lambda *a, **k: _policy.PolicyHit())
-        monkeypatch.setattr(_tg._dispatch, "enqueue_task", lambda *a, **k: {"id": "task-abc123"})
+        monkeypatch.setattr(
+            _tg._dispatch, "enqueue_task_once", lambda *a, **k: ({"id": "task-abc123"}, True)
+        )
 
         result = _tg._handle_delegate("demo-lead", "do the thing")
 

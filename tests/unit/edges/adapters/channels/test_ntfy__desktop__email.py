@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import shutil
 import smtplib
+import socket
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,6 +15,7 @@ from typing import Any, ClassVar
 
 import pytest
 
+from docket.core import channel as _channel
 from docket.core.operator_contract import ApprovalView, make_event
 from docket.edges.adapters import channels
 from docket.edges.adapters.channels import desktop, email, ntfy
@@ -25,6 +27,7 @@ class _ChannelSpecLike:
     def __init__(self, config: dict[str, str]) -> None:
         self.config = config
         self.dialect = ""
+        self.secret: str | None = None
 
 
 def _event_approval() -> Any:
@@ -298,19 +301,21 @@ class FakeSMTP:
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.calls: list[str] = []
+
+    def ehlo(self) -> None:
+        pass
+
+    def has_extn(self, name: str) -> bool:
+        return True
 
     def starttls(self) -> None:
-        self.calls.append("starttls")
+        pass
 
     def login(self, user: str, password: str) -> None:
-        self.calls.append(f"login:{user}")
+        pass
 
     def send_message(self, msg: Any) -> None:
-        self.calls.append(f"send_message:{msg['To']}")
-
-    def quit(self) -> None:
-        self.calls.append("quit")
+        pass
 
     def __enter__(self) -> FakeSMTP:
         return self
@@ -319,91 +324,175 @@ class FakeSMTP:
         pass
 
 
+class _SmtpStub:
+    """A plain SMTP server on 127.0.0.1 that records what a client sends. It offers STARTTLS
+    only when told to, and accepts AUTH only so a test can see whether a client attempted it."""
+
+    def __init__(self, *, starttls: bool = False) -> None:
+        self.starttls = starttls
+        self.messages: list[str] = []
+        self.commands: list[str] = []
+        self._server = socket.socket()
+        self._server.bind(("127.0.0.1", 0))
+        self._server.listen(4)
+        self.port = self._server.getsockname()[1]
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def close(self) -> None:
+        self._server.close()
+        self._thread.join(timeout=2)
+
+    def _serve(self) -> None:
+        while True:
+            try:
+                conn, _ = self._server.accept()
+            except OSError:
+                return
+            with conn:
+                self._session(conn)
+
+    def _session(self, conn: socket.socket) -> None:
+        conn.settimeout(3)
+        stream = conn.makefile("rwb")
+
+        def reply(line: str) -> None:
+            stream.write(line.encode() + b"\r\n")
+            stream.flush()
+
+        reply("220 stub ready")
+        try:
+            while True:
+                raw = stream.readline()
+                if not raw:
+                    return
+                line = raw.decode().rstrip("\r\n")
+                self.commands.append(line.split(" ", 1)[0].upper())
+                verb = line.split(" ", 1)[0].upper()
+                if verb == "EHLO":
+                    if self.starttls:
+                        reply("250-stub")
+                        reply("250 STARTTLS")
+                    else:
+                        reply("250 stub")
+                elif verb == "DATA":
+                    reply("354 go")
+                    body: list[str] = []
+                    while (data := stream.readline().decode().rstrip("\r\n")) != ".":
+                        body.append(data)
+                    self.messages.append("\n".join(body))
+                    reply("250 queued")
+                elif verb == "QUIT":
+                    reply("221 bye")
+                    return
+                else:
+                    reply("250 ok")
+        except (OSError, TimeoutError):
+            return
+
+
+@pytest.fixture
+def smtp_stub() -> Any:
+    stub = _SmtpStub()
+    yield stub
+    stub.close()
+
+
 class TestEmailDeliver:
-    def test_sends_via_smtp_with_correct_headers(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        fake_smtp_instance = FakeSMTP("localhost", 587)
-        monkeypatch.setattr(smtplib, "SMTP", lambda *_a, **_kw: fake_smtp_instance)
-        spec = _ChannelSpecLike(
-            {
-                "host": "localhost",
-                "port": "587",
-                "user": "test@example.com",
-                "to": "recv@example.com",
-            }
+    def _spec(self, port: int | str, **config: str) -> _ChannelSpecLike:
+        base = {
+            "smtpHost": "127.0.0.1",
+            "port": str(port),
+            "from": "docket@example.test",
+            "to": "recv@example.test",
+        }
+        return _ChannelSpecLike({**base, **config})
+
+    def test_the_shipped_template_keys_deliver_without_a_secret(self, smtp_stub: _SmtpStub) -> None:
+        result = email.deliver(
+            self._spec(smtp_stub.port), _event_approval(), secret=None, timeout=5.0
         )
-        event = _event_approval()
-        result = email.deliver(spec, event, secret="password123", timeout=5.0)
-        assert result.ok is True
-        assert "login:test@example.com" in fake_smtp_instance.calls
-        assert "send_message:recv@example.com" in fake_smtp_instance.calls
+        assert result.ok is True, result.error
+        assert "AUTH" not in smtp_stub.commands
+        (message,) = smtp_stub.messages
+        assert "From: docket@example.test" in message
+        assert "To: recv@example.test" in message
+        assert "Subject: [docket]" in message
+
+    def test_the_built_in_email_document_names_the_keys_the_dialect_reads(
+        self, smtp_stub: _SmtpStub
+    ) -> None:
+        shipped = _channel.load_catalog().get("email")
+        assert shipped is not None
+        filled = {
+            k: {"to": "recv@example.test", "from": "docket@example.test", "smtpHost": "127.0.0.1"}[
+                k
+            ]
+            for k in shipped.config
+        }
+        spec = shipped.model_copy(update={"config": {**filled, "port": str(smtp_stub.port)}})
+        result = email.deliver(spec, _event_approval(), secret=None, timeout=5.0)
+        assert result.ok is True, result.error
+        assert len(smtp_stub.messages) == 1
+
+    def test_a_secret_is_never_sent_to_a_server_without_starttls(
+        self, smtp_stub: _SmtpStub
+    ) -> None:
+        spec = self._spec(smtp_stub.port, user="login")
+        result = email.deliver(spec, _event_approval(), secret="password123", timeout=5.0)
+        assert result.ok is False
+        assert "STARTTLS" in result.error
+        assert "AUTH" not in smtp_stub.commands
+        assert smtp_stub.messages == []
+
+    def test_a_channel_naming_a_secret_that_did_not_resolve_fails(
+        self, smtp_stub: _SmtpStub
+    ) -> None:
+        spec = self._spec(smtp_stub.port)
+        spec.secret = "SMTP_PASSWORD"
+        result = email.deliver(spec, _event_approval(), secret=None, timeout=5.0)
+        assert result.ok is False
+        assert "SMTP_PASSWORD" in result.error
+        assert smtp_stub.messages == []
+
+    def test_login_uses_the_user_key_and_falls_back_to_from(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        logins: list[str] = []
+
+        class Recorder(FakeSMTP):
+            def login(self, user: str, password: str) -> None:
+                logins.append(user)
+
+        monkeypatch.setattr(smtplib, "SMTP", lambda *_a, **_kw: Recorder("h", 587))
+        email.deliver(self._spec(587, user="login"), _event_approval(), secret="p", timeout=5.0)
+        email.deliver(self._spec(587), _event_approval(), secret="p", timeout=5.0)
+        assert logins == ["login", "docket@example.test"]
 
     def test_missing_host_returns_error(self) -> None:
-        spec = _ChannelSpecLike(
-            {"port": "587", "user": "test@example.com", "to": "recv@example.com"}
-        )
-        event = _event_approval()
-        result = email.deliver(spec, event, secret="password123", timeout=5.0)
+        spec = _ChannelSpecLike({"from": "a@example.test", "to": "recv@example.test"})
+        result = email.deliver(spec, _event_approval(), secret=None, timeout=5.0)
         assert result.ok is False
-        assert "host" in result.error
+        assert "smtpHost" in result.error
 
-    def test_missing_user_or_to_returns_error(self) -> None:
-        spec = _ChannelSpecLike({"host": "localhost", "port": "587"})
-        event = _event_approval()
-        result = email.deliver(spec, event, secret="password123", timeout=5.0)
+    def test_missing_from_or_to_returns_error(self) -> None:
+        spec = _ChannelSpecLike({"smtpHost": "127.0.0.1", "port": "587"})
+        result = email.deliver(spec, _event_approval(), secret=None, timeout=5.0)
         assert result.ok is False
-        assert "user" in result.error or "to" in result.error
-
-    def test_missing_secret_returns_error(self) -> None:
-        spec = _ChannelSpecLike(
-            {
-                "host": "localhost",
-                "port": "587",
-                "user": "test@example.com",
-                "to": "recv@example.com",
-            }
-        )
-        event = _event_approval()
-        result = email.deliver(spec, event, secret=None, timeout=5.0)
-        assert result.ok is False
-        assert "secret" in result.error
+        assert "from" in result.error and "to" in result.error
 
     def test_invalid_port_returns_error(self) -> None:
-        spec = _ChannelSpecLike(
-            {
-                "host": "localhost",
-                "port": "invalid",
-                "user": "test@example.com",
-                "to": "recv@example.com",
-            }
-        )
-        event = _event_approval()
-        result = email.deliver(spec, event, secret="password123", timeout=5.0)
+        result = email.deliver(self._spec("invalid"), _event_approval(), secret=None, timeout=5.0)
         assert result.ok is False
         assert "port" in result.error
 
-    def test_canary_not_in_minimal_event_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        captured_msg = None
-
-        class CapturingSMTP(FakeSMTP):
-            def send_message(self, msg: Any) -> None:
-                nonlocal captured_msg
-                captured_msg = msg
-                super().send_message(msg)
-
-        monkeypatch.setattr(smtplib, "SMTP", lambda *_a, **_kw: CapturingSMTP("localhost", 587))
-        spec = _ChannelSpecLike(
-            {
-                "host": "localhost",
-                "port": "587",
-                "user": "test@example.com",
-                "to": "recv@example.com",
-            }
+    def test_canary_not_in_minimal_event_text(self, smtp_stub: _SmtpStub) -> None:
+        result = email.deliver(
+            self._spec(smtp_stub.port), _event_minimal_with_canary(), secret=None, timeout=5.0
         )
-        event = _event_minimal_with_canary()
-        email.deliver(spec, event, secret="password123", timeout=5.0)
-        if captured_msg:
-            msg_str = str(captured_msg)
-            assert "CANARY_7f3" not in msg_str
+        assert result.ok is True, result.error
+        assert smtp_stub.messages
+        assert "CANARY_7f3" not in smtp_stub.messages[0]
 
 
 class TestSinkForNewDialects:

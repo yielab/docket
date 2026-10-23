@@ -21,19 +21,19 @@ def deliver(
     timeout: float,
 ) -> DeliveryResult:
     """Send an email via SMTP. Never raises."""
-    host = spec.config.get("host", "")
+    host = spec.config.get("smtpHost", "")
+    sender = spec.config.get("from", "")
+    to = spec.config.get("to", "")
     if not host:
-        return DeliveryResult(ok=False, error="channel has no config.host")
-    if not secret:
-        return DeliveryResult(ok=False, error="channel has no secret (username credential)")
+        return DeliveryResult(ok=False, error="channel has no config.smtpHost")
+    if not sender or not to:
+        return DeliveryResult(ok=False, error="channel missing config.from or config.to")
+
+    named_secret = getattr(spec, "secret", None)
+    if named_secret and not secret:
+        return DeliveryResult(ok=False, error=f"channel secret {named_secret} did not resolve")
 
     port_str = spec.config.get("port", "587")
-    user = spec.config.get("user", "")
-    to = spec.config.get("to", "")
-
-    if not user or not to:
-        return DeliveryResult(ok=False, error="channel missing config.user or config.to")
-
     try:
         port = int(port_str)
     except ValueError:
@@ -44,13 +44,21 @@ def deliver(
     try:
         msg = EmailMessage()
         msg["Subject"] = f"[docket] {title}"
-        msg["From"] = user
+        msg["From"] = sender
         msg["To"] = to
         msg.set_content(body)
 
         with smtplib.SMTP(host, port, timeout=timeout) as smtp:
-            smtp.starttls()
-            smtp.login(user, secret)
+            smtp.ehlo()
+            if smtp.has_extn("starttls"):
+                smtp.starttls()
+                smtp.ehlo()
+            elif secret:
+                return DeliveryResult(
+                    ok=False, error="server does not offer STARTTLS; the secret was not sent"
+                )
+            if secret:
+                smtp.login(spec.config.get("user") or sender, secret)
             smtp.send_message(msg)
 
         return DeliveryResult(ok=True)
