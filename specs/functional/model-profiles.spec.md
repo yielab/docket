@@ -572,6 +572,7 @@ Where the names above live today (the only place paths appear):
   registry and provider-catalog checks
 - `src/docket/cli/_pod_show.py`: the `docket pod show` render
 - `src/docket/serve.py`: the sweep that calls `refresh_observed_models_due`
-- `src/docket/config.py`: `DEFAULT_MODEL`, `MODEL_REGISTRY_FILE`, `PROVIDERS_FILE`,
-  `PROVIDER_MODELS_FILE`, `PROVIDER_TEMPLATES_DIR`
+- `src/docket/kernel/home.py`: the `Home` members `default_model`, `model_registry_file`,
+  `providers_file`, `provider_models_file`
+- `src/docket/kernel/templates.py`: `PROVIDER_TEMPLATES_DIR`
 - `src/docket/templates/providers/*.yaml`: the built-in provider documents (prices, presets)

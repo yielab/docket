@@ -716,8 +716,9 @@ Where the names above live today. This is the only section that names paths.
 - `src/docket/core/exporter.py`: `load_catalog`, `activation_state`;
   `src/docket/core/mcp_tools.py`: `load_pod_mcp_servers`, `write_pod_mcp_servers`
 - `src/docket/core/memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` and `MEMORY.md` text)
-- `src/docket/config.py`: `pod_config_dir`, `pod_work_dir`, `pod_scratch_dir`, `recipes_dir`,
-  `user_recipes_dir`, `config_schemas_dir`, `REVIEWED_REPOS_FILE`
+- `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`, `pod_work_dir`,
+  `pod_scratch_dir`, `user_recipes_dir`, `reviewed_repos_file`
+- `src/docket/kernel/templates.py`: `recipes_dir`, `config_schemas_dir`
 - `src/docket/cli/_agents.py`: `cmd_init`, `run_init`, `review_repo_source`, the `--from` path
 - `src/docket/cli/_pod.py`: `build_pod_from_blueprint`, `set_setting`, `unset_setting`,
   `add_members`

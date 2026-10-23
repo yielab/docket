@@ -2291,11 +2291,11 @@ queue.)
   `git_worktree_add`, `git_commit_all`, `git_snapshot_commit`, `git_changed_files`,
   `git_current_branch`, `git_merge_base`, `git_diff_stat`, `git_diff_names`, `git_ls_files`
 - `src/docket/edges/store.py`: `read_modify_write`
-- `src/docket/config.py`: `CLAIM_STALE_TIMEOUT`, `DISPATCH_RETRIES_DEFAULT`,
-  `DISPATCH_RETRIES_PER_ROLE`, `DISPATCH_RETRY_BACKOFF_S`, `DISPATCH_RETRY_MAX_WAIT_S`,
-  `DISPATCH_TURN_TIMEOUT_S`, `DISPATCH_VERIFY_TIMEOUT_S`, `DISPATCH_SWEEP_WORKERS`,
-  `HANDOFF_DIFF_MAX_CHARS`, `REPO_MAP_MAX_CHARS`, `CONTEXT_BYTES_PER_TOKEN`,
-  `VERIFY_EVIDENCE_TAIL_CHARS`, `PREPARE_TIMEOUT_S`, `TRACE_RETENTION_S`, `pod_cache_dir`
+- `src/docket/kernel/home.py`: the `Home` members `claim_stale_timeout`, `dispatch_retries_default`,
+  `dispatch_retries_per_role`, `dispatch_retry_backoff_s`, `dispatch_retry_max_wait_s`,
+  `dispatch_turn_timeout_s`, `dispatch_verify_timeout_s`, `dispatch_sweep_workers`,
+  `handoff_diff_max_chars`, `repo_map_max_chars`, `context_bytes_per_token`,
+  `verify_evidence_tail_chars`, `prepare_timeout_s`, `trace_retention_s`, `pod_cache_dir`
 - `src/docket/serve.py`: the periodic sweep (`_run_sweeps`, `_sweep_one_pod`, `_check_schedules`,
   `_abandon_sweeps`), `SWEEP_ABANDON_WAIT_S`, `POST /dispatch/<project>`, `POST /approvals/<token>`,
   `GET /tasks/<pod>/<id>/evidence`

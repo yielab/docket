@@ -1591,10 +1591,10 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/cli/_run.py`: `docket run`'s re-apply of a repository directory
 - `src/docket/cli/_service.py`: `docket start` (`make_non_dumpable`)
 - `src/docket/cli/_status.py`: `docket status`'s profile and network lines
-- `src/docket/config.py`: `TOOL_APPROVAL_TIMEOUT`, `TOOL_APPROVAL_POLL_INTERVAL_S`,
-  `APPROVAL_TIMEOUT`, `FETCH_ALLOWED_DOMAINS`, `FETCH_MAX_RESPONSE_BYTES`, `FETCH_TIMEOUT_S`,
-  `POLICIES_DIR`, `PLUGINS_DIR`, `APPROVALS_DIR`, `SANDBOX_DOCKER_IMAGE`, `JAIL_TMP_DIR`,
-  `PREPARE_CACHE_DIR`, `pod_config_dir`
+- `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`,
+  `tool_approval_poll_interval_s`, `approval_timeout`, `fetch_allowed_domains`,
+  `fetch_max_response_bytes`, `fetch_timeout_s`, `policies_dir`, `plugins_dir`, `approvals_dir`,
+  `sandbox_docker_image`, `jail_tmp_dir`, `prepare_cache_dir`, `pod_config_dir`
 - `src/docket/templates/policies/`: the six shipped policy templates
 - Tests that pin this spec: `tests/integration/test_pre_tool_call_policy.py`
   (`TestRenderToolCallShape`, `TestBlockDestructiveShippedTemplate`,

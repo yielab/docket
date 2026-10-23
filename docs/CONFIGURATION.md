@@ -164,7 +164,7 @@ global) — the same three `docket pod show <member> --json` labels per value.
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket pod policies [--pod <p>]` |
 | What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod show`, `pod set`, `pod unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `pod set verify "<cmd>" --member <id>` |
 
-**A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (`{"roles": {name: archetype}}`) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the built-in or global layer for that pod alone, never shared with any other pod. `docket setup` flags a malformed entry in either file, naming the pod.
+**A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`Home.pod_config_dir(project)`) — `roles.json` (`{"roles": {name: archetype}}`) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the built-in or global layer for that pod alone, never shared with any other pod. `docket setup` flags a malformed entry in either file, naming the pod.
 
 Two boundaries worth stating because they are easy to get backwards:
 
