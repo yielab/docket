@@ -478,6 +478,10 @@ def run_bash(
             )
         content = body or "(no output)"
         return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
+    except Exception as ex:
+        _settle_unreadable(proc, container_name, exit_payload)
+        message = f"command output could not be read: {ex}"
+        return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
     finally:
         if on_process is not None:
             on_process("exited", exit_payload)
@@ -529,6 +533,20 @@ def _wait_cancellable(
         time.sleep(max(0.0, min(_CANCEL_POLL_INTERVAL_S, remaining)))
 
 
+def _settle_unreadable(
+    proc: subprocess.Popen[str], container_name: str, exit_payload: dict[str, Any]
+) -> None:
+    """Record how a command ended when reading its output failed: its real exit status if it
+    had already exited, else kill the group (and the container, if any) and report SIGKILL."""
+    if proc.poll() is not None:
+        exit_payload["exitCode"] = proc.returncode
+        return
+    if container_name:
+        _system.docker_kill(container_name)
+    _kill_group(proc)
+    exit_payload["signal"] = "SIGKILL"
+
+
 def _kill_group(proc: subprocess.Popen[str]) -> None:
     """Kill a timed-out command's whole process group, then reap it.
 
@@ -542,5 +560,5 @@ def _kill_group(proc: subprocess.Popen[str]) -> None:
 
     with contextlib.suppress(OSError, ProcessLookupError):
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    with contextlib.suppress(subprocess.SubprocessError, OSError):
+    with contextlib.suppress(subprocess.SubprocessError, OSError, ValueError):
         proc.communicate(timeout=5)

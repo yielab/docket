@@ -22,6 +22,7 @@ from docket.core import telemetry as _telemetry
 from docket.core import trace as _trace
 from docket.core.audit import audit_log
 from docket.edges.adapters.exporters import otlp_http as _otlp_http
+from docket.kernel.errors import InvalidInput
 
 export_app = typer.Typer(
     name="export",
@@ -268,7 +269,11 @@ def cmd_enable(
     effective = spec.model_copy(update=overrides) if overrides else spec
     if not no_verify:
         _verify(effective, f"Exporter '{name}' was not enabled")
-    enabled = _exp.enable_exporter(name, overrides)
+    try:
+        enabled = _exp.enable_exporter(name, overrides)
+    except InvalidInput as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
     ui.success(f"Exporter enabled: {name} -> {enabled.endpoint}")
     ui.dim(f"  shares: {enabled.privacy_label} ({_shares_display(enabled.privacy_classes)})")
     _contract.next_step(f"docket setup export preview {name}")
@@ -419,7 +424,7 @@ def cmd_privacy(
         raise typer.Exit(1)
     try:
         updated = _exp.set_privacy(name, privacy=level, share=shares, content_max_chars=max_chars)
-    except _exp.ExporterError as exc:
+    except (_exp.ExporterError, InvalidInput) as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     ui.success(f"Exporter privacy updated: {name}")

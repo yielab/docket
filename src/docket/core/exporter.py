@@ -306,6 +306,21 @@ def load_catalog() -> Catalog:
     return Catalog(entries=entries, scopes=scopes)
 
 
+def _refuse_invalid_entry(name: str, entry: dict[str, Any]) -> None:
+    """Raise ``InvalidInput`` when *entry*, read as the global override of *name* on top of its
+    built-in, is not a valid exporter document -- so a writer refuses before it writes what a
+    later load would drop in silence."""
+    merged = _merge_with_builtin_raw(name, entry)
+    merged.setdefault("name", name)
+    try:
+        ExporterSpec.model_validate(merged)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        where = ".".join(str(p) for p in first["loc"])
+        detail = first["msg"].removeprefix("Value error, ")
+        raise InvalidInput(f"exporter '{name}': {where + ': ' if where else ''}{detail}") from exc
+
+
 def save_exporter(spec: ExporterSpec) -> None:
     """Write *spec* into the global catalog (``config.EXPORTERS_FILE``), through
     ``edges/store.py`` -- the sole writer of docket-owned JSON."""
@@ -359,6 +374,10 @@ def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> Expor
         raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
 
     clean = {k: v for k, v in (overrides or {}).items() if k not in ("kind", "name", "enabled")}
+    if "privacy" in clean and "share" not in clean:
+        clean["share"] = None
+    elif "share" in clean and "privacy" not in clean:
+        clean["privacy"] = None
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:
         exporters = current.get("exporters")
@@ -369,6 +388,7 @@ def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> Expor
         entry["kind"] = "exporter"
         entry["name"] = name
         entry["enabled"] = True
+        _refuse_invalid_entry(name, entry)
         exporters[name] = entry
         current["exporters"] = exporters
         return current
@@ -468,6 +488,7 @@ def set_privacy(
         entry.update(overrides)
         entry["kind"] = "exporter"
         entry["name"] = name
+        _refuse_invalid_entry(name, entry)
         exporters[name] = entry
         current_doc["exporters"] = exporters
         return current_doc

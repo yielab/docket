@@ -11,9 +11,6 @@ test_docket_driver.py for ``DocketDriver.run_turn`` itself.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
 from tests.fakes import FakeDriver
 
 from docket.core import runtime_driver as _rd
@@ -38,45 +35,6 @@ class TestProtocolConformance:
 
         assert _dr.default_driver() is _dr.default_driver()
         assert isinstance(_dr.default_driver(), DocketDriver)
-
-
-# ── trace_ingest through DocketDriver -- what production actually resolves.
-# A pod-dispatch hop's turns live in core/session.py's own storage, not
-# daemon JSONL, so this is the path that must work for `docket task trace` to
-# show anything real. ─────────────────────────────────────────────────────
-
-
-class TestTraceIngestThroughDocketDriver:
-    def test_ingest_projects_turns_from_a_real_docket_session(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        import docket.config as _cfg
-        from docket.core import session as _session
-        from docket.core import trace as _trace
-        from docket.core.llm import ToolCall, assistant, tool_result, user
-        from docket.edges.adapters.docket_runtime import DocketDriver
-
-        traces_dir = tmp_path / "traces"
-        monkeypatch.setattr(_cfg, "TRACES_DIR", traces_dir, raising=True)
-        monkeypatch.setattr(_cfg, "SESSIONS_DIR", tmp_path / "sessions", raising=True)
-        monkeypatch.setenv("DOCKET_NO_COST_INDEX", "1")
-        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-
-        session_key = "agent:myshop:default"
-        call = ToolCall(id="t1", name="read", arguments="{}")
-        _session.append_messages(
-            session_key,
-            [user("go"), assistant(tool_calls=[call]), tool_result(call, "ok")],
-        )
-
-        driver = DocketDriver()
-        monkeypatch.setattr("docket.edges.adapters.docket_runtime.default_driver", lambda: driver)
-        _trace.trace_ingest("myshop")
-
-        tf = traces_dir / "myshop" / f"{session_key}.jsonl"
-        assert tf.is_file()
-        types = [r["event_type"] for r in _trace.read_trace(tf)]
-        assert types == ["session_start", "tool_call", "tool_result"]
 
 
 # ── FakeDriver: the one test double ───────────────────────────────────────────

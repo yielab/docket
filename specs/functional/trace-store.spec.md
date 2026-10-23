@@ -3,7 +3,7 @@
 **Version**: 2.0.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
-and expires old ones. `trace_ingest` exists and is tested but has no production caller.
+and expires old ones.
 **Last Updated**: 2026-10-22
 
 ## Purpose
@@ -13,8 +13,7 @@ one append-only file per session. This specification defines that store: the rec
 per line, the closed `EVENT_TYPES` vocabulary an event type must belong to before it is accepted,
 the subscriber seam (`subscribe`, `add_subscriber`) through which an in-process consumer receives
 each record as it is written without reading the file (the `docket run` progress view and the
-trace exporter pipeline), `redact`'s secret-shape scrubbing, the `trace_ingest` bridge that
-projects a driver's own session log into this store, the sweep that closes stale traces
+trace exporter pipeline), `redact`'s secret-shape scrubbing, the sweep that closes stale traces
 (`sweep_all`), the retention function (`expire_old_traces`) that keeps the store bounded, and the
 terminal-outcome summary read from it (`terminal_outcomes`).
 
@@ -28,10 +27,9 @@ This specification covers:
 - The `subscribe`/`add_subscriber`/`TraceSink` seam: synchronous, best-effort, redacted-record
   delivery
 - `redact`: the always-on secret-shape patterns plus stored- and exported-secret-value scrubbing
-- `trace_ingest`: idempotent, offset-tracked projection of a `RuntimeDriver`'s own session log
-  into `tool_call`/`tool_result`/`session_start`/`session_end` records
 - `sweep_all`/`expire_old_traces`: synthetic `session_end` for stale-open traces, and retention
   deletion of terminated traces past the retention window
+- How every reader treats a line that is not a JSON object
 - The payload keys of `llm_call` and `tool_result` that carry captured content and the request
   breakdown, and the `process_started`/`process_exited` lifecycle events
 - `terminal_outcomes`: the count of a pod's finished sessions read back from its trace files
@@ -72,10 +70,10 @@ This specification does NOT cover:
 5. `cost_usd` **MUST** be included on a record only when the caller passes a value that parses
    as `float`; when included, it **MUST** be the field name `cost_usd`. `duration_ms` follows the
    same optional-inclusion rule, parsed as `int`.
-6. `EVENT_TYPES` **MUST** be exactly these 49 members: `session_start`, `tool_call`,
+6. `EVENT_TYPES` **MUST** be exactly these 48 members: `session_start`, `tool_call`,
    `tool_result`, `context_composed`, `prompt_composed`, `session_compaction`, `request_fit`,
    `guardrail_check`, `guardrail_block`, `approval_requested`, `approval_granted`,
-   `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`, `drift_alert`,
+   `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`,
    `verification_failed`, `tester_verdict_failed`, `reviewer_verdict_unparseable`,
    `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
    `paused_refused`, `approval_required`, `approval_resumed`, `approval_task_denied`,
@@ -124,34 +122,22 @@ This specification does NOT cover:
 11. A raising subscriber **MUST NOT** change `trace_event`'s return value or prevent the
     append; the exception is suppressed and no other subscriber is skipped because of it.
 12. `DOCKET_NO_TRACE=1` **MUST** suppress subscriber notification along with the write: under
-    it, a subscriber **MUST NOT** observe any record from `trace_event` or `trace_ingest`.
+    it, a subscriber **MUST NOT** observe any record from `trace_event` or `sweep_all`.
 35. `add_subscriber(sink)` **MUST** register *sink* on the same subscriber list, with the same
     delivery rules as requirements 10-12, for a long-lived subscriber that has no single `with`
     block to own, and **MUST** return a callable that removes exactly that one registration.
     `subscribe` is the context-manager form of the same registration.
-
-### Ingestion bridge
-
-13. `trace_ingest(project)` **MUST** be idempotent: each session's offset in the project's
-    `.ingest-index.json` **MUST** ensure a turn already projected is never re-emitted on a later
-    call.
-14. `trace_ingest` **MUST** read a driver's session log only through the `RuntimeDriver` port —
-    it **MUST NOT** parse any driver's on-disk format directly.
-15. `trace_ingest` **MUST** synthesize a `session_end` record (`payload.status == "aborted"`,
-    `payload.source == "timeout-sweep"`) for a session whose last observed turn is older than
-    `SESSION_TIMEOUT` seconds, and **MUST NOT** do so for a session that already has one.
-20. `trace_ingest` **MUST** notify every registered subscriber with each record it is about to
-    append — including the synthetic `session_end` for a timed-out session — before that record
-    is written, the same notify-then-append order `trace_event` uses (requirement 10).
 
 ### Stale-trace sweep
 
 36. `sweep_all()` **MUST** append a synthetic `session_end` (`payload.status == "aborted"`,
     `payload.source == "timeout-sweep"`, `agent_role` `"unknown"`) to every trace file under
     `$TRACES_DIR` whose last record's `ts` is older than `SESSION_TIMEOUT` seconds and that has
-    no `session_end` yet, and **MUST** leave every other file unchanged. The append goes straight
-    to the file: it is not delivered to subscribers and is not gated by `DOCKET_NO_TRACE`. The
-    periodic sweep of `docket start` runs it once at startup and then on every interval, before
+    no `session_end` yet, and **MUST** leave every other file unchanged. Each synthetic record
+    **MUST** be delivered to every registered subscriber before it is appended, the same
+    notify-then-append order `trace_event` uses (requirement 10). Under `DOCKET_NO_TRACE=1`
+    `sweep_all` **MUST** append nothing and notify no subscriber (requirement 12). The periodic
+    sweep of `docket start` runs it once at startup and then on every interval, before
     the retention sweep.
 
 ### Retention
@@ -163,10 +149,7 @@ This specification does NOT cover:
     kept regardless of age. It runs on every periodic sweep of `docket start`, and on demand,
     scoped to one pod, through `docket task prune --traces` (`--days` sets the window).
 17. `expire_old_traces(dry_run=True)` **MUST** report exactly what a real run would delete
-    (`TraceExpiryReport.expired`) without deleting anything or mutating any `.ingest-index.json`.
-18. Deleting a session's trace file **MUST** also drop that session's id from its project's
-    `.ingest-index.json`, since a session id is never reused and a stale offset entry for one
-    can never be read again.
+    (`TraceExpiryReport.expired`) without deleting anything.
 
 ### Task attribution
 
@@ -253,8 +236,10 @@ report into a trace event, so an external plan-of-record can show and cancel a l
     both, never neither — and is tagged with `"tool": "bash"` the same way.
 32. Exactly one `process_started`/`process_exited` pair **MUST** be emitted per process group a
     tool handler starts, and **MUST** fire even when the process is killed rather than left to
-    exit on its own; a `Popen` call that raises before a process exists **MUST NOT** produce
-    either event.
+    exit on its own and when reading the command's output fails (the call then fails; the
+    event carries `exitCode` if the command had already exited, otherwise `run_bash` kills the
+    group and the event carries `signal`); a `Popen` call that raises before a process exists
+    **MUST NOT** produce either event.
 33. A turn with no process-spawning tool call **MUST** produce a trace carrying no
     `process_started`/`process_exited` events at all.
 34. When a dispatch run is current (`current_run_id()` is not `None`) at the moment a
@@ -267,15 +252,24 @@ This store owns only the shape and firing rule of these events, not a consumer's
 
 ### Terminal outcomes
 
-37. `terminal_outcomes(project, window=N)` **MUST** read the project's trace files in file-name
-    order and classify each by the `payload.status` of its last `session_end`: `done`/`success`
+37. `terminal_outcomes(project, window=N)` **MUST** read the project's trace files and classify
+    each by the `payload.status` of its last `session_end`: `done`/`success`
     count as success, `failed`/`failure` as failure, `cancelled`/`blocked`/`aborted` as aborted,
     and a `session_end` with a dict payload but no `status` as success. A file with no
     `session_end`, with a non-dict payload, or with any other status (a parked `waiting_*` task)
-    **MUST** be skipped. It **MUST** keep only the last *N* classified files of that order (all
+    **MUST** be skipped. It **MUST** order the classified files by the `ts` of their last
+    `session_end` (ties by file name, oldest first) and keep only the last *N* of that order (all
     of them when *N* is 0 or less) and report each one's duration from its last `session_start`
     `ts` to its `session_end` `ts`, in milliseconds, when both parse. `docket status` reads it
     with `METRICS_WINDOW` (50 by default).
+
+### Lines that are not records
+
+38. `read_trace`, `export_lines`, `sweep_all`, `expire_old_traces` and `terminal_outcomes`
+    **MUST** treat a line that is blank, is not valid JSON, or is valid JSON but not an object, as
+    carrying no record: `read_trace`, `sweep_all`, `expire_old_traces` and `terminal_outcomes` skip it, and `export_lines` with a
+    `since` filter keeps it, as it keeps any line with no parseable `ts`. None of them
+    raises because of it.
 
 ## Interface Contracts
 
@@ -296,7 +290,6 @@ def trace_event(
 def subscribe(sink: TraceSink) -> AbstractContextManager[None]: ...
 def add_subscriber(sink: TraceSink) -> Callable[[], None]: ...
 def redact(text: str) -> str: ...
-def trace_ingest(project: str) -> None: ...
 def sweep_all() -> None: ...
 
 def expire_old_traces(
@@ -333,7 +326,7 @@ TRACE_RETENTION_DAYS    default 30      (retention window = days * 86400 seconds
 SESSION_TIMEOUT         default 3600    (seconds before an open trace counts as stale)
 CONTEXT_BYTES_PER_TOKEN default 4       (divisor of requirement 28's estTokens; at least 1)
 METRICS_WINDOW          default 50      (requirement 37's window for docket status)
-DOCKET_NO_TRACE         unset/"0" normally; "1" suppresses every trace_event/trace_ingest write
+DOCKET_NO_TRACE         unset/"0" normally; "1" suppresses every trace_event/sweep_all write
                         and subscriber notification
 ```
 
@@ -400,7 +393,7 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 ## Implementation
 
 - `src/docket/core/trace.py`: `trace_event`, `TraceStatus`, `TraceSink`, `EVENT_TYPES`,
-  `subscribe`, `add_subscriber`, `redact`, `trace_ingest`, `sweep_all`, `expire_old_traces`,
+  `subscribe`, `add_subscriber`, `redact`, `sweep_all`, `expire_old_traces`,
   `ExpiredTrace`, `TraceExpiryReport`, `read_trace`, `find_trace`, `project_trace_dir`,
   `latest_trace_file`, `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
 - `src/docket/config.py`: `TRACES_DIR`, `TRACE_RETENTION_DAYS`/`TRACE_RETENTION_S`,
@@ -416,9 +409,8 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 - `src/docket/edges/adapters/toolbox.py`: `run_bash` (the `on_process` reports)
 - `src/docket/core/tools.py`: `ToolContext.on_process`, the `bash` handler's `"tool": "bash"` tag
 - `src/docket/edges/adapters/docket_runtime.py`: `DocketDriver` (turns `on_process` reports into
-  `process_*` events, registers pgids), `default_driver` (the driver `trace_ingest` reads)
+  `process_*` events, registers pgids)
 - `src/docket/core/runs.py`: `current_run_id`, `add_hop_pid`, `remove_hop_pid`
-- `src/docket/core/runtime_driver.py`: `RuntimeDriver` (`list_sessions`, `read_new_turns`)
 - `src/docket/serve.py`: the periodic sweep that calls `sweep_all` then `expire_old_traces`
 - `src/docket/cli/_progress.py`: the `docket run` progress view's `subscribe` consumer
 - `src/docket/cli/_task.py`: `docket task trace` (`--tail` polls the file), `docket task prune

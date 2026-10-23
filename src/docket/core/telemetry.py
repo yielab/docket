@@ -158,7 +158,6 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
         "estimate",
     ),
     "budget_exceeded": ("spent", "cap", "role", "estimated"),
-    "drift_alert": (),
     "stale_claim": ("task", "claimedAt"),
     "paused_refused": ("reason",),
     "approval_required": ("role", "token", "pipelineIndex", "policy"),
