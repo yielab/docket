@@ -30,7 +30,7 @@ from tests.support import pods as _support_pods
 from tests.support.git import git_2 as _git
 from tests.support.git import pgrep_count as _pgrep_count
 
-from docket.agent.llm import ToolCall
+from docket.agent.ports import ToolCall
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.registry import ToolContext, dispatch_tool

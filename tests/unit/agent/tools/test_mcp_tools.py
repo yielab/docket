@@ -21,7 +21,7 @@ from tests.support import pods as _support_pods
 from tests.support.pods import write_meta_2 as _write_meta
 
 import docket.kernel.templates as _templates
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
@@ -231,7 +231,7 @@ class TestReviewerNeverGainsAWriteCapableMcpTool:
         """Belt and suspenders: even if a Reviewer's model somehow emitted a call for the excluded tool (a stale client, a hallucination), dispatch_tool must refuse it as unknown -- the same guarantee TestReviewerCannotDispatchAWrite proves for built-ins."""
         import json
 
-        from docket.agent.llm import ToolCall
+        from docket.agent.ports import ToolCall
 
         _write_meta("rev-2", role="reviewer")
         call = ToolCall(
@@ -383,7 +383,7 @@ def _install_result_policy(action: str | None) -> None:
 
 
 def _dispatch_mcp(content: str, *, ok: bool = True) -> Any:
-    from docket.agent.llm import ToolCall
+    from docket.agent.ports import ToolCall
     from docket.agent.tools.registry import ToolContext, dispatch_tool
 
     registry = ToolRegistry()

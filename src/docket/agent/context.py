@@ -60,7 +60,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from docket.agent.ports import role_composer
+from docket.agent.ports import estimate_tokens, role_composer
 from docket.kernel.handoff import HandoffArtifact, render_brief
 from docket.kernel.home import current_home
 
@@ -113,18 +113,6 @@ def resolve_window_share_tokens(
 #: Visible marker used when ``summary`` itself must be truncated — the
 #: consumer-facing proof that content was cut, never a silent shortening.
 SUMMARY_TRUNCATION_MARKER = "\n[... summary truncated: {n} bytes omitted ...]\n"
-
-
-def estimate_tokens(text: str) -> int:
-    """Approximate *text*'s token count.
-
-    ``len(text.encode("utf-8")) // Home.context_bytes_per_token`` — the
-    same bytes-per-token approximation (default 4) ``teams/identity.py``'s
-    prompt budget already uses for its own context-size guards. This is honestly an approximation, not a real count
-    from the model's own tokenizer — good enough to bound a prompt
-    deterministically, never a basis for billing.
-    """
-    return len(text.encode("utf-8")) // current_home().context_bytes_per_token
 
 
 def budget_for_role(

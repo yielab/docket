@@ -131,7 +131,7 @@ class Home:
     # Default turn budget, checked between iterations. DocketDriver.run_turn passes the
     # hop's own timeout, so this applies only to run_agent_turn() without a LoopConfig.
     agent_loop_wall_clock_timeout_s: float = 300.0
-    # Cap on a turn's measured token usage (agent.llm.TokenUsage), never an estimate.
+    # Cap on a turn's measured token usage (agent.ports.TokenUsage), never an estimate.
     agent_loop_token_budget: int = 100000
     # Output reserve for a model that registers no maximum, so the window checks run.
     default_max_output_tokens: int = 4096

@@ -9,8 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from docket.agent.llm import TokenUsage
-from docket.agent.ports import FailureKind
+from docket.agent.ports import FailureKind, TokenUsage
 from docket.kernel.home import current_home
 
 StopReason = Literal[

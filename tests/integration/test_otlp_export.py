@@ -24,7 +24,7 @@ from typing import Any, ClassVar
 import pytest
 from tests.support import home as _support_home
 
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.hops.application import driver as docket_runtime
 from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import current_home, use_home

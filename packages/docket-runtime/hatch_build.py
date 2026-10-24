@@ -21,7 +21,6 @@ _RUNTIME_FILES = (
     "agent/__init__.py",
     "kernel/handoff.py",
     "kernel/brief.py",
-    "agent/llm.py",
     "agent/ports.py",
     "hops/workspace/skills.py",
     "agent/tools/__init__.py",

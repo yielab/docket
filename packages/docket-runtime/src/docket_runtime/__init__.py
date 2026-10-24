@@ -14,7 +14,7 @@ from threading import RLock
 
 from docket_runtime import _bind  # noqa: F401  (binds the real adapters)
 from docket_runtime._execution import ExecutionLimits, ExecutionResult, GovernedExecution
-from docket_runtime._internal.docket.agent.llm import TokenUsage, ToolCall, ToolSpec
+from docket_runtime._internal.docket.agent.ports import TokenUsage, ToolCall, ToolSpec
 from docket_runtime._internal.docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket_runtime._internal.docket.agent.tools.registry import (
     Tool,

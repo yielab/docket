@@ -26,7 +26,7 @@ from tests.support import pods as _support_pods
 from tests.support.git import pgrep_count as _pgrep_count
 
 from docket.agent import loop as _loop
-from docket.agent.llm import ChatResponse, TokenUsage, ToolCall, assistant
+from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.agent.session import load_messages
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox

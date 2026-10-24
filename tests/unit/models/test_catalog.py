@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 import docket.kernel.templates as _templates
-from docket.agent.llm import ModelLimits
+from docket.agent.ports import ModelLimits
 from docket.kernel.clock import use_clock
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider

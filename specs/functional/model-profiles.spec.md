@@ -559,7 +559,7 @@ Where the names above live today (the only place paths appear):
 - `src/docket/teams/roles.py`: `BUILTIN_ARCHETYPES`, `STARTER_ARCHETYPES`, `load_registry`
   (`model_class`)
 - `src/docket/teams/utils.py`: `estimate_cost_usd`, `project_ids`
-- `src/docket/agent/llm.py`: `Endpoint`
+- `src/docket/agent/ports.py`: `Endpoint`
 - `src/docket/teams/fleet.py`: `set_model_both`
 - `src/docket/teams/report.py`: the `docket pod show <member> --json` report
 - `src/docket/hops/application/runner.py`, `src/docket/hops/gates/pre_hop.py`,

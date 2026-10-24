@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from docket.agent.llm import ModelLimits
+from docket.agent.ports import ModelLimits
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
@@ -22,7 +22,7 @@ from docket.platform import read_modify_write
 
 if TYPE_CHECKING:
     from docket.models.adapters.openai_http import ProbeResult
-from docket.agent.llm import Endpoint
+from docket.agent.ports import Endpoint
 from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
 from docket.models.adapters import openai_http as _llm

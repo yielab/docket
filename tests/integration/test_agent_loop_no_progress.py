@@ -17,7 +17,7 @@ import pytest
 from tests.support import llm as _support_llm
 
 from docket.agent import loop as _loop
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool as _Tool
 from docket.agent.tools.registry import ToolContext, ToolRegistry

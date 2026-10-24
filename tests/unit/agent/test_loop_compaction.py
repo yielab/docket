@@ -7,11 +7,11 @@ import dataclasses
 from collections.abc import Callable
 from typing import Any
 
-from docket.agent.llm import ChatMessage, ChatResponse, ToolCall, assistant, system, user
 from docket.agent.loop_budget import TurnBudget
 from docket.agent.loop_compaction import TurnCompaction
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_types import LoopConfig
+from docket.agent.ports import ChatMessage, ChatResponse, ToolCall, assistant, system, user
 from docket.agent.session import append_messages, load_messages
 
 SUBJECT = "docket.agent.loop_compaction"

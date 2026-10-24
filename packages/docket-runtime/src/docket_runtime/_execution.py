@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from docket_runtime._internal.docket.agent.llm import TokenUsage, ToolCall
+from docket_runtime._internal.docket.agent.ports import TokenUsage, ToolCall
 from docket_runtime._internal.docket.agent.tools.registry import ToolContext, ToolResult
 from docket_runtime._internal.docket.kernel.handoff import HandoffArtifact
 from docket_runtime._internal.docket.observability.trace import trace_event

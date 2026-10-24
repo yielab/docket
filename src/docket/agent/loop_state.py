@@ -12,9 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from docket.agent.llm import ChatBackend, TokenUsage, ToolSpec
 from docket.agent.loop_types import AgentLoopResult, LoopConfig, StopReason
-from docket.agent.ports import FailureKind
+from docket.agent.ports import ChatBackend, FailureKind, TokenUsage, ToolSpec
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 
 

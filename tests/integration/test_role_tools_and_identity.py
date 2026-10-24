@@ -15,16 +15,15 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import pytest
 from tests.support.llm import final as _final
 
-from docket.agent import context as _context
 from docket.agent import loop as _loop
-from docket.agent import loop_trace as _loop_trace
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent import ports as _ports
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry, dispatch_tool
@@ -447,7 +446,7 @@ class TestSystemPromptForAgent:
 
             assert "KEEP-AGENT-RULE" in prompt
             assert "[... MEMORY.md truncated:" in prompt
-            assert _context.estimate_tokens(prompt) <= 350
+            assert _ports.estimate_tokens(prompt) <= 350
 
     def test_oversized_soul_does_not_erase_the_contract_or_memory(self) -> None:
         """A SOUL.md alone larger than the whole budget must not blank every section."""
@@ -777,7 +776,10 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert not any("private active checkpoint" in m.content for m in record.messages)
 
     def test_composing_the_prompt_emits_one_prompt_composed_event(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         """One `prompt_composed` trace event per turn, naming each section's fit."""
         ws = _write_meta("traced-agent")
@@ -805,7 +807,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
 
         _loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:traced-agent:default", "go")
 
@@ -819,7 +821,10 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert events[0]["budgetSource"] == "default"
 
     def test_prompt_composed_names_a_window_share_budget_end_to_end(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         """A large registered window resolves a bigger budget end to end, and the
         trace event names it, without any explicit override."""
@@ -848,7 +853,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
 
         _loop.run_agent_turn(
             backend,
@@ -866,7 +871,10 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert soul_section["status"] == "full"
 
     def test_a_registered_16k_window_pins_todays_behaviour(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         """The only window docket has ever run against live must not change: a
         registered 16k/8k local endpoint resolves the exact same budget as no window
@@ -896,7 +904,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
 
         _loop.run_agent_turn(
             backend,
@@ -914,7 +922,10 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert soul_section["status"] == "truncated"
 
     def test_a_runtime_contract_only_composition_still_emits_prompt_composed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         """A workspace holding only the startup contract composes a system prompt, so the
         turn traces it with an empty section list."""
@@ -941,7 +952,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
 
         _loop.run_agent_turn(
             backend, builtin_registry(), ctx, "agent:contract-only-agent:default", "go"
@@ -953,7 +964,10 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert events[0]["budgetSource"] == "default"
 
     def test_no_identity_files_means_no_prompt_composed_event(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         """No composed prompt means no `prompt_composed` event either."""
         roots = tmp_path / "code5"
@@ -977,7 +991,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
 
         _loop.run_agent_turn(
             backend, builtin_registry(), ctx, "agent:bare-traced-agent:default", "go"

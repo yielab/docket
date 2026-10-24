@@ -21,8 +21,16 @@ from tests.support.git import git as _git
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.agent.ports import (
+    PIPELINE_WORKTREE_ENV,
+    ChatMessage,
+    ChatResponse,
+    TokenUsage,
+    ToolCall,
+    ToolSpec,
+    TurnResult,
+    assistant,
+)
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home

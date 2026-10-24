@@ -28,8 +28,16 @@ from tests.support.pods import write_meta_2 as _write_meta
 
 from docket.agent import session as _session
 from docket.agent import session_units as _session_units
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.agent.ports import DOCKET_APPROVAL_MODE, PIPELINE_WORKTREE_ENV
+from docket.agent.ports import (
+    DOCKET_APPROVAL_MODE,
+    PIPELINE_WORKTREE_ENV,
+    ChatMessage,
+    ChatResponse,
+    TokenUsage,
+    ToolCall,
+    ToolSpec,
+    assistant,
+)
 from docket.agent.session import load_session
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry

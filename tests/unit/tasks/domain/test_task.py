@@ -21,7 +21,7 @@ import pytest
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 
-from docket.agent.llm import ChatResponse, TokenUsage, assistant
+from docket.agent.ports import ChatResponse, TokenUsage, assistant
 from docket.hops.application import driver as _drt
 from docket.hops.application import record as _record
 from docket.kernel.home import Home, current_home, use_home

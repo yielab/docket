@@ -2,7 +2,7 @@
 
 ``run_agent_turn`` composes three pieces:
 
-- ``agent/llm.py`` — the ``ChatBackend`` port: one request/response
+- ``agent/ports.py`` — the ``ChatBackend`` port: one request/response
   exchange, nothing more.
 - ``agent/tools/registry.py`` — ``ToolRegistry``/``dispatch_tool``, the
   **single** chokepoint where the command classifier, the ``pre_tool_call``
@@ -147,12 +147,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from docket.agent.llm import (
-    ChatBackend,
-    ChatMessage,
-    TokenUsage,
-    ToolSpec,
-)
 from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
 from docket.agent.loop_compaction import TurnCompaction
 from docket.agent.loop_request import _accumulate, _finalization_messages
@@ -164,7 +158,14 @@ from docket.agent.loop_trace import (
     _trace_terminal_finalization,
 )
 from docket.agent.loop_types import AgentLoopResult, LoopConfig, StopReason
-from docket.agent.ports import PromptComposition, role_composer
+from docket.agent.ports import (
+    ChatBackend,
+    ChatMessage,
+    PromptComposition,
+    TokenUsage,
+    ToolSpec,
+    role_composer,
+)
 from docket.agent.session import append_messages
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel import clock as _clock

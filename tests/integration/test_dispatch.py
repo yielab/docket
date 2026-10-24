@@ -32,7 +32,7 @@ from tests.support.pods import seed_pod_2 as _seed_pod
 
 from docket.agent import ports as _rd
 from docket.agent import session as _session
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
 from docket.hops.application import driver as _dr

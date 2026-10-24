@@ -6,16 +6,16 @@ from collections.abc import Sequence
 from datetime import UTC
 from typing import Any
 
-from docket.agent.llm import (
+from docket.agent.ports import (
     ChatMessage,
     ChatResponse,
     Endpoint,
+    FailureKind,
     Role,
     TokenUsage,
     ToolCall,
     ToolSpec,
 )
-from docket.agent.ports import FailureKind
 from docket.kernel import clock as _clock
 
 # Endpoints that return one of these are worth trying again: an overloaded or

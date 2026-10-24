@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from docket.agent import context as _context
-from docket.agent.llm import ChatMessage
+from docket.agent import ports as _ports
+from docket.agent.ports import ChatMessage
 
 _COMPACTED_SUMMARY_PREFIX = "[compacted summary of "
 
@@ -90,11 +90,11 @@ def _unit_text(unit: Sequence[ChatMessage]) -> str:
 
 
 def _unit_tokens(unit: Sequence[ChatMessage]) -> int:
-    return _context.estimate_tokens(_unit_text(unit))
+    return _ports.estimate_tokens(_unit_text(unit))
 
 
 def _messages_estimated_tokens(messages: Sequence[ChatMessage]) -> int:
-    return _context.estimate_tokens(_unit_text(messages))
+    return _ports.estimate_tokens(_unit_text(messages))
 
 
 @dataclass(frozen=True)
@@ -140,7 +140,7 @@ def plan_compaction(
     if not body:
         return CompactionPlan(head, [], [])
 
-    used = _context.estimate_tokens(_unit_text(head)) if head else 0
+    used = _ports.estimate_tokens(_unit_text(head)) if head else 0
     kept: list[list[ChatMessage]] = []
     for pos in range(len(body) - 1, -1, -1):
         unit = body[pos]

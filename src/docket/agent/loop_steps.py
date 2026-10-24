@@ -11,10 +11,10 @@ from __future__ import annotations
 import hashlib
 import json
 
-from docket.agent.llm import ChatMessage, TokenUsage, ToolCall, tool_result
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_tool_call, _trace_tool_result
 from docket.agent.loop_types import AgentLoopResult
+from docket.agent.ports import ChatMessage, TokenUsage, ToolCall, tool_result
 from docket.agent.session import append_messages
 from docket.agent.tools.registry import ToolResult, dispatch_tool
 from docket.kernel.gate import ToolDenialKind

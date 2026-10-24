@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import math
 
-from docket.agent.llm import ChatMessage, ToolSpec
 from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_request_fit
 from docket.agent.loop_types import AgentLoopResult
+from docket.agent.ports import ChatMessage, ToolSpec
 
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
 # The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).

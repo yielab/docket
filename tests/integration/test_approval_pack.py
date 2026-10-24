@@ -14,8 +14,15 @@ from typing import Any
 import pytest
 from tests.support.home import record_isolation_off
 
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.agent.ports import DOCKET_APPROVAL_MODE
+from docket.agent.ports import (
+    DOCKET_APPROVAL_MODE,
+    ChatMessage,
+    ChatResponse,
+    TokenUsage,
+    ToolCall,
+    ToolSpec,
+    assistant,
+)
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool, ToolRegistry
 from docket.governance import approval as _approval

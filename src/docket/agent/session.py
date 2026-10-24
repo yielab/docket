@@ -23,8 +23,7 @@ from urllib.parse import quote as _urlquote
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from docket.agent.llm import ChatMessage, Role, TokenUsage, ToolCall
-from docket.agent.ports import TurnResult
+from docket.agent.ports import ChatMessage, Role, TokenUsage, ToolCall, TurnResult
 from docket.agent.session_units import (
     find_orphaned_tool_messages,
     find_unanswered_tool_calls,
@@ -76,7 +75,7 @@ _SESSION_FILENAME = "session.json"
 
 
 class StoredToolCall(BaseModel):
-    """Wire/storage twin of ``agent.llm.ToolCall`` -- same three fields, no more."""
+    """Wire/storage twin of ``agent.ports.ToolCall`` -- same three fields, no more."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -86,7 +85,7 @@ class StoredToolCall(BaseModel):
 
 
 class StoredMessage(BaseModel):
-    """Wire/storage twin of ``agent.llm.ChatMessage``, field-for-field so ``_encode``/``_decode``
+    """Wire/storage twin of ``agent.ports.ChatMessage``, field-for-field so ``_encode``/``_decode``
     are the only translation needed (round-trip contract: session-history.spec.md req 6)."""
 
     model_config = ConfigDict(populate_by_name=True)

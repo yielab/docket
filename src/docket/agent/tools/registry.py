@@ -17,8 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.agent.llm import ToolCall, ToolCallArgumentsError, ToolSpec
-from docket.agent.ports import tool_gate
+from docket.agent.ports import ToolCall, ToolCallArgumentsError, ToolSpec, tool_gate
 
 # ToolOutcome is re-exported: callers outside the chokepoint build one without importing the
 # handler module, which only this module may import.

@@ -213,7 +213,7 @@ def _hop_message(
     # budget" a real, checkable property rather than an aspiration: the two
     # pieces that are never shed are accounted for before anything
     # sheddable is given a share.
-    reserved_tokens = sum(_ctx.estimate_tokens(t) for t in (desc, instructions, root_block))
+    reserved_tokens = sum(_rd.estimate_tokens(t) for t in (desc, instructions, root_block))
     carryover_budget = max(_ctx.budget_for_role(role, project=project) - reserved_tokens, 0)
 
     lines = [f"Task: {desc}", ""] + ([root_block, ""] if root_block else [])

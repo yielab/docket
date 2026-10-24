@@ -13,8 +13,15 @@ from typing import Any
 import pytest
 
 from docket.agent import session as _sess
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant, tool_result
-from docket.agent.ports import TurnResult
+from docket.agent.ports import (
+    ChatMessage,
+    ChatResponse,
+    TokenUsage,
+    ToolCall,
+    TurnResult,
+    assistant,
+    tool_result,
+)
 from docket.agent.tools.registry import ToolContext
 from docket.interfaces.telegram import poll
 from docket.tasks.domain import task as _task

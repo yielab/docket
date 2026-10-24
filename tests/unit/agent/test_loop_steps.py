@@ -8,10 +8,10 @@ from typing import Any
 import pytest
 
 from docket.agent import loop_steps as _steps
-from docket.agent.llm import ChatMessage, TokenUsage, ToolCall, assistant
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_steps import ToolStep, _ProgressDetector
 from docket.agent.loop_types import LoopConfig
+from docket.agent.ports import ChatMessage, TokenUsage, ToolCall, assistant
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool, ToolRegistry
 

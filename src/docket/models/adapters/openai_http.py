@@ -1,6 +1,6 @@
 """OpenAI-compatible chat-completions adapter.
 
-The one shipped implementation of ``agent/llm.py``'s ``ChatBackend`` port, and
+The one shipped implementation of ``agent/ports.py``'s ``ChatBackend`` port, and
 the **only** module in docket that knows what a chat-completions request or
 response looks like on the wire. Everything above it — the turn loop, the tool
 dispatcher, the gates — speaks ``ChatMessage``/``ToolCall``/``ChatResponse``.
@@ -29,14 +29,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
-from docket.agent import context as _context
-from docket.agent.llm import (
-    ChatMessage,
-    ChatResponse,
-    Endpoint,
-    ModelLimits,
-    ToolSpec,
-)
+from docket.agent import ports as _ports
+from docket.agent.ports import ChatMessage, ChatResponse, Endpoint, ModelLimits, ToolSpec
 from docket.kernel import clock as _clock
 from docket.models.adapters.openai_wire import (
     _classify_http_status,
@@ -94,7 +88,7 @@ class OpenAIChatClient:
         """
         payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        return max(1, _context.estimate_tokens(encoded)) + _PROTOCOL_OVERHEAD_TOKENS
+        return max(1, _ports.estimate_tokens(encoded)) + _PROTOCOL_OVERHEAD_TOKENS
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}

@@ -22,10 +22,17 @@ from docket.governance import secrets as _secrets
 from docket.governance import security as _security
 from docket.hops.application import driver as _driver
 from docket.kernel.home import Home
-from docket.kernel.ports import SandboxAvailability, bind_git, bind_jail, bind_process
+from docket.kernel.ports import (
+    SandboxAvailability,
+    bind_git,
+    bind_jail,
+    bind_process,
+    bind_tracer,
+)
 from docket.kernel.ports import jail as _jail
 from docket.models import catalog as _catalog
 from docket.observability.adapters import otlp_http as _otlp_http
+from docket.observability.adapters.local_tracer import LocalTracer
 from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
 from docket.platform import git as _git_adapter
@@ -59,6 +66,7 @@ def bind_adapters() -> None:
     """Bind the real adapters of every port; every entry calls this before it runs."""
     bind_role_composer(TeamsRoleComposer())
     bind_tool_gate(_gate)
+    bind_tracer(LocalTracer())
     bind_git(_git_adapter)
     bind_process(_process_adapter)
     bind_jail(

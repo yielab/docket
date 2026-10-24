@@ -403,7 +403,7 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   (requirements 21-28)
 - `src/docket/observability/telemetry.py`: `capture_classes`, and the exporter pipeline that registers
   through `add_subscriber`
-- `src/docket/agent/llm.py`: `ChatResponse.request_bytes`
+- `src/docket/agent/ports.py`: `ChatResponse.request_bytes`
 - `src/docket/agent/session.py`: `TokenUsage.cache_write_tokens`
 - `src/docket/models/adapters/openai_http.py`: `request_part_bytes`
 - `src/docket/agent/tools/builtins/toolbox.py`: `run_bash` (the `on_process` reports)

@@ -18,7 +18,7 @@ from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 
 from docket.agent import loop_steps as _loop_steps
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.governance import audit as _audit
 from docket.hops.application import driver as _dr
 from docket.hops.application.driver import DocketDriver

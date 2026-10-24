@@ -4,8 +4,8 @@ import hashlib
 import json
 from dataclasses import asdict
 
-from docket.agent import context as _context
-from docket.agent.llm import ChatBackend, ChatMessage, TokenUsage, ToolSpec, system
+from docket.agent import ports as _ports
+from docket.agent.ports import ChatBackend, ChatMessage, TokenUsage, ToolSpec, system
 
 
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
@@ -64,7 +64,7 @@ def _fallback_input_estimate(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-    return max(1, _context.estimate_tokens(json.dumps(payload, ensure_ascii=False))) + 16
+    return max(1, _ports.estimate_tokens(json.dumps(payload, ensure_ascii=False))) + 16
 
 
 def _estimate_input_tokens(

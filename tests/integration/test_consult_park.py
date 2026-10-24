@@ -19,7 +19,7 @@ from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
 from tests.support.pods import build_pod
 
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.hops.application import driver as _dr
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod

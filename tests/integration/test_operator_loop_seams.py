@@ -24,7 +24,7 @@ from tests.support.pods import bind_intake_pipeline as _bind_intake_pipeline
 from tests.support.pods import seed_pod_2 as _seed_pod
 
 from docket.agent import ports as _rd
-from docket.agent.llm import ChatResponse, TokenUsage, ToolCall, assistant
+from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
 from docket.hops.application import driver as _dr

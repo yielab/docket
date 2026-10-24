@@ -540,7 +540,7 @@ Where the names used above live today.
   500-character task description ceiling.
 - `src/docket/kernel/home.py`: `Home`, `current_home`, `use_home`, which the autouse fixture and
   every test home go through.
-- `src/docket/agent/llm.py`: `ChatBackend`; `src/docket/agent/ports.py`: `RuntimeDriver`;
+- `src/docket/agent/ports.py`: `ChatBackend`; `src/docket/agent/ports.py`: `RuntimeDriver`;
   `src/docket/agent/tools/registry.py`: `dispatch_tool`.
 - `src/docket/sandbox/launch.py`, `src/docket/sandbox/landlock.py`,
   `src/docket/sandbox/seatbelt.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.

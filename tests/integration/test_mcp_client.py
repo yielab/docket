@@ -26,7 +26,7 @@ import pytest
 from tests.support import home as _support_home
 from tests.support.trace import audit_actions as _audit_actions
 
-from docket.agent.llm import ToolCall
+from docket.agent.ports import ToolCall
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome

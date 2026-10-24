@@ -13,7 +13,7 @@ import pytest
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, assistant
 from docket.hops.application import driver as _dr
 from docket.hops.application import record as _record
 from docket.hops.application.driver import DocketDriver

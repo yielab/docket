@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from docket.agent.llm import ChatResponse
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_types import LoopConfig
+from docket.agent.ports import ChatResponse
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 
 

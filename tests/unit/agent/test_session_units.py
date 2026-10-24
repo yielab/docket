@@ -15,7 +15,7 @@ from tests.support.llm import tool_call_turn as _tool_call_turn
 from docket.agent import session as _sess
 from docket.agent import session_compaction as _session_compaction
 from docket.agent import session_units as _session_units
-from docket.agent.llm import ChatMessage, ToolCall, assistant, system, tool_result, user
+from docket.agent.ports import ChatMessage, ToolCall, assistant, system, tool_result, user
 
 _isolate_sessions_dir = _support_home.isolate_sessions_dir
 
@@ -135,7 +135,7 @@ class TestPlanCompactionAtomicityBoundary:
     """The card's named trap: a cut that would land inside a tool-call group."""
 
     def test_boundary_cut_never_splits_the_tool_call_group(self) -> None:
-        from docket.agent.context import estimate_tokens
+        from docket.agent.ports import estimate_tokens
 
         m0 = user("first question, quite a bit of padding text to add weight")
         call = ToolCall(id="c1", name="read_file", arguments='{"path": "notes.md"}')
@@ -173,7 +173,7 @@ class TestPlanCompactionAtomicityBoundary:
         assert plan.keep_tail == [m3, m4]
 
     def test_boundary_case_end_to_end_through_compact_session_has_no_orphans(self) -> None:
-        from docket.agent.context import estimate_tokens
+        from docket.agent.ports import estimate_tokens
 
         call = ToolCall(id="c1", name="read_file", arguments="{}")
         m0 = user("padding " * 20)

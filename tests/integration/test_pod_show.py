@@ -414,7 +414,7 @@ class TestPodShowProvider:
     def test_observed_and_unknown_limits_name_their_source(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.agent.llm import ModelLimits
+        from docket.agent.ports import ModelLimits
         from docket.models import catalog as _prov
         from docket.models import provider_lifecycle as _provider_lifecycle
         from docket.models.adapters.openai_http import ProbeResult

@@ -25,7 +25,6 @@ from urllib.parse import unquote as _url_unquote
 
 from docket.agent import loop as _loop
 from docket.agent import session as _session
-from docket.agent.llm import ChatBackend
 from docket.agent.ports import (
     DOCKET_APPROVAL_EXPIRES_AT,
     DOCKET_APPROVAL_MODE,
@@ -37,6 +36,7 @@ from docket.agent.ports import (
     DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
     PIPELINE_WORKTREE_ENV,
+    ChatBackend,
     DriverCapabilities,
     SessionSummary,
     TurnResult,
@@ -604,7 +604,7 @@ class DocketDriver:
         return out
 
     def usage(self, agent_id: str) -> UsageReport:
-        """Aggregate this agent's *measured*, non-estimated usage (``agent.llm.TokenUsage``) across
+        """Aggregate this agent's *measured*, non-estimated usage (``agent.ports.TokenUsage``) across
         its sessions. ``cost_usd`` stays ``0.0`` and ``by_day`` is always ``[]`` -- see
         specs/functional/cost-tracking.spec.md ("Known gap: --history is always empty")."""
         totals = UsageTotals()

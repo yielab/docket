@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent import context as _context
-from docket.agent.llm import ChatMessage
-from docket.agent.ports import FailureKind
+from docket.agent import ports as _ports
+from docket.agent.ports import ChatMessage, FailureKind
 from docket.agent.session import (
     SessionRecord,
     SessionSummaryRunner,
@@ -77,7 +77,7 @@ def _bounded_summary_batch(
     for unit in units:
         candidate = [*selected, list(unit)]
         candidate_prompt = _summarization_message(label, candidate)
-        candidate_estimated = _context.estimate_tokens(candidate_prompt)
+        candidate_estimated = _ports.estimate_tokens(candidate_prompt)
         if candidate_estimated > input_budget_tokens:
             break
         selected = candidate
@@ -209,7 +209,7 @@ def _run_compaction_rounds(
         )
         if not batch:
             first_prompt = _summarization_message(display_label, plan.to_summarize[:1])
-            required = _context.estimate_tokens(first_prompt)
+            required = _ports.estimate_tokens(first_prompt)
             return _RoundOutcome(
                 ok=False,
                 rounds=rounds,
