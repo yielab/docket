@@ -856,7 +856,7 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/tasks/application/queue.py`: `read_tasks`
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`, `TASK_GRANT_CAP`
 - `src/docket/hops/application/compose.py`: task-grant minting in `_compose_hop`
-- `src/docket/hops/application/record.py`: consult park conversion
+- `src/docket/tasks/application/record.py`: consult park conversion
 - `src/docket/hops/gates/pre_hop.py`: `_park_if_check_changed`
 - `src/docket/governance/approval.py`: `create_pregrant`, `consume_pregrant`, `approval_set_option`,
   `approval_sweep_expired`, the `deny_reason` correction

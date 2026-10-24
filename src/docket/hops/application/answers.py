@@ -19,7 +19,6 @@ from pydantic import ValidationError
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.application import executor as _executor
-from docket.hops.application import record as _record
 from docket.hops.application import steps as _steps
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
@@ -39,6 +38,7 @@ from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task

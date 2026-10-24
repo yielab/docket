@@ -5,13 +5,6 @@ import json as _json
 from docket.agent import ports as _rd
 from docket.hops.application import driver as _dr
 from docket.hops.application.compose import _compose_hop
-from docket.hops.application.record import (
-    _build_hop_result,
-    _persist_hop_and_trace,
-    _trace_locked,
-    _UnitContext,
-    _UnitOutcome,
-)
 from docket.hops.gates.post_hop import _apply_output_guardrails, _evaluate_hop_gates
 from docket.hops.gates.pre_hop import (
     _gate_budget,
@@ -27,6 +20,13 @@ from docket.kernel.ids import step_session_key
 from docket.models import selection as _models_policy
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.record import (
+    _build_hop_result,
+    _persist_hop_and_trace,
+    _trace_locked,
+    _UnitContext,
+    _UnitOutcome,
+)
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

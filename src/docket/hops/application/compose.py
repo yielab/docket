@@ -7,13 +7,6 @@ from typing import Any
 
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
-from docket.hops.application.record import (
-    _gate_did_not_pass,
-    _is_gate_failure_carryover,
-    _trace_locked,
-    _UnitContext,
-    hop_env,
-)
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
 from docket.hops.workspace import repo_map as _repo_map
 from docket.hops.workspace.worktree import _task_worktree_dir
@@ -24,6 +17,13 @@ from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.actions import _mint_task_grant_pregrants
+from docket.tasks.application.record import (
+    _gate_did_not_pass,
+    _is_gate_failure_carryover,
+    _trace_locked,
+    _UnitContext,
+    hop_env,
+)
 from docket.tasks.domain.task import HopResult
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes

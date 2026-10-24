@@ -9,7 +9,6 @@ from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
-from docket.hops.application.record import _trace_locked, _UnitContext, _UnitOutcome
 from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates import profile as _profile
 from docket.hops.workspace.worktree import _task_worktree_dir
@@ -21,6 +20,7 @@ from docket.models import selection as _models_policy
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.queue import pod_full_roster, read_tasks
+from docket.tasks.application.record import _trace_locked, _UnitContext, _UnitOutcome
 from docket.tasks.domain.task import TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

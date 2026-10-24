@@ -15,13 +15,13 @@ from tests.support.pods import build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, assistant
 from docket.hops.application import driver as _dr
-from docket.hops.application import record as _record
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import Home, use_home
 from docket.observability import trace as _trace
 from docket.tasks.application import evidence as _ev
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 

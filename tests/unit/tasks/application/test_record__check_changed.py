@@ -9,11 +9,11 @@ import pytest
 from tests.support.pods import unit as _unit
 
 from docket.hops.application import executor as _executor
-from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.pipeline.domain import plan as _orch
+from docket.tasks.application import record as _record
 
-SUBJECT = "docket.hops.application.record"
+SUBJECT = "docket.tasks.application.record"
 
 
 def test_a_group_keeps_the_failure_kind_of_the_child_that_failed(

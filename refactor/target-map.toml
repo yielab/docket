@@ -1,33 +1,5 @@
-[[module]]  # drives hops through hops' private record, gates and runner
-from = "docket.pipeline.application.executor"
-to = "docket.hops.application.executor"
+[[module]]
+from = "docket.hops.application.record"
+to = "docket.tasks.application.record"
 
-[[module]]  # same: builds and runs each pipeline step through hops' record, gates and runner
-from = "docket.pipeline.application.steps"
-to = "docket.hops.application.steps"
-
-[[module]]  # drives a parked task's hop again; needs executor privates
-from = "docket.tasks.application.answers"
-to = "docket.hops.application.answers"
-
-[[module]]  # sweeps stale claims by driving dispatch
-from = "docket.tasks.application.sweep"
-to = "docket.hops.application.sweep"
-
-[[module]]  # interrupts and resumes a running hop
-from = "docket.tasks.application.interruptions"
-to = "docket.hops.application.interruptions"
-
-[[module]]  # gathers gate facts through the executor; the decision is in hops/domain/gate_decisions.py
-from = "docket.governance.profile"
-to = "docket.hops.gates.profile"
-
-[[module]]  # composes readers from tasks, pipeline, tools, policy and models into one report
-from = "docket.teams.report"
-to = "docket.hops.application.report"
-
-[[module]]  # the default tool set is composition, not the engine
-from = "docket.agent.tools.builtin_tools"
-to = "docket.hops.application.builtin_tools"
-
-# --- tasks: a hop's result is persisted onto the task
+# --- teams: modules that read or write pod, fleet, role and settings data

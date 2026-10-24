@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from docket.governance import secrets as _secrets
-from docket.hops.application import record as _record
 from docket.kernel.ports import jail as _jail
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod_settings as _pod_settings

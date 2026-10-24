@@ -23,9 +23,9 @@ from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.hops.application import executor as _executor
-from docket.hops.application import record as _record
 from docket.kernel.ports import jail as _jail
 from docket.sandbox.launch import _VERIFY_MAX_OUTPUT
+from docket.tasks.application import record as _record
 from docket.teams import fleet as _fleet
 
 _hermetic = _support_home.hermetic_3

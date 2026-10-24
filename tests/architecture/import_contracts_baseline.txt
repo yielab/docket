@@ -15,12 +15,10 @@ application imports kernel, its own context and the contexts below it | docket.m
 application imports kernel, its own context and the contexts below it | docket.models.selection -> docket.teams.roles
 application imports kernel, its own context and the contexts below it | docket.models.selection -> docket.teams.utils
 application imports kernel, its own context and the contexts below it | docket.operator.inbox -> docket.tasks.application.queue
-application imports kernel, its own context and the contexts below it | docket.tasks.application.actions -> docket.hops.application.record
-application imports kernel, its own context and the contexts below it | docket.tasks.application.lifecycle -> docket.hops.application.record
 application imports kernel, its own context and the contexts below it | docket.tasks.application.queue -> docket.hops.application.isolation_posture
-application imports kernel, its own context and the contexts below it | docket.tasks.application.queue -> docket.hops.application.record
 application imports kernel, its own context and the contexts below it | docket.tasks.application.queue -> docket.hops.workspace.prepare
 application imports kernel, its own context and the contexts below it | docket.tasks.application.queue -> docket.hops.workspace.worktree
+application imports kernel, its own context and the contexts below it | docket.tasks.application.record -> docket.hops.workspace.worktree
 application imports kernel, its own context and the contexts below it | docket.teams.apply.plan -> docket.hops.application.steps
 application imports kernel, its own context and the contexts below it | docket.teams.apply.plan -> docket.tasks.application.queue
 application imports kernel, its own context and the contexts below it | docket.teams.apply.review -> docket.hops.workspace.prepare

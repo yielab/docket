@@ -16,7 +16,6 @@ import pytest
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.hops.application import record as _record
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
@@ -24,6 +23,7 @@ from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import evidence as _ev
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 

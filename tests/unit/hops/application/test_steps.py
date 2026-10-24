@@ -29,7 +29,6 @@ from tests.support.pods import write_meta as _write_meta
 
 from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
-from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.hops.application import steps as _steps
 from docket.hops.application import sweep as _sweep
@@ -41,6 +40,7 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

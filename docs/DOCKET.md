@@ -205,7 +205,7 @@ stores, all under `~/.docket/`:
   path: older messages are summarised, and an assistant tool call is never separated from its
   tool results.
 - **`HEARTBEAT.md`'s dispatch ledger** — every pod Lead's `HEARTBEAT.md` carries a delimited,
-  docket-owned region inside its `## Active Tasks` list that `hops/application/record.py` upserts
+  docket-owned region inside its `## Active Tasks` list that `tasks/application/record.py` upserts
   (through `teams/agent_memory.py`'s `sync_dispatch_tasks`)
   mechanically at claim, at every persisted hop, and at finalize — not prose an agent is trusted
   to keep current by convention. `docket setup` flags a task the queue marks `running` with no

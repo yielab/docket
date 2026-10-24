@@ -28,13 +28,13 @@ from tests.support.pods import build_pod
 
 from docket.agent import context as _context
 from docket.hops.application import executor as _executor
-from docket.hops.application import record as _record
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import handoff as _handoff
 from docket.kernel.home import Home, use_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _plan
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 
 _hermetic = _support_home.hermetic_2

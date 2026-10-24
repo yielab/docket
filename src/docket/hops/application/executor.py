@@ -7,14 +7,6 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from docket.hops.application import driver as _dr
-from docket.hops.application.record import (
-    Runner,
-    _is_gate_failure_carryover,
-    _replay_pipeline_position,
-    _trace_locked,
-    _UnitContext,
-    _UnitOutcome,
-)
 from docket.hops.application.runner import _execute_unit, _when_cwd
 from docket.hops.application.steps import (
     _run_command_step,
@@ -44,6 +36,14 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_modify_write
 from docket.tasks.application.queue import pod_full_roster
+from docket.tasks.application.record import (
+    Runner,
+    _is_gate_failure_carryover,
+    _replay_pipeline_position,
+    _trace_locked,
+    _UnitContext,
+    _UnitOutcome,
+)
 from docket.tasks.domain.task import HopResult, TaskResult, TaskRunRefusal
 from docket.teams import roles as _archetypes
 from docket.teams.settings import (

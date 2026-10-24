@@ -146,7 +146,7 @@ class TestRefuse:
 
     def test_the_question_survives_the_real_error_string_and_dispatch_parser(self) -> None:
         from docket.agent import loop as _loop
-        from docket.hops.application import record as _record
+        from docket.tasks.application import record as _record
 
         result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
         error = _loop.approval_parked_error(result)

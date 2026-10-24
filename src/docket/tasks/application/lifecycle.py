@@ -9,7 +9,6 @@ from typing import Any
 
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
-from docket.hops.application.record import _hop_record
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
@@ -20,6 +19,7 @@ from docket.platform import read_modify_write
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.queue import _task_record
+from docket.tasks.application.record import _hop_record
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import TaskNotFoundError, TaskResult, _normalize_task
 from docket.teams import agent_memory as _mem

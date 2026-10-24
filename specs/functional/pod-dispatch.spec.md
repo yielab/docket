@@ -2261,7 +2261,7 @@ The dispatch state machine, by module (public names first, then private ones for
   and the step loop's `_execute_unit`
 - `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
   `_gate_failed_section`
-- `src/docket/hops/application/record.py`: `hop_env`; `_persist_hop_and_trace`, `_persist_hop`,
+- `src/docket/tasks/application/record.py`: `hop_env`; `_persist_hop_and_trace`, `_persist_hop`,
   `_hop_record`, `_hop_from_record`, `_verdict_event_names`, resume (`_replay_pipeline_position`,
   `_group_complete`)
 - `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`; gates (`_gate_budget`,

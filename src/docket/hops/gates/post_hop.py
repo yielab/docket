@@ -11,12 +11,6 @@ from docket.agent.tools import screening as _tools
 from docket.governance import policy as _policy
 from docket.governance import security as _sec
 from docket.hops.application import isolation_posture as _isolation_posture
-from docket.hops.application.record import (
-    _trace_locked,
-    _UnitContext,
-    _UnitOutcome,
-    _verdict_event_names,
-)
 from docket.hops.domain import gate_decisions as _decide
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _task_worktree_dir
@@ -27,6 +21,12 @@ from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import corrections as _corrections
+from docket.tasks.application.record import (
+    _trace_locked,
+    _UnitContext,
+    _UnitOutcome,
+    _verdict_event_names,
+)
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

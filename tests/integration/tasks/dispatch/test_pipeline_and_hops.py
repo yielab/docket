@@ -14,13 +14,13 @@ from tests.support.pods import seed_pod_2 as _seed_pod
 from docket.agent import ports as _rd
 from docket.governance import secrets as _secrets
 from docket.hops.application import executor as _executor
-from docket.hops.application import record as _record
 from docket.hops.application import steps as _steps_c
 from docket.hops.application import sweep as _sweep
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import resources as _res

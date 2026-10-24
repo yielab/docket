@@ -25,7 +25,6 @@ from tests.support.pods import lead_ws as _lead_ws
 
 from docket.agent import ports as _rd
 from docket.hops.application import executor as _executor_c
-from docket.hops.application import record as _record
 from docket.hops.application import steps as _steps_c
 from docket.hops.application import sweep as _sweep
 from docket.hops.gates import pre_hop as _pre_hop_c
@@ -33,6 +32,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import agent_memory as _mem
 from docket.teams import conversations as _conv

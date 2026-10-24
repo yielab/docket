@@ -22,10 +22,10 @@ from tests.support.pods import unit_context as _unit_context
 
 from docket.agent import ports as _rd
 from docket.agent.ports import TokenUsage
-from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.pipeline.domain import gates as _gates
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 
 pod_home = _support_pods.pod_home_2

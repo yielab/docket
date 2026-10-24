@@ -14,7 +14,6 @@ from tests.unit.hops.application.test_steps import _unit_context
 
 from docket.hops.application import compose as _compose_c
 from docket.hops.application import executor as _executor_c
-from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.hops.application import steps as _steps
 from docket.hops.gates import post_hop as _post_hop_c
@@ -26,6 +25,7 @@ from docket.pipeline.domain.spec import load_pipeline
 from docket.tasks.application import actions as _actions_c
 from docket.tasks.application import lifecycle as _lifecycle_c
 from docket.tasks.application import queue as _queue_c
+from docket.tasks.application import record as _record
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 

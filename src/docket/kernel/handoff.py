@@ -9,7 +9,7 @@ budget gets tight. The shape (``summary``, ``files_changed``, ``diff_ref``, ``di
 consumer (``agent/context.py``'s token-budget compiler) an order to shed
 fields in without inventing one itself.
 
-``hops/application/record.py`` attaches one to every ``HopResult`` (see that module's
+``tasks/application/record.py`` attaches one to every ``HopResult`` (see that module's
 docstring) and composes the next hop's message from ``HandoffArtifact.render()``
 — never from a hop's raw output directly — then fits the rendered text to the
 role's token budget via ``agent/context.py``'s ``compile_artifact``. The
@@ -47,7 +47,7 @@ other field at its default).
   is always optional (ADR 0016 §4).
 
 This module is deliberately pure — no filesystem I/O, no subprocess, no import
-of ``hops/application/record.py`` — the same "leaf" shape as ``pipeline/domain/spec.py``. It
+of ``tasks/application/record.py`` — the same "leaf" shape as ``pipeline/domain/spec.py``. It
 does import ``kernel/brief.py`` (``TaskBrief``), itself an equally
 pure leaf module, for the one shared shape every intake consumer must agree
 on rather than a second, independently-drifting copy of the same fields.
@@ -129,7 +129,7 @@ class HandoffArtifact(BaseModel):
     truncated once ``render()``'s output no longer fits its token budget.
     ``brief`` is deliberately absent too, for the same reason: a Lead hop's
     typed intake is never shed by a token-budgeted consumer, only carried
-    forward whole or not at all (see ``hops/application/record.py``'s ``_build_hop_result``).
+    forward whole or not at all (see ``tasks/application/record.py``'s ``_build_hop_result``).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

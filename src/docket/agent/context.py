@@ -222,7 +222,7 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        ``verdict``), re-measuring after each drop and stopping the moment it
        fits. A field that is already empty (``files_changed``/``diff_ref`` are only
        populated for a successful Implementer hop, see `kernel/handoff.py`/
-       `hops/application/record.py`) is skipped rather than reported as "dropped": there
+       `tasks/application/record.py`) is skipped rather than reported as "dropped": there
        was nothing there to shed, so claiming otherwise in the trace would be
        dishonest. ``dropped_fields`` therefore only ever names a field that
        actually changed the rendered text.

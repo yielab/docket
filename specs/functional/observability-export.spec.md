@@ -975,7 +975,7 @@ ok Exporter privacy updated: langfuse
   `atexit` hook `_close_telemetry` (requirement 109)
 - `src/docket/platform/store.py`: the docket-owned JSON store (`read_json`, `write_json`,
   `read_modify_write`)
-- `src/docket/hops/application/compose.py`, `src/docket/hops/application/record.py`: the hop
+- `src/docket/hops/application/compose.py`, `src/docket/tasks/application/record.py`: the hop
   marker and hop reply (requirement 108)
 - `src/docket/hops/application/executor.py`: the `session_end` write (requirement 106)
 - `src/docket/kernel/home.py`: the `Home` members `exporters_file`, `exporters_health_file`,

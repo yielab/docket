@@ -12,7 +12,6 @@ from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
 from docket.hops.application import isolation_posture as _isolation_posture
-from docket.hops.application.record import _hop_from_record
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
@@ -27,6 +26,7 @@ from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
 from docket.platform import read_json, read_modify_write
 from docket.tasks.application import transitions as _transitions
+from docket.tasks.application.record import _hop_from_record
 from docket.tasks.application.runs import get_run, list_runs
 from docket.tasks.domain import options as _task_options
 from docket.tasks.domain import state as _state

@@ -13,9 +13,9 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
-from docket.hops.application import record as _record
+from docket.tasks.application import record as _record
 
-SUBJECT = "docket.hops.application.record"
+SUBJECT = "docket.tasks.application.record"
 
 
 class TestParkedApprovalToken:
