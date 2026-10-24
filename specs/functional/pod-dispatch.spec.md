@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.3.0
+**Version**: 9.4.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1964,6 +1964,11 @@ hop records. It scores nothing and carries no dollar figure.
    the turns, so a pod blocked in a hop never delays another pod's task. At most
    `DISPATCH_SWEEP_WORKERS` (env-overridable, default 4; 1 is serial) sweeps run at once. The same
    sweep also expires approvals and questions, prunes the registries, and checks due schedules.
+   A pod with nothing a resuming dispatch could claim (no claimable task and no `running` one)
+   **MUST** be skipped before its run record is created (`tasks.application.queue.
+   has_claimable_work`): an idle tick writes nothing. Measured 2026-10-24: one record per pod per
+   tick had grown a live `docket-runs.json` to 85,540 empty records and 47 MB in a week, and its
+   rewrites missed the 10 s store lock.
 2. A pod whose previous sweep has not ended **MUST** be skipped by the next tick; a pod is never
    swept twice concurrently by the sweep loop.
 3. The sweep loop **MUST**, once its stop event is set, wait for the in-flight sweeps to end before

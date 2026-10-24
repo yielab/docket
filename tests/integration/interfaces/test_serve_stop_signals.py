@@ -25,6 +25,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.application import runs as _runs
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
@@ -40,6 +41,7 @@ _DRIVER = textwrap.dedent(
 
     release = threading.Event()
     q.dispatchable_pods = lambda: ["pod-x"]
+    q.has_claimable_work = lambda project: True
 
     def _blocked(project, **kw):
         print("SWEEP-BLOCKED", flush=True)
@@ -190,3 +192,17 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
     assert task["status"] == "done", task.get("reason")
     assert [h["stepId"] for h in task["hops"]] == ["kickoff", "assemble"]
     assert len(server.requests) == 1
+
+
+def test_an_idle_sweep_records_no_run(sweep_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A sweep with nothing to claim writes no run record; one with a pending task writes one."""
+    monkeypatch.setattr(_server, "sweep_stop", threading.Event())
+    _write_tasks([{"id": "task-1", "description": "x", "status": "done", "pipeline": "solo"}])
+
+    for _ in range(10):
+        _server._sweep_one_pod("demo")
+
+    assert _runs.list_runs() == []
+    _write_tasks([{"id": "task-2", "description": "x", "status": "pending", "pipeline": "nope"}])
+    _server._sweep_one_pod("demo")
+    assert [r["source"] for r in _runs.list_runs()] == ["sweep"]

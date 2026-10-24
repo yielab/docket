@@ -254,6 +254,15 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     return bool(resume and status == "failed" and t.get("failureKind") in RESUMABLE_FAILURE_KINDS)
 
 
+def has_claimable_work(project: str) -> bool:
+    """Whether a resuming sweep of *project* could claim anything: a task it may claim, or a
+    ``running`` one whose claim may be stale. A sweep with neither records no run."""
+    return any(
+        t.get("status") == "running" or _eligible_for_claim(t, resume=True)
+        for t in read_tasks(project)
+    )
+
+
 def apply_transition(project: str, task_id: str, to: _state.Status, **facts: Any) -> dict[str, Any]:
     """Move one task of *project*'s queue to *to* under the queue lock (``decide``'s *facts*
     are the keywords) and return the queue document. A task that is not queued is left alone."""

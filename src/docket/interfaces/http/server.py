@@ -77,11 +77,14 @@ sweep_stop = threading.Event()
 
 def _sweep_one_pod(project: str) -> None:
     """One pod's sweep, on a pool worker: its own run record (source ``"sweep"``), then dispatch.
+    A pod with nothing to claim is skipped before the record, so idle ticks write nothing.
 
     An unset pod `approvalMode` resolves to "park" here (ADR 0016 SS2): a hop that would
     otherwise block on nobody for TOOL_APPROVAL_TIMEOUT parks instead of holding its worker."""
 
     try:
+        if not _queue.has_claimable_work(project):
+            return
         record = _runs.create_run("sweep", project)
         with _SWEEP_LOCK:
             _sweeps.sweep_run_ids[project] = record["id"]

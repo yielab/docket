@@ -103,7 +103,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 2.1.3 | Implemented and live |
 | Pipeline Format | 4.0.0 | Implemented |
 | Pod Blueprints | 2.1.0 | Implemented |
-| Pod Dispatch | 9.3.0 | Implemented |
+| Pod Dispatch | 9.4.0 | Implemented |
 | Role Archetypes | 4.0.0 | Implemented |
 | Security Gates | 1.3.0 | Implemented (gate always on; isolation opt-in) |
 | Session History | 1.9.2 | Implemented and live |
