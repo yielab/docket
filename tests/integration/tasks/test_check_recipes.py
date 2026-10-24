@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from tests.integration.test_task_worktrees import _bind_pipeline, _git, _init_repo, _seed_pod
+from tests.integration.tasks.test_task_worktrees import _bind_pipeline, _git, _init_repo, _seed_pod
 from tests.support import home as _support_home
 
 import docket.kernel.templates as _templates

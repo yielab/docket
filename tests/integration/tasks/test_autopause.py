@@ -36,7 +36,7 @@ from docket.teams import settings as _settings
 from docket.teams import utils as _utils
 from docket.teams.models import AgentMeta
 
-SUBJECT = "docket.teams"
+SUBJECT = "docket.tasks.application.sweep"
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
 

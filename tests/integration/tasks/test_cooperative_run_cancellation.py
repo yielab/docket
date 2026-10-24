@@ -116,7 +116,7 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
         env["DOCKET_HOME"] = str(home)
         cancelled = subprocess.run(
             [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
-            cwd=Path(__file__).parents[2],
+            cwd=Path(__file__).parents[3],
             env=env,
             text=True,
             capture_output=True,
@@ -260,7 +260,7 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
         requested_at = time.monotonic()
         cancelled = subprocess.run(
             [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
-            cwd=Path(__file__).parents[2],
+            cwd=Path(__file__).parents[3],
             env=env,
             text=True,
             capture_output=True,

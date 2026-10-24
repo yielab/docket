@@ -37,7 +37,7 @@ needs_landlock = pytest.mark.skipif(
 @pytest.fixture
 def outside() -> Iterator[Path]:
     """A directory the jail never grants: under the checkout, not the shared temp dir."""
-    path = Path(__file__).resolve().parents[2] / f".envelope-outside-{uuid.uuid4().hex[:8]}"
+    path = Path(__file__).resolve().parents[3] / f".envelope-outside-{uuid.uuid4().hex[:8]}"
     path.mkdir()
     yield path
     shutil.rmtree(path, ignore_errors=True)

@@ -38,7 +38,7 @@ from docket.teams import agent_memory as _mem
 from docket.teams import conversations as _conv
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.tasks.application.sweep"
 
 # ── hermetic environment (mirrors test_dispatch.py's _seed_pod) ─────────────────
 

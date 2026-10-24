@@ -32,7 +32,7 @@ from docket.tasks.application import sweep as _sweep
 
 _hermetic = _support_home.hermetic_3
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.tasks.application.sweep"
 
 
 class _RoleRunner:

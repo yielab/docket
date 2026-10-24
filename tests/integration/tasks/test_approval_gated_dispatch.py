@@ -71,7 +71,7 @@ from docket.teams import settings as _settings
 
 _hermetic = _support_home.hermetic
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.tasks.application.sweep"
 
 # ── hermetic environment (mirrors test_reviewer_gate.py) ──────────────────────
 
