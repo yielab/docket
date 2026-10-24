@@ -539,12 +539,18 @@ Phase 46 closed against recorded baselines (§"After Phase 46"); these clauses a
 acceptance.
 
 - `tests/architecture/` passes with: no upward import between contexts (amended 2026-10-23; it was
-  "import-linter ignore list empty", and the list now holds only upward imports and the two named
-  `agent` exceptions); function-local `docket`
-  imports 0; largest module ≤ 700 lines; `status` writers 1; no patch on another module's private
-  alias; every unit test file at its module's mirror path and every integration file under
-  `integration/<context>/`.
-- `docket_runtime` installs from `agent/` + `kernel/` with no build hook.
+  "import-linter ignore list empty"; the baseline now holds one line, the Telegram adapter's import of
+  `interfaces.telegram.client`, pinned by the Telegram spec); function-local `docket` imports 0 except
+  each named real cycle (amended 2026-10-24: one remains, `setup_shell._tree`, which builds the shell
+  completions from the CLI app that registers it); largest module ≤ 700 lines; `status` writers 1;
+  no patch on another module's private alias; every unit test file at its module's mirror path and
+  every integration file under `integration/<context>/`.
+- `docket_runtime` installs with a build hook that computes its closure from the facade's import
+  graph, never a hand-kept list (amended 2026-10-24; it was "from `agent/` + `kernel/` with no build
+  hook"). The runtime boundary test requires the runtime to own no `docket/` path and import no
+  `docket` module, and the governed runtime ships the gate implementations, which live outside
+  `agent/`; so the closure is copied under `docket_runtime._internal` with its imports rewritten. The
+  boundary test is the oracle and `tests/guards/test_runtime_closure.py` pins the file list.
 - The HTTP API 6 tests, the golden suite and the `docket_runtime` boundary tests pass unchanged.
 - The before/after live traces are identical modulo ids and timestamps.
 - `src/docket` has no `cli/`, `core/`, `edges/`, `serve.py`, `config.py`, `jail.py`, `plugins.py`.
