@@ -92,14 +92,18 @@ Phase 46 on):
 |---|---|
 | `kernel` | nothing in `docket` |
 | `<context>/domain` | `kernel`, its own `domain` |
-| `<context>/application` | `kernel`, its own `domain` and `ports`, other contexts' `__init__` |
+| `<context>/application` | `kernel`, its own `domain` and `ports`, any module of a context below it in the layer order (amended 2026-10-23) |
 | `<context>/adapters`, `platform`, `sandbox` | `kernel`, `platform`'s `__init__`, the ports and domain types they implement |
 | `agent` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), its own modules |
-| `interfaces` | `kernel`, `bootstrap`, contexts' `__init__` |
+| `interfaces` | `kernel`, `bootstrap`, any context (amended 2026-10-23) |
 | `bootstrap` | everything |
 
-So a domain package never imports an adapter, a context reaches another only through that
-context's `__init__`, and nothing imports `interfaces/`. Function-local imports of `docket.*` are
+The layer order, bottom to top (amended 2026-10-23): `platform` < `governance` < `agent` < `models`
+< `observability` < `pipeline` < `teams` < `sandbox` < `operator` < `tasks` < `hops`.
+
+So a domain package never imports an adapter, a context imports only contexts below it in that
+order (an import of one above it is the violation the baseline records, and the baseline only
+shrinks), and nothing imports `interfaces/`. Function-local imports of `docket.*` are
 forbidden because they hide cycles; the existing ones are a baseline that only shrinks. A module
 over **700 lines is a defect**, and the ceiling ratchets down to it from today's largest module.
 

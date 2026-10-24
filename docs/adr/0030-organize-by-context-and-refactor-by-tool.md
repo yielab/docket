@@ -5,6 +5,11 @@
 > a context's `domain/` is a functional core for decisions; the test layout follows the 2026-10-23
 > test audit; one testing budget replaces the gate after every commit. Phase 47 on `TODO.md` is the
 > card list for what Phase 46 left.
+>
+> **Amended 2026-10-23, during Phase 47 (P47-9)** (§"The contexts are layered"): "a context talks to
+> another only through its `__init__`" is replaced by a layers contract. The contexts have one fixed
+> bottom-to-top order; a context imports any module of a context below it, and an import of a
+> context above it is the violation the baseline records.
 
 **Question:** docket's source is three technical layers (`cli/`, `core/`, `edges/`) with 63 domain
 modules in `core/`. The layer rule exists in prose, not in a check: 31 of 63 `core` modules import
@@ -32,8 +37,9 @@ cites move.
    `interfaces/` (cli, http, mcp, telegram) and one `bootstrap.py`. Inside a context, at most two
    levels: `domain/`, `application/`, `adapters/` where the context needs them, flat otherwise.
 2. **The dependency rule is checked, not declared.** `tests/architecture/` runs import-linter
-   contracts: a domain package never imports an adapter, a context talks to another only through
-   its `__init__`, no module imports `interfaces/`, `agent/` depends on `kernel/` and `platform`'s `__init__`. Function-
+   contracts: a domain package never imports an adapter, a context imports only contexts below it
+   in the fixed layer order (amended 2026-10-23), no module imports `interfaces/`, `agent/` depends
+   on `kernel/` and `platform`'s `__init__`. Function-
    local imports of `docket.*` are forbidden; the current 206 are a baseline that only shrinks.
    *Amended 2026-10-23:* a context's `__init__` declares `__all__` with exactly the names other
    contexts import, and an export nothing uses fails the contracts test.
@@ -128,11 +134,17 @@ Allowed dependencies (import-linter contracts, enforced from A3 on):
 |---|---|
 | `kernel` | nothing in `docket` |
 | `<context>/domain` | `kernel`, its own `domain` |
-| `<context>/application` | `kernel`, its own `domain` and `ports`, other contexts' `__init__` |
+| `<context>/application` | `kernel`, its own `domain` and `ports`, any module of a context below it in the layer order (amended 2026-10-23) |
 | `<context>/adapters`, `platform`, `sandbox` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), the ports and domain types they implement |
 | `agent` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), its own modules |
-| `interfaces` | `kernel`, `bootstrap`, contexts' `__init__` |
+| `interfaces` | `kernel`, `bootstrap`, any context (amended 2026-10-23) |
 | `bootstrap` | everything |
+
+The layer order, bottom to top (amended 2026-10-23; the constant `LAYERS` in
+`tests/architecture/test_import_contracts.py`): `platform` < `governance` < `agent` < `models` <
+`observability` < `pipeline` < `teams` < `sandbox` < `operator` < `tasks` < `hops`. `kernel` is below
+all of them and `interfaces` and `bootstrap` above. "Below" is the only thing the rule asks of a
+context-to-context import; see §"The contexts are layered".
 
 ## The step-by-step guide
 
@@ -336,6 +348,10 @@ showed four things this ADR had left open.
 
 ### A context's public surface is an explicit `__all__`
 
+*Amended 2026-10-23:* a facade is the preferred surface of a context, not a condition of reaching it
+(§"The contexts are layered"). `platform` and `operator` have one and keep the dead-export check;
+a context that declares no `__all__` is reached through its modules.
+
 624 of the 748 exceptions import another context's internal module, because every context
 `__init__.py` was empty: the rule "talk through `__init__`" had nothing to talk through. Each
 context's `__init__` re-exports exactly the names other contexts import, under `__all__`, and the
@@ -422,12 +438,80 @@ may (no task, pipeline, hop, interface or loop module).
 is the default tool set that `teams/report.py`, the role narrowing and a dozen suites count; moving
 their registration to the driver changes that set and is a decision for its own card. The baseline
 went from 625 to 600 lines over the card (the `agent` row 51 to 2); the edges of the moved modules
-sit under the `application` row with their new names until P47-8 gives their contexts a facade.
+sit under the `application` row with their new names (until 2026-10-23 the rule asked for a
+facade; §"The contexts are layered" replaced it).
 
 *Rejected:* a facade for `agent` (it would import the loop, the session and the built-in tools at
 `import docket.agent`, and the runtime wheel would ship them); one `Governance` object with a
 method per `ToolContext` field (the Protocols in `kernel/gate.py` list the thirteen fields the gate
 reads, and `ToolContext` satisfies them without knowing).
+
+### The contexts are layered (amended 2026-10-23, P47-9)
+
+The rule "a context talks to another only through its `__init__`" measured the wrong thing. Only
+`platform` and `operator` got a facade (P47-8); the other eight could not, for two reasons measured
+on `60d3d90d`:
+
+- **The contexts are not acyclic, so a facade turns each upward import into an import cycle.** Over
+  the module-level `import` and `from ... import` statements between the 11 contexts (53 pairs,
+  311 imports; 318 counting function-local ones) the best of all 2^11 orders still has 56
+  upward imports (62 with function-local). A package `__init__` that binds names runs on any
+  submodule import, so an upward import through a facade is a cycle at import time.
+- **A facade drags itself into the runtime wheel.** Any context the runtime imports brings the whole
+  facade with it, and `tests/guards/test_runtime_closure.py` forbids task, pipeline, hop, interface
+  and loop modules in the closure.
+
+Of the 549 lines of the baseline before this amendment, 273 were `interfaces` -> a context (always
+downward), 213 were context -> context downward in the order below, and only 61 were upward: the
+real design debt. The rule counted all 549 as the same defect.
+
+**The new rule is a layers contract** (the standard import-linter idea). The contexts have one
+fixed order, bottom to top:
+
+`platform` < `governance` < `agent` < `models` < `observability` < `pipeline` < `teams` < `sandbox`
+< `operator` < `tasks` < `hops`
+
+A context imports any module of a context below it and its own package; `interfaces` imports any
+context; importing a context above is the violation, recorded in the baseline and shrink-only. The
+rest of the table is unchanged: `kernel` imports nothing outside `kernel`; `<context>/domain`
+imports `kernel` and its own `domain`; adapters, `platform` and `sandbox` keep their row; `agent`
+imports `kernel`, `platform`'s `__init__` and its own modules; nothing imports `interfaces`; no
+function-local `docket.*` import. A facade stays the preferred surface where one exists, and
+`platform` and `operator` keep theirs with the dead-export check.
+
+**Where the order came from.** An exact search over all subsets (a dynamic program over the 2^11
+orders, ties broken alphabetically, run as a throwaway script over `src/` at `60d3d90d`) gives the
+same minimum, 56 module-level upward imports, as the order above, which a local search had found;
+it does not give fewer, so the order above stands. Counted as the contract counts, with
+function-local imports, the baseline holds **62 upward imports** (60 under the `application` row,
+2 under the `agent` row) in 65 lines. The ten largest upward pairs:
+
+| Importer -> imported | Imports |
+|---|---|
+| `pipeline` -> `hops` | 10 |
+| `tasks` -> `hops` | 9 |
+| `pipeline` -> `teams` | 6 |
+| `governance` -> `teams` | 6 |
+| `teams` -> `hops` | 5 |
+| `models` -> `teams` | 5 |
+| `teams` -> `tasks` | 4 |
+| `governance` -> `pipeline` | 4 |
+| `pipeline` -> `tasks` | 3 |
+| `governance` -> `tasks` | 3 |
+
+The remaining three lines are exceptions of rows the amendment kept: `models/provider_lifecycle.py`
+imports its own adapter (`application` row), `models/adapters/openai_http.py` imports
+`governance.secrets` and `operator/adapters/telegram.py` imports `interfaces.telegram.client`
+(`adapters` row).
+
+The baseline went from 549 lines to 65. Every line left is an upward import or one of those
+exceptions, and one line is new only because the old rule let it through a facade:
+`teams/config_docs.py` -> `operator`, an upward import now that the order puts `operator` above
+`teams`.
+
+*Rejected:* a facade for every context (the cycles and the runtime wheel above); the order by
+fewest-imports-first alone (it does not look at direction); keeping the old rule and leaving the
+baseline at 549 lines (the number then says nothing about which of them are debt).
 
 ### Tests: what the 2026-10-23 audit changed
 
@@ -454,7 +538,9 @@ stops the work and reports; nothing is iterated until green. `refactor_gate.sh`,
 Phase 46 closed against recorded baselines (§"After Phase 46"); these clauses are Phase 47's
 acceptance.
 
-- `tests/architecture/` passes with: import-linter ignore list empty; function-local `docket`
+- `tests/architecture/` passes with: no upward import between contexts (amended 2026-10-23; it was
+  "import-linter ignore list empty", and the list now holds only upward imports and the two named
+  `agent` exceptions); function-local `docket`
   imports 0; largest module ≤ 700 lines; `status` writers 1; no patch on another module's private
   alias; every unit test file at its module's mirror path and every integration file under
   `integration/<context>/`.
