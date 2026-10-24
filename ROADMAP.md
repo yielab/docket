@@ -25,11 +25,12 @@ baseline 748 -> 65 lines). The close-out (`TODO.md`) has merged P47-10..P47-13 a
 every module sits in the context whose data it reads (contract baseline 1 line, local imports 1, no
 cross-context private name), one authored YAML form per kind, no setting that silently does nothing,
 policies on the parsed command measured on a 310-row corpus, and the test refactor; the close's gates
-ran once. **Open:** P47-15, the four defects the close's first real run found on the live home (a
-sweep with nothing to claim writes a run record, 85,540 empty records and 47 MB in a week with lock
-timeouts; tests wrote eight pods into the real home on 2026-10-23; state leaking between test files
-in a no-sandbox run; `docket stop` advising `kill -9` too early). The live install and home were then
-reset (kept in `~/docket-reset-backup-20261024/`), so P47-14's real run starts from zero. Decisions
+ran once. P47-15 fixed the four defects the close's first real run found on the live home (a sweep
+with nothing to claim wrote a run record, 85,540 empty records and 47 MB in a week with lock
+timeouts; tests wrote eight pods into the real home through a thread that missed the test's home,
+the same cached default that leaked state between test files; `docket stop` advised `kill -9` too
+early). The live install and home were reset (kept in `~/docket-reset-backup-20261024/`); what is
+left is P47-14's real run from a fresh install, done by the maintainer, and the close commit. Decisions
 waiting for the maintainer are in §7.1.
 Phase 45 (a prepared task worktree, model
 limits from the provider, protected paths, approvals per team; D-65,

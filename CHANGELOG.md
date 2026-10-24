@@ -44,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An idle sweep tick writes no run record.** `docket start --dispatch` created one run per pod per
+  30 s tick whether or not it had anything to claim: 85,540 empty records and 47 MB in a week on a
+  real home, with rewrites that missed the 10 s store lock. A pod with nothing to claim is skipped.
+- **`docket stop` no longer advises `kill -9` for a service that is still exiting**: it now outwaits
+  the service's own wait for abandoned sweeps.
+- **Tests can no longer write into the developer's `~/.docket`**: a thread started without the
+  test's context fell back to the real home (eight test pods were found there).
 - **A verdict a step's `on:` map names is routed, a passing one included**, as pipeline-format
   says; the mechanical and external gates already did, the verdict gate let a passing value
   advance first. The `intake` recipe no longer needs a placeholder marker for it.

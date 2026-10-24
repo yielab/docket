@@ -350,7 +350,7 @@ and every row left allowed carries a `limit:` reason that the security spec name
 
 ### P47-15 — the live home stays bounded, and no test touches it
 
-**Status:** TODO, before P47-14's real run · **Size:** M · **Model:** Sonnet, one run · **Kind:** B
+**Status:** DONE (2026-10-24, by the integrator: `a2a43acf` idle sweep writes no run, `ff19cc2c` stop outwaits the service, `789968a2` each test's process default home is its own, which also fixed the diff-probe leak; default and no-sandbox parallel runs green, `~/.docket` absent after both) · **Size:** M · **Kind:** B
 (named behaviour changes) + T
 
 - **Trigger (found by the close's first real run on the live `~/.docket`, 2026-10-24):**
