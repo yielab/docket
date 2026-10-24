@@ -36,7 +36,7 @@ from docket.teams import settings as _settings
 
 _hermetic = _support_home.hermetic_3
 
-SUBJECT = "docket.pipeline"
+SUBJECT = "docket.pipeline.application.executor"
 
 # ── hermetic helpers (mirror test_verify_gate.py) ─────────────────────────────
 

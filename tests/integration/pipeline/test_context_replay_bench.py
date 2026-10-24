@@ -14,7 +14,7 @@ import pytest
 
 SUBJECT = "docket.pipeline.domain.plan"
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[3]
 SCRIPT = REPO / "scripts" / "maint" / "context_replay.py"
 FIXTURES = REPO / "tests" / "fixtures" / "context-replay" / "v1"
 REAL = Path(os.environ.get("CONTEXT_REPLAY_REAL_DIR", REPO / "internal-docs" / "context-replay"))
