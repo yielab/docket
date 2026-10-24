@@ -24,8 +24,8 @@ from docket.kernel.clock import use_clock
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
-from docket.models.adapters import openai_http as llm
-from docket.models.adapters.openai_http import ProbeResult
+from docket.models.application import endpoint
+from docket.models.application.probe import ProbeResult
 from docket.models.catalog import ModelRow, ProviderSpec
 
 SUBJECT = "docket.models.catalog"
@@ -349,7 +349,7 @@ class TestEndpointLimitsPrecedence:
             lambda name, model_id: ModelLimits(32768, 9000) if model_id == "m" else None,
         )
         spec = self._spec(ModelRow(id="m", contextWindow=1000), ModelRow(id="n"))
-        both = llm.endpoint_from_spec(spec, "gw", "m", "")
+        both = endpoint.endpoint_from_spec(spec, "gw", "m", "")
         assert (both.context_window_tokens, both.max_output_tokens) == (1000, 9000)
-        unlisted = llm.endpoint_from_spec(spec, "gw", "n", "")
+        unlisted = endpoint.endpoint_from_spec(spec, "gw", "n", "")
         assert (unlisted.context_window_tokens, unlisted.max_output_tokens) == (None, None)

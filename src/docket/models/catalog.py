@@ -4,7 +4,7 @@ A provider is a `ProviderSpec` -- name, dialect, base URL, named credentials (ne
 selectable models with optional pricing, and named presets -- loaded the same way a role or
 policy is (model-profiles.spec.md "Provider catalog"). Two scopes, nearest-wins by name: built-in
 (`kernel.templates.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
-(`Home.providers_file`, the operator's own). `models/adapters/openai_http.py`'s `resolve_endpoint` reads
+(`Home.providers_file`, the operator's own). `models/application/endpoint.py`'s `resolve_endpoint` reads
 the merged catalog; this module has no knowledge of terminals. `teams/model_selection.py`'s
 `presets`/`preset_table`/`is_local_provider`/`is_marketplace`/`price_for`/`rank_anchors` are the
 only readers of the catalog's presets and pricing; every other per-provider fact (base URLs,

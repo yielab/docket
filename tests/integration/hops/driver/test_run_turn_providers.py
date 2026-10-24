@@ -25,6 +25,7 @@ from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.kernel.home import Home, current_home, use_home
 from docket.models.adapters import openai_http as _llm_adapter
+from docket.models.application import probe as _probe
 from docket.platform import store as _store
 from docket.teams import fleet as _fleet
 
@@ -82,7 +83,7 @@ class TestRunTurn:
             monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
             # Registration probes /models through models/adapters/openai_http.py; answer "reachable, 200".
             monkeypatch.setattr(
-                _llm_adapter, "probe_models", lambda *a, **k: _llm_adapter.ProbeResult(status=200)
+                _llm_adapter, "probe_models", lambda *a, **k: _probe.ProbeResult(status=200)
             )
 
             runner = CliRunner()

@@ -564,8 +564,10 @@ Where the names above live today (the only place paths appear):
 - `src/docket/hops/application/report.py`: the `docket pod show <member> --json` report
 - `src/docket/hops/application/runner.py`, `src/docket/hops/gates/pre_hop.py`,
   `src/docket/teams/config_docs.py`: step-model resolution at a hop and in `docket pod validate`
-- `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`, `endpoint_from_spec`, `client_for`,
-  `build_payload`, `request_part_bytes`, `probe_models`, `ProbeResult`, the chat client's header
+- `src/docket/models/application/endpoint.py`: `resolve_endpoint`, `endpoint_from_spec`;
+  `src/docket/models/application/probe.py`: `ProbeResult`
+- `src/docket/models/adapters/openai_http.py`: `client_for`,
+  `build_payload`, `request_part_bytes`, `probe_models`, the chat client's header
   and response handling
 - `src/docket/interfaces/cli/commands/setup_model.py`: `docket setup model` and `docket setup provider`
 - `src/docket/interfaces/cli/commands/setup.py`, `src/docket/interfaces/cli/commands/setup_check.py`: the first-run report and the

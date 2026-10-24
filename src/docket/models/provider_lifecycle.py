@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from docket.agent.ports import ModelLimits
+from docket.agent.ports import Endpoint, ModelLimits
+from docket.governance import audit as _audit
+from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
+from docket.models.application import endpoint as _endpoint
+from docket.models.application.probe import ProbeResult
 from docket.models.catalog import (
     ProviderError,
     ProviderSpec,
@@ -18,14 +22,8 @@ from docket.models.catalog import (
     resolve_credential,
     save_provider,
 )
+from docket.models.ports import endpoint_prober as _prober
 from docket.platform import read_modify_write
-
-if TYPE_CHECKING:
-    from docket.models.adapters.openai_http import ProbeResult
-from docket.agent.ports import Endpoint
-from docket.governance import audit as _audit
-from docket.governance import secrets as _secrets
-from docket.models.adapters import openai_http as _llm
 
 
 def record_observed_models(spec: ProviderSpec, probe: ProbeResult) -> None:
@@ -159,7 +157,7 @@ def probe_spec(spec: ProviderSpec, *, credential: str | None = None) -> ProbeRes
         auth_header=spec.auth.header,
         headers=tuple(spec.headers.items()),
     )
-    return _llm.probe_models(endpoint)
+    return _prober.probe_models(endpoint)
 
 
 def register_provider(spec: ProviderSpec, *, probe: ProbeResult | None = None) -> Registration:
@@ -259,7 +257,7 @@ def model_readiness(model: str) -> ModelReadiness:
         bool(_process.env_value(name)) or bool(_secrets.secret_value(name))
         for name in credential_names
     )
-    endpoint = _llm.resolve_endpoint(model)
+    endpoint = _endpoint.resolve_endpoint(model)
     if endpoint is None:
         detail = (
             f"{credential_name} is present but is not an endpoint" if credential_present else ""

@@ -1,16 +1,11 @@
-# P47-11 step 5, second round: definitions moved so more function-local imports can be hoisted.
+# P47-11 step 6: provider endpoint logic leaves the adapter.
 
-[[definition]]  # the port's pure types, so the client that implements it need not import the loader
-from = "docket.agent.tools.mcp_tools"
-to = "docket.agent.tools.mcp_types"
-names = ["McpRemoteTool", "McpListResult", "StdioLaunch"]
+[[definition]]  # a probe result is a plain value the application layer classifies
+from = "docket.models.adapters.openai_http"
+to = "docket.models.application.probe"
+names = ["ProbeResult"]
 
-[[definition]]  # narrowing a registry for a role is what the composer port exposes; pod_settings imports roles
-from = "docket.teams.roles"
-to = "docket.teams.role_composer"
-names = ["_pod_denied_tools", "registry_for_role"]
-
-[[definition]]  # the console rendering of an apply plan and its review; agents and pod_config both print it
-from = "docket.interfaces.cli.commands.pod_config"
-to = "docket.interfaces.cli.render.apply"
-names = ["render_apply_header", "_RUN_LABELS", "run_item_label", "render_run_items", "render_review", "_render_items", "render_apply_plan", "render_exporter_states"]
+[[definition]]  # resolving a model string reads env, the secret store and the catalog: models logic, not wire format
+from = "docket.models.adapters.openai_http"
+to = "docket.models.application.endpoint"
+names = ["resolve_endpoint", "endpoint_from_spec"]

@@ -889,7 +889,8 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 - `src/docket/teams/pod.py`: `PodSettings` (`projectInstructions`, `mcpServers`)
 - `src/docket/hops/application/report.py`: the `docket pod show` report of project instructions
 - `src/docket/agent/ports.py`: `ChatBackend`, `ChatResponse`, `TokenUsage`, `FailureKind`, `Endpoint`
-- `src/docket/models/adapters/openai_http.py`: `client_for`, `resolve_endpoint`, `endpoint_from_spec`
+- `src/docket/models/adapters/openai_http.py`: `client_for`
+- `src/docket/models/application/endpoint.py`: `resolve_endpoint`, `endpoint_from_spec`
 - `src/docket/models/catalog.py`: `resolve_limits`
 - `src/docket/tasks/application/runs.py`: `RunCancellationSignal`, `current_cancellation_signal`
 - `src/docket/tasks/domain/task.py`: `DispatchError`

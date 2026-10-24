@@ -25,7 +25,7 @@ from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, use_home
 from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
-from docket.models.adapters.openai_http import ProbeResult
+from docket.models.application.probe import ProbeResult
 
 SUBJECT = "docket.models.provider_lifecycle"
 

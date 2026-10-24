@@ -31,6 +31,8 @@ from docket.kernel.ports import (
 )
 from docket.kernel.ports import jail as _jail
 from docket.models import catalog as _catalog
+from docket.models.adapters import openai_http as _openai_http
+from docket.models.ports import bind_endpoint_prober
 from docket.observability.adapters import otlp_http as _otlp_http
 from docket.observability.adapters.local_tracer import LocalTracer
 from docket.operator import adapters as _channel_adapters
@@ -65,6 +67,7 @@ def bind_adapters() -> None:
     bind_tracer(LocalTracer())
     bind_approval_follow_up(_actions)
     bind_task_reader(_queue)
+    bind_endpoint_prober(_openai_http)
     bind_channel_documents(_channel)
     bind_git(_git_adapter)
     bind_process(_process_adapter)

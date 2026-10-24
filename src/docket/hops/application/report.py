@@ -19,7 +19,7 @@ from docket.hops.gates import profile as _profile
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
-from docket.models.adapters import openai_http as _llm
+from docket.models.application import endpoint as _endpoint
 from docket.observability import exporter as _exporter
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json
@@ -164,7 +164,7 @@ def _provider_report(model: str) -> dict[str, Any]:
 
     catalog = _provider.load_catalog()
     spec = catalog.get(provider_name) if provider_name else None
-    endpoint = _llm.resolve_endpoint(model)
+    endpoint = _endpoint.resolve_endpoint(model)
 
     if spec is not None:
         credential_name = spec.auth.credentials[0] if spec.auth.credentials else ""

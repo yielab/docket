@@ -1097,7 +1097,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/teams/network_posture.py`: the `network <mode>` wording in the `isolation` string
 - `src/docket/agent/tools/registry.py`: `dispatch_tool`
 - `src/docket/platform/git.py`: `trust_worktree`
-- `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`
+- `src/docket/models/application/endpoint.py`: `resolve_endpoint`
 - `src/docket/observability/adapters/otlp_http.py`: `encode`
 - `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`, `trace_retention_days`,
   `root`

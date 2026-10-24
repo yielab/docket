@@ -43,5 +43,6 @@ def add(name: str, value: str) -> bool:
 
 def reachable(monkeypatch: pytest.MonkeyPatch) -> None:
     from docket.models.adapters import openai_http as _llm
+    from docket.models.application import probe as _probe
 
-    monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=200))
+    monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _probe.ProbeResult(status=200))

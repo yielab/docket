@@ -417,7 +417,7 @@ class TestPodShowProvider:
         from docket.agent.ports import ModelLimits
         from docket.models import catalog as _prov
         from docket.models import provider_lifecycle as _provider_lifecycle
-        from docket.models.adapters.openai_http import ProbeResult
+        from docket.models.application.probe import ProbeResult
 
         with _seed(tmp_path):
             spec = _prov.ProviderSpec(

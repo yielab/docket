@@ -49,8 +49,11 @@ class TestProviderAdd:
     @staticmethod
     def _reachable(monkeypatch: pytest.MonkeyPatch) -> None:
         from docket.models.adapters import openai_http as _llm
+        from docket.models.application import probe as _domain_probe
 
-        monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=200))
+        monkeypatch.setattr(
+            _llm, "probe_models", lambda *a, **k: _domain_probe.ProbeResult(status=200)
+        )
 
     def test_hosted_provider_stores_the_credential_and_applies_the_preset(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -150,12 +153,13 @@ class TestProviderAddAdvertisedModel:
     @staticmethod
     def _probe(monkeypatch: pytest.MonkeyPatch, ids: tuple[str, ...]) -> list[int]:
         from docket.models.adapters import openai_http as _llm
+        from docket.models.application import probe as _domain_probe
 
         calls: list[int] = []
 
-        def fake(*a: object, **k: object) -> _llm.ProbeResult:
+        def fake(*a: object, **k: object) -> _domain_probe.ProbeResult:
             calls.append(1)
-            return _llm.ProbeResult(status=200, model_ids=list(ids))
+            return _domain_probe.ProbeResult(status=200, model_ids=list(ids))
 
         monkeypatch.setattr(_llm, "probe_models", fake)
         return calls
@@ -219,11 +223,12 @@ class TestProviderLimits:
     def _probe(monkeypatch: pytest.MonkeyPatch, **limits: tuple[int | None, int | None]) -> None:
         from docket.agent.ports import ModelLimits
         from docket.models.adapters import openai_http as _llm
+        from docket.models.application import probe as _domain_probe
 
         monkeypatch.setattr(
             _llm,
             "probe_models",
-            lambda *a, **k: _llm.ProbeResult(
+            lambda *a, **k: _domain_probe.ProbeResult(
                 status=200,
                 model_ids=sorted(limits),
                 limits={m: ModelLimits(*pair) for m, pair in limits.items()},
@@ -278,7 +283,7 @@ class TestProviderLimits:
             )
             _prov.save_provider(spec)
             from docket.agent.ports import ModelLimits
-            from docket.models.adapters.openai_http import ProbeResult
+            from docket.models.application.probe import ProbeResult
 
             _provider_lifecycle.record_observed_models(
                 spec,
@@ -310,7 +315,7 @@ class TestProviderLimits:
             )
             _prov.save_provider(spec)
             from docket.agent.ports import ModelLimits
-            from docket.models.adapters.openai_http import ProbeResult
+            from docket.models.application.probe import ProbeResult
 
             _provider_lifecycle.record_observed_models(
                 spec,
@@ -393,15 +398,16 @@ class TestProviderAddStoresNothingOnTransportFailure:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from docket.models.adapters import openai_http as _llm
+        from docket.models.application import probe as _domain_probe
 
         with _home(tmp_path):
             monkeypatch.delenv("UP_API_KEY", raising=False)
             seen: list[str] = []
 
-            def probe(endpoint: object, *a: object, **k: object) -> _llm.ProbeResult:
+            def probe(endpoint: object, *a: object, **k: object) -> _domain_probe.ProbeResult:
                 seen.append(getattr(endpoint, "api_key", ""))
                 assert _secrets.load_secrets() == {}
-                return _llm.ProbeResult(status=200)
+                return _domain_probe.ProbeResult(status=200)
 
             monkeypatch.setattr(_llm, "probe_models", probe)
 
@@ -426,10 +432,13 @@ class TestProviderAddStoresNothingOnTransportFailure:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from docket.models.adapters import openai_http as _llm
+        from docket.models.application import probe as _domain_probe
 
         with _home(tmp_path):
             monkeypatch.delenv("UP_API_KEY", raising=False)
-            monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=401))
+            monkeypatch.setattr(
+                _llm, "probe_models", lambda *a, **k: _domain_probe.ProbeResult(status=401)
+            )
 
             result = _runner.invoke(
                 app,

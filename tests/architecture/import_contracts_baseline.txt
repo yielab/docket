@@ -1,6 +1,4 @@
 # imports that break an ADR 0030 dependency row today; shrink-only
 # format: contract | importer -> imported; regenerate with
 #   python tests/architecture/test_import_contracts.py --write
-application imports kernel, its own context and the contexts below it | docket.models.provider_lifecycle -> docket.models.adapters.openai_http
-adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_http -> docket.governance.secrets
 adapters, platform and sandbox import kernel, own context, ports and domain types | docket.operator.adapters.telegram -> docket.interfaces.telegram.client
