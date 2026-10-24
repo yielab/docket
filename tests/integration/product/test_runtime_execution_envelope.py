@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 from tests.support.cli import run as _run
 
-SUBJECT = "docket"
+SUBJECT = "docket.bootstrap"
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / "packages" / "docket-runtime"
 
 

@@ -23,9 +23,9 @@ from docket.kernel.home import Home, use_home
 from docket.pipeline.domain.gates import MechanicalGate
 from docket.pipeline.domain.spec import load_pipeline
 
-SUBJECT = "docket.pipeline.domain.spec"
+SUBJECT = "docket.__main__"
 
-_SMOKE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "smoke_workflow.py"
+_SMOKE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "smoke_workflow.py"
 _SMOKE_SPEC = importlib.util.spec_from_file_location("docket_smoke_workflow", _SMOKE_PATH)
 assert _SMOKE_SPEC is not None and _SMOKE_SPEC.loader is not None
 _smoke = importlib.util.module_from_spec(_SMOKE_SPEC)
@@ -1063,7 +1063,7 @@ def test_run_cli_terminates_in_flight_process_on_canary_abort(
 
 
 def test_full_workflow_smoke_is_observable_and_preserves_state(tmp_path: Path) -> None:
-    repo = Path(__file__).resolve().parents[2]
+    repo = Path(__file__).resolve().parents[3]
     world = tmp_path / "smoke-world"
     env = os.environ.copy()
     env["UV_CACHE_DIR"] = "/tmp/docket-uv-cache"
@@ -1094,7 +1094,7 @@ def test_full_workflow_smoke_is_observable_and_preserves_state(tmp_path: Path) -
 )
 def test_full_workflow_against_real_local_model(tmp_path: Path) -> None:
     """Opt-in memory-maintenance evidence; never substitutes scripted inference."""
-    repo = Path(__file__).resolve().parents[2]
+    repo = Path(__file__).resolve().parents[3]
     world = tmp_path / "live-smoke-world"
     endpoint = os.environ.get("DOCKET_LIVE_SMOKE_ENDPOINT", "http://127.0.0.1:8081/v1")
     command = [

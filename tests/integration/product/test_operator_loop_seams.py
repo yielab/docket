@@ -40,7 +40,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.operator.channel"
 
 
 # ── seam a: POST /approvals/<token> (HTTP) -> pregrant -> a real re-dispatch consumes it ──
