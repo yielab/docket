@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The task is one typed record behind one store (D-70, Phase 49).** `TaskRecord` and `HopResult`
+  are pydantic models; a pod's queue is read and written only through `TaskRepository` over
+  `JsonTaskStore`, and every CLI command, HTTP route, Telegram handler, MCP tool, hop and test reads
+  attributes instead of `dict.get`. The 19 closures that wrote the queue by hand are gone, as are
+  `read_tasks`, `_normalize_task`, `hop_record` and `hop_from_record`. The stored JSON is unchanged
+  except for the keys listed under Removed; a queue written before them still loads.
 - **Answers, consult answers, expired-question sweeps and pre-grants now re-sync the
   `HEARTBEAT.md` ledger too, and `hops` reads and writes the task as a `TaskRecord`.** The
   claim's gate override reaches `dispatch_task` as its `gate_override_index` argument instead of a

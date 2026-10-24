@@ -561,8 +561,9 @@ acceptance.
 
 Declarative HTTP routes landed in Phase 46 (P46-9), and dead code by fan-in was deleted before the
 move (Wave 120). The rest are behaviour-preserving reductions that the new structure makes safe, each a card with a before/after
-measure as its acceptance: the task as a typed aggregate with a repository (−1,500 to −2,000
-lines; removes the 639 `Any` annotations, 15 find-by-id loops, 32 store closures); pod settings
+measure as its acceptance: the task as a typed aggregate with a repository (done in Phase 49, D-70:
+the 19 closures that wrote the queue are one store, `dict[str, Any]` in `tasks/` and `hops/` went
+156 to 94, and `src` is +40 lines net, not the −1,500 to −2,000 estimated here); pod settings
 as one injected object (−500 incl. tests); a `@degrades_to(default)` decorator for the 30
 identical fallback blocks in the system adapter (−250); typed trace and audit events (−300, and
 redaction on fields rather than on serialized JSON); hop prompt composition as prioritized sections
