@@ -37,7 +37,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.hops.application.compose"
 

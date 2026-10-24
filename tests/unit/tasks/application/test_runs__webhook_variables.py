@@ -19,12 +19,12 @@ from typing import Any
 
 import pytest
 from tests.support import http as _support_http
-from tests.support.pods import spec_2 as _spec
+from tests.support.pods import spec_with_variables as _spec
 
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import runs as _runs
 
-live_server = _support_http.live_server_3
+live_server = _support_http.live_server_in_tmp_home
 
 SUBJECT = "docket.tasks.application.runs"
 

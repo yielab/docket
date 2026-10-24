@@ -28,7 +28,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.hops.gates.pre_hop"
 

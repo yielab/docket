@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tests.support.cli import run_2 as _run
+from tests.support.cli import run_cli_in_home as _run
 from typer.testing import CliRunner
 
 SUBJECT = "docket.interfaces.cli.render.help"

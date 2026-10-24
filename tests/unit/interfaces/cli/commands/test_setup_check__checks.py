@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from tests.support.fakes import FakeJail
-from tests.support.pods import seed_4 as _seed
+from tests.support.pods import seed_setup_check_home as _seed
 
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_budget as _setup_check_budget

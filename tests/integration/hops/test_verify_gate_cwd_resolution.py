@@ -23,7 +23,7 @@ import pytest
 import typer
 from tests.support.pods import build_pod
 from tests.support.pods import meta as _meta
-from tests.support.pods import write_meta_3 as _write_meta
+from tests.support.pods import write_meta as _write_meta
 
 from docket.agent import ports as _rd
 from docket.governance import audit as _audit

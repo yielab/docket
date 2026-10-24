@@ -16,7 +16,7 @@ from tests.support.driver_harness import (
     _read_call_response,
     _ScriptedBackend,
 )
-from tests.support.pods import write_meta_2 as _write_meta
+from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.ports import (
     ChatResponse,

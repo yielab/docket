@@ -22,7 +22,7 @@ from tests.support.pods import write_meta as _write_meta
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.teams.settings"
 

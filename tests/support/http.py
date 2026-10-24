@@ -16,20 +16,6 @@ from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 
 
-def post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
-
-
 def get(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:
     req = urllib.request.Request(url, method="GET")
     if token is not None:
@@ -54,37 +40,10 @@ def post_raw(url: str, data: bytes, token: str | None = None) -> tuple[int, dict
         return exc.code, json.loads(exc.read())
 
 
-def post_2(
+def post(
     url: str, body: dict[str, Any] | None = None, token: str | None = None
 ) -> tuple[int, dict[str, Any]]:
     return post_raw(url, json.dumps(body if body is not None else {}).encode(), token)
-
-
-def post_3(
-    url: str, body: dict[str, Any] | None = None, token: str | None = None
-) -> tuple[int, dict[str, Any]]:
-    data = json.dumps(body if body is not None else {}).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Content-Length", str(len(data)))
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
-
-
-def get_2(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
-    req = urllib.request.Request(url)
-    if token is not None:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read())
 
 
 _TEST_TOKEN = "test-serve-token"
@@ -104,7 +63,7 @@ def live_server(pod_home: Path):  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture()
-def live_server_2(approvals_dir: Path):
+def live_server_on_approvals_dir(approvals_dir: Path):
     """Real ThreadingHTTPServer on a random port. Yields (base_url, token)."""
 
     class _Handler(_DocketHandler):
@@ -119,7 +78,7 @@ def live_server_2(approvals_dir: Path):
 
 
 @pytest.fixture()
-def live_server_3(tmp_path: Path):
+def live_server_in_tmp_home(tmp_path: Path):
     """Real server on a random port. Yields (base_url, token)."""
     d = tmp_path / "approvals"
     d.mkdir()

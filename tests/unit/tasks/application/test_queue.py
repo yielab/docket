@@ -37,7 +37,7 @@ from docket.teams import settings as _settings
 
 live_server = _support_http.live_server
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.tasks.application.queue"
 

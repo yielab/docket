@@ -21,8 +21,8 @@ from typing import Any
 
 import pytest
 from tests.support.fakes import FakeDriver
-from tests.support.pods import seed_pod_3 as _seed_pod
-from tests.support.trace import audit_actions_2 as _audit_actions
+from tests.support.pods import seed_pod as _seed_pod
+from tests.support.trace import audit_entries as _audit_actions
 
 from docket.agent import ports as _rd
 from docket.governance import approval as _approval

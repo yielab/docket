@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from tests.support.git import git_4 as _git
+from tests.support.git import git_quiet as _git
 
 from docket.governance import review as _reviewed
 from docket.governance.review import RunItem

@@ -24,7 +24,7 @@ from docket.hops.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.hops.application.executor"
 

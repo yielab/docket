@@ -39,7 +39,7 @@ from docket.governance.policy import install_policies
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 
-_hermetic = _support_home.hermetic_5
+_hermetic = _support_home.hermetic_no_approval_wait
 
 SUBJECT = "docket.agent.tools.registry"
 

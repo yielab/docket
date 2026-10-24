@@ -25,7 +25,7 @@ def pgrep_count(marker: str) -> int:
     return int((result.stdout or "0").strip() or "0")
 
 
-def git_2(cwd: Path, *args: str) -> str:
+def git_identity_env(cwd: Path, *args: str) -> str:
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "t",
@@ -39,7 +39,7 @@ def git_2(cwd: Path, *args: str) -> str:
     return out.stdout.strip()
 
 
-def git_3(root: Path, *args: str) -> str:
+def git_identity_flags(root: Path, *args: str) -> str:
     done = subprocess.run(
         ["git", "-C", str(root), "-c", "user.email=t@example.test", "-c", "user.name=t", *args],
         check=True,
@@ -49,7 +49,7 @@ def git_3(root: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
-def git_4(repo: Path, *args: str) -> None:
+def git_quiet(repo: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
 
 

@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from tests.support.home import point_config_at as _point_config_at
 from tests.support.pods import build_pod
-from tests.support.pods import seed_4 as _seed
+from tests.support.pods import seed_setup_check_home as _seed
 
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services

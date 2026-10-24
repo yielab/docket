@@ -20,7 +20,7 @@ from tests.support.cli import pod_cli as _pod_cli
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
 from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
-from tests.support.trace import trace_events_2 as _trace_events
+from tests.support.trace import trace_events as _trace_events
 from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates

@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 import typer
 from tests.support.pods import build_pod
-from tests.support.pods import seed as _seed
+from tests.support.pods import seed_empty_home as _seed
 from typer.testing import CliRunner
 
 from docket.hops.application import steps as _steps

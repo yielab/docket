@@ -19,7 +19,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 
-_hermetic = _support_home.hermetic_4
+_hermetic = _support_home.hermetic_no_tty
 
 SUBJECT = "docket.interfaces.cli.commands.agents"
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.pods import seed_3 as _seed
+from tests.support.pods import seed_lead_implementer_pod as _seed
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app

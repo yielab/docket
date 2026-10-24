@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from tests.support import http as _support_http
 from tests.support import pods as _support_pods
-from tests.support.http import post_3 as _post
+from tests.support.http import post as _post
 from tests.support.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod

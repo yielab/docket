@@ -32,7 +32,7 @@ from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams.workspace import worktree as _worktree
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.teams.workspace.worktree"
 

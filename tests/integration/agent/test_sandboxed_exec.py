@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 from tests.support import home as _support_home
 from tests.support import pods as _support_pods
-from tests.support.git import git_2 as _git
+from tests.support.git import git_identity_env as _git
 from tests.support.git import pgrep_count as _pgrep_count
 
 from docket.agent.ports import ToolCall

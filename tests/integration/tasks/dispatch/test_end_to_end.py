@@ -15,7 +15,7 @@ from tests.support.dispatch_harness import (
 )
 from tests.support.fakes import FakeDriver
 from tests.support.llm import final_response as _final_response
-from tests.support.pods import seed_pod_2 as _seed_pod
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
 from docket.agent import ports as _rd
 from docket.agent import session as _session

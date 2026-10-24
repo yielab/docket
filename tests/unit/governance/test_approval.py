@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from tests.support import home as _support_home
 from tests.support import http as _support_http
-from tests.support.http import get_2 as _get
+from tests.support.http import get as _get
 from tests.support.http import post as _post
 
 from docket.governance import approval as _approval
@@ -26,7 +26,7 @@ from docket.platform import store as _store
 SUBJECT = "docket.governance.approval"
 
 
-live_server = _support_http.live_server_2
+live_server = _support_http.live_server_on_approvals_dir
 
 
 approvals_dir = _support_home.approvals_dir

@@ -17,7 +17,7 @@ from typing import Any
 
 from tests.support import home as _support_home
 from tests.support.git import git as _git
-from tests.support.pods import bind_pipeline_3 as _bind_pipeline
+from tests.support.pods import bind_demo_pipeline as _bind_pipeline
 from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
@@ -33,7 +33,7 @@ from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
 from docket.teams import task_worktrees as _task_worktrees
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.tasks.application.queue"
 

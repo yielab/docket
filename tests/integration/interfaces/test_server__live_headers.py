@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.http import post_3 as _post
+from tests.support.http import post as _post
 
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home

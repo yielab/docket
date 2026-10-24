@@ -26,8 +26,8 @@ from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 
 _isolate_gates = _support_home.isolate_gates
-workspace = _support_pods.workspace_2
-ctx = _support_llm.ctx_2
+workspace = _support_pods.workspace_with_files
+ctx = _support_llm.ctx_in_workspace
 
 SUBJECT = "docket.hops.application.builtin_tools"
 

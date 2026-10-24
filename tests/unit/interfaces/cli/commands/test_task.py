@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 from tests.support.pods import bind_ask_pipeline as _bind_ask_pipeline
-from tests.support.pods import seed_pod_4 as _seed_pod
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 from tests.support.task_unit_harness import (
     _runner,
 )

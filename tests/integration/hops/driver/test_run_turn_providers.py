@@ -13,7 +13,7 @@ from tests.support.driver_harness import (
     _ScriptedBackend,
 )
 from tests.support.home import record_isolation_off
-from tests.support.pods import write_meta_2 as _write_meta
+from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.ports import (
     PIPELINE_WORKTREE_ENV,

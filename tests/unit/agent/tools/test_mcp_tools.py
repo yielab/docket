@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from tests.support import home as _support_home
 from tests.support import pods as _support_pods
-from tests.support.pods import write_meta_2 as _write_meta
+from tests.support.pods import write_meta_overrides as _write_meta
 
 import docket.kernel.templates as _templates
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant

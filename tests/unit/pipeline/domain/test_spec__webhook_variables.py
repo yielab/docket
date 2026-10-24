@@ -13,7 +13,7 @@ required variable is rejected 400 before the run record exists.
 from __future__ import annotations
 
 import pytest
-from tests.support.pods import spec_2 as _spec
+from tests.support.pods import spec_with_variables as _spec
 
 from docket.pipeline.domain import spec as _pipeline
 

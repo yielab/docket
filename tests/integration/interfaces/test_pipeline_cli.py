@@ -6,14 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from tests.support import home as _support_home
-from tests.support.pods import write_meta_4 as _write_meta
+from tests.support.pods import write_meta as _write_meta
 from typer.testing import CliRunner
 
 from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands import pod as _pod
 from docket.teams import pod as _teams_pod
 
-_hermetic = _support_home.hermetic_6
+_hermetic = _support_home.hermetic_trace_on
 
 SUBJECT = "docket.interfaces.cli.commands.pod"
 

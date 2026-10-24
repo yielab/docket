@@ -32,7 +32,7 @@ from docket.tasks.application import worktree_prune as _worktree_prune
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.interfaces.http.server"
 

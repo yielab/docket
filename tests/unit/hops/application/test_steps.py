@@ -47,7 +47,7 @@ from docket.teams import pod as _pod
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.hops.application.steps"
 

@@ -26,7 +26,7 @@ def pod_cli(*args: str) -> Any:
     return CliRunner().invoke(_pod.pod_app, list(args))
 
 
-def run_2(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
+def run_cli_in_home(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
     """Invoke the CLI in-process against *oc_dir* as an isolated DOCKET_HOME."""
     with use_home(Home(oc_dir)):
         result = _runner.invoke(_app, args)

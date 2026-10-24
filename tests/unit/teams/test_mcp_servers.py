@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from tests.support.pods import write_meta_2 as _write_meta
+from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.registry import ToolRegistry

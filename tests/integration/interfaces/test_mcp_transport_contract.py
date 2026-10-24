@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.pods import seed_pod_3 as _seed_pod
-from tests.support.trace import audit_actions_2 as _audit_actions
+from tests.support.pods import seed_pod as _seed_pod
+from tests.support.trace import audit_entries as _audit_actions
 
 from docket.governance import approval as _approval
 from docket.interfaces.cli.commands import mcp as _mcp

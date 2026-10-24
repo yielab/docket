@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tests.support import home as _support_home
 from tests.support import http as _support_http
-from tests.support.http import get_2 as _get
+from tests.support.http import get as _get
 
 from docket.governance import approval as _approval
 from docket.interfaces.http.server import _DocketHandler
@@ -16,7 +16,7 @@ from docket.kernel.threads import ContextHTTPServer
 SUBJECT = "docket.governance.approval"
 
 
-live_server = _support_http.live_server_2
+live_server = _support_http.live_server_on_approvals_dir
 
 
 approvals_dir = _support_home.approvals_dir

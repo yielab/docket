@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.pods import bind_pipeline_2 as _bind_pipeline
+from tests.support.pods import bind_pipeline as _bind_pipeline
 from tests.support.pods import seed_pod as _seed_pod
 
 from docket.agent.ports import ToolCall

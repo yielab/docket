@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.pods import seed_parked_task_2 as _seed_parked_task
-from tests.support.pods import seed_pod_4 as _seed_pod
+from tests.support.pods import parked_task_in_pod as _seed_parked_task
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 from tests.support.task_unit_harness import (
     _runner,
 )

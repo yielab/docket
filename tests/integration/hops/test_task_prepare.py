@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 from tests.support.git import git as _git
-from tests.support.pods import bind_pipeline_3 as _bind_pipeline
+from tests.support.pods import bind_demo_pipeline as _bind_pipeline
 from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult

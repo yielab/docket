@@ -37,7 +37,7 @@ from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home, use_home
 from docket.teams import mcp_servers as _mcp_servers
 
-_hermetic = _support_home.hermetic_5
+_hermetic = _support_home.hermetic_no_approval_wait
 
 SUBJECT = "docket.agent.tools.mcp_client"
 

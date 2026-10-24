@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from tests.support import http as _support_http
 from tests.support import pods as _support_pods
-from tests.support.http import post_2 as _post
+from tests.support.http import post as _post
 from tests.support.pods import build_pod
 from tests.support.pods import seed_parked_task as _seed_parked_task
 

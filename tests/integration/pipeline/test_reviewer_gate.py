@@ -34,7 +34,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-_hermetic = _support_home.hermetic_3
+_hermetic = _support_home.hermetic_trace_on
 
 SUBJECT = "docket.hops.application.executor"
 

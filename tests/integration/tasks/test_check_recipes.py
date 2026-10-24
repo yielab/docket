@@ -28,7 +28,7 @@ from docket.governance import security as _sec
 from docket.hops.application import sweep as _sweep
 from docket.tasks.application import queue as _queue
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.tasks.application.queue"
 

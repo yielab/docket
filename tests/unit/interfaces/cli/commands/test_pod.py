@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tests.support.pods import bind_one_step_pipeline
-from tests.support.pods import seed_pod_4 as _seed_pod
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home

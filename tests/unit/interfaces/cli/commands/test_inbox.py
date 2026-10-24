@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tests.support.pods import seed_3 as _seed
+from tests.support.pods import seed_lead_implementer_pod as _seed
 from typer.testing import CliRunner
 
 from docket.governance import approval as _approval

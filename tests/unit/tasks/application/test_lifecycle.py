@@ -25,7 +25,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.tasks.application.lifecycle"
 

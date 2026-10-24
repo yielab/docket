@@ -22,7 +22,7 @@ import pytest
 from tests.support.pods import build_pod
 from tests.support.pods import ids as _ids
 from tests.support.pods import meta as _meta
-from tests.support.pods import seed_2 as _seed
+from tests.support.pods import seed_empty_home as _seed
 
 from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract

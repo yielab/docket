@@ -11,7 +11,7 @@ import pytest
 import typer
 from tests.support.fakes import FakeProcess
 from tests.support.pods import build_pod
-from tests.support.pods import meta_2 as _meta
+from tests.support.pods import meta as _meta
 from typer.testing import CliRunner
 
 from docket.governance import audit as _audit

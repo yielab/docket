@@ -173,7 +173,7 @@ def tool_call_turn(
 
 
 @pytest.fixture
-def ctx_2(workspace: Path) -> ToolContext:
+def ctx_in_workspace(workspace: Path) -> ToolContext:
     return ToolContext(agent_id="demo-implementer", roots=(workspace,), timeout=10)
 
 

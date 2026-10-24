@@ -30,7 +30,7 @@ from docket.kernel.home import current_home, use_home
 from docket.pipeline.application import schedule as _sched
 from docket.tasks.application import runs as _runs
 
-live_server = _support_http.live_server_3
+live_server = _support_http.live_server_in_tmp_home
 
 SUBJECT = "docket.hops.application.sweep"
 
