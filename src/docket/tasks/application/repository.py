@@ -27,7 +27,7 @@ from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
 from docket.teams.settings import pod_task_list_path
 
-__all__ = ["Claim", "TaskRepository"]
+__all__ = ["Claim", "TaskRepository", "claimable"]
 
 Records = list[TaskRecord]
 
@@ -37,11 +37,14 @@ _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 @dataclass(frozen=True)
 class Claim:
     """A claimed task. ``gate_override_index`` is the pipeline position a granted approval asked
-    the claim to resume at; the stored record no longer holds it (it is single use)."""
+    the claim to resume at; the stored record no longer holds it (it is single use). ``refusal`` is
+    ``(failure_kind, reason)`` when the claim cannot run (set by the caller that provisions the
+    task's worktree), else ``None``."""
 
     record: TaskRecord
     resume_hops: list[HopResult]
     gate_override_index: int | None
+    refusal: tuple[str, str] | None = None
 
 
 class TaskRepository:
@@ -83,16 +86,17 @@ class TaskRepository:
 
     def update(self, task_id: str, fn: Callable[[TaskRecord], object]) -> TaskRecord | None:
         """Run *fn* on task *task_id* under the lock and write it back; ``None``, and nothing
-        written, when the queue has no such task."""
+        written, when the queue has no such task. An *fn* that returns ``False`` leaves the queue
+        unwritten (the task is still returned)."""
         found: list[TaskRecord] = []
 
         def _fn(records: list[TaskRecord]) -> bool:
             record = next((r for r in records if r.id == task_id), None)
             if record is None:
                 return False
-            fn(record)
+            wrote = fn(record) is not False
             found.append(record)
-            return True
+            return wrote
 
         self._change(_fn)
         return found[0] if found else None
@@ -119,7 +123,7 @@ class TaskRepository:
         claimed: list[Claim] = []
 
         def _fn(records: list[TaskRecord]) -> bool:
-            candidates = [r for r in records if r.id not in skip and _eligible(r, resume=resume)]
+            candidates = [r for r in records if r.id not in skip and claimable(r, resume=resume)]
             if not candidates:
                 return False
             record = min(candidates, key=lambda r: _PRIORITY_RANK.get(r.priority, 1))
@@ -151,7 +155,8 @@ class TaskRepository:
         return self._store.load()
 
 
-def _eligible(record: TaskRecord, *, resume: bool) -> bool:
+def claimable(record: TaskRecord, *, resume: bool) -> bool:
+    """Whether a dispatch run may claim *record*: see pod-dispatch.spec.md, "Claiming"."""
     if record.status == _state.Status.pending:
         return True
     return (

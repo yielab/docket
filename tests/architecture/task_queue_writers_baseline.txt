@@ -4,8 +4,5 @@ hops/application/answers.py
 hops/application/executor.py
 hops/application/interruptions.py
 tasks/application/actions.py
-tasks/application/lifecycle.py
-tasks/application/queue.py
 tasks/application/record.py
 tasks/domain/task.py
-teams/workspace/worktree.py

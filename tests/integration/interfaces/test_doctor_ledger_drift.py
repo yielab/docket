@@ -35,7 +35,7 @@ def _claim_a_task(project: str = "demo") -> str:
     _queue.enqueue_task_once(project, "some work", channel="cli")
     claim = _queue.claim_next_task(project, resume=False)
     assert claim is not None
-    return str(claim[0]["id"])
+    return claim.record.id
 
 
 class TestNoPods:

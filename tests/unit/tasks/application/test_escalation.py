@@ -53,6 +53,12 @@ def home(tmp_path: Path) -> Iterator[Path]:
 
 def _write_task(project: str, task_data: dict) -> None:
     """Helper to write a task to the TASK_LIST.json file."""
+    task_data = {"description": "x", **task_data}
+    # An answer carries its question's kind and createdAt (the record requires them).
+    question = task_data.get("question", {})
+    for answer in task_data.get("answers", []):
+        answer.setdefault("createdAt", question.get("createdAt", answer["answeredAt"]))
+        answer.setdefault("kind", question.get("kind", "clarification"))
     task_list_path = _settings.pod_task_list_path(project)
     doc = _store.read_json(task_list_path)
     if doc is None:
@@ -131,7 +137,7 @@ class TestEscalationMetrics:
                 "message": "Do you approve?",
                 "createdAt": question_created.isoformat(),
                 "expiresAt": None,
-                "requestedSchema": {"type": "object", "properties": {}},
+                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
             },
             "answers": [
                 {
@@ -172,7 +178,7 @@ class TestEscalationMetrics:
                 "kind": "decision",
                 "createdAt": now.isoformat(),
                 "expiresAt": None,
-                "requestedSchema": {"type": "object", "properties": {}},
+                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
             },
             "answers": [
                 {
@@ -210,7 +216,7 @@ class TestEscalationMetrics:
                 "message": "Question?",
                 "createdAt": (now - timedelta(seconds=50)).isoformat(),
                 "expiresAt": None,
-                "requestedSchema": {"type": "object", "properties": {}},
+                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
             },
             "answers": [
                 {

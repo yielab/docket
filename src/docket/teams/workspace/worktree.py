@@ -5,11 +5,9 @@ from typing import Any
 from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
-from docket.platform import read_modify_write
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import task_worktrees as _task_worktrees
-from docket.teams.settings import pod_task_list_path
 
 
 def task_worktree_dir(task: dict[str, Any]) -> str:
@@ -92,41 +90,29 @@ def _pin_hop_tree(cwd: str, task: dict[str, Any], role: str, *, in_worktree: boo
     return _git.git_snapshot_commit(cwd, message)
 
 
-def ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
-    """Record ``task["worktree"]`` for a claimed task (a recorded one is kept); a failed add
-    records ``fallbackReason`` and runs in place. With a ``baseRef`` it never runs in place:
-    it sets ``claimed["claimRefusal"] = (failure_kind, reason)`` instead."""
-    if "worktree" in claimed:
-        return
-    base_ref = str(claimed.get("baseRef") or "")
+def ensure_task_worktree(
+    project: str, task_id: str, base_ref: str
+) -> tuple[dict[str, Any] | None, tuple[str, str] | None]:
+    """``(worktree, refusal)`` for a claimed task that has no recorded worktree. *worktree* is the
+    record to store (a failed add is an empty record with a ``fallbackReason``: the task runs in
+    place); ``None`` when none was made. With a *base_ref* it never runs in place: *refusal* is
+    ``(failure_kind, reason)`` and nothing is stored. The caller stores the record; this module
+    does not touch the queue."""
     implementer = _pod.member_id(project, "implementer")
     codebase = str(_fleet.meta_get(implementer, "codebase", "") or "")
     if not codebase:
         if base_ref:
-            claimed["claimRefusal"] = (
-                "base_ref",
-                f"baseRef {base_ref!r} needs a task worktree, but the Implementer has no codebase",
+            reason = (
+                f"baseRef {base_ref!r} needs a task worktree, but the Implementer has no codebase"
             )
-        return
-    task_id = str(claimed.get("id", ""))
+            return None, ("base_ref", reason)
+        return None, None
     record, reason = _task_worktrees.provision_task_worktree(
         implementer, project, task_id, codebase, base_ref
     )
     if base_ref and not record:
-        claimed["claimRefusal"] = ("base_ref", f"baseRef {base_ref!r} was not used: {reason}")
-        return
+        return None, ("base_ref", f"baseRef {base_ref!r} was not used: {reason}")
     stored: dict[str, Any] = (
         record if record else {"dir": "", "branch": "", "baseCommit": "", "fallbackReason": reason}
     )
-
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks = doc.get("tasks")
-        if not isinstance(tasks, list):
-            return None
-        for t in tasks:
-            if isinstance(t, dict) and t.get("id") == task_id:
-                t["worktree"] = stored
-        return {"tasks": tasks}
-
-    read_modify_write(pod_task_list_path(project), _fn)
-    claimed["worktree"] = stored
+    return stored, None

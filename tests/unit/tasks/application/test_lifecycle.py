@@ -115,7 +115,18 @@ class TestCancelTask:
 
     def test_a_parked_task_is_cancelled_through_the_parked_path(self, pod_home: Path) -> None:
         """A task waiting for input ends cancelled and names where it was parked."""
-        task_id = self._seed("waiting_input", question={"text": "which?"})
+        task_id = self._seed(
+            "waiting_input",
+            question={
+                "id": "q-1",
+                "taskId": "t",
+                "pod": "myapp",
+                "step": "s",
+                "message": "which?",
+                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
+                "createdAt": "2026-10-24T00:00:00+00:00",
+            },
+        )
 
         outcome = _lifecycle.cancel_task("myapp", task_id, channel="cli")
 

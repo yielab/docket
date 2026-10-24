@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every write of a pod's queue re-syncs the `HEARTBEAT.md` dispatch ledger.** `retry_task`,
+  `unblock_pod`, the stale sweep and reclaim, enqueue and the stored worktree and prepare records
+  now go through `TaskRepository`, which regenerates the ledger after the write; before, only the
+  claim, hop persist, finalize, claim refresh and a few cancellations did, so a retry left a stale
+  entry until the next sync (pod-dispatch spec 10.1.0).
 - The `pydantic` floor is `>=2.12`: a task record leaves an unset key out of its stored JSON with
   `Field(exclude_if=...)`, which 2.12 introduced.
 - **`docket init` turns workspace isolation on where the machine can jail (D-67).** When no

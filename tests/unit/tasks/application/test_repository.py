@@ -78,6 +78,19 @@ class TestUpdate:
         assert repo.update("task-9", lambda record: None) is None
         assert path.read_bytes() == before
 
+    def test_a_function_that_returns_false_writes_nothing(self, repo: TaskRepository) -> None:
+        repo.add(TaskRecord(id="task-1", description="a"))
+        path = _settings.pod_task_list_path("demo")
+        before = path.read_bytes()
+
+        def _decline(record: TaskRecord) -> bool:
+            record.priority = "low"
+            return False
+
+        found = repo.update("task-1", _decline)
+        assert found is not None
+        assert path.read_bytes() == before
+
     def test_after_an_update_the_ledger_lists_the_running_task(self, repo: TaskRepository) -> None:
         repo.add(TaskRecord(id="task-1", description="a"))
         assert _ledger_ids() == []

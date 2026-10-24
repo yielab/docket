@@ -222,7 +222,19 @@ def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
     """A task waiting for an answer is cancelled over HTTP and audited with the channel."""
     with _seed_pod(tmp_path), _live_server() as live_server:
         task = _queue.enqueue_task_once("demo", "ask", channel="cli")[0]
-        _set_task(task["id"], status="waiting_input", question={"text": "which?"})
+        _set_task(
+            task["id"],
+            status="waiting_input",
+            question={
+                "id": "q-1",
+                "taskId": task["id"],
+                "pod": "demo",
+                "step": "s",
+                "message": "which?",
+                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
+                "createdAt": "2020-01-01T00:00:00+00:00",
+            },
+        )
 
         status, body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
 

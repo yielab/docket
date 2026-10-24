@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json as _json
-import os as _os
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -22,20 +21,14 @@ from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
 from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
-from docket.platform import read_json, read_modify_write
 from docket.tasks.application import transitions as _transitions
-from docket.tasks.application.record import hop_from_record
+from docket.tasks.application.repository import Claim, TaskRepository, claimable
 from docket.tasks.application.runs import get_run, list_runs
 from docket.tasks.domain import options as _task_options
 from docket.tasks.domain import state as _state
+from docket.tasks.domain.parts import Prepared, Worktree
 from docket.tasks.domain.refs import LEAD_STEP_ID, TaskRef, TaskRefError
-from docket.tasks.domain.task import (
-    HopResult,
-    TaskRestrictionError,
-    TaskResult,
-    _normalize_task,
-)
-from docket.teams import agent_memory as _mem
+from docket.tasks.domain.task import TaskRecord, TaskRestrictionError, TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import models as _models
@@ -44,11 +37,8 @@ from docket.teams.settings import builtin_tool_names, load_pod_settings, pod_tas
 from docket.teams.workspace import prepare as _prepare
 from docket.teams.workspace.worktree import ensure_task_worktree
 
-# Priority sort key shared by task selection everywhere it matters.
-_PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
-
 # `failed` task ``failureKind`` values ``--resume`` is allowed to reclaim (see
-# ``_eligible_for_claim`` and pod-dispatch.spec.md "Claiming"): a swept crash
+# ``repository.claimable`` and pod-dispatch.spec.md "Claiming"): a swept crash
 # (``stale_claim``) and a settled deterministic refusal (``dispatch_refused``,
 # see ``dispatch_task``'s ``DispatchError`` handling). Neither is a graded
 # hop/gate outcome, so neither is a "real gate/hop failure" in the sense
@@ -58,12 +48,12 @@ RESUMABLE_FAILURE_KINDS: frozenset[str] = _state.RESUMABLE_FAILURE_KINDS
 
 
 def read_tasks(project: str) -> list[dict[str, Any]]:
-    """Return the pod's task list ([] if the queue file is absent), normalized."""
-    raw = read_json(pod_task_list_path(project))
-    tasks = raw.get("tasks") if isinstance(raw, dict) else None
-    if not isinstance(tasks, list):
-        return []
-    return [_normalize_task(t) for t in tasks if isinstance(t, dict)]
+    """Return the pod's task list as stored rows ([] if the queue file is absent)."""
+    return [_row(r) for r in TaskRepository.for_pod(project).list()]
+
+
+def _row(record: TaskRecord) -> dict[str, Any]:
+    return record.model_dump(by_alias=True, mode="json")
 
 
 def _enqueue_pre_input_gate(
@@ -127,10 +117,6 @@ def validate_task_options(**raw: Any) -> _task_options.TaskOptions:
         raise DispatchError(str(exc)) from exc
 
 
-def _queued_with_key(tasks: list[dict[str, Any]], key: str) -> dict[str, Any] | None:
-    return next((t for t in tasks if t.get("idempotencyKey") == key), None)
-
-
 def enqueue_task_once(
     project: str,
     description: str,
@@ -149,8 +135,11 @@ def enqueue_task_once(
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
     parsed_options = validate_task_options(**options)
     key = parsed_options.idempotency_key
-    if key is not None and (queued := _queued_with_key(read_tasks(project), key)) is not None:
-        return queued, False
+    repo = TaskRepository.for_pod(project)
+    if key is not None:
+        queued = next((r for r in repo.list() if r.idempotency_key == key), None)
+        if queued is not None:
+            return _row(queued), False
 
     # *brief*, when given, is a pre-brief the operator already knows: validated as a
     # TaskBrief (invalid raises DispatchError, nothing persisted), folded into the enqueued
@@ -178,23 +167,14 @@ def enqueue_task_once(
             + (f": {hit.message}" if hit.message else "")
         )
 
-    task: dict[str, Any] = {
-        "id": task_id,
-        "description": _secrets.redact(description) if hit.action == "redact" else description,
-        "priority": priority if priority in ("high", "normal", "low") else "normal",
-        "status": "pending",
-        "created": _clock.iso(),
-        "startedAt": None,
-        "completedAt": None,
-        "channel": channel,
-        "hops": [],
-        "reason": "",
-        "costUsd": 0.0,
-        "claimedAt": None,
-    }
-    if parsed_brief is not None:
-        task["brief"] = parsed_brief.model_dump(by_alias=True)
-    task.update(parsed_options.as_record())
+    record = TaskRecord(
+        id=task_id,
+        description=_secrets.redact(description) if hit.action == "redact" else description,
+        priority=priority if priority in ("high", "normal", "low") else "normal",
+        channel=channel,
+        brief=parsed_brief,
+        **parsed_options.model_dump(),
+    )
 
     if hit.action == "require_approval":
         action_text = f"pod dispatch — task enqueue for '{project}': {description}"[:1000]
@@ -202,7 +182,7 @@ def enqueue_task_once(
             project, "lead", action_text, context={"taskId": task_id, "pipelineIndex": 0}
         )
         _transitions.apply_to_task(
-            task, _state.Status.waiting_approval, approval_token=token, pending_index=0
+            record, _state.Status.waiting_approval, approval_token=token, pending_index=0
         )
         _trace.trace_event(
             project,
@@ -214,66 +194,30 @@ def enqueue_task_once(
             ),
         )
 
-    existing: list[dict[str, Any]] = []
-
-    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
-        tasks_raw = doc.get("tasks")
-        tasks = (
-            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
-            if isinstance(tasks_raw, list)
-            else []
-        )
-        if key is not None and (queued := _queued_with_key(tasks, key)) is not None:
-            existing.append(queued)
-            return doc
-        tasks.append(task)
-        return {"tasks": tasks}
-
-    read_modify_write(path, _fn)
-    if existing:
-        return existing[0], False
+    stored, created = repo.add(record)
+    if not created:
+        return _row(stored), False
     _audit.audit_log("task.enqueue", f"project={project} task={task_id} channel={channel}")
-    return task, True
-
-
-def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
-    """Whether *t* can be claimed by this dispatch run. See pod-dispatch.spec.md ("Claiming"):
-    ``pending`` always is; a ``failed`` task tagged with a RESUMABLE_FAILURE_KINDS reason only
-    when *resume* is set (a swept crash, or a settled deterministic refusal -- neither waited
-    out for staleness here, since a refusal's claim was already cleanly settled, not crashed);
-    ``waiting_approval``/``waiting_input`` never -- neither status is ``pending`` or ``failed``,
-    so both are already excluded by construction; a parked question re-enters only through
-    ``hops.application.answers.answer_task`` (-> ``pending``) or expiry (-> ``blocked``, retried like any
-    other blocked task)."""
-    status = t.get("status")
-    if status == "pending":
-        return True
-    return bool(resume and status == "failed" and t.get("failureKind") in RESUMABLE_FAILURE_KINDS)
+    return _row(stored), True
 
 
 def has_claimable_work(project: str) -> bool:
     """Whether a resuming sweep of *project* could claim anything: a task it may claim, or a
     ``running`` one whose claim may be stale. A sweep with neither records no run."""
     return any(
-        t.get("status") == "running" or _eligible_for_claim(t, resume=True)
-        for t in read_tasks(project)
+        r.status == _state.Status.running or claimable(r, resume=True)
+        for r in TaskRepository.for_pod(project).list()
     )
 
 
-def apply_transition(project: str, task_id: str, to: _state.Status, **facts: Any) -> dict[str, Any]:
+def apply_transition(
+    project: str, task_id: str, to: _state.Status, **facts: Any
+) -> TaskRecord | None:
     """Move one task of *project*'s queue to *to* under the queue lock (``decide``'s *facts*
-    are the keywords) and return the queue document. A task that is not queued is left alone."""
-
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if isinstance(t, dict) and t.get("id") == task_id:
-                _transitions.apply_to_task(t, to, **facts)
-                return {"tasks": tasks}
-        return None
-
-    return read_modify_write(pod_task_list_path(project), _fn)
+    are the keywords) and return it, or ``None`` when it is not queued."""
+    return TaskRepository.for_pod(project).update(
+        task_id, lambda r: _transitions.apply_to_task(r, to, **facts)
+    )
 
 
 def refuse_claimed_task(
@@ -282,7 +226,7 @@ def refuse_claimed_task(
     """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
     runs: clear the claim, keep the recorded hops, and trace ``dispatch_refused``."""
     task_id = str(task.get("id", "task"))
-    doc = apply_transition(
+    apply_transition(
         project,
         task_id,
         _state.Status.failed,
@@ -297,11 +241,6 @@ def refuse_claimed_task(
         "lead",
         "dispatch_refused",
         _json.dumps({"reason": reason, "failureKind": failure_kind}),
-    )
-    tasks_after = doc.get("tasks")
-    _mem.sync_dispatch_tasks(
-        current_home().workspace_dir(_pod.member_id(project, "lead")),
-        tasks_after if isinstance(tasks_after, list) else [],
     )
     return TaskResult(task_id=task_id, status="failed", reason=reason, failure_kind=failure_kind)
 
@@ -348,18 +287,10 @@ def _trace_prepare(
 
 def _store_prepared(project: str, task: dict[str, Any], prepared: dict[str, Any]) -> None:
     task["prepared"] = prepared
-    task_id = task.get("id")
-
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks = doc.get("tasks")
-        if not isinstance(tasks, list):
-            return None
-        for t in tasks:
-            if isinstance(t, dict) and t.get("id") == task_id:
-                t["prepared"] = prepared
-        return {"tasks": tasks}
-
-    read_modify_write(pod_task_list_path(project), _fn)
+    stored = Prepared.model_validate(prepared)
+    TaskRepository.for_pod(project).update(
+        str(task.get("id")), lambda r: setattr(r, "prepared", stored)
+    )
 
 
 def prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | None:
@@ -393,13 +324,15 @@ def prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | Non
 
 def claim_next_task(
     project: str, *, resume: bool, skip: frozenset[str] = frozenset()
-) -> tuple[dict[str, Any], list[HopResult]] | None:
+) -> Claim | None:
     """Locked claim of the pod's next eligible task (highest priority first; pod-dispatch.spec.md,
-    "Claiming", "Mechanical HEARTBEAT ledger"). One filelocked read-pick-flip-write so two
+    "Claiming", "Mechanical HEARTBEAT ledger"). One locked read-pick-flip-write so two
     concurrent callers can never claim the same task; a paused pod refuses every claim outright,
     checked outside the queue lock since pause changes are rare and operator-driven. Returns
-    the claimed task and any recorded hops, or ``None``; also syncs the HEARTBEAT.md ledger.
-    A task id in *skip* (one this run already claimed) is never picked again."""
+    the ``Claim`` (the task, its recorded hops, a granted approval's gate override), or ``None``.
+    A task id in *skip* (one this run already claimed) is never picked again. A task without a
+    worktree gets one after the claim; the ``Claim`` carries ``refusal`` when a ``baseRef`` could
+    not be honoured."""
     lead_id = _pod.member_id(project, "lead")
     if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")):
         _trace.trace_event(
@@ -411,52 +344,19 @@ def claim_next_task(
         )
         return None
 
-    claimed: dict[str, Any] | None = None
-
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        nonlocal claimed
-        tasks_raw = doc.get("tasks")
-        tasks = (
-            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
-            if isinstance(tasks_raw, list)
-            else []
-        )
-        candidates = [
-            i
-            for i, t in enumerate(tasks)
-            if t.get("id") not in skip and _eligible_for_claim(t, resume=resume)
-        ]
-        if not candidates:
-            return None
-        candidates.sort(
-            key=lambda i: _PRIORITY_RANK.get(str(tasks[i].get("priority", "normal")), 1)
-        )
-        t = tasks[candidates[0]]
-        _transitions.apply_to_task(
-            t,
-            _state.Status.running,
-            now=_clock.iso(),
-            pid=_os.getpid(),
-        )
-        claimed = dict(t)
-        # A granted approval's gate-override is single-use — captured
-        # into the claimed copy above, then cleared from the *stored* record
-        # right here, atomically, so it can never leak into a later, unrelated
-        # claim of this same task (e.g. a crash-and-`--resume`, or the task
-        # revisiting the same pipeline position on a rework cycle).
-        t.pop("gateOverridePipelineIndex", None)
-        return {"tasks": tasks}
-
-    doc = read_modify_write(pod_task_list_path(project), _fn)
-    if claimed is None:
+    repo = TaskRepository.for_pod(project)
+    claim = repo.claim_next(resume=resume, skip=skip)
+    if claim is None:
         return None
-    ensure_task_worktree(project, claimed)
-    resume_hops = [hop_from_record(h) for h in claimed.get("hops", []) if isinstance(h, dict)]
-    tasks_after = doc.get("tasks")
-    _mem.sync_dispatch_tasks(
-        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
-    )
-    return claimed, resume_hops
+    record = claim.record
+    if record.worktree is not None:
+        return claim
+    stored, refusal = ensure_task_worktree(project, record.id, record.base_ref or "")
+    if stored is not None:
+        worktree = Worktree.model_validate(stored)
+        repo.update(record.id, lambda r: setattr(r, "worktree", worktree))
+        record.worktree = worktree
+    return replace(claim, refusal=refusal)
 
 
 def touch_claim(project: str, task_id: str) -> None:
@@ -465,25 +365,13 @@ def touch_claim(project: str, task_id: str) -> None:
     *concurrent* dispatcher's ``_sweep_stale_claims`` would fail the task out from under the
     one still retrying it. Also re-syncs HEARTBEAT.md. No-op if not ``running``."""
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if t.get("id") == task_id and t.get("status") == "running":
-                t["claimedAt"] = _clock.iso()
-                return {"tasks": tasks}
-        return None
+    def _touch(record: TaskRecord) -> bool:
+        if record.id != task_id or record.status != _state.Status.running:
+            return False
+        record.claimed_at = _clock.iso()
+        return True
 
-    doc = read_modify_write(pod_task_list_path(project), _fn)
-    tasks_after = doc.get("tasks")
-    lead_id = _pod.member_id(project, "lead")
-    _mem.sync_dispatch_tasks(
-        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
-    )
-
-
-def _task_record(project: str, task_id: str) -> dict[str, Any] | None:
-    return next((t for t in read_tasks(project) if t.get("id") == task_id), None)
+    TaskRepository.for_pod(project).update_each(_touch)
 
 
 def dispatchable_pods() -> list[str]:

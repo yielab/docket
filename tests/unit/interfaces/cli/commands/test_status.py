@@ -110,7 +110,16 @@ class TestCurrentPod:
         with _seed(tmp_path):
             _store.write_json(
                 _settings.pod_task_list_path("demo"),
-                {"tasks": [{"id": "t", "status": "pending", "gateOverridePipelineIndex": 1}]},
+                {
+                    "tasks": [
+                        {
+                            "id": "t",
+                            "description": "x",
+                            "status": "pending",
+                            "gateOverridePipelineIndex": 1,
+                        }
+                    ]
+                },
             )
             assert _json("--pod", "demo")["tasks"]["approvedReady"] == 1
 

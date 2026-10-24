@@ -224,6 +224,20 @@ class TestAnsweredQuestionsAreCounted:
         assert metrics.questions_total[("clarification", "accept")] == 1
 
 
+def _stored_question(**fields: object) -> dict[str, object]:
+    """A parked question as a task record holds it (the record validates it on read)."""
+    return {
+        "id": "q-1",
+        "taskId": "t1",
+        "pod": "demo",
+        "step": "s",
+        "message": "m",
+        "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
+        "createdAt": "2020-01-01T00:00:00+00:00",
+        **fields,
+    }
+
+
 class TestSweepExpiredQuestions:
     def _seed_task(self, project: str, task_id: str, **fields: object) -> None:
         path = _settings.pod_task_list_path(project)
@@ -238,7 +252,7 @@ class TestSweepExpiredQuestions:
             "demo",
             "t1",
             status="waiting_input",
-            question={"id": "q-1", "expiresAt": "2020-01-01T00:00:00+00:00"},
+            question=_stored_question(expiresAt="2020-01-01T00:00:00+00:00"),
         )
 
         count = _answers.sweep_expired_questions(now="2026-01-01T00:00:00+00:00")
@@ -259,7 +273,7 @@ class TestSweepExpiredQuestions:
             "demo",
             "t1",
             status="waiting_input",
-            question={"id": "q-1", "expiresAt": "2030-01-01T00:00:00+00:00"},
+            question=_stored_question(expiresAt="2030-01-01T00:00:00+00:00"),
         )
 
         count = _answers.sweep_expired_questions(now="2026-01-01T00:00:00+00:00")
@@ -269,7 +283,7 @@ class TestSweepExpiredQuestions:
 
     def test_a_question_with_no_expiry_is_never_swept(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        self._seed_task("demo", "t1", status="waiting_input", question={"id": "q-1"})
+        self._seed_task("demo", "t1", status="waiting_input", question=_stored_question())
 
         count = _answers.sweep_expired_questions(now="2099-01-01T00:00:00+00:00")
 

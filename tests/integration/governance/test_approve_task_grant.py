@@ -188,9 +188,8 @@ class TestApproveTaskCli:
     def test_grants_are_dropped_when_the_task_reaches_a_terminal_status(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         run_approve(_park(task["id"]), "--task")
-        stored = _task(task["id"])
-        _lifecycle._apply_result(stored, _domain_task.TaskResult(task["id"], "done"))
-        assert "taskGrants" not in stored
+        _lifecycle.finalize_task(PROJECT, task["id"], _domain_task.TaskResult(task["id"], "done"))
+        assert "taskGrants" not in _task(task["id"])
 
     def test_denial_fails_the_task_with_nothing_to_grant(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]

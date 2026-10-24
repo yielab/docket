@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.0.0
+**Version**: 10.1.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -304,6 +304,12 @@ itself. `workspace-structure.spec.md` owns the file-level contract.
    that is not `running` -- and **MUST**, under `--fix`, resolve it by re-syncing the ledger from
    `TASK_LIST.json` (the same sync dispatch calls) -- always safe, since `TASK_LIST.json` is this
    pipeline's own source of truth and the ledger's dispatch region is entirely docket-owned.
+7. Every write of the queue **MUST** re-sync the ledger once the write is done, whichever
+   operation made it: the writes through `TaskRepository` (enqueue, claim, hop persist, claim
+   refresh, finalize, stale sweep, reclaim, `retry_task`, `unblock_pod`, parked cancellation,
+   approval resolution, worktree prune, a stored worktree or prepare record) are all covered, so
+   a ledger entry left behind by a task that is no longer `running` goes with the next write,
+   `retry_task` included. A call that changes nothing writes nothing and re-syncs nothing.
 
 ### Conversation registry auto-population
 
@@ -2256,8 +2262,11 @@ The dispatch state machine, by module (public names first, then private ones for
 
 - `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`,
   `validate_task_options`, `RESUMABLE_FAILURE_KINDS`, `pod_full_roster`, `dispatchable_pods`,
-  `pod_roster`; the claim (`claim_next_task`, `_eligible_for_claim`, `refuse_claimed_task`,
+  `pod_roster`; the claim (`claim_next_task`, `refuse_claimed_task`,
   `prepare_claimed_task`), `touch_claim`
+- `src/docket/tasks/application/repository.py`: `TaskRepository`, the one door to a pod's queue
+  (`get`, `list`, `add`, `update`, `update_each`, `claim_next`); `claimable`; `Claim`
+- `src/docket/tasks/application/json_store.py`: `JsonTaskStore`, the queue file as `TaskRecord`s
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
 - `src/docket/tasks/application/lifecycle.py`: `reclaim_stale_running`, `retry_task`, `cancel_task`,
   `cancel_parked_task`, `task_diff`, `unblock_pod`; `finalize_task`, `_apply_result`,
@@ -2265,7 +2274,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/tasks/application/actions.py`: `TASK_GRANT_CAP`, `resolve_waiting_approval`,
   `resolve_waiting_approval_detail`
 - `src/docket/tasks/domain/task.py`: `DispatchError`, `TaskRestrictionError`, `TaskRunRefusal`,
-  `TaskNotFoundError`, `HopResult`, `TaskResult`; `_normalize_task`
+  `TaskNotFoundError`, `HopResult`, `TaskResult`, `TaskRecord`
 - `src/docket/teams/settings.py`: `pod_task_list_path`, `DEFAULT_TIMEOUT`, `pod_budget`,
   `pod_max_rework_cycles`, `pod_turn_timeout`, `pod_verify_timeout`, `pod_approval_mode`,
   `pod_approval_mode_is_set`, `pod_recorded_cost`
@@ -2287,7 +2296,8 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/hops/gates/post_hop.py`: gates (`_evaluate_mechanical_gate`,
   `_evaluate_external_gate`, `_evaluate_verdict_gate`); the hop's `_task_command_env`,
   `_run_in_envelope`
-- `src/docket/teams/workspace/worktree.py`: the claim's `ensure_task_worktree`; the hop's
+- `src/docket/teams/workspace/worktree.py`: the claim's `ensure_task_worktree`, which returns the worktree record or a refusal and
+  never touches the queue; the hop's
   `hop_diff_probe`, `_pin_hop_tree`
 - `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
   `normalize_values`, `render_plan`, `run_group`, `ExecutionPlan`, `PlannedUnit`, `PlannedGroup`,

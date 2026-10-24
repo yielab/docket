@@ -135,14 +135,14 @@ class TestHeartbeatLedgerLifecycle:
             _queue.enqueue_task_once("demo", "retry me", channel="cli")
             claim = _queue.claim_next_task("demo", resume=False)
             assert claim is not None
-            task, _hops = claim
+            task_id = claim.record.id
             ws = _lead_ws()
             before = (ws / _mem.HEARTBEAT_FILE).read_text(encoding="utf-8")
-            assert task["id"] in before
+            assert task_id in before
 
-            _queue.touch_claim("demo", task["id"])
+            _queue.touch_claim("demo", task_id)
             after = (ws / _mem.HEARTBEAT_FILE).read_text(encoding="utf-8")
-            assert task["id"] in after
+            assert task_id in after
 
     def test_touch_claim_on_non_running_task_is_a_no_op_for_the_ledger(
         self, tmp_path: Path
@@ -165,7 +165,7 @@ class TestHeartbeatLedgerLifecycle:
             claim1 = _queue.claim_next_task("demo", resume=False)
             claim2 = _queue.claim_next_task("demo", resume=False)
             assert claim1 is not None and claim2 is not None
-            ids = {claim1[0]["id"], claim2[0]["id"]}
+            ids = {claim1.record.id, claim2.record.id}
             ws = _lead_ws()
             assert set(_mem.read_dispatch_task_ids(ws)) == ids
 

@@ -15,14 +15,12 @@ from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
-from docket.platform import read_modify_write
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import transitions as _transitions
-from docket.tasks.application.queue import _task_record
-from docket.tasks.application.record import hop_record
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
-from docket.tasks.domain.task import TaskNotFoundError, TaskResult, _normalize_task
-from docket.teams import agent_memory as _mem
+from docket.tasks.domain.parts import TaskUsage
+from docket.tasks.domain.task import TaskNotFoundError, TaskRecord, TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
@@ -36,13 +34,13 @@ from docket.teams.settings import (
 
 
 def _apply_result(
-    task: dict[str, Any], res: TaskResult, *, input_expiry_hours: int | None = None
+    record: TaskRecord, res: TaskResult, *, input_expiry_hours: int | None = None
 ) -> None:
-    """Fold a TaskResult back onto the stored task dict (terminal state; pod-dispatch.spec.md,
+    """Fold a TaskResult back onto the stored task (terminal state; pod-dispatch.spec.md,
     "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval``/``waiting_input``
     are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
-    ``resolve_waiting_approval``/``hops.application.answers.answer_task``. Stays pure -- HEARTBEAT.md sync
-    lives in ``finalize_task``."""
+    ``resolve_waiting_approval``/``hops.application.answers.answer_task``. Pure -- the repository
+    syncs the HEARTBEAT.md ledger."""
     if res.status == _state.Status.waiting_input and (
         res.question and not res.question.get("expiresAt") and input_expiry_hours
     ):
@@ -52,7 +50,7 @@ def _apply_result(
     # settled-refusal marker left by an earlier attempt at this same task; a consult answer is
     # delivered to the hop this result came from (``ran``).
     _transitions.apply_to_task(
-        task,
+        record,
         _state.Status(res.status),
         now=_clock.iso(),
         reason=res.reason,
@@ -63,18 +61,25 @@ def _apply_result(
         question=res.question,
         ran=True,
     )
-    task["hops"] = [hop_record(h) for h in res.hops]
-    task["costUsd"] = res.cost_usd
-    if res.check_changed:
-        task["checkChanged"] = list(res.check_changed)
-    else:
-        task.pop("checkChanged", None)
-    if (
-        res.status == _state.Status.waiting_input
-        and res.question
-        and res.question.get("kind") in ("clarification", "decision")
-    ):
-        task["consultations"] = int(task.get("consultations") or 0) + 1
+    record.hops = list(res.hops)
+    record.cost_usd = res.cost_usd
+    record.check_changed = list(res.check_changed)
+    if res.status == _state.Status.waiting_input and record.question_is_consultation:
+        record.consultations += 1
+
+
+def _task_usage(res: TaskResult) -> TaskUsage:
+    """The measured tokens of *res*'s hops: their sum and the same totals per served model."""
+    keys = ("input", "cached", "cacheWrite", "output")
+    total = dict.fromkeys(keys, 0)
+    by_model: dict[str, dict[str, int]] = {}
+    for hop in res.hops:
+        bucket = by_model.setdefault(hop.model, dict.fromkeys(keys, 0))
+        for key in keys:
+            n = int((hop.usage or {}).get(key, 0) or 0)
+            bucket[key] += n
+            total[key] += n
+    return TaskUsage.model_validate({**total, "byModel": by_model})
 
 
 def finalize_task(project: str, task_id: str, res: TaskResult) -> None:
@@ -84,31 +89,13 @@ def finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     expiry = (
         load_pod_settings(project).input_expiry_hours if res.status == "waiting_input" else None
     )
+    usage = _task_usage(res)
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if t.get("id") == task_id:
-                _apply_result(t, res, input_expiry_hours=expiry)
-                keys = ("input", "cached", "cacheWrite", "output")
-                usage: dict[str, Any] = {**dict.fromkeys(keys, 0), "byModel": {}}
-                for h in res.hops:
-                    bucket = usage["byModel"].setdefault(h.model, dict.fromkeys(keys, 0))
-                    for key in keys:
-                        n = int((h.usage or {}).get(key, 0) or 0)
-                        bucket[key] += n
-                        usage[key] += n
-                t["usage"] = usage
-                return {"tasks": tasks}
-        return None
+    def _fn(record: TaskRecord) -> None:
+        _apply_result(record, res, input_expiry_hours=expiry)
+        record.usage = usage
 
-    doc = read_modify_write(pod_task_list_path(project), _fn)
-    tasks_after = doc.get("tasks")
-    lead_id = _pod.member_id(project, "lead")
-    _mem.sync_dispatch_tasks(
-        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
-    )
+    TaskRepository.for_pod(project).update(task_id, _fn)
     _pod_memory.record_task_memory(project, task_id, res)
 
 
@@ -118,53 +105,39 @@ def sweep_stale_claims(project: str) -> None:
     persisted ``hops`` untouched for a later ``--resume`` (pod-dispatch.spec.md, "Per-hop
     incremental persistence and crash recovery"). Runs at the top of every ``dispatch_pod`` call."""
     now = _clock.now()
-    swept: list[dict[str, Any]] = []
+    timeout = current_home().claim_stale_timeout
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        tasks = (
-            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
-            if isinstance(tasks_raw, list)
-            else []
+    def _sweep(record: TaskRecord) -> bool:
+        claimed_at = _clock.parse_iso(record.claimed_at or "")
+        if record.status != _state.Status.running or claimed_at is None:
+            return False
+        if (now - claimed_at).total_seconds() <= timeout:
+            return False
+        _transitions.apply_to_task(
+            record,
+            _state.Status.failed,
+            reason="stale claim — dispatcher likely crashed mid-task",
+            failure_kind=_state.FailureKind.stale_claim,
         )
-        changed = False
-        for t in tasks:
-            if t.get("status") != "running":
-                continue
-            claimed_at = _clock.parse_iso(str(t.get("claimedAt") or ""))
-            if claimed_at is None:
-                continue
-            if (now - claimed_at).total_seconds() <= current_home().claim_stale_timeout:
-                continue
-            _transitions.apply_to_task(
-                t,
-                _state.Status.failed,
-                reason="stale claim — dispatcher likely crashed mid-task",
-                failure_kind=_state.FailureKind.stale_claim,
-            )
-            swept.append(dict(t))
-            changed = True
-        return {"tasks": tasks} if changed else None
+        return True
 
-    read_modify_write(pod_task_list_path(project), _fn)
-    for t in swept:
-        task_id = str(t.get("id", "task"))
+    for record in TaskRepository.for_pod(project).update_each(_sweep):
         _trace.trace_event(
             project,
-            f"agent:{project}:{task_id}",
+            f"agent:{project}:{record.id}",
             "lead",
             "stale_claim",
-            _json.dumps({"task": task_id, "claimedAt": t.get("claimedAt")}),
+            _json.dumps({"task": record.id, "claimedAt": record.claimed_at}),
         )
 
 
-def _claim_stale_reason(task: dict[str, Any], now: _dt.datetime, lease_s: int) -> str:
-    """Why *task*'s ``running`` claim is stale, or ``""``: the claiming process is gone, or the
+def _claim_stale_reason(record: TaskRecord, now: _dt.datetime, lease_s: int) -> str:
+    """Why *record*'s ``running`` claim is stale, or ``""``: the claiming process is gone, or the
     claim is older than *lease_s* (the pod's ``turnTimeoutS`` plus ``verifyTimeoutS``)."""
-    pid = task.get("claimPid")
-    if isinstance(pid, int) and not _process.process_alive(pid):
+    pid = record.claim_pid
+    if pid is not None and not _process.process_alive(pid):
         return f"claimant pid {pid} is gone"
-    claimed_at = _clock.parse_iso(str(task.get("claimedAt") or ""))
+    claimed_at = _clock.parse_iso(record.claimed_at or "")
     if claimed_at is None:
         return ""
     if (now - claimed_at).total_seconds() > lease_s:
@@ -181,31 +154,22 @@ def reclaim_stale_running(project: str) -> None:
     )
     reclaimed: list[tuple[str, str]] = []
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        tasks = (
-            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
-            if isinstance(tasks_raw, list)
-            else []
+    def _reclaim(record: TaskRecord) -> bool:
+        if record.status != _state.Status.running:
+            return False
+        why = _claim_stale_reason(record, now, lease_s)
+        if not why:
+            return False
+        _transitions.apply_to_task(
+            record,
+            _state.Status.failed,
+            reason="stale claim — " + why,
+            failure_kind=_state.FailureKind.stale_claim,
         )
-        changed = False
-        for t in tasks:
-            if t.get("status") != "running":
-                continue
-            why = _claim_stale_reason(t, now, lease_s)
-            if not why:
-                continue
-            _transitions.apply_to_task(
-                t,
-                _state.Status.failed,
-                reason="stale claim — " + why,
-                failure_kind=_state.FailureKind.stale_claim,
-            )
-            reclaimed.append((str(t.get("id", "task")), why))
-            changed = True
-        return {"tasks": tasks} if changed else None
+        reclaimed.append((record.id, why))
+        return True
 
-    read_modify_write(pod_task_list_path(project), _fn)
+    TaskRepository.for_pod(project).update_each(_reclaim)
     for task_id, why in reclaimed:
         _audit.audit_log("task.reclaimed", f"{project}/{task_id}: {why}")
 
@@ -215,21 +179,15 @@ def retry_task(project: str, task_id: str) -> bool:
     hops and audits ``task.retry``. Returns False if not found or in any other status."""
     found = False
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+    def _retry(record: TaskRecord) -> bool:
         nonlocal found
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if t.get("id") == task_id:
-                _normalize_task(t)
-                if t.get("status") not in ("blocked", "failed"):
-                    return None
-                _transitions.apply_to_task(t, _state.Status.pending, retry=True)
-                found = True
-                return {"tasks": tasks}
-        return None
+        if record.status not in (_state.Status.blocked, _state.Status.failed):
+            return False
+        _transitions.apply_to_task(record, _state.Status.pending, retry=True)
+        found = True
+        return True
 
-    read_modify_write(pod_task_list_path(project), _fn)
+    TaskRepository.for_pod(project).update(task_id, _retry)
     if found:
         _audit.audit_log("task.retry", f"{project}/{task_id}")
     return found
@@ -244,35 +202,23 @@ def cancel_parked_task(
     prior = ""
     token = ""
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+    def _cancel(record: TaskRecord) -> bool:
         nonlocal prior, token
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if t.get("id") != task_id:
-                continue
-            _normalize_task(t)
-            if t.get("status") not in ("waiting_input", "waiting_approval"):
-                return None
-            prior = str(t["status"])
-            token = str(t.get("approvalToken") or "")
-            _transitions.apply_to_task(
-                t, _state.Status.cancelled, now=_clock.iso(), reason="cancelled by operator"
-            )
-            return {"tasks": tasks}
-        return None
+        if record.status not in (_state.Status.waiting_input, _state.Status.waiting_approval):
+            return False
+        prior = record.status.value
+        token = record.approval_token or ""
+        _transitions.apply_to_task(
+            record, _state.Status.cancelled, now=_clock.iso(), reason="cancelled by operator"
+        )
+        return True
 
-    doc = read_modify_write(pod_task_list_path(project), _fn)
+    TaskRepository.for_pod(project).update(task_id, _cancel)
     if not prior:
         return ""
     if token:
         with _contextlib.suppress(_ap.ApprovalError):
             _ap.approval_deny(token, channel, actor=actor)
-    tasks_after = doc.get("tasks")
-    _mem.sync_dispatch_tasks(
-        current_home().workspace_dir(_pod.member_id(project, "lead")),
-        tasks_after if isinstance(tasks_after, list) else [],
-    )
     _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, reason))
     return prior
 
@@ -321,13 +267,14 @@ def cancel_task(
 ) -> TaskCancelOutcome:
     """Stop whatever holds *task_id*: its live runs, its parked state, or a stale ``running``
     claim. One ``task.cancel`` audit entry per call that cancelled; raises ``TaskNotFoundError``."""
-    task = _task_record(project, task_id)
+    repo = TaskRepository.for_pod(project)
+    task = repo.get(task_id)
     if task is None:
         raise TaskNotFoundError(f"task {task_id!r} not found in pod {project!r}")
     stopped: list[str] = []
     messages: list[str] = []
     warnings: list[str] = []
-    for run_id in _live_run_ids(project, task_id, task.get("status")):
+    for run_id in _live_run_ids(project, task_id, task.status):
         result = _runs.cancel_run(run_id, source=channel)
         if result.ok:
             stopped.append(run_id)
@@ -340,13 +287,15 @@ def cancel_task(
             "task.cancel", _cancel_detail(project, task_id, "running", channel, reason)
         )
     reclaimed = False
-    current = _task_record(project, task_id) or {}
-    if current.get("status") == "running":
+    current = repo.get(task_id)
+    if current is not None and current.status == _state.Status.running:
         reclaim_stale_running(project)
-        current = _task_record(project, task_id) or {}
-        reclaimed = current.get("status") != "running"
+        current = repo.get(task_id)
+        reclaimed = current is None or current.status != _state.Status.running
     return TaskCancelOutcome(
-        status="cancelled" if stopped or parked else str(current.get("status", "unknown")),
+        status="cancelled"
+        if stopped or parked
+        else (current.status.value if current is not None else "unknown"),
         cancelled_runs=tuple(stopped),
         parked_from=parked,
         reclaimed=reclaimed,
@@ -359,25 +308,23 @@ def task_diff(project: str, task_id: str) -> dict[str, Any]:
     """What the task's branch changed against the commit it started from, read from the codebase
     repository (the branch outlives its worktree). Raises ``TaskNotFoundError`` for an unknown
     task or a deleted branch and ``DispatchError`` for a task that ran in place."""
-    task = _task_record(project, task_id)
+    task = TaskRepository.for_pod(project).get(task_id)
     if task is None:
         raise TaskNotFoundError(f"task {task_id!r} not found in pod {project!r}")
-    record = task.get("worktree")
-    branch = str(record.get("branch") or "") if isinstance(record, dict) else ""
-    if not isinstance(record, dict) or not branch:
+    record = task.worktree
+    if record is None or not record.branch:
         raise DispatchError("task ran in place")
+    branch = record.branch
     codebase = str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
-    base = str(record.get("baseCommit") or "")
+    base = record.base_commit
     head = _git.git_rev_parse(codebase, branch) if codebase else None
     patch = _git.git_diff_range(codebase, base, branch) if head and base else None
     if head is None or patch is None:
         raise TaskNotFoundError(f"branch {branch!r} of task {task_id!r} no longer exists")
-    wt_dir = str(record.get("dir") or "")
-    present = bool(wt_dir) and not record.get("prunedAt") and Path(wt_dir).is_dir()
+    wt_dir = task.worktree_dir
+    present = bool(wt_dir) and Path(wt_dir).is_dir()
     if present:
-        _git.trust_worktree(
-            wt_dir, str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
-        )
+        _git.trust_worktree(wt_dir, record.git_dir or "", record.common_dir or "")
     return {
         "task": task_id,
         "branch": branch,
@@ -396,20 +343,11 @@ def unblock_pod(project: str) -> int:
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         return 0
-    count = 0
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        nonlocal count
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        changed = False
-        for t in tasks:
-            _normalize_task(t)
-            if t.get("status") == "blocked":
-                _transitions.apply_to_task(t, _state.Status.pending)
-                count += 1
-                changed = True
-        return {"tasks": tasks} if changed else None
+    def _unblock(record: TaskRecord) -> bool:
+        if record.status != _state.Status.blocked:
+            return False
+        _transitions.apply_to_task(record, _state.Status.pending)
+        return True
 
-    read_modify_write(path, _fn)
-    return count
+    return len(TaskRepository.for_pod(project).update_each(_unblock))

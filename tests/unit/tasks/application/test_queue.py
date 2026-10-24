@@ -32,7 +32,9 @@ from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import repository as _repository
 from docket.tasks.domain import task as _task
+from docket.teams import agent_memory as _mem
 from docket.teams import settings as _settings
 
 live_server = _support_http.live_server
@@ -371,6 +373,43 @@ class TestBaseRefRefusedAtClaim:
         assert len(events) == 1
         assert "nope" in json.dumps(events[0])
 
+    def test_a_claim_whose_base_ref_cannot_be_honoured_carries_the_refusal(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_lean_pod("myapp")
+        _queue.enqueue_task_once("myapp", "needs a base", channel="cli", base_ref="nope")
+        monkeypatch.setattr(
+            _queue,
+            "ensure_task_worktree",
+            lambda project, task_id, base_ref: (
+                None,
+                ("base_ref", f"baseRef {base_ref!r} was not used: no such ref"),
+            ),
+        )
+
+        claim = _queue.claim_next_task("myapp", resume=False)
+
+        assert claim is not None
+        assert claim.refusal == ("base_ref", "baseRef 'nope' was not used: no such ref")
+        assert claim.record.status == "running"
+        (stored,) = _queue.read_tasks("myapp")
+        assert stored["status"] == "running"
+        assert "worktree" not in stored
+
+    def test_a_made_worktree_is_stored_and_carried_on_the_claim(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_lean_pod("myapp")
+        _queue.enqueue_task_once("myapp", "plain", channel="cli")
+        made = {"dir": "/wt", "branch": "docket/x", "baseCommit": "abc"}
+        monkeypatch.setattr(_queue, "ensure_task_worktree", lambda *a: (made, None))
+
+        claim = _queue.claim_next_task("myapp", resume=False)
+
+        assert claim is not None and claim.refusal is None
+        assert claim.record.worktree_dir == "/wt"
+        assert _queue.read_tasks("myapp")[0]["worktree"] == made
+
     def test_base_ref_is_not_resumable(self) -> None:
         assert "base_ref" not in _queue.RESUMABLE_FAILURE_KINDS
 
@@ -398,40 +437,40 @@ class TestBaseRefRefusedAtClaim:
         assert stored["failureKind"] == "pipeline"
         assert stored["reason"] == "no such pipeline"
         assert "claimPid" not in stored
-        assert stored["hops"] == [{"role": "lead"}]
+        assert [h["role"] for h in stored["hops"]] == ["lead"]
 
 
 class TestResumableFailureKinds:
-    """``_eligible_for_claim``/``_apply_result`` treat ``dispatch_refused`` the same way they
+    """``claimable``/``_apply_result`` treat ``dispatch_refused`` the same way they
     already treat ``stale_claim`` -- resumable, immediately, with no staleness math -- while an
     ordinary graded hop failure (no ``failureKind`` at all) stays non-resumable."""
 
     def test_dispatch_refused_is_eligible_only_with_resume(self) -> None:
-        task = {"status": "failed", "failureKind": "dispatch_refused"}
-        assert _queue._eligible_for_claim(task, resume=True) is True
-        assert _queue._eligible_for_claim(task, resume=False) is False
+        task = _task.TaskRecord(description="x", status="failed", failureKind="dispatch_refused")
+        assert _repository.claimable(task, resume=True) is True
+        assert _repository.claimable(task, resume=False) is False
 
     def test_a_plain_failed_task_is_never_eligible(self) -> None:
-        task = {"status": "failed", "failureKind": ""}
-        assert _queue._eligible_for_claim(task, resume=True) is False
+        task = _task.TaskRecord(description="x", status="failed")
+        assert _repository.claimable(task, resume=True) is False
 
     def test_apply_result_persists_a_failure_kind_when_the_result_carries_one(self) -> None:
-        task: dict[str, Any] = {"status": "running", "failureKind": "stale_claim"}
+        task = _task.TaskRecord(description="x", status="running", failureKind="stale_claim")
         res = _task.TaskResult(
             task_id="t1", status="failed", reason="boom", failure_kind="dispatch_refused"
         )
 
         _lifecycle._apply_result(task, res)
 
-        assert task["failureKind"] == "dispatch_refused"
+        assert task.failure_kind == "dispatch_refused"
 
     def test_apply_result_clears_a_stale_failure_kind_on_an_ordinary_result(self) -> None:
-        task: dict[str, Any] = {"status": "running", "failureKind": "stale_claim"}
+        task = _task.TaskRecord(description="x", status="running", failureKind="stale_claim")
         res = _task.TaskResult(task_id="t1", status="done", reason="")
 
         _lifecycle._apply_result(task, res)
 
-        assert "failureKind" not in task
+        assert task.failure_kind is None
 
 
 def _audit_actions() -> list[str]:
@@ -461,8 +500,23 @@ class TestRetryFailedTask:
 
         task = _queue.read_tasks("myapp")[0]
         assert task["status"] == "pending"
-        assert task["hops"] == [hop]
+        assert [(h["role"], h["output"], h["ok"]) for h in task["hops"]] == [("lead", "plan", True)]
         assert "task.retry" in _audit_actions()
+
+    def test_a_retry_re_syncs_the_heartbeat_ledger(self, pod_home: Path) -> None:
+        """Every write of the queue regenerates the ledger, a retry included: an entry left for
+        a task that is no longer ``running`` goes with the retry."""
+        _seed_lean_pod("myapp")
+        _put_task("myapp", {"id": "task-1", "description": "x", "status": "failed"})
+        lead = current_home().workspace_dir("myapp-lead")
+        _mem.write_dispatch_tasks(
+            lead, [_mem.DispatchHeartbeatTask(task_id="task-1", description="x", claimed_at="")]
+        )
+        assert _mem.read_dispatch_task_ids(lead) == ["task-1"]
+
+        assert _lifecycle.retry_task("myapp", "task-1") is True
+
+        assert _mem.read_dispatch_task_ids(lead) == []
 
     def test_a_done_task_is_not_retried(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
