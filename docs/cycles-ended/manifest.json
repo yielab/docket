@@ -822,5 +822,13 @@
     "heading": "◇ PHASE 48 — closed 2026-10-24: isolation where the machine can jail, a task keeps its pipeline",
     "bytes": 1387,
     "sha256": "cc04b91127f86b3b66657221108c94b3e3c97815c46f7393b7592c562e45940d"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 49 — closed 2026-10-24 — the task as a typed record behind one store (D-70)",
+    "bytes": 32201,
+    "sha256": "94ffb565d771e3981f38ce6861d26ee226549573273bc5ca2f96d38e1a7f0fde"
   }
 ]
