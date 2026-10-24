@@ -33,7 +33,7 @@ from docket.tasks.domain import task as _task
 
 _hermetic = _support_home.hermetic
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.governance.policy"
 
 # ── hermetic environment (mirrors test_approval_gated_dispatch.py) ────────────
 

@@ -32,7 +32,7 @@ from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.observability import trace as _trace
 from docket.platform import store as _store
 
-SUBJECT = "docket.governance"
+SUBJECT = "docket.governance.approval"
 
 _TEST_TOKEN = "test-serve-token-fd4-xyz789"
 

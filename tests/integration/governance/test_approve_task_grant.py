@@ -35,7 +35,7 @@ from docket.tasks.domain import task as _domain_task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.interfaces"
+SUBJECT = "docket.governance.gate"
 
 
 def run_approve(token: str, *flags: str) -> int:

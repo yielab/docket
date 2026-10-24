@@ -30,7 +30,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod_settings as _pod_settings
 
-SUBJECT = "docket.interfaces"
+SUBJECT = "docket.governance.profile"
 
 _GATED = """\
 name: gated

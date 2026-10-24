@@ -33,7 +33,7 @@ from docket.interfaces.cli.commands import setup_model_credentials as _setup_mod
 from docket.interfaces.cli.commands.agents import InitRequest, run_init
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.governance.audit"
 
 # ── shared helpers ───────────────────────────────────────────────────────────
 

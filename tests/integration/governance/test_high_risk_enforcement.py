@@ -30,7 +30,7 @@ from docket.tasks.application import sweep as _sweep
 
 _hermetic = _support_home.hermetic
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.governance.security"
 
 # ── system adapter: run_command's own high-risk guard ─────────────────────
 

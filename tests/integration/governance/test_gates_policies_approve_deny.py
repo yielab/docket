@@ -29,7 +29,7 @@ from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.governance.policy"
 
 # Agent registration + channel bindings + gates/isolation flags live in
 # fleet.json.
