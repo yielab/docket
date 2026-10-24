@@ -2270,7 +2270,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/hops/gates/post_hop.py`: gates (`_evaluate_mechanical_gate`,
   `_evaluate_external_gate`, `_evaluate_verdict_gate`); the hop's `_task_command_env`,
   `_run_in_envelope`
-- `src/docket/hops/workspace/worktree.py`: the claim's `_ensure_task_worktree`; the hop's
+- `src/docket/teams/workspace/worktree.py`: the claim's `_ensure_task_worktree`; the hop's
   `_hop_diff_probe`, `_pin_hop_tree`
 - `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
   `normalize_values`, `render_plan`, `run_group`, `ExecutionPlan`, `PlannedUnit`, `PlannedGroup`,
@@ -2290,13 +2290,13 @@ The dispatch state machine, by module (public names first, then private ones for
   `from_output`), `parse_brief`, `render_brief`, `cap_diff`
 - `src/docket/agent/context.py`: `compile_artifact`, `budget_for_role`, `hop_share`,
   `estimate_tokens`, `SUMMARY_TRUNCATION_MARKER`
-- `src/docket/hops/workspace/repo_map.py`: `render_repo_map`, `task_root_block`
+- `src/docket/teams/workspace/repo_map.py`: `render_repo_map`, `task_root_block`
 - `src/docket/teams/roles.py`: `load_registry`, `resolve_hop_instruction`, `registry_for_role`,
   `BUILTIN_TOOL_KINDS`
 - `src/docket/teams/blueprints.py`: `get_blueprint`
 - `src/docket/tasks/application/evidence.py`: `task_evidence`, `EVIDENCE_V1_1`, `HopEvidence`,
   `TaskEvidence`, `EvidenceNotFound`
-- `src/docket/hops/workspace/prepare.py`: preparation resolution, cache and record (`resolve`,
+- `src/docket/teams/workspace/prepare.py`: preparation resolution, cache and record (`resolve`,
   `needs_prepare`, `prepare_worktree`, `linked_entries`)
 - `src/docket/kernel/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
 - `src/docket/teams/agent_memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,

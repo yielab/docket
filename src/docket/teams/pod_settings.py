@@ -152,11 +152,11 @@ class PodSettings(BaseModel):
     # It only ever narrows: ``coerce`` refuses a path the machine has not granted.
     read_only: str = Field("", alias="readOnly")
 
-    # The install command a task's fresh worktree runs before its first hop (hops/workspace/prepare.py);
+    # The install command a task's fresh worktree runs before its first hop (teams/workspace/prepare.py);
     # 'none' turns preparation off and '' leaves the choice to the worktree's lockfile.
     prepare: str = Field("", alias="prepare")
 
-    # Globs a task may not change without a person (hops/workspace/protected_paths.py); they add to the
+    # Globs a task may not change without a person (teams/workspace/protected_paths.py); they add to the
     # defaults and never remove one. Comma-joined in storage, like allowCommands.
     protects: tuple[str, ...] = Field((), alias="protects")
 

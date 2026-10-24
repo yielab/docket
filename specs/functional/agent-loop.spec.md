@@ -882,8 +882,8 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
   `agent/tools/screening.py`: `screen_tool_result`
 - `src/docket/agent/tools/builtins/toolbox.py`: `SKIPPED_DIRS`, `READ_DEFAULT_LINES`,
   `READ_DEFAULT_CHARS`, `read_file`, `glob_files`, `grep_files`, `run_bash`, the output truncation
-- `src/docket/hops/workspace/skills.py`: `discover_skills`
-- `src/docket/hops/workspace/repo_view.py`: `RepoView`
+- `src/docket/teams/workspace/skills.py`: `discover_skills`
+- `src/docket/teams/workspace/repo_view.py`: `RepoView`
 - `src/docket/platform/git.py`: `git_read_blob`, `git_list_tree_dirs`
 - `src/docket/teams/memory.py`: `render_entries`
 - `src/docket/teams/pod.py`: `PodSettings` (`projectInstructions`, `mcpServers`)

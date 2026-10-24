@@ -1,4 +1,4 @@
-"""``docket pod show`` -- Rich rendering of the reports built by ``teams.report``."""
+"""``docket pod show`` -- Rich rendering of the reports built by ``hops.application.report``."""
 
 from __future__ import annotations
 

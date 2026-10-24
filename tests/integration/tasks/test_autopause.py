@@ -28,9 +28,9 @@ from docket.hops.application import sweep as _sweep
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, current_home, use_home
-from docket.models import selection as _mp
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 from docket.teams import pod as _podcore
 from docket.teams import settings as _settings
 from docket.teams import utils as _utils

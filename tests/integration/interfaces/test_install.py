@@ -20,7 +20,7 @@ from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import setup as _setup
 from docket.kernel.home import Home, current_home, use_home
 from docket.models import catalog as _prov
-from docket.models import selection as _models_policy
+from docket.teams import model_selection as _models_policy
 
 SUBJECT = "docket.interfaces.cli.commands.setup"
 

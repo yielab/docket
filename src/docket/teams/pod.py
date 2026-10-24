@@ -17,8 +17,8 @@ from pathlib import Path
 
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.models import selection as _mp
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 from docket.teams import roles as _archetypes
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")

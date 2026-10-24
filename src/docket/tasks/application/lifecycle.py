@@ -41,7 +41,7 @@ def _apply_result(
     """Fold a TaskResult back onto the stored task dict (terminal state; pod-dispatch.spec.md,
     "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval``/``waiting_input``
     are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
-    ``resolve_waiting_approval``/``tasks.application.answers.answer_task``. Stays pure -- HEARTBEAT.md sync
+    ``resolve_waiting_approval``/``hops.application.answers.answer_task``. Stays pure -- HEARTBEAT.md sync
     lives in ``_finalize_task``."""
     if res.status == _state.Status.waiting_input and (
         res.question and not res.question.get("expiresAt") and input_expiry_hours

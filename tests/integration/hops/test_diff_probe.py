@@ -26,15 +26,15 @@ from tests.support.pods import build_pod
 
 from docket.hops.application import executor as _executor
 from docket.hops.application import sweep as _sweep
-from docket.hops.workspace import worktree as _worktree
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams.workspace import worktree as _worktree
 
 _hermetic = _support_home.hermetic_2
 
-SUBJECT = "docket.hops.workspace.worktree"
+SUBJECT = "docket.teams.workspace.worktree"
 
 # ── TestHopDiffProbeUnit: _hop_diff_probe in isolation ──────
 

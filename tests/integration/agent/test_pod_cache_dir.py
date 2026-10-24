@@ -58,7 +58,7 @@ def test_the_real_home_stays_unwritable_in_the_jail(tmp_path: Path) -> None:
 
 
 def test_the_driver_resolves_and_creates_a_members_pod_cache() -> None:
-    from docket.hops.application import isolation_posture as _isolation_posture
+    from docket.teams import isolation_posture as _isolation_posture
 
     cache = _isolation_posture._pod_cache_dir("cachepod-implementer")
 

@@ -41,7 +41,7 @@ CLI already created; anything else is an "unrecognized command" reply, not a
 guess at what the sender meant.
 
 ``/answer <task-id> <text>`` resolves a task's parked ``input`` question
-through the same ``tasks.application.answers.answer_task`` every other surface (CLI, HTTP,
+through the same ``hops.application.answers.answer_task`` every other surface (CLI, HTTP,
 MCP) calls -- see :func:`_handle_answer`. It is the one verb whose *outbound*
 counterpart also exists: an operator who enables the ``telegram`` channel
 document (``kind: channel``, dialect ``telegram``) gets a *push* to every
@@ -342,7 +342,7 @@ def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResu
     single-property schema fills from the whole message, a multi-property one is refused
     with the CLI guidance instead of guessing which field the text belongs
     to. The pod is the bound agent's own project (:func:`_lead_project`) --
-    ``tasks.application.answers.answer_task`` itself refuses a *task_id* that belongs to another pod, the
+    ``hops.application.answers.answer_task`` itself refuses a *task_id* that belongs to another pod, the
     same way it does for any other channel."""
     project = _lead_project(agent_id)
     if project is None:

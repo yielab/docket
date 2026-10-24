@@ -1576,12 +1576,12 @@ $ git clone https://anywhere.example/repo.git
   `get_network_mode`, `get_sandbox_backend`, `add_read_only`, `remove_read_only`, `get_profile`,
   `set_profile`
 - `src/docket/teams/pod.py`: `PodSettings`, `effective_network`, `effective_read_only`, `pod_of`
-- `src/docket/governance/network_posture.py`: `network_posture`, `global_posture`
+- `src/docket/teams/network_posture.py`: `network_posture`, `global_posture`
 - `src/docket/hops/gates/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
   `effective_profile`
 - `src/docket/kernel/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
 - `src/docket/governance/review.py`: `review_code` and the reviewed digest
-- `src/docket/hops/workspace/prepare.py`: `LOCKFILES`, `linked_entries`
+- `src/docket/teams/workspace/prepare.py`: `LOCKFILES`, `linked_entries`
 - `src/docket/teams/apply/plan.py`: `REPO_REFUSED_COMMANDS`, `review_decision`, `apply_directory`
 - `src/docket/teams/pod_provisioning.py`: `provision_task_worktree`
 - `src/docket/kernel/operator_contract.py`: `canonical_args_digest`

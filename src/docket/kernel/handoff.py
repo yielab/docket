@@ -26,7 +26,7 @@ other field at its default).
   archetype). ``None`` for every other hop: Lead, a ``MechanicalGate``- or
   ``ApprovalGate``-gated hop, or an unparseable verdict.
 - ``files_changed`` / ``diff_ref`` / ``diff`` — populated via a real git probe:
-  ``hops/workspace/worktree.py``'s ``_hop_diff_probe`` resolves the member's
+  ``teams/workspace/worktree.py``'s ``_hop_diff_probe`` resolves the member's
   working tree the same way the mechanical verify gate does (worktree →
   shared codebase → the member's own workspace dir, via
   ``teams.pod.resolve_member_cwd``) and, when that tree is a real git

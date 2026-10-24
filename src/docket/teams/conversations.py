@@ -11,7 +11,7 @@ session.
 
 Layering: this module holds the domain models + **pure** operations on an in-memory
 registry, plus thin load/save helpers over ``platform/store.py`` (the same shape
-``models/selection.py`` uses). Timestamps are passed in by the caller so the pure
+``teams/model_selection.py`` uses). Timestamps are passed in by the caller so the pure
 ops stay testable; the ``cli`` layer stamps ``datetime.now(UTC)``.
 """
 

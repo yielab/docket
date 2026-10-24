@@ -5,27 +5,14 @@ application imports kernel, its own context and the contexts below it | docket.g
 application imports kernel, its own context and the contexts below it | docket.governance.approval -> docket.tasks.application.actions
 application imports kernel, its own context and the contexts below it | docket.governance.approval -> docket.tasks.application.corrections
 application imports kernel, its own context and the contexts below it | docket.governance.gate -> docket.observability.trace
-application imports kernel, its own context and the contexts below it | docket.governance.network_posture -> docket.teams.fleet
 application imports kernel, its own context and the contexts below it | docket.governance.review -> docket.teams.apply.review
 application imports kernel, its own context and the contexts below it | docket.governance.security -> docket.teams.fleet
 application imports kernel, its own context and the contexts below it | docket.models.provider_lifecycle -> docket.models.adapters.openai_http
-application imports kernel, its own context and the contexts below it | docket.models.selection -> docket.teams.builtin_roles
-application imports kernel, its own context and the contexts below it | docket.models.selection -> docket.teams.fleet
-application imports kernel, its own context and the contexts below it | docket.models.selection -> docket.teams.pod
-application imports kernel, its own context and the contexts below it | docket.models.selection -> docket.teams.roles
-application imports kernel, its own context and the contexts below it | docket.models.selection -> docket.teams.utils
 application imports kernel, its own context and the contexts below it | docket.operator.inbox -> docket.tasks.application.queue
-application imports kernel, its own context and the contexts below it | docket.tasks.application.queue -> docket.hops.application.isolation_posture
-application imports kernel, its own context and the contexts below it | docket.tasks.application.queue -> docket.hops.workspace.prepare
-application imports kernel, its own context and the contexts below it | docket.tasks.application.queue -> docket.hops.workspace.worktree
-application imports kernel, its own context and the contexts below it | docket.tasks.application.record -> docket.hops.workspace.worktree
 application imports kernel, its own context and the contexts below it | docket.teams.apply.plan -> docket.hops.application.steps
 application imports kernel, its own context and the contexts below it | docket.teams.apply.plan -> docket.tasks.application.queue
-application imports kernel, its own context and the contexts below it | docket.teams.apply.review -> docket.hops.workspace.prepare
 application imports kernel, its own context and the contexts below it | docket.teams.apply.write -> docket.tasks.application.queue
 application imports kernel, its own context and the contexts below it | docket.teams.config_docs -> docket.operator
-application imports kernel, its own context and the contexts below it | docket.teams.identity -> docket.hops.workspace.repo_view
-application imports kernel, its own context and the contexts below it | docket.teams.identity -> docket.hops.workspace.skills
 application imports kernel, its own context and the contexts below it | docket.teams.task_worktrees -> docket.tasks.application.queue
 application imports kernel, its own context and the contexts below it | docket.teams.utils -> docket.hops.application.driver
 adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_http -> docket.governance.secrets

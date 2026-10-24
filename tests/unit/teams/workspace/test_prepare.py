@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from docket.hops.workspace import prepare as _prepare
 from docket.kernel import text as _text
 from docket.kernel.home import Home, current_home, use_home
+from docket.teams.workspace import prepare as _prepare
 
-SUBJECT = "docket.hops.workspace.prepare"
+SUBJECT = "docket.teams.workspace.prepare"
 
 
 @pytest.fixture(autouse=True)

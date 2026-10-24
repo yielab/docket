@@ -16,9 +16,9 @@ import pytest
 
 import docket.kernel.templates as _templates
 from docket.kernel.home import Home, current_home, use_home
-from docket.models import selection as _mp
+from docket.teams import model_selection as _mp
 
-SUBJECT = "docket.models.selection"
+SUBJECT = "docket.teams.model_selection"
 
 
 @contextmanager

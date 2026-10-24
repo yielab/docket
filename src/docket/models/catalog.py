@@ -5,7 +5,7 @@ selectable models with optional pricing, and named presets -- loaded the same wa
 policy is (model-profiles.spec.md "Provider catalog"). Two scopes, nearest-wins by name: built-in
 (`kernel.templates.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
 (`Home.providers_file`, the operator's own). `models/adapters/openai_http.py`'s `resolve_endpoint` reads
-the merged catalog; this module has no knowledge of terminals. `models/selection.py`'s
+the merged catalog; this module has no knowledge of terminals. `teams/model_selection.py`'s
 `presets`/`preset_table`/`is_local_provider`/`is_marketplace`/`price_for`/`rank_anchors` are the
 only readers of the catalog's presets and pricing; every other per-provider fact (base URLs,
 credential names, key-format prefixes) derives from this module too, so no module keeps its
@@ -99,7 +99,7 @@ class ModelRow(BaseModel):
 
 class Preset(BaseModel):
     """A named rank triple attached to the provider that defines it -- what
-    `models/selection.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
+    `teams/model_selection.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
     ``cost``) that are derived from the owning `ProviderSpec` instead of stored twice."""
 
     model_config = ConfigDict(populate_by_name=True)

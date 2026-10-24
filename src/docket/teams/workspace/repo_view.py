@@ -5,7 +5,7 @@ read from it can be rewritten by the very hop whose work the next hop reviews. A
 is the injected reader that serves those files from the base commit instead; the git read behind
 it lives in ``platform/git.py`` and this module never shells out. A view is registered for one worktree
 root for the length of a turn, in that turn's context only, and ``teams/identity.py`` and
-``hops/workspace/skills.py`` consult ``view_for(root)`` before touching the filesystem. ``composed`` records the sha256 of the bytes
+``teams/workspace/skills.py`` consult ``view_for(root)`` before touching the filesystem. ``composed`` records the sha256 of the bytes
 each file served, keyed by repository-relative path."""
 
 from __future__ import annotations

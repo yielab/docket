@@ -361,7 +361,7 @@ class TestToolDispatch:
     def test_resume_and_timeout_are_threaded_through_to_dispatch_pod(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Proves this tool is a thin wrapper over `tasks.application.sweep.dispatch_pod`
+        """Proves this tool is a thin wrapper over `hops.application.sweep.dispatch_pod`
         (same gates, same knobs) rather than a parallel dispatch path."""
         with _seed_pod(tmp_path, project="demo"):
             seen: dict[str, object] = {}

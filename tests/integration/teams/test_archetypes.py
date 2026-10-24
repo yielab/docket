@@ -130,7 +130,7 @@ class TestBuiltinAndStarterArchetypes:
 
     def test_every_builtin_and_starter_archetype_has_its_own_policy_row(self) -> None:
         """One vocabulary: an archetype's model row is its own name."""
-        from docket.models import selection as mp
+        from docket.teams import model_selection as mp
 
         names = {*builtin_roles.BUILTIN_ARCHETYPES, *builtin_roles.STARTER_ARCHETYPES}
         assert set(mp.ROLE_CLASS) == names

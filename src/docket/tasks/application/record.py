@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from docket.agent import ports as _rd
-from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
@@ -22,6 +21,7 @@ from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams.settings import pod_task_list_path
+from docket.teams.workspace.worktree import _hop_diff_probe
 
 # Injectable runner for tests (matches the RuntimeDriver port's ``run_turn`` signature). The
 # 4th positional arg is always the *agent-turn* timeout (never the verify timeout).

@@ -118,7 +118,7 @@ def tool_delegate(project: str, description: str, priority: str = "normal") -> d
 
 def tool_dispatch(project: str, resume: bool = False, timeout: int | None = None) -> dict[str, Any]:
     """Trigger a pod's real dispatch pipeline, gated exactly like the CLI/webhook via the
-    same `tasks.application.sweep.dispatch_pod`. Runs in a background thread; poll `runs` for the
+    same `hops.application.sweep.dispatch_pod`. Runs in a background thread; poll `runs` for the
     outcome. See specs/api/mcp-server.spec.md."""
     _audit("dispatch", f"project={project} resume={resume} timeout={timeout}")
     if timeout is not None and timeout <= 0:
@@ -202,7 +202,7 @@ def tool_task_answer(
     project: str, task_id: str, action: str, content: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Answer a task's parked ``input`` question. Identical to `docket task answer`
-    / `docket start`'s `POST /tasks/<task_id>/answer` -- same `tasks.application.answers.answer_task`
+    / `docket start`'s `POST /tasks/<task_id>/answer` -- same `hops.application.answers.answer_task`
     call (``channel="mcp"``, ``actor="mcp"``)."""
     _audit("task_answer", f"project={project} task={task_id} action={action}")
     try:

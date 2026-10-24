@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from docket.governance import network_posture as _np
 from docket.kernel.home import Home, use_home
 from docket.teams import fleet as _fleet
+from docket.teams import network_posture as _np
 
-SUBJECT = "docket.governance.network_posture"
+SUBJECT = "docket.teams.network_posture"
 
 
 def test_none_with_isolation_on_says_the_jail_cuts_it() -> None:

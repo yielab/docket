@@ -15,7 +15,6 @@ import json as _json
 import shutil
 from typing import Any
 
-from docket.governance import network_posture as _np
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands.setup_check_budget import (
     _batch_cost,
@@ -56,13 +55,14 @@ from docket.interfaces.cli.commands.setup_check_services import (
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.kernel.ports import jail as _jail
-from docket.models import selection as _mp
 from docket.operator import load_catalog
 from docket.pipeline.application import schedule as _sched
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
+from docket.teams import network_posture as _np
 from docket.teams import pod as _pod
 from docket.teams import pod as _pod_ledger_mod
 from docket.teams import pod as _pod_mod

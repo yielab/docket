@@ -1,4 +1,4 @@
-"""How ``dispatch_pod`` hands a claimed task to ``hops.workspace.prepare``: skips, the jail, the refusal."""
+"""How ``dispatch_pod`` hands a claimed task to ``teams.workspace.prepare``: skips, the jail, the refusal."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeJail
 
-from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop
-from docket.hops.workspace import prepare as _prepare
 from docket.kernel.ports import JailPolicy
 from docket.tasks.application import queue as _queue
+from docket.teams import isolation_posture as _isolation_posture
+from docket.teams.workspace import prepare as _prepare
 
 SUBJECT = "docket.sandbox.launch"
 

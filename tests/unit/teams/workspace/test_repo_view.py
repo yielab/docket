@@ -1,4 +1,4 @@
-"""The base-commit reader a turn registers for its worktree (`hops/workspace/repo_view.py`).
+"""The base-commit reader a turn registers for its worktree (`teams/workspace/repo_view.py`).
 
 Pins that a registered view is local to the turn that registered it: the children of a
 ``parallel`` group run concurrently in one task worktree, so one child ending its turn must
@@ -11,10 +11,10 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from docket.hops.workspace import repo_view as _repo_view
 from docket.pipeline.domain import plan as _orch
+from docket.teams.workspace import repo_view as _repo_view
 
-SUBJECT = "docket.hops.workspace.repo_view"
+SUBJECT = "docket.teams.workspace.repo_view"
 
 
 def _view(commit: str) -> _repo_view.RepoView:

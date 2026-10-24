@@ -193,7 +193,7 @@ Where the names above live today:
 
 - `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`, `ProjectIdError`
 - `src/docket/teams/pod_provisioning.py`: `provision_pod`, `PodAlreadyExistsError`, `validate_verify_cmd`, `VerifyCmdError`
-- `src/docket/models/selection.py`: `validate_model`
+- `src/docket/teams/model_selection.py`: `validate_model`
 - `src/docket/teams/models.py`: `AgentMeta`, `AgentKind`, `AgentScope`, `WorkspaceKind`
 - `src/docket/teams/fleet.py`: `meta_set` (validates the record before writing)
 - `src/docket/interfaces/http/exchange.py`: the project-segment check on every route with a project segment

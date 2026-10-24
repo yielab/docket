@@ -111,7 +111,7 @@ def test_soul_and_agents_name_no_path(repo: Path) -> None:
 @pytest.mark.parametrize("role", ["lead", "implementer", "reviewer", "tester"])
 def test_the_task_message_names_a_path_inside_the_members_roots(repo: Path, role: str) -> None:
     """The hop message's `Working directory` is a root the tools will accept."""
-    from docket.hops.workspace import repo_map
+    from docket.teams.workspace import repo_map
 
     member = _make_member(role)
     _provision(member, repo)

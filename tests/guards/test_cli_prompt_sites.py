@@ -21,9 +21,9 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.models import selection as _mp
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "docket"
 

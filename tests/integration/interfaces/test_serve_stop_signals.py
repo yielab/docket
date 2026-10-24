@@ -35,7 +35,7 @@ _DRIVER = textwrap.dedent(
     """
     import threading
     import docket.tasks.application.queue as q
-    import docket.tasks.application.sweep as d
+    import docket.hops.application.sweep as d
     from docket.interfaces.http import server
 
     release = threading.Event()

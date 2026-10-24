@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Literal
 
 from docket.governance.audit import audit_log
-from docket.hops.workspace.repo_view import RepoView, view_for
 from docket.kernel.errors import DocumentError
 from docket.kernel.home import current_home
+from docket.teams.workspace.repo_view import RepoView, view_for
 
 SkillScope = Literal["codebase", "pod", "global", ""]
 

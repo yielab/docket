@@ -20,7 +20,6 @@ from docket.kernel import clock as _clock
 from docket.kernel import operator_contract as _oc
 from docket.kernel.errors import DispatchError, InvalidInput
 from docket.kernel.home import current_home
-from docket.models import selection as _models_policy
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
@@ -29,6 +28,7 @@ from docket.tasks.application.record import _trace_locked, _UnitContext, _UnitOu
 from docket.tasks.domain.task import HopResult, TaskRunRefusal
 from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams.settings import (
     _pod_settings,
@@ -356,7 +356,7 @@ def _run_input_step(
 ) -> _UnitOutcome:
     """Park the task for an operator question minted from *node.input*, trace
     ``input_requested``, and stop ``waiting_input`` -- no hop persisted for this attempt.
-    Resumed only by ``tasks.application.answers.answer_task``. See pod-dispatch.spec.md."""
+    Resumed only by ``hops.application.answers.answer_task``. See pod-dispatch.spec.md."""
     assert node.input is not None
     spec = node.input
     # When the `from` step's latest hop carries a Lead intake brief with its own

@@ -12,13 +12,13 @@ from docket.agent.tools.registry import (
     _str_arg,
 )
 from docket.agent.tools.screening import screen_tool_result
-from docket.hops.workspace import skills as _skills
 from docket.kernel.gate import CONSULT_TOOL
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 from docket.kernel.tool_outcome import text_outcome
 from docket.platform import fetch_url
 from docket.tasks.application import consult as _consult
+from docket.teams.workspace import skills as _skills
 
 
 def _int_arg(args: dict[str, Any], name: str, default: int = 0) -> int:

@@ -1,5 +1,15 @@
-[[module]]
-from = "docket.hops.application.record"
-to = "docket.tasks.application.record"
+[[module]]  # role -> model resolution reads fleet, pod, roles, builtin roles and writes agents
+from = "docket.models.selection"
+to = "docket.teams.model_selection"
 
-# --- teams: modules that read or write pod, fleet, role and settings data
+[[module]]  # the pod's task worktrees, prepare, skills and repo view: keyed on pod config
+from = "docket.hops.workspace"
+to = "docket.teams.workspace"
+
+[[module]]  # resolves a hop's jail policy from pod settings and the fleet
+from = "docket.hops.application.isolation_posture"
+to = "docket.teams.isolation_posture"
+
+[[module]]  # words the network mode that teams.pod decides
+from = "docket.governance.network_posture"
+to = "docket.teams.network_posture"

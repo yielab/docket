@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from docket.agent.ports import UsageDay, UsageTotals
 from docket.kernel.home import current_home
-from docket.models import selection as _mp
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 
 
 def project_ids() -> list[str]:

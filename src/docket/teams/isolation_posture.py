@@ -4,7 +4,6 @@ from pathlib import Path
 
 from docket.agent.ports import DOCKET_TASK_NETWORK
 from docket.governance.audit import audit_log
-from docket.hops.workspace import prepare as _prepare
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.kernel.ports import JailPolicy
@@ -12,6 +11,7 @@ from docket.kernel.ports import jail as _jail
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
+from docket.teams.workspace import prepare as _prepare
 
 
 def _ensure_pod_cache(project: str) -> Path | None:

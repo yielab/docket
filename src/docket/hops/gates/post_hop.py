@@ -10,10 +10,7 @@ from docket.agent import ports as _rd
 from docket.agent.tools import screening as _tools
 from docket.governance import policy as _policy
 from docket.governance import security as _sec
-from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.domain import gate_decisions as _decide
-from docket.hops.workspace import prepare as _prepare
-from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import jail as _jail
@@ -29,8 +26,11 @@ from docket.tasks.application.record import (
 )
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
+from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import pod as _pod
 from docket.teams.settings import _pod_settings
+from docket.teams.workspace import prepare as _prepare
+from docket.teams.workspace.worktree import _task_worktree_dir
 
 
 def _apply_output_guardrails(

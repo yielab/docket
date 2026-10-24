@@ -1094,7 +1094,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/observability/telemetry.py`: `ExportPolicy`
 - `src/docket/governance/privacy.py`: `describe`
 - `src/docket/operator/channel.py`: `unreached_warning`
-- `src/docket/governance/network_posture.py`: the `network <mode>` wording in the `isolation` string
+- `src/docket/teams/network_posture.py`: the `network <mode>` wording in the `isolation` string
 - `src/docket/agent/tools/registry.py`: `dispatch_tool`
 - `src/docket/platform/git.py`: `trust_worktree`
 - `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`

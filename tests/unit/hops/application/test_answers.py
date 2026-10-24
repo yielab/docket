@@ -1,4 +1,4 @@
-"""``tasks.application.answers`` -- validating and resuming a parked ``input`` pipeline step, and expiring
+"""``hops.application.answers`` -- validating and resuming a parked ``input`` pipeline step, and expiring
 an unanswered question (ADR 0016 SS4/SS8).
 """
 

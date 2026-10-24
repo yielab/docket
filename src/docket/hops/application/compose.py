@@ -8,8 +8,6 @@ from typing import Any
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
-from docket.hops.workspace import repo_map as _repo_map
-from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import operator_contract as _oc
@@ -28,6 +26,8 @@ from docket.tasks.domain.task import HopResult
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.settings import _pod_settings, pod_approval_mode
+from docket.teams.workspace import repo_map as _repo_map
+from docket.teams.workspace.worktree import _task_worktree_dir
 
 
 @dataclass
@@ -313,7 +313,7 @@ _ANSWERS_CHAR_BUDGET = 4000
 
 def _render_answer_value(entry: dict[str, Any]) -> str:
     """One answered entry's ``A: ...`` line: the single ``answer`` property's value for an
-    ``accept``, else a plain marker -- see ``tasks.application.answers.answer_task``."""
+    ``accept``, else a plain marker -- see ``hops.application.answers.answer_task``."""
     action = str(entry.get("action", ""))
     if action == "accept":
         content = entry.get("content")

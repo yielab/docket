@@ -47,12 +47,6 @@ from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.application.builtin_tools import builtin_registry
-from docket.hops.application.isolation_posture import (
-    _hop_read_only,
-    _jail_cache_dir,
-    _resolve_posture,
-)
-from docket.hops.workspace import repo_view as _repo_view
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
@@ -69,8 +63,10 @@ from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
+from docket.teams.isolation_posture import _hop_read_only, _jail_cache_dir, _resolve_posture
 from docket.teams.models import AgentMeta
 from docket.teams.roles import BUILTIN_TOOL_KINDS
+from docket.teams.workspace import repo_view as _repo_view
 
 __all__ = ["DocketDriver"]
 

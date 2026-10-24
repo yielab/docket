@@ -11,22 +11,22 @@ from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
 from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates import profile as _profile
-from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import operator_contract as _oc
 from docket.kernel import protected_paths as _protected
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.models import selection as _models_policy
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.queue import pod_full_roster, read_tasks
 from docket.tasks.application.record import _trace_locked, _UnitContext, _UnitOutcome
 from docket.tasks.domain.task import TaskResult
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams import utils as _utils
 from docket.teams.settings import _pod_settings, pod_recorded_cost
+from docket.teams.workspace.worktree import _task_worktree_dir
 
 
 def pod_gating_cost(project: str) -> tuple[float, bool]:
@@ -314,7 +314,7 @@ def _checked_commands(
 def _park_if_check_changed(
     ctx: _UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...], result: TaskResult
 ) -> None:
-    """A finished task whose diff touches a protected path (hops/workspace/protected_paths.py) parks
+    """A finished task whose diff touches a protected path (teams/workspace/protected_paths.py) parks
     ``waiting_approval`` for a person whatever the profile, instead of ending ``done``. A task
     with no recorded worktree is not checked."""
     record = ctx.task.get("worktree")

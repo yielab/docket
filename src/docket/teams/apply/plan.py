@@ -26,7 +26,6 @@ from docket.kernel import protected_paths as _protected
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
-from docket.models import selection as _mp
 from docket.observability import exporter as _exporter
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -34,6 +33,7 @@ from docket.tasks.application import queue as _queue
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings

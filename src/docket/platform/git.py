@@ -136,7 +136,7 @@ def git_available() -> bool:
 def git_current_branch(cwd: str) -> str:
     """Return the current git branch for `cwd`, or '' if not a repo or unavailable; degrades
     gracefully on a missing binary, non-repo directory, or timeout. The ``diff_ref`` producer for an
-    Implementer hop's ``HandoffArtifact`` (`hops/workspace/worktree.py`'s `_hop_diff_probe`)."""
+    Implementer hop's ``HandoffArtifact`` (`teams/workspace/worktree.py`'s `_hop_diff_probe`)."""
     if not git_available():
         return ""
     try:

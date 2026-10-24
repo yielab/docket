@@ -9,12 +9,12 @@ from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
-from docket.models import selection as _mp
 from docket.platform import read_json
 from docket.teams import agent_memory as _mem
 from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
+from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 

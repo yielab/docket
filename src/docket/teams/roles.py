@@ -20,7 +20,7 @@ lead, implementer, reviewer, tester (golden-tested; see
 researcher, analyst, writer, critic, operator, monitor.
 
 `model_class` (cheap|strong) slots into the role->model policy
-(`models/selection.py`): an archetype's model row is its own name; a
+(`teams/model_selection.py`): an archetype's model row is its own name; a
 pod-scoped archetype with no row resolves through its own `model_class`
 against the live rank anchors instead.
 

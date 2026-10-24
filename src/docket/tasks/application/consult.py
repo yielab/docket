@@ -5,7 +5,7 @@ The call is validated through ``QuestionV11`` (operator-v1.1) and then, by appro
 the event and raise ``ConsultUnavailable``, which ``agent/tools/registry.py`` renders as the
 ``approval_unavailable`` stop.
 In pod dispatch (``ctx.consult_park``) a non-refuse consult raises ``ConsultParked`` instead:
-the hop ends, the task parks ``waiting_input`` and ``tasks.application.answers`` re-enters the same role.
+the hop ends, the task parks ``waiting_input`` and ``hops.application.answers`` re-enters the same role.
 The per-task count lives on the task; dispatch passes the remaining budget to each hop.
 
 Tool-visible failures are ordinary error results, never exceptions, so the model can adapt.

@@ -11,9 +11,6 @@ from pydantic import ValidationError as _ValidationError
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
-from docket.hops.application import isolation_posture as _isolation_posture
-from docket.hops.workspace import prepare as _prepare
-from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
@@ -39,9 +36,12 @@ from docket.tasks.domain.task import (
 )
 from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
+from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import models as _models
 from docket.teams import pod as _pod
 from docket.teams.settings import _pod_settings, builtin_tool_names, pod_task_list_path
+from docket.teams.workspace import prepare as _prepare
+from docket.teams.workspace.worktree import _ensure_task_worktree
 
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
@@ -256,7 +256,7 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     out for staleness here, since a refusal's claim was already cleanly settled, not crashed);
     ``waiting_approval``/``waiting_input`` never -- neither status is ``pending`` or ``failed``,
     so both are already excluded by construction; a parked question re-enters only through
-    ``tasks.application.answers.answer_task`` (-> ``pending``) or expiry (-> ``blocked``, retried like any
+    ``hops.application.answers.answer_task`` (-> ``pending``) or expiry (-> ``blocked``, retried like any
     other blocked task)."""
     status = t.get("status")
     if status == "pending":

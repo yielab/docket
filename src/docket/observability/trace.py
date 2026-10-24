@@ -89,7 +89,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "command_step",  # a `run` (command) step executed, with its exit code
         "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
         "input_requested",  # an `input` step parked the task, waiting on an operator question
-        "input_answered",  # `tasks.application.answers.answer_task` resumed a parked `input` step
+        "input_answered",  # `hops.application.answers.answer_task` resumed a parked `input` step
         "question_asked",  # a `consult` call posed a QuestionV11 to the operator (tasks/application/consult.py)
         "input_expired",  # an unanswered question passed its deadline; task -> blocked
         "llm_call",  # one backend chat-completions exchange: model, tokens, latency

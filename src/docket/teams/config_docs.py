@@ -17,11 +17,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from docket.governance import policy as _policy
 from docket.kernel.errors import InvalidInput
 from docket.models import catalog as _provider
-from docket.models import selection as _models_policy
 from docket.observability import exporter as _exporter
 from docket.operator import ChannelError, ChannelSpec, load_channel_document
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import model_selection as _models_policy
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.apply import plan as _pod_apply

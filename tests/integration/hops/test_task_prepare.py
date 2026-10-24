@@ -30,7 +30,7 @@ from docket.observability import trace as _trace
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.hops.workspace.prepare"
+SUBJECT = "docket.teams.workspace.prepare"
 
 _FAKE_NPM = """\
 #!/bin/sh

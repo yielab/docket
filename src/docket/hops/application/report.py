@@ -11,12 +11,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.governance import network_posture as _network_posture
 from docket.governance import policy as _policy
 from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import steps as _steps
 from docket.hops.gates import profile as _profile
-from docket.hops.workspace import skills as _skills
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
@@ -27,6 +25,7 @@ from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import identity as _identity
 from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import network_posture as _network_posture
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _archetypes
@@ -34,10 +33,11 @@ from docket.teams import settings as _settings
 from docket.teams.apply import recipes as _recipes
 from docket.teams.apply import review as _review
 from docket.teams.models import AgentKind, AgentMeta
+from docket.teams.workspace import skills as _skills
 
 
 def network_text(net: dict[str, Any]) -> str:
-    """The network line, worded by ``governance.network_posture`` so it never claims a cut network
+    """The network line, worded by ``teams.network_posture`` so it never claims a cut network
     while isolation is off."""
     posture = _network_posture.network_posture(
         str(net["mode"]), str(net["scope"]), isolation_on=_fleet.get_isolation_enabled()

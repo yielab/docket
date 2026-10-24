@@ -546,7 +546,7 @@ rank anchors  local/qwen3-30b-a3b -> local/qwen3-30b-a3b -> local/qwen3-30b-a3b
 
 Where the names above live today (the only place paths appear):
 
-- `src/docket/models/selection.py`: `ALL_ROLES`, `ROLE_CLASS`, `REPO_AGENT_ROLE`,
+- `src/docket/teams/model_selection.py`: `ALL_ROLES`, `ROLE_CLASS`, `REPO_AGENT_ROLE`,
   `rank_anchors`, `presets`, `preset_table`, `known_presets`, `load_registry`,
   `find_registry_problems`, `write_registry`, `resolve_role_model`, `resolve_step_model`,
   `validate_model`, `role_why`, `reapply_role_policy`, `RoleRepoint`, `is_local_provider`,

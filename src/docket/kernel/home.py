@@ -79,7 +79,7 @@ class Home:
     trace_retention_days: int = 30
     # Cap on the diff one hop hands the next (HandoffArtifact.diff).
     handoff_diff_max_chars: int = 8000
-    # Cap on the repository map a hop message carries (hops/workspace/repo_map.py).
+    # Cap on the repository map a hop message carries (teams/workspace/repo_map.py).
     repo_map_max_chars: int = 1600
     # The static-context budget when CONTEXT_TOKEN_BUDGET is unset and the model's window
     # is unknown. Kept apart so teams/identity.py can tell an explicit value from none.
@@ -125,7 +125,7 @@ class Home:
     # trace, small enough to keep the task record small.
     verify_evidence_tail_chars: int = 4000
     # Bound on a task worktree's install, and the cached installs kept per codebase
-    # (hops/workspace/prepare.py).
+    # (teams/workspace/prepare.py).
     prepare_timeout_s: int = 900
     prepare_cache_keep: int = 3
     # Default turn budget, checked between iterations. DocketDriver.run_turn passes the
@@ -321,7 +321,7 @@ class Home:
             return self.plugins_dir_override
         return self.root / "plugins"
 
-    # The operator's skills, the outermost of the three scopes hops/workspace/skills.py reads.
+    # The operator's skills, the outermost of the three scopes teams/workspace/skills.py reads.
     @property
     def skills_dir(self) -> Path:
         if self.skills_dir_override is not None:

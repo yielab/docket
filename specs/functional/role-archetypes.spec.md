@@ -599,7 +599,7 @@ docket pod validate ./producer.yaml
 - `src/docket/agent/session.py`: `compact_session`
 - `src/docket/agent/loop.py`: the per-turn `registry_for_role` call; the compaction call
   passing the turn's project
-- `src/docket/models/selection.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
+- `src/docket/teams/model_selection.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
   `rank_anchors`
 - `src/docket/teams/identity.py`: the live runtime startup contract
 - `src/docket/teams/agent_memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` manual-path paragraph),

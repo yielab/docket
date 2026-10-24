@@ -33,14 +33,14 @@ from docket.agent.ports import (
 )
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
-from docket.hops.workspace import repo_view as _repo_view
-from docket.hops.workspace import skills as _skills
 from docket.kernel.home import current_home
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams.agent_memory import MEMORY_FILE, REQUIRED_STARTUP_FILE
+from docket.teams.workspace import repo_view as _repo_view
+from docket.teams.workspace import skills as _skills
 
 #: The identity file `compose_agent_prompt` reads alongside
 #: ``WORKFLOW_AUTO.md`` — kept as a local constant (not re-exported from

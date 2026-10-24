@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from docket.hops.workspace import worktree as _worktree
+from docket.teams.workspace import worktree as _worktree
 
-SUBJECT = "docket.hops.workspace.worktree"
+SUBJECT = "docket.teams.workspace.worktree"
 
 
 @pytest.mark.parametrize(

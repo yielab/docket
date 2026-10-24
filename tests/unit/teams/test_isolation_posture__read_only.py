@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from docket.hops.application import isolation_posture as _isolation_posture
-from docket.hops.workspace import prepare as _prepare
+from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import pod_settings as _pod_settings
+from docket.teams.workspace import prepare as _prepare
 
-SUBJECT = "docket.hops.application.isolation_posture"
+SUBJECT = "docket.teams.isolation_posture"
 
 
 def test_a_hop_reads_its_pods_grants_and_the_entries_its_root_links_into(
