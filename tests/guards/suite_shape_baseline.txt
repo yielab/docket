@@ -1,24 +1,6 @@
 # Offenders of the suite-shape ratchets in test_suite_shape.py. A count may only fall; a line
 # whose file no longer offends is deleted. Format: <kind> <path under tests/> [<count>] [# why it stays]. A setenv entry stays
 # only where the environment variable is what the file tests or forces; Home does not hold it.
-json_output integration/interfaces/test_delete_bind_unbind.py 2  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output integration/interfaces/test_init_leaves_alone.py 1  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output integration/interfaces/test_init_refuses_unstorable.py 3  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output integration/interfaces/test_task_worktree_views.py 2  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output integration/models/test_provider_registration.py 3  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output integration/observability/test_exporters_cli.py 9  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output integration/tasks/test_autopause.py 2  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output integration/tasks/test_evidence_surfaces.py 1  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_agents.py 11  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_log.py 5  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_setup.py 5  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_setup_mcp.py 1  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_setup_model.py 3  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_setup_notify.py 4  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_setup_sandbox.py 1  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_setup_shell.py 3  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_status.py 5  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
-json_output unit/interfaces/cli/commands/test_task.py 13  # asserts the human-readable text of a command that also offers --json; that text is what the file pins
 setenv integration/agent/test_bash_cancellation.py 1  # sandbox backend override read from the process environment by the real jail adapter
 setenv integration/agent/test_mcp_stdio_jail.py 6  # sandbox backend override read from the process environment by the real jail adapter
 setenv integration/agent/test_mcp_stdio_root.py 2  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees

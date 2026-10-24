@@ -201,6 +201,8 @@ def _invoked_path(call: ast.Call, commands: set[tuple[str, ...]]) -> tuple[str, 
         return None
     if len(call.args) < 2 or not isinstance(call.args[1], ast.List):
         return None
+    if not any(isinstance(el, ast.Constant) and el.value == "--json" for el in call.args[1].elts):
+        return None
     words: list[str] = []
     for el in call.args[1].elts:
         if (
@@ -486,6 +488,8 @@ def test_the_json_check_sees_a_planted_output_substring(tmp_path: Path) -> None:
         "    assert 'x' in result.output\n"
         "    other = runner.invoke(app, ['task', 'cancel', 'x'])\n"
         "    assert 'y' in other.output\n"
+        "    text = runner.invoke(app, ['task', 'list'])\n"
+        "    assert 'z' in text.output\n"
     )
     (tmp_path / "test_a.py").write_text(body, encoding="utf-8")
 
