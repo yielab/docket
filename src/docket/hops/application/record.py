@@ -15,8 +15,7 @@ from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.platform import read_modify_write
-from docket.tasks.application import consult as _consult
+from docket.platform import PARK_TOKEN_PREFIX, parked_question, read_modify_write
 from docket.tasks.domain.task import HopResult
 from docket.teams import agent_memory as _mem
 from docket.teams import conversations as _conv
@@ -462,9 +461,9 @@ def _parked_consult_question(
 ) -> dict[str, Any] | None:
     """The question a parked ``consult`` left, rebound to this task and step (stored on the
     task like an input step's), or ``None`` when *token* is not a consultation's."""
-    if token is None or not token.startswith(_consult.PARK_TOKEN_PREFIX):
+    if token is None or not token.startswith(PARK_TOKEN_PREFIX):
         return None
-    question = _consult.parked_question(token)
+    question = parked_question(token)
     if question is None:
         return None
     question.task_id = ctx.task_id
@@ -581,7 +580,7 @@ def _persist_hop_and_trace(
                 reason=f"{role} hop parked a consultation (question={consult_question['id']})",
                 question=consult_question,
             )
-        if parked_token is not None and parked_token.startswith(_consult.PARK_TOKEN_PREFIX):
+        if parked_token is not None and parked_token.startswith(PARK_TOKEN_PREFIX):
             # No approval record can resolve a consult token, so parking on it would be stuck.
             return _UnitOutcome(
                 kind="failed",

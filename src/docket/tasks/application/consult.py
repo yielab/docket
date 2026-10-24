@@ -13,22 +13,16 @@ Tool-visible failures are ordinary error results, never exceptions, so the model
 
 from __future__ import annotations
 
-import contextlib
 import json
-import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-from pydantic import ValidationError
 
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
 from docket.kernel.gate import HandlerParked, HandlerUnavailable
-from docket.kernel.home import current_home
+from docket.kernel.operator_contract import AnswerResultV11, QuestionV11, new_question_id
 from docket.observability import trace as _trace
-from docket.operator.contract import AnswerResultV11, QuestionV11, new_question_id
-from docket.platform import read_json, write_json
+from docket.platform import PARK_TOKEN_PREFIX, is_question_id, write_parked
 
 if TYPE_CHECKING:
     from docket.agent.tools.registry import ToolContext
@@ -36,7 +30,6 @@ if TYPE_CHECKING:
 NO_ANSWER = "no answer; decide yourself"
 BUDGET_EXHAUSTED = "consultation budget exhausted; decide yourself"
 QUESTION_EVENT = "question_asked"
-PARK_TOKEN_PREFIX = "consult:"
 
 # What an answer may carry besides ``optionId``: one free-text note.
 _REQUESTED_SCHEMA: dict[str, Any] = {
@@ -59,39 +52,13 @@ class ConsultUnavailable(Refused, HandlerUnavailable):
     """Nobody can answer this consultation (``refuse``/``park``); the turn ends blocked."""
 
 
-_QUESTION_ID = re.compile(r"q-[0-9a-f]{1,32}")
-
-
-def _parked_file(question_id: str) -> Path:
-    return current_home().consult_parked_dir / f"{question_id}.json"
-
-
 def park_token(question: QuestionV11) -> str:
     """Persist the parked question (``platform/store.py``, 0600) and return ``consult:<id>``. The
     token never carries question text, so no error string or trace field holds it unredacted."""
-    if not _QUESTION_ID.fullmatch(question.id):
+    if not is_question_id(question.id):
         raise ConsultUnavailable(f"cannot park question id {question.id!r}")
-    write_json(_parked_file(question.id), question.model_dump(by_alias=True, mode="json"))
+    write_parked(question)
     return PARK_TOKEN_PREFIX + question.id
-
-
-def parked_question(token: str) -> QuestionV11 | None:
-    """Take the question ``park_token`` persisted for *token*: read once, then removed. ``None``
-    when *token* is not a consult token or its question is absent or invalid."""
-    if not token.startswith(PARK_TOKEN_PREFIX):
-        return None
-    question_id = token[len(PARK_TOKEN_PREFIX) :]
-    if not _QUESTION_ID.fullmatch(question_id):
-        return None
-    path = _parked_file(question_id)
-    data = read_json(path)
-    for leftover in (path, path.with_suffix(path.suffix + ".bak")):
-        with contextlib.suppress(OSError):
-            leftover.unlink()
-    try:
-        return QuestionV11.model_validate(data) if data else None
-    except ValidationError:
-        return None
 
 
 class ConsultParked(ConsultUnavailable, HandlerParked):

@@ -8,6 +8,7 @@ from typing import Any
 
 from docket.interfaces.http.exchange import HttpExchange
 from docket.interfaces.http.routes.health import _with_token_budget
+from docket.kernel.errors import DispatchError
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
@@ -57,7 +58,7 @@ def get_task_diff(h: HttpExchange, rest: str) -> None:
     except _task.TaskNotFoundError as exc:
         h._send_json_error(str(exc), 404)
         return
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         h._send_json({"ok": False, "error": str(exc), "reason": str(exc)}, 409)
         return
     h._send_json(doc)

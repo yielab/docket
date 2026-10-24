@@ -27,8 +27,8 @@ from docket.interfaces.cli.commands.pod_members import (
 from docket.interfaces.cli.commands.pod_settings import set_setting, unset_setting
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod
@@ -123,7 +123,7 @@ def cmd_show(
         _require_member(project, member)
     try:
         report = _report.member_report(member) if member else _report.pod_report(project)
-    except (_task.DispatchError, _pod_settings.PodSettingsError) as ex:
+    except (DispatchError, _pod_settings.PodSettingsError) as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     if json_out:

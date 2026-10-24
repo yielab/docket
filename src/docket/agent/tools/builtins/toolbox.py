@@ -19,7 +19,6 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -30,6 +29,7 @@ from docket.kernel.errors import Refused
 from docket.kernel.home import current_home
 from docket.kernel.ports import SandboxAvailability, SandboxBackend
 from docket.kernel.ports import jail as _jail
+from docket.kernel.tool_outcome import ToolOutcome, text_outcome
 
 SandboxMode = Literal["off", "auto"]
 
@@ -60,16 +60,6 @@ class PathEscapeError(Refused):
     """A tool was asked to touch a path outside every allowed root."""
 
 
-@dataclass
-class ToolOutcome:
-    """What happened when a tool ran. Not whether it was allowed to."""
-
-    ok: bool
-    content: str = ""
-    error: str = ""
-    refusal: str = ""
-
-
 def _truncate(text: str, limit: int | None = None) -> str:
     # Resolved per call, not bound as a default argument, so the ceiling follows the
     # current Home rather than whatever it was at import time.
@@ -98,11 +88,6 @@ def resolve_within(roots: tuple[Path, ...], candidate: str) -> Path:
 
 
 # ── file tools ────────────────────────────────────────────────────────────────
-
-
-def text_outcome(text: str) -> ToolOutcome:
-    """A successful outcome carrying *text*, bounded like a ``read`` result."""
-    return ToolOutcome(True, content=_truncate(text))
 
 
 def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 0) -> ToolOutcome:

@@ -439,7 +439,7 @@ class TestFlushNotifyAfterDispatch:
     def _flush_returns(monkeypatch: pytest.MonkeyPatch, events: int) -> None:
         from docket.operator import notify as _notify
 
-        monkeypatch.setattr(_notify, "flush", lambda *_a, **_k: _notify.FlushReport(events=events))
+        monkeypatch.setattr(_run, "flush", lambda *_a, **_k: _notify.FlushReport(events=events))
 
     def test_events_with_only_console_warn(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -471,7 +471,7 @@ class TestFlushNotifyAfterDispatch:
         from docket.operator import notify as _notify
 
         report = _notify.FlushReport(error="inbox unreadable: [Errno 13]")
-        monkeypatch.setattr(_notify, "flush", lambda *_a, **_k: report)
+        monkeypatch.setattr(_run, "flush", lambda *_a, **_k: report)
         _run._flush_notify_after_dispatch()
         assert "notify: inbox unreadable: [Errno 13]" in capsys.readouterr().out
 

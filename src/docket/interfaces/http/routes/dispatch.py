@@ -7,12 +7,12 @@ import json
 from docket.governance import audit as _audit
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import threads as _threads
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import sweep as _sweep
-from docket.tasks.domain import task as _task
 
 
 def post_dispatch(h: HttpExchange, project: str) -> None:
@@ -37,7 +37,7 @@ def post_dispatch(h: HttpExchange, project: str) -> None:
     except _pipeline.VariableError as exc:
         h._send_json_error(str(exc), 400)
         return
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         msg = str(exc)
         h._send_json_error(msg, 404 if msg.startswith("no pod for") else 400)
         return

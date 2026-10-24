@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from pydantic import ValidationError as _PydanticValidationError
 
 from docket.governance import security as _security
-from docket.hops.workspace import prepare as _prepare
-from docket.hops.workspace import protected_paths as _protected
+from docket.kernel import protected_paths as _protected
+from docket.kernel import text as _text
 from docket.kernel.errors import InvalidInput
 from docket.pipeline.application import schedule as _schedule
 from docket.teams import fleet as _fleet
@@ -364,7 +364,7 @@ class PodSettings(BaseModel):
     @classmethod
     def _parse_prepare(cls, value: Any) -> str:
         """One line of at most 1,000 characters, or ``none``."""
-        return _prepare.check_command(value)
+        return _text.check_command(value)
 
     @field_validator("protects", mode="before")
     @classmethod

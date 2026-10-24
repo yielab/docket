@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from docket.kernel.operator_contract import CloudEvent
 from docket.operator.adapters.command import deliver as _command_deliver
 from docket.operator.adapters.console import deliver as _console_deliver
 from docket.operator.adapters.desktop import deliver as _desktop_deliver
@@ -18,7 +19,6 @@ from docket.operator.adapters.telegram import deliver as _telegram_deliver
 from docket.operator.adapters.webhook import DeliveryResult
 from docket.operator.adapters.webhook import deliver as _webhook_deliver
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import CloudEvent
 
 __all__ = ["Deliver", "DeliveryResult", "sink_for"]
 

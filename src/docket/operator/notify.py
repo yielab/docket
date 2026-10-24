@@ -20,10 +20,7 @@ from typing import Any, Protocol
 from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.operator import channel as _channel
-from docket.operator import inbox as _inbox
-from docket.operator import notify as _notify
-from docket.operator.contract import (
+from docket.kernel.operator_contract import (
     ApprovalView,
     CloudEvent,
     InboxView,
@@ -31,6 +28,9 @@ from docket.operator.contract import (
     TaskView,
     make_event,
 )
+from docket.operator import channel as _channel
+from docket.operator import inbox as _inbox
+from docket.operator import notify as _notify
 from docket.platform import read_json, write_json
 
 __all__ = [
@@ -461,7 +461,7 @@ def _flush(
     return FlushReport(events=len(events), delivered=delivered, failed=failed, skipped=skipped)
 
 
-def _flush_notify_channels(sink_for: SinkFactory) -> None:
+def flush_notify_channels(sink_for: SinkFactory) -> None:
     """One `operator.notify.flush` call over every catalog channel through *sink_for* -- the
     periodic half of delivery; `interfaces/cli/commands/run.py::_pod_dispatch` runs the other,
     foreground half."""

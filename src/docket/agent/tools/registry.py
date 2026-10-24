@@ -22,7 +22,6 @@ from docket.agent.ports import ToolCall, ToolCallArgumentsError, ToolSpec, tool_
 # ToolOutcome is re-exported: callers outside the chokepoint build one without importing the
 # handler module, which only this module may import.
 from docket.agent.tools.builtins.toolbox import SandboxMode
-from docket.agent.tools.builtins.toolbox import ToolOutcome as ToolOutcome
 from docket.kernel.gate import (
     DEFAULT_MAX_CONSULTATIONS,
     Decision,
@@ -31,6 +30,7 @@ from docket.kernel.gate import (
     HandlerUnavailable,
     ToolDenialKind,
 )
+from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 
 ToolKind = Literal["read", "write", "exec"]
 

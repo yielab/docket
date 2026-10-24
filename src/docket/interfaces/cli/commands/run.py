@@ -19,8 +19,8 @@ from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import progress as _progress
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
-from docket.operator import channel as _channel
-from docket.operator import notify as _notify
+from docket.kernel.errors import DispatchError
+from docket.operator import flush, load_catalog, unreached_warning
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -28,7 +28,6 @@ from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import sweep as _sweep
-from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import models as _models
@@ -174,15 +173,13 @@ def _flush_notify_after_dispatch() -> None:
     Silent unless a delivery failed or nothing beyond the console delivers."""
 
     now = _clock.stamp()
-    report = _notify.flush(
-        list(_channel.load_catalog().entries.values()), _bootstrap.sink_for, now=now
-    )
+    report = flush(list(load_catalog().entries.values()), _bootstrap.sink_for, now=now)
     if report.error:
         ui.warn(escape(f"  notify: {report.error}"))
     if report.failed:
         ui.warn(f"  notify: {report.failed} delivery failure(s) — see channels-health.json")
     if report.events:
-        unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
+        unreached = unreached_warning(load_catalog().delivering())
         if unreached:
             ui.warn(f"  {unreached}")
 
@@ -246,7 +243,7 @@ def _pod_dispatch(
             effective, _queue.pod_full_roster(project), registry=_arch.load_registry(project)
         )
         cap = _settings.pod_budget(project)
-    except _task.DispatchError as ex:
+    except DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     if resume:
@@ -377,7 +374,7 @@ def _dry_run(project: str, spec: _pipeline.PipelineSpec | None) -> None:
         plan = _orch.resolve_plan(
             effective, _queue.pod_full_roster(project), registry=_arch.load_registry(project)
         )
-    except _task.DispatchError as ex:
+    except DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     pending = sum(1 for t in _queue.read_tasks(project) if t.get("status") == "pending")

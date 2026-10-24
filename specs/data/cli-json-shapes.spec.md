@@ -615,6 +615,6 @@ snake_case.
 - `src/docket/tasks/application/interruptions.py`: `forecast`
 - `src/docket/tasks/application/runs.py`: `create_run`, the run record
 - `src/docket/governance/profile.py`: `as_json`
-- `src/docket/operator/contract.py`: `InboxView`
+- `src/docket/kernel/operator_contract.py`: `InboxView`
 - `src/docket/tasks/application/queue.py`: `read_tasks`
 - `src/docket/tasks/application/lifecycle.py`: `task_diff`

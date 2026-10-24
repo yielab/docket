@@ -136,7 +136,7 @@ rules = [
 rules = [
     ['^(_SWEEP_LOCK|_sweep_\w+|SWEEP_\w+|_submit_pod_sweep|_drain_sweeps|_abandon_sweeps|_pending_sweeps|_run_sweeps)$', 'docket.tasks.application.sweep'],
     ['^_check_schedules$', 'docket.pipeline.application.schedule'],
-    ['^_flush_notify_channels$', 'docket.operator.notify'],
+    ['^flush_notify_channels$', 'docket.operator.notify'],
     ['^(LoopMetrics|_loop_metrics|_collect_\w+|_escalation_metrics_lines|_POLICY_AUDIT_RE|_CHANNEL_AUDIT_RE|_cost_json|render_metrics|_epoch_seconds)$', 'docket.interfaces.http.routes.metrics'],
     ['^(build_status|render_health|render_status|_agent_record|_with_token_budget|_last_activity_or_never)$', 'docket.interfaces.http.routes.health'],
     ['^(_TRACE_HOLD_BACK_S|_trace_line_ts|_decode_trace_cursor|_traces_page)$', 'docket.interfaces.http.routes.traces'],

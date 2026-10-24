@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SUBJECT = "docket.operator.contract"
+SUBJECT = "docket.kernel.operator_contract"
 
 ROOT = Path(__file__).resolve().parents[2]
 

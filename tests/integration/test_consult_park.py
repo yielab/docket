@@ -21,6 +21,7 @@ from tests.support.pods import build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.hops.application import driver as _dr
+from docket.hops.application import record as _record_mod
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
@@ -28,7 +29,6 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
 from docket.tasks.application import answers as _answers
-from docket.tasks.application import consult as _consult_mod
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
@@ -181,7 +181,7 @@ class TestPark:
     def test_a_consult_token_with_no_question_fails_the_task_with_a_named_reason(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_consult_mod, "parked_question", lambda token: None)
+        monkeypatch.setattr(_record_mod, "parked_question", lambda token: None)
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
 
         task = _task(run)

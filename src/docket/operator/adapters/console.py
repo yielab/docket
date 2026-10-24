@@ -5,9 +5,9 @@ already shows everything a channel event would repeat), so nothing is sent. Pres
 
 from __future__ import annotations
 
+from docket.kernel.operator_contract import CloudEvent
 from docket.operator.adapters.webhook import DeliveryResult
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import CloudEvent
 
 
 def deliver(

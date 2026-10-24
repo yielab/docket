@@ -18,15 +18,15 @@ from docket.hops.application.runner import _when_cwd
 from docket.hops.gates.post_hop import _match_on_route, _run_in_envelope, _task_command_env
 from docket.hops.gates.pre_hop import _gate_pre_hop_approval, _unpriced
 from docket.kernel import clock as _clock
-from docket.kernel.errors import InvalidInput
+from docket.kernel import operator_contract as _oc
+from docket.kernel.errors import DispatchError, InvalidInput
 from docket.kernel.home import current_home
 from docket.models import selection as _models_policy
 from docket.observability import trace as _trace
-from docket.operator import contract as _oc
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.domain.task import DispatchError, HopResult, TaskRunRefusal
+from docket.tasks.domain.task import HopResult, TaskRunRefusal
 from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

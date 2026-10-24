@@ -9,6 +9,7 @@ import typer
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands.pod_members import _implementer_member
 from docket.interfaces.cli.render import ui
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
 from docket.pipeline.application import steps as _steps
@@ -17,7 +18,6 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json, write_json
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
@@ -83,7 +83,7 @@ def _lead_for_settings(project: str) -> str:
     """The Lead's member id, after checking the pod exists and has one."""
     try:
         _steps.pod_pipeline(project)
-    except _task.DispatchError as ex:
+    except DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     return pod.member_id(project, "lead")

@@ -6,9 +6,9 @@ from __future__ import annotations
 import smtplib
 from email.message import EmailMessage
 
+from docket.kernel.operator_contract import CloudEvent
 from docket.operator.adapters.webhook import DeliveryResult
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import CloudEvent
 from docket.operator.notify import render_text
 
 

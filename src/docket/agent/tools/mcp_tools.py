@@ -20,10 +20,10 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from docket.agent.ports import tool_gate
-from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.agent.tools.screening import screen_tool_result
 from docket.kernel.mcp import McpServerConfig
+from docket.kernel.tool_outcome import ToolOutcome
 
 __all__ = [
     "NAMESPACE_PREFIX",

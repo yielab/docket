@@ -1076,7 +1076,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/tasks/domain/refs.py`: `resolve_task`
 - `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`
 - `src/docket/teams/pod.py`: `PodSettings`, member ids
-- `src/docket/operator/contract.py`: `InboxView`, `TaskBrief`
+- `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskBrief`
 - `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
 - `src/docket/tasks/application/answers.py`: `answer_task`
 - `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `ApprovalNoop`

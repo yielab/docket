@@ -33,8 +33,8 @@ import docket.kernel.templates as _templates
 from docket.governance import audit as _audit
 from docket.kernel.errors import DocumentError, InvalidInput
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import EVENT_KINDS
 from docket.models import document_fields as _documents
-from docket.operator.contract import EVENT_KINDS
 from docket.platform import read_json, read_modify_write
 
 # The `on:` vocabulary: every ADR 0016 §7 event type suffix, plus the `needs_you` shorthand

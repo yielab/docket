@@ -16,6 +16,7 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import setup_notify as _setup_notify
 from docket.kernel.home import current_home
 from docket.operator import channel as _chan
+from docket.operator import inbox as _inbox_module
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.interfaces.cli.commands.setup_notify"
@@ -162,7 +163,7 @@ class TestFlush:
         def _boom(**_kw: Any) -> Any:
             raise OSError("pods dir unreadable")
 
-        monkeypatch.setattr(_setup_notify._inbox, "build_inbox", _boom)
+        monkeypatch.setattr(_inbox_module, "build_inbox", _boom)
         result = _runner.invoke(app, ["setup", "notify", "flush"])
         assert result.exit_code == 1
         assert "pods dir unreadable" in result.output

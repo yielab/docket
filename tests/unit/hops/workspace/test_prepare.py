@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from docket.hops.workspace import prepare as _prepare
+from docket.kernel import text as _text
 from docket.kernel.home import Home, current_home, use_home
 
 SUBJECT = "docket.hops.workspace.prepare"
@@ -91,7 +92,7 @@ def test_a_command_with_no_lockfile_still_runs(tmp_path: Path) -> None:
 @pytest.mark.parametrize("bad", ["a\nb", "a\x00b", "x" * 1001])
 def test_check_command_refuses_a_multiline_nul_or_long_command(bad: str) -> None:
     with pytest.raises(ValueError, match=r"one line|at most"):
-        _prepare.check_command(bad)
+        _text.check_command(bad)
 
 
 def test_needs_prepare_only_when_command_or_lock_changed_or_a_link_broke(tmp_path: Path) -> None:

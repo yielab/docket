@@ -10,7 +10,7 @@ from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
-from docket.operator import inbox as _inbox
+from docket.operator import build_inbox
 from docket.platform import read_json
 from docket.tasks.application import escalation as _escalation
 from docket.teams import utils
@@ -240,7 +240,7 @@ def render_metrics() -> str:
         "docket_approvals_pending_total " + str(pending),
     ]
 
-    inbox_view = _inbox.build_inbox(now=_clock.stamp())
+    inbox_view = build_inbox(now=_clock.stamp())
     lines += [
         "# HELP docket_inbox_items Items in the derived operator inbox, by section",
         "# TYPE docket_inbox_items gauge",

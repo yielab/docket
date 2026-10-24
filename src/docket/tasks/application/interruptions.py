@@ -17,10 +17,10 @@ from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import policy as _policy
 from docket.governance import security as _security
 from docket.kernel import clock as _clock
+from docket.kernel import operator_contract as _oc
 from docket.kernel import text as _text
 from docket.kernel.errors import NotFound
-from docket.operator import channel as _channel
-from docket.operator import contract as _oc
+from docket.operator import load_catalog
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import step as _step
@@ -155,7 +155,7 @@ def forecast(
         )
     )
 
-    for name, spec in sorted(_channel.load_catalog().entries.items()):
+    for name, spec in sorted(load_catalog().entries.items()):
         if spec.enabled and "notify" in spec.capabilities:
             on = ", ".join(spec.on) or "nothing configured"
             items.append(

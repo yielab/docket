@@ -23,8 +23,7 @@ from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, Refused
 from docket.kernel.handoff import HandoffArtifact
-from docket.observability import trace as _trace
-from docket.operator.contract import (
+from docket.kernel.operator_contract import (
     AnswerResult,
     AnswerResultV11,
     Question,
@@ -32,6 +31,7 @@ from docket.operator.contract import (
     validate_answer,
     validate_answer_v11,
 )
+from docket.observability import trace as _trace
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch

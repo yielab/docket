@@ -8,9 +8,9 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from docket.kernel.operator_contract import CloudEvent
 from docket.operator.adapters.webhook import DeliveryResult
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import CloudEvent
 from docket.operator.notify import render_text
 from docket.platform import open_same_origin
 

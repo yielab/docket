@@ -21,9 +21,25 @@ from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Unavailable
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
-from docket.operator import channel as _chan
-from docket.operator import inbox as _inbox
-from docket.operator import notify as _notify
+from docket.operator import (
+    ChannelError,
+    ChannelSpec,
+    build_inbox,
+    build_test_event,
+    delete_channel,
+    diff_events,
+    disable_channel,
+    enable_channel,
+    export_channel,
+    flush,
+    is_widening,
+    load_catalog,
+    load_channel_document,
+    read_state,
+    resolve_secret,
+    save_channel,
+    set_content,
+)
 from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -55,15 +71,15 @@ class Written:
     test: str = ""
 
 
-def _spec_or_exit(name: str) -> _chan.ChannelSpec:
-    spec = _chan.load_catalog().get(name)
+def _spec_or_exit(name: str) -> ChannelSpec:
+    spec = load_catalog().get(name)
     if spec is None:
         ui.error(f"Unknown channel '{name}'", "Run: docket setup notify list")
         raise typer.Exit(1)
     return spec
 
 
-def _apply_sets(spec: _chan.ChannelSpec, sets: list[str]) -> dict[str, Any]:
+def _apply_sets(spec: ChannelSpec, sets: list[str]) -> dict[str, Any]:
     """Turn ``key=value`` pairs into a model-shaped overrides dict."""
     overrides: dict[str, Any] = {}
     config = dict(spec.config)
@@ -89,8 +105,8 @@ def send_test(name: str) -> int:
     if deliver is None:
         ui.error(f"Channel '{name}' has dialect '{spec.dialect}', which has no delivery yet")
         return 1
-    event = _notify.build_test_event(spec, now=_clock.stamp())
-    result = deliver(spec, event, secret=_notify.resolve_secret(spec), timeout=5.0)
+    event = build_test_event(spec, now=_clock.stamp())
+    result = deliver(spec, event, secret=resolve_secret(spec), timeout=5.0)
     if result.ok:
         ui.success(f"Test delivered to '{name}' ({spec.dialect}).")
         return 0
@@ -150,8 +166,8 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
     if token is not None:
         _backend()
     try:
-        spec = _chan.enable_channel("telegram", {"actors": chats})
-    except _chan.ChannelError as exc:
+        spec = enable_channel("telegram", {"actors": chats})
+    except ChannelError as exc:
         raise NotifySetupError(str(exc)) from exc
     stored = ""
     if token is not None:
@@ -168,8 +184,8 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
         else:
             result = deliver(
                 spec,
-                _notify.build_test_event(spec, now=_clock.stamp()),
-                secret=_notify.resolve_secret(spec),
+                build_test_event(spec, now=_clock.stamp()),
+                secret=resolve_secret(spec),
                 timeout=5.0,
             )
             outcome = "delivered" if result.ok else f"failed: {result.error or 'unknown error'}"
@@ -198,7 +214,7 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
     """List every channel with its dialect, state and content level.
 
     Example: docket setup notify list"""
-    catalog = _chan.load_catalog()
+    catalog = load_catalog()
     names = sorted(catalog.entries)
     if json_out:
         rows = [
@@ -259,7 +275,7 @@ def cmd_show(
     """Show one channel's effective document; telegram adds bindings and conversations.
 
     Example: docket setup notify show telegram"""
-    catalog = _chan.load_catalog()
+    catalog = load_catalog()
     spec = _spec_or_exit(name)
     scope = catalog.source_of(name)
     if json_out:
@@ -328,8 +344,8 @@ def cmd_enable(
         _contract.next_step("docket setup notify show telegram")
         return
     try:
-        enabled = _chan.enable_channel(name, _apply_sets(spec, sets))
-    except _chan.ChannelError as exc:
+        enabled = enable_channel(name, _apply_sets(spec, sets))
+    except ChannelError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     ui.success(f"Channel enabled: {name} ({enabled.dialect})")
@@ -344,8 +360,8 @@ def cmd_disable(name: str = typer.Argument(..., help="Channel name")) -> None:
 
     Example: docket setup notify disable ntfy"""
     try:
-        _chan.disable_channel(name)
-    except _chan.ChannelError as exc:
+        disable_channel(name)
+    except ChannelError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     ui.success(f"Channel disabled: {name}")
@@ -358,11 +374,11 @@ def cmd_add(file: Path = typer.Argument(..., help="A kind: channel YAML document
 
     Example: docket setup notify add ./my-channel.yaml"""
     try:
-        spec = _chan.load_channel_document(file)
-    except _chan.ChannelError as exc:
+        spec = load_channel_document(file)
+    except ChannelError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
-    _chan.save_channel(spec)
+    save_channel(spec)
     audit_log("channel.added", f"name={spec.name} dialect={spec.dialect}")
     ui.success(f"Channel added: {spec.name} ({spec.dialect})")
     _contract.next_step(f"docket setup notify enable {spec.name}")
@@ -376,15 +392,15 @@ def cmd_remove(
     """Remove a channel document.
 
     Example: docket setup notify remove my-webhook --yes"""
-    if _chan.load_catalog().source_of(name) == "built-in":
+    if load_catalog().source_of(name) == "built-in":
         ui.error(f"'{name}' is a built-in channel with no global override", "Nothing to remove")
         raise typer.Exit(1)
     if not _contract.confirm(f"Remove channel '{name}'", yes=yes):
         ui.warn("Aborted.")
         raise typer.Exit(1)
     try:
-        _chan.delete_channel(name)
-    except _chan.ChannelError as exc:
+        delete_channel(name)
+    except ChannelError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     audit_log("channel.removed", f"name={name}")
@@ -401,8 +417,8 @@ def cmd_export(
 
     Example: docket setup notify export telegram ./telegram.yaml"""
     try:
-        text = _chan.export_channel(name)
-    except _chan.ChannelError as exc:
+        text = export_channel(name)
+    except ChannelError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     if file is None:
@@ -429,13 +445,13 @@ def cmd_privacy(
     if level not in _LEVELS:
         ui.error(f"'{level}' is not a content level", f"Use one of: {', '.join(_LEVELS)}")
         raise typer.Exit(1)
-    if _chan.is_widening(spec.content, level):
+    if is_widening(spec.content, level):
         ui.warn(f"'{name}' will widen content from '{spec.content}' to '{level}'.")
         if not _contract.confirm(f"Widen '{name}'", yes=yes):
             raise typer.Exit(1)
     try:
-        updated = _chan.set_content(name, level)
-    except _chan.ChannelError as exc:
+        updated = set_content(name, level)
+    except ChannelError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     ui.success(f"Channel content updated: {name} ({updated.content})")
@@ -542,9 +558,7 @@ def cmd_flush(
     Example: docket setup notify flush --dry-run"""
     now = _clock.stamp()
     if dry_run:
-        events, _snapshot = _notify.diff_events(
-            _notify.read_state(), _inbox.build_inbox(now=now), now
-        )
+        events, _snapshot = diff_events(read_state(), build_inbox(now=now), now)
         ui.header("Notify (dry run)")
         if not events:
             ui.dim("  Nothing to send.")
@@ -555,8 +569,8 @@ def cmd_flush(
         if events:
             ui.dim("  Nothing delivered; the dedupe snapshot was not touched.")
         return
-    specs = list(_chan.load_catalog().entries.values())
-    report = _notify.flush(specs, _bootstrap.sink_for, now=now)
+    specs = list(load_catalog().entries.values())
+    report = flush(specs, _bootstrap.sink_for, now=now)
     if report.error:
         ui.error(f"Notify flush failed: {report.error}")
         raise typer.Exit(1)

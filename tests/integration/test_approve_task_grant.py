@@ -25,7 +25,7 @@ from docket.hops.application.driver import _parse_pregrants
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg
-from docket.operator.contract import canonical_args_digest
+from docket.kernel.operator_contract import canonical_args_digest
 from docket.pipeline.domain import plan as _orch
 from docket.platform import store as _store
 from docket.tasks.application import actions as _actions

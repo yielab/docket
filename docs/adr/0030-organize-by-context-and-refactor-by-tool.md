@@ -95,13 +95,15 @@ The refactor builds on these; it does not replace any.
 
 ```
 src/docket/
-├── kernel/            home.py (Home + current_home()), clock.py, ids.py, errors.py, text.py
+├── kernel/            home.py (Home + current_home()), clock.py, ids.py, errors.py, text.py,
+│                      operator_contract.py (the shared operator-loop wire model), protected_paths.py,
+│                      tool_outcome.py
 ├── tasks/             domain/{task,state,options,refs}.py  application/{queue,lifecycle,actions,
 │                      approvals,answers,interruptions,corrections,escalation,evidence,runs,sweep}.py
 │                      ports.py  adapters/json_store.py
 ├── pipeline/          domain/{spec,plan,verdict,routing}.py  application/{executor,steps,schedule}.py
 ├── hops/              application/{compose,runner,record}.py  gates/{pre_hop,post_hop}.py
-│                      workspace/{worktree,prepare,protected_paths,repo_view,repo_map}.py
+│                      workspace/{worktree,prepare,repo_view,repo_map}.py
 ├── agent/             loop*, session*, context, tools/{registry,screening,builtin_tools,mcp_tools,
 │                      mcp_client}.py, tools/builtins/*.py, ports.py   (the turn engine; the pod-turn
 │                      driver is hops/application/driver.py, identity and the role composer are teams)
@@ -112,9 +114,9 @@ src/docket/
 │                      apply/{plan,review,directory}.py, provisioning.py, config_docs.py
 ├── models/            catalog.py (provider), selection.py (models_policy), adapters/openai_http.py
 ├── observability/     trace.py, telemetry.py, exporter.py, adapters/otlp_http.py
-├── operator/          inbox, notify, channel, contract, adapters/{console,desktop,email,ntfy,
+├── operator/          inbox, notify, channel, adapters/{console,desktop,email,ntfy,
 │                      telegram,webhook,command}.py
-├── platform/          store.py, process.py, git.py, fetch.py, redirects.py
+├── platform/          store.py, process.py, git.py, fetch.py, redirects.py, parked_questions.py
 ├── interfaces/        cli/{app.py,commands/*,render/}, http/{server,auth,routes/*}, mcp/, telegram/
 ├── bootstrap.py       Home -> adapters -> services; the only module that names concrete adapters
 └── templates/         unchanged

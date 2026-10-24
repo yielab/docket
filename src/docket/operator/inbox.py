@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from docket.governance import approval as _approval
 from docket.kernel import clock as _clock
-from docket.operator.contract import (
+from docket.kernel.operator_contract import (
     ApprovalView,
     InboxView,
     Question,

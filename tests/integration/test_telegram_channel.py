@@ -33,10 +33,10 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg
 from docket.interfaces.telegram.client import TelegramUpdate
 from docket.kernel.home import current_home, use_home
+from docket.kernel.operator_contract import QuestionV11, make_event
 from docket.kernel.threads import new_thread
 from docket.operator.adapters import telegram as _tg_channel
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import QuestionV11, make_event
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet

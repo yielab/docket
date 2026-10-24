@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings

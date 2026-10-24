@@ -9,9 +9,9 @@ import json
 import sys
 from typing import Any
 
+from docket.kernel.operator_contract import make_event
 from docket.operator import adapters as channels
 from docket.operator.adapters import command, console
-from docket.operator.contract import make_event
 
 SUBJECT = "docket.operator.adapters.command"
 

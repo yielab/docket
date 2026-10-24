@@ -57,7 +57,7 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.kernel.ports import jail as _jail
 from docket.models import selection as _mp
-from docket.operator import channel as _channel
+from docket.operator import load_catalog
 from docket.pipeline.application import schedule as _sched
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
@@ -304,7 +304,7 @@ def _check_json_security() -> dict[str, Any]:
 
 def _check_json_notifications(ids: list[str]) -> tuple[int, dict[str, Any]]:
     """Notification reach, JSON shape of `_check_notifications`."""
-    delivering = _channel.load_catalog().delivering()
+    delivering = load_catalog().delivering()
     ok = bool(delivering) or not ids
     return (0 if ok else 1), {"ok": ok, "delivering": delivering}
 

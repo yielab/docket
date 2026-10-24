@@ -11,6 +11,7 @@ from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.hops.application.record import _hop_record
 from docket.kernel import clock as _clock
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.kernel.ports import process as _process
@@ -20,7 +21,7 @@ from docket.tasks.application import runs as _runs
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.queue import _task_record
 from docket.tasks.domain import state as _state
-from docket.tasks.domain.task import DispatchError, TaskNotFoundError, TaskResult, _normalize_task
+from docket.tasks.domain.task import TaskNotFoundError, TaskResult, _normalize_task
 from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory

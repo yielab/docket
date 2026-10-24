@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from docket.governance import policy as _policy
-from docket.hops.workspace import prepare as _prepare
+from docket.kernel import text as _text
 from docket.tasks.domain import options as _to
 from docket.teams.settings import builtin_tool_names
 
@@ -18,7 +18,7 @@ SUBJECT = "docket.tasks.domain.options"
 _RULES = _to.OptionRules(
     known_tools=builtin_tool_names(),
     check_policy=_policy.task_policy_document,
-    check_prepare=_prepare.check_command,
+    check_prepare=_text.check_command,
 )
 
 

@@ -34,8 +34,9 @@ from docket.interfaces.cli.commands.task_render import (
     _worktree,
 )
 from docket.interfaces.cli.render import ui
+from docket.kernel import operator_contract as _oc
+from docket.kernel.errors import DispatchError
 from docket.observability import trace as _trace
-from docket.operator import contract as _oc
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import corrections as _corrections
@@ -44,7 +45,6 @@ from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.domain import task as _task
 from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
 from docket.teams import report as _report
 from docket.teams import task_worktrees as _task_worktrees
@@ -164,7 +164,7 @@ def cmd_add(
             gate={"command": gate} if gate is not None else None,
             max_tokens=max_tokens,
         )
-    except _task.DispatchError as ex:
+    except DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     if not created:
@@ -249,7 +249,7 @@ def cmd_diff(
     found = _resolve(pod, ref)
     try:
         doc = _lifecycle.task_diff(found.project, found.task_id)
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         ui.error(str(exc), f"Task {short_id(found.task_id)} has no worktree branch to diff")
         raise typer.Exit(1) from exc
     if json_out:
@@ -532,7 +532,7 @@ def _task_cancel(
     found = _resolve(pod, ref)
     try:
         outcome = _lifecycle.cancel_task(found.project, found.task_id, channel="cli")
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         ui.error(str(exc), "Run docket task list to see the ids")
         raise typer.Exit(1) from exc
     for line in outcome.messages:

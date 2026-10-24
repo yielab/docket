@@ -19,33 +19,14 @@ from typing import Any, Literal
 from filelock import FileLock
 
 from docket.kernel import clock as _clock
-from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
+from docket.kernel.protected_paths import LOCKFILES
 
-LOCKFILES: tuple[tuple[str, str], ...] = (
-    ("package-lock.json", "npm ci"),
-    ("pnpm-lock.yaml", "pnpm install --frozen-lockfile"),
-    ("yarn.lock", "yarn install --immutable"),
-    ("uv.lock", "uv sync --frozen"),
-    ("poetry.lock", "poetry install"),
-    ("Cargo.lock", "cargo fetch"),
-)
 LINKED_DIRS: tuple[str, ...] = ("node_modules",)
-MAX_COMMAND_CHARS = 1000
 
 Source = Literal["task", "pod", "lockfile"]
 Runner = Callable[[str], tuple[int | None, str]]
-
-
-def check_command(value: object) -> str:
-    """The command as one stripped line; raises ``ValueError`` for a NUL, a newline or too long."""
-    text = str(value or "").strip()
-    if "\x00" in text or "\n" in text or "\r" in text:
-        raise InvalidInput("must be one line without a NUL byte")
-    if len(text) > MAX_COMMAND_CHARS:
-        raise InvalidInput(f"must be at most {MAX_COMMAND_CHARS} characters")
-    return text
 
 
 def is_off(command: str) -> bool:

@@ -81,14 +81,14 @@ from docket.governance.audit import audit_log
 from docket.interfaces.telegram import client as _client
 from docket.interfaces.telegram.client import GetUpdatesResult
 from docket.kernel import clock as _clock
+from docket.kernel import operator_contract as _oc
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.operator import contract as _oc
-from docket.operator import inbox as _inbox
+from docket.operator import build_inbox
 from docket.platform import read_json, write_json
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
-from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
@@ -264,7 +264,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
     anything."""
     scope = _approval_scope(agent_id)
     now = _clock.iso()
-    view = _inbox.build_inbox(now=now)
+    view = build_inbox(now=now)
     needs_you = [item for item in view.needs_you if item.pod == scope]
     failed = [t for t in view.failed if t.pod == scope]
     if not needs_you and not failed:
@@ -328,7 +328,7 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
 
     try:
         task, _created = _queue.enqueue_task_once(project, text, "normal", channel="telegram")
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         return TelegramActionResult(False, str(exc), True, "delegate")
 
     return TelegramActionResult(

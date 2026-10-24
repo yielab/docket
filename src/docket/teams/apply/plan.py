@@ -20,8 +20,9 @@ from typing import Any, Literal
 
 from docket.governance import policy as _policy
 from docket.governance import review as _reviewed
-from docket.hops.workspace import protected_paths as _protected
 from docket.kernel import mcp as _mcp
+from docket.kernel import protected_paths as _protected
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.models import selection as _mp
@@ -30,7 +31,6 @@ from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
-from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
@@ -464,7 +464,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         raise PodApplyError(f"recipe directory not found: {directory}")
     try:
         _steps.pod_pipeline(project)
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         raise PodApplyError(str(exc)) from exc
 
     manifest_file = directory / "pod.yaml"

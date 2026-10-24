@@ -43,7 +43,7 @@ from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
-from docket.operator.notify import _flush_notify_channels
+from docket.operator import flush_notify_channels as flush_notify_channels
 from docket.tasks.application import answers
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
@@ -197,7 +197,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
             print(f"[serve] sweep: schedule check failed: {exc}")
 
     with contextlib.suppress(Exception):
-        _flush_notify_channels(_bootstrap.sink_for)
+        flush_notify_channels(_bootstrap.sink_for)
 
 
 def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:

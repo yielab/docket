@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from docket.interfaces.http.exchange import HttpExchange
-from docket.operator import inbox as _inbox
+from docket.operator import task_view
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
@@ -106,7 +106,7 @@ def post_task_answer(h: HttpExchange, task_id: str) -> None:
         # rather than crash rendering a view for it.
         h._send_json_error(f"task {task_id!r} not found after answering", 500)
         return
-    view = _inbox.task_view(project, task).model_dump(by_alias=True, mode="json")
+    view = task_view(project, task).model_dump(by_alias=True, mode="json")
     h._send(json.dumps(view).encode(), "application/json")
 
 
