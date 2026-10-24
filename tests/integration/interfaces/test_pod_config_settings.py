@@ -176,6 +176,21 @@ class TestConfigSetPipeline:
             assert _lead_meta("proj") == before
             assert not pod.bound_pipeline_path("proj").exists()
 
+    def test_set_refuses_over_a_stored_rework_setting(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with _build(tmp_path):
+            _pod_settings.set_setting("proj", "maxReworkCycles", "3")
+            pipeline_file = tmp_path / "custom.yaml"
+            pipeline_file.write_text(_CUSTOM_PIPELINE)
+            capsys.readouterr()
+
+            with pytest.raises(typer.Exit) as exc:
+                _pod_settings.set_setting("proj", "pipeline", str(pipeline_file))
+            assert exc.value.exit_code == 2
+            assert "maxReworkCycles" in capsys.readouterr().err
+            assert not pod.bound_pipeline_path("proj").exists()
+
     def test_set_refuses_on_an_invalid_pipeline_file(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

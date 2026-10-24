@@ -106,6 +106,12 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
     if not path.is_file():
         ui.error(f"File not found: {path_str}")
         raise typer.Exit(1)
+    if _fleet.meta_get(lead_id, "maxReworkCycles"):
+        ui.error(
+            _pod_settings.REWORK_BOUND_BY_PIPELINE,
+            f"docket pod unset maxReworkCycles --pod {project}",
+        )
+        raise typer.Exit(2)
     text = path.read_text(encoding="utf-8")
     result = _pipeline.load_pipeline(text)
     if result.spec is None:

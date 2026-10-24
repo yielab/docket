@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.2.0
+**Version**: 9.3.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-24
 
 ## Purpose
 
@@ -605,7 +605,9 @@ wired agent's conversation current with the task it is working.
    **MUST** be refused with exit 2 and the stored settings untouched, the message
    (`REWORK_BOUND_BY_PIPELINE`) naming the pipeline's own bound, `on: {<label>: {goto: <step>,
    max: <n>}}`: a bound pipeline is never patched with the pod's `maxReworkCycles`, so the setting
-   would be accepted and ignored. `unset` is always allowed. `docket pod show` reports a bound
+   would be accepted and ignored. The other order is refused the same way: `docket pod set pipeline`
+   on a pod that stores a `maxReworkCycles` **MUST** exit 2, bind nothing, and name `docket pod
+   unset maxReworkCycles`. `unset` is always allowed. `docket pod show` reports a bound
    pod's `maxReworkCycles` with source `pipeline` and, as its value, the bounds the pipeline itself
    carries (`<step>:<max>` comma-joined, `none` when it has none).
 3. `approvalMode` (`"wait"` | `"park"` | `"refuse"`, field default `"wait"`) is a setting on the
