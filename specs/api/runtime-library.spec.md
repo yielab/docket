@@ -280,4 +280,4 @@ compact example.
 - `tests/agent/release/test_runtime_package_boundary.py`: artifact boundary oracle
 - `tests/agent/release/test_runtime_adapter_parity.py`, `tests/agent/release/test_runtime_openhands_adapter.py`: adapter parity
 - `tests/agent/release/test_runtime_adapter_public_truth.py`: support boundary and protocol non-claims
-- `tests/integration/test_runtime_execution_envelope.py`: envelope behaviour
+- `tests/integration/product/test_runtime_execution_envelope.py`: envelope behaviour

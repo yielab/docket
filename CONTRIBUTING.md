@@ -158,9 +158,9 @@ All contributions must include appropriate tests:
   that do not mirror a module — see that section for what holds now and what Phase 46 moves)
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
-For scale, so you know what you're getting into: **5,573 tests** in the default suite
+For scale, so you know what you're getting into: **5,855 tests** in the default suite
 (`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
-runs separately), **~51,749 lines** of Python in the shipped package, **32 specifications**
+runs separately), **~53,162 lines** of Python in the shipped package, **32 specifications**
 validated in CI, and **10 commands** in the [command reference](docs/commands.md).
 `scripts/metrics.py --check` computes these from the tree on every CI run, so this paragraph
 cannot silently go stale.
@@ -182,7 +182,7 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 ./tests/run-all-tests.sh
 
 # pytest suite only (default lanes: unit, integration, guards)
-uv run pytest   # 5,573-test Python suite
+uv run pytest   # 5,855-test Python suite
 
 # agent lane only (prose, release artifacts, agent hook scripts; own CI job)
 uv run pytest tests/agent

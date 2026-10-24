@@ -644,4 +644,4 @@ Where the names used above live today.
 - `src/docket/sandbox/launch.py`: `credential_names` (the credential strip used by `env`)
 - `tests/unit/pipeline/domain/test_spec__spec.py` (`TestZeroMigration` and the format),
   `tests/unit/pipeline/domain/test_spec__external_gate.py`, `tests/unit/pipeline/domain/test_spec__step_env.py`,
-  `tests/unit/pipeline/domain/test_spec__webhook_variables.py`, `tests/integration/test_archetypes.py`
+  `tests/unit/pipeline/domain/test_spec__webhook_variables.py`, `tests/integration/teams/test_archetypes.py`

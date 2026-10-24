@@ -147,7 +147,7 @@ driver's on-disk knowledge. It has four members:
 `hops/application/driver.py`'s `DocketDriver` — docket's own turn loop, running directly
 against a configured model endpoint — is the **one shipped implementation** since Phase 19
 P19-7b replaced the daemon-facing driver this port originally shipped with; a `FakeDriver` test
-double (`tests/fakes.py`) is the one test double. This is a deliberately narrow move.
+double (`tests/support/fakes.py`) is the one test double. This is a deliberately narrow move.
 docket's architectural principles carry a standing ban on an `AbstractBackend`/plugin framework,
 and decision D-14 *revises* that ban rather than repealing it: the port is containment of coupling
 that already existed, not speculative generality. **There is one shipped driver.** A second real

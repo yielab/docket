@@ -275,7 +275,7 @@ command, so the trace tells you which grant is missing.
   so nothing the jail writes runs later in your own git; host-side git in a task worktree,
   including `docket task diff`, uses the git dirs docket recorded and never reads the
   agent-writable `.git` or `commondir` file, so a planted `core.fsmonitor` or `hooksPath` never
-  runs. `tests/integration/test_escape_matrix.py` gates every release on Linux and macOS (the
+  runs. `tests/integration/sandbox/test_escape_matrix.py` gates every release on Linux and macOS (the
   macOS rows run in CI only).
 - **On Linux, a root holding a `.git` directory is refused.** Landlock cannot keep hooks and config
   read-only inside a main checkout, so a jailed command there (for example one rooted at a plain

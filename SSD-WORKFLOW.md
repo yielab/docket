@@ -106,7 +106,7 @@ Before implementation:
 Write tests BEFORE implementation:
 
 ```python
-# tests/integration/test_new_feature.py
+# tests/integration/<context>/test_new_feature.py
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
@@ -126,7 +126,7 @@ def test_new_feature_must_requirement():
 
 ```bash
 # Run the test (should fail — red phase)
-uv run pytest tests/integration/test_new_feature.py
+uv run pytest tests/integration/<context>/test_new_feature.py
 # ✗ Test fails - this is expected!
 ```
 
@@ -155,7 +155,7 @@ def new_feature(value: str = typer.Argument(...)) -> None:
 
 ```bash
 # Run the tests again
-uv run pytest tests/integration/test_new_feature.py
+uv run pytest tests/integration/<context>/test_new_feature.py
 # ✓ Tests pass!
 ```
 
@@ -335,7 +335,7 @@ yourself — there is no hook that does it for you.
 ### Adding a New Command
 
 1. Create spec: `specs/functional/command-name.spec.md`
-2. Write tests: `tests/integration/test_command.py`
+2. Write tests: `tests/integration/<context>/test_command.py`
 3. Implement: a Typer command in `src/docket/interfaces/cli/` (logic in the owning context, I/O via its `adapters/` or `platform/`)
 4. Update docs: README.md, `src/docket/interfaces/cli/render/help.py`
 5. Validate: `./scripts/validate-specs.sh` + the CI gates
@@ -397,7 +397,7 @@ yourself — there is no hook that does it for you.
 grep "MUST\|SHALL" specs/functional/feature.spec.md
 
 # Ensure each MUST has a test
-grep "def test_" tests/integration/test_feature.py
+grep "def test_" tests/integration/<context>/test_feature.py
 
 # Update tests to match specs exactly
 ```

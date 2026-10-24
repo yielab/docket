@@ -844,9 +844,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/teams/blueprints.py`: `DEFAULT_BLUEPRINT`, the blueprint registry
 - `src/docket/kernel/home.py`: the `Home` members `dispatch_sweep_workers`, `trace_retention_s`,
   `pod_work_dir`
-- Contract tests: `tests/unit/test_serve__read_api.py` (class `TestApiContract`),
+- Contract tests: `tests/unit/interfaces/http/routes/test_health__read_api.py` (class `TestApiContract`),
   `tests/unit/interfaces/http/routes/test_health.py`, `tests/unit/interfaces/http/routes/test_traces__traces_cursor.py`,
   `tests/unit/interfaces/http/test_server__contract_gaps.py`, `tests/unit/tasks/application/test_queue.py`,
   `tests/unit/tasks/application/test_runs.py`, `tests/unit/governance/test_approval.py` (class
-  `TestApprovalChannel`), `tests/integration/test_serve_pods_endpoint.py`,
-  `tests/integration/test_serve_tasks_endpoint.py`
+  `TestApprovalChannel`), `tests/integration/interfaces/test_serve_pods_endpoint.py`,
+  `tests/integration/interfaces/test_serve_tasks_endpoint.py`

@@ -559,7 +559,7 @@ dispatch_tool(
 - `src/docket/interfaces/cli/commands/setup_mcp.py`: `docket setup mcp list/add/remove`
 - `src/docket/kernel/home.py`: the `Home` members `mcp_servers_file`, `mcp_client_timeout_s`,
   `mcp_client_max_timeout_s`, `tool_max_output_chars`, `pod_config_dir`
-- Tests: `tests/integration/test_mcp_client.py` (`TestCollisionRule`, `TestGatedExactlyLikeABuiltin`,
+- Tests: `tests/integration/agent/test_mcp_client.py` (`TestCollisionRule`, `TestGatedExactlyLikeABuiltin`,
   `TestOnlyTheInertResultTypeIsImported`), `tests/unit/agent/tools/test_mcp_tools.py`
   (`TestZeroServersIsUnchanged`, `TestReviewerNeverGainsAWriteCapableMcpTool`),
-  `tests/integration/test_mcp_servers_cli.py`, `tests/integration/test_recipe_mcp_servers.py`
+  `tests/integration/interfaces/test_mcp_servers_cli.py`, `tests/integration/teams/test_recipe_mcp_servers.py`

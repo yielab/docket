@@ -26,7 +26,7 @@ files); the integrator confirms batching from function-level contention as usual
 | Precedent: a global catalog with credentials and per-entry operator assertions | `core/mcp_tools.py::McpServerConfig`, ADR 0009 §"MCP" |
 | Precedent: YAML in, docket-owned JSON stored, YAML out | `core/archetypes.py::parse_yaml_file` → `docket-roles.json`; P27-7 `export` |
 | Precedent: one-shot migration of a fleet field into its registry | model-profiles spec "The default model (single source)" rule 2 |
-| `docket auth` is a stub that only reports "gone, use `docket keys`" | `cli/_keys.py::run_auth`; `tests/integration/test_provider_agnosticism.py::TestAuthProviderGoneHonestly` |
+| `docket auth` is a stub that only reports "gone, use `docket keys`" | `cli/_keys.py::run_auth`; `tests/integration/models/test_provider_agnosticism.py::TestAuthProviderGoneHonestly` |
 | Vendor facts used for the built-in documents | Anthropic "OpenAI SDK compatibility" (base `https://api.anthropic.com/v1`, tools supported, *"intended to test and compare … not a long-term or production-ready solution"*, no prompt caching, `strict` ignored, `prompt_tokens_details` always empty); Gemini "OpenAI compatibility" (base `https://generativelanguage.googleapis.com/v1beta/openai`, function calling, beta) — both read 2026-09-26 |
 
 The trigger is an explicit scoped request plus a deterministic regression; no quantitative

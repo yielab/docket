@@ -730,5 +730,5 @@ Where the names above live today. This is the only section that names paths.
 - `src/docket/interfaces/http/routes/pod_apply.py`: `POST /pods/<p>/apply`
 - `src/docket/templates/recipes/<name>/`: the shipped recipes
 - Tests: `tests/unit/teams/test_blueprints.py` (including `TestPipelineGateFidelity`),
-  `tests/integration/test_provisioning_contract.py` (`TestSeedContractWorkdir`),
-  `tests/unit/teams/apply/test_plan.py`, `tests/integration/test_recipes.py`
+  `tests/integration/teams/test_provisioning_contract.py` (`TestSeedContractWorkdir`),
+  `tests/unit/teams/apply/test_plan.py`, `tests/integration/teams/test_recipes.py`

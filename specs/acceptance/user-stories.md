@@ -456,14 +456,14 @@ Where the names above live today. Phase 46 rewrites this section and nothing els
 
 Tests cited by name above:
 
-- `tests/integration/test_pod_reset.py`, `tests/integration/test_pod_provisioning.py`,
-  `tests/integration/test_provisioning_contract.py`, `tests/integration/test_pod_blueprint_provisioning.py`
-- `tests/integration/test_autopause.py`, `tests/integration/test_dispatch.py`,
-  `tests/integration/test_reviewer_gate.py`, `tests/integration/test_approval_gated_dispatch.py`
-- `tests/integration/test_audit_approval_parity.py`, `tests/integration/test_telegram_channel.py`,
-  `tests/integration/test_install.py`, `tests/integration/test_escape_matrix.py`,
-  `tests/integration/test_pre_tool_call_policy.py`
+- `tests/integration/interfaces/test_pod_reset.py`, `tests/integration/teams/test_pod_provisioning.py`,
+  `tests/integration/teams/test_provisioning_contract.py`, `tests/integration/teams/test_pod_blueprint_provisioning.py`
+- `tests/integration/tasks/test_autopause.py`, `tests/integration/tasks/dispatch/`,
+  `tests/integration/pipeline/test_reviewer_gate.py`, `tests/integration/tasks/test_approval_gated_dispatch.py`
+- `tests/integration/governance/test_audit_approval_parity.py`, `tests/integration/interfaces/telegram/test_bot_inbound.py`,
+  `tests/integration/interfaces/test_install.py`, `tests/integration/sandbox/test_escape_matrix.py`,
+  `tests/integration/agent/test_pre_tool_call_policy.py`
 - `tests/unit/interfaces/cli/commands/test_status.py`, `tests/unit/interfaces/cli/commands/test_task.py`, `tests/unit/interfaces/cli/commands/test_run.py`,
   `tests/unit/interfaces/cli/commands/test_setup_check.py`, `tests/unit/interfaces/cli/commands/test_inbox.py`, `tests/unit/agent/tools/test_registry.py`,
-  `tests/integration/test_guardrail_metrics.py`,
+  `tests/integration/interfaces/test_guardrail_metrics.py`,
   `tests/unit/pipeline/domain/test_spec__spec.py`, `tests/unit/interfaces/telegram/test_client.py`

@@ -1610,16 +1610,16 @@ $ git clone https://anywhere.example/repo.git
   `fetch_max_response_bytes`, `fetch_timeout_s`, `policies_dir`, `plugins_dir`, `approvals_dir`,
   `sandbox_docker_image`, `jail_tmp_dir`, `prepare_cache_dir`, `pod_config_dir`
 - `src/docket/templates/policies/`: the six shipped policy templates
-- Tests that pin this spec: `tests/integration/test_pre_tool_call_policy.py`
+- Tests that pin this spec: `tests/integration/agent/test_pre_tool_call_policy.py`
   (`TestRenderToolCallShape`, `TestBlockDestructiveShippedTemplate`,
-  `TestDispatchToolApprovalRouting`), `tests/integration/test_policy_engine.py`,
-  `tests/integration/test_sandboxed_exec.py` (`TestSandboxOffIsUnchanged`,
+  `TestDispatchToolApprovalRouting`), `tests/integration/governance/test_policy_engine.py`,
+  `tests/integration/agent/test_sandboxed_exec.py` (`TestSandboxOffIsUnchanged`,
   `TestHonestReportingIsDeterministic`, `TestChokepointWiring`, `TestRealLandlockJail`,
   `TestRealDockerJail`, `TestGitMetadataTheHostLaterRuns`, `TestJailedCommit`),
-  `tests/integration/test_docket_driver.py` (`TestIsolationWiring`),
-  `tests/integration/test_jail_landlock.py`, `tests/integration/test_escape_matrix.py` (the
-  `release-journey` CI job), `tests/integration/test_envelope_commands.py`,
-  `tests/integration/test_network_lockdown.py`, `tests/integration/test_lights_out_profile.py`,
-  `tests/integration/test_task_credentials.py`, `tests/integration/test_process_non_dumpable.py`,
+  `tests/integration/hops/driver/test_wiring.py` (`TestIsolationWiring`),
+  `tests/integration/sandbox/test_jail_landlock.py`, `tests/integration/sandbox/test_escape_matrix.py` (the
+  `release-journey` CI job), `tests/integration/tasks/test_envelope_commands.py`,
+  `tests/integration/sandbox/test_network_lockdown.py`, `tests/integration/governance/test_lights_out_profile.py`,
+  `tests/integration/sandbox/test_task_credentials.py`, `tests/integration/platform/test_process_non_dumpable.py`,
   `tests/unit/platform/test_fetch.py` (`TestDomainAllowlist`, `TestRedirects`),
   `tests/unit/governance/test_approval.py`

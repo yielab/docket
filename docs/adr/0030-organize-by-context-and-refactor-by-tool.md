@@ -160,7 +160,7 @@ it exits 0 only when all of these hold:
    (`tests/architecture/test_ids.txt`), translated through the mapping; a removed id needs a
    `retired:` line in the commit message naming the test that replaces it.
 5. The full default lanes, `scripts/maint/pytest-without-sandbox.sh` and
-   `tests/integration/test_escape_matrix.py` pass (exit code is the evidence; this repo's pytest
+   `tests/integration/sandbox/test_escape_matrix.py` pass (exit code is the evidence; this repo's pytest
    prints no summary line).
 6. `bash tests/golden/run.sh verify-all` passes.
 7. `bash scripts/validate-specs.sh` and the three generated-docs checks pass.
@@ -278,7 +278,7 @@ serve test files (`test_serve__*.py`) move beside their route and pass unchanged
 `kernel/` alone (an import-linter contract since P46-8), `packages/docket-runtime/hatch_build.py`
 and its 40-file closure are deleted; the distribution includes `docket/agent` and `docket/kernel`
 directly, and `docket_runtime/__init__.py` re-exports the same facade names. *Expected:* the
-wheel installs and `tests/release/test_runtime_package_boundary.py` passes with the hook gone.
+wheel installs and `tests/agent/release/test_runtime_package_boundary.py` passes with the hook gone.
 *Verified:* the release lane; `uv build` of the package in a clean venv importing the facade.
 
 **P46-11 — persisted shapes that the structure wants (allowed by D-57).** The task record is

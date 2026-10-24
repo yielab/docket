@@ -366,9 +366,9 @@ a given home) and `record_isolation_off` / `record_isolation_on` (record the san
 home's `fleet.json`).
 
 For turn behavior, inject a deterministic `ChatBackend`, or use the `llm_server` fixture
-(`tests/integration/llm_stub.py`), a loopback OpenAI-compatible stub that serves scripted
+(`tests/support/llm.py`), a loopback OpenAI-compatible stub that serves scripted
 chat-completion bodies one per POST. For driver-bound behavior, use `FakeDriver` from
-`tests/fakes.py` or a purpose-built fake implementing `RuntimeDriver`. Patch an edge adapter only
+`tests/support/fakes.py` or a purpose-built fake implementing `RuntimeDriver`. Patch an edge adapter only
 when the contract being tested ends at that external boundary.
 
 ### State safety
@@ -553,7 +553,7 @@ Where the names used above live today.
   `src/docket/sandbox/seatbelt.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.
 - `tests/conftest.py`: the autouse home fixture,
   `register_local_provider`, `record_isolation_off`, `record_isolation_on`, the lane duration guard.
-- `tests/fakes.py`: `FakeDriver`; `tests/integration/llm_stub.py`: `llm_server`.
+- `tests/support/fakes.py`: `FakeDriver`; `tests/support/llm.py`: `llm_server`.
 - `tests/guards/`: `test_layout.py` (unit and integration `SUBJECT`, large-module baseline
   `layout_baseline.txt`, CLI registry), `test_lane_headers.py` (agent headers, no `subprocess` in
   unit), `test_agent_lane_budget.py` (`agent_lane_baseline.txt`), `test_comment_hygiene.py` (with

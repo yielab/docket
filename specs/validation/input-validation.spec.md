@@ -206,4 +206,4 @@ Where the names above live today:
 - `src/docket/sandbox/launch.py`: `run_command`, the one shell invocation
 - `src/docket/agent/tools/builtins/toolbox.py`: `resolve_within`, the allowed-roots check for file tools
 - `src/docket/platform/store.py`: the atomic JSON writer
-- Tests: `tests/unit/teams/test_provisioning.py`, `tests/integration/test_pod_blueprint_provisioning.py`, `tests/integration/test_serve_pods_endpoint.py`, `tests/integration/test_provider_agnosticism.py`, `tests/integration/test_data_layer.py`, `tests/unit/interfaces/cli/commands/test_setup_model.py`, `tests/unit/interfaces/cli/commands/test_task.py`
+- Tests: `tests/unit/teams/test_provisioning.py`, `tests/integration/teams/test_pod_blueprint_provisioning.py`, `tests/integration/interfaces/test_serve_pods_endpoint.py`, `tests/integration/models/test_provider_agnosticism.py`, `tests/integration/teams/test_data_layer.py`, `tests/unit/interfaces/cli/commands/test_setup_model.py`, `tests/unit/interfaces/cli/commands/test_task.py`

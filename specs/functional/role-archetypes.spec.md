@@ -614,8 +614,8 @@ docket pod validate ./producer.yaml
 - `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`
 - `src/docket/kernel/templates.py`: `RECIPES_DIR`
 - `src/docket/templates/recipes/`: the shipped recipe library
-- Tests: `tests/integration/test_pod_role_workspace_parity.py` (byte identity),
-  `tests/integration/test_archetypes.py` and `tests/unit/pipeline/domain/test_spec__spec.py` (gate
+- Tests: `tests/integration/teams/test_pod_role_workspace_parity.py` (byte identity),
+  `tests/integration/teams/test_archetypes.py` and `tests/unit/pipeline/domain/test_spec__spec.py` (gate
   agreement), `tests/unit/teams/test_roles.py` (runtime-contract and prompt-layer checks,
-  overlay problems, pod `deniedTools`), `tests/integration/test_role_tools_and_identity.py`
-  (`BUILTIN_TOOL_KINDS` pinned against `builtin_registry()`), `tests/integration/test_recipes.py`
+  overlay problems, pod `deniedTools`), `tests/integration/agent/role_tools/test_denied_tools.py`
+  (`BUILTIN_TOOL_KINDS` pinned against `builtin_registry()`), `tests/integration/teams/test_recipes.py`

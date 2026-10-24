@@ -367,5 +367,5 @@ Where the names above live today:
   `src/docket/operator/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`
   and `enqueue_task_once`, `answer_task`, `build_inbox`
 - `src/docket/templates/channels/07-telegram.yaml`: the built-in `telegram` channel document
-- `tests/integration/test_telegram_channel.py`, `tests/integration/test_delete_bind_unbind.py`,
-  `tests/unit/test_serve__telegram_and_keys.py`: the bot, bind/unbind and poll-loop tests
+- `tests/integration/interfaces/telegram/test_bot_inbound.py`, `tests/integration/interfaces/test_delete_bind_unbind.py`,
+  `tests/unit/interfaces/telegram/test_poll__pacing.py`: the bot, bind/unbind and poll-loop tests

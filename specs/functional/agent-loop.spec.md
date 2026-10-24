@@ -868,7 +868,7 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
   `mcp_loader`, root resolution, the base-commit `RepoView` construction, the export start/flush
 - `src/docket/agent/ports.py`: `RuntimeDriver`, `TurnResult`, `DriverCapabilities`,
   `SessionSummary`, `UsageReport`
-- `tests/fakes.py`: `FakeDriver`, the port's canonical fake
+- `tests/support/fakes.py`: `FakeDriver`, the port's canonical fake
 - `src/docket/teams/identity.py`: `compose_agent_prompt`, `compose_system_prompt`,
   `project_instruction_files`, `resolve_static_context_budget`, `memory_has_content`,
   `PromptSectionReport`, `REPO_INSTRUCTIONS_FRAME`, `REPO_SKILLS_FRAME`, `POD_MEMORY_FRAME`
