@@ -17,11 +17,9 @@ steps:
       Optional fields: context, constraints, assumptions, questions, resources (secret:NAME, path:P, verify), expectedRiskyActions.
       Then end with exactly one line: READY, NEEDS-INPUT or REJECT.
       READY = you have everything you need. NEEDS-INPUT = list what is missing under questions. REJECT = do not attempt this task.
-    # Every real marker is routed explicitly by `on:` below -- the first marker is the gate's
-    # passing value, and a passing value advances to the next step in line (the operator-input
-    # step) instead of taking its `on:` route, so it is a placeholder the Lead is never asked to
-    # write. READY/NEEDS-INPUT/REJECT therefore all take the `on:` branch.
-    verdict: [__ROUTED_VIA_ON__, READY, NEEDS-INPUT, REJECT]
+    # Every marker is routed by `on:` below, READY included: a routed outcome never falls
+    # through to the next step in line (the operator-input step).
+    verdict: [READY, NEEDS-INPUT, REJECT]
     on:
       READY: build
       NEEDS-INPUT: ask

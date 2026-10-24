@@ -163,13 +163,13 @@ def decide_verdict(
     rework: ReworkFacts | None,
     cycles_so_far: int,
 ) -> GateDecision:
-    """A verdict gate on the hop's parsed *verdict*: pass advances; a verdict the step's ``on``
-    map names routes; a rework verdict loops back while its budget lasts and is terminal after;
-    anything else fails (unparseable when there is no verdict at all)."""
-    if verdict is not None and verdict in pass_values:
-        return GateDecision("advance", label=verdict)
+    """A verdict gate on the hop's parsed *verdict*: a verdict the step's ``on`` map names
+    routes, a passing one included; pass advances; a rework verdict loops back while its budget
+    lasts and is terminal after; anything else fails (unparseable when there is no verdict)."""
     if verdict is not None and routed:
         return GateDecision("routed", label=verdict)
+    if verdict is not None and verdict in pass_values:
+        return GateDecision("advance", label=verdict)
     if rework is not None and verdict is not None and verdict in rework.when:
         if cycles_so_far < rework.max_cycles and rework.target_index is not None:
             return GateDecision(

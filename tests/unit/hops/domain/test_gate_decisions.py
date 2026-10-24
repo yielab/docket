@@ -177,7 +177,7 @@ def _verdict(verdict: str | None, **kw: Any) -> _d.GateDecision:
     ("facts", "kind", "label", "event"),
     [
         ({"verdict": "approve"}, "advance", "approve", ""),
-        ({"verdict": "approve", "routed": True}, "advance", "approve", ""),
+        ({"verdict": "approve", "routed": True}, "routed", "approve", ""),
         ({"verdict": "request-changes", "routed": True}, "routed", "request-changes", ""),
         ({"verdict": "reject", "routed": True}, "routed", "reject", ""),
         ({"verdict": "request-changes"}, "rework", "", "rework"),
