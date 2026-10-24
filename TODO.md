@@ -231,8 +231,8 @@ behaviour changes) + T
     which refuses a mix), `pipeline/domain/spec.py` (`normalize_pipeline`), `governance/policy.py`
     (`normalize_policy`: "short form, canonical, or a mix"). `teams/config_docs.py` guesses which one a
     person wrote. D-57 keeps nothing for the past.
-  - `maxReworkCycles` is accepted and ignored when a pipeline is bound (`pipeline/application/steps.py`
-    around line 126, which P47-11 may move; `docs/CONFIGURATION.md`'s row says "Ignored when you bind a
+  - `maxReworkCycles` is accepted and ignored when a pipeline is bound (`hops/application/steps.py`
+    around line 116, moved there by P47-11; `docs/CONFIGURATION.md`'s row says "Ignored when you bind a
     pipeline").
   - A command policy matches a regular expression over the raw text (`when.matches`;
     `templates/policies/block-destructive.yaml` is one expression), while `governance/security.py`
