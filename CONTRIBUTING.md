@@ -149,8 +149,8 @@ Where things go today:
 All contributions must include appropriate tests:
 
 - Tests are placed by lane, named by module, per `specs/test-framework.md` §"Lanes and
-  placement": `tests/unit/` mirrors `src/docket/` one file per module, `tests/integration/`
-  covers cross-module or real-process behaviour, `tests/guards/` holds AST/layout invariants,
+  placement": `tests/unit/` mirrors `src/docket/` one file per module, `tests/integration/<context>/`
+  covers cross-module, real-socket or real-process behaviour, one folder per context, `tests/guards/` holds AST/layout invariants,
   and `tests/agent/` holds checks on prose, release artifacts or agent hook scripts — that lane
   is budgeted, never the default suite, and runs in its own CI job
   (the directories of today; ADR 0030 replaces them with a mirror of the code, lanes as pytest
@@ -173,7 +173,7 @@ uv run python scripts/smoke_workflow.py
 
 # Opt-in realistic memory-backed repair with genuine inference on port 8081
 uv run python scripts/smoke_workflow.py --live-model
-DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/integration/test_workflow_smoke.py
+DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/integration/product/smoke
 
 # Smaller live infrastructure-only scenario retained for diagnosis
 uv run python scripts/smoke_workflow.py --live-model --scenario basic
