@@ -110,7 +110,7 @@ M-1 ─────────────────┘   (M-1 must finish be
 
 ### P47-10 — integrate P47-7 and make every document cite the test paths that exist
 
-**Status:** DONE (2026-10-24: merge `f5e86413`, citations `f662d2f1`; 47 stale paths fixed, parallel run green but one guard over its 2 s ceiling under load) · **Size:** S · **Owner:** integrator (not a docket task) · **Kind:** M
+**Status:** DONE (2026-10-24: merge `f5e86413`, citations `f662d2f1`; 47 stale paths fixed, parallel run: one failure, a guard over its 2 s time ceiling under load, which passes alone) · **Size:** S · **Owner:** integrator (not a docket task) · **Kind:** M
 
 - **Trigger (measured 2026-10-24):** branch `p47-7-test-layout` (last green `261c245c`, 30 commits on
   `d1fa3d30`) moved the 134 integration files into `tests/integration/<context>/` and split the 11
