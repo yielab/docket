@@ -48,6 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A task run under `docket run --pipeline <file>` keeps that pipeline.** Its claim recorded
+  source `default` and nothing else, so answering a question the file's pipeline parked looked up
+  the step in the pod's pipeline and failed with "not parked at step", and the next claim ran the
+  pod's pipeline. The claim now records source `file` and keeps the spec as `pipelineSpec`; the
+  answer and a later claim with no file replay it, and a later claim under a file runs that file.
 - **An idle sweep tick writes no run record.** `docket start --dispatch` created one run per pod per
   30 s tick whether or not it had anything to claim: 85,540 empty records and 47 MB in a week on a
   real home, with rewrites that missed the 10 s store lock. A pod with nothing to claim is skipped.

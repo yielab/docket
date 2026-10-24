@@ -60,11 +60,12 @@ def _resolve_task_run(
     default_spec: _pipeline.PipelineSpec,
     default_vars: dict[str, Any],
     variables: dict[str, Any] | None,
+    default_source: str = "default",
 ) -> tuple[_pipeline.PipelineSpec, dict[str, Any], str]:
     """Resolve a claimed task's pipeline, variables and gate, or raise ``TaskRunRefusal``."""
-    spec, source = _task_pipeline(project, task, default_spec)
+    spec, source = _task_pipeline(project, task, default_spec, default_source)
     _task_gate(task)
-    if source == "default":
+    if spec is default_spec:
         return spec, default_vars, source
     try:
         resolved = _pipeline.resolve_variables(spec, variables)
@@ -78,10 +79,16 @@ def _resolve_task_run(
     return spec, resolved, source
 
 
-def _record_task_run(project: str, task: dict[str, Any], source: str) -> None:
-    """Record ``pipelineSource`` and ``gateApplied`` on the claimed task and its stored record."""
+def _record_task_run(
+    project: str, task: dict[str, Any], source: str, spec: _pipeline.PipelineSpec
+) -> None:
+    """Record ``pipelineSource`` and ``gateApplied`` on the claimed task and its stored record,
+    and, for a caller's file, the spec itself as ``pipelineSpec`` so an answer and a later claim
+    replay it."""
     task["pipelineSource"] = source
     task["gateApplied"] = task.get("gate") is not None
+    if source == "file":
+        task["pipelineSpec"] = spec.model_dump(mode="json", by_alias=True)
     task_id = task.get("id")
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -92,6 +99,8 @@ def _record_task_run(project: str, task: dict[str, Any], source: str) -> None:
             if isinstance(t, dict) and t.get("id") == task_id:
                 t["pipelineSource"] = task["pipelineSource"]
                 t["gateApplied"] = task["gateApplied"]
+                if "pipelineSpec" in task:
+                    t["pipelineSpec"] = task["pipelineSpec"]
         return {"tasks": tasks}
 
     read_modify_write(pod_task_list_path(project), _fn)

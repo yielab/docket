@@ -277,10 +277,11 @@ def _apply_route_outcome(
 
 
 def _parked_task_pipeline(project: str, task_id: str) -> Any:
-    """The pipeline *task_id* was dispatched through: the one it names itself, else ``None``
-    (the pod's own). A named pipeline that no longer resolves is an ``AnswerError``."""
+    """The pipeline *task_id* was dispatched through: the one it names itself or the caller's
+    file it kept, else ``None`` (the pod's own). One that no longer resolves is an
+    ``AnswerError``."""
     for t in _queue.read_tasks(project):
-        if t.get("id") != task_id or not t.get("pipeline"):
+        if t.get("id") != task_id or not (t.get("pipeline") or t.get("pipelineSpec")):
             continue
         try:
             spec, _source = _steps._task_pipeline(

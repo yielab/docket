@@ -17,6 +17,7 @@ from docket.hops.application import answers as _answers
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
+from docket.pipeline.domain import spec as _pipeline
 from docket.platform import store as _store
 from docket.tasks.application import escalation as _escalation
 from docket.tasks.application import lifecycle as _lifecycle
@@ -142,6 +143,30 @@ class TestAnswerTaskPlacement:
         after = _queue.read_tasks("demo")[0]
         assert after["status"] == "pending"
         assert after["answers"][0]["step"] == "ask"
+
+    def test_a_task_parked_under_a_callers_pipeline_file_is_answered_and_resumed_against_it(
+        self,
+    ) -> None:
+        """`docket run --pipeline <file>`: the claim records the file's spec on the task, so the
+        answer and the next claim (with no file passed) replay against it, not the pod's."""
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        spec = _pipeline.load_pipeline(_ASK_PIPELINE_YAML).spec
+        assert spec is not None
+        _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
+        _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=spec)
+        parked = _queue.read_tasks("demo")[0]
+        assert parked["status"] == "waiting_input"
+        assert parked["pipelineSource"] == "file"
+
+        _answers.answer_task(
+            "demo", parked["id"], "accept", {"answer": "ship it"}, channel="cli", actor="op"
+        )
+        assert _queue.read_tasks("demo")[0]["answers"][0]["step"] == "ask"
+
+        _sweep.dispatch_pod("demo", runner=FakeDriver())
+        done = _queue.read_tasks("demo")[0]
+        assert done["status"] == "done", done.get("reason")
+        assert [h["stepId"] for h in done["hops"]][-1] == "implementer"
 
 
 class TestAnswerTaskAudit:

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.4.0
+**Version**: 9.5.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -428,7 +428,11 @@ wired agent's conversation current with the task it is working.
    `<pod config dir>/pipelines/<name>.yaml` (or `.yml`), source `pod:<name>`; then a recipe
    directory of that name (the operator's `recipes/` before the shipped ones) holding a
    `pipeline.yaml`, source `recipe:<name>`; otherwise the task is refused. A task with no
-   `pipeline` runs the default and records source `default`. A chosen pipeline is
+   `pipeline`, claimed under a caller-supplied file (`docket run --pipeline <file>`), runs that
+   file, records source `file` and **MUST** keep the file's spec on the task as `pipelineSpec`;
+   an answer to a question it parks, and a later claim of it with no file, run that kept spec,
+   never the pod's; a later claim under a file runs that file and keeps it instead. A task with neither runs the default and records source
+   `default`. A chosen pipeline is
    caller-supplied-like: it is never patched with the pod's `maxReworkCycles`, and its variables
    are resolved per task as the default's are. A name that resolves to nothing, a file that does
    not validate, unresolved step variables, or a task `gate` that cannot be built **MUST** settle

@@ -144,13 +144,23 @@ def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
 
 
 def _task_pipeline(
-    project: str, task: dict[str, Any], default_spec: _pipeline.PipelineSpec
+    project: str,
+    task: dict[str, Any],
+    default_spec: _pipeline.PipelineSpec,
+    default_source: str = "default",
 ) -> tuple[_pipeline.PipelineSpec, str]:
-    """The (spec, source) a claimed task runs: its named pipeline, else *default_spec* with
-    source ``default``. Raises ``TaskRunRefusal`` for a name that resolves to nothing valid."""
+    """The (spec, source) a claimed task runs: its named pipeline, else the caller's file, else
+    the ``pipelineSpec`` it kept at an earlier claim, else the pod's *default_spec*. Raises
+    ``TaskRunRefusal`` for one that resolves to nothing valid."""
     name = task.get("pipeline")
     if name is None or name == "":
-        return default_spec, "default"
+        kept = task.get("pipelineSpec")
+        if kept is None or default_source == "file":
+            return default_spec, default_source
+        try:
+            return _pipeline.PipelineSpec.model_validate(kept), "file"
+        except ValueError as exc:
+            raise TaskRunRefusal(f"the task's kept pipeline does not validate: {exc}") from exc
     if not isinstance(name, str) or not TASK_PIPELINE_NAME.match(name):
         raise TaskRunRefusal(f"pipeline {name!r} is not a valid pipeline name")
     found = _task_pipeline_file(project, name)

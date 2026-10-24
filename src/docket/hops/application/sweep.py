@@ -94,12 +94,17 @@ def dispatch_pod(
             continue
         try:
             run_spec, run_vars, source = _resolve_task_run(
-                project, task, effective_spec, resolved_vars, variables
+                project,
+                task,
+                effective_spec,
+                resolved_vars,
+                variables,
+                "default" if spec is None else "file",
             )
         except TaskRunRefusal as exc:
             results.append(refuse_claimed_task(project, task, "pipeline", str(exc)))
             continue
-        _record_task_run(project, task, source)
+        _record_task_run(project, task, source, run_spec)
         refused = prepare_claimed_task(project, task)
         if refused is not None:
             results.append(refused)
