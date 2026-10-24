@@ -222,7 +222,7 @@ M-1 ─────────────────┘   (M-1 must finish be
 
 ### P47-12 — configuration: one authored form, no setting that silently does nothing, policies on the parsed command
 
-**Status:** TODO after P47-11 (M-1 done) · **Size:** L · **Model:** Sonnet, one run · **Kind:** B (named
+**Status:** IN-PROGRESS (@sonnet, branch `p47-12-config` from `296086f0`) · **Size:** L · **Model:** Sonnet, one run · **Kind:** B (named
 behaviour changes) + T
 
 - **Trigger:** the maintainer's request (2026-10-24) to fold the configuration findings of the 2026-10-24
