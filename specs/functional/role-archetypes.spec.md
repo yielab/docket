@@ -594,7 +594,7 @@ docket pod validate ./producer.yaml
 - `src/docket/hops/application/compose.py`: the hop-message builder (`_hop_message`,
   `_resolve_hop_instructions`)
 - `src/docket/hops/application/executor.py`: plan resolution for dispatch
-  (`_resolve_pipeline_steps`)
+  (`resolve_pipeline_steps`)
 - `src/docket/agent/context.py`: `budget_for_role`, `DEFAULT_TOKEN_BUDGET`
 - `src/docket/agent/session.py`: `compact_session`
 - `src/docket/agent/loop.py`: the per-turn `registry_for_role` call; the compaction call

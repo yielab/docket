@@ -14,7 +14,7 @@ from docket.hops.application import builtin_tools as _builtin_tools
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.teams import identity as _identity
-from docket.teams import roles as _arch
+from docket.teams import role_composer as _role_composer
 
 SUBJECT = "docket.teams.identity"
 
@@ -56,10 +56,10 @@ def test_two_worktrees_compose_a_byte_identical_system_prompt(
 
 
 def test_tool_schemas_do_not_depend_on_the_worktree() -> None:
-    first = _arch.registry_for_role(
+    first = _role_composer.registry_for_role(
         _builtin_tools.builtin_registry(), "implementer", "demo"
     ).specs()
-    second = _arch.registry_for_role(
+    second = _role_composer.registry_for_role(
         _builtin_tools.builtin_registry(), "implementer", "demo"
     ).specs()
     assert first == second

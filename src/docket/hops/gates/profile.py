@@ -14,8 +14,6 @@ from docket.governance import secrets as _secrets
 from docket.kernel.ports import jail as _jail
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
@@ -128,15 +126,9 @@ def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
     return names
 
 
-def gather_facts(
-    project: str, nodes: tuple[Any, ...] | None = None, spec: _pipeline.PipelineSpec | None = None
-) -> Facts:
-    """Read the live state. *nodes* are the planned steps a dispatch is about to run; omitted, the
-    pod's own pipeline is planned (``doctor`` and ``status``)."""
-    if nodes is None:
-        from docket.hops.application import executor as _executor
-
-        nodes = _executor._resolve_pipeline_steps(project, spec)[0]
+def gather_facts(project: str, nodes: tuple[Any, ...]) -> Facts:
+    """Read the live state. *nodes* are the planned steps a dispatch is about to run (or, from
+    ``hops.application.report``, the pod's own planned pipeline)."""
     mode, scope = _pod_settings.effective_network(project)
     ungated = tuple(
         unit.step_id
@@ -154,13 +146,11 @@ def gather_facts(
     )
 
 
-def project_violations(
-    project: str, nodes: tuple[Any, ...] | None = None, spec: _pipeline.PipelineSpec | None = None
-) -> list[Violation]:
+def project_violations(project: str, nodes: tuple[Any, ...]) -> list[Violation]:
     """The pod's violations under ``lights-out``, ``[]`` when its effective profile is attended."""
     if effective_profile(project) != LIGHTS_OUT:
         return []
-    return lights_out_violations(gather_facts(project, nodes, spec))
+    return lights_out_violations(gather_facts(project, nodes))
 
 
 def fleet_violations() -> list[Violation]:
@@ -175,17 +165,6 @@ def fleet_violations() -> list[Violation]:
         injected_secrets=(),
     )
     return lights_out_violations(facts)
-
-
-def lights_out_report() -> dict[str, list[Violation]]:
-    """Every dispatchable pod whose effective profile is ``lights-out``, with its violations; empty
-    on a fleet that records nothing (the usual case)."""
-
-    report: dict[str, list[Violation]] = {}
-    for project in _queue.dispatchable_pods():
-        if effective_profile(project) == LIGHTS_OUT:
-            report[project] = project_violations(project)
-    return report
 
 
 def as_json(violations: list[Violation]) -> dict[str, Any]:

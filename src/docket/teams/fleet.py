@@ -392,3 +392,14 @@ def apply_workspace_isolation() -> None:
 def disable_workspace_isolation() -> None:
     """Turn the recorded sandbox-isolation mode off (mode: off)."""
     _fleet.disable_sandbox_isolation()
+
+
+def project_ids() -> list[str]:
+    """Sorted list of project agent IDs (dirs containing .docket-meta.json)."""
+    if not current_home().projects_dir.is_dir():
+        return []
+    return sorted(
+        d.name
+        for d in current_home().projects_dir.iterdir()
+        if d.is_dir() and (d / current_home().meta_file).is_file()
+    )

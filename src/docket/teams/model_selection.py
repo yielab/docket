@@ -14,6 +14,7 @@ from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import roles as _arch
+from docket.teams.fleet import project_ids
 
 ALL_ROLES: tuple[str, ...] = (
     "lead",
@@ -336,7 +337,6 @@ def pricing_label(model: str) -> str:
 
 def policy_agent_ids() -> list[str]:
     """All agent IDs governed by the role policy: the project agents."""
-    from docket.teams.utils import project_ids
 
     return list(project_ids())
 

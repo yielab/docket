@@ -3,19 +3,7 @@
 from __future__ import annotations
 
 from docket.agent.ports import UsageTotals
-from docket.kernel.home import current_home
 from docket.teams import model_selection as _mp
-
-
-def project_ids() -> list[str]:
-    """Sorted list of project agent IDs (dirs containing .docket-meta.json)."""
-    if not current_home().projects_dir.is_dir():
-        return []
-    return sorted(
-        d.name
-        for d in current_home().projects_dir.iterdir()
-        if d.is_dir() and (d / current_home().meta_file).is_file()
-    )
 
 
 def si_format(n: int) -> str:

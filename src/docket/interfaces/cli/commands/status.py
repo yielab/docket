@@ -34,8 +34,9 @@ from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _np
 from docket.teams import pod as _pod
 from docket.teams.apply import review as _review
+from docket.teams.fleet import project_ids
 from docket.teams.models import AgentMeta
-from docket.teams.utils import project_ids, si_format
+from docket.teams.utils import si_format
 
 
 def pod_ids() -> list[str]:
@@ -173,7 +174,7 @@ def _project_summary(project: str) -> dict[str, Any]:
         "lastRun": _last_run(project),
         **({"commands": c} if (c := _commands(roots[0] if roots else "", project)) else {}),
         **(
-            {"profile": _profile.as_json(_profile.project_violations(project))}
+            {"profile": _profile.as_json(_pod_report.project_violations(project))}
             if _profile.effective_profile(project) == _profile.LIGHTS_OUT
             else {}
         ),

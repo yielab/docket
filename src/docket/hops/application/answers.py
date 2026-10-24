@@ -322,7 +322,7 @@ def answer_task(
     # pipeline's *shape* does not change task to task, only the persisted `hops` do, and
     # those are re-read fresh, under the lock, by `_locate_parked_step` below (pure, no I/O
     # of its own).
-    runtime_steps, id_to_index, _instr = _executor._resolve_pipeline_steps(
+    runtime_steps, id_to_index, _instr = _executor.resolve_pipeline_steps(
         project, _parked_task_pipeline(project, task_id)
     )
 

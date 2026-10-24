@@ -11,7 +11,7 @@ import typer
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.platform import read_json
-from docket.teams.utils import project_ids
+from docket.teams.fleet import project_ids
 
 POD_OPTION_HELP = (
     "Pod name; default: DOCKET_POD, then the pod whose codebase contains the current directory"

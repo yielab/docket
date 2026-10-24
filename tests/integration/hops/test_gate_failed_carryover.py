@@ -123,7 +123,7 @@ def test_hop_message_without_gate_failed_hop_is_unchanged() -> None:
 
 def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(tmp_path: Path) -> None:
     with _seed(tmp_path, "true"):
-        steps, _ids, _instr = _executor._resolve_pipeline_steps("demo", _spec(_UNTIL_YAML))
+        steps, _ids, _instr = _executor.resolve_pipeline_steps("demo", _spec(_UNTIL_YAML))
         lead = _task.HopResult(
             role="lead", member_id="demo-lead", ok=True, output="p", cost_usd=0.0, step_id="plan"
         )

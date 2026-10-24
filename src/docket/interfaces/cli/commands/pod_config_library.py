@@ -8,9 +8,10 @@ from rich.markup import escape
 from docket.governance import plugins as _plugins
 from docket.governance import policy as _policy
 from docket.interfaces.cli.commands import contract as _contract
-from docket.interfaces.cli.commands.pod_config import _fail, _scope_pod, render_exporter_states
+from docket.interfaces.cli.commands.pod_config import _fail, _scope_pod
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.render.apply import render_exporter_states
 from docket.kernel.home import current_home
 from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import role_schema as _role_schema

@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 from docket.agent.ports import tool_gate
+from docket.agent.tools import mcp_client as _client
+from docket.agent.tools.mcp_types import McpListResult, McpRemoteTool, StdioLaunch
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.agent.tools.screening import screen_tool_result
 from docket.kernel.mcp import McpServerConfig
@@ -50,44 +51,6 @@ def namespaced_tool_name(server_name: str, remote_tool_name: str) -> str:
     return f"{NAMESPACE_PREFIX}{server_name}__{remote_tool_name}"
 
 
-# ── the port this module programs against (implemented in agent/tools/mcp_client.py) ──────────
-
-
-@dataclass(frozen=True)
-class McpRemoteTool:
-    """One tool exactly as a remote server advertised it -- before namespacing
-    or any policy screening."""
-
-    name: str
-    description: str = ""
-    parameters: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class McpListResult:
-    """Outcome of asking one server for its tool list. Never raised -- a
-    connection/protocol failure is ordinary data here, not an exception."""
-
-    ok: bool
-    tools: tuple[McpRemoteTool, ...] = ()
-    error: str = ""
-
-
-# The two operations `agent/tools/mcp_client.py` implements. Injectable so
-# this module's own tests never touch the real SDK/a subprocess -- the
-# "stub at the SDK boundary" this card's tests are required to use.
-@dataclass(frozen=True)
-class StdioLaunch:
-    """How a turn starts its stdio servers: the directory, and the jail (when ``sandbox`` is
-    ``"auto"``) with its roots and network mode. A runtime value, never stored in a config."""
-
-    cwd: str | None = None
-    sandbox: Literal["auto", "off"] = "off"
-    network: bool = True
-    roots: tuple[Path, ...] = ()
-    read_only: tuple[Path, ...] = ()
-
-
 class ListToolsFn(Protocol):
     def __call__(
         self, config: McpServerConfig, timeout: float, launch: StdioLaunch | None = None
@@ -106,14 +69,10 @@ class CallToolFn(Protocol):
 
 
 def _default_list_tools() -> ListToolsFn:
-    from docket.agent.tools import mcp_client as _client
-
     return _client.list_remote_tools
 
 
 def _default_call_tool() -> CallToolFn:
-    from docket.agent.tools import mcp_client as _client
-
     return _client.call_remote_tool
 
 

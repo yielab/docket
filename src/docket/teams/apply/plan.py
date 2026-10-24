@@ -71,20 +71,7 @@ from docket.teams.apply.review import (
     runs_changed,
 )
 from docket.teams.apply.write import apply
-
-_MANIFEST_KEYS = frozenset(
-    {
-        "members",
-        "settings",
-        "pipeline",
-        "kind",
-        "name",
-        "description",
-        "exporters",
-        "prepare",
-        "protects",
-    }
-)
+from docket.teams.config_docs import _MANIFEST_KEYS
 
 
 def _plan_roles(

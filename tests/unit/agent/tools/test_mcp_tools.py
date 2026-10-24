@@ -23,13 +23,14 @@ from tests.support.pods import write_meta_2 as _write_meta
 import docket.kernel.templates as _templates
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
 from docket.agent.tools import mcp_tools as _mt
+from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolRegistry
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.hops.application.driver import DocketDriver, _load_mcp_tools
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
-from docket.teams.roles import registry_for_role
+from docket.teams.role_composer import registry_for_role
 
 _isolate_stores = _support_home.isolate_stores
 pod_input_policy = _support_pods.pod_input_policy
@@ -66,8 +67,8 @@ def _final(text: str = "done") -> ChatResponse:
     )
 
 
-def _remote(name: str = "danger_write") -> _mt.McpRemoteTool:
-    return _mt.McpRemoteTool(
+def _remote(name: str = "danger_write") -> _mcp_types.McpRemoteTool:
+    return _mcp_types.McpRemoteTool(
         name=name,
         description="does something to a file",
         parameters={
@@ -79,7 +80,7 @@ def _remote(name: str = "danger_write") -> _mt.McpRemoteTool:
 
 
 def _fake_mcp_loader(
-    tools: tuple[_mt.McpRemoteTool, ...] = (),
+    tools: tuple[_mcp_types.McpRemoteTool, ...] = (),
     *,
     server_name: str = "fake",
 ) -> Any:
@@ -88,13 +89,16 @@ def _fake_mcp_loader(
     answered instantly -- no subprocess, no `mcp` SDK involved."""
 
     def _loader(
-        registry: ToolRegistry, role: str, project: str = "", launch: _mt.StdioLaunch | None = None
+        registry: ToolRegistry,
+        role: str,
+        project: str = "",
+        launch: _mcp_types.StdioLaunch | None = None,
     ) -> list[_mt.McpServerLoadResult]:
         config = _mcp.McpServerConfig(name=server_name, command="stub")
         return _mt.load_mcp_tools(
             registry,
             servers=[config],
-            list_tools=lambda _c, _t: _mt.McpListResult(ok=True, tools=tools),
+            list_tools=lambda _c, _t: _mcp_types.McpListResult(ok=True, tools=tools),
             call_tool=lambda *a: ToolOutcome(True, content="pwned"),
             role=role,
         )
@@ -104,13 +108,18 @@ def _fake_mcp_loader(
 
 def _unreachable_mcp_loader() -> Any:
     def _loader(
-        registry: ToolRegistry, role: str, project: str = "", launch: _mt.StdioLaunch | None = None
+        registry: ToolRegistry,
+        role: str,
+        project: str = "",
+        launch: _mcp_types.StdioLaunch | None = None,
     ) -> list[_mt.McpServerLoadResult]:
         config = _mcp.McpServerConfig(name="down", command="stub")
         return _mt.load_mcp_tools(
             registry,
             servers=[config],
-            list_tools=lambda _c, _t: _mt.McpListResult(ok=False, error="connection refused"),
+            list_tools=lambda _c, _t: _mcp_types.McpListResult(
+                ok=False, error="connection refused"
+            ),
             call_tool=lambda *a: ToolOutcome(False, error="unreachable"),
             role=role,
         )
@@ -124,9 +133,12 @@ def _malformed_mcp_loader() -> Any:
     boundary does when the injected `list_tools` itself misbehaves."""
 
     def _loader(
-        registry: ToolRegistry, role: str, project: str = "", launch: _mt.StdioLaunch | None = None
+        registry: ToolRegistry,
+        role: str,
+        project: str = "",
+        launch: _mcp_types.StdioLaunch | None = None,
     ) -> list[_mt.McpServerLoadResult]:
-        def _boom(_c: _mcp.McpServerConfig, _t: float) -> _mt.McpListResult:
+        def _boom(_c: _mcp.McpServerConfig, _t: float) -> _mcp_types.McpListResult:
             raise ValueError("malformed tool listing: not valid JSON-RPC")
 
         config = _mcp.McpServerConfig(name="garbled", command="stub")
@@ -328,7 +340,7 @@ class TestDeclaredKindDrivesRoleNarrowing:
         _mt.load_mcp_tools(
             registry,
             servers=[config],
-            list_tools=lambda _c, _t: _mt.McpListResult(ok=True, tools=(_remote("lookup"),)),
+            list_tools=lambda _c, _t: _mcp_types.McpListResult(ok=True, tools=(_remote("lookup"),)),
             call_tool=lambda *a: ToolOutcome(True, content="results"),
             role="reviewer",
         )
@@ -351,7 +363,7 @@ class TestDeclaredKindDrivesRoleNarrowing:
         _mt.load_mcp_tools(
             registry,
             servers=[config],
-            list_tools=lambda _c, _t: _mt.McpListResult(ok=True, tools=(_remote("lookup"),)),
+            list_tools=lambda _c, _t: _mcp_types.McpListResult(ok=True, tools=(_remote("lookup"),)),
             call_tool=lambda *a: ToolOutcome(True, content="results"),
             role="reviewer",
         )
@@ -392,7 +404,7 @@ def _dispatch_mcp(content: str, *, ok: bool = True) -> Any:
     _mt.load_mcp_tools(
         registry,
         servers=[config],
-        list_tools=lambda _c, _t: _mt.McpListResult(ok=True, tools=(_remote("lookup"),)),
+        list_tools=lambda _c, _t: _mcp_types.McpListResult(ok=True, tools=(_remote("lookup"),)),
         call_tool=lambda *a: outcome,
         role="reviewer",
     )
@@ -478,5 +490,5 @@ message: canary
 
 
 def test_the_description_screen_sees_the_pod_policy(pod_input_policy: Path) -> None:
-    remote = _mt.McpRemoteTool(name="t", description="CANARY-PHRASE")
+    remote = _mcp_types.McpRemoteTool(name="t", description="CANARY-PHRASE")
     assert _mt._screen_description("implementer", "srv", remote, project="mypod") is not None

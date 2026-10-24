@@ -18,6 +18,7 @@ from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry, dispatc
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 from docket.teams import builtin_roles as _builtin_roles
+from docket.teams import role_composer as _role_composer
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 
@@ -102,7 +103,7 @@ class TestRegistryForRole:
     `ToolRegistry.without()` API -- no per-role branch anywhere."""
 
     def test_reviewer_registry_lacks_write_and_edit(self) -> None:
-        narrowed = _archetypes.registry_for_role(builtin_registry(), "reviewer")
+        narrowed = _role_composer.registry_for_role(builtin_registry(), "reviewer")
         assert "write" not in narrowed
         assert "edit" not in narrowed
         assert "bash" not in narrowed
@@ -110,13 +111,13 @@ class TestRegistryForRole:
 
     def test_implementer_registry_is_unchanged(self) -> None:
         base = builtin_registry()
-        narrowed = _archetypes.registry_for_role(base, "implementer")
+        narrowed = _role_composer.registry_for_role(base, "implementer")
         assert narrowed.names() == base.names()
 
     def test_unknown_role_leaves_the_registry_unchanged(self) -> None:
         base = builtin_registry()
-        assert _archetypes.registry_for_role(base, "not-a-real-role").names() == base.names()
-        assert _archetypes.registry_for_role(base, "").names() == base.names()
+        assert _role_composer.registry_for_role(base, "not-a-real-role").names() == base.names()
+        assert _role_composer.registry_for_role(base, "").names() == base.names()
 
 
 class TestRegistryForRoleExcludesByKindToo:
@@ -139,13 +140,13 @@ class TestRegistryForRoleExcludesByKindToo:
 
     def test_reviewer_loses_the_namespaced_write_kind_tool_too(self) -> None:
         base = self._registry_with_a_write_kind_extra()
-        narrowed = _archetypes.registry_for_role(base, "reviewer")
+        narrowed = _role_composer.registry_for_role(base, "reviewer")
         assert "mcp__weather__overwrite_config" not in narrowed
         assert "read" in narrowed and "glob" in narrowed  # read-kind untouched
 
     def test_lead_loses_it_too_same_denied_kind_set_as_reviewer(self) -> None:
         base = self._registry_with_a_write_kind_extra()
-        narrowed = _archetypes.registry_for_role(base, "lead")
+        narrowed = _role_composer.registry_for_role(base, "lead")
         assert "mcp__weather__overwrite_config" not in narrowed
 
     def test_tester_loses_it_but_keeps_bash(self) -> None:
@@ -153,7 +154,7 @@ class TestRegistryForRoleExcludesByKindToo:
         `exec`) -- the kind-based exclusion only removes what that role's
         own denied kinds cover, not every non-read tool."""
         base = self._registry_with_a_write_kind_extra()
-        narrowed = _archetypes.registry_for_role(base, "tester")
+        narrowed = _role_composer.registry_for_role(base, "tester")
         assert "mcp__weather__overwrite_config" not in narrowed
         assert "bash" in narrowed
 
@@ -161,7 +162,7 @@ class TestRegistryForRoleExcludesByKindToo:
         """Contrast case: implementer denies nothing, so nothing is excluded
         by kind either -- the mechanism narrows, it does not blanket-deny."""
         base = self._registry_with_a_write_kind_extra()
-        narrowed = _archetypes.registry_for_role(base, "implementer")
+        narrowed = _role_composer.registry_for_role(base, "implementer")
         assert "mcp__weather__overwrite_config" in narrowed
 
     def test_a_read_kind_namespaced_tool_survives_reviewer_narrowing(self) -> None:
@@ -177,7 +178,7 @@ class TestRegistryForRoleExcludesByKindToo:
                 kind="read",
             )
         )
-        narrowed = _archetypes.registry_for_role(base, "reviewer")
+        narrowed = _role_composer.registry_for_role(base, "reviewer")
         assert "mcp__docs__lookup" in narrowed
 
     def test_denied_kinds_do_not_depend_on_the_incoming_registry(self) -> None:
@@ -206,7 +207,7 @@ class TestRegistryForRoleExcludesByKindToo:
             )
         )
         # No built-in write/edit/bash in `base` at all.
-        narrowed = _archetypes.registry_for_role(base, "reviewer")
+        narrowed = _role_composer.registry_for_role(base, "reviewer")
         assert "mcp__fs__write_file" not in narrowed
         assert "read" in narrowed
 
@@ -227,7 +228,7 @@ class TestReviewerCannotDispatchAWrite:
     def test_reviewer_write_is_a_dispatch_level_denial(self, tmp_path: Path) -> None:
         ws = tmp_path / "rev-ws"
         ws.mkdir()
-        reviewer_registry = _archetypes.registry_for_role(builtin_registry(), "reviewer")
+        reviewer_registry = _role_composer.registry_for_role(builtin_registry(), "reviewer")
         ctx = ToolContext(agent_id="rev-1", role="reviewer", project="demo", roots=(ws,))
 
         result = dispatch_tool(
@@ -246,7 +247,7 @@ class TestReviewerCannotDispatchAWrite:
         policy against `write` -- an Implementer's registry still has it."""
         ws = tmp_path / "impl-ws"
         ws.mkdir()
-        impl_registry = _archetypes.registry_for_role(builtin_registry(), "implementer")
+        impl_registry = _role_composer.registry_for_role(builtin_registry(), "implementer")
         ctx = ToolContext(agent_id="impl-1", role="implementer", project="demo", roots=(ws,))
 
         result = dispatch_tool(

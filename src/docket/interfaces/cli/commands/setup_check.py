@@ -15,6 +15,7 @@ import json as _json
 import shutil
 from typing import Any
 
+from docket.hops.application import report as _pod_report
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands.setup_check_budget import (
     _batch_cost,
@@ -66,7 +67,7 @@ from docket.teams import network_posture as _np
 from docket.teams import pod as _pod
 from docket.teams import pod as _pod_ledger_mod
 from docket.teams import pod as _pod_mod
-from docket.teams.utils import project_ids
+from docket.teams.fleet import project_ids
 
 
 def _check_dependencies() -> int:
@@ -422,7 +423,7 @@ def _check_json() -> dict[str, Any]:
     issues += notify_issues
 
     security = _check_json_security()
-    if report := _profile.lights_out_report():
+    if report := _pod_report.lights_out_report():
         security["profile"] = {p: _profile.as_json(v) for p, v in report.items()}
     if ids and not security["sandboxUsable"]:
         issues += 1

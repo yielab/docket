@@ -14,7 +14,7 @@ from docket.observability import trace as _trace
 from docket.operator import build_inbox
 from docket.platform import read_json
 from docket.tasks.application import escalation as _escalation
-from docket.teams import utils
+from docket.teams import fleet
 
 
 def _cost_json() -> dict[str, Any]:
@@ -22,7 +22,7 @@ def _cost_json() -> dict[str, Any]:
 
     agents: list[dict[str, Any]] = []
     total = 0.0
-    for pid in utils.project_ids():
+    for pid in fleet.project_ids():
         raw = read_json(current_home().meta_path(pid))
         model = str(raw.get("model", current_home().default_model))
         totals = _usage.aggregate_cost(pid)

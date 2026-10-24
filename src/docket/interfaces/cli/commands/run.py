@@ -17,11 +17,11 @@ from docket.hops.application import sweep as _sweep
 from docket.hops.application.usage import aggregate_cost
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import contract as _contract
-from docket.interfaces.cli.commands.pod_config import run_item_label
 from docket.interfaces.cli.commands.setup import readiness
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import progress as _progress
 from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.render.apply import run_item_label
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.operator import flush, load_catalog, unreached_warning

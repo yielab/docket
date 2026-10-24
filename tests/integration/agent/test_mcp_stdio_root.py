@@ -13,6 +13,7 @@ from tests.unit.agent.tools.test_mcp_tools import _final, _ScriptedBackend, _wri
 
 import docket.agent.tools.mcp_tools as _mt
 from docket.agent.tools import mcp_client as _client
+from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import ToolContext, ToolOutcome, ToolRegistry
 from docket.hops.application.driver import DocketDriver, _load_mcp_tools
 from docket.kernel import mcp as _mcp
@@ -43,7 +44,9 @@ _SERVER = textwrap.dedent(
 @_needs_sdk
 def test_stdio_params_carry_the_given_directory(tmp_path: Path) -> None:
     config = _mcp.McpServerConfig(name="s", command="stub")
-    assert _client._stdio_params(config, _mt.StdioLaunch(cwd=str(tmp_path))).cwd == str(tmp_path)
+    assert _client._stdio_params(config, _mcp_types.StdioLaunch(cwd=str(tmp_path))).cwd == str(
+        tmp_path
+    )
     assert _client._stdio_params(config).cwd is None
 
 
@@ -60,7 +63,9 @@ def test_a_real_stdio_server_starts_in_the_root_and_elsewhere_outside_a_turn(
     monkeypatch.chdir(here)
     config = _mcp.McpServerConfig(name="probe", command=sys.executable, args=[str(script)])
 
-    in_turn = _client.call_remote_tool(config, "where", {}, 30.0, _mt.StdioLaunch(cwd=str(root)))
+    in_turn = _client.call_remote_tool(
+        config, "where", {}, 30.0, _mcp_types.StdioLaunch(cwd=str(root))
+    )
     outside = _client.call_remote_tool(config, "where", {}, 30.0)
 
     assert in_turn.ok, in_turn.error
@@ -73,19 +78,23 @@ def test_load_mcp_tools_hands_the_root_to_listing_and_calls() -> None:
     seen: dict[str, Any] = {}
 
     def _list(
-        config: Any, timeout: float, launch: _mt.StdioLaunch | None = None
-    ) -> _mt.McpListResult:
+        config: Any, timeout: float, launch: _mcp_types.StdioLaunch | None = None
+    ) -> _mcp_types.McpListResult:
         seen["list"] = launch
-        return _mt.McpListResult(ok=True, tools=(_mt.McpRemoteTool("t", "d"),))
+        return _mcp_types.McpListResult(ok=True, tools=(_mcp_types.McpRemoteTool("t", "d"),))
 
     def _call(
-        config: Any, name: str, args: Any, timeout: float, launch: _mt.StdioLaunch | None = None
+        config: Any,
+        name: str,
+        args: Any,
+        timeout: float,
+        launch: _mcp_types.StdioLaunch | None = None,
     ) -> Any:
         seen["call"] = launch
         return ToolOutcome(True, content="ok")
 
     registry = ToolRegistry()
-    launch = _mt.StdioLaunch(cwd="/some/root")
+    launch = _mcp_types.StdioLaunch(cwd="/some/root")
     _mt.load_mcp_tools(
         registry,
         servers=[_mcp.McpServerConfig(name="s", command="stub")],
@@ -107,7 +116,7 @@ def test_the_driver_passes_its_resolved_root_down(tmp_path: Path) -> None:
     got: dict[str, Any] = {}
 
     def _loader(
-        registry: Any, role: str, project: str, launch: _mt.StdioLaunch | None = None
+        registry: Any, role: str, project: str, launch: _mcp_types.StdioLaunch | None = None
     ) -> list[Any]:
         got["launch"] = launch
         return []
@@ -137,7 +146,7 @@ def test_an_isolated_turn_hands_the_read_only_grants_to_its_stdio_servers(
     got: dict[str, Any] = {}
 
     def _loader(
-        registry: Any, role: str, project: str, launch: _mt.StdioLaunch | None = None
+        registry: Any, role: str, project: str, launch: _mcp_types.StdioLaunch | None = None
     ) -> list[Any]:
         got["launch"] = launch
         return []
@@ -161,7 +170,7 @@ def test_the_default_loader_forwards_the_launch_and_omits_it_when_absent(
         return []
 
     monkeypatch.setattr(_mt, "load_mcp_tools", _spy)
-    _load_mcp_tools(ToolRegistry(), "implementer", "", launch=_mt.StdioLaunch(cwd="/r"))
+    _load_mcp_tools(ToolRegistry(), "implementer", "", launch=_mcp_types.StdioLaunch(cwd="/r"))
     _load_mcp_tools(ToolRegistry(), "implementer", "")
     assert calls[0]["launch"].cwd == "/r"
     assert "launch" not in calls[1]

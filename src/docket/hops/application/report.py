@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from docket.governance import policy as _policy
 from docket.hops.application import builtin_tools as _builtin_tools
+from docket.hops.application import executor as _executor
 from docket.hops.application import steps as _steps
 from docket.hops.gates import profile as _profile
 from docket.kernel.home import current_home
@@ -20,6 +21,7 @@ from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.adapters import openai_http as _llm
 from docket.observability import exporter as _exporter
+from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
@@ -27,7 +29,8 @@ from docket.teams import identity as _identity
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import network_posture as _network_posture
 from docket.teams import pod as _pod
-from docket.teams import pod_settings as load_pod_settings
+from docket.teams import pod_settings as _pod_settings
+from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 from docket.teams.apply import recipes as _recipes
@@ -96,7 +99,7 @@ def _policies_for_role(role: str, project: str) -> list[dict[str, str]]:
 
 
 def _mcp_servers_report(
-    pod_settings: load_pod_settings.PodSettings | None, project: str = ""
+    pod_settings: _pod_settings.PodSettings | None, project: str = ""
 ) -> list[dict[str, Any]]:
     """Every MCP server a turn would load: the pod's own ``mcpServers`` selection when
     set (``scope: "pod"``), else the full catalog -- global servers (``scope: "global"``)
@@ -122,18 +125,18 @@ def _mcp_servers_report(
 
 
 def _pod_settings_report(
-    settings: load_pod_settings.PodSettings, project: str
+    settings: _pod_settings.PodSettings, project: str
 ) -> dict[str, dict[str, Any]]:
     """Every ``PodSettings`` key's effective value and source ("set"/"default") --
     the ``settings`` object of ``docket pod show --json``."""
     report: dict[str, dict[str, Any]] = {}
-    for key in load_pod_settings.PodSettings.KEYS:
+    for key in _pod_settings.PodSettings.KEYS:
         value, source = settings.value_and_source(key, project)
         report[key] = {"value": value, "source": source}
     return report
 
 
-def _config_of_record_report(settings: load_pod_settings.PodSettings | None) -> dict[str, str]:
+def _config_of_record_report(settings: _pod_settings.PodSettings | None) -> dict[str, str]:
     """``configSource``/``configDigest`` (ADR 0012) plus ``drift``: ``"yes"``/``"no"`` when the
     source directory is still present and its digest is recomputed, ``""`` when there is no
     recorded source or the directory is gone (drift is then simply unknown, not asserted)."""
@@ -267,14 +270,14 @@ def member_report(agent_id: str) -> dict[str, Any]:
 
     # Never substitute a default for a bad stored value -- raised here, before any of the resolvers below that also read
     # this pod's settings, so every value below reflects a validated PodSettings.
-    pod_settings = load_pod_settings.PodSettings.load_for(project) if project else None
+    pod_settings = _pod_settings.PodSettings.load_for(project) if project else None
 
     role_registry_scope = _archetypes.load_registry(project)
     role_scope = _scope_label(role_registry_scope.source_of(role))
 
     base_registry = _builtin_tools.builtin_registry()
     role_registry = (
-        _archetypes.registry_for_role(base_registry, role, project) if role else base_registry
+        _role_composer.registry_for_role(base_registry, role, project) if role else base_registry
     )
     pod_denied = set(pod_settings.denied_tools) if pod_settings is not None else set()
     denied = [
@@ -323,9 +326,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
         "pipeline": pipeline,
         "podSettings": pod_settings_report,
         "network": dict(
-            zip(
-                ("mode", "scope"), load_pod_settings.effective_network(project or None), strict=True
-            )
+            zip(("mode", "scope"), _pod_settings.effective_network(project or None), strict=True)
         ),
         "projectInstructions": {"files": list(pi_files), "source": pi_source},
         "skills": skills_report,
@@ -353,7 +354,7 @@ def pod_report(project: str) -> dict[str, Any]:
     """The pod as one report; raises ``DispatchError``/``PodSettingsError`` when it is missing
     or its stored settings are invalid."""
     _pod.pod_pipeline(project)
-    settings = load_pod_settings.PodSettings.load_for(project)
+    settings = _pod_settings.PodSettings.load_for(project)
     ids = [a.id for a in _fleet.list_agents()]
     members = [
         {
@@ -381,7 +382,7 @@ def pod_report(project: str) -> dict[str, Any]:
         },
         "pipeline": {"source": _steps.effective_pipeline_source(project)},
         "network": dict(
-            zip(("mode", "scope"), load_pod_settings.effective_network(project), strict=True)
+            zip(("mode", "scope"), _pod_settings.effective_network(project), strict=True)
         ),
         "budgetUnpriced": _steps.unpriced_budget_models(project),
         **record,
@@ -410,6 +411,26 @@ def task_counts(project: str) -> dict[str, int]:
     }
 
 
+def project_violations(
+    project: str, spec: _pipeline.PipelineSpec | None = None
+) -> list[_profile.Violation]:
+    """The pod's violations under ``lights-out``, with its own pipeline planned for the facts
+    (``doctor`` and ``status``); ``[]`` when its effective profile is attended."""
+    if _profile.effective_profile(project) != _profile.LIGHTS_OUT:
+        return []
+    return _profile.project_violations(project, _executor.resolve_pipeline_steps(project, spec)[0])
+
+
+def lights_out_report() -> dict[str, list[_profile.Violation]]:
+    """Every dispatchable pod whose effective profile is ``lights-out``, with its violations; empty
+    on a fleet that records nothing (the usual case)."""
+    report: dict[str, list[_profile.Violation]] = {}
+    for project in _queue.dispatchable_pods():
+        if _profile.effective_profile(project) == _profile.LIGHTS_OUT:
+            report[project] = project_violations(project)
+    return report
+
+
 def pod_summary(project: str) -> dict[str, Any]:
     """One row of ``GET /pods``: name, codebase, member count, effective profile, queue."""
     ids = [a.id for a in _fleet.list_agents()]
@@ -427,7 +448,7 @@ def pod_detail(project: str) -> dict[str, Any]:
     read-only jail grants the pod keeps."""
     effective = _profile.effective_profile(project)
     verdict = (
-        _profile.as_json(_profile.project_violations(project))
+        _profile.as_json(project_violations(project))
         if effective == _profile.LIGHTS_OUT
         else {"name": effective, "violations": []}
     )
@@ -436,7 +457,7 @@ def pod_detail(project: str) -> dict[str, Any]:
         "profile": verdict,
         "pipelineSource": _steps.effective_pipeline_source(project),
         "repoConfigDir": _repo_config_dir(project),
-        "readOnly": [str(path) for path in load_pod_settings.effective_read_only(project)],
+        "readOnly": [str(path) for path in _pod_settings.effective_read_only(project)],
     }
 
 

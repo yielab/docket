@@ -9,7 +9,7 @@ from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.platform import read_json
-from docket.teams import fleet, utils
+from docket.teams import fleet
 
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
 # authenticated write/read-registry endpoints (/dispatch, /runs).
@@ -65,7 +65,7 @@ def build_status() -> dict[str, Any]:
     agents: list[dict[str, Any]] = []
     total_cost = 0.0
 
-    for pid in utils.project_ids():
+    for pid in fleet.project_ids():
         rec = _agent_record(pid, kind="project", registered=registered)
         total_cost += float(rec["costUsd"])
         agents.append(rec)

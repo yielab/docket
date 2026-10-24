@@ -1,42 +1,16 @@
-# P47-11 step 4: definitions that sit in the wrong context. Each moves to the lower context whose
-# data it reads (or to the one that owns the rule), so no import runs upward.
+# P47-11 step 5, second round: definitions moved so more function-local imports can be hoisted.
 
-[[definition]]  # redaction is a secrets rule; trace and approval both apply it
-from = "docket.observability.trace"
-to = "docket.governance.secrets"
-names = ["_REDACT_PATTERNS", "_ENV_CREDENTIAL_NAMES", "_ENV_CREDENTIAL_SUFFIXES", "_stored_secret_values", "redact"]
+[[definition]]  # the port's pure types, so the client that implements it need not import the loader
+from = "docket.agent.tools.mcp_tools"
+to = "docket.agent.tools.mcp_types"
+names = ["McpRemoteTool", "McpListResult", "StdioLaunch"]
 
-[[definition]]  # the review record is built from RunItems; the type belongs with the review
-from = "docket.teams.apply.review"
-to = "docket.governance.review"
-names = ["RunItem"]
+[[definition]]  # narrowing a registry for a role is what the composer port exposes; pod_settings imports roles
+from = "docket.teams.roles"
+to = "docket.teams.role_composer"
+names = ["_pod_denied_tools", "registry_for_role"]
 
-[[definition]]  # the roster of a pod is fleet and pod data
-from = "docket.tasks.application.queue"
-to = "docket.teams.pod"
-names = ["pod_full_roster"]
-
-[[definition]]  # pipeline order and the pod's present roles are pod data; the task pipeline name is a pod file rule
-from = "docket.hops.application.steps"
-to = "docket.teams.pod"
-names = ["PIPELINE_ORDER", "pod_pipeline", "TASK_PIPELINE_NAME"]
-
-[[definition]]  # these two only write fleet.json's isolation mode
-from = "docket.governance.security"
-to = "docket.teams.fleet"
-names = ["apply_workspace_isolation", "disable_workspace_isolation"]
-
-[[definition]]  # pruning finished tasks' worktrees reads task records and their resumability
-from = "docket.teams.task_worktrees"
-to = "docket.tasks.application.worktree_prune"
-names = ["PRUNABLE_TASK_STATUSES", "WorktreePruneEntry", "_task_list_file", "_worktree_owner", "_prune_one", "prune_task_worktrees"]
-
-[[definition]]  # usage and cost are read through the hops driver
-from = "docket.teams.utils"
-to = "docket.hops.application.usage"
-names = ["last_activity", "aggregate_cost", "gating_cost", "cost_history"]
-
-[[definition]]
-from = "docket.teams.settings"
-to = "docket.hops.application.usage"
-names = ["pod_recorded_cost"]
+[[definition]]  # the console rendering of an apply plan and its review; agents and pod_config both print it
+from = "docket.interfaces.cli.commands.pod_config"
+to = "docket.interfaces.cli.render.apply"
+names = ["render_apply_header", "_RUN_LABELS", "run_item_label", "render_run_items", "render_review", "_render_items", "render_apply_plan", "render_exporter_states"]

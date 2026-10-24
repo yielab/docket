@@ -221,7 +221,7 @@ class TestDefect20PodRoleGateContract:
     def test_defect_20_dispatch_plan_gates_a_pod_only_role(self, tmp_path: Path) -> None:
         _seed_auditor_pod(tmp_path)
 
-        steps, _index, _instr = _executor._resolve_pipeline_steps("demo", None)
+        steps, _index, _instr = _executor.resolve_pipeline_steps("demo", None)
 
         auditor = next(s for s in steps if s.step_id == "auditor")
         assert auditor.gate is not None

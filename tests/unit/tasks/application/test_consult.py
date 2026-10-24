@@ -18,6 +18,7 @@ from docket.kernel.home import current_home, use_home
 from docket.observability import trace as _trace
 from docket.platform import parked_question
 from docket.tasks.application import consult as _consult
+from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.tasks.application.consult"
@@ -79,7 +80,7 @@ class TestRegistration:
         assert _arch.BUILTIN_TOOL_KINDS["consult"] == "read"
 
     def test_a_reviewer_keeps_consult(self) -> None:
-        registry = _arch.registry_for_role(builtin_registry(), "reviewer")
+        registry = _role_composer.registry_for_role(builtin_registry(), "reviewer")
         assert "consult" in registry.names()
         assert "write" not in registry.names()
 

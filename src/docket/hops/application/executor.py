@@ -139,7 +139,7 @@ def _run_group_node(
     return merged
 
 
-def _resolve_pipeline_steps(
+def resolve_pipeline_steps(
     project: str, spec: _pipeline.PipelineSpec | None
 ) -> tuple[tuple[_orch.PlannedNode, ...], dict[str, int], dict[str, str]]:
     """Resolve *spec* (or this pod's default pipeline) against the pod's live roster into
@@ -451,7 +451,7 @@ def dispatch_task(
         resolved_verify_timeout = resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
         task_gate = _task_gate(task)
-        runtime_steps, id_to_index, raw_step_instructions = _resolve_pipeline_steps(project, spec)
+        runtime_steps, id_to_index, raw_step_instructions = resolve_pipeline_steps(project, spec)
         resolved_vars: dict[str, Any] = variables or {}
         step_instructions = {
             sid: _pipeline.interpolate_instructions(text, resolved_vars)

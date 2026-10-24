@@ -10,6 +10,7 @@ from docket.governance import review as _reviewed
 from docket.governance.review import RunItem
 from docket.kernel.home import current_home
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import config_docs as _config_docs
 from docket.teams import roles as _arch
 from docket.teams.apply.recipes import _config_glob, _declared_servers, _named_pipeline_files
 from docket.teams.workspace import prepare as _prepare
@@ -61,8 +62,6 @@ def _run_steps(steps: list[Any], prefix: str = "") -> list[RunItem]:
 
 
 def _config_docs_doc(path: Path, kind: str) -> dict[str, Any]:
-    from docket.teams import config_docs as _config_docs
-
     try:
         return dict(_config_docs.load_document(path, kind=kind).doc)
     except _config_docs.ConfigDocError:

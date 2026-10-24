@@ -17,10 +17,11 @@ from tests.support.pods import build_pod
 
 import docket.kernel.templates as _templates
 from docket.agent.tools import mcp_tools as _mt
+from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolRegistry
 from docket.hops.application.driver import _load_mcp_tools
-from docket.interfaces.cli.commands import pod_config as _pod_config
+from docket.interfaces.cli.render import apply as _render_apply
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import config_docs as _config_docs
@@ -100,10 +101,13 @@ def test_the_installed_server_reaches_the_registry_narrowed_to_its_tools(tmp_pat
     _apply("shop", _recipe(tmp_path))
     registry = ToolRegistry()
 
-    def _list(config: _mcp.McpServerConfig, timeout: float) -> _mt.McpListResult:
-        return _mt.McpListResult(
+    def _list(config: _mcp.McpServerConfig, timeout: float) -> _mcp_types.McpListResult:
+        return _mcp_types.McpListResult(
             ok=True,
-            tools=(_mt.McpRemoteTool("lookup", "find"), _mt.McpRemoteTool("edit_file", "write")),
+            tools=(
+                _mcp_types.McpRemoteTool("lookup", "find"),
+                _mcp_types.McpRemoteTool("edit_file", "write"),
+            ),
         )
 
     _mt.load_mcp_tools(
@@ -215,7 +219,7 @@ def test_the_plan_summary_carries_no_unjailed_note(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     directory = _recipe(tmp_path)
-    _pod_config.render_apply_plan(_pod_apply.plan_apply("shop", directory))
+    _render_apply.render_apply_plan(_pod_apply.plan_apply("shop", directory))
     assert "unjailed" not in capsys.readouterr().out
     assert "unjailed" not in _recipes.summarize_recipe(directory).render()
 

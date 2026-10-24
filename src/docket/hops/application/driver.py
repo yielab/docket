@@ -44,6 +44,7 @@ from docket.agent.ports import (
     UsageTotals,
 )
 from docket.agent.tools import mcp_tools as _mcp
+from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.application.builtin_tools import builtin_registry
@@ -114,9 +115,9 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
     return tuple(str(coerced).split(","))
 
 
-def _stdio_launch(ctx: ToolContext) -> _mcp.StdioLaunch:
+def _stdio_launch(ctx: ToolContext) -> _mcp_types.StdioLaunch:
     """How this turn starts stdio servers: its root, and its jail when the turn is isolated."""
-    return _mcp.StdioLaunch(
+    return _mcp_types.StdioLaunch(
         cwd=str(ctx.roots[0]),
         sandbox=ctx.sandbox,
         network=ctx.network,
@@ -131,7 +132,10 @@ def _stdio_launch(ctx: ToolContext) -> _mcp.StdioLaunch:
 # stored, or *project* names no pod) loads every configured server -- byte-for-byte
 # the pre-selection behavior, including the zero-server fast path.
 def _load_mcp_tools(
-    registry: ToolRegistry, role: str, project: str = "", launch: _mcp.StdioLaunch | None = None
+    registry: ToolRegistry,
+    role: str,
+    project: str = "",
+    launch: _mcp_types.StdioLaunch | None = None,
 ) -> list[Any]:
     """Fold MCP servers' tools into *registry*; *launch* is how this turn starts stdio servers."""
     servers = _mcp_servers.load_mcp_servers(project)
