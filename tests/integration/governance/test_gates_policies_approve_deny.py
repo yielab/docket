@@ -307,11 +307,12 @@ class TestPolicies:
         candidate.write_text(
             json.dumps(
                 {
-                    "id": "candidate",
-                    "applies_to": ["*"],
-                    "hook": "pre_input",
-                    "match": {"type": "regex", "pattern": "x"},
-                    "action": "warn",
+                    "kind": "policy",
+                    "name": "candidate",
+                    "appliesTo": ["*"],
+                    "on": "input",
+                    "when": {"matches": "x"},
+                    "then": "warn",
                 }
             )
         )
@@ -322,16 +323,18 @@ class TestPolicies:
     def test_validate_by_file_path_invalid(self, oc_dir: Path) -> None:
         candidate = oc_dir / "candidate" / "policies" / "candidate.json"
         candidate.parent.mkdir(parents=True)
-        candidate.write_text(json.dumps({"id": "candidate"}))  # missing required fields
+        candidate.write_text(
+            json.dumps({"kind": "policy", "name": "candidate"})
+        )  # missing required fields
         result = _pod_cli("validate", str(candidate))
         assert result.exit_code == 1
-        assert "missing fields" in result.output
+        assert "then" in result.output
 
     def test_validate_reports_invalid_installed_file(self, oc_dir: Path) -> None:
-        (oc_dir / "policies" / "bad.json").write_text(json.dumps({"id": "bad"}))
+        (oc_dir / "policies" / "bad.json").write_text(json.dumps({"kind": "policy", "name": "bad"}))
         result = _pod_cli("validate", str(oc_dir))
         assert result.exit_code == 1
-        assert "missing fields" in result.output
+        assert "then" in result.output
 
 
 class TestPolicyEngine:
@@ -356,7 +359,7 @@ class TestPolicyEngine:
 
     def test_validate_bad_policy(self, oc_dir: Path) -> None:
         f = oc_dir / "policies" / "broken.json"
-        f.write_text(json.dumps({"id": "x", "hook": "pre_input"}))
+        f.write_text(json.dumps({"name": "x", "on": "input"}))
         msg = _policy.validate_policy(f)
         assert "missing fields" in msg
 
@@ -450,11 +453,12 @@ class TestBrokenPolicyStoreCli:
     """CLI surfaces of the fail-closed policy store."""
 
     _BROKEN: ClassVar[dict[str, object]] = {
-        "id": "zz-broken",
-        "applies_to": ["*"],
-        "hook": "pre_tool_call",
-        "match": {"type": "regex", "pattern": "make\\s+deploy("},
-        "action": "block",
+        "kind": "policy",
+        "name": "zz-broken",
+        "appliesTo": ["*"],
+        "on": "toolCall",
+        "when": {"matches": "make\\s+deploy("},
+        "then": "block",
         "message": "no deploys",
     }
 
@@ -476,11 +480,12 @@ class TestPoliciesTestToolKind:
     """--tool picks whether the command classifier applies to the dry-run."""
 
     _WARN: ClassVar[dict[str, object]] = {
-        "id": "watch-mainpy",
-        "applies_to": ["*"],
-        "hook": "pre_tool_call",
-        "match": {"type": "regex", "pattern": "main\\.py"},
-        "action": "warn",
+        "kind": "policy",
+        "name": "watch-mainpy",
+        "appliesTo": ["*"],
+        "on": "toolCall",
+        "when": {"matches": "main\\.py"},
+        "then": "warn",
         "message": "main.py touched",
     }
 

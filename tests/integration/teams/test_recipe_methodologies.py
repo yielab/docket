@@ -118,12 +118,8 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
 
         if name == "frugal":
             setting_items = [i for i in plan.items if i.kind == "setting"]
-            assert len(setting_items) == 3, "frugal's plan should carry three setting items"
-            assert {i.name for i in setting_items} == {
-                "budgetUsd",
-                "maxReworkCycles",
-                "turnTimeoutS",
-            }
+            assert len(setting_items) == 2, "frugal's plan should carry two setting items"
+            assert {i.name for i in setting_items} == {"budgetUsd", "turnTimeoutS"}
 
 
 # ── dual-review / frugal: the two named shapes, checked without `plan_apply` ─────
@@ -152,7 +148,7 @@ def test_dual_review_plan_has_one_planned_group(tmp_path: Path) -> None:
         assert not any(c.skipped for c in groups[0].children)
 
 
-def test_frugal_plan_carries_three_setting_items(tmp_path: Path) -> None:
+def test_frugal_plan_carries_two_setting_items(tmp_path: Path) -> None:
     import yaml
 
     project = "frugalcheck"
@@ -161,8 +157,8 @@ def test_frugal_plan_carries_three_setting_items(tmp_path: Path) -> None:
         settings = manifest["settings"]
 
         items, _writes = _pod_apply._plan_settings(project, settings)
-        assert len(items) == 3
-        assert {i.name for i in items} == {"budgetUsd", "maxReworkCycles", "turnTimeoutS"}
+        assert len(items) == 2
+        assert {i.name for i in items} == {"budgetUsd", "turnTimeoutS"}
 
 
 # ── reflexion: one full dispatch on the fake driver, rework counted ─────────────

@@ -252,7 +252,7 @@ class TestCommandsRows:
         code = tmp_path / "code"
         (code / ".docket").mkdir(parents=True)
         (code / ".docket" / "pipeline.yaml").write_text(
-            f"name: p\nsteps:\n  - id: migrate\n    run: {run}\n"
+            f"name: p\nsteps:\n  - migrate:\n      run: {run}\n"
         )
         _rr.remember(code, "demo", (RunItem("pipeline-step", "migrate", "make migrate"),))
         return code

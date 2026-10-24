@@ -22,21 +22,16 @@ kind: pipeline
 name: sample
 description: A sample pipeline.
 steps:
-  - id: plan
-    role: lead
-  - id: build
-    role: implementer
-    gate:
-      type: mechanical
-      command: null
+  - plan: lead
+  - build: implementer
+    verify: null
 """
 
 _INVALID_PIPELINE = """\
 kind: pipeline
 name: broken
 steps:
-  - id: build
-    role: implementer
+  - build: implementer
     verifyCommand: "pytest -q"
 """
 
@@ -67,7 +62,7 @@ class TestPipelineValidateCli:
         self, tmp_path: Path
     ) -> None:
         f = tmp_path / "bad-model.pipeline.yaml"
-        f.write_text(_VALID_PIPELINE.replace("gate:", "model: nope/x\n    gate:"))
+        f.write_text(_VALID_PIPELINE.replace("    verify:", "    model: nope/x\n    verify:"))
         result = _run("validate", str(f))
         assert result.exit_code == 1
         assert "build" in result.output
@@ -120,7 +115,7 @@ class TestPipelinePlanCli:
         _write_meta("demo-lead")
         _write_meta("demo-implementer")
         f = tmp_path / "with-model.pipeline.yaml"
-        f.write_text(_VALID_PIPELINE.replace("gate:", "model: strong\n    gate:"))
+        f.write_text(_VALID_PIPELINE.replace("    verify:", "    model: strong\n    verify:"))
         result = _plan("--pipeline", str(f))
         assert result.exit_code == 0
         assert "model=strong" in result.output

@@ -40,47 +40,40 @@ SUBJECT = "docket.tasks.application.queue"
 _ASK_PIPELINE_YAML = """\
 name: ask
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-  - id: implementer
-    role: implementer
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
 """
 
 
 _COORDINATES_PIPELINE_YAML = """\
 name: coordinates
 steps:
-  - id: lead
-    role: lead
-  - id: implementer
-    role: implementer
-  - id: coordinates
-    run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
+  - lead: lead
+  - implementer: implementer
+  - coordinates:
+      run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
 """
 
 _CHANGED_PIPELINE_YAML = """\
 name: changed
 steps:
-  - id: lead
-    role: lead
-  - id: implementer
-    role: implementer
-  - id: on-text
-    when:
-      changed: "*.txt"
-    run: 'echo ran'
+  - lead: lead
+  - implementer: implementer
+  - on-text:
+      when:
+        changed: "*.txt"
+      run: 'echo ran'
 """
 
 _NO_IMPLEMENTER_PIPELINE_YAML = """\
 name: no-implementer
 steps:
-  - id: lead
-    role: lead
-  - id: coordinates
-    run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
+  - lead: lead
+  - coordinates:
+      run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
 """
 
 
@@ -446,7 +439,7 @@ def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(tmp_p
     repo = tmp_path / "repo"
     _init_repo(repo)
     with _seed_pod(tmp_path, repo):
-        _bind_pipeline("name: write\nsteps:\n  - id: lead\n    role: lead\n")
+        _bind_pipeline("name: write\nsteps:\n  - lead: lead\n")
         _queue.enqueue_task_once("demo", "Write the notes", channel="cli")
 
         (res,) = _sweep.dispatch_pod("demo", runner=_LeadWritesRunner(), max_tasks=1)

@@ -112,7 +112,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
         ui.error(f"Pipeline '{path_str}' is invalid:")
         for e in result.errors:
             ui.console.print(f"  [red]x[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(2 if result.canonical else 1)
 
     roster = pod.pod_full_roster(project)
     registry = _arch.load_registry(project)
@@ -186,6 +186,11 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     if key in _pod_settings.PodSettings.RECORDED_KEYS:
         ui.error(f"{key} is written by update, not by set")
         raise typer.Exit(1)
+    if key == "maxReworkCycles" and _pod_settings.PodSettings.load_for(project).pipeline:
+        ui.error(
+            _pod_settings.REWORK_BOUND_BY_PIPELINE, f"docket pod unset pipeline --pod {project}"
+        )
+        raise typer.Exit(2)
     try:
         coerced = _pod_settings.PodSettings.coerce(key, value, project=project)
     except _pod_settings.PodSettingsError as ex:

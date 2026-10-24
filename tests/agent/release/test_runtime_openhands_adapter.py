@@ -208,11 +208,12 @@ try:
             policies = home / "policies"
             policies.mkdir(parents=True, exist_ok=True)
             (policies / "scenario.json").write_text(json.dumps({
-                "id": f"w28-{scenario['name']}",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "mutate_state"},
-                "action": scenario["policy"],
+                "kind": "policy",
+                "name": f"w28-{scenario['name']}",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "mutate_state"},
+                "then": {"require_approval": "ask"}.get(scenario["policy"], scenario["policy"]),
                 "message": f"fixture {scenario['policy']}",
             }), encoding="utf-8")
 

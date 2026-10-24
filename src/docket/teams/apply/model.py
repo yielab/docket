@@ -21,6 +21,11 @@ class PodApplyError(InvalidInput):
     ``plan_apply``, before anything is written."""
 
 
+class PodApplyRefused(PodApplyError):
+    """A manifest asks for two things that cannot both hold (a pod-wide setting a bound pipeline
+    would silently ignore); a usage error, exit 2."""
+
+
 @dataclass(frozen=True)
 class ApplyItem:
     """One planned change: ``kind`` (role/policy/plugin/member/pipeline/setting), the thing

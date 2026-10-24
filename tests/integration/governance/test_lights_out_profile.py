@@ -36,20 +36,16 @@ SUBJECT = "docket.hops.gates.profile"
 _GATED = """\
 name: gated
 steps:
-  - id: plan
-    role: lead
-  - id: build
-    role: implementer
+  - plan: lead
+  - build: implementer
     gate: {external: "true"}
 """
 
 _UNGATED = """\
 name: ungated
 steps:
-  - id: plan
-    role: lead
-  - id: build
-    role: implementer
+  - plan: lead
+  - build: implementer
 """
 
 _USABLE = SandboxAvailability(backend="landlock", docker=False, landlock=True)

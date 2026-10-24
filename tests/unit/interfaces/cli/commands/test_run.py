@@ -349,7 +349,7 @@ class TestRun:
 
             monkeypatch.setattr(_sweep, "dispatch_pod", _fake)
             spec = tmp_path / "p.pipeline.yaml"
-            spec.write_text("name: solo\nsteps:\n  - id: lead\n    role: lead\n")
+            spec.write_text("name: solo\nsteps:\n  - lead: lead\n")
 
             result = runner.invoke(
                 _app, ["run", "--pod", "demo", "--pipeline", str(spec), "--var", "k=v"]
@@ -358,6 +358,19 @@ class TestRun:
             assert result.exit_code == 0, result.output
             assert seen["spec"].name == "solo"
             assert seen["variables"] == {"k": "v"}
+
+    def test_a_pipeline_file_with_a_canonical_step_exits_2_naming_the_short_spelling(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _endpoint(monkeypatch, ok=True)
+            spec = tmp_path / "p.pipeline.yaml"
+            spec.write_text("name: solo\nsteps:\n  - id: plan\n    role: lead\n")
+
+            result = runner.invoke(_app, ["run", "--pod", "demo", "--pipeline", str(spec)])
+
+            assert result.exit_code == 2
+            assert "'- plan: <role>'" in result.output
 
     def test_resume_clears_the_budget_pause_and_unblocks_tasks(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -384,9 +397,7 @@ class TestRun:
             _endpoint(monkeypatch, ok=True)
             _queue.enqueue_task_once("demo", "a task", channel="cli")
             bad = tmp_path / "broken.pipeline.yaml"
-            bad.write_text(
-                "name: broken\nsteps:\n  - id: build\n    role: implementer\n    nope: x\n"
-            )
+            bad.write_text("name: broken\nsteps:\n  - build: implementer\n    nope: x\n")
 
             result = runner.invoke(_app, ["run", "--pod", "demo", "--pipeline", str(bad)])
 
@@ -476,7 +487,7 @@ class TestFlushNotifyAfterDispatch:
         assert "notify: inbox unreadable: [Errno 13]" in capsys.readouterr().out
 
 
-_PIPELINE = "name: p\nsteps:\n  - id: migrate\n    run: {run}\n"
+_PIPELINE = "name: p\nsteps:\n  - migrate:\n      run: {run}\n"
 _SKILL = "---\nname: style-guide\ndescription: house style\n---\n{body}\n"
 
 

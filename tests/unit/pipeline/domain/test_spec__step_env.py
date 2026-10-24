@@ -33,10 +33,10 @@ SUBJECT = "docket.pipeline.domain.spec"
 
 
 class TestLoading:
-    def test_canonical_and_short_form_carry_env(self) -> None:
+    def test_run_step_forms_carry_env(self) -> None:
         text = (
             "name: p\nsteps:\n"
-            "  - id: a\n    run: echo a\n    env: {FOO: bar}\n"
+            "  - a:\n      run: echo a\n      env: {FOO: bar}\n"
             "  - b: {run: echo b, env: {BAZ: qux}}\n"
         )
         result = load_pipeline(text)
@@ -44,14 +44,16 @@ class TestLoading:
         assert [s.env for s in result.spec.steps] == [{"FOO": "bar"}, {"BAZ": "qux"}]
 
     def test_the_planned_unit_carries_env_and_a_reserved_name_fails_validation(self) -> None:
-        loaded = load_pipeline("name: p\nsteps:\n  - id: a\n    run: echo a\n    env: {FOO: bar}\n")
+        loaded = load_pipeline(
+            "name: p\nsteps:\n  - a:\n      run: echo a\n      env: {FOO: bar}\n"
+        )
         assert loaded.spec is not None
         plan = _orch.resolve_plan(loaded.spec, {}, registry=_archetypes.load_registry())
         unit = plan.nodes[0]
         assert isinstance(unit, _orch.PlannedUnit)
         assert unit.env == {"FOO": "bar"}
         bad = load_pipeline(
-            "name: p\nsteps:\n  - id: a\n    run: echo a\n    env: {DOCKET_BASE_COMMIT: x}\n"
+            "name: p\nsteps:\n  - a:\n      run: echo a\n      env: {DOCKET_BASE_COMMIT: x}\n"
         )
         assert bad.spec is None and "DOCKET_BASE_COMMIT" in "; ".join(bad.errors)
 

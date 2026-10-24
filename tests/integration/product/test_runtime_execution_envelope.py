@@ -249,19 +249,21 @@ def test_every_decision_emits_one_paired_trace_with_execution_identity(
         policies = home / "policies"
         policies.mkdir(parents=True, exist_ok=True)
         (policies / "deny.json").write_text(json.dumps({
-            "id": "deny-external",
-            "applies_to": ["*"],
-            "hook": "pre_tool_call",
-            "match": {"type": "regex", "pattern": "deny_action"},
-            "action": "block",
+            "kind": "policy",
+            "name": "deny-external",
+            "appliesTo": ["*"],
+            "on": "toolCall",
+            "when": {"matches": "deny_action"},
+            "then": "block",
             "message": "fixture denial",
         }), encoding="utf-8")
         (policies / "approval.json").write_text(json.dumps({
-            "id": "approve-external",
-            "applies_to": ["*"],
-            "hook": "pre_tool_call",
-            "match": {"type": "regex", "pattern": "approval_action"},
-            "action": "require_approval",
+            "kind": "policy",
+            "name": "approve-external",
+            "appliesTo": ["*"],
+            "on": "toolCall",
+            "when": {"matches": "approval_action"},
+            "then": "ask",
             "message": "fixture approval",
         }), encoding="utf-8")
 
@@ -424,11 +426,12 @@ def test_concurrent_runtime_approval_stubs_never_cross_answer(
         policies = home / "policies"
         policies.mkdir(parents=True, exist_ok=True)
         (policies / "race.json").write_text(json.dumps({
-            "id": "approval-race",
-            "applies_to": ["*"],
-            "hook": "pre_tool_call",
-            "match": {"type": "regex", "pattern": "race_"},
-            "action": "require_approval",
+            "kind": "policy",
+            "name": "approval-race",
+            "appliesTo": ["*"],
+            "on": "toolCall",
+            "when": {"matches": "race_"},
+            "then": "ask",
             "message": "controlled overlap",
         }), encoding="utf-8")
 

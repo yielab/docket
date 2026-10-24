@@ -124,7 +124,7 @@ def _repo(tmp_path: Path, step: str = "sh scripts/migrate.sh") -> Path:
     code = tmp_path / "code"
     (code / ".docket").mkdir(parents=True)
     (code / ".docket" / "pipeline.yaml").write_text(
-        f"name: p\nsteps:\n  - id: migrate\n    run: {step}\n"
+        f"name: p\nsteps:\n  - migrate:\n      run: {step}\n"
     )
     return code
 

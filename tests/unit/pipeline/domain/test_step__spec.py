@@ -76,7 +76,7 @@ class TestStepTargeting:
         assert step.archetype == "some-archetype-that-does-not-exist"
 
     def test_duplicate_top_level_step_id_rejected(self) -> None:
-        text = "name: p\nsteps:\n  - id: dup\n    role: lead\n  - id: dup\n    role: implementer\n"
+        text = "name: p\nsteps:\n  - dup: lead\n  - dup: implementer\n"
         result = load_pipeline(text)
         assert not result.ok
         assert any("duplicate" in e for e in result.errors)
@@ -126,7 +126,7 @@ class TestStepModel:
     def test_short_form_carries_model_through(self) -> None:
         doc = {
             "name": "p",
-            "steps": [{"id": "plan", "role": "lead"}, {"build": "implementer", "model": "strong"}],
+            "steps": [{"plan": "lead"}, {"build": "implementer", "model": "strong"}],
         }
         normalized = normalize_pipeline(doc)
         build = normalized["steps"][1]

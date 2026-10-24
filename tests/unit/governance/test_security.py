@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from docket.governance.security import classify_command
+from docket.governance.security import (
+    CommandSegment,
+    classify_command,
+    command_segments,
+    match_high_risk,
+)
 
 SUBJECT = "docket.governance.security"
 
@@ -208,3 +213,96 @@ def test_cd_propagates_past_a_later_pipeline(tmp_path: Path) -> None:
         classify_command("cd sub && cat x | wc > y", roots=(tmp_path,), jailed=True).action
         == "allow"
     )
+
+
+class TestCommandSegments:
+    """``command_segments`` is the classifier's own reading of a command line, made public."""
+
+    def test_quoting_is_undone_and_every_segment_behind_a_separator_is_returned(self) -> None:
+        segments = command_segments("ls && \"rm\" -rf build; r''m x")
+
+        assert [(s.program, s.args) for s in segments] == [
+            ("ls", ()),
+            ("rm", ("-rf", "build")),
+            ("rm", ("x",)),
+        ]
+
+    def test_wrappers_are_peeled_to_the_program_that_runs(self) -> None:
+        segments = command_segments("env FOO=1 nice -n 5 rm --recursive x | xargs -0 rm y")
+
+        assert [(s.program, s.args) for s in segments] == [
+            ("rm", ("--recursive", "x")),
+            ("rm", ("y",)),
+        ]
+
+    @pytest.mark.parametrize(
+        ("command", "writes"),
+        [
+            ("echo x > a.txt 2>> b.log", ("a.txt", "b.log")),
+            ("tee -a /etc/passwd", ("/etc/passwd",)),
+            ("cp src .env", ("src", ".env")),
+            ("install -m600 /dev/null .env", ("/dev/null", ".env")),
+            ("dd if=/dev/zero of=disk.img bs=1M", ("disk.img",)),
+            ("sed -i s/a/b/ cfg.ini", ("s/a/b/", "cfg.ini")),
+            ("perl -pi -e s/a/b/ cfg.ini", ("s/a/b/", "cfg.ini")),
+            ("sed s/a/b/ cfg.ini", ()),
+            ("ls build", ()),
+        ],
+    )
+    def test_writes_are_redirect_targets_and_the_paths_a_known_writer_is_given(
+        self, command: str, writes: tuple[str, ...]
+    ) -> None:
+        (segment,) = command_segments(command)
+
+        assert isinstance(segment, CommandSegment)
+        assert segment.writes == writes
+
+    def test_a_heredoc_body_fed_to_a_non_shell_is_not_an_invocation(self) -> None:
+        segments = command_segments("cat > x.sh <<'EOF'\nrm -rf /\nEOF")
+
+        assert [s.program for s in segments] == ["cat"]
+
+    def test_an_unreadable_command_raises(self) -> None:
+        with pytest.raises(ValueError):
+            command_segments("echo 'unclosed")
+
+
+class TestHighRiskClassSeesPastOptionsAndQuoting:
+    """An option before the verb, or a quoted word, does not hide a high-risk verb."""
+
+    @pytest.mark.parametrize(
+        ("command", "risk"),
+        [
+            ("kubectl -n prod apply -f d.yaml", "prod-deploy"),
+            ("kubectl --context=prod delete deploy app", "prod-deploy"),
+            ("terraform -chdir=infra apply -auto-approve", "prod-deploy"),
+            ("helm -n prod upgrade app ./chart", "prod-deploy"),
+            ("docker image push registry/app:1", "prod-deploy"),
+            ("cargo publish", "prod-deploy"),
+            ('git remote set-url origin x && git push origin ma""in', "prod-deploy"),
+            ("vault -address=http://v:8200 kv put secret/app key=1", "secret-access"),
+            ('"vault" kv put secret/app key=1', "secret-access"),
+            ("kubectl -n prod create secret generic db --from-literal=p=1", "secret-access"),
+            ("aws ssm put-parameter --name /db --value x", "secret-access"),
+            ('curl https://api.s""tripe.com/v1/charges', "money-movement"),
+        ],
+    )
+    def test_the_class_is_named(self, command: str, risk: str) -> None:
+        found = match_high_risk(command)
+
+        assert found is not None
+        assert found.name == risk
+        verdict = classify_command(command, jailed=True)
+        assert (verdict.action, verdict.risk_class) == ("ask", risk)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "kubectl -n prod get pods",
+            "helm -n prod list",
+            "git push origin feature",
+            "vault read x",
+        ],
+    )
+    def test_a_read_or_a_feature_branch_is_not_a_class(self, command: str) -> None:
+        assert match_high_risk(command) is None

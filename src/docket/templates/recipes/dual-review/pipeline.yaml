@@ -7,9 +7,7 @@ description: >-
 steps:
   - build: implementer
     verify: true
-  - id: reviews
-    parallel:
-      - id: review-code
-        role: reviewer
-      - id: review-risk
-        role: critic
+  - reviews:
+      parallel:
+        - review-code: reviewer
+        - review-risk: critic

@@ -57,6 +57,15 @@ _INVALID_BIN_NAME_CHARS = re.compile(r"[^A-Za-z0-9_.+-]")
 _OPAQUE_COMMAND_NAMES: frozenset[str] = frozenset({"eval", "exec", "source", ".", "export"})
 
 
+# What a refused `maxReworkCycles` says. A bound pipeline carries its own rework bound on the step
+# that routes back, so the pod-wide setting would be accepted and ignored; the CLI (`pod set`) and
+# the apply planner (`pod.yaml`) refuse it with this one message.
+REWORK_BOUND_BY_PIPELINE = (
+    "maxReworkCycles has no effect while a pipeline is bound: the pipeline bounds its own "
+    "rework with `on: {<label>: {goto: <step>, max: <n>}}` on the step that routes back"
+)
+
+
 # Typed, validated view over the pod Lead's dispatch-configuration meta keys
 # (budgetUsd/maxReworkCycles/turnTimeoutS/verifyTimeoutS -- see
 # specs/data/docket-meta.spec.md). A missing/blank meta key uses the field

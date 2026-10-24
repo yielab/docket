@@ -83,16 +83,28 @@ META: dict[str, Any] = {
 }
 
 
+GATED_IMPLEMENTER_PIPELINE_YAML = """\
+name: gated-default
+steps:
+  - lead: lead
+  - implementer: implementer
+    approval: true
+  - reviewer: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: implementer, max: 1}}
+  - tester: tester
+    verdict: [PASS, FAIL]
+"""
+
+
 _ASK_PIPELINE_YAML = """\
 name: ask
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-  - id: implementer
-    role: implementer
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
 """
 
 
@@ -337,12 +349,13 @@ def write_policy(
 ) -> None:
     current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
-        "id": policy_id,
+        "kind": "policy",
+        "name": policy_id,
         "description": f"test policy {policy_id}",
-        "applies_to": applies_to or ["*"],
-        "hook": hook,
-        "match": {"type": "regex", "pattern": pattern},
-        "action": action,
+        "appliesTo": applies_to or ["*"],
+        "on": hook,
+        "when": {"matches": pattern},
+        "then": action,
         "message": message,
     }
     (current_home().policies_dir / f"{policy_id}.json").write_text(
@@ -614,7 +627,7 @@ def put_task(project: str, task: dict[str, Any]) -> None:
 
 
 def bind_one_step_pipeline(project: str) -> None:
-    text = "name: solo\nsteps:\n  - id: kickoff\n    role: lead\n"
+    text = "name: solo\nsteps:\n  - kickoff: lead\n"
     path = pod.bound_pipeline_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

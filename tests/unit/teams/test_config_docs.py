@@ -13,6 +13,7 @@ import yaml
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 import docket.kernel.templates as _templates
+from docket.kernel.errors import InvalidInput
 from docket.teams import config_docs
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
@@ -49,40 +50,54 @@ def test_an_unknown_kind_raises_naming_every_known_kind(tmp_path: Path) -> None:
     )
 
 
-def test_a_canonical_role_file_without_kind_loads_and_matches_parse_yaml_file(
-    tmp_path: Path,
-) -> None:
-    text = (
-        "name: custom-role\n"
-        "scope: pod\n"
-        "modelClass: cheap\n"
-        "soulTemplate: You are the custom role.\n"
-        "agentsTemplate: Custom role protocol.\n"
-    )
+def test_a_role_file_without_kind_loads_when_the_caller_names_the_kind(tmp_path: Path) -> None:
+    (tmp_path / "custom-role.md").write_text("You are the custom role.\n", encoding="utf-8")
     path = tmp_path / "custom-role.yaml"
-    path.write_text(text, encoding="utf-8")
+    path.write_text("name: custom-role\nmodel: cheap\n", encoding="utf-8")
 
     document = config_docs.load_document(path, kind="role")
 
     assert document.kind == "role"
     assert document.name == "custom-role"
-    assert document.doc == _archetypes.parse_yaml_file(str(path))
+    assert document.doc == _archetypes.load_role_file(str(path))
 
 
-def test_a_short_form_document_without_kind_gets_the_kind_error(tmp_path: Path) -> None:
-    roles_dir = tmp_path / "roles"
-    roles_dir.mkdir()
-    (roles_dir / "vetter.md").write_text("You vet.\n", encoding="utf-8")
-    role = roles_dir / "vetter.yaml"
-    role.write_text("name: vetter\nmodel: cheap\n", encoding="utf-8")
-    manifest = tmp_path / "pod.yaml"
-    manifest.write_text("name: shop\nmembers: [reviewer]\n", encoding="utf-8")
+def test_a_file_without_kind_in_no_known_location_gets_the_kind_error(tmp_path: Path) -> None:
+    path = tmp_path / "vetter.yaml"
+    path.write_text("name: vetter\nmodel: cheap\n", encoding="utf-8")
 
-    for path in (role, manifest):
-        with pytest.raises(config_docs.ConfigDocError) as exc_info:
-            config_docs.load_document(path)
-        assert exc_info.value.field == "kind", path
-        assert exc_info.value.valid == config_docs.KINDS, path
+    with pytest.raises(config_docs.ConfigDocError) as exc_info:
+        config_docs.load_document(path)
+
+    assert exc_info.value.field == "kind"
+    assert exc_info.value.valid == config_docs.KINDS
+
+
+@pytest.mark.parametrize(
+    ("kind", "text", "short_key"),
+    [
+        ("role", "name: r\nmodelClass: cheap\nsoulTemplate: x\n", "model"),
+        ("role", "kind: role\nname: r\ndeniedTools: [write]\n", "cannot"),
+        ("policy", "id: p\napplies_to: ['*']\nhook: pre_tool_call\naction: block\n", "appliesTo"),
+        (
+            "policy",
+            "kind: policy\nname: p\nmatch: {type: regex, pattern: x}\nthen: block\n",
+            "when",
+        ),
+        ("pipeline", "kind: pipeline\nname: p\nsteps:\n  - id: a\n    role: lead\n", "- a: <role>"),
+    ],
+)
+def test_a_canonical_document_is_refused_naming_the_short_form_key(
+    tmp_path: Path, kind: str, text: str, short_key: str
+) -> None:
+    path = tmp_path / f"{kind}.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(config_docs.ConfigDocError) as exc_info:
+        config_docs.load_document(path, kind=kind)
+
+    assert short_key in str(exc_info.value)
+    assert isinstance(exc_info.value, InvalidInput)
 
 
 def test_a_short_form_role_with_a_bad_model_reports_the_model_not_a_missing_kind(
@@ -181,7 +196,7 @@ def test_a_pipeline_error_is_not_masked_by_an_unquoted_on_key(tmp_path: Path) ->
     # reported error and hide the pipeline's own.
     path = tmp_path / "p.yaml"
     path.write_text(
-        "kind: pipeline\nname: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "kind: pipeline\nname: p\nsteps:\n  - build: implementer\n"
         "    on:\n      fail: {goto: nowhere, max: 1}\n",
         encoding="utf-8",
     )

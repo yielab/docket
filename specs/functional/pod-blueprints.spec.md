@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 2.0.4
+**Version**: 2.1.0
 **Status**: Implemented
 **Last Updated**: 2026-10-23
 
@@ -373,8 +373,7 @@ overlay, policies, members, pipeline binding, settings) into one command.
     `docket init` **MUST** classify a `.docket/` (or a `--recipe` given as a directory or resolved
     from the operator's own recipes) into *adds* and *runs on this machine*: pipeline `run:` steps
     (in `pipeline.yaml` and in each `pipelines/<name>.yaml`), a step gate's command (`verify:
-    <command>`, `gate: {external: <command>}`, the canonical `mechanical`/`external` gate with a
-    `command`, inside a `parallel` group too; a `verify: true` that defers to the member's
+    <command>`, `gate: {external: <command>}`, inside a `parallel` group too; a `verify: true` that defers to the member's
     `verifyCmd` runs nothing the repository wrote), MCP server commands, plugins, a `network: open`
     setting, `allowCommands`, a role overlay that removes a built-in role's denied tool, and the
     install command a task's worktree runs (`prepare`, requirement 13). A shipped recipe resolved
@@ -436,6 +435,12 @@ overlay, policies, members, pipeline binding, settings) into one command.
     anything is written. An empty list clears the pod's patterns. A `protects:` is not a run item:
     it only narrows what runs unattended, so it needs no review. `docket pod export` writes the
     recorded setting back as `protects:`.
+14a. **A rework bound has one home per pod (`pod-dispatch.spec.md`, "Pod dispatch settings").** A
+    manifest that declares `settings.maxReworkCycles` while it also binds a pipeline (a top-level
+    `pipeline:`, a `pipeline.yaml` beside it, or a pod that already has one bound) **MUST** be
+    refused at planning with `PodApplyRefused`, before anything is written: `docket pod update`
+    and `docket init` exit 2 and the message names the pipeline's own `on: {<label>: {goto:
+    <step>, max: <n>}}`.
 15. **One file, and no argument (ADR 0022).** `docket pod update <file>` with an existing file
     **MUST** install that one document: a `kind: role` file into this pod's own role overlay (the
     target requirement 2 names) and a `kind: policy` file into this pod's own `config/policies/`
@@ -525,7 +530,7 @@ requirement 1). The shipped library groups by what a directory contains, not by 
 | Methodology | `spec-first` | members (`writer`, `critic`, `reviewer`); skills (`writing-a-spec`); a pipeline: `spec` (Writer) -> `approve-spec` (Critic, APPROVE/REJECT, bounded rework to `spec`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
 | Methodology | `reflexion` | members (`critic`, `tester`); a pipeline: `build` (Implementer, its own verify command) -> `critique` (Critic, APPROVE/REQUEST-CHANGES, bounded rework to `build`, two cycles) -> `test` (Tester, PASS/FAIL) |
 | Methodology | `dual-review` | members (`reviewer`, `critic`); a pipeline: `build` (Implementer, its own verify command) -> a `parallel` group of a Reviewer and a Critic, each falling back to its own role's default verdict gate |
-| Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
+| Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build` by its own `on:` bound) |
 | Methodology | `spec-writer` | no added members; a pipeline: `write-tests` (Implementer, `model: openai/gpt-4.1-mini`, custom instructions for test writing) -> `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, its own verify command) |
 | Methodology | `cross-family-review` | members (`reviewer`); a pipeline: `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
 | Methodology | `anti-tautology` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-tests-fail-on-base` (a `run` command step that runs the test files added or changed since `DOCKET_BASE_COMMIT` in a disposable worktree of that commit and fails the task if they pass there; overridable through the step's `env:` entries `ANTI_TAUTOLOGY_GLOB`/`ANTI_TAUTOLOGY_RUNNER`) |

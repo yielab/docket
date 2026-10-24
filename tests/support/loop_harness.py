@@ -81,12 +81,13 @@ def _write_gate_policy(policy_id: str, pattern: str, action: str) -> None:
     tool name this test drives rather than a real destructive-command list."""
     current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
-        "id": policy_id,
+        "kind": "policy",
+        "name": policy_id,
         "description": "test-only policy",
-        "applies_to": ["*"],
-        "hook": "pre_tool_call",
-        "match": {"type": "regex", "pattern": pattern},
-        "action": action,
+        "appliesTo": ["*"],
+        "on": "toolCall",
+        "when": {"matches": pattern},
+        "then": action,
         "message": "test gate",
     }
     (current_home().policies_dir / f"{policy_id}.json").write_text(

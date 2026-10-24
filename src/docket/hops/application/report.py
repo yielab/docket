@@ -16,11 +16,13 @@ from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import executor as _executor
 from docket.hops.application import steps as _steps
 from docket.hops.gates import profile as _profile
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.application import endpoint as _endpoint
 from docket.observability import exporter as _exporter
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
@@ -133,7 +135,31 @@ def _pod_settings_report(
     for key in _pod_settings.PodSettings.KEYS:
         value, source = settings.value_and_source(key, project)
         report[key] = {"value": value, "source": source}
+    if settings.pipeline:
+        report["maxReworkCycles"] = {
+            "value": _bound_rework_maxes(project),
+            "source": "pipeline",
+        }
     return report
+
+
+def _bound_rework_maxes(project: str) -> str:
+    """The rework bounds the bound pipeline itself carries, ``<step>:<max>`` comma-joined in step
+    order (the verdict gate's rework edge and every ``on:`` route with a ``max``), ``none`` when
+    it carries none or the bound copy cannot be read."""
+    try:
+        spec = _steps.effective_pipeline(project, None)
+    except DispatchError:
+        return "none"
+    found: list[str] = []
+    for step in spec.steps:
+        gate = step.gate
+        if isinstance(gate, _gates.VerdictGate) and gate.rework is not None:
+            found.append(f"{step.id}:{gate.rework.max_cycles}")
+        for route in (step.on or {}).values():
+            if isinstance(route, dict) and "max" in route:
+                found.append(f"{step.id}:{route['max']}")
+    return ",".join(found) or "none"
 
 
 def _config_of_record_report(settings: _pod_settings.PodSettings | None) -> dict[str, str]:

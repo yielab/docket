@@ -24,7 +24,11 @@ from docket.pipeline.domain.gates import (
     ReworkEdge,
     VerdictGate,
 )
-from docket.pipeline.domain.short_form import _ShortFormError, normalize_pipeline
+from docket.pipeline.domain.short_form import (
+    CanonicalStepError,
+    _ShortFormError,
+    normalize_pipeline,
+)
 from docket.pipeline.domain.step import Step
 
 _VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -329,6 +333,7 @@ class PipelineLoadResult:
     spec: PipelineSpec | None
     errors: list[str] = field(default_factory=list)
     source: str = "file"  # "file" | "builtin"
+    canonical: bool = False  # refused because a step is written in the canonical spelling
 
     @property
     def ok(self) -> bool:
@@ -385,7 +390,12 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
     try:
         doc = normalize_pipeline(doc)
     except _ShortFormError as exc:
-        return PipelineLoadResult(spec=None, errors=[str(exc)], source="file")
+        return PipelineLoadResult(
+            spec=None,
+            errors=[str(exc)],
+            source="file",
+            canonical=isinstance(exc, CanonicalStepError),
+        )
     try:
         spec = PipelineSpec.model_validate(doc)
     except ValidationError as exc:

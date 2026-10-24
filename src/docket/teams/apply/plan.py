@@ -23,7 +23,7 @@ from docket.governance import review as _reviewed
 from docket.governance.review import RunItem
 from docket.kernel import mcp as _mcp
 from docket.kernel import protected_paths as _protected
-from docket.kernel.errors import DispatchError
+from docket.kernel.errors import CanonicalFormRefused, DispatchError
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.observability import exporter as _exporter
@@ -43,6 +43,7 @@ from docket.teams.apply.model import (
     ApplyItem,
     ApplyPlan,
     PodApplyError,
+    PodApplyRefused,
     _McpServerWrite,
     _MemberWrite,
     _NamedPipelineWrite,
@@ -90,6 +91,8 @@ def _plan_roles(
     for role_file in sorted(_config_glob(roles_dir)):
         try:
             doc = _config_docs.load_document(role_file, kind="role").doc
+        except _config_docs.CanonicalFormError as exc:
+            raise PodApplyRefused(str(exc)) from exc
         except _config_docs.ConfigDocError as exc:
             raise PodApplyError(str(exc)) from exc
         name = str(doc.get("name", "")).strip()
@@ -125,6 +128,12 @@ def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list
         p for pattern in ("*.json", "*.yaml", "*.yml") for p in policies_dir.glob(pattern)
     )
     for policy_file in policy_files:
+        try:
+            _policy.read_policy(policy_file)
+        except CanonicalFormRefused as exc:
+            raise PodApplyRefused(f"{policy_file}: {exc}") from exc
+        except Exception:
+            raise PodApplyError(f"{policy_file}: {_policy.validate_policy(policy_file)}") from None
         error = _policy.validate_policy(policy_file)
         if error:
             raise PodApplyError(f"{policy_file}: {error}")
@@ -187,7 +196,8 @@ def _plan_named_pipelines(
         source = pipeline_file.read_bytes()
         loaded = _pipeline.load_pipeline(source.decode("utf-8"))
         if loaded.spec is None:
-            raise PodApplyError(f"{rel}: {'; '.join(loaded.errors)}")
+            refused = PodApplyRefused if loaded.canonical else PodApplyError
+            raise refused(f"{rel}: {'; '.join(loaded.errors)}")
         dest = dest_dir / pipeline_file.name
         if dest.is_file() and dest.read_bytes() == source:
             action: ApplyAction = "skip"
@@ -340,7 +350,8 @@ def _plan_pipeline(
     text = pipeline_file.read_text(encoding="utf-8")
     result = _pipeline.load_pipeline(text)
     if result.spec is None:
-        raise PodApplyError(f"{pipeline_file}: invalid pipeline: {'; '.join(result.errors)}")
+        refused = PodApplyRefused if result.canonical else PodApplyError
+        raise refused(f"{pipeline_file}: invalid pipeline: {'; '.join(result.errors)}")
     exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
     problems = unresolvable_pipeline_steps(exec_plan, project)
     if problems:
@@ -355,6 +366,15 @@ def _plan_pipeline(
         ApplyItem(kind="pipeline", name=pipeline_file.name, action=action),
         _PipelineWrite(text=text, digest=digest),
     )
+
+
+def _pipeline_bound(project: str) -> bool:
+    """Whether *project* already has a bound pipeline (unreadable settings are reported by
+    ``_plan_settings``, not here)."""
+    try:
+        return bool(_pod_settings.PodSettings.load_for(project).pipeline)
+    except _pod_settings.PodSettingsError:
+        return False
 
 
 def _plan_settings(
@@ -496,8 +516,13 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     mcp_items, mcp_write = _plan_mcp_servers(directory, project)
 
+    all_settings = _settings_with_top_level(raw_settings, manifest)
+    if "maxReworkCycles" in all_settings and (
+        pipeline_item is not None or _pipeline_bound(project)
+    ):
+        raise PodApplyRefused(f"pod.yaml: {_pod_settings.REWORK_BOUND_BY_PIPELINE}")
     setting_items, setting_writes = _plan_settings(
-        project, _settings_with_top_level(raw_settings, manifest), tuple(i.name for i in mcp_items)
+        project, all_settings, tuple(i.name for i in mcp_items)
     )
 
     items = [*role_items, *policy_items, *plugin_items, *skill_items, *mcp_items, *member_items]

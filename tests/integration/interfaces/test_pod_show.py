@@ -11,6 +11,7 @@ dispatch (FakeDriver) actually used for the hop.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -236,11 +237,12 @@ class TestPodShowScopeLabels:
             (pod_policies_dir / "pod-only.json").write_text(
                 json.dumps(
                     {
-                        "id": "pod-only",
-                        "applies_to": ["reviewer"],
-                        "hook": "pre_tool_call",
-                        "match": {"type": "regex", "pattern": "x"},
-                        "action": "warn",
+                        "kind": "policy",
+                        "name": "pod-only",
+                        "appliesTo": ["reviewer"],
+                        "on": "toolCall",
+                        "when": {"matches": "x"},
+                        "then": "warn",
                     }
                 )
             )
@@ -335,11 +337,12 @@ class TestPodShowPolicies:
             (policies_dir / "implementer-only.json").write_text(
                 json.dumps(
                     {
-                        "id": "implementer-only",
-                        "applies_to": ["implementer"],
-                        "hook": "pre_tool_call",
-                        "match": {"type": "regex", "pattern": "x"},
-                        "action": "warn",
+                        "kind": "policy",
+                        "name": "implementer-only",
+                        "appliesTo": ["implementer"],
+                        "on": "toolCall",
+                        "when": {"matches": "x"},
+                        "then": "warn",
                     }
                 )
             )
@@ -487,3 +490,24 @@ class TestPodShowPod:
             report = json.loads(_show("--json")[1])
             assert report["settings"]["budgetUsd"] == {"value": 7.0, "source": "set"}
             assert report["settings"]["maxReworkCycles"]["source"] == "default"
+
+    def test_rework_bound_comes_from_the_bound_pipeline(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            lead = pod.member_id("demo", "lead")
+            _fleet.meta_set(lead, "maxReworkCycles", 5)
+            text = (
+                "name: p\nsteps:\n  - build: implementer\n    verify: true\n"
+                "  - review: reviewer\n    verdict: [APPROVE, REQUEST-CHANGES]\n"
+                "    on: {REQUEST-CHANGES: {goto: build, max: 2}}\n"
+            )
+            path = pod.bound_pipeline_path("demo")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            _fleet.meta_set(lead, "pipeline", hashlib.sha256(text.encode()).hexdigest())
+
+            report = json.loads(_show("--json")[1])
+
+            assert report["settings"]["maxReworkCycles"] == {
+                "value": "review:2",
+                "source": "pipeline",
+            }

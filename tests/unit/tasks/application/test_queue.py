@@ -56,12 +56,13 @@ def _write_policy(
 ) -> None:
     current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
-        "id": policy_id,
+        "kind": "policy",
+        "name": policy_id,
         "description": f"test policy {policy_id}",
-        "applies_to": ["*"],
-        "hook": "pre_input",
-        "match": {"type": "regex", "pattern": pattern},
-        "action": action,
+        "appliesTo": ["*"],
+        "on": "input",
+        "when": {"matches": pattern},
+        "then": action,
         "message": message,
     }
     (current_home().policies_dir / f"{policy_id}.json").write_text(

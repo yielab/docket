@@ -65,10 +65,8 @@ _AUDITOR_ROLE = (
 _AUDITOR_PIPELINE = """kind: pipeline
 name: audited
 steps:
-  - id: lead
-    role: lead
-  - id: auditor
-    role: auditor
+  - lead: lead
+  - auditor: auditor
 """
 
 
@@ -191,8 +189,8 @@ class TestDefect39PodPolicyOnEveryScreen:
 
     def test_defect_39_answer_content_is_blocked_by_a_pod_only_policy(self, tmp_path: Path) -> None:
         _seed_pod(tmp_path, ("lead", "implementer"))
-        ask = "name: ask\nsteps:\n  - id: lead\n    role: lead\n  - id: ask\n    input:\n"
-        ask += "      from: lead\n  - id: implementer\n    role: implementer\n"
+        ask = "name: ask\nsteps:\n  - lead: lead\n  - ask:\n      input:\n"
+        ask += "        from: lead\n  - implementer: implementer\n"
         digest = hashlib.sha256(ask.encode("utf-8")).hexdigest()
         bound = _pod.pod.bound_pipeline_path("demo")
         bound.parent.mkdir(parents=True, exist_ok=True)

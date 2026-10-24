@@ -20,7 +20,7 @@ import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
-from tests.support.pods import build_pod
+from tests.support.pods import GATED_IMPLEMENTER_PIPELINE_YAML, build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _ap
@@ -32,8 +32,6 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.pipeline.domain import gates as _gates
-from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
@@ -102,16 +100,7 @@ def _task_list(project: str = "demo") -> list[dict[str, Any]]:
 def _gated_pod() -> None:
     """A full pod whose pipeline is the default one with an approval gate on the Implementer."""
     build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    spec = _pipeline.default_pipeline()
-    steps = [
-        step.model_copy(update={"gate": _gates.ApprovalGate()})
-        if step.role == "implementer"
-        else step
-        for step in spec.steps
-    ]
-    text = json.dumps(
-        spec.model_copy(update={"steps": steps}).model_dump(mode="json", by_alias=True)
-    )
+    text = GATED_IMPLEMENTER_PIPELINE_YAML
     path = _pod.pod.bound_pipeline_path("demo")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

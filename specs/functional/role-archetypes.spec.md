@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 3.0.3
+**Version**: 4.0.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-23
@@ -407,10 +407,11 @@ This specification does NOT cover:
    report a pod-overlay-defined role's source as `pod:<p>`; outside any pod they see the
    built-ins and the starter library. Source is one of `built-in`, `starter`, `pod:<p>`.
 3. `docket pod update <file.yaml>` **MUST** validate the file's archetype definition (a `kind:
-   role` document, or a canonical one whose location names the kind, such as a file under
-   `roles/`; a short-form file without `kind:` is refused with the `kind` error) and, on
+   role` document, or a kind-less one whose location names the kind, such as a file under
+   `roles/`; a file whose location names no kind is refused with the `kind` error) and, on
    success, merge it into that pod's own overlay and write a `pod.apply` audit entry; on failure
-   it **MUST** report the invalid field and make no change to the overlay file.
+   it **MUST** report the invalid field and make no change to the overlay file. A role file is
+   read in the short form only (see "Role file"); a canonical key in it is refused.
 4. `docket pod validate <file.yaml>` **MUST** validate that file's definition without persisting
    it (a dry run ahead of `docket pod update`), with the same structural checks and no template
    render (see "Template rendering" requirement 3).
@@ -425,10 +426,21 @@ docket pod update <file.yaml>
 docket pod validate <file.yaml>
 ```
 
-### Wire format (a user archetype YAML file)
+### Wire format (the one authored role file, and the persisted wire object)
+
+A role is authored as the short form below, in `docket pod update <file>`, `docket pod validate`
+and `docket pod update <dir>`; `load_role_file` reads it and `normalize_role` turns it into the
+canonical wire object `from_wire` accepts. The canonical object is the in-memory model and the
+entry the pod overlay `<pod>/config/roles.json` persists, never an authored file: a role file
+carrying any canonical-only key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`,
+`agentsTemplate`) **MUST** be refused naming each canonical key and the short-form key to write
+instead (`model`, `cannot`, `verdict`/`verify`/`approval`, `instructions`); `canonical_key_refusal`
+is the one function that renders that message, shared by `load_role_file` and `load_document`; the
+refusal exits 2 (`config-format.spec.md`, "Files without `kind:`").
+`kind: role` is accepted and stripped. An unknown key is refused. The persisted wire object has
+this shape:
 
 ```yaml
-kind: role
 name: producer
 version: 1
 scope: pod
@@ -455,20 +467,7 @@ agentsTemplate: |
   Stay within the `${project}` pod.
 ```
 
-A file outside a `roles/` directory needs `kind: role` for `docket pod update <file>` and
-`docket pod validate` to recognise it; `from_wire` accepts and strips it.
-
-A second, short form is also accepted, by `docket pod update <file>`, `docket pod validate` and
-`docket pod update <dir>`. `load_role_file` detects it (the presence of any of
-`cannot`/`verdict`/`verify`/`approval`/`instructions`/`model`, or an explicit `kind: role` with
-none of the canonical-only keys) and normalizes it into the canonical form above
-(`normalize_role`) before `from_wire` sees it. A document carrying any canonical-only key
-(`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`, `agentsTemplate`) is canonical and
-passes through unchanged whatever its `kind:` says, so a `docket pod roles` dump with `kind: role`
-added loads as written; `kind: role` is accepted and stripped either way. A document mixing a
-short-form key with a canonical-only key **MUST** be refused naming both sets of keys, never
-normalized with the canonical keys silently dropped. An unknown key in a short-form document is
-refused.
+The authored short form of a role:
 
 ```yaml
 kind: role
@@ -488,7 +487,7 @@ after that heading becomes `agentsTemplate`, or the starter library's AGENTS pro
 heading is absent. The same `${variable}` substitution applies to both halves at render time.
 `scope`, `version`, `tokenBudget`, `toolProfile` and `hopInstruction` may be given; `scope`
 defaults to `"pod"`, `version` to `1`, `tokenBudget` to `6000`, the same defaults `from_wire`
-applies to the canonical form.
+applies to the persisted wire object.
 
 ### Built-in archetypes
 

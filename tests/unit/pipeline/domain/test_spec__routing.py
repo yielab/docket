@@ -23,13 +23,13 @@ SUBJECT = "docket.pipeline.domain.spec"
 _HEAD = "name: p\nsteps:\n"
 
 
-_UNIT_A = "  - id: a\n    role: lead\n"
+_UNIT_A = "  - a: lead\n"
 
 
-_UNIT_B = "  - id: b\n    role: implementer\n"
+_UNIT_B = "  - b: implementer\n"
 
 
-_CHILD = "      - id: c\n        role: reviewer\n"
+_CHILD = "      - c: reviewer\n"
 
 
 def _refused(body: str, *needles: str) -> None:
@@ -140,7 +140,7 @@ class TestLoadPipeline:
         assert any("mapping" in e for e in result.errors)
 
     def test_missing_name_rejected(self) -> None:
-        result = load_pipeline("steps:\n  - id: s1\n    role: lead\n")
+        result = load_pipeline("steps:\n  - s1: lead\n")
         assert not result.ok
 
     def test_missing_steps_rejected(self) -> None:
@@ -149,7 +149,7 @@ class TestLoadPipeline:
 
     def test_missing_pyyaml_gives_actionable_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(sys.modules, "yaml", None)
-        result = load_pipeline("name: p\nsteps:\n  - id: s1\n    role: lead\n")
+        result = load_pipeline("name: p\nsteps:\n  - s1: lead\n")
         assert not result.ok
         assert any("pyyaml" in e.lower() for e in result.errors)
 
@@ -163,8 +163,7 @@ class TestOutcomeRouting:
         text = """\
 name: p
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
   - build: implementer
     verify: true
     until: verify
@@ -185,17 +184,13 @@ steps:
         text = """\
 name: p
 steps:
-  - id: plan
-    role: lead
-  - id: build
-    role: implementer
-    gate:
-      type: mechanical
+  - plan: lead
+  - build: implementer
+    verify: true
     on:
       pass: stop
       fail: stop
-  - id: dead
-    role: implementer
+  - dead: implementer
 """
         result = load_pipeline(text)
         assert not result.ok
@@ -208,12 +203,11 @@ class TestInputSteps:
         text = """\
 name: p
 steps:
-  - id: triage
-    role: lead
-  - id: ask
-    input:
-      from: triage
-      message: "Confirm the approach?"
+  - triage: lead
+  - ask:
+      input:
+        from: triage
+        message: "Confirm the approach?"
 """
         result = load_pipeline(text)
         assert result.ok, result.errors
@@ -230,29 +224,25 @@ steps:
         text = """\
 name: p
 steps:
-  - id: triage
-    role: lead
-  - id: ask
-    role: implementer
+  - triage: lead
+  - ask: implementer
     input:
       from: triage
 """
         result = load_pipeline(text)
         assert not result.ok
         assert len(result.errors) == 1
-        assert "ask" in result.errors[0]
-        assert "input" in result.errors[0]
-        assert "role" in result.errors[0]
+        assert "'ask'" in result.errors[0]
+        assert "'input'" in result.errors[0]
 
     def test_input_step_from_references_nonexistent_step(self) -> None:
         text = """\
 name: p
 steps:
-  - id: triage
-    role: lead
-  - id: ask
-    input:
-      from: no_such_step
+  - triage: lead
+  - ask:
+      input:
+        from: no_such_step
 """
         result = load_pipeline(text)
         assert not result.ok
@@ -264,13 +254,11 @@ steps:
         text = """\
 name: p
 steps:
-  - id: triage
-    role: lead
-  - id: ask
-    input:
-      from: plan
-  - id: plan
-    role: implementer
+  - triage: lead
+  - ask:
+      input:
+        from: plan
+  - plan: implementer
 """
         result = load_pipeline(text)
         assert not result.ok
@@ -283,14 +271,13 @@ steps:
         text = """\
 name: p
 steps:
-  - id: triage
-    role: lead
-  - id: ask
-    input:
-      from: triage
-    on:
-      answered: pass
-      unknown_key: fail
+  - triage: lead
+  - ask:
+      input:
+        from: triage
+      on:
+        answered: pass
+        unknown_key: fail
 """
         result = load_pipeline(text)
         assert not result.ok
@@ -303,33 +290,33 @@ class TestRefusedShapes:
     """A shape the executor cannot run is a load error naming the field, not silence."""
 
     @pytest.mark.parametrize(
-        ("field_yaml", "field"),
+        "field_yaml",
         [
-            ("    run: echo hi\n", "run"),
-            ("    input:\n      from: a\n", "input"),
-            ("    when:\n      memberPresent: lead\n", "when"),
-            ("    archetype: critic\n", "archetype"),
+            "      run: echo hi\n",
+            "      input:\n        from: a\n",
+            "      when:\n        memberPresent: lead\n",
+            "      archetype: critic\n",
         ],
     )
-    def test_parallel_group_refuses_its_own_field(self, field_yaml: str, field: str) -> None:
-        body = _UNIT_A + "  - id: g\n" + field_yaml + "    parallel:\n" + _CHILD
-        _refused(body, "'g'", f"'{field}'", "parallel")
+    def test_parallel_group_carries_only_its_children(self, field_yaml: str) -> None:
+        body = _UNIT_A + "  - g:\n" + field_yaml + "      parallel:\n" + _CHILD
+        _refused(body, "'g'", "parallel group carries only 'parallel'")
 
     def test_step_with_run_and_input_refused(self) -> None:
-        body = _UNIT_A + "  - id: ask\n    run: echo hi\n    input:\n      from: a\n"
+        body = _UNIT_A + "  - ask:\n      run: echo hi\n      input:\n        from: a\n"
         _refused(body, "'ask'", "'run'", "'input'")
 
     @pytest.mark.parametrize("bad_max", ["0", "-1", "x", "true", "1.5"])
     def test_forward_route_with_invalid_max_refused(self, bad_max: str) -> None:
         body = (
-            "  - id: a\n    role: implementer\n    gate: {type: mechanical}\n"
+            "  - a: implementer\n    verify: true\n"
             f"    on:\n      fail: {{goto: b, max: {bad_max}}}\n" + _UNIT_B
         )
         _refused(body, "'a'", "'max'")
 
     def test_forward_route_with_valid_max_accepted(self) -> None:
         body = (
-            "  - id: a\n    role: implementer\n    gate: {type: mechanical}\n"
+            "  - a: implementer\n    verify: true\n"
             "    on:\n      fail: {goto: b, max: 2}\n" + _UNIT_B
         )
         assert load_pipeline(_HEAD + body).ok
@@ -337,26 +324,26 @@ class TestRefusedShapes:
     @pytest.mark.parametrize(
         ("child_yaml", "field"),
         [
-            ("        run: echo hi\n", "run"),
-            ("        input:\n          from: a\n", "input"),
-            ("        role: reviewer\n        when:\n          memberPresent: lead\n", "when"),
-            ("        role: reviewer\n        on:\n          fail: stop\n", "on"),
-            ('        role: reviewer\n        "on":\n          fail: stop\n', "on"),
+            ("      - c:\n          run: echo hi\n", "run"),
+            ("      - c:\n          input:\n            from: a\n", "input"),
+            ("      - c: reviewer\n        when:\n          memberPresent: lead\n", "when"),
+            ("      - c: reviewer\n        on:\n          fail: stop\n", "on"),
+            ('      - c: reviewer\n        "on":\n          fail: stop\n', "on"),
         ],
     )
     def test_parallel_child_refuses_a_field_the_group_never_runs(
         self, child_yaml: str, field: str
     ) -> None:
         # The group's children run through `_execute_unit`, which acts on none of these.
-        body = _UNIT_A + "  - id: g\n    parallel:\n      - id: c\n" + child_yaml
+        body = _UNIT_A + "  - g:\n      parallel:\n" + child_yaml
         _refused(body, "'c'", f"'{field}'", "parallel")
 
     def test_parallel_child_with_executed_fields_accepted(self) -> None:
         body = (
             _UNIT_A
-            + "  - id: g\n    parallel:\n"
+            + "  - g:\n      parallel:\n"
             + _CHILD
             + "        retries: 1\n        timeout: 30\n        model: cheap\n"
-            + "        archetype: critic\n        gate: {type: mechanical}\n"
+            + "        archetype: critic\n        verify: true\n"
         )
         assert load_pipeline(_HEAD + body).ok

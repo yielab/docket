@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 1.1.3
+**Version**: 1.3.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
 MCP and Telegram. The exec jail is opt-in and fails closed when on without a usable backend.
@@ -264,8 +264,11 @@ and chain (audit.spec.md).
 1. `HIGH_RISK_PATTERNS` **MUST** be a small, built-in, named list of high-risk action classes:
    `money-movement`, `prod-deploy` and `secret-access`. Each class's pattern **MUST** be matched,
    case-insensitively, against the full command string (`"git push origin production"`), not
-   just the invoked binary name. It is a small seed, not exhaustive coverage, and it is not
-   configurable.
+   just the invoked binary name, and against each invocation of it read by `command_segments`
+   with its quoting undone (`"vault" kv put`, `api.s""tripe.com`) and with its options dropped
+   (`kubectl -n prod apply`, `vault -address=x kv put`, `git -c k=v push origin main`), so an
+   option before the verb or a quoted word does not hide it. It is a small seed, not exhaustive
+   coverage, and it is not configurable.
 2. On every path docket controls, a high-risk match **MUST** take effect regardless of whether the
    invoked binary is on the curated allowlist; allowlist membership **MUST NOT** bypass a match.
    `classify_command` checks the classes before the allowlist, and `run_command` refuses a match
@@ -281,6 +284,26 @@ and chain (audit.spec.md).
 5. The full high-risk class list (name, description, pattern, and which allowlisted bins a class
    overlaps, which the classifier's argument-awareness still gates) **MUST** be visible, read-only,
    via `docket setup sandbox classes`. This command **MUST NOT** change any configuration.
+
+### Known limits of the command gate
+
+What no rule of the classifier or of the baseline policies can ask for, because the command's
+effect is decided after the gate looks. Each is a `limit:` key on the corpus rows
+(`tests/fixtures/policy-corpus/corpus.yaml`) that stay `allowed`; the jail, not a parser, is what
+contains them, and whether isolation is on by default is a maintainer decision (ROADMAP §7.1).
+
+1. `opaque-code`: code in an allowlisted interpreter or shell (`python3 -c` with a string built
+   by concatenation, `node -e`, `perl -e`, a script written and then run, `base64 -d | sh`, a
+   here-string fed to `bash`). The gate sees the interpreter, not the program it was handed.
+2. `variable`: a variable holds the command name, a flag or an argument (`$R -r build`,
+   `rm $F build`, `env $V kv put`, `git push origin $B`); the shell expands it after the gate.
+3. `script-name`: a package script whose body docket cannot see (`npm run release`).
+4. `phrase-tripwire`: `prompt-injection` matches a few known phrases and warns; a paraphrase, a
+   translation or an encoded payload passes, and it never blocks.
+5. `unlisted-secret-shape`: `secret-pii-redact` masks fixed shapes (provider API keys, GitHub and
+   AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer` credentials, email addresses); a
+   secret spelled out, reversed, base64-encoded or shaped like none of them (a card number) is not
+   masked.
 
 ### Docket-launched process classification
 
@@ -408,9 +431,10 @@ where it applies to commands docket itself launches.
 
 ### Policy format v1 (ADR 0010)
 
-A policy document is canonical JSON (`applies_to`, `hook`, `match.type: regex`, `action:
-require_approval`) or the short form below, and a policy can test structured facts of a tool call
-beside its rendered text.
+A policy document is written in the one short form below (`name`, `appliesTo`, `on`, `when`,
+`then`, in YAML or JSON). The canonical shape (`id`, `applies_to`, `hook`, `match`, `action`) is the
+in-memory model the evaluator runs and is never read from a file: a canonical key in an authored
+policy is refused. A policy can test structured facts of a tool call beside its rendered text.
 
 1. `policy_files` **MUST** glob `*.json`, `*.yaml` and `*.yml` in every policy directory it reads
    (the global `$POLICIES_DIR`, then a pod's own `config/policies/`), each directory sorted by name
@@ -423,24 +447,43 @@ beside its rendered text.
    `id`; `appliesTo` to `applies_to`; `on: input|toolCall|output` to `hook` (`pre_input`,
    `pre_tool_call`, `pre_output`), defaulting to `pre_tool_call` when neither `on` nor `hook` is
    given; `then: allow|warn|ask|block|redact` to `action`, with `ask` mapping to
-   `require_approval` and the rest to themselves. A document already in canonical form **MUST**
-   come back unchanged but for a `kind` key. Loading **MUST** disable YAML's implicit
+   `require_approval` and the rest to themselves. A document carrying a canonical key (`id`,
+   `applies_to`, `hook`, `action`, `match`) **MUST** be refused with an `InvalidInput` that names
+   each canonical key found and the short-form key to write instead (`canonical_key_refusal` is
+   the one function that renders it). Loading **MUST** disable YAML's implicit
    `on`/`off`/`yes`/`no` boolean resolution for a policy document, since the short form's own `on:`
    key would otherwise parse as the boolean `True` on a bare value, and no policy field is ever a
    boolean.
 3. `read_policy(path) -> dict` **MUST** be the single reader that `validate_policy`, the
    evaluator's per-file loop, `docket pod policies` and `docket pod validate` share: it parses the
-   file as YAML (JSON stays valid YAML, so a canonical file needs no change) and returns
-   `normalize_policy` of the result.
-4. A canonical policy **MAY** carry a structured `when` mapping instead of, or beside, `match`:
+   file as YAML (JSON stays valid YAML, so a short-form JSON file needs no YAML) and returns
+   `normalize_policy` of the result. A file the reader refuses evaluates as `block` within every
+   hook and role (requirement 7 of the policy engine) and the block names the refusal, so a
+   canonical file left in `$POLICIES_DIR` fails closed with the short-form key to write.
+4. A policy **MAY** carry a structured `when` mapping instead of, or beside, `match`:
    `{tool?, path?, matches?, branch?, plugin?, anyOf?: [...]}`. Keys are implicit AND; `anyOf` is
    OR over its items, itself AND'd with any sibling keys. `tool` **MUST** equal the call's tool
    name; `path` **MUST** be an `fnmatch` glob over whichever of the call's `path`, `file_path` or
    `file` arguments is present (absent on the call, the predicate never matches); `matches`
    **MUST** be the same regex-over-rendered-text test `match.pattern` is; `branch` **MUST** be an
    `fnmatch` glob over the worktree's current branch; `plugin` is "Predicate plugins". A `when`
-   whose only key is `matches` **MUST** normalize to plain `match: {type: regex, pattern: ...}`,
-   so a plain regex policy's canonical form is byte-identical whether written short or long. The
+   whose only key is `matches` **MUST** normalize to plain `match: {type: regex, pattern: ...}`.
+   `command` is a mapping over the shell command of a `bash` call, evaluated on every invocation
+   `command_segments` returns for it (each segment behind a separator, quoting undone, wrappers
+   such as `env`, `xargs` and `command` peeled): `program` (a name or list of names, `fnmatch`
+   globs allowed), `verb` (a word among the invocation's non-option arguments, so an option or its
+   value before a subcommand does not hide it), `args` (any of the invocation's arguments: a
+   single-letter short option such as `-f` also names it inside a cluster such as `-rf`, an entry
+   with a glob character is an `fnmatch` pattern, anything else an exact word) and `writes`
+   (`fnmatch` globs over the paths the invocation writes: its output redirect targets, the
+   operands of a known writer such as `tee`, `cp`, `mv`, `install`, `ln`, `rsync`, `rm`,
+   `truncate`, the `of=` of `dd`, and the file operands of an in-place `sed -i` or `perl -pi`).
+   A key given as a string is a list of one; every key present must hold for the same invocation
+   and the predicate holds when any invocation does. A call to another tool, a call without a
+   readable `command`, and a command the lexer cannot read never match it (the classifier asks for
+   the last). An unknown `command` key, an empty mapping, or a value that is not a non-empty
+   string or list of non-empty strings **MUST** be rejected naming the key. `matches` stays the
+   predicate for text with no command structure (SQL inside another program's argument). The
    validator **MUST** check `when` the way it checks `match`: a policy **MUST** carry a `match` or
    a `when` (a document with neither has nothing to fire on); an unknown `when` key **MUST** be
    rejected naming the predicates; an uncompilable `when.matches` **MUST** be rejected as an
@@ -469,8 +512,20 @@ beside its rendered text.
    live call, with an empty `<text>` accepted (a predicate-only test has no rendered text). A
    malformed `--arg` is a usage error (exit 2).
 8. Every shipped policy template **MUST** be short-form YAML, installed under its own file name
-   (`block-destructive.yaml`), with the id, pattern, applies-to, action and message its policy
-   suite pins.
+   (`block-destructive.yaml`), with the id, predicate, applies-to, action and message its policy
+   suite pins. The four `ask` templates (`block-destructive`, `high-risk-credentials`,
+   `high-risk-deploy`, `high-risk-payment`) **MUST** be written with `when.command` for what a
+   shell command does, `tool`/`path` for the file tools and `matches` only for text without
+   structure. The corpus of commands that differ in text but not in effect
+   (`tests/fixtures/policy-corpus/corpus.yaml`) is the table
+   `tests/unit/governance/test_policy__corpus.py` drives through `evaluate_tool_call` (tool rows)
+   and `policy_eval_detail` (screen rows): each row's `expected` outcome **MUST** hold under both
+   isolation settings, **MUST NOT** be weaker than the outcome measured before `when.command`
+   existed, and a row left `allowed` **MUST** carry a `limit` named in "Known limits of the
+   command gate". `secret-pii-redact` **MUST** fire on every shape named in limit 5 as masked
+   (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer`
+   credentials, email addresses), and `docket.governance.secrets.redact` masks the same shapes, so
+   a `redact` verdict leaves nothing of the secret in the carried-forward text.
 
 ### Predicate plugins (ADR 0010)
 
@@ -1151,9 +1206,12 @@ narrow the hops of that one task and never widen anything.
    is an audited `tool.deny` carrying `policy_id='task-restriction'`, and the hop continues with the
    refusal as the tool result. The set is closed by capability as `registry_for_role` does: every
    tool of a denied built-in's kind (an MCP tool is registered `write`) is named in the policy too.
-4. **`policies` are block-only, re-checked at the hop.** Each document is normalised, validated
-   with the policy validator, and its action **MUST** be `block`; a document that fails either
-   check refuses the hop before it starts (`DispatchError`, so the task fails `dispatch_refused`).
+4. **`policies` are block-only, re-checked at the hop.** Each document is written in the short
+   form (`task_policy_document` normalises it, so a canonical key is refused), validated with the
+   policy validator, and its action **MUST** be `block`; the canonical documents then travel to
+   the turn in `DOCKET_TASK_POLICIES` and `checked_task_document` validates them again without
+   normalising. A document that fails either check refuses the hop before it starts
+   (`DispatchError`, so the task fails `dispatch_refused`).
    Whatever its own `id`, a task document evaluates under the id `task-restriction`, so the audit
    entry names the source.
 5. **`network: "none"` fails closed.** The jail's network is `none` for the hop whatever the pod
@@ -1526,7 +1584,10 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/governance/gate.py`: `govern`, `evaluate_tool_call`, `render_tool_call`, `ToolVerdict`,
   the wait, park, pre-grant and `approve_task` handling, the `tool.*` audit entries;
   `governance/gate_rules.py`: the pure decisions (`combine_verdicts`, `ask_route`, `settle_wait`)
-- `src/docket/governance/security.py`: `SAFE_BINS`, `HighRiskClass`, `HIGH_RISK_PATTERNS`,
+- `src/docket/governance/command_lexer.py`: the shell lexer under the classifier (`split_segments`,
+  `Segment`, `cut_quoted_heredocs`, `unwrap`)
+- `src/docket/governance/policy_command.py`: `command_matches`, `validate_command`
+- `src/docket/governance/security.py`: `SAFE_BINS`, `HighRiskClass`, `HIGH_RISK_PATTERNS`, `CommandSegment`, `command_segments`,
   `match_high_risk`, `classify_command`, `CommandVerdict`, `apply_workspace_isolation`,
   `disable_workspace_isolation`
 - `src/docket/governance/approval.py`: `approval_create`, `approval_get`, `approval_grant`,
@@ -1535,9 +1596,9 @@ $ git clone https://anywhere.example/repo.git
   `APPROVAL_CHANNELS`, `APPROVAL_TOKEN_RE`, `APPROVAL_RATIONALE_MAX_CHARS`, `ApprovalError`,
   `ApprovalNoop`, `ApprovalConflict`
 - `src/docket/governance/policy.py`: `policy_files`, `policy_eval`, `policy_eval_detail`, `policy_test`,
-  `normalize_policy`, `read_policy`, `validate_policy`, `install_policies`, `ToolCallFacts`,
+  `normalize_policy`, `canonical_key_refusal`, `read_policy`, `validate_policy`, `install_policies`, `ToolCallFacts`,
   `PolicyHit`, `task_policies`, `TASK_POLICY_ID`, `denied_tools_document`,
-  `task_policy_document`, the `when` and `plugin` predicate evaluation
+  `task_policy_document`, `checked_task_document`, the `when` and `plugin` predicate evaluation
 - `src/docket/governance/plugin_api.py`: the `docket.governance.plugin_api` API (`PLUGIN_API_VERSION`, `predicate`,
   `ToolCall`, `PolicyContext`, `REGISTRY`)
 - `src/docket/governance/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`

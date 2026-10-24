@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 3.1.0
+**Version**: 4.0.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
 operator-input steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
@@ -35,7 +35,8 @@ This specification covers:
 - Conditional steps (`when`) and command steps (`run`, `env`)
 - Pipeline-level `variables`, their resolution and the interpolation of `${name}` references in step
   instructions
-- The short form, a sugar that expands to the canonical form before validation
+- The short form, the one authored spelling of a step, which expands to the in-memory model before
+  validation; a step written in the canonical spelling (an `id:` key) is refused
 - Loading from YAML text, including the built-in pipeline returned when no file exists, and the
   error contract of validation
 
@@ -66,6 +67,11 @@ This specification does NOT cover:
   "Shipped recipes".
 
 ## Requirements
+
+A pipeline file is authored in the short form ("Short form") and in no other. The requirements
+below name the fields of the in-memory model (`PipelineSpec`, `Step`, the gates) that each short
+step expands to; the canonical spelling of that model (a step with an `id:` key, a gate with
+`type:`) is never read from a file.
 
 ### Document shape
 
@@ -241,8 +247,9 @@ This specification does NOT cover:
 4. Each child **MUST** independently satisfy the unit-step requirements above (a document-unique
    `id`, a valid target, valid `archetype`/`retries`/`timeout`/`instructions`/`model`/`gate`
    shape), except that a child's gate **MUST NOT** carry a `rework` edge (Rework edges
-   Requirement 5). Short form applies to top-level steps only; a group and its children are written
-   in canonical form. The executor runs a child as a plain role or agent hop and acts on none of
+   Requirement 5). A group is written `- <id>: {parallel: [...]}` and each child is a short step
+   (`- <child id>: <role or agent>` with its own sugar keys); the group carries nothing else. The
+   executor runs a child as a plain role or agent hop and acts on none of
    `run`, `input`, `when` and `on` there, so a child **MUST NOT** declare any of them; each is a
    validation error naming the child and the field (a child's unquoted `on:` key is read as `on`).
 
@@ -290,20 +297,20 @@ This specification does NOT cover:
 ### Short form
 
 1. `normalize_pipeline(doc: dict) -> dict` **MUST** be a pure function: given a parsed YAML document
-   it returns the canonical mapping the Requirements above define, without touching the filesystem
-   or mutating its argument. `load_pipeline` **MUST** call it on every document (after stripping a
-   `kind: pipeline` key) before `PipelineSpec` validation; a document already in canonical form
-   **MUST** pass through unchanged, except that a bare `on:` key on a canonical top-level step
-   (which YAML parses as the boolean `True`) is restored to `"on"`. The canonical form remains fully
-   valid on its own and is what every reader downstream of `load_pipeline` sees.
-2. A top-level `steps` entry **MUST** be read as short form when it is a mapping with exactly one
-   key that is not one of the sugar keys below (`verify`, `verdict`, `approval`, `gate`,
-   `instructions`, `timeout`, `retries`, `model`, `on`, `until`, `max`, `input`) and whose value is
-   a string (a role or agent step, Requirement 3) or a mapping carrying `run` or `input` (a command
-   or input step, Requirement 5); that key becomes the step's `id`. A mapping that already carries
-   an `id` key, or that does not resolve to exactly one such key, **MUST** be left unchanged and
-   read as canonical form (including an `id`-less `parallel` group, which the short form does not
-   cover).
+   it returns the mapping `PipelineSpec` validates, without touching the filesystem or mutating
+   its argument. `load_pipeline` **MUST** call it on every document (after stripping a
+   `kind: pipeline` key) before `PipelineSpec` validation. A step written with an `id:` key (the
+   canonical spelling, which is the in-memory model and never an authored form) **MUST** be a load
+   error naming the step and the short spelling to use (`- <id>: <role>`, `{run: ...}`,
+   `{input: ...}` or `{parallel: [...]}`).
+2. A `steps` entry **MUST** be a mapping with exactly one key that is not one of the sugar keys
+   below (`verify`, `verdict`, `approval`, `gate`, `instructions`, `timeout`, `retries`, `model`,
+   `archetype`, `when`, `on`, `until`, `max`), so a step id cannot be a sugar key's name; that key
+   becomes the step's `id`. Its value is a string (a role or agent step, Requirement 3) or a mapping
+   carrying `run`, `input` or `parallel` (a command, input or parallel-group step). Any other shape
+   **MUST** be a load error naming the step. A command or input step's mapping carries the
+   canonical step's own keys unchanged (an unknown key is rejected by validation); a `parallel`
+   group's mapping carries only `parallel`.
 3. The target string **MUST** become `role:` when it is one of `lead`/`implementer`/`reviewer`/
    `tester`, or when it is not shaped like a pod member id; it **MUST** become `agent:` when it is
    shaped like one — `<prefix>-<role>` or `<prefix>-<role>-<index>` where `<role>` is one of the
@@ -312,24 +319,26 @@ This specification does NOT cover:
    not a base role); `myshop-implementer` and `myshop-implementer-2` are `agent:`.
 4. The recognized sugar keys, each optional, **MUST** be mapped as follows:
    - `verify: true` -> `gate: {type: mechanical}`; `verify: "<command>"` -> `gate: {type:
-     mechanical, command: "<command>"}`.
+     mechanical, command: "<command>"}`; `verify: {command: "<command>", timeout: <n>}` carries
+     the gate's own `command` and `timeout` (any other key is a load error).
    - `verdict: [<marker>, ...]` (at least one marker) -> `gate: {type: verdict, pattern:
      '^\s*(<marker>|...)\b', passValues: [<first marker, lowercased>]}`, each marker escaped for
      regex safety; the first marker is the passing value, the rest are outcomes a step's `on:` or an
      unparsed non-match may still fail on, exactly as the canonical `verdict` gate does. An empty or
      non-list `verdict` yields an invalid gate and so a validation error.
    - `approval: "<message>"` -> `gate: {type: approval, message: "<message>"}`.
-   - `gate: {external: "<command>"}` -> `gate: {type: external, command: "<command>"}`; any other
-     shape of the short `gate` key is a load error naming the step.
-   - `instructions`, `timeout`, `retries`, `model` carry straight through to the same-named
-     canonical field.
+   - `gate: {external: "<command>"}` -> `gate: {type: external, command: "<command>"}`, with
+     optional `timeout` and `exitMap` carried to the gate's own fields; any other shape of the
+     short `gate` key is a load error naming the step.
+   - `instructions`, `timeout`, `retries`, `model`, `archetype`, `when` carry straight through to
+     the same-named canonical field.
    - `on: {<label>: {goto: <earlier step id>, max: <n>}}` **MUST**, when the step also carries a
      `verdict` sugar key, the `on` mapping has exactly that one entry whose keys are only `goto` and
      `max`, and `goto` names an earlier step, become that gate's `rework: {to: <goto>, when:
      [<label, lowercased>], maxCycles: <n>}`; a `goto` to an earlier step without `max` is a load
      error naming the step. Because PyYAML reads an unquoted `on:` key as the boolean `True`, the
      sugar key **MUST** be accepted spelled either `"on"` or as the boolean `True`, on short and on
-     canonical top-level steps alike. Every other `on:` shape **MUST** become the step's canonical
+     steps alike. Every other `on:` shape **MUST** become the step's canonical
      `on` field verbatim ("Outcome routing"), never a load error of its own.
    - `until: "verify"` with a `max` sugar key **MUST**, on a step whose gate is `mechanical`, become
      `on: {fail: {goto: <this step's own id>, max: <n>}}` — a bounded self-retry. `until`/`max` are
@@ -344,7 +353,7 @@ This specification does NOT cover:
      contract applies, exactly as for a canonical step with no `gate`.
 5. A **command step** is written `- <id>: {run: "<command>", timeout: <n>, when: {...}, env: {...}}`
    and an **input step** `- <id>: {input: {from: <step id>, message: "..."}, on: {...}}`; each
-   expands to the canonical `{id, run, ...}` or `{id, input, on}` step. Their sugar lives inside the
+   expands to the canonical `{id, run, ...}` or `{id, input, on}` step. Their keys live inside the
    mapping value, not beside the id. Keys other than the ones shown are carried only where the
    canonical step defines them (an unknown key is rejected by validation).
 
@@ -417,7 +426,7 @@ This specification does NOT cover:
    the task coordinates, `pod-dispatch.spec.md`). Each name **MUST** match `^[A-Z][A-Z0-9_]*$`;
    `PATH`, `BASH_ENV`, `ENV`, any `LD_*`, `PYTHON*` or `DOCKET_*` name, and any name the process
    credential strip treats as a credential **MUST** be a validation error naming the entry; a
-   non-string value **MUST** be a validation error. It is accepted in canonical and short form
+   non-string value **MUST** be a validation error. It is written inside a short command step
    (`- lint: {run: ..., env: {...}}`), is carried on the planned step, and survives `pod export`
    because the bound pipeline is exported verbatim.
 
@@ -464,8 +473,8 @@ builtin = default_pipeline()       # the zero-migration PipelineSpec, unconditio
 Short form:
 
 ```python
-normalize_pipeline(doc)   # dict -> dict: short-form sugar expanded into the canonical
-                          # mapping; a canonical document passes through unchanged.
+normalize_pipeline(doc)   # dict -> dict: short-form steps expanded into the mapping
+                          # PipelineSpec validates; a canonical step (an `id:` key) is refused.
                           # load_pipeline calls this before PipelineSpec validation;
                           # callers of load_pipeline never need to call it themselves.
 ```
@@ -503,14 +512,9 @@ name: ship-feature
 description: Build and verify a change.
 
 steps:
-  - id: plan
-    role: lead
-
-  - id: build
-    role: implementer
-    gate:
-      type: mechanical
-      command: "pytest -q"
+  - plan: lead
+  - build: implementer
+    verify: "pytest -q"
 ```
 
 ### The full shape: variables, a bounded rework edge, and a parallel fan-out
@@ -527,33 +531,17 @@ variables:
     required: true
 
 steps:
-  - id: plan
-    role: lead
-
-  - id: fanout
-    parallel:
-      - id: impl-a
-        agent: myapp-implementer
-        instructions: "Focus on ${TARGET}."
-      - id: impl-b
-        agent: myapp-implementer-2
-
-  - id: review
-    role: reviewer
-    gate:
-      type: verdict
-      pattern: "^(APPROVE|REQUEST-CHANGES)\\b"
-      passValues: [approve]
-      rework:
-        to: fanout
-        when: [request-changes]
-        maxCycles: 2
-
-  - id: ship
-    role: implementer
-    gate:
-      type: approval
-      message: "Ready to deploy?"
+  - plan: lead
+  - fanout:
+      parallel:
+        - impl-a: myapp-implementer
+          instructions: "Focus on ${TARGET}."
+        - impl-b: myapp-implementer-2
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: fanout, max: 2}}
+  - ship: implementer
+    approval: "Ready to deploy?"
 ```
 
 ### The short form: a bounded self-retry, a rework edge, a command step and an input step
@@ -585,14 +573,27 @@ a `verdict` gate with a `rework` edge to `build`, not to `on`.
 ```yaml
 name: broken
 steps:
-  - id: build
-    role: implementer
+  - build: implementer
     verifyCommand: "pytest -q"   # typo: not a real field
 ```
 
 ```text
 >>> load_pipeline(text).errors
-["steps.0.verifyCommand: Extra inputs are not permitted"]
+["a step needs exactly one key that is not a sugar key, the step id (got 'build', 'verifyCommand'); write '- <id>: <role>'"]
+```
+
+### A canonical step is refused, naming the short spelling
+
+```yaml
+name: old
+steps:
+  - id: build
+    role: implementer
+```
+
+```text
+>>> load_pipeline(text).errors
+["step 'build' is written in the canonical form (an 'id:' key); write the id as the key: '- build: <role>', ..."]
 ```
 
 ## Validation

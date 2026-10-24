@@ -1288,34 +1288,16 @@ def _write_inputs(world: Path, scenario: str) -> tuple[Path, Path, Path, Path]:
         f"""name: end-to-end-smoke
 description: {pipeline_description}
 steps:
-  - id: plan
-    role: lead
-  - id: implement
-    role: implementer
-    gate:
-      type: mechanical
-      command: {json.dumps(verify_command)}
-  - id: review
-    role: reviewer
-    gate:
-      type: verdict
-      pattern: '^\\s*(APPROVE|REQUEST-CHANGES)\\b'
-      passValues: [approve]
-      rework:
-        to: implement
-        when: [request-changes]
-        maxCycles: 1
-  - id: release-check
-    role: tester
-    gate:
-      type: approval
-      message: "Approve the smoke release checkpoint."
-  - id: verify
-    role: tester
-    gate:
-      type: verdict
-      pattern: '^\\s*(PASS|FAIL)\\b'
-      passValues: [pass]
+  - plan: lead
+  - implement: implementer
+    verify: {json.dumps(verify_command)}
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {{REQUEST-CHANGES: {{goto: implement, max: 1}}}}
+  - release-check: tester
+    approval: "Approve the smoke release checkpoint."
+  - final-check: tester
+    verdict: [PASS, FAIL]
 """,
         encoding="utf-8",
     )
@@ -1598,7 +1580,7 @@ def _verify_final_state(
     hops = cast(list[dict[str, Any]], hops_raw)
     _require(
         [hop.get("stepId") for hop in hops]
-        == ["plan", "implement", "review", "release-check", "verify"],
+        == ["plan", "implement", "review", "release-check", "final-check"],
         "pipeline did not resume at the exact approval-gated step",
     )
     _require(all(isinstance(hop.get("artifact"), dict) for hop in hops), "typed handoff missing")

@@ -43,12 +43,9 @@ SUBJECT = "docket.teams.identity"
 _PIPELINE = """\
 name: base-files
 steps:
-  - id: lead
-    role: lead
-  - id: implementer
-    role: implementer
-  - id: reviewer
-    role: reviewer
+  - lead: lead
+  - implementer: implementer
+  - reviewer: reviewer
 """
 
 _BASE_AGENTS = "BASE-RULES: run the linter first.\n"

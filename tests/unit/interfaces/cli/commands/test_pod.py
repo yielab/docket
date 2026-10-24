@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from tests.support.pods import bind_one_step_pipeline
 from tests.support.pods import seed_pod_4 as _seed_pod
 
 from docket.interfaces.cli.commands import pod as _pod
@@ -18,13 +19,11 @@ SUBJECT = "docket.interfaces.cli.commands.pod"
 _ASK_PIPELINE_YAML = """\
 name: ask
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-  - id: implementer
-    role: implementer
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
 """
 
 
@@ -193,3 +192,47 @@ class TestPodSetUnset:
                 _meta("demo-lead")["maxReworkCycles"] is None
             )
             assert _invoke("unset", "nonsense")[0] == 1
+
+
+class TestPodSetMaxReworkCycles:
+    """A pipeline bounds its own rework, so the pod-wide setting would silently do nothing."""
+
+    def test_a_bound_pipeline_refuses_the_setting_naming_the_pipelines_own_bound(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            bind_one_step_pipeline("demo")
+
+            code, out = _invoke("set", "maxReworkCycles", "3")
+
+            assert code == 2
+            assert "on: {<label>: {goto: <step>, max: <n>}}" in out
+            assert "maxReworkCycles" not in _meta("demo-lead") or (
+                _meta("demo-lead")["maxReworkCycles"] is None
+            )
+
+    def test_without_a_bound_pipeline_the_setting_is_accepted(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            assert _invoke("set", "maxReworkCycles", "3")[0] == 0
+
+    def test_unsetting_it_is_always_allowed(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            assert _invoke("set", "maxReworkCycles", "3")[0] == 0
+            bind_one_step_pipeline("demo")
+
+            assert _invoke("unset", "maxReworkCycles")[0] == 0
+
+
+class TestPodSetPipelineCanonicalStep:
+    def test_a_canonical_step_is_refused_with_exit_2_and_binds_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            path = tmp_path / "old.yaml"
+            path.write_text("name: old\nsteps:\n  - id: plan\n    role: lead\n")
+
+            code, out = _invoke("set", "pipeline", str(path))
+
+            assert code == 2
+            assert "'- plan: <role>'" in out
+            assert not _meta("demo-lead").get("pipeline")

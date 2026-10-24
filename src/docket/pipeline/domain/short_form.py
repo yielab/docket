@@ -5,10 +5,11 @@ from typing import Any
 
 # ── Short form ─────────────────────────────────────────────────────────────────
 #
-# Sugar over the canonical shape above: a step written as `<id>: <role-or-agent>`
-# plus optional `verify`/`verdict`/`approval`/`instructions`/`timeout`/`retries`/`model`/`on`/
-# `until`/`max` keys. See specs/functional/pipeline-format.spec.md ("Short form",
-# "Outcome routing").
+# The one authored form of a step: `<id>: <role-or-agent>` plus optional `verify`/`verdict`/
+# `approval`/`gate`/`instructions`/`timeout`/`retries`/`model`/`archetype`/`when`/`on`/`until`/
+# `max` keys, `<id>: {run: ...}`, `<id>: {input: ...}` or `<id>: {parallel: [...]}`. A step
+# written with an `id:` key (the canonical form, which is the in-memory model) is refused. See
+# specs/functional/pipeline-format.spec.md ("Short form", "Outcome routing").
 
 _STEP_SUGAR_KEYS = frozenset(
     {
@@ -23,16 +24,22 @@ _STEP_SUGAR_KEYS = frozenset(
         "on",
         "until",
         "max",
-        "input",
+        "archetype",
+        "when",
     }
 )
 _BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
 _NO_ON = object()
+_EXTERNAL_GATE_KEYS = frozenset({"external", "timeout", "exitMap"})
 
 
 class _ShortFormError(ValueError):
     """Raised for an ``on:`` shape the executor cannot run yet; ``load_pipeline`` turns
     this into an ordinary entry in its ``errors`` list, same as any other load error."""
+
+
+class CanonicalStepError(_ShortFormError):
+    """A step is written in the canonical spelling (an ``id:`` key) instead of the short form."""
 
 
 def _get_on(entry: dict[Any, Any]) -> Any:
@@ -81,7 +88,14 @@ def _build_verdict_gate(markers: Any) -> dict[str, Any]:
     return {"type": "verdict", "pattern": pattern, "passValues": [values[0].lower()]}
 
 
-def _build_mechanical_gate(verify: Any) -> dict[str, Any]:
+def _build_mechanical_gate(step_id: str, verify: Any) -> dict[str, Any]:
+    if isinstance(verify, dict):
+        unknown = sorted(str(k) for k in set(verify) - {"command", "timeout"})
+        if unknown:
+            raise _ShortFormError(
+                f"step {step_id!r}: 'verify' takes 'command' and 'timeout' (got {', '.join(unknown)})"
+            )
+        return {"type": "mechanical", **verify}
     return (
         {"type": "mechanical", "command": verify}
         if isinstance(verify, str)
@@ -98,9 +112,14 @@ def _build_approval_gate(approval: Any) -> dict[str, Any]:
 
 
 def _build_external_gate(step_id: str, gate: Any) -> dict[str, Any]:
-    if not isinstance(gate, dict) or set(gate) != {"external"}:
-        raise _ShortFormError(f"step {step_id!r}: 'gate' must be '{{external: <command>}}'")
-    return {"type": "external", "command": gate["external"]}
+    if not isinstance(gate, dict) or "external" not in gate or set(gate) - _EXTERNAL_GATE_KEYS:
+        raise _ShortFormError(
+            f"step {step_id!r}: 'gate' must be '{{external: <command>}}' "
+            "(optionally with 'timeout' and 'exitMap')"
+        )
+    return {"type": "external", "command": gate["external"]} | {
+        k: v for k, v in gate.items() if k != "external"
+    }
 
 
 def _try_build_rework(step_id: str, on: Any, seen_ids: list[str]) -> dict[str, Any] | None:
@@ -136,7 +155,7 @@ def _build_gate(
                 on = _NO_ON
         return gate, on
     if "verify" in entry:
-        return _build_mechanical_gate(entry["verify"]), on
+        return _build_mechanical_gate(step_id, entry["verify"]), on
     if "approval" in entry:
         return _build_approval_gate(entry["approval"]), on
     if "gate" in entry:
@@ -162,42 +181,70 @@ def _build_until_route(
     return {"fail": {"goto": step_id, "max": entry["max"]}}
 
 
-def _normalize_command_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
-    # `- lint: {run: "ruff check ."}` -- a one-key mapping whose value is itself a
-    # mapping carrying `run`. Its own `timeout`/`when` sugar lives inside *target*,
-    # not alongside `step_id` at the entry level (unlike a role/agent short step).
-    step: dict[str, Any] = {"id": step_id, "run": target["run"]}
-    for key in ("timeout", "when", "env"):
-        if key in target:
-            step[key] = target[key]
+def _normalize_mapping_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
+    # `- lint: {run: "ruff check ."}` / `- ask: {input: {from: triage}}` -- a one-key mapping
+    # whose value is itself a mapping carrying `run` or `input`. The step's own keys live inside
+    # *target*, not beside the id (unlike a role/agent short step), and pass through to the
+    # canonical step unchanged, so the step model rejects any it does not define.
+    step: dict[str, Any] = {"id": step_id}
+    for key, value in target.items():
+        step["on" if key is True else key] = value
     return step
 
 
-def _normalize_input_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
-    # `- ask: {input: {from: triage}}` -- a one-key mapping whose value is itself a
-    # mapping carrying `input`. Like command steps, its sugar lives inside *target*.
-    step: dict[str, Any] = {"id": step_id, "input": target["input"]}
-    on = _get_on(target)
-    if on is not _NO_ON:
-        step["on"] = on
-    return step
+def _normalize_parallel_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
+    # `- reviews: {parallel: [{review-code: reviewer}, {review-risk: critic}]}` -- a group
+    # whose children are short unit steps; the group itself carries nothing else.
+    children = target["parallel"]
+    if not isinstance(children, list) or not children:
+        raise _ShortFormError(f"step {step_id!r}: 'parallel' must be a non-empty list of steps")
+    if set(target) != {"parallel"}:
+        raise _ShortFormError(
+            f"step {step_id!r}: a parallel group carries only 'parallel'; its children carry the "
+            "hop fields"
+        )
+    seen_children: list[str] = []
+    normalized = []
+    for child in children:
+        if not isinstance(child, dict):
+            raise _ShortFormError(f"step {step_id!r}: a parallel child must be a mapping")
+        if "id" in child:
+            raise CanonicalStepError(_canonical_step_message(child["id"]))
+        unit = _normalize_short_step(child, seen_children)
+        seen_children.append(str(unit["id"]))
+        normalized.append(unit)
+    return {"id": step_id, "parallel": normalized}
+
+
+def _canonical_step_message(step_id: Any) -> str:
+    return (
+        f"step {step_id!r} is written in the canonical form (an 'id:' key); write the id as the "
+        f"key: '- {step_id}: <role>', '- {step_id}: {{run: ...}}', '- {step_id}: {{input: ...}}' "
+        f"or '- {step_id}: {{parallel: [...]}}'"
+    )
 
 
 def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any]:
     id_keys = [k for k in entry if k not in _STEP_SUGAR_KEYS and k is not True]
     if len(id_keys) != 1:
-        return entry
+        raise _ShortFormError(
+            f"a step needs exactly one key that is not a sugar key, the step id "
+            f"(got {', '.join(repr(k) for k in id_keys) or 'none'}); write '- <id>: <role>'"
+        )
     step_id: str = id_keys[0]
     target = entry[step_id]
-    if isinstance(target, dict) and "run" in target:
-        return _normalize_command_short_step(step_id, target)
-    if isinstance(target, dict) and "input" in target:
-        return _normalize_input_short_step(step_id, target)
+    if isinstance(target, dict) and "parallel" in target:
+        return _normalize_parallel_short_step(step_id, target)
+    if isinstance(target, dict) and ("run" in target or "input" in target):
+        return _normalize_mapping_short_step(step_id, target)
     if not isinstance(target, str):
-        return entry
+        raise _ShortFormError(
+            f"step {step_id!r}: expected a role or agent name, or a mapping carrying "
+            "'run', 'input' or 'parallel'"
+        )
     step: dict[str, Any] = {"id": step_id}
     _assign_target(step, target)
-    for key in ("instructions", "timeout", "retries", "model"):
+    for key in ("instructions", "timeout", "retries", "model", "archetype", "when"):
         if key in entry:
             step[key] = entry[key]
     gate, on = _build_gate(step_id, entry, seen_ids)
@@ -215,39 +262,20 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
     return step
 
 
-def _fix_on_key(entry: dict[Any, Any]) -> dict[Any, Any]:
-    """A canonical step's bare ``on:`` key parses as the boolean ``True`` (the same
-    quirk short-form ``on:`` sugar already works around); restore it to ``"on"``."""
-    if True in entry and "on" not in entry:
-        entry = dict(entry)
-        entry["on"] = entry.pop(True)
-    return entry
-
-
 def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
     if not isinstance(entry, dict):
         return entry
     if "id" in entry:
-        if isinstance(entry["id"], str):
-            seen_ids.append(entry["id"])
-        fixed = _fix_on_key(entry)
-        children = fixed.get("parallel")
-        if isinstance(children, list):
-            fixed = {
-                **fixed,
-                "parallel": [_fix_on_key(c) if isinstance(c, dict) else c for c in children],
-            }
-        return fixed
+        raise CanonicalStepError(_canonical_step_message(entry["id"]))
     normalized = _normalize_short_step(entry, seen_ids)
-    if isinstance(normalized.get("id"), str):
-        seen_ids.append(normalized["id"])
+    seen_ids.append(str(normalized["id"]))
     return normalized
 
 
 def normalize_pipeline(doc: dict[str, Any]) -> dict[str, Any]:
-    """Expand the short-form sugar in *doc* into the canonical mapping
-    :class:`PipelineSpec` already validates; a document with none is returned
-    unchanged. Pure -- never mutates *doc*, never touches the filesystem."""
+    """Expand the short-form steps of *doc* into the in-memory canonical mapping
+    :class:`PipelineSpec` validates; a step written in the canonical form (an ``id:`` key) is
+    refused. Pure -- never mutates *doc*, never touches the filesystem."""
     doc = dict(doc)
     steps = doc.get("steps")
     if isinstance(steps, list):

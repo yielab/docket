@@ -24,23 +24,17 @@ def _errors(text: str) -> str:
 @pytest.mark.parametrize(
     ("gate", "needle"),
     [
-        ("{type: external, command: '  '}", "command"),
-        ("{type: external}", "command"),
-        ("{external: 'v.sh', timeout: 3}", "external"),
-        (
-            "{type: external, command: v.sh, exitMap: {pass: [0], fail: [0], needs_human: [2]}}",
-            "exitMap",
-        ),
-        (
-            "{type: external, command: v.sh, exitMap: {pass: [], fail: [1], needs_human: [2]}}",
-            "exitMap",
-        ),
-        ("{type: external, command: v.sh, exitMap: {pass: [0], fail: [1], bogus: [2]}}", "exitMap"),
-        ("{type: external, command: v.sh, timeout: 0}", "timeout"),
+        ("{external: '  '}", "command"),
+        ("{timeout: 3}", "external"),
+        ("{external: v.sh, retries: 3}", "external"),
+        ("{external: v.sh, exitMap: {pass: [0], fail: [0], needs_human: [2]}}", "exitMap"),
+        ("{external: v.sh, exitMap: {pass: [], fail: [1], needs_human: [2]}}", "exitMap"),
+        ("{external: v.sh, exitMap: {pass: [0], fail: [1], bogus: [2]}}", "exitMap"),
+        ("{external: v.sh, timeout: 0}", "timeout"),
     ],
 )
 def test_invalid_external_gate_is_a_validation_error(gate: str, needle: str) -> None:
-    text = f"name: g\nsteps:\n  - id: build\n    role: implementer\n    gate: {gate}\n"
+    text = f"name: g\nsteps:\n  - build: implementer\n    gate: {gate}\n"
     assert needle in _errors(text)
 
 
@@ -48,8 +42,7 @@ def test_on_keys_are_checked_for_an_external_gated_step() -> None:
     text = """\
 name: g
 steps:
-  - id: build
-    role: implementer
+  - build: implementer
     gate: {external: v.sh}
     on:
       APPROVE: fail
@@ -61,7 +54,7 @@ steps:
 
 def test_on_keys_are_case_insensitive_for_an_external_gate() -> None:
     spec = _load(
-        "name: g\nsteps:\n  - id: build\n    role: implementer\n    gate: {external: v.sh}\n"
+        "name: g\nsteps:\n  - build: implementer\n    gate: {external: v.sh}\n"
         "    on:\n      FAIL: stop\n      Needs_Human: stop\n      ERROR: stop\n"
     )
     assert spec.steps[0].on is not None
@@ -84,12 +77,10 @@ def test_a_step_after_a_fully_routed_external_gate_is_unreachable() -> None:
     text = """\
 name: g
 steps:
-  - id: build
-    role: implementer
+  - build: implementer
     gate: {external: v.sh}
     on: {pass: stop, fail: stop}
-  - id: after
-    role: reviewer
+  - after: reviewer
 """
     assert "not reachable" in _errors(text)
 
@@ -97,7 +88,7 @@ steps:
 def test_a_short_form_input_step_keeps_an_unquoted_on_map() -> None:
     # YAML reads a bare `on:` key as the boolean True; the input short form must still route.
     spec = _load(
-        "name: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "name: p\nsteps:\n  - build: implementer\n"
         "    gate: {external: verify}\n    on: {pass: stop, needs_human: ask}\n"
         "  - ask:\n      input: {from: build}\n      on: {answered: {goto: build, max: 1}}\n"
     )
@@ -108,9 +99,9 @@ def test_a_short_form_input_step_keeps_an_unquoted_on_map() -> None:
 def test_routing_a_label_to_the_next_input_step_requires_routing_pass() -> None:
     # Without `pass:`, a passing gate takes the default edge into the input step and parks again.
     body = (
-        "name: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "name: p\nsteps:\n  - build: implementer\n"
         "    gate: {external: verify}\n    on: {needs_human: ask}\n"
-        "  - id: ask\n    input: {from: build}\n    on: {answered: {goto: build, max: 1}}\n"
+        "  - ask:\n      input: {from: build}\n      on: {answered: {goto: build, max: 1}}\n"
     )
     errors = _errors(body)
     assert "build" in errors and "pass" in errors and "ask" in errors
@@ -118,9 +109,9 @@ def test_routing_a_label_to_the_next_input_step_requires_routing_pass() -> None:
 
 def test_routing_pass_explicitly_satisfies_the_input_step_rule() -> None:
     _load(
-        "name: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "name: p\nsteps:\n  - build: implementer\n"
         "    gate: {external: verify}\n    on: {pass: stop, needs_human: ask}\n"
-        "  - id: ask\n    input: {from: build}\n    on: {answered: {goto: build, max: 1}}\n"
+        "  - ask:\n      input: {from: build}\n      on: {answered: {goto: build, max: 1}}\n"
     )
 
 

@@ -158,18 +158,23 @@ class TestGitGlobalOptionsBeforePush:
         assert verdict.action == "ask", command
         assert verdict.risk_class == "prod-deploy"
 
-    def test_the_shipped_policy_matches_the_same_shapes(self) -> None:
-        import re
+    def test_the_shipped_policy_matches_the_same_shapes(self, tmp_path: Path) -> None:
+        from docket.governance import policy as _policy
+        from docket.kernel.home import Home, use_home
 
-        import yaml
+        def action(command: str) -> str:
+            args = {"command": command}
+            call = _policy.ToolCallFacts("bash", args, lambda: "")
+            return _policy.policy_eval_detail(
+                "implementer", "pre_tool_call", f"bash command={command!r}", call=call
+            ).action
 
-        doc = yaml.safe_load(
-            (REPO_ROOT / "src/docket/templates/policies/high-risk-deploy.yaml").read_text()
-        )
-        pattern = re.compile(doc["when"]["matches"])
-        for command in ("git -c x=y push origin main", "git --no-pager push origin main"):
-            assert pattern.search(command), command
-        assert not pattern.search("git push origin feature/x")
+        with use_home(Home(tmp_path / ".docket")):
+            _policy.install_policies()
+
+            for command in ("git -c x=y push origin main", "git --no-pager push origin main"):
+                assert action(command) == "require_approval", command
+            assert action("git push origin feature/x") == "allow"
 
 
 class TestRedirectsIntoTheWorkspace:

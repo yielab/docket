@@ -51,12 +51,13 @@ def _write_pre_tool_call_policy(
 
     current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
-        "id": policy_id,
+        "kind": "policy",
+        "name": policy_id,
         "description": f"test policy {policy_id}",
-        "applies_to": ["*"],
-        "hook": "pre_tool_call",
-        "match": {"type": "regex", "pattern": pattern},
-        "action": action,
+        "appliesTo": ["*"],
+        "on": "toolCall",
+        "when": {"matches": pattern},
+        "then": action,
         "message": message,
     }
     (current_home().policies_dir / f"{policy_id}.json").write_text(
@@ -69,12 +70,13 @@ def _write_pre_input_policy(policy_id: str, pattern: str, action: str) -> None:
 
     current_home().policies_dir.mkdir(parents=True, exist_ok=True)
     doc = {
-        "id": policy_id,
+        "kind": "policy",
+        "name": policy_id,
         "description": f"test policy {policy_id}",
-        "applies_to": ["*"],
-        "hook": "pre_input",
-        "match": {"type": "regex", "pattern": pattern},
-        "action": action,
+        "appliesTo": ["*"],
+        "on": "input",
+        "when": {"matches": pattern},
+        "then": action,
         "message": "flagged",
     }
     (current_home().policies_dir / f"{policy_id}.json").write_text(

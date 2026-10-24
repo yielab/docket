@@ -41,6 +41,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.pods import GATED_IMPLEMENTER_PIPELINE_YAML
 from tests.support.pods import write_meta as _write_meta
 from tests.support.trace import trace_events as _trace_events
 from typer.testing import CliRunner
@@ -62,7 +63,6 @@ from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.pipeline.domain import gates as _gates
-from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
@@ -79,16 +79,7 @@ SUBJECT = "docket.hops.application.sweep"
 
 def _bind_gated_implementer(project: str) -> None:
     """Bind a pod pipeline that is the default one with an ``approval`` gate on the Implementer."""
-    spec = _pipeline.default_pipeline()
-    steps = [
-        step.model_copy(update={"gate": _gates.ApprovalGate()})
-        if step.role == "implementer"
-        else step
-        for step in spec.steps
-    ]
-    text = json.dumps(
-        spec.model_copy(update={"steps": steps}).model_dump(mode="json", by_alias=True)
-    )
+    text = GATED_IMPLEMENTER_PIPELINE_YAML
     path = _pod.bound_pipeline_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

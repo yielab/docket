@@ -109,7 +109,7 @@ class TestJsonOnEveryReviewStop:
         self, tmp_path: Path
     ) -> None:
         code = _repo_with(
-            tmp_path, "pipeline.yaml", "name: p\nsteps:\n  - id: migrate\n    run: sh m.sh\n"
+            tmp_path, "pipeline.yaml", "name: p\nsteps:\n  - migrate:\n      run: sh m.sh\n"
         )
         first = json.loads(runner.invoke(app, ["init", "demo", str(code), "--json"]).stdout)
 

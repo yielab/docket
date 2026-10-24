@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 1.13.0
+**Version**: 2.0.0
 **Status**: Implemented
 **Last Updated**: 2026-10-23
 
@@ -20,9 +20,12 @@ This specification covers:
   `policy`, `pod`, `provider`, `exporter`, `channel`, `mcp-server`) and `name:`;
   `load_document(path)` reads the file, resolves its kind, and dispatches to the existing
   parser for that kind
-- Files with no `kind:` key: a canonical-form file still loads when its location (or the caller)
-  names a kind, with no advisory (it is a current format, not a legacy one); a short-form file
-  without `kind:` is refused
+- One authored form per kind (`role`, `pipeline`, `policy`, `pod`): the short form. A file with a
+  canonical key (a role's `modelClass`, a policy's `applies_to`, a pipeline step's `id:`) is
+  refused naming the short-form key to write; the canonical shape is the in-memory model and the
+  persisted JSON, never an authored file
+- Files with no `kind:` key: such a file still loads when its location (or the caller) names a
+  kind, with no advisory; when neither does, it is refused
 - `ConfigDocError`: the one error shape every kind's validation failure is reported through,
   and its `<file>:<line> <field>: <message> (valid: ...; did you mean "...")` rendering
 - `docket pod validate [dir|file]`: validates every document under a directory (or one file),
@@ -49,8 +52,7 @@ This specification does NOT cover:
   a generated, pinned artifact for external editors/validators, never consulted by
   `load_document` itself
 - A published JSON Schema or short-form sugar for `provider`: it has neither
-- Refusing a kind-less canonical file: nothing refuses to load one whose kind a location or the
-  caller names
+- Refusing a kind-less file whose location or caller names its kind: nothing does
 - Re-implementing any parser's own structural rules (required fields, closed enums, etc.):
   those stay with the parser that owns them; this spec only covers how a document's kind is
   resolved and how a failure from any of them is reported uniformly
@@ -119,23 +121,28 @@ This specification does NOT cover:
 
 ### Files without `kind:`
 
-1. A canonical-form document with no top-level `kind:` key **MUST** still load. `load_document`
+1. A document with no top-level `kind:` key **MUST** still load. `load_document`
    **MUST** resolve its kind first from location (a file directly under a `roles/`, `policies/`,
    `mcp-servers/` or `pipelines/` directory, or named `pipeline.yaml`/`pipeline.yml` or
    `pod.yaml`/`pod.yml`) and only then from the caller's own `kind=` argument, when location
-   does not resolve one. For a canonical role file, `Document.doc` **MUST** equal the mapping
-   that parsing the file as YAML yields. A canonical document that fails its kind's parser
-   **MUST** report that parser's own error.
+   does not resolve one. A document that fails its kind's parser **MUST** report that parser's own
+   error, refined by the kind's model (requirement 3 of "Published schemas").
 2. Neither location nor a caller-stated kind resolving one **MUST** raise `ConfigDocError`
    (field `kind`) naming every value in `KINDS`: an unresolvable file is treated the same as an
    unknown-kind one.
 3. `docket pod validate` **MUST** report a document loaded this way exactly as it reports one that
    declares its kind: the success line only, no advisory.
-4. A short-form document (one `_is_short_form` recognises: a role carrying `cannot`, `verdict`,
-   `verify`, `approval`, `instructions` or `model`; a policy carrying `appliesTo`, `on`, `when`
-   or `then`; every pod manifest) with no `kind:` key **MUST** raise `ConfigDocError` (field
-   `kind`) naming every value in `KINDS`, before its kind's parser runs. A missing `kind:` is
-   never reported as a failure of the short-form model.
+4. A role or policy document carrying a canonical key (a role's `modelClass`, `deniedTools`,
+   `gateContract`, `soulTemplate`, `agentsTemplate`; a policy's `id`, `applies_to`, `hook`,
+   `action`, `match`) **MUST** raise `ConfigDocError` with the message
+   `roles.canonical_key_refusal` / `policy.canonical_key_refusal` renders, before its kind's parser
+   runs and without model refinement, so the message names the short-form key to write. A
+   pipeline step written with an `id:` key is refused the same way by `load_pipeline`
+   (`PipelineLoadResult.canonical`). The error is a `CanonicalFormError`
+   (`kernel.errors.CanonicalFormRefused`): a command that applies or runs the file refuses it as
+   written and exits 2 -- `docket pod update <file|dir>` and `docket init`, `docket run
+   --pipeline`, `docket pod set pipeline` -- while `docket pod validate` reports it like any
+   invalid file (exit 1, "`docket pod validate`").
 
 ### `ConfigDocError`
 
@@ -193,18 +200,13 @@ This specification does NOT cover:
    (`https://docket.dev/schemas/config-v1/<kind>.schema.json`) and `title`, and write a
    byte-identical copy of each to the schemas directory shipped inside the installed package.
    `--check` **MUST** exit `1` when any of the fourteen files is stale.
-3. When a short-form document fails its kind's real parser (the role loader, `load_pipeline`,
+3. When a document fails its kind's real parser (the role loader, `load_pipeline`,
    `validate_policy`, the pod manifest key check), `load_document` **MUST** attempt
    `model_validate` against that kind's model before raising; on a `pydantic.ValidationError`,
    the raised `ConfigDocError`'s `field` and, for a closed-vocabulary field, `valid` **MUST**
-   come from the model's own error instead of the parser's plain message. A document that does
-   not unambiguously look like the short form (a canonical document sharing the same
-   `kind:`/`name:` envelope) **MUST NOT** be checked against the model: its `extra="forbid"`
-   would otherwise reject every canonical-only field (`modelClass`, `hook`, ...) as unknown
-   instead of surfacing the real error. A role looks short-form when it has any of `cannot`,
-   `verdict`, `verify`, `approval`, `instructions`, `model`; a policy when it has any of
-   `appliesTo`, `on`, `when`, `then`; a pipeline when it declares `kind`; a pod manifest
-   always; `exporter`, `channel` and `mcp-server` never.
+   come from the model's own error instead of the parser's plain message. There is no form to
+   guess: every authored `role`, `pipeline`, `policy` and `pod` document is its short form; `exporter`,
+   `channel` and `mcp-server` are never refined by a model.
 4. These schemas are a generated, pinned artifact for external editors and validators, not a
    second validation path: `docket pod validate`/`load_document` **MUST** continue to dispatch to
    each kind's own parser as the sole authority for whether a document is valid.
@@ -308,7 +310,7 @@ ok .docket/roles/good.yaml (role security-vetter)
   roles 2 · policies 0 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0
 ```
 
-### A canonical role file with no `kind:` loads without a note
+### A role file with no `kind:` under `roles/` loads without a note
 
 ```bash
 $ docket pod validate .docket/roles/custom.yaml
@@ -337,8 +339,7 @@ ok .docket/roles/custom.yaml (role custom)
 
 - `src/docket/teams/config_docs.py`: `KINDS`, `Document`, `ConfigDocError`, `PathResult`,
   `load_document`, `discover_config_paths`, `validate_directory`, `validate_path`, the four
-  short-form models, the kind-to-model table, the short-form check and the location-to-kind
-  table
+  short-form models, the kind-to-model table and the location-to-kind table
 - `src/docket/teams/apply/plan.py`: the pod manifest key set (`_MANIFEST_KEYS`), `export_pod` and
   its schema headers and `.schemas/` copy, `plan_apply`, `repo_config_dir`
 - `src/docket/teams/roles.py`: `load_role_file`, `from_wire`

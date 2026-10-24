@@ -149,6 +149,18 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"(?<![A-Za-z0-9])(?:sk-ant-|sk-proj-|sk-|ghp_|gho_|ghs_|xox[abp]-)[A-Za-z0-9_\-]{20,}"
     ),
     re.compile(r"(?<![A-Za-z0-9])\d{8,10}:[A-Za-z0-9_\-]{35}(?![A-Za-z0-9_\-])"),
+    # More fixed secret shapes: GitHub fine-grained and OAuth/user/refresh tokens, AWS access key
+    # ids, a variable named for a password, a JWT, a PEM private key block and an Authorization
+    # header's credential.
+    re.compile(r"(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{22,255}"),
+    re.compile(r"(?<![A-Za-z0-9])gh[ur]_[A-Za-z0-9]{36,255}"),
+    re.compile(r"(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Za-z0-9])"),
+    re.compile(r"[A-Z][A-Z0-9_]{0,40}PASSWORD\s*[=:]\s*\S+", re.IGNORECASE),
+    re.compile(r"eyJ[A-Za-z0-9_\-]{5,512}\.eyJ[A-Za-z0-9_\-]{5,512}\.[A-Za-z0-9_\-]{5,512}"),
+    re.compile(
+        r"-----BEGIN [A-Z ]{0,30}PRIVATE KEY-----(?:[\s\S]{0,8192}?-----END [A-Z ]{0,30}PRIVATE KEY-----)?"
+    ),
+    re.compile(r"\bAuthorization\s*:\s*(?:Bearer|Basic|Token)\s+\S{8,512}", re.IGNORECASE),
     re.compile(r"[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]{1,255}\.[a-zA-Z]{2,24}", re.IGNORECASE),
 )
 

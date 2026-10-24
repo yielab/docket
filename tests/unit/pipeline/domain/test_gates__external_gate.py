@@ -14,19 +14,18 @@ SUBJECT = "docket.pipeline.domain.gates"
 _SHORT = """\
 name: gated
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
   - build: implementer
     gate: {external: "verify.sh --strict"}
     on:
       pass: stop
       fail: {goto: build, max: 2}
       needs_human: ask
-  - id: ask
-    input: {from: build}
-    on:
-      answered: {goto: build, max: 1}
-      declined: fail
+  - ask:
+      input: {from: build}
+      on:
+        answered: {goto: build, max: 1}
+        declined: fail
 """
 
 
@@ -44,23 +43,19 @@ def test_short_form_builds_the_canonical_gate() -> None:
     assert gate.command == "verify.sh --strict"
 
 
-def test_short_form_in_a_canonical_step() -> None:
-    spec = _load(
-        "name: g\nsteps:\n  - id: build\n    role: implementer\n    gate: {external: 'v.sh'}\n"
-    )
+def test_short_form_after_a_short_step() -> None:
+    spec = _load("name: g\nsteps:\n  - build: implementer\n    gate: {external: 'v.sh'}\n")
     assert isinstance(spec.steps[0].gate, _gates.ExternalGate)
 
 
-def test_canonical_form_with_exit_map_and_timeout() -> None:
+def test_short_form_with_exit_map_and_timeout() -> None:
     spec = _load(
         """\
 name: g
 steps:
-  - id: build
-    role: implementer
+  - build: implementer
     gate:
-      type: external
-      command: v.sh
+      external: v.sh
       timeout: 30
       exitMap: {pass: [0, 3], fail: [1], needs_human: [2, 4]}
 """

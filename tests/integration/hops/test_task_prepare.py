@@ -81,9 +81,7 @@ def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
-        _bind_pipeline(
-            "name: two\nsteps:\n  - id: lead\n    role: lead\n  - id: implementer\n    role: implementer\n"
-        )
+        _bind_pipeline("name: two\nsteps:\n  - lead: lead\n  - implementer: implementer\n")
         yield
 
 

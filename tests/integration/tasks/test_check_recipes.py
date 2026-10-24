@@ -51,7 +51,12 @@ def _anti_tautology_with_this_interpreter() -> str:
 
 def _run_command(recipe: str) -> str:
     steps = yaml.safe_load(_pipeline_text(recipe))["steps"]
-    (command,) = [s["run"] for s in steps if "run" in s]
+    (command,) = [
+        body["run"]
+        for s in steps
+        for body in s.values()
+        if isinstance(body, dict) and "run" in body
+    ]
     assert command
     return command
 

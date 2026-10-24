@@ -26,6 +26,11 @@ class InvalidInput(DocketError, ValueError):
     """The caller supplied something that cannot be accepted; fixing the input fixes it."""
 
 
+class CanonicalFormRefused(InvalidInput):
+    """An authored document is written in the canonical shape instead of its one short form; the
+    message names the short-form key to write, and a command exits 2 (refused as written)."""
+
+
 class NotFound(DocketError, LookupError):
     """The thing asked about does not exist."""
 

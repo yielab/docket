@@ -15,7 +15,6 @@ from tests.support.roles import write_vetter_overlay
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams.role_schema import (
     ArchetypeError,
-    from_wire,
 )
 from docket.teams.roles import find_overlay_problems
 
@@ -83,20 +82,28 @@ _SECURITY_VETTER_SHORT: dict[str, object] = {
 
 
 class TestLoadRoleFile:
-    """`kind: role` names a document's kind, not its form: a canonical document keeps its
-    canonical fields, and a document mixing both forms is refused naming the clash."""
+    """A role file is read in the short form only: a canonical key is refused naming the
+    short-form key to write instead, with or without short-form keys beside it."""
 
-    def test_canonical_document_with_kind_role_passes_through(self, tmp_path: Path) -> None:
+    def test_a_canonical_document_is_refused_naming_each_short_form_key(
+        self, tmp_path: Path
+    ) -> None:
         from docket.teams import roles as _arch
 
         path = tmp_path / "security-vetter.yaml"
         path.write_text(json.dumps({"kind": "role", **_SECURITY_VETTER_LONG}), encoding="utf-8")
 
-        loaded = _arch.load_role_file(str(path))
+        with pytest.raises(ArchetypeError) as exc_info:
+            _arch.load_role_file(str(path))
 
-        assert from_wire("security-vetter", loaded) == from_wire(
-            "security-vetter", _SECURITY_VETTER_LONG
-        )
+        message = str(exc_info.value)
+        for canonical, short in (
+            ("modelClass", "model"),
+            ("deniedTools", "cannot"),
+            ("gateContract", "verdict, verify or approval"),
+            ("soulTemplate", "instructions"),
+        ):
+            assert f"replace `{canonical}` with `{short}" in message
 
     def test_mixed_short_and_canonical_keys_are_refused(self, tmp_path: Path) -> None:
         from docket.teams import roles as _arch

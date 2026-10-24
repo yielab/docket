@@ -88,6 +88,37 @@ def test_every_previously_redacted_shape_still_redacts(text: str, leaked: str) -
     assert leaked not in out
 
 
+@pytest.mark.parametrize(
+    ("text", "leaked"),
+    [
+        ("ghp_abcdefghijklmnopqrstuvwxyz0123456789", "abcdefghijklmnopqrstuvwxyz0123456789"),
+        ("github_pat_11ABCDEFG0123456789_abcdefghijklmnop", "11ABCDEFG0123456789"),
+        ("key id AKIAIOSFODNN7EXAMPLE here", "AKIAIOSFODNN7EXAMPLE"),
+        ("DB_PASSWORD=hunter2hunter2", "hunter2hunter2"),
+        (
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r",
+            "eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+        ),
+        (
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEvQIBADAN\n-----END RSA PRIVATE KEY-----",
+            "MIIEvQIBADAN",
+        ),
+        ("-----BEGIN PRIVATE KEY-----\nMIIEvQIBADAN, never closed", "-----BEGIN PRIVATE KEY"),
+        ("Authorization: Bearer abc.def-ghi_jkl", "abc.def-ghi_jkl"),
+    ],
+)
+def test_the_fixed_secret_shapes_are_masked(text: str, leaked: str) -> None:
+    out = secrets.redact(text)
+
+    assert "[REDACTED]" in out
+    assert leaked not in out
+
+
+def test_prose_that_only_mentions_the_words_is_left_alone() -> None:
+    for text in ("reset the password policy", "an AKIA prefix is 4 letters", "Bearer of bad news"):
+        assert secrets.redact(text) == text
+
+
 def test_short_value_and_plain_text_are_left_alone() -> None:
     assert secrets.redact("value abc123 here") == "value abc123 here"
     assert secrets.redact('{"action": "edit"}') == '{"action": "edit"}'

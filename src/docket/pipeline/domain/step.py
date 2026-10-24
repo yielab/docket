@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from docket.kernel.errors import InvalidInput
 from docket.kernel.ports import jail as _jail
@@ -130,16 +130,6 @@ class Step(BaseModel):
     # one of the literal strings "fail" | "stop" | "<step id>" (a bare forward
     # target). See specs/functional/pipeline-format.spec.md ("Outcome routing").
     on: dict[str, Any] | None = None
-
-    @field_validator("gate", mode="before")
-    @classmethod
-    def _external_sugar(cls, value: Any) -> Any:
-        """``gate: {external: CMD}`` is the short spelling of ``{type: external, command: CMD}``."""
-        if isinstance(value, dict) and "external" in value:
-            if set(value) != {"external"}:
-                raise InvalidInput("'gate: {external: CMD}' takes no other key")
-            return {"type": "external", "command": value["external"]}
-        return value
 
     @model_validator(mode="after")
     def _check_shape(self) -> Step:

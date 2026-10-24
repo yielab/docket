@@ -23,12 +23,7 @@ from docket.teams import fleet as _fleet
 SUBJECT = "docket.tasks.application.queue"
 
 _NOTE = "NOTE-SENTENCE-7731 the finding the critic must see"
-_PIPELINE = (
-    "name: research-then-critic\n"
-    "steps:\n"
-    "  - id: researcher\n    role: researcher\n"
-    "  - id: critic\n    role: critic\n"
-)
+_PIPELINE = "name: research-then-critic\nsteps:\n  - researcher: researcher\n  - critic: critic\n"
 
 
 def _git(repo: Path, *args: str) -> None:

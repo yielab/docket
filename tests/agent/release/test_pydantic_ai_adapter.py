@@ -113,11 +113,12 @@ def _scenario_source(scenario: GovernanceScenario, *, parity: bool = False) -> s
         policies = home / "policies"
         policies.mkdir(parents=True, exist_ok=True)
         (policies / "scenario.json").write_text(json.dumps({{
-            "id": "pydantic-{scenario.name}",
-            "applies_to": ["*"],
-            "hook": "pre_tool_call",
-            "match": {{"type": "regex", "pattern": {policy_match!r}}},
-            "action": {"block" if scenario.policy == "block" else "require_approval"!r},
+            "kind": "policy",
+            "name": "pydantic-{scenario.name}",
+            "appliesTo": ["*"],
+            "on": "toolCall",
+            "when": {{"matches": {policy_match!r}}},
+            "then": {"block" if scenario.policy == "block" else "ask"!r},
             "message": "fixture {scenario.name}",
         }}), encoding="utf-8")
         """

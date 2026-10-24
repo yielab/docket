@@ -574,11 +574,12 @@ class TestPodScopeWiring:
         (pod_policies / "no-uname.json").write_text(
             json.dumps(
                 {
-                    "id": "shop-no-uname",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
-                    "match": {"type": "regex", "pattern": "uname"},
-                    "action": "block",
+                    "kind": "policy",
+                    "name": "shop-no-uname",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
+                    "when": {"matches": "uname"},
+                    "then": "block",
                     "message": "shop forbids uname",
                 }
             )

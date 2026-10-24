@@ -306,12 +306,13 @@ class TestGatedExactlyLikeABuiltin:
         """A `pre_tool_call` policy denies a fetch call before the handler ever runs -- proof `fetch` runs through the existing gate (`evaluate_tool_call`) rather than around it."""
         current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         doc = {
-            "id": "no-fetch-test",
+            "kind": "policy",
+            "name": "no-fetch-test",
             "description": "test-only policy",
-            "applies_to": ["*"],
-            "hook": "pre_tool_call",
-            "match": {"type": "regex", "pattern": r"^fetch\b"},
-            "action": "block",
+            "appliesTo": ["*"],
+            "on": "toolCall",
+            "when": {"matches": r"^fetch\b"},
+            "then": "block",
             "message": "fetch disabled by policy",
         }
         (current_home().policies_dir / "no-fetch-test.json").write_text(

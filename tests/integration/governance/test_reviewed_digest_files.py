@@ -85,8 +85,7 @@ def test_pod_update_asks_again_after_the_script_its_pipeline_runs_changes(repo: 
     config = repo / ".docket"
     config.mkdir()
     (config / "pipeline.yaml").write_text(
-        "name: p\nsteps:\n  - id: lead\n    role: lead\n  - id: check\n"
-        "    run: bash scripts/check.sh\n"
+        "name: p\nsteps:\n  - lead: lead\n  - check:\n      run: bash scripts/check.sh\n"
     )
     review = _review.classify_directory(config)
     assert [i.runs for i in review.runs] == ["bash scripts/check.sh"]

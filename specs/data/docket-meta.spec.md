@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 5.2.0
+**Version**: 5.3.0
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
 **Last Updated**: 2026-10-23
@@ -97,7 +97,7 @@ listed. Each write is audited (`pod.config`).
 | Key | Stored as | Default | Constraints and meaning |
 |-----|-----------|---------|-------------------------|
 | `budgetUsd` | number | `0` (no cap) | At least 0. A positive cap pauses the pod when the estimate reaches it (`paused`). Setting or unsetting it re-queues the pod's blocked tasks and clears `paused` and `pausedReason` |
-| `maxReworkCycles` | integer | `1` | At least 0. Bounded rework for a Reviewer's REQUEST-CHANGES verdict: `1` allows exactly one rework cycle before a second REQUEST-CHANGES fails the task, `0` disables rework |
+| `maxReworkCycles` | integer | `1` | At least 0. Bounded rework for a Reviewer's REQUEST-CHANGES verdict: `1` allows exactly one rework cycle before a second REQUEST-CHANGES fails the task, `0` disables rework. Has no effect on a bound pipeline, which bounds its own rework with `on:`; `docket pod set` and `pod.yaml` refuse it beside one |
 | `turnTimeoutS` | integer | none | Above 0. Pod-wide agent-turn timeout in seconds. Unset falls back to the global default (or a serve-wide knob); `docket run --timeout` overrides it |
 | `verifyTimeoutS` | integer | none | Above 0. Pod-wide `verifyCmd` timeout in seconds, independent of `turnTimeoutS`; same fallback and override rules |
 | `approvalMode` | string | `wait` | `wait`, `park` or `refuse`: whether an unattended hop that needs approval waits, parks durably, or is refused at once. Whether the key is present at all (not its value) decides which caller-scoped default applies |

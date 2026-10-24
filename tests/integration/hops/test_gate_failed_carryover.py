@@ -36,8 +36,7 @@ MARKER = "zz-unique-gate-marker-4417"
 _UNTIL_YAML = """\
 name: retry
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
   - build: implementer
     verify: true
     until: verify

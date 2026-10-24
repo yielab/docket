@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-10-23
 
@@ -306,7 +306,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
     }
   ],
   "settings": {
-    "<pod setting key>": { "value": "the effective value", "source": "\"set\" | \"default\"" }
+    "<pod setting key>": { "value": "the effective value", "source": "\"set\" | \"default\" (maxReworkCycles with a bound pipeline: \"pipeline\", value \"<step>:<max>,...\" or \"none\")" }
   },
   "approvalMode": {
     "effective": "wait | park | refuse (what dispatch uses for this caller)",

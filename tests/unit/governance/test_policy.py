@@ -90,8 +90,20 @@ _HEREDOC = (
 )
 
 
+def _bash_action(command: str) -> str:
+    """What the baseline policies answer a ``bash`` call carrying *command*."""
+    args = {"command": command}
+    call = _policy.ToolCallFacts("bash", args, lambda: "")
+    return _policy.policy_eval_detail(
+        "implementer", "pre_tool_call", render_tool_call("bash", args), call=call
+    ).action
+
+
 def _bd_hit(policies_dir: Path, tool: str, args: dict[str, str]) -> bool:
-    hit = _policy.policy_eval_detail("implementer", "pre_tool_call", render_tool_call(tool, args))
+    call = _policy.ToolCallFacts(tool, args, lambda: "")
+    hit = _policy.policy_eval_detail(
+        "implementer", "pre_tool_call", render_tool_call(tool, args), call=call
+    )
     return hit.policy_id == "block-destructive"
 
 
@@ -133,41 +145,29 @@ class TestBlockDestructiveTargets:
 class TestHighRiskDeploy:
     def test_git_push_main_requires_approval(self, policies_dir: Path) -> None:
         # 'git' is in SAFE_BINS (exec allowlist) — policy still fires.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin main"
-        ).action
+        action = _bash_action("git push origin main")
         assert action == "require_approval"
 
     def test_git_push_production_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin production"
-        ).action
+        action = _bash_action("git push origin production")
         assert action == "require_approval"
 
     def test_npm_publish_requires_approval(self, policies_dir: Path) -> None:
         # 'npm' is in SAFE_BINS — policy still fires.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "npm publish --access public"
-        ).action
+        action = _bash_action("npm publish --access public")
         assert action == "require_approval"
 
     def test_terraform_apply_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "terraform apply -auto-approve"
-        ).action
+        action = _bash_action("terraform apply -auto-approve")
         assert action == "require_approval"
 
     def test_helm_upgrade_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "helm upgrade my-chart ./chart --namespace prod"
-        ).action
+        action = _bash_action("helm upgrade my-chart ./chart --namespace prod")
         assert action == "require_approval"
 
     def test_git_push_feature_branch_not_gated(self, policies_dir: Path) -> None:
         # Pushing to a feature branch is not high-risk.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin feature/my-feature"
-        ).action
+        action = _bash_action("git push origin feature/my-feature")
         assert action != "require_approval"
 
     def test_allowlisted_bin_still_gated_by_high_risk(self, policies_dir: Path) -> None:
@@ -175,12 +175,8 @@ class TestHighRiskDeploy:
         # high-risk-deploy policy must override the allowlist.
         assert "git" in _sec.SAFE_BINS
         assert "npm" in _sec.SAFE_BINS
-        git_action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin master"
-        ).action
-        npm_action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "npm publish"
-        ).action
+        git_action = _bash_action("git push origin master")
+        npm_action = _bash_action("npm publish")
         assert git_action == "require_approval", "git (allowlisted) must still gate on prod push"
         assert npm_action == "require_approval", "npm (allowlisted) must still gate on publish"
 
@@ -190,40 +186,28 @@ class TestHighRiskDeploy:
 
 class TestHighRiskCredentials:
     def test_vault_write_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "vault write secret/myapp api_key=xyz"
-        ).action
+        action = _bash_action("vault write secret/myapp api_key=xyz")
         assert action == "require_approval"
 
     def test_kubectl_create_secret_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "kubectl create secret generic db-creds"
-        ).action
+        action = _bash_action("kubectl create secret generic db-creds")
         assert action == "require_approval"
 
     def test_openssl_genrsa_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "openssl genrsa -out key.pem 4096"
-        ).action
+        action = _bash_action("openssl genrsa -out key.pem 4096")
         assert action == "require_approval"
 
     def test_ssh_keygen_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "ssh-keygen -t ed25519 -C user@example.com"
-        ).action
+        action = _bash_action("ssh-keygen -t ed25519 -C user@example.com")
         assert action == "require_approval"
 
     def test_adduser_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "adduser deployer"
-        ).action
+        action = _bash_action("adduser deployer")
         assert action == "require_approval"
 
     def test_read_secret_not_gated(self, policies_dir: Path) -> None:
         # Reading a secret (vault read) is not a write — not high-risk.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "vault read secret/myapp"
-        ).action
+        action = _bash_action("vault read secret/myapp")
         # No high-risk policy should fire on a read-only vault path.
         assert action != "require_approval"
 
@@ -277,11 +261,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-broken.json",
             {
-                "id": "zz-broken",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make\\s+deploy("},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-broken",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make\\s+deploy("},
+                "then": "block",
                 "message": "no deploys",
             },
         )
@@ -296,11 +281,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-broken.json",
             {
-                "id": "zz-broken",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "("},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-broken",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "("},
+                "then": "block",
             },
         )
         assert (
@@ -321,11 +307,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-typo.json",
             {
-                "id": "zz-typo",
-                "applies_to": ["*"],
-                "hook": "pre_output",
-                "match": {"type": "regex", "pattern": "secret"},
-                "action": "blocc",
+                "kind": "policy",
+                "name": "zz-typo",
+                "appliesTo": ["*"],
+                "on": "output",
+                "when": {"matches": "secret"},
+                "then": "blocc",
             },
         )
         assert (
@@ -337,11 +324,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-empty.json",
             {
-                "id": "zz-empty",
-                "applies_to": ["*"],
-                "hook": "pre_input",
-                "match": {"type": "regex", "pattern": ""},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-empty",
+                "appliesTo": ["*"],
+                "on": "input",
+                "when": {"matches": ""},
+                "then": "block",
             },
         )
         assert _policy.policy_eval_detail("lead", "pre_input", "a task").action == "block"
@@ -352,11 +340,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-scoped.json",
             {
-                "id": "zz-scoped",
-                "applies_to": ["implementer"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "("},
-                "action": "warn",
+                "kind": "policy",
+                "name": "zz-scoped",
+                "appliesTo": ["implementer"],
+                "on": "toolCall",
+                "when": {"matches": "("},
+                "then": "warn",
             },
         )
         assert _policy.policy_eval_detail("implementer", "pre_tool_call", "ls").action == "block"
@@ -375,11 +364,12 @@ class TestValidateCompilesRegex:
             policies_dir,
             "zz-broken.json",
             {
-                "id": "zz-broken",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make\\s+deploy("},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-broken",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make\\s+deploy("},
+                "then": "block",
             },
         )
         err = _policy.validate_policy(f)
@@ -400,11 +390,12 @@ class TestPodPolicies:
             pod_dir,
             "deploy-block.json",
             {
-                "id": "p-deploy-block",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make deploy"},
-                "action": "block",
+                "kind": "policy",
+                "name": "p-deploy-block",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make deploy"},
+                "then": "block",
             },
         )
         assert (
@@ -426,11 +417,12 @@ class TestPodPolicies:
             policies_dir,
             "global-block.json",
             {
-                "id": "global-deploy-block",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make deploy"},
-                "action": "block",
+                "kind": "policy",
+                "name": "global-deploy-block",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make deploy"},
+                "then": "block",
             },
         )
         pod_dir = current_home().pods_dir / "p" / "config" / "policies"
@@ -439,11 +431,12 @@ class TestPodPolicies:
             pod_dir,
             "deploy-allow.json",
             {
-                "id": "p-deploy-allow",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make deploy"},
-                "action": "allow",
+                "kind": "policy",
+                "name": "p-deploy-allow",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make deploy"},
+                "then": "allow",
             },
         )
         assert (
@@ -458,8 +451,8 @@ class TestPodPolicies:
 
 
 class TestNormalizePolicy:
-    """The short form a person writes normalises to exactly the canonical dict the engine
-    has always evaluated -- a plain regex policy round-trips byte-for-byte either way."""
+    """The short form a person writes normalises to the in-memory canonical dict the engine
+    evaluates; a canonical key in an authored policy is refused."""
 
     _SHORT: ClassVar[dict[str, object]] = {
         "kind": "policy",
@@ -483,20 +476,32 @@ class TestNormalizePolicy:
     def test_short_form_normalizes_to_canonical(self) -> None:
         assert _policy.normalize_policy(self._SHORT) == self._CANONICAL
 
-    def test_both_forms_evaluate_identically(self, tmp_path: Path) -> None:
-        for label, doc in (("short", self._SHORT), ("canonical", self._CANONICAL)):
-            d = tmp_path / label
-            d.mkdir()
-            with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
-                (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
-                assert (
-                    _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src").action
-                    == "allow"
-                )
-                assert (
-                    _policy.policy_eval_detail("implementer", "pre_tool_call", "rm -rf /tmp").action
-                    == "require_approval"
-                )
+    def test_a_canonical_document_is_refused_naming_the_short_form_keys(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            _policy.normalize_policy(self._CANONICAL)
+
+        message = str(exc_info.value)
+        for canonical, short in (
+            ("id", "name"),
+            ("applies_to", "appliesTo"),
+            ("hook", "on"),
+            ("action", "then"),
+            ("match", "when: {matches: ...}"),
+        ):
+            assert f"replace `{canonical}` with `{short}`" in message
+
+    def test_a_canonical_file_fails_closed_and_the_audit_names_the_short_form_key(
+        self, tmp_path: Path
+    ) -> None:
+        d = tmp_path / "policies"
+        d.mkdir()
+        with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
+            (d / "p.json").write_text(json.dumps(self._CANONICAL), encoding="utf-8")
+
+            hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src")
+
+            assert hit.action == "block"
+            assert "replace `applies_to` with `appliesTo`" in hit.message
 
     def test_unknown_kind_is_refused(self) -> None:
         with pytest.raises(ValueError, match="policy"):
@@ -514,11 +519,12 @@ class TestStructuredPredicates:
                 d,
                 "gh-workflow-write.json",
                 {
-                    "id": "gh-workflow-write",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
+                    "kind": "policy",
+                    "name": "gh-workflow-write",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
                     "when": {"tool": "write", "path": ".github/**"},
-                    "action": "require_approval",
+                    "then": "ask",
                 },
             )
             allow_call = _policy.ToolCallFacts("write", {"path": "src/x.py"}, lambda: "")
@@ -565,11 +571,12 @@ class TestTaskPolicies:
                 tmp_path,
                 "global.json",
                 {
-                    "id": "global-block",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
+                    "kind": "policy",
+                    "name": "global-block",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
                     "when": {"tool": "write"},
-                    "action": "block",
+                    "then": "block",
                 },
             )
             call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")
