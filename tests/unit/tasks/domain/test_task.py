@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 
@@ -198,26 +199,137 @@ class TestGroupResume:
 
     def test_a_failed_child_leaves_the_group_unfinished(self) -> None:
         prior = [
-            _task.HopResult("reviewer", "demo-reviewer", False, error="budget", step_id="reviewer"),
-            _task.HopResult("tester", "demo-tester", True, output="PASS", step_id="tester"),
+            _task.HopResult(
+                role="reviewer",
+                member_id="demo-reviewer",
+                ok=False,
+                error="budget",
+                step_id="reviewer",
+            ),
+            _task.HopResult(
+                role="tester", member_id="demo-tester", ok=True, output="PASS", step_id="tester"
+            ),
         ]
         assert _record._group_complete(self._group(), prior) is False
 
     def test_every_child_succeeded_finishes_the_group(self) -> None:
         prior = [
             _task.HopResult(
-                "reviewer", "demo-reviewer", True, output="APPROVE", step_id="reviewer"
+                role="reviewer",
+                member_id="demo-reviewer",
+                ok=True,
+                output="APPROVE",
+                step_id="reviewer",
             ),
-            _task.HopResult("tester", "demo-tester", True, output="PASS", step_id="tester"),
+            _task.HopResult(
+                role="tester", member_id="demo-tester", ok=True, output="PASS", step_id="tester"
+            ),
         ]
         assert _record._group_complete(self._group(), prior) is True
 
     def test_a_child_that_failed_then_succeeded_counts_by_its_latest_hop(self) -> None:
         prior = [
-            _task.HopResult("reviewer", "demo-reviewer", False, error="budget", step_id="reviewer"),
-            _task.HopResult("tester", "demo-tester", True, output="PASS", step_id="tester"),
             _task.HopResult(
-                "reviewer", "demo-reviewer", True, output="APPROVE", step_id="reviewer"
+                role="reviewer",
+                member_id="demo-reviewer",
+                ok=False,
+                error="budget",
+                step_id="reviewer",
+            ),
+            _task.HopResult(
+                role="tester", member_id="demo-tester", ok=True, output="PASS", step_id="tester"
+            ),
+            _task.HopResult(
+                role="reviewer",
+                member_id="demo-reviewer",
+                ok=True,
+                output="APPROVE",
+                step_id="reviewer",
             ),
         ]
         assert _record._group_complete(self._group(), prior) is True
+
+
+class TestHopResultModel:
+    def test_the_dump_is_the_persisted_hop(self) -> None:
+        hop = _task.HopResult(
+            role="reviewer", member_id="m", ok=True, output="APPROVE", cost_usd=0.12345678
+        )
+        dumped = hop.model_dump(by_alias=True, mode="json")
+        assert dumped["member"] == "m"
+        assert dumped["stepId"] == "reviewer"
+        assert dumped["costUsd"] == 0.123457
+        assert dumped["repoFiles"] is None
+        assert dumped["nextStep"] is None
+        assert dumped["artifact"]["summary"] == "APPROVE"
+        assert "verification_skipped" not in dumped
+        assert "verificationSkipped" not in dumped
+
+    def test_a_step_id_that_differs_from_the_role_is_kept(self) -> None:
+        hop = _task.HopResult(role="reviewer", member_id="m", ok=True, step_id="review-2")
+        assert hop.model_dump(by_alias=True)["stepId"] == "review-2"
+
+    def test_an_empty_artifact_is_rebuilt_from_the_output(self) -> None:
+        hop = _task.HopResult(role="lead", member_id="m", ok=True, output="the plan")
+        assert hop.artifact is not None
+        assert hop.artifact.summary == "the plan"
+
+    def test_a_hop_round_trips_through_its_dump(self) -> None:
+        hop = _task.HopResult(
+            role="implementer",
+            member_id="m",
+            ok=False,
+            error="boom",
+            attempts=2,
+            next_step="fail",
+            parked=True,
+            verify={"cmd": "pytest", "exitCode": 1},
+            evidence={"commit": "abc"},
+            usage={"input": 3, "output": 4},
+            trace={"project": "demo"},
+            repo_files={"a.py": "sha"},
+        )
+        dumped = hop.model_dump(by_alias=True, mode="json")
+        again = _task.HopResult.model_validate(dumped)
+        assert again.model_dump(by_alias=True, mode="json") == dumped
+
+    def test_an_invalid_artifact_is_rebuilt_from_the_output(self) -> None:
+        hop = _task.HopResult.model_validate(
+            {"role": "lead", "member": "m", "ok": True, "output": "plan", "artifact": "garbage"}
+        )
+        assert hop.artifact is not None
+        assert hop.artifact.summary == "plan"
+
+    @pytest.mark.parametrize(
+        ("key", "attribute", "default"),
+        [
+            ("verify", "verify", None),
+            ("evidence", "evidence", None),
+            ("usage", "usage", None),
+            ("trace", "trace", None),
+            ("repoFiles", "repo_files", {}),
+        ],
+    )
+    def test_each_invalid_value_degrades_alone(
+        self, key: str, attribute: str, default: object
+    ) -> None:
+        raw = {"role": "lead", "output": "x", "verify": {"cmd": "c"}, "usage": {"input": 1}}
+        hop = _task.HopResult.model_validate({**raw, key: "garbage"})
+        assert getattr(hop, attribute) == default
+        if key != "verify":
+            assert hop.verify == {"cmd": "c"}
+        if key != "usage":
+            assert hop.usage == {"input": 1}
+
+    def test_a_record_with_only_a_role_reads(self) -> None:
+        hop = _task.HopResult.model_validate({"role": "lead"})
+        assert (hop.member_id, hop.ok, hop.model, hop.provider) == ("", False, "", "")
+
+    def test_the_in_memory_flag_is_never_written(self) -> None:
+        hop = _task.HopResult(role="lead", member_id="m", ok=True, verification_skipped=True)
+        assert hop.verification_skipped is True
+        assert "verification_skipped" not in hop.model_dump(by_alias=True)
+
+    def test_a_key_the_hop_does_not_have_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            _task.HopResult.model_validate({"role": "lead", "typo": 1})

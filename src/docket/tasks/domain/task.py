@@ -3,6 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    ValidatorFunctionWrapHandler,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
+
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
@@ -24,60 +36,53 @@ class TaskRestrictionError(DispatchError):
     """An enqueue asked for a restriction that would widen the pod's limits."""
 
 
-@dataclass
-class HopResult:
-    """One agent turn within a task's pipeline."""
+class HopResult(BaseModel):
+    """One agent turn within a task's pipeline.
 
-    role: str
-    member_id: str
-    ok: bool
+    Its dump (``model_dump(by_alias=True)``) is the persisted hop (pod-dispatch.spec.md,
+    "Structured handoff artifacts" and "Hop evidence"). A stored hop that is partly invalid
+    degrades each of ``artifact``, ``verify``, ``evidence``, ``usage``, ``trace`` and
+    ``repo_files`` alone to its default, so one old bad hop never refuses its task."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    role: str = ""
+    member_id: str = Field("", alias="member")
+    ok: bool = False
     output: str = ""
-    cost_usd: float = 0.0
+    cost_usd: float = Field(0.0, alias="costUsd")
     error: str = ""
-    # Total agent-turn attempts made for this hop (1 = succeeded or failed on
-    # the first try, no retry). Only retryable failures (see
-    # ``_RETRYABLE_FAILURE_KINDS``) ever push this above 1.
+    # Total agent-turn attempts made for this hop (1 = succeeded or failed on the first try, no
+    # retry). Only retryable failures (see ``_RETRYABLE_FAILURE_KINDS``) ever push this above 1.
     attempts: int = 1
-    # The pipeline-spec step id this hop ran for. Defaults to "" when
-    # constructed without one; ``_hop_record``/``_hop_from_record`` backfill it
-    # to ``role`` on both write and read -- the built-in default pipeline's step
-    # ids equal their role names, so this is only a real distinction for a
-    # custom pipeline whose step id differs from its target role (see
-    # ``_replay_pipeline_position``).
-    step_id: str = ""
-    # This hop's structured handoff artifact. ``None`` at construction
-    # time backfills in ``__post_init__`` to ``HandoffArtifact.from_output(output)``,
-    # so every ``HopResult`` carries a real artifact once constructed.
+    # The pipeline-spec step id this hop ran for. Empty when constructed without one; the dump
+    # writes ``role`` then -- the built-in default pipeline's step ids equal their role names, so
+    # this is only a real distinction for a custom pipeline whose step id differs from its target
+    # role (see ``_replay_pipeline_position``).
+    step_id: str = Field("", alias="stepId")
+    # This hop's structured handoff artifact. ``None`` at construction is backfilled to
+    # ``HandoffArtifact.from_output(output)``, so every ``HopResult`` carries a real artifact.
     artifact: _handoff.HandoffArtifact | None = None
-    # A mechanical gate whose command was unset — a real, intentional "no
-    # check configured" state, not a failure. Application code never prints; this
-    # flag is this run's own in-memory signal only (not persisted — see
-    # ``_hop_record``) for ``interfaces/cli``'s dispatch renderer to print the notice.
-    verification_skipped: bool = False
-    # Set only on a hop whose gate outcome was routed via the step's own
-    # ``on`` map (see ``_route_outcome``): the resolved target -- an earlier
-    # or later step id, or the literal ``"fail"``/``"stop"``. ``None`` for an
-    # ordinary hop. Persisted so ``_replay_pipeline_position`` can follow the
-    # same routing decision on resume instead of re-deriving it.
-    next_step: str | None = None
-    # True only for a hop whose in-turn tool call parked mid-turn (ADR 0016
-    # SS2, ``_persist_hop_and_trace``'s ``_parked_approval_token``): an
-    # attempt, not a real outcome. Persisted so ``_replay_pipeline_position``
-    # resumes by re-running this exact index rather than advancing past it.
+    # A mechanical gate whose command was unset -- a real, intentional "no check configured" state,
+    # not a failure. Application code never prints; this flag is this run's own in-memory signal
+    # only (never persisted) for ``interfaces/cli``'s dispatch renderer to print the notice.
+    verification_skipped: bool = Field(False, exclude=True)
+    # Set only on a hop whose gate outcome was routed via the step's own ``on`` map (see
+    # ``_route_outcome``): the resolved target -- an earlier or later step id, or the literal
+    # ``"fail"``/``"stop"``. ``None`` for an ordinary hop. Persisted so
+    # ``_replay_pipeline_position`` can follow the same routing decision on resume.
+    next_step: str | None = Field(None, alias="nextStep")
+    # True only for a hop whose in-turn tool call parked mid-turn (ADR 0016 SS2): an attempt, not a
+    # real outcome. Persisted so ``_replay_pipeline_position`` resumes by re-running this index.
     parked: bool = False
     # Real evidence from this hop's mechanical verify gate (``_evaluate_mechanical_gate``):
-    # ``{"cmd", "exitCode", "durationS", "outputTail"}``, or ``None`` for a hop with no
-    # verify gate, or one whose gate had no ``verifyCmd`` configured (see
-    # ``verification_skipped``). ``exitCode`` is ``0``/``1`` for the verify gate and the
-    # command's own status for a ``run:`` step. ``outputTail`` is already redacted -- see
-    # ``_evaluate_mechanical_gate``. ``_hop_record``/``_hop_from_record`` round-trip this
-    # key; a record with no ``verify`` key at all defaults to ``None`` on read.
+    # ``{"cmd", "exitCode", "durationS", "outputTail"}``, or ``None`` for a hop with no verify gate,
+    # or one whose gate had no ``verifyCmd`` configured (see ``verification_skipped``).
+    # ``outputTail`` is already redacted.
     verify: dict[str, Any] | None = None
     # Real git evidence for an Implementer hop, from ``_hop_diff_probe``:
-    # ``{"commit", "baseCommit", "diffStat"}``, or ``None`` for a non-Implementer hop or one
-    # whose member checkout is not a git repository. Each inner field independently degrades
-    # to ``None`` rather than raising. Round-tripped by ``_hop_record``/``_hop_from_record``
-    # the same way as ``verify``.
+    # ``{"commit", "baseCommit", "diffStat"}``, or ``None`` for a non-Implementer hop or one whose
+    # member checkout is not a git repository. Each inner field independently degrades to ``None``.
     evidence: dict[str, Any] | None = None
     # Measured endpoint tokens for this hop's turn, ``{"input", "output"}``, or ``None`` when the
     # driver reported none. Never an estimate. See pod-dispatch.spec.md, "Evidence v1".
@@ -87,15 +92,44 @@ class HopResult:
     trace: dict[str, str] | None = None
     # Repository files this hop's turn composed from the task's base commit, repository-relative
     # path -> sha256 (``TurnResult.repo_files``). Empty when the turn read the filesystem.
-    repo_files: dict[str, str] = field(default_factory=dict)
+    repo_files: dict[str, str] = Field(default_factory=dict, alias="repoFiles")
     # The served model as ``<provider>/<model id>`` and its catalog provider, or ``""`` while the
     # runtime driver reports no served model (pod-dispatch.spec.md, "Hop events and task usage").
     model: str = ""
     provider: str = ""
 
-    def __post_init__(self) -> None:
+    @field_validator("artifact", "verify", "evidence", "usage", "trace", "repo_files", mode="wrap")
+    @classmethod
+    def _degrade_alone(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
+    ) -> Any:
+        try:
+            return handler(value)
+        except ValidationError:
+            field = cls.model_fields[str(info.field_name)]
+            return field.get_default(call_default_factory=True)
+
+    @model_validator(mode="after")
+    def _artifact_from_output(self) -> HopResult:
         if self.artifact is None:
             self.artifact = _handoff.HandoffArtifact.from_output(self.output)
+        return self
+
+    @field_serializer("cost_usd")
+    def _round_cost(self, value: float) -> float:
+        return round(value, 6)
+
+    @field_serializer("step_id")
+    def _step_id_or_role(self, value: str) -> str:
+        return value or self.role
+
+    @field_serializer("artifact")
+    def _dump_artifact(self, value: _handoff.HandoffArtifact | None) -> dict[str, Any] | None:
+        return value.model_dump() if value is not None else None
+
+    @field_serializer("repo_files")
+    def _empty_files_are_null(self, value: dict[str, str]) -> dict[str, str] | None:
+        return value or None
 
 
 @dataclass

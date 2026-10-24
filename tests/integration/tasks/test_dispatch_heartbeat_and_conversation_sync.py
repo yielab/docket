@@ -247,8 +247,10 @@ class TestConversationAutoPopulation:
 
             monkeypatch.setattr(_conv, "load", synchronized_load)
             hops = (
-                _task.HopResult("lead", "demo-lead", True, output="lead preview"),
-                _task.HopResult("implementer", "demo-implementer", True, output="impl preview"),
+                _task.HopResult(role="lead", member_id="demo-lead", ok=True, output="lead preview"),
+                _task.HopResult(
+                    role="implementer", member_id="demo-implementer", ok=True, output="impl preview"
+                ),
             )
             threads = [
                 new_thread(target=_record.persist_hop, args=("demo", task["id"], hop))

@@ -63,69 +63,15 @@ def hop_env(member_id: str, role: str) -> dict[str, str] | None:
 
 def hop_record(h: HopResult) -> dict[str, Any]:
     """Persisted shape of one hop (round-trips via ``hop_from_record``; pod-dispatch.spec.md,
-    "Structured handoff artifacts" and "Hop evidence"). ``artifact``/``verify``/``evidence`` are
-    persisted alongside ``output``; ``verification_skipped`` stays an in-memory-only flag."""
-    return {
-        "role": h.role,
-        "member": h.member_id,
-        "ok": h.ok,
-        "output": h.output,
-        "costUsd": round(h.cost_usd, 6),
-        "error": h.error,
-        "attempts": h.attempts,
-        # Falls back to `role` when unset — see HopResult.step_id.
-        "stepId": h.step_id or h.role,
-        "artifact": h.artifact.model_dump() if h.artifact is not None else None,
-        "nextStep": h.next_step,
-        "parked": h.parked,
-        "verify": h.verify,
-        "evidence": h.evidence,
-        "usage": h.usage,
-        "trace": h.trace,
-        "repoFiles": h.repo_files or None,
-        "model": h.model,
-        "provider": h.provider,
-    }
+    "Structured handoff artifacts" and "Hop evidence"): the hop model's own dump."""
+    return h.model_dump(by_alias=True, mode="json")
 
 
 def hop_from_record(rec: dict[str, Any]) -> HopResult:
     """Reconstruct a HopResult from a persisted hop record (for resume). A missing or invalid
-    ``artifact``, ``verify``, or ``evidence`` key degrades each to its own default -- see
-    pod-dispatch.spec.md ("Structured handoff artifacts", "Hop evidence")."""
-    output = str(rec.get("output", ""))
-    artifact_raw = rec.get("artifact")
-    artifact: _handoff.HandoffArtifact | None = None
-    if isinstance(artifact_raw, dict):
-        try:
-            artifact = _handoff.HandoffArtifact.model_validate(artifact_raw)
-        except Exception:
-            artifact = None
-    next_step_raw = rec.get("nextStep")
-    verify_raw = rec.get("verify")
-    evidence_raw = rec.get("evidence")
-    usage_raw = rec.get("usage")
-    trace_raw = rec.get("trace")
-    files_raw = rec.get("repoFiles")
-    return HopResult(
-        role=str(rec.get("role", "")),
-        member_id=str(rec.get("member", "")),
-        ok=bool(rec.get("ok", False)),
-        output=output,
-        cost_usd=float(rec.get("costUsd", 0.0) or 0.0),
-        error=str(rec.get("error", "")),
-        attempts=int(rec.get("attempts", 1) or 1),
-        step_id=str(rec.get("stepId", "") or rec.get("role", "")),
-        artifact=artifact,
-        next_step=next_step_raw if isinstance(next_step_raw, str) else None,
-        parked=bool(rec.get("parked", False)),
-        verify=verify_raw if isinstance(verify_raw, dict) else None,
-        evidence=evidence_raw if isinstance(evidence_raw, dict) else None,
-        usage=usage_raw if isinstance(usage_raw, dict) else None,
-        trace=trace_raw if isinstance(trace_raw, dict) else None,
-        repo_files=dict(files_raw) if isinstance(files_raw, dict) else {},
-        model=str(rec.get("model", "") or ""),
-        provider=str(rec.get("provider", "") or ""),
-    )
+    ``artifact``, ``verify``, ``evidence``, ``usage``, ``trace`` or ``repoFiles`` degrades each to
+    its own default -- see pod-dispatch.spec.md ("Structured handoff artifacts", "Hop evidence")."""
+    return HopResult.model_validate({**rec, "stepId": rec.get("stepId") or rec.get("role", "")})
 
 
 @dataclass
