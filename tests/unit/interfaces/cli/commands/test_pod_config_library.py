@@ -27,14 +27,15 @@ SUBJECT = "docket.interfaces.cli.commands.pod_config_library"
 
 _runner = CliRunner()
 
-_ROLE = (
-    "kind: role\n"
-    "name: vetter\n"
-    "scope: pod\n"
-    "modelClass: cheap\n"
-    "soulTemplate: You vet things.\n"
-    "agentsTemplate: Vetting protocol.\n"
-)
+_ROLE = "kind: role\nname: vetter\nscope: pod\nmodel: cheap\n"
+
+
+def _put_role(path: Path) -> None:
+    """Write the short-form role at *path* with the instructions file it names beside it."""
+    path.write_text(_ROLE, encoding="utf-8")
+    (path.parent / "vetter.md").write_text(
+        "You vet things.\n\n## AGENTS\n\nVetting protocol.\n", encoding="utf-8"
+    )
 
 
 @contextmanager
@@ -99,7 +100,7 @@ class TestPodApply:
     def test_a_role_file_lands_in_the_pods_roles_overlay(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             role = tmp_path / "vetter.yaml"
-            role.write_text(_ROLE, encoding="utf-8")
+            _put_role(role)
             result = _pod_run("update", str(role), "--pod", "demo")
             assert result.exit_code == 0
             stored = json.loads((current_home().pod_config_dir("demo") / "roles.json").read_text())
@@ -109,7 +110,7 @@ class TestPodApply:
     def test_dry_run_writes_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             role = tmp_path / "vetter.yaml"
-            role.write_text(_ROLE, encoding="utf-8")
+            _put_role(role)
             result = _pod_run("update", str(role), "--pod", "demo", "--dry-run", "--json")
             assert json.loads(result.output)["items"][0]["action"] == "add"
             assert not (current_home().pod_config_dir("demo") / "roles.json").exists()
@@ -117,7 +118,7 @@ class TestPodApply:
     def test_a_document_that_is_not_a_role_or_policy_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             pipeline = tmp_path / "pipeline.yaml"
-            pipeline.write_text("kind: pipeline\nname: p\nsteps:\n  - id: a\n    role: lead\n")
+            pipeline.write_text("kind: pipeline\nname: p\nsteps:\n  - a: lead\n")
             assert _pod_run("update", str(pipeline), "--pod", "demo").exit_code == 1
 
     def test_a_policy_file_is_copied_into_the_pod(self, tmp_path: Path) -> None:
@@ -131,7 +132,7 @@ class TestPodApply:
         with _seed_pod(tmp_path):
             directory = tmp_path / "recipe"
             (directory / "roles").mkdir(parents=True)
-            (directory / "roles" / "vetter.yaml").write_text(_ROLE, encoding="utf-8")
+            _put_role(directory / "roles" / "vetter.yaml")
             result = _pod_run("update", str(directory), "--pod", "demo", "--dry-run", "--json")
             assert result.exit_code == 0
             assert [i["kind"] for i in json.loads(result.output)["items"]] == ["role"]
@@ -154,7 +155,7 @@ class TestPodUpdateRenameAndReview:
         code = tmp_path / "code"
         (code / ".docket").mkdir(parents=True)
         (code / ".docket" / "pipeline.yaml").write_text(
-            "name: p\nsteps:\n  - id: migrate\n    run: make migrate\n"
+            "name: p\nsteps:\n  - migrate:\n      run: make migrate\n"
         )
         return code
 
@@ -236,7 +237,7 @@ class TestPodValidate:
     def test_an_invalid_role_exits_one_and_prints_the_message(self, tmp_path: Path) -> None:
         (tmp_path / "roles").mkdir()
         (tmp_path / "roles" / "bad.yaml").write_text("kind: banana\nname: x\n", encoding="utf-8")
-        (tmp_path / "roles" / "good.yaml").write_text(_ROLE, encoding="utf-8")
+        _put_role(tmp_path / "roles" / "good.yaml")
         result = _pod_run("validate", str(tmp_path))
         assert result.exit_code == 1
         assert "bad.yaml" in result.output
@@ -244,14 +245,12 @@ class TestPodValidate:
 
     def test_one_file_is_validated_by_its_own_kind(self, tmp_path: Path) -> None:
         good = tmp_path / "role.yaml"
-        good.write_text(_ROLE, encoding="utf-8")
+        _put_role(good)
         assert _pod_run("validate", str(good)).exit_code == 0
 
     def test_a_pipeline_step_naming_an_unknown_provider_is_invalid(self, tmp_path: Path) -> None:
         pipeline = tmp_path / "pipeline.yaml"
-        pipeline.write_text(
-            "kind: pipeline\nname: p\nsteps:\n  - id: a\n    role: lead\n    model: nope/x\n"
-        )
+        pipeline.write_text("kind: pipeline\nname: p\nsteps:\n  - a: lead\n    model: nope/x\n")
         assert _pod_run("validate", str(pipeline)).exit_code == 1
 
     def test_a_missing_path_is_a_failure(self, tmp_path: Path) -> None:

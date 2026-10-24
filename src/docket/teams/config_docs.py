@@ -149,41 +149,22 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
 }
 
 
-_ROLE_SHORT_KEYS: tuple[str, ...] = (
-    "cannot",
-    "verdict",
-    "verify",
-    "approval",
-    "instructions",
-    "model",
-)
-_POLICY_SHORT_KEYS: tuple[str, ...] = ("appliesTo", "on", "when", "then")
-
-
-def _is_short_form(kind: str, doc: dict[str, Any]) -> bool:
-    """Whether *doc* is unambiguously short form -- a canonical document sharing the same
-    envelope must never hit the short-form model's ``extra="forbid"``, which would reject
-    every canonical-only field it does not know instead of surfacing the real error."""
-    if kind == "role":
-        return any(k in doc for k in _ROLE_SHORT_KEYS)
-    if kind == "pipeline":
-        return "kind" in doc
-    if kind == "policy":
-        return any(k in doc for k in _POLICY_SHORT_KEYS)
-    return kind == "pod"
+# The kinds whose failure is refined by their short-form model; `exporter` and `mcp-server` keep
+# the plain message of their own parser (their models exist for schema generation only).
+_REFINED_KINDS: frozenset[str] = frozenset({"role", "pipeline", "policy", "pod"})
 
 
 def _refine_with_model(
     path: Path, kind: str, doc: dict[str, Any], fallback: Exception
 ) -> ConfigDocError:
-    """When *doc* is short form and also fails its kind's model, prefer the model's field name
-    and valid values over *fallback*'s plain message; otherwise fall back to it unchanged."""
+    """When *doc* also fails its kind's model, prefer the model's field name and valid values
+    over *fallback*'s plain message; otherwise fall back to it unchanged."""
     if isinstance(fallback, ConfigDocError):
         plain = fallback  # already names the path; wrapping it again would print it twice
     else:
         plain = ConfigDocError(path, str(fallback))
-    model = _MODEL_FOR_KIND.get(kind)
-    if model is None or not _is_short_form(kind, doc):
+    model = _MODEL_FOR_KIND.get(kind) if kind in _REFINED_KINDS else None
+    if model is None:
         return plain
     try:
         model.model_validate(doc)
@@ -381,10 +362,6 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
                 field="kind",
                 valid=KINDS,
             )
-        if _is_short_form(resolved, doc):
-            raise ConfigDocError(
-                p, "a short-form document needs a 'kind:' key", field="kind", valid=KINDS
-            )
         effective_kind = resolved
     else:
         if declared not in KINDS:
@@ -397,6 +374,15 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
                 suggestion=_suggest(str(declared)),
             )
         effective_kind = declared
+
+    if effective_kind == "role":
+        refusal = _archetypes.canonical_key_refusal(doc)
+    elif effective_kind == "policy":
+        refusal = _policy.canonical_key_refusal(doc)
+    else:
+        refusal = ""
+    if refusal:
+        raise ConfigDocError(p, refusal)
 
     try:
         if effective_kind == "role":

@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 1.1.3
+**Version**: 1.2.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
 MCP and Telegram. The exec jail is opt-in and fails closed when on without a usable backend.
@@ -408,9 +408,10 @@ where it applies to commands docket itself launches.
 
 ### Policy format v1 (ADR 0010)
 
-A policy document is canonical JSON (`applies_to`, `hook`, `match.type: regex`, `action:
-require_approval`) or the short form below, and a policy can test structured facts of a tool call
-beside its rendered text.
+A policy document is written in the one short form below (`name`, `appliesTo`, `on`, `when`,
+`then`, in YAML or JSON). The canonical shape (`id`, `applies_to`, `hook`, `match`, `action`) is the
+in-memory model the evaluator runs and is never read from a file: a canonical key in an authored
+policy is refused. A policy can test structured facts of a tool call beside its rendered text.
 
 1. `policy_files` **MUST** glob `*.json`, `*.yaml` and `*.yml` in every policy directory it reads
    (the global `$POLICIES_DIR`, then a pod's own `config/policies/`), each directory sorted by name
@@ -423,24 +424,27 @@ beside its rendered text.
    `id`; `appliesTo` to `applies_to`; `on: input|toolCall|output` to `hook` (`pre_input`,
    `pre_tool_call`, `pre_output`), defaulting to `pre_tool_call` when neither `on` nor `hook` is
    given; `then: allow|warn|ask|block|redact` to `action`, with `ask` mapping to
-   `require_approval` and the rest to themselves. A document already in canonical form **MUST**
-   come back unchanged but for a `kind` key. Loading **MUST** disable YAML's implicit
+   `require_approval` and the rest to themselves. A document carrying a canonical key (`id`,
+   `applies_to`, `hook`, `action`, `match`) **MUST** be refused with an `InvalidInput` that names
+   each canonical key found and the short-form key to write instead (`canonical_key_refusal` is
+   the one function that renders it). Loading **MUST** disable YAML's implicit
    `on`/`off`/`yes`/`no` boolean resolution for a policy document, since the short form's own `on:`
    key would otherwise parse as the boolean `True` on a bare value, and no policy field is ever a
    boolean.
 3. `read_policy(path) -> dict` **MUST** be the single reader that `validate_policy`, the
    evaluator's per-file loop, `docket pod policies` and `docket pod validate` share: it parses the
-   file as YAML (JSON stays valid YAML, so a canonical file needs no change) and returns
-   `normalize_policy` of the result.
-4. A canonical policy **MAY** carry a structured `when` mapping instead of, or beside, `match`:
+   file as YAML (JSON stays valid YAML, so a short-form JSON file needs no YAML) and returns
+   `normalize_policy` of the result. A file the reader refuses evaluates as `block` within every
+   hook and role (requirement 7 of the policy engine) and the block names the refusal, so a
+   canonical file left in `$POLICIES_DIR` fails closed with the short-form key to write.
+4. A policy **MAY** carry a structured `when` mapping instead of, or beside, `match`:
    `{tool?, path?, matches?, branch?, plugin?, anyOf?: [...]}`. Keys are implicit AND; `anyOf` is
    OR over its items, itself AND'd with any sibling keys. `tool` **MUST** equal the call's tool
    name; `path` **MUST** be an `fnmatch` glob over whichever of the call's `path`, `file_path` or
    `file` arguments is present (absent on the call, the predicate never matches); `matches`
    **MUST** be the same regex-over-rendered-text test `match.pattern` is; `branch` **MUST** be an
    `fnmatch` glob over the worktree's current branch; `plugin` is "Predicate plugins". A `when`
-   whose only key is `matches` **MUST** normalize to plain `match: {type: regex, pattern: ...}`,
-   so a plain regex policy's canonical form is byte-identical whether written short or long. The
+   whose only key is `matches` **MUST** normalize to plain `match: {type: regex, pattern: ...}`. The
    validator **MUST** check `when` the way it checks `match`: a policy **MUST** carry a `match` or
    a `when` (a document with neither has nothing to fire on); an unknown `when` key **MUST** be
    rejected naming the predicates; an uncompilable `when.matches` **MUST** be rejected as an
@@ -1151,9 +1155,12 @@ narrow the hops of that one task and never widen anything.
    is an audited `tool.deny` carrying `policy_id='task-restriction'`, and the hop continues with the
    refusal as the tool result. The set is closed by capability as `registry_for_role` does: every
    tool of a denied built-in's kind (an MCP tool is registered `write`) is named in the policy too.
-4. **`policies` are block-only, re-checked at the hop.** Each document is normalised, validated
-   with the policy validator, and its action **MUST** be `block`; a document that fails either
-   check refuses the hop before it starts (`DispatchError`, so the task fails `dispatch_refused`).
+4. **`policies` are block-only, re-checked at the hop.** Each document is written in the short
+   form (`task_policy_document` normalises it, so a canonical key is refused), validated with the
+   policy validator, and its action **MUST** be `block`; the canonical documents then travel to
+   the turn in `DOCKET_TASK_POLICIES` and `checked_task_document` validates them again without
+   normalising. A document that fails either check refuses the hop before it starts
+   (`DispatchError`, so the task fails `dispatch_refused`).
    Whatever its own `id`, a task document evaluates under the id `task-restriction`, so the audit
    entry names the source.
 5. **`network: "none"` fails closed.** The jail's network is `none` for the hop whatever the pod
@@ -1535,9 +1542,9 @@ $ git clone https://anywhere.example/repo.git
   `APPROVAL_CHANNELS`, `APPROVAL_TOKEN_RE`, `APPROVAL_RATIONALE_MAX_CHARS`, `ApprovalError`,
   `ApprovalNoop`, `ApprovalConflict`
 - `src/docket/governance/policy.py`: `policy_files`, `policy_eval`, `policy_eval_detail`, `policy_test`,
-  `normalize_policy`, `read_policy`, `validate_policy`, `install_policies`, `ToolCallFacts`,
+  `normalize_policy`, `canonical_key_refusal`, `read_policy`, `validate_policy`, `install_policies`, `ToolCallFacts`,
   `PolicyHit`, `task_policies`, `TASK_POLICY_ID`, `denied_tools_document`,
-  `task_policy_document`, the `when` and `plugin` predicate evaluation
+  `task_policy_document`, `checked_task_document`, the `when` and `plugin` predicate evaluation
 - `src/docket/governance/plugin_api.py`: the `docket.governance.plugin_api` API (`PLUGIN_API_VERSION`, `predicate`,
   `ToolCall`, `PolicyContext`, `REGISTRY`)
 - `src/docket/governance/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`

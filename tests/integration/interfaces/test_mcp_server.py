@@ -42,13 +42,11 @@ SUBJECT = "docket.interfaces.cli.commands.mcp"
 _ASK_PIPELINE_YAML = """\
 name: ask
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-  - id: implementer
-    role: implementer
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
 """
 
 # ── hermetic environment (mirrors test_dispatch.py / test_pod_provisioning.py) ──
@@ -57,12 +55,9 @@ steps:
 _GATED_PIPELINE_YAML = """\
 name: gated
 steps:
-  - id: lead
-    role: lead
-  - id: implementer
-    role: implementer
-    gate:
-      type: approval
+  - lead: lead
+  - implementer: implementer
+    approval: true
 """
 
 

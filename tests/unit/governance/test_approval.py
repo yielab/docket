@@ -505,12 +505,13 @@ class TestApprovalReasonAndActor:
         # Create a blocking policy
         current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy_doc = {
-            "id": "block-test",
+            "kind": "policy",
+            "name": "block-test",
             "description": "Block test patterns",
-            "applies_to": ["*"],
-            "hook": "pre_input",
-            "match": {"type": "regex", "pattern": "DELETE PROD"},
-            "action": "block",
+            "appliesTo": ["*"],
+            "on": "input",
+            "when": {"matches": "DELETE PROD"},
+            "then": "block",
             "message": "Blocked.",
         }
         (current_home().policies_dir / "block-test.json").write_text(

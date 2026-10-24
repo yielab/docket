@@ -236,11 +236,12 @@ class TestPodShowScopeLabels:
             (pod_policies_dir / "pod-only.json").write_text(
                 json.dumps(
                     {
-                        "id": "pod-only",
-                        "applies_to": ["reviewer"],
-                        "hook": "pre_tool_call",
-                        "match": {"type": "regex", "pattern": "x"},
-                        "action": "warn",
+                        "kind": "policy",
+                        "name": "pod-only",
+                        "appliesTo": ["reviewer"],
+                        "on": "toolCall",
+                        "when": {"matches": "x"},
+                        "then": "warn",
                     }
                 )
             )
@@ -335,11 +336,12 @@ class TestPodShowPolicies:
             (policies_dir / "implementer-only.json").write_text(
                 json.dumps(
                     {
-                        "id": "implementer-only",
-                        "applies_to": ["implementer"],
-                        "hook": "pre_tool_call",
-                        "match": {"type": "regex", "pattern": "x"},
-                        "action": "warn",
+                        "kind": "policy",
+                        "name": "implementer-only",
+                        "appliesTo": ["implementer"],
+                        "on": "toolCall",
+                        "when": {"matches": "x"},
+                        "then": "warn",
                     }
                 )
             )

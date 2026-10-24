@@ -37,30 +37,26 @@ SUBJECT = "docket.tasks.application.queue"
 _ASK_PIPELINE_YAML = """\
 name: ask
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-  - id: implementer
-    role: implementer
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
 """
 
 
 _ASK_DECLINE_CAP_PIPELINE_YAML = """\
 name: ask-decline-cap
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-    on:
-      declined:
-        goto: lead
-        max: 1
-  - id: implementer
-    role: implementer
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+      on:
+        declined:
+          goto: lead
+          max: 1
+  - implementer: implementer
 """
 
 

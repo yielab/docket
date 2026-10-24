@@ -137,14 +137,7 @@ class TestConfigUnset:
             assert _settings.pod_max_rework_cycles("proj") == 1
 
 
-_CUSTOM_PIPELINE = (
-    "name: custom-bound\n"
-    "steps:\n"
-    "  - id: kickoff\n"
-    "    role: lead\n"
-    "  - id: assemble\n"
-    "    role: implementer\n"
-)
+_CUSTOM_PIPELINE = "name: custom-bound\nsteps:\n  - kickoff: lead\n  - assemble: implementer\n"
 
 
 class TestConfigSetPipeline:
@@ -173,7 +166,7 @@ class TestConfigSetPipeline:
     ) -> None:
         with _build(tmp_path):
             pipeline_file = tmp_path / "needs-reviewer.yaml"
-            pipeline_file.write_text("name: x\nsteps:\n  - id: r\n    role: reviewer\n")
+            pipeline_file.write_text("name: x\nsteps:\n  - r: reviewer\n")
             before = _lead_meta("proj")
 
             with pytest.raises(typer.Exit) as exc:

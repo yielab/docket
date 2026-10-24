@@ -49,11 +49,12 @@ class TestGlobalPluginDrivesAPolicy:
                 home / "policies",
                 "touches-migrations.json",
                 {
-                    "id": "touches-migrations",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
+                    "kind": "policy",
+                    "name": "touches-migrations",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
                     "when": {"plugin": "touches_migrations"},
-                    "action": "require_approval",
+                    "then": "ask",
                 },
             )
 
@@ -80,11 +81,12 @@ class TestUnappliedPluginFailsClosed:
                 home / "policies",
                 "touches-migrations.json",
                 {
-                    "id": "touches-migrations",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
+                    "kind": "policy",
+                    "name": "touches-migrations",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
                     "when": {"plugin": "touches_migrations"},
-                    "action": "require_approval",
+                    "then": "ask",
                 },
             )
 
@@ -107,11 +109,12 @@ class TestARaisingPluginFailsClosedAndAudits:
                 home / "policies",
                 "boom.json",
                 {
-                    "id": "boom-policy",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
+                    "kind": "policy",
+                    "name": "boom-policy",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
                     "when": {"plugin": "boom"},
-                    "action": "allow",
+                    "then": "allow",
                 },
             )
 

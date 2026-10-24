@@ -27,16 +27,12 @@ SUBJECT = "docket.hops.application.interruptions"
 _GATED_PIPELINE_YAML = """\
 name: gated
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-  - id: implementer
-    role: implementer
-    gate:
-      type: approval
-      message: "Ready to deploy?"
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
+    approval: "Ready to deploy?"
 """
 
 

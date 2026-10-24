@@ -28,12 +28,9 @@ SUBJECT = "docket.interfaces.cli.commands.task"
 _GATED_PIPELINE_YAML = """\
 name: gated
 steps:
-  - id: lead
-    role: lead
-  - id: implementer
-    role: implementer
-    gate:
-      type: approval
+  - lead: lead
+  - implementer: implementer
+    approval: true
 """
 
 

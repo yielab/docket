@@ -314,7 +314,7 @@ def _task_policy_documents(
             }
             documents.append(_policy.denied_tools_document(sorted({*denied, *named})))
         for doc in json.loads(policies_raw) if policies_raw else []:
-            documents.append(_policy.task_policy_document(doc))
+            documents.append(_policy.checked_task_document(doc))
     except ValueError as exc:
         raise DispatchError(f"task restrictions refused: {exc}") from exc
     return documents

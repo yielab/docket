@@ -31,12 +31,10 @@ from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
 
-_PIPELINE = (
-    "name: two\nsteps:\n  - id: lead\n    role: lead\n  - id: implementer\n    role: implementer\n"
-)
+_PIPELINE = "name: two\nsteps:\n  - lead: lead\n  - implementer: implementer\n"
 _GATED_PIPELINE = (
-    "name: gated\nsteps:\n  - id: lead\n    role: lead\n  - id: implementer\n"
-    "    role: implementer\n    gate: {type: mechanical, command: 'bash scripts/check.sh'}\n"
+    "name: gated\nsteps:\n  - lead: lead\n  - implementer: implementer\n"
+    "    verify: 'bash scripts/check.sh'\n"
 )
 
 

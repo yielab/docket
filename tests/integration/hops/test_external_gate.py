@@ -37,11 +37,9 @@ REASON = "zz-unique-reason-5521"
 _PLAIN = """\
 name: gated
 steps:
-  - id: plan
-    role: lead
-  - id: build
-    role: implementer
-    gate: {{type: external, command: "sh {script}"{timeout}}}
+  - plan: lead
+  - build: implementer
+    gate: {{external: "sh {script}"{timeout}}}
 {on}"""
 
 _ON_RETRY = "    on:\n      fail: {goto: build, max: 2}\n"
@@ -158,7 +156,7 @@ class TestExitMapping:
     def test_a_missing_command_is_error(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             spec = _pipeline.load_pipeline(
-                "name: g\nsteps:\n  - id: build\n    role: implementer\n"
+                "name: g\nsteps:\n  - build: implementer\n"
                 "    gate: {external: 'definitely-not-a-command-zz9'}\n"
             ).spec
             assert spec is not None
@@ -288,19 +286,18 @@ def _bind(project: str, text: str) -> None:
 _SEAM = """\
 name: seam
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
   - build: implementer
     gate: {{external: "sh {script}"}}
     on:
       pass: stop
       fail: {{goto: build, max: 2}}
       needs_human: ask
-  - id: ask
-    input: {{from: build}}
-    on:
-      answered: {{goto: build, max: 1}}
-      declined: fail
+  - ask:
+      input: {{from: build}}
+      on:
+        answered: {{goto: build, max: 1}}
+        declined: fail
 """
 
 

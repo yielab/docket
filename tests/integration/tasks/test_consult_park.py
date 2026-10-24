@@ -201,14 +201,12 @@ class TestPark:
 _ASK_EXPIRES_YAML = """\
 name: ask
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-      expiresHours: 2
-  - id: implementer
-    role: implementer
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+        expiresHours: 2
+  - implementer: implementer
 """
 
 

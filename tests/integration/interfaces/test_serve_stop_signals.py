@@ -96,10 +96,8 @@ def test_second_sigint_abandons_a_blocked_sweep(tmp_path: Path) -> None:
     assert runs[0]["cancellation"]["requestedAt"]
 
 
-_SOLO = "name: solo\nsteps:\n  - id: kickoff\n    role: lead\n"
-_TWO = (
-    "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
-)
+_SOLO = "name: solo\nsteps:\n  - kickoff: lead\n"
+_TWO = "name: two\nsteps:\n  - kickoff: lead\n  - assemble: implementer\n"
 
 
 @pytest.fixture()

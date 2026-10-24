@@ -331,18 +331,10 @@ class TestRolesCli:
     def test_apply_then_list(self, registry_file: Path, tmp_path: Path, seeded_pod: str) -> None:
         p = tmp_path / "producer.yaml"
         p.write_text(
-            "kind: role\n"
-            "name: producer\n"
-            "version: 1\n"
-            "scope: pod\n"
-            "modelClass: cheap\n"
-            "toolProfile: x\n"
-            "gateContract:\n"
-            "  kind: none\n"
-            'soulTemplate: "hi ${project}"\n'
-            'agentsTemplate: "hi ${project}"\n',
+            "kind: role\nname: producer\nversion: 1\nscope: pod\nmodel: cheap\ntoolProfile: x\n",
             encoding="utf-8",
         )
+        (tmp_path / "producer.md").write_text("hi ${project}\n", encoding="utf-8")
         assert self._run("update", str(p), "--pod", seeded_pod).exit_code == 0
         assert "producer" in self._run("roles", "--pod", seeded_pod).output
 

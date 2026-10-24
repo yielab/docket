@@ -322,8 +322,10 @@ resolves to, the tools it is denied, its gate contract and its context budget. B
 dump one as a starting point with `docket pod roles reviewer`.
 
 ```yaml
-# security-reviewer.yaml — the short form; `docket pod roles reviewer` dumps the canonical
-# form this normalizes to (role-archetypes.spec.md, "Wire format")
+# security-reviewer.yaml — the one authored form; `docket pod roles reviewer` dumps the persisted
+# wire object this normalizes to (role-archetypes.spec.md, "Wire format"). A file that carries
+# a persisted key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`, `agentsTemplate`)
+# is refused, naming the key to write instead.
 kind: role
 name: security-reviewer
 description: read-only security pass over the implementer's change
@@ -365,7 +367,7 @@ Template variables: `project`, `role`, `memberId`, `sessionKey`, `objective`, `c
 
 What is read **when**:
 
-- The instructions file (`soulTemplate`/`agentsTemplate` in the canonical form) and `model` are
+- The instructions file (the persisted `soulTemplate`/`agentsTemplate`) and `model` are
   used **once**, when a member is provisioned. Changing the overlay later does not touch
   existing members.
 - `cannot`, `tokenBudget` and the gate (`verdict`/`verify`/`approval`) are read **live** on every
@@ -382,7 +384,8 @@ software|research|content|ops|agentic-product`. Only these five exist, and the c
 `blueprint` in the Lead's meta. Dispatch uses the blueprint's built-in pipeline.
 
 **Pipeline files** declare your own hop order, gates and rework edges. This one runs the custom role
-from §3.4, in the short form — `docket pod validate` normalizes it to the canonical form
+from §3.4, in the short form, the only form a pipeline file is written in (a step written with an
+`id:` key is refused, naming the `- <id>: <role>` spelling); it expands to the model
 `pipeline-format.spec.md` defines, which is what `plan`/`run` actually execute:
 
 ```yaml
@@ -407,17 +410,18 @@ docket run --pipeline pipeline.yaml            # executes; same budget/gates/tra
 ```
 
 Short form (unknown keys are rejected at every level; `pipeline-format.spec.md`, "Short form",
-"Outcome routing", "Conditional steps and command steps" define the full mapping and canonical
-form):
+"Outcome routing", "Conditional steps and command steps" define the full mapping; a step id
+cannot be one of the sugar keys' names):
 
 - **Top level:** `kind: pipeline`, `name` (required), `description`, `variables`, `steps`.
 - **Each step:** one `<id>: <role-or-agent>` key, plus optional `timeout`, `retries`,
-  `instructions`, and at most one of `verify`/`verdict`/`approval` (the gate) or `until`+`max`
-  (a bounded mechanical self-retry).
-- **Gate sugar:** `verify: true` (or a command string) for a mechanical gate; `verdict: [...]`
+  `instructions`, `model`, `archetype`, and at most one of `verify`/`verdict`/`approval`/`gate`
+  (the gate) or `until`+`max` (a bounded mechanical self-retry). A group of steps run together is
+  `- <id>: {parallel: [<short steps>]}`.
+- **Gate sugar:** `verify: true` (or a command string, or `{command, timeout}`) for a mechanical gate; `verdict: [...]`
   for a verdict gate, first marker passing; `approval: "<message>"` for a human sign-off (the
-  task waits in `waiting_approval`). `gate: {external: "<command>"}` hands the verdict to an
-  outside verifier (below). No sugar key at all falls back to the role's own gate.
+  task waits in `waiting_approval`). `gate: {external: "<command>"}` (with optional `timeout` and
+  `exitMap`) hands the verdict to an outside verifier (below). No sugar key at all falls back to the role's own gate.
 - **`on: {<label>: {goto: <step>, max: <n>}}`** routes any named outcome — not only a verdict's
   rework — to an earlier or later step, `fail`, or `stop`; a backward or self target requires
   `max`. **`when:`** (`changed`, `var`+`is`, `memberPresent`) skips a step; a **command step**
@@ -437,16 +441,15 @@ whose answer goes back to the gated step. The question shows the verifier's reas
 answer reaches the retry. Route `pass` too, or a pass walks straight into the question:
 
 ```yaml
-- id: build
-  role: implementer
+- build: implementer
   gate: {external: "my-verifier --base $DOCKET_BASE_COMMIT --head $DOCKET_HEAD_COMMIT"}
   on:
     pass: stop                         # or the step that should follow
     fail: {goto: build, max: 3}        # retry with the reasons
     needs_human: ask
-- id: ask
-  input: {from: build, message: "The verifier wants a human."}
-  on: {answered: {goto: build, max: 1}, declined: fail}
+- ask:
+    input: {from: build, message: "The verifier wants a human."}
+    on: {answered: {goto: build, max: 1}, declined: fail}
 ```
 
 A backward route out of any gate that did not pass, `until: verify` included, gives the
@@ -527,9 +530,11 @@ Three ways to avoid it:
 
 **Policies** (`~/.docket/policies/*.yaml|yml|json`, relocatable with `POLICIES_DIR`). Every file
 in the directory is loaded, and all of them are re-read on every call, so a new file is live
-immediately. Write the short form (the shipped templates under `policies/` are examples);
-`governance.policy.normalize_policy` turns it into the canonical shape the evaluator actually reads —
-see `security-gates.spec.md`, "Policy format v1" for that mapping and the canonical field names:
+immediately. Write the short form (the shipped templates under `policies/` are examples); it is the
+only form a policy file is written in. `governance.policy.normalize_policy` turns it into the
+shape the evaluator reads, and a file carrying one of that shape's keys (`id`, `applies_to`,
+`hook`, `action`, `match`) is refused, naming the key to write instead; an installed file like that
+blocks every call until it is fixed (fail closed). See `security-gates.spec.md`, "Policy format v1":
 
 ```yaml
 kind: policy
@@ -1082,14 +1087,13 @@ permission) moves the task to `blocked` (`blockedReason: "input_expired"`), neve
 ```yaml
 # pipeline.yaml — a generic input step
 steps:
-  - id: lead
-    role: lead
-  - id: ask
-    input:
-      from: lead
-    on:
-      answered: {goto: lead, max: 3}
-      declined: {goto: lead, max: 3}
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+      on:
+        answered: {goto: lead, max: 3}
+        declined: {goto: lead, max: 3}
   - build: implementer
 ```
 

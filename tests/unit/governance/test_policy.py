@@ -277,11 +277,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-broken.json",
             {
-                "id": "zz-broken",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make\\s+deploy("},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-broken",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make\\s+deploy("},
+                "then": "block",
                 "message": "no deploys",
             },
         )
@@ -296,11 +297,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-broken.json",
             {
-                "id": "zz-broken",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "("},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-broken",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "("},
+                "then": "block",
             },
         )
         assert (
@@ -321,11 +323,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-typo.json",
             {
-                "id": "zz-typo",
-                "applies_to": ["*"],
-                "hook": "pre_output",
-                "match": {"type": "regex", "pattern": "secret"},
-                "action": "blocc",
+                "kind": "policy",
+                "name": "zz-typo",
+                "appliesTo": ["*"],
+                "on": "output",
+                "when": {"matches": "secret"},
+                "then": "blocc",
             },
         )
         assert (
@@ -337,11 +340,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-empty.json",
             {
-                "id": "zz-empty",
-                "applies_to": ["*"],
-                "hook": "pre_input",
-                "match": {"type": "regex", "pattern": ""},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-empty",
+                "appliesTo": ["*"],
+                "on": "input",
+                "when": {"matches": ""},
+                "then": "block",
             },
         )
         assert _policy.policy_eval_detail("lead", "pre_input", "a task").action == "block"
@@ -352,11 +356,12 @@ class TestBrokenPolicyFailsClosed:
             policies_dir,
             "zz-scoped.json",
             {
-                "id": "zz-scoped",
-                "applies_to": ["implementer"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "("},
-                "action": "warn",
+                "kind": "policy",
+                "name": "zz-scoped",
+                "appliesTo": ["implementer"],
+                "on": "toolCall",
+                "when": {"matches": "("},
+                "then": "warn",
             },
         )
         assert _policy.policy_eval_detail("implementer", "pre_tool_call", "ls").action == "block"
@@ -375,11 +380,12 @@ class TestValidateCompilesRegex:
             policies_dir,
             "zz-broken.json",
             {
-                "id": "zz-broken",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make\\s+deploy("},
-                "action": "block",
+                "kind": "policy",
+                "name": "zz-broken",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make\\s+deploy("},
+                "then": "block",
             },
         )
         err = _policy.validate_policy(f)
@@ -400,11 +406,12 @@ class TestPodPolicies:
             pod_dir,
             "deploy-block.json",
             {
-                "id": "p-deploy-block",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make deploy"},
-                "action": "block",
+                "kind": "policy",
+                "name": "p-deploy-block",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make deploy"},
+                "then": "block",
             },
         )
         assert (
@@ -426,11 +433,12 @@ class TestPodPolicies:
             policies_dir,
             "global-block.json",
             {
-                "id": "global-deploy-block",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make deploy"},
-                "action": "block",
+                "kind": "policy",
+                "name": "global-deploy-block",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make deploy"},
+                "then": "block",
             },
         )
         pod_dir = current_home().pods_dir / "p" / "config" / "policies"
@@ -439,11 +447,12 @@ class TestPodPolicies:
             pod_dir,
             "deploy-allow.json",
             {
-                "id": "p-deploy-allow",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "make deploy"},
-                "action": "allow",
+                "kind": "policy",
+                "name": "p-deploy-allow",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "make deploy"},
+                "then": "allow",
             },
         )
         assert (
@@ -458,8 +467,8 @@ class TestPodPolicies:
 
 
 class TestNormalizePolicy:
-    """The short form a person writes normalises to exactly the canonical dict the engine
-    has always evaluated -- a plain regex policy round-trips byte-for-byte either way."""
+    """The short form a person writes normalises to the in-memory canonical dict the engine
+    evaluates; a canonical key in an authored policy is refused."""
 
     _SHORT: ClassVar[dict[str, object]] = {
         "kind": "policy",
@@ -483,20 +492,32 @@ class TestNormalizePolicy:
     def test_short_form_normalizes_to_canonical(self) -> None:
         assert _policy.normalize_policy(self._SHORT) == self._CANONICAL
 
-    def test_both_forms_evaluate_identically(self, tmp_path: Path) -> None:
-        for label, doc in (("short", self._SHORT), ("canonical", self._CANONICAL)):
-            d = tmp_path / label
-            d.mkdir()
-            with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
-                (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
-                assert (
-                    _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src").action
-                    == "allow"
-                )
-                assert (
-                    _policy.policy_eval_detail("implementer", "pre_tool_call", "rm -rf /tmp").action
-                    == "require_approval"
-                )
+    def test_a_canonical_document_is_refused_naming_the_short_form_keys(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            _policy.normalize_policy(self._CANONICAL)
+
+        message = str(exc_info.value)
+        for canonical, short in (
+            ("id", "name"),
+            ("applies_to", "appliesTo"),
+            ("hook", "on"),
+            ("action", "then"),
+            ("match", "when: {matches: ...}"),
+        ):
+            assert f"replace `{canonical}` with `{short}`" in message
+
+    def test_a_canonical_file_fails_closed_and_the_audit_names_the_short_form_key(
+        self, tmp_path: Path
+    ) -> None:
+        d = tmp_path / "policies"
+        d.mkdir()
+        with use_home(dataclasses.replace(current_home(), policies_dir_override=d)):
+            (d / "p.json").write_text(json.dumps(self._CANONICAL), encoding="utf-8")
+
+            hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src")
+
+            assert hit.action == "block"
+            assert "replace `applies_to` with `appliesTo`" in hit.message
 
     def test_unknown_kind_is_refused(self) -> None:
         with pytest.raises(ValueError, match="policy"):
@@ -514,11 +535,12 @@ class TestStructuredPredicates:
                 d,
                 "gh-workflow-write.json",
                 {
-                    "id": "gh-workflow-write",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
+                    "kind": "policy",
+                    "name": "gh-workflow-write",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
                     "when": {"tool": "write", "path": ".github/**"},
-                    "action": "require_approval",
+                    "then": "ask",
                 },
             )
             allow_call = _policy.ToolCallFacts("write", {"path": "src/x.py"}, lambda: "")
@@ -565,11 +587,12 @@ class TestTaskPolicies:
                 tmp_path,
                 "global.json",
                 {
-                    "id": "global-block",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
+                    "kind": "policy",
+                    "name": "global-block",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
                     "when": {"tool": "write"},
-                    "action": "block",
+                    "then": "block",
                 },
             )
             call = _policy.ToolCallFacts("write", {"path": "a"}, lambda: "")

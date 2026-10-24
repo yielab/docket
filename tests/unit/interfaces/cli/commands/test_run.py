@@ -349,7 +349,7 @@ class TestRun:
 
             monkeypatch.setattr(_sweep, "dispatch_pod", _fake)
             spec = tmp_path / "p.pipeline.yaml"
-            spec.write_text("name: solo\nsteps:\n  - id: lead\n    role: lead\n")
+            spec.write_text("name: solo\nsteps:\n  - lead: lead\n")
 
             result = runner.invoke(
                 _app, ["run", "--pod", "demo", "--pipeline", str(spec), "--var", "k=v"]
@@ -384,9 +384,7 @@ class TestRun:
             _endpoint(monkeypatch, ok=True)
             _queue.enqueue_task_once("demo", "a task", channel="cli")
             bad = tmp_path / "broken.pipeline.yaml"
-            bad.write_text(
-                "name: broken\nsteps:\n  - id: build\n    role: implementer\n    nope: x\n"
-            )
+            bad.write_text("name: broken\nsteps:\n  - build: implementer\n    nope: x\n")
 
             result = runner.invoke(_app, ["run", "--pod", "demo", "--pipeline", str(bad)])
 
@@ -476,7 +474,7 @@ class TestFlushNotifyAfterDispatch:
         assert "notify: inbox unreadable: [Errno 13]" in capsys.readouterr().out
 
 
-_PIPELINE = "name: p\nsteps:\n  - id: migrate\n    run: {run}\n"
+_PIPELINE = "name: p\nsteps:\n  - migrate:\n      run: {run}\n"
 _SKILL = "---\nname: style-guide\ndescription: house style\n---\n{body}\n"
 
 

@@ -56,12 +56,13 @@ def _policy(pid: str, hook: str, pattern: str, action: str) -> None:
     _store.write_json(
         current_home().policies_dir / f"{pid}.json",
         {
-            "id": pid,
+            "kind": "policy",
+            "name": pid,
             "description": pid,
-            "applies_to": ["*"],
-            "hook": hook,
-            "match": {"type": "regex", "pattern": pattern},
-            "action": action,
+            "appliesTo": ["*"],
+            "on": hook,
+            "when": {"matches": pattern},
+            "then": action,
             "message": pid,
         },
     )

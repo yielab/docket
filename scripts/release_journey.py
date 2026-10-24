@@ -272,8 +272,7 @@ def _write_inputs(world: Path) -> tuple[Path, Path]:
         """name: artifact-installed-release-journey
 description: Complete one governed tool turn from the installed wheel.
 steps:
-  - id: implement
-    role: implementer
+  - implement: implementer
 """,
         encoding="utf-8",
     )

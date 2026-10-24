@@ -64,16 +64,16 @@ from docket.teams.role_schema import (
     render,
 )
 
-# Presence of any of these on a role document marks it as short form (in addition to an
-# explicit `kind: role`) -- see `normalize_role`/`load_role_file`.
-_ROLE_SHORT_FORM_KEYS: frozenset[str] = frozenset(
-    {"cannot", "verdict", "verify", "approval", "instructions", "model"}
-)
-# Keys only the canonical wire form carries: their presence makes a document canonical
-# whatever its `kind:` says, and mixing them with the short-form keys above is an error.
-_ROLE_CANONICAL_ONLY_KEYS: frozenset[str] = frozenset(
-    {"modelClass", "deniedTools", "gateContract", "soulTemplate", "agentsTemplate"}
-)
+# Keys only the canonical wire form carries, each with the short-form key to write instead: a role
+# file that has one is refused (the canonical form is the in-memory model and the persisted
+# `roles.json`, never an authored file).
+_ROLE_CANONICAL_ONLY_KEYS: dict[str, str] = {
+    "modelClass": "model",
+    "deniedTools": "cannot",
+    "gateContract": "verdict, verify or approval",
+    "soulTemplate": "instructions",
+    "agentsTemplate": "instructions (a `## AGENTS` heading splits it)",
+}
 _AGENTS_HEADING_RE = re.compile(r"(?m)^## AGENTS[ \t]*$\n?")
 
 
@@ -382,22 +382,25 @@ def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
     return doc, markdown
 
 
+def canonical_key_refusal(doc: dict[str, Any]) -> str:
+    """The message refusing a canonical key in an authored role, naming the short-form key to
+    write instead; ``""`` when *doc* carries none."""
+    keys = [key for key in _ROLE_CANONICAL_ONLY_KEYS if key in doc]
+    if not keys:
+        return ""
+    return "a role is written in the short form; " + "; ".join(
+        f"replace `{key}` with `{_ROLE_CANONICAL_ONLY_KEYS[key]}`" for key in keys
+    )
+
+
 def load_role_file(path: str) -> dict[str, Any]:
-    """Parse a role YAML file, normalizing the short form into the canonical wire dict
-    `from_wire` accepts; a canonical document (any canonical-only key present) passes through
-    unchanged. `kind: role` is accepted and stripped either way; mixing the two forms is an error."""
+    """Parse a role YAML file written in the short form into the canonical wire dict `from_wire`
+    accepts. `kind: role` is accepted and stripped; a canonical key is refused, naming the
+    short-form key to use."""
     doc = parse_yaml_file(path)
-    short_keys = sorted(key for key in _ROLE_SHORT_FORM_KEYS if key in doc)
-    canonical_keys = sorted(key for key in _ROLE_CANONICAL_ONLY_KEYS if key in doc)
-    if short_keys and canonical_keys:
-        raise ArchetypeError(
-            f"{path}: mixes the short form ({', '.join(short_keys)}) with the canonical form "
-            f"({', '.join(canonical_keys)}); write one or the other"
-        )
-    if canonical_keys or not (short_keys or doc.get("kind") == "role"):
-        doc = dict(doc)
-        doc.pop("kind", None)
-        return doc
+    refusal = canonical_key_refusal(doc)
+    if refusal:
+        raise ArchetypeError(f"{path}: {refusal}")
     return normalize_role(doc, Path(path).parent)
 
 

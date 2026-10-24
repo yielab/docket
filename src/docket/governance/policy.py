@@ -1,10 +1,11 @@
-"""Declarative guardrail policy engine. A policy is JSON or YAML at ``$POLICIES_DIR/*``, either
-canonical (``{id, applies_to, hook, match, action, message}``) or the short form a person writes
-(``kind: policy``, ``appliesTo``, ``on``, ``when``, ``then``) that :func:`normalize_policy` and
-:func:`read_policy` turn into it. ``policy_eval`` returns the winning action (most restrictive
-wins); ``policy_eval_detail`` the full :class:`PolicyHit` for attribution. A file that fails
-validation is never silently skipped: it evaluates as ``block`` within its readable scope,
-attributed to the file (fail closed, spec requirement 7). Never emits traces itself.
+"""Declarative guardrail policy engine. A policy is JSON or YAML at ``$POLICIES_DIR/*``, written
+in the one short form a person authors (``kind: policy``, ``appliesTo``, ``on``, ``when``,
+``then``) that :func:`normalize_policy` and :func:`read_policy` turn into the in-memory canonical
+dict ``{id, applies_to, hook, match, action, message}``; a canonical key in a file is refused.
+``policy_eval`` returns the winning action (most restrictive wins); ``policy_eval_detail`` the
+full :class:`PolicyHit` for attribution. A file that fails validation is never silently skipped:
+it evaluates as ``block`` within its readable scope, attributed to the file (fail closed, spec
+requirement 7). Never emits traces itself.
 Live-path wiring: ``pre_input`` runs once at task enqueue; ``pre_output`` on every hop's output;
 ``pre_tool_call`` in-turn inside ``agent/tools/registry.py``'s ``dispatch_tool`` chokepoint, where a
 ``when`` predicate can also see the call itself via :class:`ToolCallFacts`."""
@@ -143,11 +144,36 @@ def _validate_doc(p: dict[str, Any], label: str) -> str:
     return ""
 
 
+# The canonical keys an authored policy must not carry, each with the short-form spelling to use.
+_CANONICAL_ONLY_KEYS: dict[str, str] = {
+    "id": "name",
+    "applies_to": "appliesTo",
+    "hook": "on",
+    "action": "then",
+    "match": "when: {matches: ...}",
+}
+
+
+def canonical_key_refusal(doc: dict[str, Any]) -> str:
+    """The message refusing a canonical key in an authored policy, naming the short-form key to
+    write instead; ``""`` when *doc* carries none."""
+    keys = [key for key in _CANONICAL_ONLY_KEYS if key in doc]
+    if not keys:
+        return ""
+    return "a policy is written in the short form; " + "; ".join(
+        f"replace `{key}` with `{_CANONICAL_ONLY_KEYS[key]}`" for key in keys
+    )
+
+
 def normalize_policy(short: dict[str, Any]) -> dict[str, Any]:
-    """Normalize one policy document -- short form, canonical, or a mix -- to the canonical
+    """Normalize one short-form policy document to the in-memory canonical
     ``{id, applies_to, hook, match, action, message}`` shape (plus an optional structured
-    ``when``) that :func:`_validate_doc` and :func:`policy_eval_detail` evaluate. Pure: no I/O."""
+    ``when``) that :func:`_validate_doc` and :func:`policy_eval_detail` evaluate. A canonical
+    key is refused, naming the short-form key to use. Pure: no I/O."""
     doc = dict(short)
+    refusal = canonical_key_refusal(doc)
+    if refusal:
+        raise InvalidInput(refusal)
 
     # A top-level `kind: policy` is accepted and stripped; any other value is refused, naming
     # the expected one.
@@ -235,10 +261,10 @@ def to_short_policy(canonical: dict[str, Any]) -> dict[str, Any]:
 
 
 def read_policy(path: Path) -> dict[str, Any]:
-    """Parse one policy file -- JSON or YAML, short or canonical -- into the canonical dict
-    every caller evaluates. The single reader ``validate_policy``, the evaluator's per-file
-    loop, and the CLI's list/show/validate share, so either form reads the same downstream."""
-    # Try JSON first: every canonical policy already shipped is JSON, and this function is
+    """Parse one short-form policy file -- JSON or YAML -- into the canonical dict every caller
+    evaluates. The single reader ``validate_policy``, the evaluator's per-file loop, and the
+    CLI's list/show/validate share."""
+    # Try JSON first: a policy written as JSON must read without PyYAML, and this function is
     # bundled verbatim into the embeddable substrate, which deliberately carries no PyYAML
     # dependency -- reading an existing file must never newly require one. Only a genuine
     # short-form/YAML-syntax file pays the PyYAML cost, and only where it is installed (the
@@ -276,12 +302,12 @@ def validate_policy(path: Path) -> str:
     return _validate_doc(p, str(path))
 
 
-def task_policy_document(doc: Any) -> dict[str, Any]:
-    """*doc* (short or canonical) as a validated canonical block policy under ``TASK_POLICY_ID``;
-    raises ``ValueError`` for anything invalid or whose action is not ``block``."""
-    if not isinstance(doc, dict):
-        raise InvalidInput("a task policy must be a mapping")
-    canonical = normalize_policy(doc)
+def checked_task_document(canonical: dict[str, Any]) -> dict[str, Any]:
+    """A canonical task-restriction document (as ``task_policy_document`` returned it, carried to
+    the turn in ``DOCKET_TASK_POLICIES``) validated again as a block policy under
+    ``TASK_POLICY_ID``; raises ``InvalidInput`` for anything invalid or whose action is not
+    ``block``."""
+    canonical = dict(canonical)
     canonical["id"] = TASK_POLICY_ID
     error = _validate_doc(canonical, TASK_POLICY_ID)
     if error:
@@ -289,6 +315,14 @@ def task_policy_document(doc: Any) -> dict[str, Any]:
     if canonical["action"] != "block":
         raise InvalidInput(f"a task policy may only block, got action {canonical['action']!r}")
     return canonical
+
+
+def task_policy_document(doc: Any) -> dict[str, Any]:
+    """*doc* (short form) as a validated canonical block policy under ``TASK_POLICY_ID``;
+    raises ``ValueError`` for anything invalid or whose action is not ``block``."""
+    if not isinstance(doc, dict):
+        raise InvalidInput("a task policy must be a mapping")
+    return checked_task_document(normalize_policy(doc))
 
 
 def denied_tools_document(names: Sequence[str]) -> dict[str, Any]:
@@ -494,20 +528,20 @@ def policy_eval_detail(
             best_rank = rank
             best = PolicyHit(action=action, policy_id=policy_id, message=message)
 
-    documents: list[tuple[str, dict[str, Any] | None]] = []
+    documents: list[tuple[str, dict[str, Any] | None, str]] = []
     for path in policy_files(project):
         try:
-            documents.append((path.name, read_policy(path)))
-        except Exception:
-            documents.append((path.name, None))
-    documents.extend((TASK_POLICY_ID, doc) for doc in _TASK_POLICIES.get())
+            documents.append((path.name, read_policy(path), ""))
+        except Exception as exc:
+            documents.append((path.name, None, f"unreadable: {exc}"))
+    documents.extend((TASK_POLICY_ID, doc, "") for doc in _TASK_POLICIES.get())
 
-    for label, p in documents:
+    for label, p, unreadable in documents:
         # Fail closed on a broken file (security-gates.spec.md, policy engine requirement 7):
         # a file the validator rejects blocks within its readable scope -- its declared hook
         # and applies_to when those parse, every hook and role when the file itself does not --
         # attributed to the file so the audit/trace record names what to fix.
-        error = "unreadable" if p is None else _validate_doc(p, label)
+        error = unreadable if p is None else _validate_doc(p, label)
         if error:
             declared_hook = (p or {}).get("hook")
             hooks = {declared_hook} if declared_hook in VALID_HOOKS else VALID_HOOKS

@@ -384,12 +384,13 @@ class TestDelegate:
         _bind("demo-lead", "-100300")
         current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy = {
-            "id": "test-block-delegate",
+            "kind": "policy",
+            "name": "test-block-delegate",
             "description": "test-only",
-            "applies_to": ["*"],
-            "hook": "pre_input",
-            "match": {"type": "regex", "pattern": r"forbidden-phrase"},
-            "action": "block",
+            "appliesTo": ["*"],
+            "on": "input",
+            "when": {"matches": r"forbidden-phrase"},
+            "then": "block",
             "message": "blocked by test policy",
         }
         (current_home().policies_dir / "test-block-delegate.json").write_text(json.dumps(policy))
@@ -415,12 +416,13 @@ class TestDelegate:
         _bind("demo-lead", "-100300")
         current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy = {
-            "id": "test-approval-delegate",
+            "kind": "policy",
+            "name": "test-approval-delegate",
             "description": "test-only",
-            "applies_to": ["*"],
-            "hook": "pre_input",
-            "match": {"type": "regex", "pattern": r"needs-a-human"},
-            "action": "require_approval",
+            "appliesTo": ["*"],
+            "on": "input",
+            "when": {"matches": r"needs-a-human"},
+            "then": "ask",
             "message": "needs review",
         }
         (current_home().policies_dir / "test-approval-delegate.json").write_text(json.dumps(policy))
@@ -516,12 +518,13 @@ class TestAnswer:
         _bind("demo-lead", "-100300")
         current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy = {
-            "id": "test-block-answer",
+            "kind": "policy",
+            "name": "test-block-answer",
             "description": "test-only",
-            "applies_to": ["*"],
-            "hook": "pre_input",
-            "match": {"type": "regex", "pattern": r"forbidden-phrase"},
-            "action": "block",
+            "appliesTo": ["*"],
+            "on": "input",
+            "when": {"matches": r"forbidden-phrase"},
+            "then": "block",
             "message": "blocked by test policy",
         }
         (current_home().policies_dir / "test-block-answer.json").write_text(json.dumps(policy))

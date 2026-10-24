@@ -192,12 +192,13 @@ class TestRunTurn:
         _store.write_json(
             current_home().policies_dir / "approve-validation.json",
             {
-                "id": "approve-validation",
+                "kind": "policy",
+                "name": "approve-validation",
                 "description": "require an operator for validation",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "^validate\\b"},
-                "action": "require_approval",
+                "appliesTo": ["*"],
+                "on": "toolCall",
+                "when": {"matches": "^validate\\b"},
+                "then": "ask",
                 "message": "operator validation required",
             },
         )

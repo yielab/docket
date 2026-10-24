@@ -304,12 +304,13 @@ class TestProjectInstructionsSection:
         (current_home().policies_dir / "no-jailbreak.json").write_text(
             json.dumps(
                 {
-                    "id": "no-jailbreak",
+                    "kind": "policy",
+                    "name": "no-jailbreak",
                     "description": "test policy",
-                    "applies_to": ["*"],
-                    "hook": "pre_input",
-                    "match": {"type": "regex", "pattern": "jailbreak"},
-                    "action": "block",
+                    "appliesTo": ["*"],
+                    "on": "input",
+                    "when": {"matches": "jailbreak"},
+                    "then": "block",
                 }
             ),
             encoding="utf-8",
@@ -339,12 +340,13 @@ class TestProjectInstructionsSection:
         (current_home().policies_dir / "odd-wording.json").write_text(
             json.dumps(
                 {
-                    "id": "odd-wording",
+                    "kind": "policy",
+                    "name": "odd-wording",
                     "description": "test policy",
-                    "applies_to": ["*"],
-                    "hook": "pre_input",
-                    "match": {"type": "regex", "pattern": "disregard the"},
-                    "action": "warn",
+                    "appliesTo": ["*"],
+                    "on": "input",
+                    "when": {"matches": "disregard the"},
+                    "then": "warn",
                 }
             ),
             encoding="utf-8",

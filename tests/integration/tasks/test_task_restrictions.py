@@ -34,8 +34,7 @@ SUBJECT = "docket.tasks.application.queue"
 _IMPLEMENTER_ONLY = """\
 name: implementer-only
 steps:
-  - id: implementer
-    role: implementer
+  - implementer: implementer
 """
 
 

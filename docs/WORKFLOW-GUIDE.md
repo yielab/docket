@@ -355,32 +355,19 @@ name: release
 description: Fan the fix out across both implementers, then require a human OK before it ships.
 
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
 
-  - id: fanout
-    parallel:
-      - id: impl-a
-        agent: myapp-implementer
-      - id: impl-b
-        agent: myapp-implementer-2
+  - fanout:
+      parallel:
+        - impl-a: myapp-implementer
+        - impl-b: myapp-implementer-2
 
-  - id: review
-    role: reviewer
-    gate:
-      type: verdict
-      pattern: "^(APPROVE|REQUEST-CHANGES)\\b"
-      passValues: [approve]
-      rework:
-        to: fanout
-        when: [request-changes]
-        maxCycles: 2
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: fanout, max: 2}}
 
-  - id: ship
-    role: tester
-    gate:
-      type: approval
-      message: "Tests passed — ready to deploy?"
+  - ship: tester
+    approval: "Tests passed — ready to deploy?"
 ```
 
 ```bash
@@ -423,8 +410,7 @@ resolved variable namespace before that hop runs:
 
 ```yaml
 steps:
-  - id: deploy
-    role: implementer
+  - deploy: implementer
     instructions: "Deploy to ${env}, then verify the health check."
 ```
 

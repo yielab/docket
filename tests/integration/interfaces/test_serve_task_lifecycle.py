@@ -37,7 +37,7 @@ _hermetic = _support_home.hermetic_2
 SUBJECT = "docket.interfaces.http.server"
 
 _TOKEN = "test-serve-token-lifecycle"
-_IMPLEMENTER_ONLY = "name: implementer-only\nsteps:\n  - id: implementer\n    role: implementer\n"
+_IMPLEMENTER_ONLY = "name: implementer-only\nsteps:\n  - implementer: implementer\n"
 
 
 @contextmanager

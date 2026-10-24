@@ -28,9 +28,7 @@ from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.queue"
 
-_TWO = (
-    "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
-)
+_TWO = "name: two\nsteps:\n  - kickoff: lead\n  - assemble: implementer\n"
 
 
 @pytest.fixture()
@@ -98,7 +96,7 @@ class TestPipelineOnTheStubServer:
 
 
 def _implementer_only(home: Path) -> None:
-    _pod_pipeline("build", "name: build\nsteps:\n  - id: build\n    role: implementer\n")
+    _pod_pipeline("build", "name: build\nsteps:\n  - build: implementer\n")
 
 
 class TestTaskGateAfterVerifyCmd:
@@ -154,8 +152,7 @@ class TestTaskGateAfterVerifyCmd:
         _fleet.meta_set("demo-implementer", "verifyCmd", "true")
         _pod_pipeline(
             "twice",
-            "name: twice\nsteps:\n  - id: first\n    role: implementer\n"
-            "  - id: second\n    role: implementer\n",
+            "name: twice\nsteps:\n  - first: implementer\n  - second: implementer\n",
         )
         _queue(pipeline="twice", gate={"command": f"echo x >> {marker}"})
 
@@ -170,7 +167,7 @@ class TestTaskGateAfterVerifyCmd:
         _fleet.meta_set("demo-implementer", "verifyCmd", "true")
         _pod_pipeline(
             "routed",
-            "name: routed\nsteps:\n  - id: build\n    role: implementer\n    on:\n      fail: stop\n",
+            "name: routed\nsteps:\n  - build: implementer\n    on:\n      fail: stop\n",
         )
         _queue(pipeline="routed", gate={"command": "false"})
 

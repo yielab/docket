@@ -189,11 +189,12 @@ def test_apply_with_an_invalid_policy_writes_nothing(tmp_path: Path) -> None:
         (bad_dir / "policies" / "broken.json").write_text(
             json.dumps(
                 {
-                    "id": "broken",
-                    "applies_to": ["implementer"],
-                    "hook": "pre_tool_call",
-                    "match": {"type": "regex", "pattern": "(unclosed"},
-                    "action": "block",
+                    "kind": "policy",
+                    "name": "broken",
+                    "appliesTo": ["implementer"],
+                    "on": "toolCall",
+                    "when": {"matches": "(unclosed"},
+                    "then": "block",
                 }
             ),
             encoding="utf-8",
@@ -512,11 +513,12 @@ def test_export_writes_only_this_pods_own_scope_never_global(tmp_path: Path) -> 
         (current_home().policies_dir / "global-policy.json").write_text(
             json.dumps(
                 {
-                    "id": "global-policy",
-                    "applies_to": ["*"],
-                    "hook": "pre_tool_call",
-                    "match": {"type": "regex", "pattern": "x"},
-                    "action": "require_approval",
+                    "kind": "policy",
+                    "name": "global-policy",
+                    "appliesTo": ["*"],
+                    "on": "toolCall",
+                    "when": {"matches": "x"},
+                    "then": "ask",
                 }
             ),
             encoding="utf-8",
@@ -710,11 +712,11 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
         mine_dir = current_home().user_recipes_dir / "mine"
         (mine_dir / "policies").mkdir(parents=True)
         (mine_dir / "policies" / "x.yaml").write_text(
-            "id: x\n"
-            "applies_to: [implementer]\n"
-            "hook: pre_tool_call\n"
-            "match: {type: regex, pattern: 'nope'}\n"
-            "action: block\n",
+            "kind: policy\n"
+            "name: x\n"
+            "appliesTo: [implementer]\n"
+            "when: {matches: 'nope'}\n"
+            "then: block\n",
             encoding="utf-8",
         )
 

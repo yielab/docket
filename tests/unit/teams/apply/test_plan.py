@@ -29,13 +29,9 @@ class TestRolesInEveryConfigFormat:
         with _seed_fixture_pod(tmp_path, project):
             recipe_dir = tmp_path / "recipe"
             (recipe_dir / "roles").mkdir(parents=True)
-            base = {
-                "kind": "role",
-                "scope": "pod",
-                "modelClass": "cheap",
-                "soulTemplate": "You vet.",
-                "agentsTemplate": "Protocol.",
-            }
+            base = {"kind": "role", "scope": "pod", "model": "cheap"}
+            for name in ("from-yml", "from-json"):
+                (recipe_dir / "roles" / f"{name}.md").write_text("You vet.\n", encoding="utf-8")
             (recipe_dir / "roles" / "from-yml.yml").write_text(
                 "\n".join(f"{k}: {v}" for k, v in {**base, "name": "from-yml"}.items()),
                 encoding="utf-8",
@@ -244,7 +240,7 @@ class TestPodLocalPipelines:
     def test_its_commands_need_the_review(self, tmp_path: Path) -> None:
         root = _repo_dir(
             tmp_path,
-            {"pipelines/fast.yaml": _FAST + "  - id: migrate\n    run: make migrate\n"},
+            {"pipelines/fast.yaml": _FAST + "  - migrate:\n      run: make migrate\n"},
         )
         review = _review.classify_directory(root)
         got = {(i.kind, i.name, i.runs) for i in review.runs}

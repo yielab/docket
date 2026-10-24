@@ -243,12 +243,9 @@ class TestBoundPipeline:
     _CUSTOM_YAML = (
         "name: custom-bound\n"
         "steps:\n"
-        "  - id: kickoff\n"
-        "    role: lead\n"
-        "  - id: assemble\n"
-        "    role: implementer\n"
-        "    gate:\n"
-        "      type: mechanical\n"
+        "  - kickoff: lead\n"
+        "  - assemble: implementer\n"
+        "    verify: true\n"
     )
 
     def _bind(self, project: str, text: str | None = None) -> str:
@@ -339,18 +336,10 @@ class TestBoundPipeline:
         custom = (
             "name: custom-rework\n"
             "steps:\n"
-            "  - id: build\n"
-            "    role: implementer\n"
-            "  - id: check\n"
-            "    role: implementer\n"
-            "    gate:\n"
-            "      type: verdict\n"
-            '      pattern: "^(APPROVE|REQUEST-CHANGES)\\\\b"\n'
-            "      passValues: [approve]\n"
-            "      rework:\n"
-            "        to: build\n"
-            "        when: [request-changes]\n"
-            "        maxCycles: 2\n"
+            "  - build: implementer\n"
+            "  - check: implementer\n"
+            "    verdict: [APPROVE, REQUEST-CHANGES]\n"
+            "    on: {REQUEST-CHANGES: {goto: build, max: 2}}\n"
         )
         self._bind("myapp", custom)
 
@@ -384,9 +373,7 @@ class TestBoundPipeline:
         assert _steps.effective_pipeline_source("myapp") == "built-in default"
 
 
-_TWO_STEP_YAML = (
-    "name: two\nsteps:\n  - id: kickoff\n    role: lead\n  - id: assemble\n    role: implementer\n"
-)
+_TWO_STEP_YAML = "name: two\nsteps:\n  - kickoff: lead\n  - assemble: implementer\n"
 
 
 def _write_pod_pipeline(project: str, name: str, text: str) -> None:
@@ -516,7 +503,7 @@ class TestTaskPipeline:
             "myapp",
             "needs",
             "name: needs\nvariables:\n  ticket: {required: true}\nsteps:\n"
-            "  - id: kickoff\n    role: lead\n    instructions: work on ${ticket}\n",
+            "  - kickoff: lead\n    instructions: work on ${ticket}\n",
         )
         _queue_task("myapp", pipeline="needs")
 

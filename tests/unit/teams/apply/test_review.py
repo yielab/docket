@@ -94,7 +94,7 @@ class TestClassifyDirectory:
         root = _repo_dir(
             tmp_path,
             {
-                "pipeline.yaml": "name: p\nsteps:\n  - id: migrate\n    run: sh scripts/migrate.sh\n",
+                "pipeline.yaml": "name: p\nsteps:\n  - migrate:\n      run: sh scripts/migrate.sh\n",
                 "mcp-servers/db.yaml": "kind: mcp-server\nname: db\ncommand: npx\nargs: [-y, '@acme/db-mcp@1.4.2']\n",
                 "pod.yaml": "kind: pod\nname: x\nsettings:\n  network: open\n  allowCommands: [make]\n",
             },
@@ -115,16 +115,12 @@ class TestClassifyDirectory:
                 ("gate", "build", "./ci.sh"),
             ),
             (
-                "  - id: build\n    role: implementer\n    gate: {type: mechanical, command: make check}\n",
-                ("verify", "build", "make check"),
-            ),
-            (
-                "  - id: fan\n    parallel:\n      - id: lint\n        role: implementer\n"
-                "        gate: {external: ./lint.sh}\n",
+                "  - fan:\n      parallel:\n        - lint: implementer\n"
+                "          gate: {external: ./lint.sh}\n",
                 ("gate", "lint", "./lint.sh"),
             ),
         ],
-        ids=["short-verify", "short-external", "canonical-mechanical", "inside-parallel"],
+        ids=["short-verify", "short-external", "inside-parallel"],
     )
     def test_a_gate_command_is_a_run_item(
         self, tmp_path: Path, step: str, expected: tuple[str, str, str]

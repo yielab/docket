@@ -123,11 +123,12 @@ def test_a_block_policy_is_accepted_in_short_or_canonical_form() -> None:
         "then": "block",
     }
     canonical = {
-        "id": "q",
-        "applies_to": "*",
-        "hook": "pre_tool_call",
+        "kind": "policy",
+        "name": "q",
+        "appliesTo": "*",
+        "on": "toolCall",
         "when": {"tool": "bash"},
-        "action": "block",
+        "then": "block",
     }
     assert _ok(restrictions={"policies": [short, canonical]}).restrictions is not None
 

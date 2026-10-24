@@ -9,11 +9,11 @@ steps:
     instructions: >-
       Write exactly one new failing test for this task's behavior. Do not change any other
       file, and do not modify any existing test or implementation code.
-  - id: check-red
-    run: python3 -m pytest -q
-    on:
-      pass: fail
-      fail: green
+  - check-red:
+      run: python3 -m pytest -q
+      on:
+        pass: fail
+        fail: green
   - green: implementer
     verify: true
   - test: tester

@@ -22,6 +22,7 @@ RECIPES_MD = ROOT / "docs" / "recipes.md"
 
 sys.path.insert(0, str(SRC))
 
+from docket.bootstrap import bind_adapters  # noqa: E402
 from docket.kernel import templates as _templates  # noqa: E402
 from docket.teams.apply import recipes as _recipes  # noqa: E402
 
@@ -113,6 +114,7 @@ def render() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    bind_adapters()
     content = render()
     if "--check" in args:
         current = RECIPES_MD.read_text(encoding="utf-8") if RECIPES_MD.is_file() else ""

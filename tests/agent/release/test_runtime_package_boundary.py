@@ -44,8 +44,8 @@ assert not any(name == "docket" or name.startswith("docket.cli") for name in sys
 home = Path(os.environ["DOCKET_HOME"])
 (home / "policies").mkdir(parents=True, exist_ok=True)
 (home / "policies" / "approval.json").write_text(json.dumps({
-    "id": "approve-fake", "applies_to": ["*"], "hook": "pre_tool_call",
-    "match": {"type": "regex", "pattern": "fake"}, "action": "require_approval",
+    "kind": "policy", "name": "approve-fake", "appliesTo": ["*"], "on": "toolCall",
+    "when": {"matches": "fake"}, "then": "ask",
     "message": "external approval",
 }))
 runtime = Runtime(approval_stub=lambda token: token.startswith("apr-"))

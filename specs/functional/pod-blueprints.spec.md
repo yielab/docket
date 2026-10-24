@@ -373,8 +373,7 @@ overlay, policies, members, pipeline binding, settings) into one command.
     `docket init` **MUST** classify a `.docket/` (or a `--recipe` given as a directory or resolved
     from the operator's own recipes) into *adds* and *runs on this machine*: pipeline `run:` steps
     (in `pipeline.yaml` and in each `pipelines/<name>.yaml`), a step gate's command (`verify:
-    <command>`, `gate: {external: <command>}`, the canonical `mechanical`/`external` gate with a
-    `command`, inside a `parallel` group too; a `verify: true` that defers to the member's
+    <command>`, `gate: {external: <command>}`, inside a `parallel` group too; a `verify: true` that defers to the member's
     `verifyCmd` runs nothing the repository wrote), MCP server commands, plugins, a `network: open`
     setting, `allowCommands`, a role overlay that removes a built-in role's denied tool, and the
     install command a task's worktree runs (`prepare`, requirement 13). A shipped recipe resolved
