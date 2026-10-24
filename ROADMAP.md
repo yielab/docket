@@ -9,7 +9,7 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-23.** Every phase 0–46 is complete. **Phase 46** (organize by context and
+**Last updated: 2026-10-24.** Every phase 0–46 is complete. **Phase 46** (organize by context and
 refactor by tool, D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md))
 closed 2026-10-23 on branch `plan/phase-46-structure` (unmerged, unpushed): `src/docket/` is
 `kernel`, twelve context packages, `interfaces/` and `bootstrap.py`; no module is over 700 lines;
@@ -17,10 +17,15 @@ closed 2026-10-23 on branch `plan/phase-46-structure` (unmerged, unpushed): `src
 recorded baselines (748 import exceptions, 20 local imports). The specs truth pass and Wave 120
 fixed 87 code defects first. A real run on `fab-dev` matches the pre-move baseline hop for hop and
 event for event and found one defect, a resuming sweep that re-claimed a refused task without
-pause, fixed at the root. **Phase 47** (a public surface per context, ports only at the edges tests fake,
-a functional core for the task's state and the gates, the runtime package without a hook, the
-tests the 2026-10-23 audit asked for; seven cards sized for one docket run each, ADR 0030
-§"After Phase 46") is planned on `TODO.md` and waits for the maintainer.
+pause, fixed at the root. **Phase 47** (the seams ADR 0030
+§"After Phase 46" names) runs on the same branch. Wave 1 (P47-1..P47-9, archived) shipped ports for
+git, processes, the jail, the tracer and the tool gate, `agent` as the turn engine, one writer of a
+task's `status`, pure gate decisions, one owner per test helper, and the layers contract (import
+baseline 748 -> 65 lines). The close-out is active on `TODO.md`: P47-10 integrates the tests-by-context
+branch; P47-11 moves modules to the context that owns their data from a computed plan (62 upward
+imports to an expected handful) and removes the local imports and shims; P47-12 leaves one authored
+YAML form per kind, refuses a setting that does nothing, and adds a `command` policy predicate checked
+against M-1's measured corpus; P47-13 finishes the test audit; P47-14 closes. Decisions waiting for the maintainer are in §7.1.
 Phase 45 (a prepared task worktree, model
 limits from the provider, protected paths, approvals per team; D-65,
 [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md))
@@ -167,13 +172,13 @@ language. If tempted, stop and add it to §7 "Backlog" instead.
 
 - **Typed, gated:** `ruff check .`, `ruff format --check .`, `mypy src` must all pass. No new `# type: ignore` without a reason.
 - **Never write JSON by hand** — docket-owned JSON goes through [platform/store.py](src/docket/platform/store.py) (atomic, filelocked, 0600). Append-only JSONL logs (`observability/trace.py`, `governance/audit.py`) write directly; that is the **D-12** exemption and the only one.
-- **Respect the import contracts of ADR 0030:** the dependency table in `tests/architecture/` is the rule. `kernel` imports nothing in `docket`; `agent` imports `kernel` only; only `interfaces/` talks to the user (no `print`, no `ui.py` elsewhere).
+- **Respect the import contracts of ADR 0030:** the dependency table in `tests/architecture/` is the rule. `kernel` imports nothing outside itself; the contexts are layered (`LAYERS`: `platform < governance < agent < models < observability < pipeline < teams < sandbox < operator < tasks < hops`) and a context imports only those below it; `agent` imports `kernel`, `platform`'s `__init__` and its own ports; only `interfaces/` talks to the user (no `print`, no `ui.py` elsewhere).
 - **Shell-out invariant scope (D-13):** every `git`/`docker` shell-out and every jailed launch funnels through `platform/git.py`, `platform/process.py` and `sandbox/launch.py` — no other module invokes those binaries directly, and they degrade gracefully when one is missing. The sandboxed `bash` tool is not an exception: it reaches the same modules through the chokepoint.
 - User-facing status goes through the Rich helpers in [ui.py](src/docket/ui.py) (`info/success/warn/error`); a command aborts by raising `typer.Exit`. Never raw `print` for status.
 - **Nothing is kept for the past (D-57, ADR 0022 §3).** docket has no users. A removed or renamed command, flag, alias, route, persisted shape or behaviour is deleted in the same change that replaces it, with its tests, spec text and docs. No alias table, no retirement notice, no "did you mean the old name", no migration, no `_REMOVED` map, no hidden command, no deprecated no-op flag. A retired name is an ordinary unknown command (exit 2); `CHANGELOG.md` is the only record. The rule stands until docket has an installed base, which is a fact about the world, not a release number.
 - Permissions: workspace dirs `700`, files `600`.
 - Commit style: `Type: description` (`Add:`/`Fix:`/`Docs:`/`Feat:`/`Refactor:`/`Chore:`/`Test:`/`Merge:`/`Remove:`), detailed body. One task ≈ one commit. **No AI/assistant attribution trailers of any kind; ASCII only.** **Public repo** — scrub real client names, `/home/<user>` paths, and usernames before committing.
-- **Every code task adds or updates a test** (pytest; add a golden case when output changes).
+- **Every behaviour change adds or updates a test** (pytest; a golden case when output changes). A pure move or rename adds none: `pytest --co` and `tests/architecture/` are its check.
 - **Comments: keep rationale, delete archaeology.** Delete card ids, phase numbers, dates, provenance, and narration of what a deleted thing used to do — git history and this file hold all of it. Keep any sentence whose loss would let someone introduce a bug. **When in doubt, keep.** A comment answers "why is it shaped this way"; a docstring is one line unless it states a contract. `scripts/maint/comment_lint.py --check src tests` is the reader of this rule (ratcheted in CI from W31-C3).
 - **Tests are placed by lane, named by module.** `specs/test-framework.md` §"Lanes and placement" is the contract: one unit file per `src/` module, `integration/` for cross-module behaviour, `guards/` for AST invariants (the ≤ 80-line cap was dropped in test-framework 2.15.0; the shrink-only baselines are the bound), `agent/` — outside the default run, ratcheted against a shrink-only baseline, each file declaring `LANE`/`REASON`/`RETIRE_WHEN` — for checks that exist only so an agent does not repeat a recorded mistake. A test that reads prose or builds an artifact is agent-lane by definition.
 - **Standing documents only:** `README.md` (front door; the W31-C7 ≤ 150-line target was superseded by the 9a45009 rebuild — it is descriptive per D-37 and pinned by the agent-lane prose tests, not by a line cap), `CONTRIBUTING.md` (working rules), `ROADMAP.md` (direction, decisions index, phase table), a single `TODO.md` (active and planned boards), `CHANGELOG.md` (release notes), `docs/cycles-ended/` (every closed board/phase section and the decision changelog, byte-preserved with a manifest), `docs/adr/` (one file per reasoned decision), `specs/` (current-state contracts), and generated reference under `docs/`. No bespoke document per task; analysis goes to gitignored `internal-docs/`.
@@ -185,12 +190,19 @@ language. If tempted, stop and add it to §7 "Backlog" instead.
 
 A task is done when:
 
-1. Acceptance criteria all pass, and a pytest covers the change.
-2. `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest` is green.
-3. `bash tests/golden/run.sh verify-all` is byte-identical — **or** the card deliberately changed CLI surface and the regenerated diff is explained line by line.
-4. `bash scripts/validate-specs.sh` is green and the card's own spec carries a version bump, a changelog entry, and a **Status line matching what actually shipped**.
-5. `uv run python scripts/metrics.py --check` is in sync.
-6. Committed with a conventional message, privacy-scrubbed.
+1. Acceptance criteria all pass; a behaviour change has a test that failed before it.
+2. The card's gate passes, and each commit passed `ruff check`, `ruff format --check`, `mypy src` and
+   `pytest --co` (the testing budget in `TODO.md` §"How work runs on this board").
+3. After the merge, the integrator's one parallel run of the default suite is green.
+4. The card's own spec carries a version bump and a **Status line matching what actually shipped**
+   (specs carry no changelog).
+5. Committed with a conventional message, privacy-scrubbed.
+
+Once per phase, at its close (and before a release): `bash tests/golden/run.sh verify-all`
+byte-identical (or a deliberate CLI change with its diff explained line by line), `uv run pytest
+tests/agent`, `scripts/maint/pytest-without-sandbox.sh`, the escape matrix, `bash
+scripts/validate-specs.sh`, `uv run python scripts/metrics.py --check`, the generated-docs checks and a
+real run.
 
 Two rules that override any of the above when they conflict:
 
@@ -332,6 +344,36 @@ address exactly those.
   and is typed (`core/runtime_driver.py`), with exactly **one** shipped driver by design. It is a
   port, **not** a plugin framework, and a second driver needs a named trigger — not a hypothetical
   about breadth.
+
+## 7.1 Decisions waiting for the maintainer (2026-10-24)
+
+> Engineering follow-ups with triggers live on `TODO.md` §"FOLLOW-UPS WITH TRIGGERS"; Phase 47's
+> remaining work is the close-out section there. These entries need a decision, not a trigger.
+
+- **Integrate `plan/phase-46-structure` (Phases 46-47) into `develop` and push.** Until then the
+  `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at P47-13.
+- **The default tool set, only if it has to change.** `agent/tools/builtin_tools.py` registers `skill`
+  and `consult`, which import `hops.workspace.skills` and `tasks.application.consult` (the two `agent`
+  exceptions). P47-11 moves the module to composition in `hops` and keeps the set identical; a decision
+  is needed only if it cannot.
+- **Positioning against governance the coding agents now ship** (Claude Code hooks and managed settings,
+  Codex CLI approval gates and OS sandboxing; secondary sources in
+  `internal-docs/strategy/competitive-and-yaml-2026-10-24.md`). What docket still claims as distinct:
+  one chokepoint across tools, capability denials, a hash-chained audit log, an embeddable runtime,
+  team configuration in the repository. No independent benchmark exists on the same task; no public
+  comparison before one does. M-1 on `TODO.md` measures the policy half of the claim, and P47-12 acts on
+  it.
+- **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters and the adoption
+  benchmark are still public claims.
+- **P46-11, the persisted shapes** (a nested task record, `pods/<pod>/settings.json`): a redesign that
+  waits for a measured need. It would also place an answer to a `run --pipeline <file>` task against
+  that file's spec instead of the pod's pipeline.
+- **The memory seeds point at `memory/YYYY-MM-DD.md`** (`teams/agent_memory.py`), a path docket never
+  creates; changing it bumps `CONTRACT_VERSION`.
+- **The gitignored `CLAUDE.md` still describes the `cli/ -> core/ -> edges/` tree**; its architecture
+  section is rewritten from ADR 0030 by the maintainer.
+- **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends
+  hosted-model tokens on `fab-dev`, so it needs a go.
 
 ---
 

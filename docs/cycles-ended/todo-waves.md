@@ -15440,3 +15440,297 @@ The scripts run last because the Wave 120 branches touch the same files the code
 - **Acceptance:** the trace diff is empty; the Phase 46 acceptance above, with numbers.
 - **Gates:** every gate in CLAUDE.md "Running tests", in a clean worktree.
 
+## ◇ Phase 46 closed 2026-10-23
+
+> Phase 46 (organize by context, refactor by tool, D-66,
+> [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md)) closed 2026-10-23 on branch
+> `plan/phase-46-structure`, archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
+> `src/docket/` is `kernel`, twelve context packages, `interfaces/` and `bootstrap.py`; no module is
+> over 700 lines; `tests/architecture/` holds the import contracts and the size and local-import
+> ratchets at their recorded baselines. A real run on `fab-dev` matches the baseline hop for hop and
+> event for event, and found one defect (a refused task re-claimed in a loop), fixed in `8afff095`.
+> Acceptance met except the clauses Phase 47 owns: the import baseline is 748 (not empty), `status`
+> has 16 writers, 40 patches cross modules. The branch is unmerged and unpushed. Phase 47 below is
+> planned and waits for the maintainer.
+
+## ☑ PHASE 47 WAVE 1 (2026-10-23) — P47-1..P47-9 executed: the seams, ports, functional core, tests by context, the layers contract
+
+> Opened 2026-10-23 from the Phase 46 cards moved here (P46-10, 12, 13, 14) and the 2026-10-23
+> test-suite audit. The reasoning is in [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md)
+> §"After Phase 46"; this section is the executable record. **Measured 2026-10-23 at `74132d2d`**
+> (`scripts/maint/refactor/analyze.py --metrics` and `tests/architecture/import_contracts_baseline.txt`):
+> 748 import exceptions, 20 function-local imports, largest cycle 35 modules (2 at top level), largest
+> module 695 lines, 16 `status` writers, 40 cross-module monkeypatch targets. The 748 exceptions,
+> split by the card that removes them: P47-1 615, P47-2 58, P47-3 65, P47-4 7, P47-5 3.
+> Re-measure before a card claims a number.
+
+### How a Phase 47 card runs (read before claiming one)
+
+- **One card is one docket task** on the `docket-dev` pod: `docket task add "Do card P47-N of
+  TODO.md under its section's 'How a Phase 47 card runs'" --base-ref plan/phase-46-structure --gate "<the card's gate>"`. The Lead loads the card
+  with `python3 .agents/skills/docket-roadmap/scripts/card_packet.py P47-N`; the implementer runs on
+  the model the card names (a pipeline step `model:`). A card fits one run; a card that does not
+  finish parks with what is left rather than growing.
+- **Self-contained.** A task worktree has no `internal-docs/` (gitignored). A card needs only
+  itself, ADR 0030 and tracked files.
+- **The testing budget, the same for every card.** It replaces "the gate after every commit".
+  1. Per commit: `uv run ruff check . && uv run mypy src && uv run pytest --co -q` (about 10 s).
+     No test runs.
+  2. While iterating: only the card's focused tests.
+  3. The task gate (`--gate`): `uv run pytest tests/architecture -q` plus the card's focused tests,
+     under a minute.
+  4. After the merge, once per card, the integrator runs the default suite in parallel
+     (`uv run pytest -n auto --dist loadfile -q --tb=line > <file>`, about 50 s), reads only the
+     `FAILED` lines, fixes by cause and re-runs `--lf` only. Goldens, the agent lane and the real
+     run are once, at the phase close.
+  5. **Stop rule:** a check that fails again after one fix stops the card. The task parks with the
+     failing line and its hypothesis. No third attempt, no "until green".
+- **Baselines only shrink.** A card rewrites `import_contracts_baseline.txt` with `--write` only after
+  removing edges, and its diff is deletions only. When two cards both shrink it, the integrator
+  regenerates it after the merge and checks the diff against each parent still only deletes.
+- **No behaviour change.** HTTP API 6, the CLI goldens and the `docket_runtime` facade stay byte for
+  byte. The only behaviour changes are the three named defects (10 and 67 in P47-4, 69 in P47-6).
+  A card that finds it needs another one stops and asks.
+
+**Order, by file contention:**
+
+```
+P47-6 done · P47-1 partial  ─►  P47-2 ∥ P47-3  ─►  P47-4 ∥ P47-5  ─►  P47-8 (rest of the facades)  ─►  P47-7  ─►  close
+```
+
+- P47-1 rewrites imports across `src/`, so no other `src/` card runs beside it; P47-6 touches only
+  `tests/` (outside `tests/architecture/`), CI and `pyproject.toml`.
+- P47-2 owns `platform/`, `sandbox/`, the adapters and their call sites; P47-3 owns `agent/`,
+  `models/adapters/` imports of `agent`, and `packages/docket-runtime/`. Both add bindings to
+  `bootstrap.py`, in separate functions, and both edit the import block of
+  `models/adapters/openai_http.py` (P47-2 its `governance` and `platform` imports, P47-3 its
+  `agent` imports); the integrator merges those two blocks.
+- P47-4 owns `tasks/` and `teams/models.py`; P47-5 owns `hops/gates/` and `pipeline/domain/`. Both
+  wait for P47-2, which edits `tasks/application/{lifecycle,queue,runs}.py` and `post_hop.py`.
+  All 16 `status` writers are in `tasks/application/`, so P47-4 and P47-5 do not meet.
+- P47-7 goes last because P47-2..5 rewrite tests inside the files it splits.
+
+### P47-1 — every context has a public surface
+
+**Status:** PARTIAL 2026-10-23. `platform` is done (baseline 748 -> 707, dead-export check in `test_import_contracts.py`, seen failing on a plant). The other 9 contexts are **blocked**: 537 of ~690 cross-context imports are module-style (`from docket.teams import fleet`), and a facade binds names at import time, so the mutual dependencies become real cycles (any one context alone: 42-71 largest cycle, 75-155 modules fail to import; all ten: 99). The `observability` facade was reverted (`47c39a58`): it pulls exporter/projection/spans into the runtime wheel, whose file list is fixed by `hatch_build.py` until P47-3. **Reordered:** the remaining facades run after P47-2..5 as card P47-8; `scripts/maint/facade_oneshot.py` stays until then and is deleted in P47-8's last commit. Patches break when a call site changes from `store.x` to a bound name: patch where the module binds it. · **Size:** M · **Model:** Sonnet · **Kind:** T (a script, then judgment on cycles)
+
+- **Trigger (measured):** 615 of the 748 exceptions are imports of another context's internal
+  module, which a facade closes under the contract as written. Every context `__init__.py` is empty, so ADR 0030's "a context talks
+  to another only through its `__init__`" has nothing to talk through.
+- **Goal:** each context's `__init__.py` (including `platform` and `sandbox`, which are contexts)
+  re-exports, with an explicit `__all__`, exactly the names other contexts import today, and every
+  importer in `src/` uses `from docket.<context> import name`.
+- **How:** a one-shot script under `scripts/maint/` reads the baseline and the AST, writes the
+  `__init__.py` files and rewrites the importers; it is deleted in the card's last commit. One
+  commit per context, leaves first. A facade that creates a cycle is resolved by judgment (import
+  the name where it is defined inside the context, or move a shared type to `kernel`), never by a
+  function-local import.
+- **Non-goals:** the 133 edges P47-2..5 own, each listed in its card (to `platform.git`,
+  `platform.process`, `sandbox.*` or an `adapters/`; out of an adapter, `platform` or `sandbox`;
+  from `agent`; from a `domain/`). Tests keep importing internal modules (contracts cover `src/` only). No blind re-export.
+- **Files:** every context `__init__.py`; importers in `src/`; `tests/architecture/test_import_contracts.py`
+  gains the dead-export check: a name in `__all__` that nothing outside the context imports fails.
+- **Acceptance:** the baseline drops by the 615 facade edges (deletions only) and holds only the
+  133 the later cards own; the dead-export check passes and was seen to fail on a planted unused
+  name; `cycle_largest` ≤ 35 and `local_imports` ≤ 20 (`analyze.py --metrics`).
+- **Gate:** `uv run pytest tests/architecture -q && uv run python scripts/maint/refactor/analyze.py --metrics`.
+
+### P47-2 — ports at the edges the tests fake (narrows the old P46-13)
+
+**Status:** PARTIAL 2026-10-23 (merge `b1545896`). Done: `Git`, `Process` and `Jail` ports in `kernel/ports.py` (`git_port.use(fake)` style, not `use_<port>()`, because the dead-code baseline allows 3 test-only definitions), bound by `bootstrap.bind_adapters()` from `build_app` and `build_server` and by `docket_runtime/_bind.py`; `sandbox/launch.py` is a `Launcher` handed its collaborators by bootstrap; fakes in `tests/support/fakes.py`; contract suites `tests/contracts/test_{git,process,jail}_contract.py` as [real, fake]. Baseline 707 -> 643, patches on the four aliases 113 -> 0, `monkeypatch_cross_module_targets` 41 -> 35, local imports 20 -> 19. **Six edges remain**, all waiting for P47-3 or a card of their own: `models.provider_lifecycle` and `teams.report` -> `openai_http` (`resolve_endpoint` is models logic sitting in the adapter; waits for `Endpoint` to leave `agent.llm`), `openai_http` -> `governance.secrets`, `platform.fetch` -> toolbox `ToolOutcome`, `agent.driver` -> `openai_http` and `observability.adapters.sinks`, and `operator.adapters.telegram` -> `interfaces.telegram.client` (touches the AST-pinned single `send_message` call site, Telegram spec 2.4.0, about ten test and doc paths: its own card). Follow-ups: `_credential_sources` is duplicated in bootstrap and `docket_runtime/_bind.py`; `tests/support/fakes.py` docstring is 18 lines (budget 12). · **Size:** M · **Model:** Sonnet · **Kind:** T + M
+
+- **Trigger (measured):** the most patched test targets are the private aliases of three
+  boundaries: 113 `monkeypatch.setattr` calls on `_git` (57), `_launch` (22), `_git.subprocess`
+  (18) and `_process` (16). The contract keeps 58 edges here:
+  - 41 from a context to `platform.git`, `platform.process`, `sandbox.*` or another context's
+    `adapters/` (a facade would satisfy the contract, but these are the boundaries tests fake);
+  - 2 from a context to its own `adapters/` (`models.provider_lifecycle`, `operator.notify`);
+  - 15 out of an adapter, `platform` or `sandbox`: 8 into `platform` (`redirects` 4, and
+    `sandbox` into `git`/`process` 4) and 7 into another context
+    or `interfaces` (`sandbox.launch` into `governance.secrets`, `governance.security`,
+    `models.catalog`, `teams.fleet`; `openai_http` into `governance.secrets`; `platform.fetch` into
+    the toolbox; `operator.adapters.telegram` into `interfaces.telegram.client`).
+- **Goal:**
+  - Git, processes and the sandbox launcher are ports with the idiom `kernel/clock.py` already
+    uses: a `Protocol`, a `ContextVar`, `use_<port>()`. `bootstrap.py` binds the real adapter at each
+    entry (CLI, HTTP server, runtime), `tests/conftest.py` binds the real one by default, and a test
+    swaps in the fake from `tests/support/fakes.py` (`tests/fakes.py` until P47-6 lands).
+  - The 6 edges to a context's `adapters/` go through `bootstrap.py`, the only module that names a
+    concrete adapter.
+  - The 8 into `platform` become `from docket.platform import ...`: `_allowed_adapters` in
+    `tests/architecture/test_import_contracts.py` admits `platform`'s `__init__` (ADR 0030 amended
+    row), with an accept and a refuse row added to `_BITES`.
+  - The 7 into a context or `interfaces` move the shared code to where both can reach it, or
+    receive it as a parameter. (The 3 adapter edges into `agent` are P47-3's, which owns `agent/`.)
+- **Tests in the same card:** every `monkeypatch.setattr` on `_git`, `_git.subprocess`, `_launch` or
+  `_process` becomes a fake bound with `use_<port>()`. Each port has one fake and
+  `tests/contracts/test_<port>_contract.py`, run as `[real, fake]`.
+- **Non-goals:** a port for the store (`platform.store` is the JSON chokepoint, no test fakes it;
+  it goes through P47-1's facade); ports between contexts; a DI framework.
+- **Acceptance:** the 58 edges leave the baseline; patches on those four aliases are 0 (from
+  113); `monkeypatch_cross_module_targets` drops from 40 and the card records the new
+  value; the contract suites pass for real and fake.
+- **Gate:** `uv run pytest tests/architecture tests/contracts -q` plus the unit tests of
+  `platform/` and `sandbox/`.
+
+### P47-3 — `agent` is the turn engine: composition and governance move out, the runtime closure is computed
+
+**Status:** DONE 2026-10-23 (merge `f4133a85`, six commits, one run). `agent` edges 51 -> 2 (named exceptions: `builtin_tools` `skill` -> `hops.workspace.skills` and `consult` -> `tasks.application.consult`, because moving their registration changes the default tool set that `teams.report` and about a dozen suites count: its own card). Moved: `driver`, `isolation_posture` -> `hops/application`; `skills` -> `hops/workspace`; `identity`, `memory`, `conversations` -> `teams`; `mcp_tools` split (`kernel/mcp.py`, `teams/mcp_servers.py`, the adapter stays); `agent.llm` folded into `agent/ports.py`. Ports: `ToolGate` (`govern`, `audit_refusal`, `audit_event`, `screen_untrusted`; the decisions are pure in `governance/gate_rules.py`), `RoleComposer`, `Tracer` (`kernel/ports.py`). `registry.py` 656 -> 284 lines. The runtime closure is computed from the facade's import-time imports (51 files, was 55 by hand, `tests/guards/test_runtime_closure.py`); `largest cycle` 33 -> 15. The baseline diff was not deletions only (85 removed, 60 added: moved modules' edges under new names, `governance.gate`'s two edges and `pod_config` -> `governance.gate`); P47-8 deletes them. Follow-ups: `hops.application.driver`, `teams.identity` and `teams.role_composer` import `agent.*` (need the `agent` facade). Original text: rewritten as ONE card run in ONE docket task (the first version, "agent imports kernel only through ports", was blocked: its wheel half contradicted `tests/agent/release/test_runtime_package_boundary.py`, and treating the 62 edges as one problem with one cure hid that they are three). Do the steps in order; each ends green and committed, so a run that does not finish parks at the last green step. · **Size:** L · **Model:** Sonnet · **Kind:** M + T
+
+- **Trigger (measured 2026-10-23, `rg` over `src/`, 62 edges "agent imports kernel only"):** `agent/` is 6,251 lines holding three things. (1) The engine: `loop*`, `session*`, `context`, `llm`, `ports`, `tools/builtins` (about 10 edges: `session*` -> `platform.store` 2, `loop_trace` -> `observability` 3, `loop` -> `teams.roles` 1, `builtin_tools` 4). (2) Product composition that knows pods, teams, fleet, tasks and policy: `driver` 20, `identity` 7, `isolation_posture` 7, `skills` 2 (about 36 edges), plus `memory` and `conversations`, which `tasks`, `teams` and `hops` import. (3) Governance logic inside the tool chokepoint: `tools/registry.py` (656 lines, 9 edges) holds `evaluate_tool_call`, `_resolve_ask_verdict`, `_park_call`, `_wait_for_ask_approval`, `_consume_matching_pregrant`, `_record_task_pregrant`, `_audit_tool_decision` (about 250 lines) beside the 110-line `dispatch_tool`; `mcp_tools` has 3 more edges and `teams/apply/*`, `teams/config_docs.py`, `teams/pod_settings.py` import it for the MCP server declarations. The reverse edges (`teams`, `hops`, `tasks` -> `agent`) make a dependency cycle, which is what stopped every facade attempt (P47-1, P47-8).
+- **Goal:** `agent` imports `kernel` and its own `ports.py` only, and the runtime wheel ships a closure computed from the import graph.
+- **Steps (in order, one commit per module move or per step; run the card's gate after each step):**
+  1. **Placement, no port, no behaviour change.** With `scripts/maint/refactor/move.py` (read its `--help`), move out of `agent/` the product composition to the context that owns what it knows: `driver`, `identity`, `isolation_posture` and `skills` to `hops/application` (or `hops/workspace` where it reads a repo view), `memory` and `conversations` to `teams` (pod memory) unless the importers show a better owner, and the MCP server-declaration half of `mcp_tools` to `teams`. `agent` keeps the adapter of MCP tools into the registry. `docket_runtime` and `bootstrap.py` follow the new paths. Decide each module from who imports it, not from its name.
+  2. **Governance leaves the registry.** `governance` gets one use case, `govern(call, ctx) -> Decision` (evaluate, ask, park, wait, pregrant, audit), moved from `registry.py` with its tests. `dispatch_tool` calls it through a one-method `ToolGate` port in `agent/ports.py`, bound in `bootstrap.py` and in `packages/docket-runtime/.../_bind.py`. `dispatch_tool` stays the only entry (the AST test in `tests/unit/agent/tools/test_registry.py` or its successor stays). The decision itself stays a pure function over facts (the P47-5 shape).
+  3. **Infrastructure.** A `Tracer` port in `kernel/ports.py` (the idiom of `kernel/clock.py` and the P47-2 ports) for `loop_trace`; `session*` and the rest of the engine use `from docket.platform import ...`; amend `_allowed_adapters`/the contract row in `tests/architecture/test_import_contracts.py` so a context may import `platform`'s `__init__` (accept and refuse row in `_BITES`). The chat types the model adapters implement (`agent.llm`, `agent.context`) move to `agent/ports.py`, which adapters may import.
+  4. **Runtime closure computed.** `packages/docket-runtime/hatch_build.py` keeps the `docket.` -> `docket_runtime._internal.docket.` rewrite (the boundary test requires the runtime to own no `docket/` path and to import no `docket` module) but computes the file list from the import graph of the facade's roots instead of `_RUNTIME_FILES`; `tests/agent/release/test_runtime_package_boundary.py` and `tests/integration/test_runtime_execution_envelope.py` pass unchanged and are the oracle.
+  5. **ADR 0030.** Amend the `agent` row ("the turn engine: imports `kernel` and its own ports; the composition of a pod turn lives in `hops`, the approval workflow in `governance`") and §"After Phase 46".
+- **Non-goals:** a facade for any context other than what a step needs (P47-8); changing the `docket_runtime` facade names or behaviour; changing any policy decision, approval flow or audit entry (the oracle is the existing security, approval and escape-matrix tests, which must pass unchanged); the 6 edges P47-2 left that are not agent's (`teams.report` -> `openai_http` and the Telegram client).
+- **Acceptance:** the `agent` edges leave the baseline (the "agent imports kernel only" section is empty or lists named exceptions with their reason); `tests/architecture` passes with baseline deletions only; the runtime wheel builds (`uv build packages/docket-runtime`) and imports its facade in a clean venv; the two runtime tests above pass unchanged; `registry.py` is under 300 lines; the gate decisions have table tests.
+- **Gate:** `uv run pytest tests/architecture tests/unit/agent -q`, plus the moved modules' tests, and at the end one batch of the approval, security, policy, runtime-envelope and escape-matrix test files.
+
+### P47-4 — the task's decisions are a functional core (old P46-12, plus defects 10 and 67)
+
+**Status:** TODO after P47-2 · **Size:** M · **Model:** Sonnet · **Kind:** M + T
+
+- **Trigger (measured):** `status` has 16 writers (12 from the old `dispatch.py`, 4 in
+  `tasks/application/answers.py`) and no table of allowed transitions; `tasks/domain/` imports
+  `tasks.application.{queue,runs}`, `hops.application.runner`, `hops.workspace.prepare`,
+  `governance.policy`, `teams.roles` and `agent.handoff` (7 exceptions), so the domain reads state
+  instead of receiving it.
+- **Goal (ADR 0030 §"After Phase 46", functional core):**
+  - `tasks/domain/state.py`: `Status` and `FailureKind`, the transition table, and a pure
+    `decide(status, to, **facts) -> Transition`, which returns the field changes or raises
+    `IllegalTransition`. `tasks/application` has one `apply_transition(project, task_id, to, ...)`,
+    the only code that writes `status`. A script replaces the 16 sites by AST location.
+  - `tasks/domain/` imports only `kernel` and itself: `refs.py`, which resolves references by
+    reading the queue and the runs, moves to `application/`; `options.py` receives role names and
+    policy checks as data; the type `task.py` takes from `agent.handoff` moves to `kernel` or into
+    `tasks/domain`.
+  - **Defect 10:** an answer record keeps `kind` and `createdAt`, and `answer_task` clears
+    `question`, so `docket_decision_latency_seconds_count` counts answers.
+  - **Defect 67:** `budgetUsd` has one writer and one type: a float with `ge=0` on
+    `AgentMeta.budget_usd`, the same after provisioning, the flat `--from` and `pod set`.
+- **Tests:** one table test generated from the transition table (every allowed pair succeeds and
+  sets its fields; every other pair raises), with no disk and no patches; a regression test each
+  for defects 10 and 67. `tests/architecture/test_status_writers.py` refuses `["status"] =` outside
+  `apply_transition`, at baseline 1.
+- **Non-goals:** P46-11's nested task record; any other transition behaviour.
+- **Acceptance:** `status_writers` = 1; the 7 `tasks/domain` edges leave the baseline; the three new
+  tests pass; operator-api and pod-dispatch tests pass unchanged.
+- **Gate:** `uv run pytest tests/architecture tests/unit/tasks -q`.
+
+### P47-5 — the gates decide in pure functions
+
+**Status:** TODO after P47-2, parallel with P47-4 · **Size:** M · **Model:** Sonnet · **Kind:** M + T
+
+- **Trigger (measured):** `hops/gates/post_hop.py` (605 lines) and `pre_hop.py` (382) each mix
+  running a command, writing a reasons file, screening text and tracing with the decision itself.
+  No test names `post_hop.py` as its `SUBJECT`, and 19 test patches name a gate module.
+  `pipeline/domain` imports `teams.roles`, `teams.role_schema` and `sandbox.launch`
+  (3 exceptions).
+- **Goal:** each gate decision is a pure function over facts in a `domain` module (verify exit code
+  and exit map, verdict text, external outcome, token and budget limits, profile requirements,
+  resources) that returns a decision. The shell in `hops/gates/` gathers the facts, runs the
+  command through the P47-2 port, calls the decision and records it. `pipeline/domain` receives
+  role data instead of importing `teams`, and the `sandbox.launch` name it uses moves to `kernel` or
+  is passed in.
+- **Tests:** a table test per decision, with no disk, process or patch. The patches on gate modules
+  drop accordingly, and the card records the count.
+- **Non-goals:** purifying LLM calls, git, the store or processes, which stay in the shell; a new
+  gate kind; any change to a gate's outcome.
+- **Acceptance:** the 3 `pipeline/domain` edges leave the baseline; every decision has a table test;
+  the dispatch and lights-out integration tests pass unchanged.
+- **Gate:** `uv run pytest tests/architecture tests/unit/hops tests/unit/pipeline -q`.
+
+### P47-6 — the tests: keep what earns its place, one owner per helper (the test audit's A and I, and its deletions)
+
+**Status:** DONE 2026-10-23 (merge `cc86fe35`; ids 5573 -> 5530, helper groups 99 -> 0, guard `test_suite_shape.py`, `no-sandbox` CI job, `slow` deleted). Kept on purpose: `AgentMeta.coerce_paused` and the `queue.py` field fill (live path: `meta_get` returns `str(value)`). Follow-ups: numeric-suffix variants in `support/pods.py` and `support/http.py`, tests importing helpers from other tests, `support/pods.py` 668 lines. · **Size:** M · **Model:** Sonnet; the deletions and the CI job are
+Haiku-sized if split · **Kind:** M
+
+- **Trigger (measured, test-suite audit 2026-10-23):** 166 duplicated helpers in 103 groups and 83
+  duplicated fixtures (`_hermetic`, one `setenv`, is defined in 69 files); 49 absence or "legacy"
+  tests; 9 identical tests; shared infrastructure is 267 lines in three files. **Defect 69:**
+  `scripts/maint/pytest-without-sandbox.sh` runs in no CI job, and the `slow` marker is registered
+  and used by nothing.
+- **Goal:**
+  - A test stays only if it pins a `specs/` requirement, pins live-path behaviour nobody would
+    notice breaking (security, persistence, wire contracts, gates, audit), or is the regression of a
+    defect found by running the product. Otherwise it goes: absence tests for retired names (one
+    generic test remains: an unknown command exits 2), legacy readers with their tests and the
+    `src/` reader (`TestLegacyQueueLoads`, `test_legacy_string_*` with `AgentMeta.coerce_paused`'s
+    string tolerance, legacy role tests, `agent/loop.py`'s "backward compatibility" default), and
+    the 9 identical tests. A spec that names a deleted test is amended in the same commit.
+  - `tests/support/{home,pods,trace,llm,git,http,cli,fakes}.py`, written by a one-shot script that
+    folds each AST-identical helper or fixture group into one owner and rewrites the imports.
+    `conftest.py` keeps only autouse isolation (with `DOCKET_SERVICE_MANAGER=none`) and the
+    duration ceilings. `tests/fakes.py` and `tests/pods.py` move into `support/`.
+  - A guard, `tests/guards/test_suite_shape.py`: no AST-identical helper or fixture in two test files.
+  - Defect 69: a CI job runs `scripts/maint/pytest-without-sandbox.sh -q`, and the `slow` marker is
+    deleted.
+- **Non-goals:** the agent lane's `RETIRE_WHEN` review (the PydanticAI and OpenHands adapters and
+  the adoption benchmark are a maintainer decision); the refactor tools (the close deletes them).
+- **Acceptance:** duplicated helpers and fixtures 0, with the guard seen to fail on a planted copy;
+  the absence, legacy and identical tests gone or each kept with its reason in the commit body;
+  the no-sandbox job is green on CI; collected test ids drop only by the deleted tests.
+- **Gate:** `uv run pytest tests/guards -q && uv run pytest --co -q`.
+
+### P47-7 — the tests: integration by context, unit is pure (the test audit's C, D, E and F; B is in P47-2)
+
+**Status:** TODO after P47-2..5 · **Size:** L, split by file · **Model:** Sonnet, one docket task per
+giant file · **Kind:** M + T
+
+- **Trigger (measured):** `tests/integration/` is one flat folder of 132 files; 38 declare a whole
+  package as `SUBJECT`; `test_agent_loop.py` is 3,091 lines, `test_docket_driver.py` 2,246 and
+  `test_dispatch.py` 2,088, which is why the parallel suite uses 29 % of 16 CPUs; in `tests/unit/`,
+  20 files serve HTTP, 9 spawn processes and 21 use `CliRunner`; 237 `setenv` and 264 prose asserts.
+- **Goal:**
+  - A script moves each integration file to `integration/<context>/` (by `SUBJECT`, else by the
+    context it imports most), fixes `SUBJECT` to the entry module it drives, and renames files
+    named after cards or waves.
+  - One task per giant file splits it by flow, to at most 800 lines per file.
+  - The unit files that do real I/O move to `integration/<context>/`, unless a P47-2 fake
+    replaces the I/O in the same commit.
+  - Guards in `tests/guards/test_suite_shape.py`: a unit file opens no socket or process and calls
+    no `time.sleep`; `SUBJECT` names a module, never a package; a test file is at most 800 lines;
+    `setenv` only in the tests that parse the environment (an explicit list), at a shrink-only
+    baseline; `in result.output` on a command that has `--json`, at a shrink-only baseline.
+- **Non-goals:** rewriting tests' meaning; the duration ceiling (lower it only when a measured
+  ranking allows).
+- **Acceptance:** no integration file at the root of `tests/integration/`; none over 800 lines; the
+  shape guards pass at their baselines; collected test ids equal the pre-card set modulo path; the
+  parallel suite's wall time is recorded before and after.
+- **Gate:** `uv run pytest tests/guards -q && uv run pytest --co -q`, then the moved files only.
+
+### P47-8 — the facades of the other nine contexts (what P47-1 could not close)
+
+**Status:** PARTIAL 2026-10-23 (merge `c9bcb3ab`). Only `operator` got a facade (22 exports, 15 importers); `ToolOutcome`, `operator_contract`, `protected_paths`, `DispatchError`, `check_command` moved to `kernel` and `parked_questions` to `platform`. Baseline 600 -> 549, deletions only; cycle_largest 15, local_imports 19, runtime closure 51 -> 52. **The other eight contexts are blocked by structure, not by effort:** measured 2026-10-23 over module-level imports between the eleven contexts, 53 context pairs and 323 imports, the best ordering still has 64 upward imports (pipeline -> hops 10, tasks -> hops 9, teams -> hops 7, governance -> teams 6, pipeline -> teams 6, models -> teams 5, governance -> pipeline 4, teams -> tasks 4 ...), so the contexts are not layered; a package `__init__` that binds names runs on any submodule import and turns each of those into an import cycle, and any context the runtime imports drags its whole facade into the wheel (agent 52 -> 75, teams 52 -> 157, governance 52 -> 101, observability 52 -> 60). **Closed by P47-9 (merge on `plan/phase-46-structure`, 2026-10-23): the rule was the error, not the code.** ADR 0030 now layers the contexts (platform < governance < agent < models < observability < pipeline < teams < sandbox < operator < tasks < hops) and the contract refuses an upward import; a facade stays optional (`platform`, `operator` keep theirs). Baseline 549 -> 65: 62 upward imports (pipeline -> hops 10, tasks -> hops 9, pipeline -> teams 6, governance -> teams 6, teams -> hops 5, models -> teams 5, teams -> tasks 4, governance -> pipeline 4 ...), the 2 named `agent` exceptions and 3 kept-rule exceptions. Phase acceptance "import baseline empty" becomes "no upward import between contexts"; fixing the 62 is a card when the maintainer wants it, not part of this phase. Original text: TODO after P47-2..5 · **Size:** M · **Model:** Sonnet · **Kind:** T
+
+- **Trigger (measured 2026-10-23, P47-1):** the import baseline holds 707 lines, of which about 574 are facade edges. Applying a facade before the contexts stop depending on each other pairwise multiplies the cycles; P47-2..5 remove the port, agent and domain edges that cause the biggest ones.
+- **Goal:** the same as P47-1's, per context, leaves first, using `scripts/maint/facade_oneshot.py` (delete it in the last commit). Re-measure each context alone first: apply a facade only if `cycle_largest` does not grow and every module imports. `observability` goes last-but-one, after P47-3 removed the runtime's file list. A context that still cannot is listed with its blocking edge instead of forced. Underscore names imported across contexts (about 45, mostly from `hops`) become public names or move; `blueprints.load_registry` and `roles.load_registry` need distinct names.
+- **Acceptance / gate:** as P47-1; the baseline falls to the edges P47-2..5 left or to a named list of unresolved cycles.
+
+### Phase 47 close (integrator, not a docket task)
+
+- One full run: the default suite in parallel, `pytest-without-sandbox.sh`, the escape matrix, goldens
+  9/9, the agent lane, `validate-specs.sh`, `metrics.py --check`, the generated-docs checks.
+- The real run on `fab-dev` compared with `internal-docs/baselines/phase-46/after/dispatch`: same hop
+  order, event types and transitions.
+- Delete the refactor tools: `scripts/maint/refactor/` (`analyze.py`, `move.py`, `hoist_imports.py`,
+  `docket-rules.toml`), `scripts/maint/refactor_gate.sh`, `tests/guards/test_refactor_*.py` and
+  `tests/guards/fixtures/refactor/`. The architecture tests are the durable record.
+- **Phase acceptance:** import baseline empty; local imports 0 or each remaining one a named
+  real cycle; `status` writers 1; patches on another module's private alias 0; `docket-runtime`
+  without a hook; no integration file over 800 lines; the real run matches.
+
+### Left out of Phase 47's path
+
+- **P46-11, the persisted shapes (nested task record, `pods/<pod>/settings.json`), is not scheduled.**
+  It is a redesign and waits for a measured need. Its two real defects (10, 67) are in P47-4.
+- **The agent lane's retirements** (PydanticAI and OpenHands adapters, the adoption benchmark) need a
+  maintainer decision about whether they are still public claims.
+- **The test audit's G** (modules over 200 lines no test names) is answered by the coverage run of
+  2026-10-23: 92.4 % of lines, no module of 60 or more statements under 70 %.
+- **Test speed** (`time.sleep` to deadlines, shared stub servers): the split in P47-7 removes the
+  measured cause (the giant files serialize the run); revisit only if the after-time says otherwise.
+
