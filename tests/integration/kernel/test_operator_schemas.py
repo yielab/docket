@@ -8,7 +8,7 @@ from pathlib import Path
 
 SUBJECT = "docket.kernel.operator_contract"
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_v11_files_exist_and_check_passes() -> None:
