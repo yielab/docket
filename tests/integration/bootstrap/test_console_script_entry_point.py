@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-SUBJECT = "docket"
+SUBJECT = "docket.__main__"
 
 
 def _entry_point_target() -> str:
