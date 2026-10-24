@@ -122,7 +122,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Serve Read API | 4.1.3 | Stable |
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
-| Test Framework | 3.2.0 | Active |
+| Test Framework | 3.4.0 | Active |
 | Starter Journey | 2.0.1 | Implemented |
 | Operator Loop | 2.3.0 | Implemented |
 | User Stories | 2.0.1 | Active |
