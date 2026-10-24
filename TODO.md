@@ -132,7 +132,7 @@ M-1 ─────────────────┘   (M-1 must finish be
 
 ### P47-11 — the context structure: each module where its data lives, no upward or local import, no shim
 
-**Status:** IN-PROGRESS (@sonnet, branch `p47-11-layers` from `f662d2f1`) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M + T
+**Status:** DONE (2026-10-24: 12 commits, merge `ba0c4f45`; contract violations 65 -> 1 (Telegram), upward 62 -> 0, cross-context private names 58 -> 0, local imports 19 -> 1 (a named cycle), cycle_largest 15 -> 3; LAYERS kept, the DP order only ties it) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M + T
 (judgment on a computed plan)
 
 - **Trigger (measured at `d1fa3d30`):** ADR 0030 §"Phase acceptance" requires no upward import between
