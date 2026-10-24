@@ -1,8 +1,8 @@
 # ADR 0021 (D-56): workspace isolation is opt-in again
 
-> **Superseded in part by D-67 (2026-10-24, ROADMAP §6):** with no recorded choice, isolation is on
-> where a backend is detected and off, said so, where none is. §2 (a recorded `on` fails closed)
-> stands.
+> **Superseded in part by D-67 (2026-10-24, ROADMAP §6):** `docket init` records isolation on where
+> a backend is detected and records nothing, said so, where none is. An unrecorded choice still
+> means off, and §2 (a recorded `on` fails closed) stands.
 
 **Question:** ADR 0020 §1 turned workspace isolation on by default: a `DOCKET_HOME` with no
 recorded choice jails every `bash` call and refuses the turn when no backend is usable. The first

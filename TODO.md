@@ -16,8 +16,9 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **Active: Phase 48 (2026-10-24)**, isolation where the machine can jail and the pod owns its
-> state (D-67, D-68, ROADMAP §6). The integration branch is `plan/phase-46-structure` until the maintainer merges it.
+> **Active: none.** Phase 48 closed 2026-10-24 (D-67, D-68, D-69, ROADMAP §6). A new phase starts
+> from a measured trigger or a maintainer request. The integration branch is
+> `plan/phase-46-structure` until the maintainer merges it.
 
 ## How work runs on this board (read before claiming a card)
 
@@ -75,176 +76,16 @@ Phases 46-47 run on `plan/phase-46-structure` until the maintainer integrates it
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
-## ▶ ACTIVE BOARD — Phase 48: isolation where the machine can jail, the pod owns its state
-
-Two lanes that share no file except where a card names function-level ownership, then a docs card
-and the close. Lane A: P48-1 → P48-2. Lane B: P48-3 → P48-4. Then P48-5, then P48-6.
-
-### P48-1 — Isolation on by default when a backend is detected (L) · lane A
-
-- **Status:** TODO
-- **Goal:** D-67.
-  - An unrecorded `isolationMode` means on when `sandbox_availability("auto")` finds a backend, and
-    off when none is found, with nothing refused in that case.
-  - A recorded `on` or `off` behaves as today.
-  - Labels: `on (detected)`, `off (no backend found)`, `on`, `off`.
-- **Owns:**
-  - `teams/fleet.py` (`get_isolation_enabled`, `get_isolation_state`);
-  - `teams/isolation_posture.py`, `teams/network_posture.py`, `hops/gates/profile.py`;
-  - `interfaces/cli/commands/setup_sandbox.py`, `setup.py` (`_sandbox_piece`),
-    `setup_check_services.py`, `setup_check.py` (the isolation lines);
-  - in `status.py`, only `_isolation_phrase` and the sandbox block;
-  - the init sandbox lines in `agents.py`;
-  - `tests/conftest.py`, `tests/support/home.py`.
-- **Steps:**
-  1. Amend the specs:
-     - `security-gates` "Workspace isolation" (opt-in → by detection), requirement 3, and the
-       network-not-enforced text;
-     - `cli-json-shapes` (the labels);
-     - `cli-interface`;
-     - `user-stories`;
-     - `pod-dispatch` and `mcp-client` where they say opt-in.
-  2. Make test isolation explicit before the flip: `_isolate_docket_home` records `off` unless a
-     test asks for the default. Drop the stale `isolationEnabled` seed keys in
-     `tests/support/home.py`. Add `record_isolation_default` for the tests that pin the new
-     default.
-  3. Flip `get_isolation_enabled`, with failing tests first:
-     - unset + backend → jailed;
-     - unset + `DOCKET_SANDBOX_PROBE=none` → host, no refusal;
-     - recorded `on` + no backend → refused.
-  4. Wording in `init`, bare `setup`, `setup sandbox status`, `status` and the `setup` checks. The
-     goldens `setup_sandbox_status` and `status_--all` change deliberately; explain the diff line
-     by line.
-  5. `docs/SECURITY-SIMPLE.md` and `docs/QUICK-START-DOCKET.md` sandbox sections.
-- **Accept:**
-  - the three behaviours above have tests;
-  - `scripts/maint/pytest-without-sandbox.sh -q` passes;
-  - `tests/architecture` passes;
-  - goldens 9/9 with the two deliberate diffs.
-- **Gate:** focused tests by path, then `pytest-without-sandbox.sh`.
-
-### P48-2 — `setup` proposes read grants for the toolchains it finds (M) · lane A, after P48-1
-
-- **Status:** TODO
-- **Goal:** D-67, the toolchain half (Fabulada's gates failed with exit 126 until each toolchain was granted). Detect toolchains under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`,
-  `~/.rustup`, `~/.local/bin` and `~/.local/lib`, the interpreter behind `node`, `python3`,
-  `pytest` and `npm` on PATH when it resolves under `$HOME`) that are not yet in `readOnly`.
-- **Behaviour:**
-  - bare `docket setup` lists each one with its `docket setup sandbox read add <dir>` command;
-  - on a TTY, `setup` and `init` offer `Grant read to N toolchains? [y/N]`;
-  - off a TTY it only prints;
-  - never `$HOME` itself (the existing refusal).
-- **Owns:** a new `sandbox/toolchains.py` (pure detection over an injected env and filesystem),
-  and the toolchain lines in `setup_sandbox.py` and `setup.py`.
-- **Accept:**
-  - unit tests on fake trees;
-  - one integration test that the offer writes nothing on `n`;
-  - the spec item in `security-gates` "read grants".
-
-### P48-3 — The pod's queue, a nested task record, the pipeline a task ran under (L) · lane B
-
-- **Status:** TODO
-- **Goal:** D-68, the task half (ADR 0030's P46-11).
-  - `pod_task_list_path` → `workspaces/pods/<pod>/tasks.json`, through a `Home` helper.
-  - The record is nested `{spec, lifecycle, execution, pending}` (camelCase inside), read and
-    written only through `tasks/domain/task.py` accessors.
-  - One flattening serializer for HTTP, MCP and `--json`, so API 6 is byte-identical. The
-    operator-api and serve-read-api tests are the oracle.
-  - A claim records `pipelineRef` (a name, or `{path, digest}` for `run --pipeline <file>`).
-    `answers._parked_task_pipeline` and the resume path replay against it.
-- **Owns:**
-  - `tasks/`;
-  - the task-key readers in `hops/application/` (answers, compose, driver task reads, executor,
-    interruptions, steps) and `hops/gates/`;
-  - `interfaces/http/routes/` task routes, `interfaces/cli/commands/{task,task_render,inbox,run}`;
-  - the task readers in `status.py` (not the sandbox block);
-  - `operator/inbox.py`, `teams/workspace/worktree.py`;
-  - `setup_shell.py` (completion reads the queue);
-  - `kernel/home.py` (the new helper).
-- **Steps:**
-  1. Amend `pod-dispatch` "Task lifecycle and identity" and the queue location in
-     `workspace-structure`.
-  2. Accessors first, with every reader moved onto them while the shape is still flat (a pure
-     refactor, `pytest --co` + architecture).
-  3. Flip the stored shape and the location.
-  4. The serializer.
-  5. `pipelineRef`, with a failing test: park under `run --pipeline <file>`, answer, resume, done.
-- **Accept:**
-  - no `t.get("<key>")` on a task dict outside `tasks/` (a guard that has been seen failing);
-  - HTTP and goldens unchanged;
-  - the `--pipeline` park/answer test passes.
-
-### P48-4 — Pod settings in `settings.json`; the contract without a daily log (L) · lane B, after P48-3
-
-- **Status:** TODO
-- **Goal:** D-68, the settings half, and the contract: `docket` never reads the daily log the seeds ask for.
-  - `PodSettings` reads and writes `workspaces/pods/<pod>/settings.json` through `platform/store.py`:
-    the 20 `KEYS`, `RECORDED_KEYS`, `paused` and `pausedReason`.
-  - No pod key is left on the Lead's `.docket-meta.json`, and the raw `meta_get` reads of pod keys
-    are gone: `driver.py` (`mcpServers`), `apply/plan.py`, `cli/pod_settings.py`.
-  - The `WORKFLOW_AUTO.md` and `MEMORY.md` seeds stop asking for `memory/YYYY-MM-DD.md`, and the
-    empty `memory/` dir is no longer created.
-  - `CONTRACT_VERSION = 5`.
-- **Owns:**
-  - `teams/pod_settings.py`, `teams/settings.py`, `teams/agent_memory.py`,
-    `teams/member_workspace.py`, `teams/apply/{write,plan}.py`;
-  - `interfaces/cli/commands/pod_settings.py`;
-  - the one `mcpServers` read in `hops/application/driver.py`;
-  - `kernel/home.py` (`pod_settings_path`).
-- **Steps:**
-  1. Amend `docket-meta` "Pod settings on the Lead" (→ the pod's `settings.json`), `pod-dispatch`,
-     `cost-tracking`, `config-format`, and `workspace-structure` (the contract files).
-  2. A failing test: `pod set` writes `settings.json` and the Lead's meta holds no pod key.
-  3. Move the readers and writers.
-  4. Change the contract text and bump the version; `docket setup --fix` re-seeds a v4 workspace
-     (the test exists, `test_provisioning_contract.py`).
-- **Accept:**
-  - a guard: no pod `KEYS` name passed to `meta_get`/`meta_set`;
-  - `config explain` sources unchanged;
-  - goldens unchanged.
-
-### P48-5 — Positioning: a complement that makes any team out of configuration (M) · after P48-1
-
-- **Status:** TODO
-- **Goal:** D-69.
-  - README intro, `docs/README.md` and `docs/DOCKET.md` say docket works alongside the governance
-    coding agents ship, governing a **team** rather than a session.
-  - They lead with the versatility: roles, pipelines (sequence, parallel groups, routing, bounded
-    rework, human gates, per-step models) and policies are YAML, so any team is a combination of
-    files, with no code.
-  - Show three contrasting teams built from shipped recipes. Every one is validated with
-    `docket pod validate` and planned with `docket pod plan`; no claim without a run.
-  - The "Sandboxing is opt-in" known limit becomes the detection rule.
-- **Owns:** `README.md` prose (not metric counts), `docs/README.md`, `docs/DOCKET.md`, and the
-  agent-lane prose tests, rebuilt from the new README.
-- **Accept:** `uv run pytest tests/agent` and `metrics.py --check` pass; no comparison claim
-  against another product without a benchmark.
-
-### P48-6 — Close (integrator)
-
-- **Status:** TODO
-- The full gates once:
-  - goldens;
-  - the agent lane;
-  - `pytest-without-sandbox.sh`;
-  - the escape matrix;
-  - `validate-specs.sh`;
-  - `metrics.py --check`;
-  - the generated docs;
-  - `split_board.py check`.
-- The maintainer then:
-  1. backs up and removes `~/.docket`;
-  2. reinstalls with `./install.sh`;
-  3. runs `docket init` for `fab-dev`;
-  4. converts Fabulada's three canonical pipelines on `onboard/tack`;
-  5. does one real run compared with `internal-docs/baselines/phase-47/after/` (`compare.py`).
-- Archive the board.
-
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
 > dedup is persisted (`operator/notify.py`), the `kind:`-less canonical-document advisory is gone, and
 > `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
+
+**Toolchain read grants (dropped from Phase 48).** Fabulada's gates failed with exit 126 under the
+jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was granted by hand with
+`docket setup sandbox read add`. Trigger: a second pod whose first jailed gate fails that way. Next:
+`docket setup` proposes the grants for the toolchains it finds.
 
 **Fired, waiting for a maintainer go (the measurement spends hosted-model tokens).**
 

@@ -814,5 +814,13 @@
     "heading": "6. Decisions (D-1…D-66)",
     "bytes": 61528,
     "sha256": "d4a4b8be2159d6d96d14f8cda62f7e51d37219ed36e4110377fdf5daa8a8675a"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 48 — closed 2026-10-24: isolation where the machine can jail, a task keeps its pipeline",
+    "bytes": 1387,
+    "sha256": "cc04b91127f86b3b66657221108c94b3e3c97815c46f7393b7592c562e45940d"
   }
 ]

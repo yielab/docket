@@ -16110,3 +16110,24 @@ measurement (no `src/` change)
 - **Acceptance:** every baseline policy has at least five rows, each with its deciding layer; `git diff
   --stat src/` is empty.
 
+## ◇ PHASE 48 — closed 2026-10-24: isolation where the machine can jail, a task keeps its pipeline
+
+Planned as six cards (`d6b16df5`) and cut to the changes with a measured need; the rest is dropped
+or waits for a trigger below.
+
+- **Isolation by detection (D-67), `6bde459a`.** `docket init` records isolation on when no choice
+  is recorded and Landlock or Seatbelt is detected, audited `gates.isolate` `on (detected
+  <backend>)`; with none it records nothing and says so; a recorded choice stands.
+  `security-gates` 1.4.0.
+- **A task keeps the caller's pipeline file (D-68), `04ef8464`.** A task claimed under `docket run
+  --pipeline <file>` records source `file` and keeps the spec as `pipelineSpec`; an answer and a
+  later claim with no file replay it. `pod-dispatch` 9.5.0.
+- **Workspace contract v5, `18808b55`.** No seed names the `memory/YYYY-MM-DD.md` daily log docket
+  never reads; `CONTRACT_VERSION` 5, so `setup --fix` re-seeds a v4 workspace.
+  `workspace-structure` 2.2.0.
+- **Positioning (D-69).** The README and the docs index lead with the combinations configuration
+  gives (three shipped recipes, each validated and planned) and say docket works beside the coding
+  assistant a reader already uses.
+- **Dropped:** the nested task record, the pod's queue and settings under `workspaces/pods/<pod>/`
+  (no measured need; ADR 0030's P46-11 stays unscheduled).
+

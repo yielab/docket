@@ -9,15 +9,11 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-24.** Every phase 0–47 is complete. **Phase 48 is active** (D-67, D-68, §6):
-isolation on by default wherever the machine can jail, toolchain read grants proposed by `setup`,
-the pod's own queue and settings under `workspaces/pods/<pod>/`, a nested task record that
-remembers its pipeline, the startup contract without a daily log, and the positioning copy (D-69).
-Cards on `TODO.md`. A new phase starts from a measured trigger or a maintainer request, never from
-this file.
+**Last updated: 2026-10-24.** Every phase 0–48 is complete; none is active. A new phase starts from
+a measured trigger or a maintainer request, never from this file.
 
-**The last two phases** (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md))
-closed on branch `plan/phase-46-structure`, not yet merged into `develop` nor pushed (§7.1).
+**The last three phases** closed on branch `plan/phase-46-structure`, not yet merged into `develop`
+nor pushed (§7.1). Phases 46-47 are D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
 - **Phase 46** moved `src/docket/` into `kernel`, eleven context packages, `interfaces/` and
   `bootstrap.py`, with no module over 700 lines.
 - **Phase 47** layered the contexts (an import of a context above is a test failure), and put each
@@ -29,6 +25,11 @@ closed on branch `plan/phase-46-structure`, not yet merged into `develop` nor pu
   - `when.command` policies measured on a 310-row corpus.
 - **The real runs:** the first, on the live home, found four defects, fixed the same day. The
   maintainer's second, from a fresh install, matches the Phase 46 baseline hop for hop.
+- **Phase 48** (D-67, D-68, D-69) was planned as six cards and cut to three changes and the copy:
+  - `docket init` turns isolation on where the machine can jail;
+  - a task run under a caller's pipeline file keeps it;
+  - workspace contract v5 drops the daily log docket never read;
+  - the README leads with the teams configuration makes, beside the reader's own coding assistant.
 
 **Release:** `v0.2.0-beta.4` is the latest published release (2026-10-06). `VERSION` declares
 `0.2.0-beta.6` (API 6, `exec` deleted); beta.5 and beta.6 are in `CHANGELOG.md` and untagged.
@@ -69,6 +70,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 45 | A prepared checkout, models from the provider, and a check the change cannot define: install from the lockfile with a cache, limits from `/models`, protected paths that park for a person, approvals per (codebase, pod) | D-65 · [0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md) | 2026-10-20 |
 | 46 | Organize by context, refactor by tool: `kernel/` and `Home`, import contracts as tests, one owner of a task's state, the runtime as a package, scripts for every mechanical step | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-23: contexts, splits, route table, `bootstrap.py`, architecture ratchets; real run matches the baseline; ports, state owner and test restructure are Phase 47 |
 | 47 | The seams: layered contexts with each module where its data lives, ports for git, processes, the jail, the tracer and the tool gate, one state owner, tests by context, one authored config form, policies on the parsed command | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-24: import baseline 1 line, local imports 1, corpus-measured policies, live-home defects fixed; fresh-install real run matches the Phase 46 baseline |
+| 48 | Isolation where the machine can jail, a task keeps its pipeline file, contract v5, positioning | D-67, D-68, D-69 | 2026-10-24 |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -220,7 +222,7 @@ address exactly those.
 
 ## 6. Decisions
 
-Every decision D-1…D-66 is answered. The table, with each question and answer, is archived verbatim
+Every decision D-1…D-69 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
 in [docs/cycles-ended/roadmap-decisions.md](docs/cycles-ended/roadmap-decisions.md); from D-35 on,
 the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. That file is byte-preserved, so a
 new decision gets its ADR and a row in the table below. The decisions that act as standing rules
@@ -236,8 +238,8 @@ today:
 | D-52 | Work on `develop`; `main` moves only by fast-forward for a release |
 | D-57 | Nothing is kept for the past: no alias, shim, notice or migration ([0022](docs/adr/0022-one-cli-surface.md)) |
 | D-66 | One package per context, layered, checked by `tests/architecture/` ([0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md)) |
-| D-67 | Isolation is on by default where a backend is detected, off and said so where none is; a recorded `on` fails closed (supersedes D-56) |
-| D-68 | The pod owns its state: `workspaces/pods/<pod>/{tasks,settings}.json`, a nested task record, flattened on every wire; no migration is written while no user needs one, a consequence and not a principle |
+| D-67 | `docket init` records isolation on where a backend is detected and records nothing, said so, where none is; a recorded choice stands and a recorded `on` fails closed (supersedes D-56 in part) |
+| D-68 | A task run under a caller's pipeline file keeps it (`pipelineSpec`). The nested task record and the pod's queue and settings under `workspaces/pods/<pod>/` are dropped for want of a measured need. No migration is written while no user needs one: a consequence, not a principle |
 | D-69 | Positioning (2026-10-24): docket complements the governance coding agents ship by governing a team, not a session, and leads with its versatility: roles, pipelines and policies are configuration, so any team is a combination of files. No comparison against another product without a benchmark |
 
 ---
@@ -283,7 +285,10 @@ today:
 - **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends
   hosted-model tokens on `fab-dev`, so it needs a go.
 - **A release.** `VERSION` is `0.2.0-beta.6`; the last tag is `v0.2.0-beta.4`. Cutting it publishes
-  the Phase 43-47 changes (API 6, `exec` deleted, one authored YAML form).
+  the Phase 43-48 changes (API 6, `exec` deleted, one authored YAML form, isolation by detection).
+- **Fabulada's blueprint** (`onboard/tack` in its own repository) still has three canonical-form
+  pipelines current docket refuses; the converted versions are in the maintainer's backup. It is
+  another repository's branch, so converting it is the maintainer's call.
 
 ---
 
