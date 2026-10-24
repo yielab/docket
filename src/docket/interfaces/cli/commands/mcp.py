@@ -19,7 +19,7 @@ from docket.interfaces.http.routes import health as _health
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.errors import DispatchError, InvalidInput
-from docket.operator import inbox as _inbox
+from docket.operator import build_inbox
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
 from docket.tasks.application import interruptions as _interruptions
@@ -234,7 +234,7 @@ def tool_inbox(since: str | None = None) -> dict[str, Any]:
     failed/done/running context, and a cursor. Identical shape to `docket start`'s `GET /inbox`."""
     _audit("inbox", f"since={since or ''}")
 
-    view = _inbox.build_inbox(now=_clock.iso(), since=since)
+    view = build_inbox(now=_clock.iso(), since=since)
     return view.model_dump(by_alias=True, mode="json")
 
 

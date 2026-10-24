@@ -461,7 +461,7 @@ def _flush(
     return FlushReport(events=len(events), delivered=delivered, failed=failed, skipped=skipped)
 
 
-def _flush_notify_channels(sink_for: SinkFactory) -> None:
+def flush_notify_channels(sink_for: SinkFactory) -> None:
     """One `operator.notify.flush` call over every catalog channel through *sink_for* -- the
     periodic half of delivery; `interfaces/cli/commands/run.py::_pod_dispatch` runs the other,
     foreground half."""

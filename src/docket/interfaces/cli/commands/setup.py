@@ -24,7 +24,7 @@ from docket.kernel.ports import process as _process
 from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models import selection as _mp
-from docket.operator import channel as _channel
+from docket.operator import enable_channel, load_catalog, unreached_warning
 from docket.teams import fleet as _fleet
 
 setup_app = typer.Typer(
@@ -82,8 +82,8 @@ def _endpoint_piece() -> Piece:
 
 
 def _notify_piece() -> Piece:
-    delivering = _channel.load_catalog().delivering()
-    if _channel.unreached_warning(delivering) is None:
+    delivering = load_catalog().delivering()
+    if unreached_warning(delivering) is None:
         return Piece("notifications", True, ", ".join(delivering), "")
     return Piece("notifications", False, "console only (nobody is told)", _NOTIFY_COMMAND)
 
@@ -287,7 +287,7 @@ def _ask_optional(r: Readiness) -> None:
     desktop = not r.notify.ok and _process.desktop_notifications_available()
     if desktop and _ask("Enable desktop notifications?"):
         _ran(_NOTIFY_COMMAND)
-        _channel.enable_channel("desktop")
+        enable_channel("desktop")
         ui.success("Channel enabled: desktop")
     if not r.notify.ok and _ask("Set up Telegram?"):
         _ask_telegram()

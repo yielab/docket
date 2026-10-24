@@ -33,7 +33,7 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
-from docket.operator import channel as _channel
+from docket.operator import enable_channel, load_catalog, unreached_warning
 from docket.platform import mkdir_private
 from docket.teams import blueprints as _bp
 from docket.teams import config_docs as _config_docs
@@ -402,7 +402,7 @@ def _offer_desktop_channel() -> None:
     with a desktop session, offer to turn `desktop` on now and send one test notification so
     the operator sees it work before a parked task needs it. Off a TTY only the warning prints."""
 
-    unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
+    unreached = unreached_warning(load_catalog().delivering())
     if unreached is None:
         return
     ui.console.print()
@@ -412,7 +412,7 @@ def _offer_desktop_channel() -> None:
     ans = input("Enable desktop notifications now? [Y/n]: ").strip().lower()
     if ans in ("n", "no"):
         return
-    _channel.enable_channel("desktop")
+    enable_channel("desktop")
     ui.success("Channel enabled: desktop -- sending one test notification, you should see it now.")
     _setup_notify.send_test("desktop")
 

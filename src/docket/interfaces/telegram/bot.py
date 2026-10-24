@@ -84,7 +84,7 @@ from docket.kernel import clock as _clock
 from docket.kernel import operator_contract as _oc
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.operator import inbox as _inbox
+from docket.operator import build_inbox
 from docket.platform import read_json, write_json
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
@@ -264,7 +264,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
     anything."""
     scope = _approval_scope(agent_id)
     now = _clock.iso()
-    view = _inbox.build_inbox(now=now)
+    view = build_inbox(now=now)
     needs_you = [item for item in view.needs_you if item.pod == scope]
     failed = [t for t in view.failed if t.pod == scope]
     if not needs_you and not failed:

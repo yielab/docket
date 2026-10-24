@@ -7,13 +7,13 @@ import urllib.parse as _urlparse
 
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
-from docket.operator import inbox as _inbox
+from docket.operator import build_inbox
 
 
 def get_inbox(h: HttpExchange, _arg: str) -> None:
     query = _urlparse.parse_qs(_urlparse.urlsplit(h.path).query)
     since_values = query.get("since")
     since = since_values[0] if since_values else None
-    view = _inbox.build_inbox(now=_clock.stamp(), since=since)
+    view = build_inbox(now=_clock.stamp(), since=since)
     body = json.dumps(view.model_dump(by_alias=True, mode="json")).encode("utf-8")
     h._send(body, "application/json")

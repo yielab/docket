@@ -8,7 +8,7 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.kernel.ports import jail as _jail
 from docket.observability import exporter as _exporter
-from docket.operator import channel as _channel
+from docket.operator import load_catalog, unreached_warning
 from docket.teams import fleet as _fleet
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -62,8 +62,8 @@ def _check_notifications(ids: list[str]) -> int:
     """Warn when no enabled channel delivers beyond the console -- a parked task would wait
     unseen. Counted as an issue only once a project agent exists to park anything."""
     ui.section("Notifications:")
-    delivering = _channel.load_catalog().delivering()
-    text = _channel.unreached_warning(delivering)
+    delivering = load_catalog().delivering()
+    text = unreached_warning(delivering)
     if text is None:
         ui.success(f"  Delivering: {', '.join(delivering)}")
         return 0

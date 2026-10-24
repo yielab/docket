@@ -17,7 +17,7 @@ from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import ApprovalView, InboxView, TaskView
-from docket.operator import inbox as _inbox
+from docket.operator import MemoryItem, build_inbox, pending_memory, task_view
 from docket.platform import read_json, write_json
 from docket.tasks.application import queue as _queue
 
@@ -51,7 +51,7 @@ def _approved_ready_tasks() -> list[TaskView]:
             if task.get("status") == "pending" and (
                 task.get("pregrants") or task.get("gateOverridePipelineIndex") is not None
             ):
-                out.append(_inbox.task_view(project, task))
+                out.append(task_view(project, task))
     return out
 
 
@@ -72,11 +72,11 @@ def _as_dict(item: TaskView | ApprovalView, *, ready: bool = False) -> dict[str,
     return row
 
 
-def _memory_command(item: _inbox.MemoryItem) -> str:
+def _memory_command(item: MemoryItem) -> str:
     return f"docket pod memory approve {item.id} --pod {item.pod}"
 
 
-def _memory_dict(item: _inbox.MemoryItem) -> dict[str, Any]:
+def _memory_dict(item: MemoryItem) -> dict[str, Any]:
     return {
         "kind": "memory",
         "pod": item.pod,
@@ -91,9 +91,7 @@ def _memory_dict(item: _inbox.MemoryItem) -> dict[str, Any]:
     }
 
 
-def _json_view(
-    view: InboxView, ready: list[TaskView], memory: list[_inbox.MemoryItem]
-) -> dict[str, Any]:
+def _json_view(view: InboxView, ready: list[TaskView], memory: list[MemoryItem]) -> dict[str, Any]:
     body: dict[str, Any] = view.model_dump(by_alias=True, mode="json")
     body["needsYou"] = (
         [_as_dict(i) for i in view.needs_you]
@@ -125,7 +123,7 @@ def _block(prefix: str, text: str) -> str:
     return prefix + text.replace("\n", "\n" + " " * len(prefix))
 
 
-def _render_memory(item: _inbox.MemoryItem) -> None:
+def _render_memory(item: MemoryItem) -> None:
     _say(f"  memory {item.id}  pod={item.pod}  {item.kind}")
     _say(_block("    ", f"{item.subject}: {item.note}"))
     if item.reason:
@@ -181,13 +179,11 @@ def cmd_inbox(
 
     Example: docket inbox --peek
     """
-    view = _inbox.build_inbox(
-        now=_clock.iso(), since=since if since is not None else _read_cursor()
-    )
+    view = build_inbox(now=_clock.iso(), since=since if since is not None else _read_cursor())
     if not peek and since is None and view.next:
         _write_cursor(view.next)
     ready = _approved_ready_tasks()
-    memory = _inbox.pending_memory()
+    memory = pending_memory()
     if json_out:
         _contract.emit_json(_json_view(view, ready, memory))
         return

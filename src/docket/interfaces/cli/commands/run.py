@@ -20,8 +20,7 @@ from docket.interfaces.cli.render import progress as _progress
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
-from docket.operator import channel as _channel
-from docket.operator import notify as _notify
+from docket.operator import flush, load_catalog, unreached_warning
 from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -174,15 +173,13 @@ def _flush_notify_after_dispatch() -> None:
     Silent unless a delivery failed or nothing beyond the console delivers."""
 
     now = _clock.stamp()
-    report = _notify.flush(
-        list(_channel.load_catalog().entries.values()), _bootstrap.sink_for, now=now
-    )
+    report = flush(list(load_catalog().entries.values()), _bootstrap.sink_for, now=now)
     if report.error:
         ui.warn(escape(f"  notify: {report.error}"))
     if report.failed:
         ui.warn(f"  notify: {report.failed} delivery failure(s) — see channels-health.json")
     if report.events:
-        unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
+        unreached = unreached_warning(load_catalog().delivering())
         if unreached:
             ui.warn(f"  {unreached}")
 
