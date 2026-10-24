@@ -392,9 +392,9 @@ x Tamper check FAILED at line 1 of 6: chain claims continuation from seq=214, bu
   `src/docket/interfaces/cli/commands/setup_export.py`: `gates.*`, `keys.*`, `models.*`, `channel.*`, `mcp_servers.*`,
   `exporter.*` entries. `src/docket/interfaces/cli/commands/run.py`: `run.resume`.
 - `src/docket/operator/channel.py`, `src/docket/observability/exporter.py`, `src/docket/models/catalog.py`,
-  `src/docket/agent/identity.py`, `src/docket/agent/skills.py`, `src/docket/governance/plugins.py`,
+  `src/docket/teams/identity.py`, `src/docket/hops/workspace/skills.py`, `src/docket/governance/plugins.py`,
   `src/docket/tasks/application/answers.py`, `src/docket/governance/review.py`: the remaining entries of
   Requirement 1.
-- `src/docket/agent/driver.py`: `isolation.refused`, `network.refused`.
+- `src/docket/hops/application/driver.py`: `isolation.refused`, `network.refused`.
 - `src/docket/observability/trace.py`: `trace_event` and its `"written"` / `"rejected"` / `"suppressed"`
   result.

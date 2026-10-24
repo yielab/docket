@@ -13,7 +13,7 @@ import pytest
 from tests.support.pods import bind_pipeline_2 as _bind_pipeline
 from tests.support.pods import seed_pod as _seed_pod
 
-from docket.agent.llm import ToolCall
+from docket.agent.ports import ToolCall
 from docket.agent.tools import builtin_tools
 from docket.agent.tools import registry as core_tools
 from docket.kernel.home import current_home, use_home

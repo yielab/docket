@@ -322,11 +322,11 @@ Where the names above live today; the only section that names source paths.
   `EXPORTER_TEMPLATES_DIR`, `CHANNEL_TEMPLATES_DIR`
 - `src/docket/teams/pod_provisioning.py`: `provision_member`, `rendered_member_files`,
   `member_sync_status`, `resync_member`, `POD_TEMPLATE_VERSION`, `TASK_WORKTREES_DIRNAME`
-- `src/docket/agent/memory.py`: `seed_contract`, `contract_ok`, `CONTRACT_VERSION`,
+- `src/docket/teams/agent_memory.py`: `seed_contract`, `contract_ok`, `CONTRACT_VERSION`,
   `DISPATCH_BLOCK_BEGIN`, `DISPATCH_BLOCK_END`, `sync_dispatch_tasks`, `heartbeat_seed`
 - `src/docket/teams/memory.py`: `record_task_memory`, `parse_memory_section`, `list_entries`,
   `approve`, `refuse`, `revert`, `reset`, `render_entries`, `PodMemoryError`, `KINDS`
-- `src/docket/agent/identity.py`: `compose_agent_prompt`, `POD_MEMORY_FRAME`, `POD_MEMORY_LABEL`,
+- `src/docket/teams/identity.py`: `compose_agent_prompt`, `POD_MEMORY_FRAME`, `POD_MEMORY_LABEL`,
   `INSTRUCTIONS_FILE`
 - `src/docket/teams/settings.py`: `pod_task_list_path`
 - `src/docket/tasks/application/lifecycle.py`: `_finalize_task` calls `record_task_memory`

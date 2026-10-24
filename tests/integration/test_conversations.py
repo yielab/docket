@@ -1,6 +1,6 @@
 """Conversation registry (Option B) — docket's durable index of channel threads.
 
-Guards agent/conversations.py: pure registry ops and the load/save round-trip. The registry is
+Guards teams/conversations.py: pure registry ops and the load/save round-trip. The registry is
 Docket's source of truth for what conversations exist
 and their resume state.
 """
@@ -13,11 +13,11 @@ from threading import Barrier
 
 import pytest
 
-from docket.agent import conversations as C
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 from docket.platform import store as _store
+from docket.teams import conversations as C
 
 SUBJECT = "docket.interfaces.cli.app"
 

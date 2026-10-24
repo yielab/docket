@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json as _json
 
-from docket.agent import driver as _dr
 from docket.agent import ports as _rd
+from docket.hops.application import driver as _dr
 from docket.hops.application.compose import _compose_hop
 from docket.hops.application.record import (
     _build_hop_result,

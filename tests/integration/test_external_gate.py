@@ -262,7 +262,7 @@ class TestReasons:
     def test_reasons_pass_the_untrusted_content_screen(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket.agent.tools import registry as _tools
+        from docket.agent.tools import screening as _tools
 
         seen: list[str] = []
         real = _tools.screen_tool_result

@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 import docket.kernel.templates as _templates
-from docket.agent.llm import ToolCall
+from docket.agent.ports import ToolCall
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.kernel.home import Home, current_home, use_home
@@ -368,9 +368,9 @@ class TestFetchResultScreening:
                 ),  # handler replaces with injection
             )
             # Monkey-patch the fetch handler to return a response with injection
-            from docket.platform import fetch as _fetch_module
+            from docket.agent.tools import builtin_tools as _builtin_tools_module
 
-            original_fetch = _fetch_module.fetch_url
+            original_fetch = _builtin_tools_module.fetch_url
 
             def _fetch_injected(url: str, timeout: int = 0) -> object:
                 result = original_fetch(url, timeout)
@@ -379,7 +379,7 @@ class TestFetchResultScreening:
                     result.content = f"hello world. {self._INJECTION}"
                 return result
 
-            monkeypatch.setattr(_fetch_module, "fetch_url", _fetch_injected)
+            monkeypatch.setattr(_builtin_tools_module, "fetch_url", _fetch_injected)
 
             res = dispatch_tool(call, ctx, builtin_registry())
             assert res.ok is False
@@ -397,9 +397,9 @@ class TestFetchResultScreening:
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
-            from docket.platform import fetch as _fetch_module
+            from docket.agent.tools import builtin_tools as _builtin_tools_module
 
-            original_fetch = _fetch_module.fetch_url
+            original_fetch = _builtin_tools_module.fetch_url
 
             def _fetch_injected(url: str, timeout: int = 0) -> object:
                 result = original_fetch(url, timeout)
@@ -407,7 +407,7 @@ class TestFetchResultScreening:
                     result.content = f"hello world. {self._INJECTION}"
                 return result
 
-            monkeypatch.setattr(_fetch_module, "fetch_url", _fetch_injected)
+            monkeypatch.setattr(_builtin_tools_module, "fetch_url", _fetch_injected)
 
             call = ToolCall(
                 id="c1", name="fetch", arguments=json.dumps({"url": f"{fetch_server}/ok"})
@@ -426,9 +426,9 @@ class TestFetchResultScreening:
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
-            from docket.platform import fetch as _fetch_module
+            from docket.agent.tools import builtin_tools as _builtin_tools_module
 
-            original_fetch = _fetch_module.fetch_url
+            original_fetch = _builtin_tools_module.fetch_url
             secret = "sk-" + "a1b2c3d4e5" * 4
 
             def _fetch_injected(url: str, timeout: int = 0) -> object:
@@ -437,7 +437,7 @@ class TestFetchResultScreening:
                     result.content = f"{self._INJECTION} key {secret}"
                 return result
 
-            monkeypatch.setattr(_fetch_module, "fetch_url", _fetch_injected)
+            monkeypatch.setattr(_builtin_tools_module, "fetch_url", _fetch_injected)
 
             call = ToolCall(
                 id="c1", name="fetch", arguments=json.dumps({"url": f"{fetch_server}/ok"})
@@ -468,12 +468,13 @@ class TestFetchResultScreening:
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
+            from docket.agent.tools import builtin_tools as _builtin_tools_module
             from docket.platform import fetch as _fetch_module
 
             def _fetch_error(url: str, timeout: int = 0) -> object:
                 return _fetch_module.ToolOutcome(False, error=f"error: {self._INJECTION}")
 
-            monkeypatch.setattr(_fetch_module, "fetch_url", _fetch_error)
+            monkeypatch.setattr(_builtin_tools_module, "fetch_url", _fetch_error)
 
             call = ToolCall(
                 id="c1", name="fetch", arguments=json.dumps({"url": f"{fetch_server}/ok"})

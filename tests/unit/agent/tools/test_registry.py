@@ -21,7 +21,7 @@ from tests.support import llm as _support_llm
 from tests.support import pods as _support_pods
 from tests.support.cli import call as _call
 
-from docket.agent.tools import builtin_tools
+from docket.agent.tools import builtin_tools, screening
 from docket.agent.tools import registry as core_tools
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
@@ -33,10 +33,10 @@ from docket.agent.tools.registry import (
     ToolRegistry,
     ToolResult,
     dispatch_tool,
-    evaluate_tool_call,
 )
 from docket.governance import approval as core_approval
 from docket.governance import approval_pregrant
+from docket.governance.gate import evaluate_tool_call
 from docket.governance.security import classify_command
 from docket.kernel.home import current_home, use_home
 from docket.operator.contract import canonical_args_digest
@@ -843,7 +843,7 @@ class TestSinglePathToExecution:
         assert not offenders, f"handlers reachable outside the chokepoint from: {offenders}"
 
     def test_the_gate_is_consulted_by_dispatch_itself(self) -> None:
-        """`evaluate_tool_call` must be called from inside `dispatch_tool` — a gate invoked by callers instead is a gate callers can skip."""
+        """`dispatch_tool` must call the `ToolGate` port itself -- a gate invoked by callers instead is a gate callers can skip."""
         source = Path(core_tools.__file__).read_text()
         tree = ast.parse(source)
         dispatch = next(
@@ -852,11 +852,24 @@ class TestSinglePathToExecution:
             if isinstance(node, ast.FunctionDef) and node.name == "dispatch_tool"
         )
         called = {
-            node.func.id
+            (node.func.value.id, node.func.attr)
             for node in ast.walk(dispatch)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
         }
-        assert "evaluate_tool_call" in called
+        assert ("tool_gate", "govern") in called
+
+    def test_the_chokepoint_decides_nothing_itself(self) -> None:
+        """Policy, approvals and audit live behind the port (`governance.gate`); the registry imports none of them."""
+        imported = {
+            alias.name if isinstance(node, ast.Import) else f"{node.module}.{alias.name}"
+            for node in ast.walk(ast.parse(Path(core_tools.__file__).read_text()))
+            if isinstance(node, ast.Import | ast.ImportFrom)
+            for alias in node.names
+        }
+        leaked = sorted(name for name in imported if name.startswith("docket.governance"))
+        assert not leaked, f"decision logic imported into the chokepoint: {leaked}"
 
     def test_handlers_hold_no_policy_vocabulary(self) -> None:
         """toolbox.py must not grow its own gate: two places that can decide means one of them will be forgotten. Checks *identifiers*, not raw text — the module docstring legitimately says the words "approval" and "policy" while explaining that it holds neither, and a substring scan would force that explanation out of the file to stay green."""
@@ -903,7 +916,7 @@ class TestUntrustedResultScreensSeeThePodPolicy:
     passes through it like a fetched page."""
 
     def test_a_tool_result(self, pod_input_policy: Path) -> None:
-        out = core_tools.screen_tool_result(
+        out = screening.screen_tool_result(
             "implementer",
             ToolOutcome(True, content="CANARY-PHRASE"),
             source="fetch",

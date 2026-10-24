@@ -8,46 +8,16 @@ time before `summary`, which is truncated rather than dropped).
 
 from __future__ import annotations
 
-import dataclasses
-
 import docket.kernel.templates as _templates
 from docket.agent import context as _ctx
+from docket.agent import ports as _ports
 from docket.kernel.handoff import HandoffArtifact
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import Home, use_home
 from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import config_docs as _config_docs
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.agent.context"
-
-# ── estimate_tokens ──────────────────────────────────────────────────────────
-
-
-class TestEstimateTokens:
-    def test_empty_string_is_zero_tokens(self) -> None:
-        assert _ctx.estimate_tokens("") == 0
-
-    def test_uses_the_documented_bytes_per_token_ratio(self) -> None:
-        text = "x" * 40
-        assert (
-            _ctx.estimate_tokens(text)
-            == len(text.encode("utf-8")) // current_home().context_bytes_per_token
-        )
-
-    def test_reuses_the_existing_config_ratio_not_a_second_one(self) -> None:
-        """The whole point of reusing `Home.context_bytes_per_token` (rather than inventing a second ratio) is that changing the one config value changes both `maintain check`'s and this module's estimate together."""
-        text = "y" * 100
-        before = _ctx.estimate_tokens(text)
-        with use_home(dataclasses.replace(current_home(), context_bytes_per_token=10)):
-            after = _ctx.estimate_tokens(text)
-        assert before == 25
-        assert after == 10
-
-    def test_utf8_multibyte_text_counted_in_bytes_not_characters(self) -> None:
-        # "é" is 2 bytes in UTF-8 -- the estimate must reflect that, not the
-        # 1-character length Python's `len()` would report.
-        text = "é" * 8  # 16 bytes
-        assert _ctx.estimate_tokens(text) == 16 // current_home().context_bytes_per_token
 
 
 # ── budget_for_role ──────────────────────────────────────────────────────────
@@ -243,7 +213,7 @@ class TestCompileArtifact:
         full = art.render()
         # Budget that fits everything except the full render -- forces at
         # least one field to be shed.
-        budget = _ctx.estimate_tokens(full) - 1
+        budget = _ports.estimate_tokens(full) - 1
         compiled = _ctx.compile_artifact(art, budget_tokens=budget)
         assert compiled.dropped_fields == ("diff",)
         assert "Diff:" not in compiled.text
@@ -259,7 +229,7 @@ class TestCompileArtifact:
         )
         # A budget that only the bare summary fits -- every droppable field
         # must go, in order, none of them left behind.
-        budget = _ctx.estimate_tokens(art.summary)
+        budget = _ports.estimate_tokens(art.summary)
         compiled = _ctx.compile_artifact(art, budget_tokens=budget)
         assert compiled.dropped_fields == ("diff", "diff_ref", "files_changed", "verdict")
         assert compiled.text == art.summary

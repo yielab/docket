@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -9,9 +10,8 @@ from typing import Any
 import pytest
 from tests.support.fakes import FakeJail
 
-from docket.agent import isolation_posture as _isolation_posture
-from docket.agent import loop_trace as _loop_trace
 from docket.hops.application import compose as _compose_c
+from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop_c
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.hops.workspace import prepare as _prepare
@@ -71,12 +71,12 @@ def test_a_task_already_prepared_for_this_lockfile_is_not_prepared_again(
 
 
 def test_a_failed_install_refuses_the_task_with_the_command_status_and_tail(
-    worktree: Path, monkeypatch: pytest.MonkeyPatch
+    worktree: Path, monkeypatch: pytest.MonkeyPatch, real_tracer_except: Callable[..., None]
 ) -> None:
     outcome = _prepare.PrepareOutcome(False, False, 1, 0.5, "x" * 5000 + "TAIL")
     monkeypatch.setattr(_prepare, "prepare_worktree", lambda *a: outcome)
     monkeypatch.setattr(_trace, "trace_event", lambda *a, **k: "written")
-    monkeypatch.setattr(_loop_trace, "trace_event", lambda *a, **k: "written")
+    real_tracer_except(trace_event=lambda *a, **k: "written")
     seen: list[tuple[str, str]] = []
     monkeypatch.setattr(
         _queue,

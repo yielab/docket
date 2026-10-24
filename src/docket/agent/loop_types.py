@@ -9,8 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from docket.agent.llm import TokenUsage
-from docket.agent.ports import FailureKind
+from docket.agent.ports import FailureKind, TokenUsage
 from docket.kernel.home import current_home
 
 StopReason = Literal[
@@ -76,7 +75,7 @@ class AgentLoopResult:
     ``stop_reason == "final_message"`` exactly when ``ok`` is True — the only
     stop reason that represents a completed, usable turn. Mirrors
     ``ChatResponse``/``TurnResult``'s identical invariant deliberately, so
-    ``agent/driver.py``'s translation to ``TurnResult`` is a
+    ``hops/application/driver.py``'s translation to ``TurnResult`` is a
     field-for-field copy, not a re-interpretation.
     """
 

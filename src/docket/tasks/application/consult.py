@@ -24,6 +24,7 @@ from pydantic import ValidationError
 
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
+from docket.kernel.gate import HandlerParked, HandlerUnavailable
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.operator.contract import AnswerResultV11, QuestionV11, new_question_id
@@ -32,7 +33,6 @@ from docket.platform import read_json, write_json
 if TYPE_CHECKING:
     from docket.agent.tools.registry import ToolContext
 
-DEFAULT_MAX_CONSULTATIONS = 3
 NO_ANSWER = "no answer; decide yourself"
 BUDGET_EXHAUSTED = "consultation budget exhausted; decide yourself"
 QUESTION_EVENT = "question_asked"
@@ -55,7 +55,7 @@ class ConsultOutcome:
     error: str = ""
 
 
-class ConsultUnavailable(Refused):
+class ConsultUnavailable(Refused, HandlerUnavailable):
     """Nobody can answer this consultation (``refuse``/``park``); the turn ends blocked."""
 
 
@@ -94,7 +94,7 @@ def parked_question(token: str) -> QuestionV11 | None:
         return None
 
 
-class ConsultParked(ConsultUnavailable):
+class ConsultParked(ConsultUnavailable, HandlerParked):
     """Pod dispatch parks this consultation's task; ``token`` names the persisted question."""
 
     def __init__(self, question: QuestionV11) -> None:

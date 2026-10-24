@@ -4,19 +4,19 @@ import urllib.parse
 from collections.abc import Callable
 from typing import Any
 
-from docket.agent import skills as _skills
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.builtins.toolbox import ToolOutcome as ToolOutcome
 from docket.agent.tools.registry import (
-    _CONSULT_TOOL,
     Tool,
     ToolContext,
     ToolRegistry,
     _str_arg,
-    screen_tool_result,
 )
+from docket.agent.tools.screening import screen_tool_result
+from docket.hops.workspace import skills as _skills
+from docket.kernel.gate import CONSULT_TOOL
 from docket.kernel.home import current_home
-from docket.platform import fetch as _fetch
+from docket.platform import fetch_url
 from docket.tasks.application import consult as _consult
 
 
@@ -126,7 +126,7 @@ def _consult_tool() -> Tool:
         "required": ["id", "label", "description"],
     }
     return Tool(
-        name=_CONSULT_TOOL,
+        name=CONSULT_TOOL,
         description=(
             "Ask the operator a question when the task cannot be decided from the "
             "repository alone. Give at least two options and your recommendation. The "
@@ -236,7 +236,7 @@ _GREP_DESCRIPTION = (
 def _offered_fetch() -> list[Tool]:
     """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
 
-    return [_fetch_tool(_fetch.fetch_url)] if current_home().fetch_allowed_domains else []
+    return [_fetch_tool(fetch_url)] if current_home().fetch_allowed_domains else []
 
 
 def builtin_registry() -> ToolRegistry:

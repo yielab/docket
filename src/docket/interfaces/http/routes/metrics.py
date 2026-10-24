@@ -58,7 +58,7 @@ def _esc(s: Any) -> str:
 # *reads* trace JSONL and the audit log to compute counters, it never writes
 # through them and never routes a metric back into either.
 
-# agent/tools/registry.py's `_audit_tool_decision` embeds the raw pre_tool_call
+# governance/gate.py's `audit_tool_decision` embeds the raw pre_tool_call
 # policy hit as a fixed `policy_id='...' policy_action='...'` pair right
 # after the agent/role/project prefix, specifically so this can be parsed
 # without scraping the free-text reason that follows it.

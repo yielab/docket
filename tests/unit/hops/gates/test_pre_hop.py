@@ -21,7 +21,7 @@ from tests.support.pods import planned_unit as _planned_unit
 from tests.support.pods import unit_context as _unit_context
 
 from docket.agent import ports as _rd
-from docket.agent.llm import TokenUsage
+from docket.agent.ports import TokenUsage
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
 from docket.hops.gates import pre_hop as _pre_hop

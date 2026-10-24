@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 from tests.support.git import git_2 as _git
 
-from docket.agent import isolation_posture as _isolation_posture
+from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace import worktree as _worktree

@@ -37,7 +37,7 @@ HEARTBEAT_FILE = "HEARTBEAT.md"
 #: v4 adds a manual-path header: this file's `cd`/write-HEARTBEAT instructions
 #: are for an agent reading it directly, outside Docket's own turn loop, which
 #: never sends this raw text and applies its own read-only runtime contract
-#: instead (`agent/identity.py`).
+#: instead (`teams/identity.py`).
 CONTRACT_VERSION = 4
 _CONTRACT_MARKER = f"<!-- docket-contract: v{CONTRACT_VERSION} -->"
 

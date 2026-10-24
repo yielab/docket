@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from docket.agent.llm import ToolCall
+from docket.agent.ports import ToolCall
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials

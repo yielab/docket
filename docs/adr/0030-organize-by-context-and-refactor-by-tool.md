@@ -33,7 +33,7 @@ cites move.
    levels: `domain/`, `application/`, `adapters/` where the context needs them, flat otherwise.
 2. **The dependency rule is checked, not declared.** `tests/architecture/` runs import-linter
    contracts: a domain package never imports an adapter, a context talks to another only through
-   its `__init__`, no module imports `interfaces/`, `agent/` depends on `kernel/` alone. Function-
+   its `__init__`, no module imports `interfaces/`, `agent/` depends on `kernel/` and `platform`'s `__init__`. Function-
    local imports of `docket.*` are forbidden; the current 206 are a baseline that only shrinks.
    *Amended 2026-10-23:* a context's `__init__` declares `__all__` with exactly the names other
    contexts import, and an export nothing uses fails the contracts test.
@@ -102,8 +102,9 @@ src/docket/
 ├── pipeline/          domain/{spec,plan,verdict,routing}.py  application/{executor,steps,schedule}.py
 ├── hops/              application/{compose,runner,record}.py  gates/{pre_hop,post_hop}.py
 │                      workspace/{worktree,prepare,protected_paths,repo_view,repo_map}.py
-├── agent/             loop, session, context, handoff, memory, conversations, identity, skills,
-│                      tools/registry.py, tools/builtins/*.py, ports.py, driver.py   (= docket-runtime)
+├── agent/             loop*, session*, context, tools/{registry,screening,builtin_tools,mcp_tools,
+│                      mcp_client}.py, tools/builtins/*.py, ports.py   (the turn engine; the pod-turn
+│                      driver is hops/application/driver.py, identity and the role composer are teams)
 ├── governance/        policy/, security/, approval/, audit/, secrets, privacy, profile,
 │                      network_posture, review (reviewed_repos), plugins
 ├── sandbox/           ports.py, launch.py, landlock.py, seatbelt.py, docker.py
@@ -127,7 +128,7 @@ Allowed dependencies (import-linter contracts, enforced from A3 on):
 | `<context>/domain` | `kernel`, its own `domain` |
 | `<context>/application` | `kernel`, its own `domain` and `ports`, other contexts' `__init__` |
 | `<context>/adapters`, `platform`, `sandbox` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), the ports and domain types they implement |
-| `agent` | `kernel` only (plus its own packages) |
+| `agent` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), its own modules |
 | `interfaces` | `kernel`, `bootstrap`, contexts' `__init__` |
 | `bootstrap` | everything |
 
@@ -352,9 +353,11 @@ alias (113 patches on `_git`, `_launch`, `_process`), which breaks on any refact
 contract forbids** (`agent` depends on `kernel` alone, so what it needs from a context is a port in
 `agent/ports.py`). The store is not a port: it is the one JSON chokepoint, and no test fakes it.
 
-A port follows the idiom `kernel/clock.py` already uses: a `Protocol`, a `ContextVar` and a
-`use_<port>()` context manager. `bootstrap.py` binds the real adapter at each entry, the test
-conftest binds the real one by default, and a test swaps in the single fake from `tests/support/`.
+A port is a `Protocol` plus a `Binding` (`kernel/ports.py`): `bootstrap.bind_adapters()` binds the
+real adapter at each entry, the test conftest binds the real one by default, and a test swaps one in
+for a block with `<port>_port.use(fake)` (or a `real_<port>_except(...)` fixture for one replaced
+call). The kernel holds git, process, jail and tracer; `agent/ports.py` holds the ones that are the
+engine's own (`RoleComposer`, `ToolGate`).
 Each port has one fake and a contract suite run against both, `[real, fake]`. No DI framework.
 
 ### A context's `domain/` is a functional core for decisions
@@ -373,6 +376,56 @@ mix running a command, writing a reasons file and tracing with the decision, and
 them as subject. The payoff is that a rule is tested as a table of cases, without disk or patches,
 and read in one place. The check is the existing domain contract plus a table test per decision;
 `decide()` in `tasks/domain/state.py` is the first instance (item 3 above).
+
+### `agent` is the turn engine (P47-3, 2026-10-23)
+
+`agent/` held three things; it keeps one. **The engine** is the loop, the session and its
+compaction, the context fit, the chat vocabulary, the tools registry with its one chokepoint
+`dispatch_tool`, the built-in tool handlers and the adapter that turns an MCP server's tools into
+registry tools. It imports `kernel`, `platform`'s `__init__` and its own modules.
+
+**The composition of a pod turn** moved to the contexts that know what it composes:
+`hops/application/driver.py` (`DocketDriver`), `hops/application/isolation_posture.py`,
+`hops/workspace/skills.py`, `teams/identity.py` (the system prompt from the workspace; it reads
+fleet, pod and pod memory, which is why it is in `teams` and not in `hops`), `teams/agent_memory.py`,
+`teams/conversations.py` and `teams/mcp_servers.py` (the server declarations; the config model they
+share with the adapter is `kernel/mcp.py`).
+
+**The governance** that sat inside the chokepoint moved to `governance/gate.py`: `govern` combines
+the command classifier and the `pre_tool_call` policy, audits, and settles an `ask` by pre-grant,
+refusal, parking or an approval wait. The decisions are pure functions in `governance/gate_rules.py`
+with table tests. `dispatch_tool` reaches it through the `ToolGate` port (`agent/ports.py`:
+`govern`, `audit_refusal`, `audit_event`, `screen_untrusted`) and stays the only way a call runs;
+`registry.py` imports nothing from `governance` and is 284 lines. The vocabulary both sides share
+(`GateCall`, `GateDecision`, `Screened`, the context and tool protocols) is `kernel/gate.py`, so
+neither imports the other.
+
+**What the engine asks of its neighbours** is three more ports: `RoleComposer` (narrow the registry
+for a role, the role's declared budget, compose the system prompt; adapter `teams/role_composer.py`),
+`Tracer` (`kernel/ports.py`; adapter `observability/adapters/local_tracer.py`) and the chat
+vocabulary, which moved into `agent/ports.py` because the model adapters import it. All are bound in
+`bootstrap.bind_adapters`; the runtime package binds `ToolGate` in `_bind.py`.
+
+**The runtime closure is computed.** `packages/docket-runtime/hatch_build.py::runtime_closure`
+follows the import-time imports of the facade package through `src/docket` and ships those files
+(51, from a hand list of 55), still renamed into `docket_runtime._internal.docket` because the
+package may own no `docket/` path. Imports inside a function are not followed: they belong to
+features the runtime does not ship (the task ledger an approval denial joins). The build hook stays
+for that rename; `tests/guards/test_runtime_closure.py` pins what the closure holds and what it never
+may (no task, pipeline, hop, interface or loop module).
+
+**Two named exceptions remain in the `agent` row of the baseline**, both in `builtin_tools.py`: the
+`skill` tool reads `hops.workspace.skills` and the `consult` tool runs
+`tasks.application.consult`. `builtin_registry()` registers them with the other built-ins, and it
+is the default tool set that `teams/report.py`, the role narrowing and a dozen suites count; moving
+their registration to the driver changes that set and is a decision for its own card. The baseline
+went from 625 to 600 lines over the card (the `agent` row 51 to 2); the edges of the moved modules
+sit under the `application` row with their new names until P47-8 gives their contexts a facade.
+
+*Rejected:* a facade for `agent` (it would import the loop, the session and the built-in tools at
+`import docket.agent`, and the runtime wheel would ship them); one `Governance` object with a
+method per `ToolContext` field (the Protocols in `kernel/gate.py` list the thirteen fields the gate
+reads, and `ToolContext` satisfies them without knowing).
 
 ### Tests: what the 2026-10-23 audit changed
 

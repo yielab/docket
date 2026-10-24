@@ -14,42 +14,27 @@ specs/functional/mcp-client.spec.md for the namespacing rule, failure isolation
 from __future__ import annotations
 
 import functools
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
+from docket.agent.ports import tool_gate
 from docket.agent.tools.builtins.toolbox import ToolOutcome
-from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry, screen_tool_result
-from docket.governance import policy as _policy
-from docket.governance.audit import audit_log
-from docket.kernel.errors import InvalidInput
-from docket.kernel.home import current_home
-from docket.platform import store as _store
+from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
+from docket.agent.tools.screening import screen_tool_result
+from docket.kernel.mcp import McpServerConfig
 
 __all__ = [
     "NAMESPACE_PREFIX",
     "McpListResult",
     "McpRemoteTool",
     "McpServerConfig",
-    "McpServerDocError",
-    "McpServerDocument",
     "McpServerLoadResult",
-    "McpServerRegistry",
     "McpToolSkip",
     "StdioLaunch",
-    "add_mcp_server",
-    "load_mcp_server_document",
-    "load_mcp_servers",
     "load_mcp_tools",
     "namespaced_tool_name",
-    "pod_mcp_servers_file",
-    "pod_scoped_owner",
-    "remove_mcp_server",
-    "write_pod_mcp_servers",
 ]
 
 # Every adapted tool name starts with this. No built-in tool name does (they
@@ -57,214 +42,6 @@ __all__ = [
 # prefix alone makes a collision with a built-in structurally impossible --
 # see specs/functional/mcp-client.spec.md (namespacing).
 NAMESPACE_PREFIX = "mcp__"
-
-# A configured server's *local* name is docket-owned config, not remote input,
-# but it still ends up as a path-like fragment in a tool name shown to a
-# model -- restrict it to an unambiguous charset rather than trusting an
-# operator not to fat-finger something that renders confusingly.
-_NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
-
-
-# ── config: docket-owned state, persisted through platform/store.py ────────────
-
-
-class McpServerConfig(BaseModel):
-    """One configured external MCP tool server (stdio transport only, today).
-
-    ``name`` is chosen by the local operator at ``add_mcp_server`` time -- it is what
-    :func:`namespaced_tool_name` uses, never anything the remote server itself reports (it has no
-    way to influence its own namespace)."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str
-    command: str
-    args: list[str] = Field(default_factory=list)
-    env: dict[str, str] = Field(default_factory=dict)
-    # 0 (the default) means "use MCP_CLIENT_TIMEOUT_S"; any value is still
-    # clamped to MCP_CLIENT_MAX_TIMEOUT_S by resolved_timeout() below --
-    # timeouts must be bounded regardless of what a config asks for.
-    timeout: float = 0.0
-    # Operator assertion, never inferred by connecting to the server (see
-    # specs/functional/mcp-client.spec.md Requirement 32). "write" is the
-    # fail-closed default -- a config from before this field existed loads
-    # as "write", matching 1.1.0-1.4.0's unconditional behavior exactly.
-    kind: Literal["read", "write"] = "write"
-    # Non-empty = the exhaustive allow-list of this server's remote tool
-    # names to register; every other advertised tool is skipped (recorded
-    # in McpServerLoadResult.skipped), never silently dropped. Empty (the
-    # default) means "register everything advertised" -- today's behavior.
-    tools: list[str] = Field(default_factory=list)
-
-    def resolved_timeout(self) -> float:
-        """The actual per-call bound this server's calls will honor.
-
-        Never trusts a configured ``timeout`` outright: it is clamped to
-        :data:`Home.mcp_client_max_timeout_s` so one server's config (careless or
-        hostile) cannot buy itself an effectively unbounded wait."""
-        requested = self.timeout if self.timeout > 0 else current_home().mcp_client_timeout_s
-        return min(requested, current_home().mcp_client_max_timeout_s)
-
-
-class McpServerRegistry(BaseModel):
-    """The on-disk shape of :data:`Home.mcp_servers_file`."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    servers: list[McpServerConfig] = Field(default_factory=list)
-
-
-def pod_mcp_servers_file(project: str) -> Path:
-    """Where *project*'s own pod-scoped servers live: ``<pod config dir>/mcp-servers.json``."""
-    return current_home().pod_config_dir(project) / "mcp-servers.json"
-
-
-def load_pod_mcp_servers(project: str) -> list[McpServerConfig]:
-    """*project*'s own pod-scoped servers, in on-disk order. Empty when it has none."""
-    data = _store.read_json(pod_mcp_servers_file(project))
-    return McpServerRegistry.model_validate(data).servers
-
-
-def load_mcp_servers(project: str = "") -> list[McpServerConfig]:
-    """The configured MCP servers, in on-disk order; empty when unconfigured. With *project*,
-    the pod's own pod-scoped servers follow the global ones (a global name wins a collision)."""
-    data = _store.read_json(current_home().mcp_servers_file)
-    servers = McpServerRegistry.model_validate(data).servers
-    if not project:
-        return servers
-    taken = {s.name for s in servers}
-    return [*servers, *(s for s in load_pod_mcp_servers(project) if s.name not in taken)]
-
-
-def write_pod_mcp_servers(project: str, servers: list[McpServerConfig]) -> None:
-    """Replace *project*'s pod-scoped server file with *servers*, through ``platform/store.py``."""
-    path = pod_mcp_servers_file(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _store.write_json(path, McpServerRegistry(servers=servers))
-
-
-def pod_scoped_owner(name: str, *, exclude: str = "") -> str:
-    """The pod (other than *exclude*) whose pod-scoped file declares *name*, else ``""``."""
-    if not current_home().pods_dir.is_dir():
-        return ""
-    for entry in sorted(current_home().pods_dir.iterdir()):
-        if entry.name == exclude or not pod_mcp_servers_file(entry.name).is_file():
-            continue
-        if any(s.name == name for s in load_pod_mcp_servers(entry.name)):
-            return entry.name
-    return ""
-
-
-class McpServerDocError(InvalidInput):
-    """A ``kind: mcp-server`` document is unreadable or invalid; the message names the file."""
-
-
-class McpServerDocument(BaseModel):
-    """A ``kind: mcp-server`` document: the global server fields, with the read/write assertion
-    under ``access`` because ``kind`` is the envelope."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: Literal["mcp-server"]
-    name: str
-    command: str
-    args: list[str] = Field(default_factory=list)
-    env: dict[str, str] = Field(default_factory=dict)
-    timeout: float = 0.0
-    access: Literal["read", "write"] = "write"
-    tools: list[str] = Field(default_factory=list)
-
-    def to_config(self) -> McpServerConfig:
-        return McpServerConfig(
-            name=self.name,
-            command=self.command,
-            args=self.args,
-            env=self.env,
-            timeout=self.timeout,
-            kind=self.access,
-            tools=self.tools,
-        )
-
-
-def mcp_server_document(config: McpServerConfig) -> dict[str, Any]:
-    """*config* as a ``kind: mcp-server`` document mapping (the inverse of ``to_config``)."""
-    doc: dict[str, Any] = {"kind": "mcp-server", "name": config.name, "command": config.command}
-    if config.args:
-        doc["args"] = list(config.args)
-    if config.env:
-        doc["env"] = dict(config.env)
-    if config.timeout:
-        doc["timeout"] = config.timeout
-    doc["access"] = config.kind
-    if config.tools:
-        doc["tools"] = list(config.tools)
-    return doc
-
-
-def load_mcp_server_document(path: str | Path) -> McpServerConfig:
-    """Read *path* as a ``kind: mcp-server`` document. Raises ``McpServerDocError`` naming the
-    file on any failure, including a name that would not be a legal server name."""
-    p = Path(path)
-    try:
-        import yaml as _yaml  # type: ignore[import-untyped]
-
-        raw = _yaml.safe_load(p.read_text(encoding="utf-8"))
-    except ImportError:
-        raise McpServerDocError(f"{p}: PyYAML not installed -- run: pip install pyyaml") from None
-    except Exception as exc:
-        raise McpServerDocError(f"{p}: cannot read document: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise McpServerDocError(f"{p}: document must be a mapping")
-    try:
-        config = McpServerDocument.model_validate(raw).to_config()
-    except ValidationError as exc:
-        first = exc.errors()[0]
-        field = ".".join(str(part) for part in first["loc"])
-        raise McpServerDocError(f"{p}: {field}: {first['msg']}") from exc
-    if not _NAME_RE.fullmatch(config.name):
-        raise McpServerDocError(
-            f"{p}: name {config.name!r} must contain only letters, digits, '-' or '_'"
-        )
-    return config
-
-
-def add_mcp_server(config: McpServerConfig) -> None:
-    """Add one server config. Raises ``ValueError`` on a bad/duplicate name.
-
-    Lock-safe: uses ``platform/store.py``'s ``read_modify_write`` so two concurrent ``add`` calls
-    cannot race each other into losing an entry."""
-    if not config.name:
-        raise InvalidInput("MCP server name is required")
-    if not _NAME_RE.fullmatch(config.name):
-        raise InvalidInput(
-            f"MCP server name {config.name!r} must contain only letters, digits, '-' or '_'"
-        )
-
-    def _add(current: dict[str, Any]) -> dict[str, Any]:
-        reg = McpServerRegistry.model_validate(current)
-        if any(s.name == config.name for s in reg.servers):
-            raise InvalidInput(f"an MCP server named {config.name!r} is already configured")
-        reg.servers.append(config)
-        return reg.model_dump(by_alias=True)
-
-    _store.read_modify_write(current_home().mcp_servers_file, _add)
-
-
-def remove_mcp_server(name: str) -> bool:
-    """Remove a configured server by name. Returns False if it wasn't there."""
-    removed = False
-
-    def _remove(current: dict[str, Any]) -> dict[str, Any] | None:
-        nonlocal removed
-        reg = McpServerRegistry.model_validate(current)
-        kept = [s for s in reg.servers if s.name != name]
-        if len(kept) == len(reg.servers):
-            return None  # nothing changes -- read_modify_write leaves the file untouched
-        removed = True
-        return McpServerRegistry(servers=kept).model_dump(by_alias=True)
-
-    _store.read_modify_write(current_home().mcp_servers_file, _remove)
-    return removed
 
 
 def namespaced_tool_name(server_name: str, remote_tool_name: str) -> str:
@@ -349,21 +126,16 @@ def _screen_description(
     """Run one remote tool's name+description through the `pre_input` policy hook (the calling
     pod's policies included); returns a skip reason if the tool must not be registered, else
     ``None``. See specs/functional/mcp-client.spec.md "Untrusted tool descriptions"."""
-    text = f"{remote.name}: {remote.description}"
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
+    hit = tool_gate.screen_untrusted(
+        role,
+        f"{remote.name}: {remote.description}",
+        project=project,
+        detail=f"server={server_name!r} tool={remote.name!r}",
+        blocked_action="mcp_client.tool_description_blocked",
+        warn_action="mcp_client.tool_description_warn",
+    )
     if hit.action in ("block", "require_approval"):
-        audit_log(
-            "mcp_client.tool_description_blocked",
-            f"server={server_name!r} tool={remote.name!r} "
-            f"policy={hit.policy_id!r} action={hit.action}",
-        )
         return f"description blocked by policy {hit.policy_id!r} (action={hit.action})"
-    if hit.action in ("warn", "redact"):
-        audit_log(
-            "mcp_client.tool_description_warn",
-            f"server={server_name!r} tool={remote.name!r} "
-            f"policy={hit.policy_id!r} action={hit.action}",
-        )
     return None
 
 
@@ -447,7 +219,7 @@ class McpServerLoadResult:
 def load_mcp_tools(
     registry: ToolRegistry,
     *,
-    servers: Sequence[McpServerConfig] | None = None,
+    servers: Sequence[McpServerConfig],
     list_tools: ListToolsFn | None = None,
     call_tool: CallToolFn | None = None,
     role: str = "",
@@ -462,13 +234,11 @@ def load_mcp_tools(
     ``agent.tools.registry.builtin_registry()``) -- built-ins should already be present, since a namespaced
     MCP name can never collide with one (see specs/functional/mcp-client.spec.md's "Namespacing"
     section), but a name already present in *registry* for any other reason is skipped, never
-    overwritten: this function only ever adds. Never raises. *servers* defaults to
-    :func:`load_mcp_servers`; *list_tools*/*call_tool* default to the real
+    overwritten: this function only ever adds. Never raises. *servers* is the catalog the caller
+    selected (``teams.mcp_servers.load_mcp_servers``); *list_tools*/*call_tool* default to the real
     ``agent/tools/mcp_client.py`` implementations, resolved lazily so importing this module
     never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead. *launch*, when given, is how every stdio server is
     started for this load and for the calls it adapts; it is never stored."""
-    if servers is None:
-        servers = load_mcp_servers()
     if list_tools is None:
         list_tools = _default_list_tools()
     if call_tool is None:
@@ -486,7 +256,9 @@ def load_mcp_tools(
             listing = McpListResult(ok=False, error=f"{type(ex).__name__}: {ex}")
 
         if not listing.ok:
-            audit_log("mcp_client.unavailable", f"server={config.name!r}: {listing.error}")
+            tool_gate.audit_event(
+                "mcp_client.unavailable", f"server={config.name!r}: {listing.error}"
+            )
             reports.append(
                 McpServerLoadResult(config.name, ok=False, kind=config.kind, error=listing.error)
             )

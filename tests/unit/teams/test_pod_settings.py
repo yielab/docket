@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from docket.agent.tools import mcp_tools as _mcp_tools
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.platform import store as _store
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod, pod_settings
 
 SUBJECT = "docket.teams.pod_settings"
@@ -241,7 +242,7 @@ class TestPodSettingsAllowCommands:
 
 class TestPodSettingsProjectInstructions:
     """`PodSettings.projectInstructions`: opt-in relative paths inside the codebase
-    root, composed by `agent/identity.py` — see
+    root, composed by `teams/identity.py` — see
     tests/integration/test_role_tools_and_identity.py for the composition itself."""
 
     def test_defaults_to_empty(self) -> None:
@@ -292,8 +293,8 @@ class TestPodSettingsMcpServers:
         assert pod_settings.PodSettings.load_for("shop").mcp_servers is None
 
     def test_coerce_accepts_names_in_the_live_catalog(self) -> None:
-        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="a", command="stub"))
-        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="b", command="stub"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="a", command="stub"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="b", command="stub"))
         assert pod_settings.PodSettings.coerce("mcpServers", "a, b") == "a,b"
 
     def test_coerce_rejects_a_name_absent_from_the_catalog(self) -> None:
@@ -306,7 +307,7 @@ class TestPodSettingsMcpServers:
             pod_settings.PodSettings.load_for("shop")
 
     def test_value_and_source_reports_the_joined_string(self) -> None:
-        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="a", command="stub"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="a", command="stub"))
         _write_lead_meta("shop", {"mcpServers": "a"})
         settings = pod_settings.PodSettings.load_for("shop")
         assert settings.value_and_source("mcpServers", "shop") == ("a", "set")

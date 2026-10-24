@@ -305,7 +305,7 @@ safe characters.
 
 ```python
 from docket.agent import session as sess
-from docket.agent.llm import ToolCall, assistant, tool_result, user
+from docket.agent.ports import ToolCall, assistant, tool_result, user
 
 call = ToolCall(id="call_1", name="read", arguments='{"path": "notes.md"}')
 sess.append_messages("agent:demo-lead:demo", [
@@ -378,6 +378,6 @@ result = sess.compact_session(
 - `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
 - `src/docket/agent/loop_compaction.py`: the live caller (`run_compaction`,
   `summarize_without_reentry`, the request builder that applies `condense_history`)
-- `src/docket/agent/llm.py`: `ChatMessage`, `ToolCall`, `TokenUsage` (the Examples import `docket.agent.session` and `docket.agent.llm`)
+- `src/docket/agent/ports.py`: `ChatMessage`, `ToolCall`, `TokenUsage` (the Examples import `docket.agent.session` and `docket.agent.ports`)
 - `src/docket/kernel/home.py`: the `Home` members `sessions_dir`, `distill_timeout_s`
 - `src/docket/platform/store.py`: the locked atomic read-modify-write underneath

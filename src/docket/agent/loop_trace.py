@@ -6,14 +6,12 @@ import threading
 from collections.abc import Sequence
 from typing import Any
 
-from docket.agent import identity as _identity
-from docket.agent.llm import ChatMessage, ChatResponse
+from docket.agent.ports import ChatMessage, ChatResponse, PromptSectionReport
 from docket.agent.session_compaction import CompactionResult
-from docket.agent.tools.registry import ToolDenialKind
 from docket.kernel import text as _text
+from docket.kernel.gate import ToolDenialKind
 from docket.kernel.home import current_home
-from docket.observability import telemetry as _telemetry
-from docket.observability.trace import trace_event
+from docket.kernel.ports import tracer
 
 # On-disk bound for one captured text/argument/response part (ADR 0015 §2 rule 5). The
 # per-exporter cut applied at projection time is a separate, narrower bound.
@@ -70,7 +68,7 @@ def _capture_llm_call_content(
     """Add ``inputMessages``/``outputMessages``/``systemInstructions`` to *payload* for the
     classes an enabled exporter was granted (ADR 0015 §2 rule 4); a no-op when nothing is
     granted, so the payload stays exactly what it was before this capture existed."""
-    granted = _telemetry.capture_classes()
+    granted = tracer.capture_classes()
     if not granted:
         return
     if "prompts" in granted:
@@ -127,7 +125,7 @@ def _trace_llm_call(
         }
     if messages is not None:
         _capture_llm_call_content(payload, session_key, messages, response)
-    trace_event(
+    tracer.trace_event(
         project,
         session_key,
         role,
@@ -150,7 +148,7 @@ def _trace_request_fit(
     context_window_tokens: int | None,
     task_id: str = "",
 ) -> None:
-    trace_event(
+    tracer.trace_event(
         project,
         session_key,
         role,
@@ -178,7 +176,7 @@ def _trace_tool_call(
     arguments: str,
     task_id: str = "",
 ) -> None:
-    trace_event(
+    tracer.trace_event(
         project,
         session_key,
         role,
@@ -218,9 +216,9 @@ def _trace_tool_result(
         payload["policyId"] = policy_id
     if reason:
         payload["reason"] = reason
-    if output is not None and "toolResults" in _telemetry.capture_classes():
+    if output is not None and "toolResults" in tracer.capture_classes():
         payload["text"] = _text.cut_chars(output, _CONTENT_MAX_CHARS_ON_DISK)
-    trace_event(
+    tracer.trace_event(
         project,
         session_key,
         role,
@@ -238,7 +236,7 @@ def _trace_compaction(
     task_id: str = "",
 ) -> None:
     status = "failed" if not result.ok else "succeeded" if result.compacted else "no_op"
-    trace_event(
+    tracer.trace_event(
         project,
         session_key,
         role,
@@ -274,7 +272,7 @@ def _trace_terminal_finalization(
     task_id: str = "",
 ) -> None:
     remaining = max(0, token_budget - measured_tokens_used)
-    trace_event(
+    tracer.trace_event(
         project,
         session_key,
         role,
@@ -304,12 +302,12 @@ def _trace_prompt_composed(
     project: str,
     session_key: str,
     role: str,
-    sections: tuple[_identity.PromptSectionReport, ...],
+    sections: tuple[PromptSectionReport, ...],
     budget_tokens: int,
     budget_source: str,
     task_id: str = "",
 ) -> None:
-    trace_event(
+    tracer.trace_event(
         project,
         session_key,
         role,

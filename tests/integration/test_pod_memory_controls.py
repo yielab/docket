@@ -11,12 +11,12 @@ import pytest
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.agent import identity as _identity
 from docket.governance import audit as _audit
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
+from docket.teams import identity as _identity
 from docket.teams import memory as _pm
 
 SUBJECT = "docket.interfaces.cli.commands.pod"

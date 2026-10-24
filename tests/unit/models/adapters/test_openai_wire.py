@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from docket.agent.llm import Endpoint, user
+from docket.agent.ports import Endpoint, user
 from docket.models.adapters import openai_wire
 
 SUBJECT = "docket.models.adapters.openai_wire"

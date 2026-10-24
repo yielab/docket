@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
-from docket.agent import loop_trace as _loop_trace
 from docket.governance import approval as _ap
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
@@ -86,13 +85,13 @@ class TestApprovalTrace:
         assert "sk-ant-abcdefghijklmnopqrstuvwxyz123456" not in str(payload["action"])
 
     def test_trace_failure_never_breaks_approval(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, real_tracer_except: Callable[..., None]
     ) -> None:
         def _boom(*_a: object, **_k: object) -> bool:
             raise RuntimeError("trace store down")
 
         monkeypatch.setattr(_trace, "trace_event", _boom, raising=True)
-        monkeypatch.setattr(_loop_trace, "trace_event", _boom)
+        real_tracer_except(trace_event=_boom)
         token = _ap.approval_create("myshop", "programmer", "still works")
         assert token.startswith("apr-")
         assert _ap.approval_get(token)["state"] == "pending"

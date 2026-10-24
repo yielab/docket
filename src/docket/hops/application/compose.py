@@ -213,7 +213,7 @@ def _hop_message(
     # budget" a real, checkable property rather than an aspiration: the two
     # pieces that are never shed are accounted for before anything
     # sheddable is given a share.
-    reserved_tokens = sum(_ctx.estimate_tokens(t) for t in (desc, instructions, root_block))
+    reserved_tokens = sum(_rd.estimate_tokens(t) for t in (desc, instructions, root_block))
     carryover_budget = max(_ctx.budget_for_role(role, project=project) - reserved_tokens, 0)
 
     lines = [f"Task: {desc}", ""] + ([root_block, ""] if root_block else [])
@@ -446,7 +446,7 @@ def _compose_hop(
         if resolved_mode == "park":
             # This hop's own deadline for a call it parks (ADR 0016 SS2) --
             # popped by DocketDriver into ToolContext.approval_expires_at,
-            # stamped on the parked record by agent/tools/registry.py's `_park_call`.
+            # stamped on the parked record by governance/gate.py's `_park`.
             # Computed fresh per hop (not once per task) so a long-running
             # earlier hop never shortens a later one's window.
             expiry_hours = _pod_settings(ctx.project).approval_expiry_hours

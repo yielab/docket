@@ -12,7 +12,6 @@ from typing import Any
 import typer
 
 from docket import bootstrap as _bootstrap
-from docket.agent import conversations as _conv
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
@@ -25,6 +24,7 @@ from docket.kernel.ports import process as _process
 from docket.operator import channel as _chan
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
+from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 

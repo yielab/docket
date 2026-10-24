@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from docket.agent.tools import mcp_tools as _mcp
 from docket.governance import secrets as _secrets
 from docket.hops.application import record as _record
 from docket.kernel.ports import jail as _jail
@@ -19,6 +18,7 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod_settings as _pod_settings
 
 LIGHTS_OUT = "lights-out"
@@ -122,7 +122,7 @@ def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
         selection = _pod_settings.PodSettings.load_for(project).mcp_servers
     except _pod_settings.PodSettingsError:
         selection = None
-    for server in _mcp.load_mcp_servers(project):
+    for server in _mcp_servers.load_mcp_servers(project):
         if selection is None or server.name in selection:
             names.update(server.env)
     return names

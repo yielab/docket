@@ -25,8 +25,6 @@ from urllib.parse import unquote as _url_unquote
 
 from docket.agent import loop as _loop
 from docket.agent import session as _session
-from docket.agent.isolation_posture import _hop_read_only, _jail_cache_dir, _resolve_posture
-from docket.agent.llm import ChatBackend
 from docket.agent.ports import (
     DOCKET_APPROVAL_EXPIRES_AT,
     DOCKET_APPROVAL_MODE,
@@ -38,6 +36,7 @@ from docket.agent.ports import (
     DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
     PIPELINE_WORKTREE_ENV,
+    ChatBackend,
     DriverCapabilities,
     SessionSummary,
     TurnResult,
@@ -48,7 +47,13 @@ from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
+from docket.hops.application.isolation_posture import (
+    _hop_read_only,
+    _jail_cache_dir,
+    _resolve_posture,
+)
 from docket.hops.workspace import repo_view as _repo_view
+from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.kernel.ports import process as _process
@@ -56,12 +61,12 @@ from docket.models.adapters import openai_http as _llm
 from docket.observability import telemetry as _telemetry
 from docket.observability import trace as _trace
 from docket.observability.adapters import sinks as _exporters
-from docket.platform import store as _store
+from docket.platform import read_json, write_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application.consult import DEFAULT_MAX_CONSULTATIONS
 from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams.models import AgentMeta
@@ -76,7 +81,7 @@ def _close_telemetry() -> None:
     final = _telemetry.close()
     if final:
         with contextlib.suppress(Exception):
-            _store.write_json(current_home().exporters_health_file, final)
+            write_json(current_home().exporters_health_file, final)
 
 
 # Runs once per process at import time. `telemetry.close()` returns `{}` when nothing was
@@ -133,7 +138,7 @@ def _load_mcp_tools(
     registry: ToolRegistry, role: str, project: str = "", launch: _mcp.StdioLaunch | None = None
 ) -> list[Any]:
     """Fold MCP servers' tools into *registry*; *launch* is how this turn starts stdio servers."""
-    servers = _mcp.load_mcp_servers(project)
+    servers = _mcp_servers.load_mcp_servers(project)
     selection = _pod_mcp_selection(project)
     if selection is not None:
         servers = [s for s in servers if s.name in selection]
@@ -146,7 +151,7 @@ def _load_agent_meta(agent_id: str) -> AgentMeta | None:
     """Read *agent_id*'s ``.docket-meta.json`` via ``platform/store.py``. Returns ``(None, "")`` for
     a missing or malformed record rather than raising, per the Protocol's "never raises for an
     ordinary failure" contract."""
-    raw = _store.read_json(current_home().meta_path(agent_id))
+    raw = read_json(current_home().meta_path(agent_id))
     if not raw:
         return None
     try:
@@ -436,7 +441,7 @@ class DocketDriver:
             )
         finally:
             _telemetry.flush(current_home().export_flush_timeout_s)
-            _store.write_json(current_home().exporters_health_file, _telemetry.health())
+            write_json(current_home().exporters_health_file, _telemetry.health())
 
     def _run_turn_body(
         self,
@@ -599,7 +604,7 @@ class DocketDriver:
         return out
 
     def usage(self, agent_id: str) -> UsageReport:
-        """Aggregate this agent's *measured*, non-estimated usage (``agent.llm.TokenUsage``) across
+        """Aggregate this agent's *measured*, non-estimated usage (``agent.ports.TokenUsage``) across
         its sessions. ``cost_usd`` stays ``0.0`` and ``by_day`` is always ``[]`` -- see
         specs/functional/cost-tracking.spec.md ("Known gap: --history is always empty")."""
         totals = UsageTotals()

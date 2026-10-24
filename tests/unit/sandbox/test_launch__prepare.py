@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeJail
 
-from docket.agent import isolation_posture as _isolation_posture
+from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop
 from docket.hops.workspace import prepare as _prepare
 from docket.kernel.ports import JailPolicy

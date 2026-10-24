@@ -23,8 +23,8 @@ from typing import Any
 
 import pytest
 
-from docket.agent import llm
-from docket.agent.llm import (
+from docket.agent import ports
+from docket.agent.ports import (
     ChatBackend,
     ChatMessage,
     Endpoint,
@@ -109,11 +109,11 @@ class TestToolCallArguments:
 class TestMessageHelpers:
     def test_tool_result_is_addressed_to_its_call(self) -> None:
         call = ToolCall(id="call_7", name="read")
-        msg = llm.tool_result(call, "file contents")
+        msg = ports.tool_result(call, "file contents")
         assert (msg.role, msg.tool_call_id, msg.name) == ("tool", "call_7", "read")
 
     def test_assistant_may_carry_tool_calls_without_prose(self) -> None:
-        msg = llm.assistant(tool_calls=[ToolCall(id="c1", name="bash")])
+        msg = ports.assistant(tool_calls=[ToolCall(id="c1", name="bash")])
         assert msg.content == "" and len(msg.tool_calls) == 1
 
     def test_usage_totals(self) -> None:
@@ -129,13 +129,13 @@ class TestMessageHelpers:
 
 class TestWireEncoding:
     def test_minimal_payload_shape(self) -> None:
-        payload = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")])
+        payload = _openai_wire.build_payload(ENDPOINT, [ports.user("hi")])
         assert payload["model"] == "test-model"
         assert payload["stream"] is False
         assert payload["messages"] == [{"role": "user", "content": "hi"}]
 
     def test_no_tools_key_when_no_tools_advertised(self) -> None:
-        payload = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")])
+        payload = _openai_wire.build_payload(ENDPOINT, [ports.user("hi")])
         assert "tools" not in payload and "tool_choice" not in payload
 
     def test_tools_are_wrapped_as_functions(self) -> None:
@@ -144,7 +144,7 @@ class TestWireEncoding:
             description="run a command",
             parameters={"type": "object", "properties": {"command": {"type": "string"}}},
         )
-        payload = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")], tools=[spec])
+        payload = _openai_wire.build_payload(ENDPOINT, [ports.user("hi")], tools=[spec])
         assert payload["tool_choice"] == "auto"
         assert payload["tools"][0]["type"] == "function"
         assert payload["tools"][0]["function"]["name"] == "bash"
@@ -154,7 +154,7 @@ class TestWireEncoding:
 
     def test_empty_schema_becomes_a_valid_object_schema(self) -> None:
         payload = _openai_wire.build_payload(
-            ENDPOINT, [llm.user("hi")], tools=[ToolSpec(name="now", description="")]
+            ENDPOINT, [ports.user("hi")], tools=[ToolSpec(name="now", description="")]
         )
         assert payload["tools"][0]["function"]["parameters"] == {
             "type": "object",
@@ -164,7 +164,7 @@ class TestWireEncoding:
     def test_assistant_tool_call_replays_with_null_content(self) -> None:
         """A tool-calling assistant turn fed back as history must send
         `content: null`, not `""` — several endpoints reject the latter."""
-        msg = llm.assistant(tool_calls=[ToolCall(id="c1", name="bash", arguments='{"a":1}')])
+        msg = ports.assistant(tool_calls=[ToolCall(id="c1", name="bash", arguments='{"a":1}')])
         encoded = _openai_wire.build_payload(ENDPOINT, [msg])["messages"][0]
         assert encoded["content"] is None
         assert encoded["tool_calls"] == [
@@ -172,15 +172,15 @@ class TestWireEncoding:
         ]
 
     def test_tool_message_carries_its_call_id_and_keeps_empty_content(self) -> None:
-        msg = llm.tool_result(ToolCall(id="c9", name="read"), "")
+        msg = ports.tool_result(ToolCall(id="c9", name="read"), "")
         encoded = _openai_wire.build_payload(ENDPOINT, [msg])["messages"][0]
         assert encoded == {"role": "tool", "content": "", "tool_call_id": "c9", "name": "read"}
 
     def test_optional_sampling_knobs_are_omitted_unless_set(self) -> None:
-        bare = _openai_wire.build_payload(ENDPOINT, [llm.user("hi")])
+        bare = _openai_wire.build_payload(ENDPOINT, [ports.user("hi")])
         assert "max_tokens" not in bare and "temperature" not in bare
         full = _openai_wire.build_payload(
-            ENDPOINT, [llm.user("hi")], max_tokens=64, temperature=0.2
+            ENDPOINT, [ports.user("hi")], max_tokens=64, temperature=0.2
         )
         assert full["max_tokens"] == 64 and full["temperature"] == 0.2
 
@@ -189,10 +189,10 @@ class TestWireEncoding:
         spec = ToolSpec(name="bash", description="run", parameters={"type": "object"})
         call = ToolCall(id="c1", name="bash", arguments="{}")
         messages = [
-            llm.system("sys"),
-            llm.user("hi"),
-            llm.assistant(tool_calls=[call]),
-            llm.tool_result(call, "out"),
+            ports.system("sys"),
+            ports.user("hi"),
+            ports.assistant(tool_calls=[call]),
+            ports.tool_result(call, "out"),
         ]
         for model_id in ("gpt-5", "openai/gpt-5", "qwen3", "x/not-claude-3", "clau"):
             endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id=model_id)
@@ -241,10 +241,10 @@ class TestWireEncoding:
         messages = _openai_wire.build_payload(
             endpoint,
             [
-                llm.system("sys"),
-                llm.user("hi"),
-                llm.assistant(tool_calls=[call]),
-                llm.tool_result(call, "out"),
+                ports.system("sys"),
+                ports.user("hi"),
+                ports.assistant(tool_calls=[call]),
+                ports.tool_result(call, "out"),
             ],
         )["messages"]
         assert messages[0]["content"] == [{"type": "text", "text": "sys", "cache_control": marker}]
@@ -256,17 +256,19 @@ class TestWireEncoding:
 
     def test_anthropic_marker_skips_empty_content_and_never_doubles_up(self) -> None:
         endpoint = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="claude-haiku-4")
-        alone = _openai_wire.build_payload(endpoint, [llm.system("sys")])["messages"]
+        alone = _openai_wire.build_payload(endpoint, [ports.system("sys")])["messages"]
         assert json.dumps(alone).count("cache_control") == 1
         call = ToolCall(id="c1", name="bash", arguments="{}")
-        empty = _openai_wire.build_payload(endpoint, [llm.system("sys"), llm.tool_result(call, "")])
+        empty = _openai_wire.build_payload(
+            endpoint, [ports.system("sys"), ports.tool_result(call, "")]
+        )
         assert empty["messages"][1]["content"] == ""
         assert json.dumps(empty).count("cache_control") == 1
 
     def test_request_part_bytes_counts_the_marked_parts(self) -> None:
         plain = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="gpt-5")
         marked = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="claude-sonnet-5-5")
-        messages = [llm.system("sys"), llm.user("hi")]
+        messages = [ports.system("sys"), ports.user("hi")]
         before = _openai_wire.request_part_bytes(_openai_wire.build_payload(plain, messages))
         after = _openai_wire.request_part_bytes(_openai_wire.build_payload(marked, messages))
         assert after["system"] > before["system"]
@@ -280,8 +282,8 @@ class TestWireEncoding:
             parameters={"type": "object", "properties": {"query": {"type": "string"}}},
         )
 
-        bare = client.estimate_input_tokens([llm.user("hi")], max_tokens=64)
-        with_tool = client.estimate_input_tokens([llm.user("hi")], tools=[spec], max_tokens=64)
+        bare = client.estimate_input_tokens([ports.user("hi")], max_tokens=64)
+        with_tool = client.estimate_input_tokens([ports.user("hi")], tools=[spec], max_tokens=64)
 
         assert with_tool > bare
 
@@ -451,7 +453,7 @@ class TestTransport:
         _stub_urlopen(
             monkeypatch, json.dumps({"choices": [{"message": {"content": "hi"}}]}), captured
         )
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("yo")], timeout=30)
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("yo")], timeout=30)
         assert res.ok and res.message.content == "hi"
         assert captured["url"] == "http://127.0.0.1:8081/v1/chat/completions"
         assert captured["timeout"] == 30
@@ -460,7 +462,7 @@ class TestTransport:
     def test_no_auth_header_without_a_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, Any] = {}
         _stub_urlopen(monkeypatch, '{"choices": [{"message": {"content": "x"}}]}', captured)
-        adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("yo")])
+        adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("yo")])
         assert not any(k.lower() == "authorization" for k in captured["headers"])
 
     def test_bearer_header_when_a_key_is_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -469,7 +471,7 @@ class TestTransport:
         client = adapter.OpenAIChatClient(
             Endpoint(base_url="https://api.example/v1", model_id="m", api_key="sk-secret")
         )
-        client.complete([llm.user("yo")])
+        client.complete([ports.user("yo")])
         headers = {k.lower(): v for k, v in captured["headers"].items()}
         assert headers["authorization"] == "Bearer sk-secret"
 
@@ -496,7 +498,7 @@ class TestTransport:
 
         captured: dict[str, Any] = {}
         _stub_urlopen(monkeypatch, '{"choices": [{"message": {"content": "x"}}]}', captured)
-        adapter.OpenAIChatClient(ep).complete([llm.user("yo")])
+        adapter.OpenAIChatClient(ep).complete([ports.user("yo")])
         headers = {k.lower(): v for k, v in captured["headers"].items()}
         assert headers["api-key"] == "k"
         assert headers["x-title"] == "docket"
@@ -507,7 +509,7 @@ class TestTransport:
     ) -> None:
         _raising_urlopen(monkeypatch, AssertionError("must not POST"))
         res = adapter.OpenAIChatClient(Endpoint(base_url="", model_id="m")).complete(
-            [llm.user("x")]
+            [ports.user("x")]
         )
         assert not res.ok and "no endpoint configured" in res.error
 
@@ -524,49 +526,49 @@ class TestTransport:
         self, monkeypatch: pytest.MonkeyPatch, status: int, expected: str
     ) -> None:
         _raising_urlopen(monkeypatch, _http_error(status, '{"error":{"message":"nope"}}'))
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert not res.ok and res.failure_kind == expected
 
     def test_retry_after_is_parsed_only_on_a_retryable_status(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _raising_urlopen(monkeypatch, _http_error(429, headers={"Retry-After": "7"}))
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert res.failure_kind == "daemon_error"
         assert res.retry_after_s == 7.0
 
         _raising_urlopen(monkeypatch, _http_error(400, headers={"Retry-After": "7"}))
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert res.failure_kind == "nonzero_exit"
         assert res.retry_after_s is None
 
     def test_error_body_is_surfaced(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _raising_urlopen(monkeypatch, _http_error(400, "context length exceeded"))
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert "context length exceeded" in res.error
 
     def test_timeout_is_classified_as_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _raising_urlopen(monkeypatch, TimeoutError("timed out"))
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")], timeout=7)
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")], timeout=7)
         assert res.failure_kind == "timeout" and "7s" in res.error
 
     def test_timeout_wrapped_in_urlerror_is_still_a_timeout(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _raising_urlopen(monkeypatch, urllib.error.URLError(TimeoutError("timed out")))
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert res.failure_kind == "timeout"
 
     def test_unreachable_endpoint_is_retryable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _raising_urlopen(monkeypatch, urllib.error.URLError(ConnectionRefusedError(111, "refused")))
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert res.failure_kind == "daemon_error"
         assert res.failure_kind in _RETRYABLE_FAILURE_KINDS
 
     def test_non_json_body_is_invalid_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, Any] = {}
         _stub_urlopen(monkeypatch, "<html>502 Bad Gateway</html>", captured)
-        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert not res.ok and res.failure_kind == "invalid_output"
 
     def test_no_ordinary_failure_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -578,7 +580,7 @@ class TestTransport:
             OSError("socket exploded"),
         ):
             _raising_urlopen(monkeypatch, exc)
-            res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+            res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
             assert res.ok is False and res.failure_kind is not None
 
 
@@ -613,7 +615,7 @@ class TestLatencyMeasurement:
                 model_id="local-model",
                 provider="local",
             )
-            res = adapter.OpenAIChatClient(endpoint).complete([llm.user("hi")], timeout=5)
+            res = adapter.OpenAIChatClient(endpoint).complete([ports.user("hi")], timeout=5)
         finally:
             srv.shutdown()
             thread.join(timeout=5)
@@ -625,7 +627,7 @@ class TestLatencyMeasurement:
 
     def test_a_closed_port_still_reports_a_non_negative_latency(self) -> None:
         endpoint = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="local-model")
-        res = adapter.OpenAIChatClient(endpoint).complete([llm.user("hi")], timeout=5)
+        res = adapter.OpenAIChatClient(endpoint).complete([ports.user("hi")], timeout=5)
         assert res.ok is False
         assert res.latency_ms >= 0
 
@@ -860,13 +862,13 @@ class TestProtocolConformance:
         assert isinstance(adapter.OpenAIChatClient(ENDPOINT), ChatBackend)
 
     def test_core_llm_holds_no_wire_knowledge(self) -> None:
-        """The port must stay format-free -- a wire field name in agent/llm.py means translation
+        """The port must stay format-free -- a wire field name in agent/ports.py means translation
         leaked out of the adapter. Checks executable string literals only via AST, excluding
         docstrings/comments, since a substring scan would flag legitimate protocol-describing prose."""
         import ast
         from pathlib import Path
 
-        tree = ast.parse(Path(llm.__file__).read_text())
+        tree = ast.parse(Path(ports.__file__).read_text())
         docstrings: set[int] = set()
         for node in ast.walk(tree):
             if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef):
@@ -896,14 +898,14 @@ class TestProtocolConformance:
             "Bearer",
         )
         leaked = [(word, text) for text in literals for word in wire_vocabulary if word in text]
-        assert not leaked, f"wire vocabulary leaked into agent/llm.py: {leaked}"
+        assert not leaked, f"wire vocabulary leaked into agent/ports.py: {leaked}"
 
     def test_message_roles_are_the_four_the_protocol_defines(self) -> None:
         msgs = [
-            llm.system("s"),
-            llm.user("u"),
-            llm.assistant("a"),
-            llm.tool_result(ToolCall("i", "n"), "r"),
+            ports.system("s"),
+            ports.user("u"),
+            ports.assistant("a"),
+            ports.tool_result(ToolCall("i", "n"), "r"),
         ]
         assert [m.role for m in msgs] == ["system", "user", "assistant", "tool"]
         assert all(isinstance(m, ChatMessage) for m in msgs)

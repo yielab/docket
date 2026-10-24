@@ -2,7 +2,7 @@
 
 ``run_agent_turn`` composes three pieces:
 
-- ``agent/llm.py`` — the ``ChatBackend`` port: one request/response
+- ``agent/ports.py`` — the ``ChatBackend`` port: one request/response
   exchange, nothing more.
 - ``agent/tools/registry.py`` — ``ToolRegistry``/``dispatch_tool``, the
   **single** chokepoint where the command classifier, the ``pre_tool_call``
@@ -40,7 +40,7 @@ reported as ``AgentLoopResult.stop_reason``:
   default third consecutive denial stops locally after its complete atomic
   assistant/tool-result unit and usage are persisted.
 - ``approval_unavailable`` — a tool call needed a human decision
-  (``agent.tools.registry.evaluate_tool_call`` returned ``ask``) and ``ToolContext.
+  (``governance.gate.evaluate_tool_call`` returned ``ask``) and ``ToolContext.
   approval_mode == "refuse"``, so ``dispatch_tool`` denied it immediately
   instead of creating an approval record and waiting. Unlike ``tool_denials``
   this is not a count reaching a limit — one such result ends the turn right
@@ -96,7 +96,7 @@ orphaned-tool-call state in the very history ``agent/session.py``'s
 compaction post-conditions exist to forbid; discarding it instead means the
 turn simply reports ``truncated`` and the caller decides whether to retry —
 the same fail-closed posture ``agent/session.py``'s compaction and
-``agent/memory.py``'s distillation already take on their own failure paths.
+``teams/agent_memory.py``'s distillation already take on their own failure paths.
 
 ## Durability: persisted per iteration, not only at the end
 
@@ -125,7 +125,7 @@ budget/estimate evidence only, never messages or model/tool content.
 ## Per-role tool sets and the system prompt
 
 - **The tool registry handed to the model is narrowed by role.**
-  ``teams.roles.registry_for_role`` is called once per turn, before the
+  the role composer port (``agent.ports.role_composer``, ``teams.roles.registry_for_role``) is called once per turn, before the
   first ``backend.complete``, so a Reviewer is never even *advertised*
   ``write``/``edit``, and if a call for either arrives anyway (a stale
   client, a hallucination), ``dispatch_tool`` refuses it as an unknown tool
@@ -133,7 +133,7 @@ budget/estimate evidence only, never messages or model/tool content.
   SOUL.md instruction. This function never branches on a role's name; the
   denylist is data on the role's archetype (see ``teams/roles.py``).
 - **The system prompt is composed fresh every turn.**
-  ``agent.identity.compose_agent_prompt`` reads this agent's ``SOUL.md``,
+  the role composer (``teams.identity.compose_agent_prompt``) reads this agent's ``SOUL.md``,
   live persona, the driver's resolved project roots, and bounded private
   workspace state, and reports its own fit accounting (traced as
   ``prompt_composed``). It projects one live-safe startup contract instead
@@ -147,13 +147,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from docket.agent import identity as _identity
-from docket.agent.llm import (
-    ChatBackend,
-    ChatMessage,
-    TokenUsage,
-    ToolSpec,
-)
 from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
 from docket.agent.loop_compaction import TurnCompaction
 from docket.agent.loop_request import _accumulate, _finalization_messages
@@ -165,11 +158,18 @@ from docket.agent.loop_trace import (
     _trace_terminal_finalization,
 )
 from docket.agent.loop_types import AgentLoopResult, LoopConfig, StopReason
+from docket.agent.ports import (
+    ChatBackend,
+    ChatMessage,
+    PromptComposition,
+    TokenUsage,
+    ToolSpec,
+    role_composer,
+)
 from docket.agent.session import append_messages
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.teams import roles as _archetypes
 
 __all__ = [
     "MIN_OUTPUT_TOKENS",
@@ -229,10 +229,10 @@ def _resolve_role_registry_and_prompt(
     *,
     context_window_tokens: int | None = None,
     output_reserve_tokens: int | None = None,
-) -> tuple[ToolRegistry, _identity.PromptComposition, list[ToolSpec]]:
+) -> tuple[ToolRegistry, PromptComposition, list[ToolSpec]]:
     """Narrow the tool registry to this role and compose today's system prompt."""
-    registry = _archetypes.registry_for_role(registry, ctx.role, ctx.project)
-    composition = _identity.compose_agent_prompt(
+    registry = role_composer.narrow_registry(registry, ctx.role, ctx.project)
+    composition = role_composer.compose_prompt(
         ctx.agent_id,
         project_roots=ctx.roots,
         context_window_tokens=context_window_tokens,

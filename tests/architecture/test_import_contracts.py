@@ -95,7 +95,8 @@ def _allowed_adapters(importer: str, imported: str) -> bool:
 
 
 def _allowed_agent(importer: str, imported: str) -> bool:
-    return _classify(imported)[0] in {"kernel", "agent"}
+    tc = _classify(imported)[0]
+    return tc in {"kernel", "agent"} or (tc == "platform" and _is_context_init(imported))
 
 
 def _allowed_interfaces(importer: str, imported: str) -> bool:
@@ -263,6 +264,8 @@ _BITES: list[tuple[str, str, str, bool]] = [
     ("adapters", "docket.operator.adapters.ntfy", "docket.platform", True),
     ("adapters", "docket.operator.adapters.ntfy", "docket.platform.redirects", False),
     ("agent", "docket.agent.loop", "docket.kernel.text", True),
+    ("agent", "docket.agent.loop", "docket.platform", True),
+    ("agent", "docket.agent.loop", "docket.platform.store", False),
     ("agent", "docket.agent.loop", "docket.governance.policy", False),
     ("interfaces", "docket.interfaces.cli.app", "docket.tasks", True),
     ("interfaces", "docket.interfaces.cli.app", "docket.tasks.application.queue", False),

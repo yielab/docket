@@ -1,4 +1,4 @@
-"""Agent Skills discovery and frontmatter parsing (`agent/skills.py`).
+"""Agent Skills discovery and frontmatter parsing (`hops/workspace/skills.py`).
 
 Pins the Agent Skills shape (ADR 0013 §3 rule 8): `SKILL.md` frontmatter naming a skill and
 describing it in one sentence, and the three-scope, nearest-wins discovery order a live turn's
@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from docket.agent import skills as _skills
 from docket.governance import audit as _audit
+from docket.hops.workspace import skills as _skills
 from docket.kernel.home import current_home, use_home
 
-SUBJECT = "docket.agent.skills"
+SUBJECT = "docket.hops.workspace.skills"
 
 
 def _write_skill(directory: Path, name: str, description: str = "Reads like a sentence.") -> Path:

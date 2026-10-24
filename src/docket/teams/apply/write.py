@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import docket.kernel.templates as _templates
-from docket.agent.tools import mcp_tools as _mcp_tools
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
@@ -132,13 +132,13 @@ def _export_skills(project: str, directory: Path) -> None:
 def _export_mcp_servers(project: str, directory: Path) -> None:
     """Write *project*'s own pod-scoped servers as ``mcp-servers/<name>.yaml`` documents --
     never a global server."""
-    servers = _mcp_tools.load_pod_mcp_servers(project)
+    servers = _mcp_servers.load_pod_mcp_servers(project)
     if not servers:
         return
     dest_dir = directory / "mcp-servers"
     dest_dir.mkdir(parents=True, exist_ok=True)
     for server in servers:
-        _dump_yaml_file(dest_dir / f"{server.name}.yaml", _mcp_tools.mcp_server_document(server))
+        _dump_yaml_file(dest_dir / f"{server.name}.yaml", _mcp_servers.mcp_server_document(server))
 
 
 def _export_pipeline(project: str, directory: Path) -> None:
@@ -279,7 +279,7 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
                 file_dest.chmod(0o600)
 
     if plan._mcp_server_write is not None:
-        _mcp_tools.write_pod_mcp_servers(plan.project, list(plan._mcp_server_write.servers))
+        _mcp_servers.write_pod_mcp_servers(plan.project, list(plan._mcp_server_write.servers))
 
     for member_write in plan._member_writes:
         ok, msg = _member_workspace.provision_member(

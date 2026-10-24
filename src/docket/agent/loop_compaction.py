@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from docket.agent.llm import ChatMessage, system, user
 from docket.agent.loop_budget import _TOKEN_BUDGET_ERROR_PREFIX, TurnBudget
 from docket.agent.loop_request import (
     _accumulate,
@@ -22,7 +21,7 @@ from docket.agent.loop_request import (
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_compaction, _trace_llm_call
 from docket.agent.loop_types import AgentLoopResult, StopReason
-from docket.agent.ports import FailureKind, TurnResult
+from docket.agent.ports import ChatMessage, FailureKind, TurnResult, system, user
 from docket.agent.session import append_messages, condense_history, load_messages
 from docket.agent.session_compaction import CompactionResult, compact_session
 

@@ -6,11 +6,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import ports as _rd
-from docket.agent.tools import registry as _tools
+from docket.agent.tools import screening as _tools
 from docket.governance import policy as _policy
 from docket.governance import security as _sec
+from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.application.record import (
     _trace_locked,
     _UnitContext,
@@ -227,7 +227,7 @@ def _outcome_of(decision: _decide.GateDecision, hop: HopResult) -> _UnitOutcome:
 
 def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
     """*text* as untrusted ``pre_input`` content, the way an MCP result is screened
-    (``tools.screen_tool_result``), then redacted; ``None`` when policy blocks it."""
+    (``screening.screen_tool_result``), then redacted; ``None`` when policy blocks it."""
 
     screened = _tools.screen_tool_result(
         role,

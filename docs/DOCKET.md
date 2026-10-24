@@ -144,7 +144,7 @@ driver's on-disk knowledge. It has four members:
   reports a real USD cost at all), so a caller never hardcodes an assumption about the one
   shipped driver's quirks
 
-`agent/driver.py`'s `DocketDriver` — docket's own turn loop, running directly
+`hops/application/driver.py`'s `DocketDriver` — docket's own turn loop, running directly
 against a configured model endpoint — is the **one shipped implementation** since Phase 19
 P19-7b replaced the daemon-facing driver this port originally shipped with; a `FakeDriver` test
 double (`tests/fakes.py`) is the one test double. This is a deliberately narrow move.
@@ -206,12 +206,12 @@ stores, all under `~/.docket/`:
   tool results.
 - **`HEARTBEAT.md`'s dispatch ledger** — every pod Lead's `HEARTBEAT.md` carries a delimited,
   docket-owned region inside its `## Active Tasks` list that `hops/application/record.py` upserts
-  (through `agent/memory.py`'s `sync_dispatch_tasks`)
+  (through `teams/agent_memory.py`'s `sync_dispatch_tasks`)
   mechanically at claim, at every persisted hop, and at finalize — not prose an agent is trusted
   to keep current by convention. `docket setup` flags a task the queue marks `running` with no
   matching ledger entry, or a ledger entry for a task that no longer is, and `--fix` re-syncs the
   ledger to exactly what the queue says. See [Dispatch Internals](#dispatch-internals).
-- **The conversation registry** (`agent/conversations.py`, `docket-conversations.json`) — one
+- **The conversation registry** (`teams/conversations.py`, `docket-conversations.json`) — one
   record per channel thread docket is tracking (agent, peer, topic, status, a resume pointer),
   seeded on `docket setup notify bind` and cleaned up on `docket pod delete`. Dispatch and `docket start` keep `last_message`/
   `task_ref` current automatically as a task moves, tracked by the notification system.
@@ -687,7 +687,7 @@ Tester:      ✓ Behavior-only validation
 - [x] Run registry and cancellation (`docket task list`)
 - [x] Declarative policy engine on the live dispatch path (`docket pod policies`)
 - [x] RuntimeDriver port — one typed protocol, one shipped driver (`agent/ports.py`,
-  `agent/driver.py`'s `DocketDriver`)
+  `hops/application/driver.py`'s `DocketDriver`)
 - [x] docket as an MCP server (`docket start --mcp`, optional `[mcp]` extra)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
 - [x] Hash-chained, tamper-evident audit log (`docket log verify`)

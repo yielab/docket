@@ -268,10 +268,11 @@ compact example.
 - `packages/docket-runtime/src/docket_runtime/_execution.py`: `ExecutionLimits`, `ExecutionResult`, `GovernedExecution`
 - `packages/docket-runtime/src/docket_runtime/adapters/openhands.py`: `OpenHandsAdapter`
 - `packages/docket-runtime/src/docket_runtime/adapters/pydantic_ai.py`: `DocketToolset`
-- `packages/docket-runtime/hatch_build.py`: the build hook and its fixed module list (`_RUNTIME_FILES`), `DOCKET_RUNTIME_BUILD_TMPDIR`
+- `packages/docket-runtime/hatch_build.py`: the build hook and the closure it computes from the facade's import-time imports (`runtime_closure`), `DOCKET_RUNTIME_BUILD_TMPDIR`
 - `packages/docket-runtime/pyproject.toml`: package version, dependency floors, sdist `runtime-source/` force-include
 - `src/docket/agent/tools/registry.py`: `dispatch_tool`, `Tool`, `ToolContext`, `ToolResult`, `ToolRegistry.specs`
-- `src/docket/agent/llm.py`: `TokenUsage` (`total_tokens`, `counted_tokens`), `ToolCall`, `ToolSpec`
+- `src/docket/agent/ports.py`: `TokenUsage` (`total_tokens`, `counted_tokens`), `ToolCall`, `ToolSpec`, the `ToolGate` port
+- `src/docket/governance/gate.py`: `govern`, the gate `dispatch_tool` asks through that port (bound by `_bind.py`)
 - `src/docket/governance/approval.py`: the approval store the stub answers
 - `src/docket/observability/trace.py`: `trace_event`
 - `src/docket/kernel/handoff.py`: `HandoffArtifact`

@@ -1,6 +1,6 @@
 """The observability export pipeline wired into a live turn.
 
-Covers `agent/driver.py::DocketDriver.run_turn`'s lazy, idempotent start of
+Covers `hops/application/driver.py::DocketDriver.run_turn`'s lazy, idempotent start of
 `observability.telemetry`'s bounded pipeline, its flush on every return path (bounded even when the
 destination hangs), and the `Home.exporters_health_file` write -- see
 observability-export.spec.md's "Pipeline" and "The module-level registry and wiring" sections,
@@ -24,9 +24,9 @@ from typing import Any, ClassVar
 import pytest
 from tests.support import home as _support_home
 
-from docket.agent import driver as docket_runtime
-from docket.agent.driver import DocketDriver
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.hops.application import driver as docket_runtime
+from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import current_home, use_home
 from docket.observability import exporter as _exporter
 from docket.observability import telemetry as _telemetry
@@ -34,7 +34,7 @@ from docket.platform import store as _store
 
 _isolate_stores = _support_home.isolate_stores
 
-SUBJECT = "docket.agent.driver"
+SUBJECT = "docket.hops.application.driver"
 
 
 @pytest.fixture(autouse=True)

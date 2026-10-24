@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from docket.agent.llm import Endpoint, ModelLimits
+from docket.agent.ports import Endpoint, ModelLimits
 from docket.models.adapters import openai_http as llm
 
 SUBJECT = "docket.models.adapters.openai_http"

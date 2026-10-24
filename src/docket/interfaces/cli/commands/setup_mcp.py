@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import typer
 
-from docket.agent.tools import mcp_tools as _mcp_tools
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
+from docket.teams import mcp_servers as _mcp_servers
 
 mcp_app = typer.Typer(
     name="mcp",
@@ -33,7 +34,7 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
     """List the configured MCP tool servers; env values are masked.
 
     Example: docket setup mcp list"""
-    servers = _mcp_tools.load_mcp_servers()
+    servers = _mcp_servers.load_mcp_servers()
     if json_out:
         _contract.emit_json(
             [
@@ -81,8 +82,8 @@ def cmd_add(
         raise typer.Exit(1)
     allow = [t.strip() for t in tools.split(",") if t.strip()]
     try:
-        _mcp_tools.add_mcp_server(
-            _mcp_tools.McpServerConfig(
+        _mcp_servers.add_mcp_server(
+            _mcp.McpServerConfig(
                 name=name,
                 command=command[0],
                 args=command[1:],
@@ -109,7 +110,7 @@ def cmd_remove(name: str = typer.Argument(..., help="Server name")) -> None:
     """Remove a configured server.
 
     Example: docket setup mcp remove playwright"""
-    if not _mcp_tools.remove_mcp_server(name):
+    if not _mcp_servers.remove_mcp_server(name):
         ui.error(f"No MCP server named '{name}' is configured", "Run: docket setup mcp list")
         raise typer.Exit(1)
     audit_log("mcp_servers.remove", f"name={name!r}")

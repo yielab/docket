@@ -11,13 +11,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.agent import identity as _identity
-from docket.agent import skills as _skills
 from docket.agent.tools import builtin_tools as _builtin_tools
-from docket.agent.tools import mcp_tools as _mcp_tools
 from docket.governance import network_posture as _network_posture
 from docket.governance import policy as _policy
 from docket.governance import profile as _profile
+from docket.hops.workspace import skills as _skills
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
@@ -27,6 +25,8 @@ from docket.pipeline.application import steps as _steps
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams import identity as _identity
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _archetypes
@@ -47,7 +47,7 @@ def network_text(net: dict[str, Any]) -> str:
 
 def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
     """The containment roots a standalone turn would resolve for *agent_id*: codebase >
-    work_dir > the agent's own workspace (mirrors ``agent/driver.py``'s
+    work_dir > the agent's own workspace (mirrors ``hops/application/driver.py``'s
     ``_resolve_roots``, reproduced for display; a dispatched task's worktree is per task)."""
     if meta.codebase:
         return (Path(meta.codebase),)
@@ -101,10 +101,10 @@ def _mcp_servers_report(
     """Every MCP server a turn would load: the pod's own ``mcpServers`` selection when
     set (``scope: "pod"``), else the full catalog -- global servers (``scope: "global"``)
     and the pod's own pod-scoped ones (``scope: "pod"``)."""
-    catalog = sorted(_mcp_tools.load_mcp_servers(project), key=lambda s: s.name)
+    catalog = sorted(_mcp_servers.load_mcp_servers(project), key=lambda s: s.name)
     selected = pod_settings.mcp_servers if pod_settings is not None else None
     if selected is None:
-        own = {s.name for s in _mcp_tools.load_pod_mcp_servers(project)} if project else set()
+        own = {s.name for s in _mcp_servers.load_pod_mcp_servers(project)} if project else set()
         return [
             {
                 "name": s.name,

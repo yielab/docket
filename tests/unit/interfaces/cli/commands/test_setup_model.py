@@ -217,7 +217,7 @@ class TestProviderAddAdvertisedModel:
 class TestProviderLimits:
     @staticmethod
     def _probe(monkeypatch: pytest.MonkeyPatch, **limits: tuple[int | None, int | None]) -> None:
-        from docket.agent.llm import ModelLimits
+        from docket.agent.ports import ModelLimits
         from docket.models.adapters import openai_http as _llm
 
         monkeypatch.setattr(
@@ -277,7 +277,7 @@ class TestProviderLimits:
                 ],
             )
             _prov.save_provider(spec)
-            from docket.agent.llm import ModelLimits
+            from docket.agent.ports import ModelLimits
             from docket.models.adapters.openai_http import ProbeResult
 
             _provider_lifecycle.record_observed_models(
@@ -309,7 +309,7 @@ class TestProviderLimits:
                 models=[_prov.ModelRow(id="seen"), _prov.ModelRow(id="blank")],
             )
             _prov.save_provider(spec)
-            from docket.agent.llm import ModelLimits
+            from docket.agent.ports import ModelLimits
             from docket.models.adapters.openai_http import ProbeResult
 
             _provider_lifecycle.record_observed_models(

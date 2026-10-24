@@ -16,13 +16,15 @@ import pytest
 from tests.support.pods import build_pod
 
 import docket.kernel.templates as _templates
-from docket.agent.driver import _load_mcp_tools
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolRegistry
+from docket.hops.application.driver import _load_mcp_tools
 from docket.interfaces.cli.commands import pod_config as _pod_config
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams import config_docs as _config_docs
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams.apply import model as _model
@@ -75,10 +77,10 @@ def test_apply_installs_the_server_for_that_pod_only(
 ) -> None:
     _apply("shop", _recipe(tmp_path))
 
-    assert [s.name for s in _mt.load_mcp_servers("shop")] == ["fakesrv"]
-    assert _mt.load_mcp_servers("other") == []
-    assert _mt.load_mcp_servers() == []
-    server = _mt.load_mcp_servers("shop")[0]
+    assert [s.name for s in _mcp_servers.load_mcp_servers("shop")] == ["fakesrv"]
+    assert _mcp_servers.load_mcp_servers("other") == []
+    assert _mcp_servers.load_mcp_servers() == []
+    server = _mcp_servers.load_mcp_servers("shop")[0]
     assert (server.kind, server.tools, server.args) == ("read", ["lookup"], ["--stdio"])
 
     captured: dict[str, tuple[str, ...]] = {}
@@ -98,7 +100,7 @@ def test_the_installed_server_reaches_the_registry_narrowed_to_its_tools(tmp_pat
     _apply("shop", _recipe(tmp_path))
     registry = ToolRegistry()
 
-    def _list(config: _mt.McpServerConfig, timeout: float) -> _mt.McpListResult:
+    def _list(config: _mcp.McpServerConfig, timeout: float) -> _mt.McpListResult:
         return _mt.McpListResult(
             ok=True,
             tools=(_mt.McpRemoteTool("lookup", "find"), _mt.McpRemoteTool("edit_file", "write")),
@@ -106,7 +108,7 @@ def test_the_installed_server_reaches_the_registry_narrowed_to_its_tools(tmp_pat
 
     _mt.load_mcp_tools(
         registry,
-        servers=_mt.load_mcp_servers("shop"),
+        servers=_mcp_servers.load_mcp_servers("shop"),
         list_tools=_list,
         call_tool=lambda *a: ToolOutcome(True),
     )
@@ -134,7 +136,7 @@ def test_dry_run_lists_it_and_installs_nothing(tmp_path: Path) -> None:
 
     assert [(i.kind, i.name, i.action) for i in plan.items] == [("mcp-server", "fakesrv", "add")]
     assert not (current_home().pod_config_dir("shop") / "mcp-servers.json").exists()
-    assert _mt.load_mcp_servers("shop") == []
+    assert _mcp_servers.load_mcp_servers("shop") == []
 
 
 def test_a_second_identical_apply_skips(tmp_path: Path) -> None:
@@ -146,7 +148,7 @@ def test_a_second_identical_apply_skips(tmp_path: Path) -> None:
 
 
 def test_a_name_that_collides_with_a_global_server_is_refused(tmp_path: Path) -> None:
-    _mt.add_mcp_server(_mt.McpServerConfig(name="fakesrv", command="x"))
+    _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="fakesrv", command="x"))
 
     with pytest.raises(_model.PodApplyError, match="global"):
         _pod_apply.plan_apply("shop", _recipe(tmp_path))
@@ -169,7 +171,7 @@ def test_export_round_trips_the_server(tmp_path: Path) -> None:
     assert _config_docs.load_document(written).kind == "mcp-server"
 
     _apply("other", exported)
-    assert _mt.load_mcp_servers("other") == _mt.load_mcp_servers("shop")
+    assert _mcp_servers.load_mcp_servers("other") == _mcp_servers.load_mcp_servers("shop")
 
 
 def test_validate_rejects_a_malformed_server_document(tmp_path: Path) -> None:
@@ -197,8 +199,8 @@ def test_an_isolate_key_is_an_unknown_key_error(tmp_path: Path) -> None:
     errors = _config_docs.validate_directory(directory)
     assert len(errors) == 1
     assert "isolate" in str(errors[0])
-    with pytest.raises(_mt.McpServerDocError):
-        _mt.load_mcp_server_document(directory / "mcp-servers" / "freesrv.yaml")
+    with pytest.raises(_mcp_servers.McpServerDocError):
+        _mcp_servers.load_mcp_server_document(directory / "mcp-servers" / "freesrv.yaml")
 
 
 def test_export_writes_no_isolate_key(tmp_path: Path) -> None:

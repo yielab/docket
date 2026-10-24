@@ -26,7 +26,7 @@ from tests.support import pods as _support_pods
 from tests.support.git import pgrep_count as _pgrep_count
 
 from docket.agent import loop as _loop
-from docket.agent.llm import ChatResponse, TokenUsage, ToolCall, assistant
+from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.agent.session import load_messages
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
@@ -212,7 +212,7 @@ class TestAgentTurnBashCancellation:
         self, workspace: Path
     ) -> None:
         """A `bash` call's real process group is registered against the current run
-        (`ToolContext.on_process`, mirroring `agent/driver.py`'s production
+        (`ToolContext.on_process`, mirroring `hops/application/driver.py`'s production
         wiring) while it is in flight, so `docket task cancel` reaches it and the turn's own
         cooperative check (the same persisted signal) reports the kill as `process_exited`
         with `signal`, not `exitCode`."""

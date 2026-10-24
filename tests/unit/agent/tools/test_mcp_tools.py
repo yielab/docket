@@ -21,15 +21,14 @@ from tests.support import pods as _support_pods
 from tests.support.pods import write_meta_2 as _write_meta
 
 import docket.kernel.templates as _templates
-from docket.agent.driver import DocketDriver, _load_mcp_tools
-from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
+from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolRegistry
+from docket.hops.application.driver import DocketDriver, _load_mcp_tools
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
-from docket.tasks.domain.task import DispatchError
-from docket.teams.pod import member_id as _pod_member_id
 from docket.teams.roles import registry_for_role
 
 _isolate_stores = _support_home.isolate_stores
@@ -91,7 +90,7 @@ def _fake_mcp_loader(
     def _loader(
         registry: ToolRegistry, role: str, project: str = "", launch: _mt.StdioLaunch | None = None
     ) -> list[_mt.McpServerLoadResult]:
-        config = _mt.McpServerConfig(name=server_name, command="stub")
+        config = _mcp.McpServerConfig(name=server_name, command="stub")
         return _mt.load_mcp_tools(
             registry,
             servers=[config],
@@ -107,7 +106,7 @@ def _unreachable_mcp_loader() -> Any:
     def _loader(
         registry: ToolRegistry, role: str, project: str = "", launch: _mt.StdioLaunch | None = None
     ) -> list[_mt.McpServerLoadResult]:
-        config = _mt.McpServerConfig(name="down", command="stub")
+        config = _mcp.McpServerConfig(name="down", command="stub")
         return _mt.load_mcp_tools(
             registry,
             servers=[config],
@@ -127,10 +126,10 @@ def _malformed_mcp_loader() -> Any:
     def _loader(
         registry: ToolRegistry, role: str, project: str = "", launch: _mt.StdioLaunch | None = None
     ) -> list[_mt.McpServerLoadResult]:
-        def _boom(_c: _mt.McpServerConfig, _t: float) -> _mt.McpListResult:
+        def _boom(_c: _mcp.McpServerConfig, _t: float) -> _mt.McpListResult:
             raise ValueError("malformed tool listing: not valid JSON-RPC")
 
-        config = _mt.McpServerConfig(name="garbled", command="stub")
+        config = _mcp.McpServerConfig(name="garbled", command="stub")
         return _mt.load_mcp_tools(
             registry,
             servers=[config],
@@ -163,58 +162,6 @@ class TestDocketDriverCallsLoadMcpTools:
     def test_default_mcp_loader_is_the_real_load_mcp_tools_wrapper(self) -> None:
         """Wiring sanity: the production default is not a test-only stub."""
         assert DocketDriver().mcp_loader is _load_mcp_tools
-
-
-# ── a pod's own mcpServers selection narrows the catalog _load_mcp_tools reads ──
-
-
-class TestPodScopedMcpServerSelection:
-    """`_load_mcp_tools(registry, role, project)` filters the catalog by *project*'s
-    pod `mcpServers` setting before folding servers into a turn's registry."""
-
-    def _capture_servers(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, tuple[str, ...]]:
-        captured: dict[str, tuple[str, ...]] = {}
-
-        def _fake_load_mcp_tools(
-            registry: ToolRegistry,
-            *,
-            servers: Any = None,
-            list_tools: Any = None,
-            call_tool: Any = None,
-            role: str = "",
-            project: str = "",
-        ) -> list[Any]:
-            captured["names"] = tuple(s.name for s in (servers or []))
-            return []
-
-        monkeypatch.setattr(_mt, "load_mcp_tools", _fake_load_mcp_tools)
-        return captured
-
-    def test_a_selected_name_narrows_the_catalog(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _mt.add_mcp_server(_mt.McpServerConfig(name="a", command="stub"))
-        _mt.add_mcp_server(_mt.McpServerConfig(name="b", command="stub"))
-        _write_meta(_pod_member_id("shop", "lead"), role="lead", pod="shop", mcpServers="a")
-        captured = self._capture_servers(monkeypatch)
-
-        _load_mcp_tools(ToolRegistry(), "implementer", "shop")
-
-        assert captured["names"] == ("a",)
-
-    def test_no_pod_setting_loads_every_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _mt.add_mcp_server(_mt.McpServerConfig(name="a", command="stub"))
-        _mt.add_mcp_server(_mt.McpServerConfig(name="b", command="stub"))
-        captured = self._capture_servers(monkeypatch)
-
-        _load_mcp_tools(ToolRegistry(), "implementer", "")
-
-        assert captured["names"] == ("a", "b")
-
-    def test_a_stale_selection_refuses_the_dispatch_naming_it(self) -> None:
-        _mt.add_mcp_server(_mt.McpServerConfig(name="a", command="stub"))
-        _write_meta(_pod_member_id("shop", "lead"), role="lead", pod="shop", mcpServers="zzz")
-
-        with pytest.raises(DispatchError, match="zzz"):
-            _load_mcp_tools(ToolRegistry(), "implementer", "shop")
 
 
 # ── THE load-bearing test: role narrowing survives MCP tools ───────────────
@@ -284,7 +231,7 @@ class TestReviewerNeverGainsAWriteCapableMcpTool:
         """Belt and suspenders: even if a Reviewer's model somehow emitted a call for the excluded tool (a stale client, a hallucination), dispatch_tool must refuse it as unknown -- the same guarantee TestReviewerCannotDispatchAWrite proves for built-ins."""
         import json
 
-        from docket.agent.llm import ToolCall
+        from docket.agent.ports import ToolCall
 
         _write_meta("rev-2", role="reviewer")
         call = ToolCall(
@@ -332,7 +279,7 @@ class TestZeroServersIsUnchanged:
     def test_load_mcp_tools_with_zero_servers_does_not_touch_the_registry(self) -> None:
         registry = builtin_registry()
         before = set(registry.names())
-        reports = _mt.load_mcp_tools(registry, role="implementer")
+        reports = _mt.load_mcp_tools(registry, servers=[], role="implementer")
         assert reports == []
         assert set(registry.names()) == before
 
@@ -376,7 +323,7 @@ class TestDeclaredKindDrivesRoleNarrowing:
 
     def test_a_declared_read_kind_server_survives_reviewer_narrowing(self) -> None:
         registry = builtin_registry()
-        config = _mt.McpServerConfig(name="search", command="stub", kind="read")
+        config = _mcp.McpServerConfig(name="search", command="stub", kind="read")
 
         _mt.load_mcp_tools(
             registry,
@@ -399,7 +346,7 @@ class TestDeclaredKindDrivesRoleNarrowing:
         `kind="write"`) keeps today's fail-closed behavior -- a write-denying role still gets
         none of its tools."""
         registry = builtin_registry()
-        config = _mt.McpServerConfig(name="search", command="stub", **kind_kwargs)
+        config = _mcp.McpServerConfig(name="search", command="stub", **kind_kwargs)
 
         _mt.load_mcp_tools(
             registry,
@@ -436,11 +383,11 @@ def _install_result_policy(action: str | None) -> None:
 
 
 def _dispatch_mcp(content: str, *, ok: bool = True) -> Any:
-    from docket.agent.llm import ToolCall
+    from docket.agent.ports import ToolCall
     from docket.agent.tools.registry import ToolContext, dispatch_tool
 
     registry = ToolRegistry()
-    config = _mt.McpServerConfig(name="web", command="stub", kind="read")
+    config = _mcp.McpServerConfig(name="web", command="stub", kind="read")
     outcome = ToolOutcome(ok, content=content if ok else "", error="" if ok else content)
     _mt.load_mcp_tools(
         registry,

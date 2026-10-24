@@ -716,7 +716,7 @@ Where the names above live today. This is the only section that names paths.
   `src/docket/teams/roles.py`: `load_registry`, `add_user_archetype`, `to_short_role`
 - `src/docket/observability/exporter.py`: `load_catalog`, `activation_state`;
   `src/docket/agent/tools/mcp_tools.py`: `load_pod_mcp_servers`, `write_pod_mcp_servers`
-- `src/docket/agent/memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` and `MEMORY.md` text)
+- `src/docket/teams/agent_memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` and `MEMORY.md` text)
 - `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`, `pod_work_dir`,
   `pod_scratch_dir`, `user_recipes_dir`, `reviewed_repos_file`
 - `src/docket/kernel/templates.py`: `RECIPES_DIR`, `CONFIG_SCHEMAS_DIR`

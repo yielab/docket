@@ -15,12 +15,20 @@ from tests.support import home as _support_home
 from tests.support.llm import summarizing_driver as _summarizing_driver
 from tests.support.llm import tool_call_turn as _tool_call_turn
 
-from docket.agent import context as _agent_context
+from docket.agent import ports as _ports
 from docket.agent import session as _sess
 from docket.agent import session_compaction as _session_compaction
 from docket.agent import session_units as _session_units
-from docket.agent.llm import ChatMessage, TokenUsage, ToolCall, assistant, system, tool_result, user
-from docket.agent.ports import TurnResult
+from docket.agent.ports import (
+    ChatMessage,
+    TokenUsage,
+    ToolCall,
+    TurnResult,
+    assistant,
+    system,
+    tool_result,
+    user,
+)
 
 _isolate_sessions_dir = _support_home.isolate_sessions_dir
 
@@ -198,7 +206,7 @@ class TestMeasuredUsage:
         _sess.append_messages("agent:x:default", [user(tiny_content)], usage=huge_usage)
 
         record = _sess.load_session("agent:x:default")
-        from docket.agent.context import estimate_tokens
+        from docket.agent.ports import estimate_tokens
 
         assert record.usage.input_tokens == 200_000
         assert estimate_tokens(tiny_content) < 10
@@ -466,7 +474,7 @@ class TestCompactSessionSuccess:
         assert result.summary_rounds == len(prompts)
         assert result.summary_rounds > 1
         assert result.max_summary_prompt_estimated_tokens <= 180
-        assert all(_agent_context.estimate_tokens(prompt) <= 180 for prompt in prompts)
+        assert all(_ports.estimate_tokens(prompt) <= 180 for prompt in prompts)
         assert any("[compacted summary" in prompt for prompt in prompts[1:])
         assert all(("ATOMIC_CALL" in prompt) == ("ATOMIC_RESULT" in prompt) for prompt in prompts)
         final = _sess.load_messages(key)

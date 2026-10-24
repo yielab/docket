@@ -1,13 +1,14 @@
-"""The ports docket binds at its edges: git, the host's process tools and the sandbox launcher.
+"""The ports docket binds at its edges: git, the host's process tools, the sandbox launcher and the tracer.
 
 A port is a ``Protocol`` here plus a ``Binding``: ``bootstrap`` binds the real adapter once per
-entry (``bind_git``, ``bind_process``, ``bind_jail``), and a test swaps in a fake for a block
+entry (``bind_git``, ``bind_process``, ``bind_jail``, ``bind_tracer``), and a test swaps in a fake for a block
 with ``<port>_port.use(fake)``, the shape ``clock.use_clock`` gives the clock. The object a
 caller imports (``git``, ``process``, ``jail``) forwards each attribute to whatever its binding
 holds at call time, so a caller keeps writing ``git.git_head_sha(cwd)`` and never names an
 adapter. Everything is in one module because ``kernel`` modules import nothing from docket.
 
-Real adapters: ``platform.git``, ``platform.process`` and ``sandbox.launch.Launcher``. Fakes:
+Real adapters: ``platform.git``, ``platform.process``, ``sandbox.launch.Launcher`` and
+``observability.adapters.local_tracer.LocalTracer``. Fakes:
 ``tests/support/fakes.py``.
 """
 
@@ -286,3 +287,37 @@ jail: Jail = jail_port.proxy()
 
 def bind_jail(adapter: Jail) -> None:
     jail_port.bind(adapter)
+
+
+# ── tracer ───────────────────────────────────────────────────────────────────
+
+
+class Tracer(Protocol):
+    """Where the turn engine writes its trace events and asks which content may be captured."""
+
+    def trace_event(
+        self,
+        project: str,
+        session_id: str,
+        agent_role: str,
+        event_type: str,
+        payload: str,
+        cost_usd: float | str | None = None,
+        duration_ms: int | str | None = None,
+        *,
+        task_id: str = "",
+    ) -> str:
+        """Validate, redact and append one event: ``written``, ``rejected`` or ``suppressed``."""
+        ...
+
+    def capture_classes(self) -> frozenset[str]:
+        """The content classes some started exporter grants; empty when none is started."""
+        ...
+
+
+tracer_port: Binding[Tracer] = Binding("tracer")
+tracer: Tracer = tracer_port.proxy()
+
+
+def bind_tracer(adapter: Tracer) -> None:
+    tracer_port.bind(adapter)

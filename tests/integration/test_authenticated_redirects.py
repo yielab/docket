@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from docket.agent.llm import Endpoint
+from docket.agent.ports import Endpoint
 from docket.models.adapters import openai_http as llm
 from docket.observability.adapters import otlp_http
 from docket.operator.adapters import ntfy, webhook

@@ -32,11 +32,10 @@ from docket.agent.tools.registry import (
     ToolContext,
     ToolRegistry,
     dispatch_tool,
-    evaluate_tool_call,
-    render_tool_call,
 )
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
+from docket.governance.gate import evaluate_tool_call, render_tool_call
 from docket.governance.policy import install_policies
 from docket.kernel.home import current_home, use_home
 

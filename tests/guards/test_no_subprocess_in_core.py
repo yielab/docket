@@ -4,7 +4,7 @@ The layering rule is that the contexts' domain and application code is pure logi
 side-effecting layers -- ``platform/``, ``sandbox/``, every ``adapters/`` package, the built-in
 tool handlers in ``agent/tools/builtins/`` and ``interfaces/`` -- are the only places a process
 is started. Dispatch (``tasks/application/``) *orchestrates* agent turns but delegates the
-actual process execution to a driver (``agent/driver.py``'s ``DocketDriver``, which itself
+actual process execution to a driver (``hops/application/driver.py``'s ``DocketDriver``, which itself
 never shells out -- it makes in-process HTTP calls) and the ``platform``/``sandbox`` wrappers.
 A design-pattern audit once wrongly claimed dispatch ran subprocesses itself; this test locks in
 the real invariant so that concern can never become true by regression. (Sibling of

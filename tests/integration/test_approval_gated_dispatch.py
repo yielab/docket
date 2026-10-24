@@ -46,7 +46,7 @@ from tests.support.trace import trace_events as _trace_events
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
-from docket.agent.llm import ToolCall
+from docket.agent.ports import ToolCall
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.governance import approval as _ap

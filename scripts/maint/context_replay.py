@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from docket.agent.llm import ChatMessage, ToolCall
+from docket.agent.ports import ChatMessage, ToolCall
 from docket.agent.session import condense_history
 from docket.agent.tools.builtins.toolbox import read_file, text_outcome
 from docket.kernel.home import current_home

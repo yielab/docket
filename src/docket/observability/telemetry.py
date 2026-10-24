@@ -338,7 +338,7 @@ def capture_classes() -> frozenset[str]:
 
 def health() -> dict[str, dict[str, Any]]:
     """Every started exporter's current counters, in `Home.exporters_health_file`'s shape --
-    the caller (`agent/driver.py::run_turn`) writes this through
+    the caller (`hops/application/driver.py::run_turn`) writes this through
     `platform/store.py`; this function itself performs no I/O."""
     with _REGISTRY_LOCK:
         items = list(_REGISTRY.items())

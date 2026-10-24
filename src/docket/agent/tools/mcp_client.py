@@ -37,11 +37,12 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent.tools.builtins.toolbox import ToolOutcome
-from docket.agent.tools.mcp_tools import McpListResult, McpRemoteTool, McpServerConfig, StdioLaunch
+from docket.agent.tools.mcp_tools import McpListResult, McpRemoteTool, StdioLaunch
 from docket.kernel import ids as _ids
 from docket.kernel import text as _text
 from docket.kernel.errors import Refused, Unavailable
 from docket.kernel.home import current_home
+from docket.kernel.mcp import McpServerConfig
 from docket.kernel.ports import jail as _jail
 
 MISSING_SDK_HINT = (

@@ -2299,9 +2299,9 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/hops/workspace/prepare.py`: preparation resolution, cache and record (`resolve`,
   `needs_prepare`, `prepare_worktree`, `linked_entries`)
 - `src/docket/hops/workspace/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
-- `src/docket/agent/memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,
+- `src/docket/teams/agent_memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,
   `DISPATCH_BLOCK_BEGIN`/`DISPATCH_BLOCK_END`
-- `src/docket/agent/conversations.py`: `touch_for_hop_durable`, `prune_closed_durable`
+- `src/docket/teams/conversations.py`: `touch_for_hop_durable`, `prune_closed_durable`
 - `src/docket/tasks/application/runs.py`: `execute`, `create_run`, `cancel_run`, `current_run_id`,
   `add_hop_pid`, `remove_hop_pid`, `prune_terminal`
 - `src/docket/governance/approval.py`: `approval_create`, `approval_grant`, `approval_deny`,
@@ -2316,7 +2316,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/governance/security.py`: `classify_command`
 - `src/docket/teams/pod_provisioning.py`: `provision_task_worktree`, `prune_task_worktrees`,
   `teardown_member`
-- `src/docket/agent/driver.py`: `DocketDriver`, `default_driver`,
+- `src/docket/hops/application/driver.py`: `DocketDriver`, `default_driver`,
   `resolve_command_jail`, `PIPELINE_WORKTREE_ENV` and the other internal coordinates
 - `src/docket/sandbox/launch.py`: `run_command`, `task_environment`, `cache_environment`
 - `src/docket/platform/process.py`: `process_alive`, `kill_process_group`

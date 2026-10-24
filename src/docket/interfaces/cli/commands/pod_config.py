@@ -12,6 +12,7 @@ from rich.markup import escape
 
 from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.agent.tools import registry as _tools
+from docket.governance import gate as _gate
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
@@ -434,7 +435,7 @@ def _check_verdict(
     if tool not in builtin:
         _fail(f"Unknown tool '{tool}'", f"Valid: {' '.join(sorted(builtin))}", 2)
     if builtin[tool].kind == "exec":
-        verdict = _tools.evaluate_tool_call(
+        verdict = _gate.evaluate_tool_call(
             _tools.Tool(
                 name=tool,
                 description="",

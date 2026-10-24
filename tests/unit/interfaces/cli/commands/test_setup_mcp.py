@@ -7,8 +7,8 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from docket.agent.tools import mcp_tools as _mt
 from docket.interfaces.cli.app import app
+from docket.teams import mcp_servers as _mcp_servers
 
 SUBJECT = "docket.interfaces.cli.commands.setup_mcp"
 
@@ -21,7 +21,7 @@ def test_add_keeps_everything_after_the_separator_verbatim() -> None:
         ["setup", "mcp", "add", "search", "--env", "K=v", "--kind", "read", "--", "srv", "-y", "x"],
     )
     assert result.exit_code == 0, result.output
-    (server,) = _mt.load_mcp_servers()
+    (server,) = _mcp_servers.load_mcp_servers()
     assert (server.command, server.args, server.env, server.kind) == (
         "srv",
         ["-y", "x"],
@@ -49,13 +49,13 @@ def test_list_masks_env_values() -> None:
 def test_a_bad_call_is_refused_and_writes_nothing(args: list[str]) -> None:
     result = _runner.invoke(app, ["setup", "mcp", *args])
     assert result.exit_code != 0
-    assert _mt.load_mcp_servers() == []
+    assert _mcp_servers.load_mcp_servers() == []
 
 
 def test_remove_deletes_a_configured_server() -> None:
     _runner.invoke(app, ["setup", "mcp", "add", "weather", "--", "npx"])
     assert _runner.invoke(app, ["setup", "mcp", "remove", "weather"]).exit_code == 0
-    assert _mt.load_mcp_servers() == []
+    assert _mcp_servers.load_mcp_servers() == []
 
 
 def test_list_json_is_one_document_with_masked_env() -> None:

@@ -18,21 +18,21 @@ import dataclasses
 import json
 import threading
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 from tests.support import llm as _stub
 
-from docket.agent import context as _agent_context
 from docket.agent import loop as _loop
 from docket.agent import loop_compaction as _loop_compaction
 from docket.agent import loop_trace as _loop_trace
+from docket.agent import ports as _ports
 from docket.agent import session as _session
 from docket.agent import session_compaction as _session_compaction
 from docket.agent import session_units as _session_units
-from docket.agent.llm import (
+from docket.agent.ports import (
     ChatMessage,
     ChatResponse,
     Endpoint,
@@ -43,11 +43,11 @@ from docket.agent.llm import (
 )
 from docket.agent.session import append_messages as append_session_messages
 from docket.agent.session import load_session
-from docket.agent.tools import registry as _tools
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool as _Tool
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.governance import approval as _approval
+from docket.governance import gate as _gate
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
 from docket.models.adapters import openai_http as _llm_adapter
@@ -305,7 +305,10 @@ def _write_gate_policy(policy_id: str, pattern: str, action: str) -> None:
 
 class TestCooperativeRunCancellation:
     def test_task_response_after_request_is_discarded_before_tool_execution(
-        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+        self,
+        ctx: ToolContext,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         probe = CancellationProbe()
         _attach_cancellation(ctx, probe)
@@ -346,7 +349,7 @@ class TestCooperativeRunCancellation:
             events.append((event_type, json.loads(payload)))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
         session_key = "agent:cancel-task:demo"
         worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
         try:
@@ -438,9 +441,9 @@ class TestCooperativeRunCancellation:
             )
         )
         monkeypatch.setattr(
-            _tools,
+            _gate,
             "evaluate_tool_call",
-            lambda _tool, _args, _ctx: _tools.ToolVerdict("ask", "operator approval required"),
+            lambda _tool, _args, _ctx: _gate.ToolVerdict("ask", "operator approval required"),
         )
         with use_home(
             dataclasses.replace(
@@ -485,7 +488,10 @@ class TestCooperativeRunCancellation:
             assert len(backend.calls) == 1
 
     def test_running_handler_finishes_then_remainder_is_cancelled_as_one_unit(
-        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+        self,
+        ctx: ToolContext,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         probe = CancellationProbe()
         _attach_cancellation(ctx, probe)
@@ -543,7 +549,7 @@ class TestCooperativeRunCancellation:
             events.append((event_type, json.loads(payload)))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
         session_key = "agent:cancel-tool-batch:demo"
         worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
         try:
@@ -1130,7 +1136,11 @@ class TestLiveSessionCompaction:
         assert backend.complete_calls == 0
 
     def test_over_budget_history_is_compacted_before_task_completion(
-        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+        self,
+        registry: ToolRegistry,
+        ctx: ToolContext,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         session_key = "agent:demo-agent:demo"
         call = ToolCall(id="old_call", name="echo", arguments='{"text":"old"}')
@@ -1159,7 +1169,7 @@ class TestLiveSessionCompaction:
             events.append((event_type, json.loads(payload)))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
         backend = ScriptedBackend(
             [
                 _final("old decision preserved", TokenUsage(input_tokens=30, output_tokens=7)),
@@ -1201,7 +1211,11 @@ class TestLiveSessionCompaction:
         assert "summary" not in compaction_events[0]
 
     def test_live_path_aggregates_usage_across_bounded_summary_rounds(
-        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+        self,
+        registry: ToolRegistry,
+        ctx: ToolContext,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         session_key = "agent:hierarchical:demo"
         append_session_messages(
@@ -1244,7 +1258,7 @@ class TestLiveSessionCompaction:
                     )
                 return _final("task done", TokenUsage(input_tokens=5, output_tokens=1))
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
         backend = _Backend()
         result = _loop.run_agent_turn(
             backend,
@@ -1261,9 +1275,7 @@ class TestLiveSessionCompaction:
         rounds = len(backend.summary_prompts)
         assert result.ok
         assert rounds > 1
-        assert all(
-            _agent_context.estimate_tokens(prompt) <= 180 for prompt in backend.summary_prompts
-        )
+        assert all(_ports.estimate_tokens(prompt) <= 180 for prompt in backend.summary_prompts)
         assert result.usage == TokenUsage(
             input_tokens=rounds * 10 + 5,
             output_tokens=rounds * 2 + 1,
@@ -1360,7 +1372,11 @@ class TestLiveSessionCompaction:
         assert records[-1]["payload"]["status"] == "failed"
 
     def test_no_op_uses_one_backend_call_and_emits_bounded_trace(
-        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+        self,
+        registry: ToolRegistry,
+        ctx: ToolContext,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         events: list[dict[str, object]] = []
 
@@ -1377,7 +1393,7 @@ class TestLiveSessionCompaction:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
         backend = ScriptedBackend([_final("done")])
         result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo-agent:demo", "hello")
 
@@ -1397,7 +1413,11 @@ class TestLiveSessionCompaction:
         ]
 
     def test_summary_failure_aborts_turn_and_preserves_history_bytes(
-        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+        self,
+        registry: ToolRegistry,
+        ctx: ToolContext,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
         session_key = "agent:demo-agent:demo"
         append_session_messages(
@@ -1424,7 +1444,7 @@ class TestLiveSessionCompaction:
                 events.append(json.loads(payload))
             return "written"
 
-        monkeypatch.setattr(_loop_trace, "trace_event", _trace, raising=True)
+        real_tracer_except(trace_event=_trace)
         backend = ScriptedBackend(
             [ChatResponse(ok=False, error="summary timed out", failure_kind="timeout")]
         )
@@ -2754,11 +2774,13 @@ class TestLlmCallTrace:
         assert llm_calls[1]["payload"]["failureKind"] == "timeout"
 
     def test_prompts_and_completions_are_captured_and_redacted_when_granted(
-        self, ctx: ToolContext, registry: ToolRegistry, monkeypatch: pytest.MonkeyPatch
+        self,
+        ctx: ToolContext,
+        registry: ToolRegistry,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
-        monkeypatch.setattr(
-            _loop_trace._telemetry, "capture_classes", lambda: frozenset({"prompts", "completions"})
-        )
+        real_tracer_except(capture_classes=lambda: frozenset({"prompts", "completions"}))
         session_key = "agent:demo:content"
         secret_call = '{"text": "leaked-secret@example.com"}'
         backend = ScriptedBackend([_tool_call_response("c1", "echo", secret_call), _final("ok")])
@@ -2809,9 +2831,13 @@ class TestLlmCallTrace:
         ]
 
     def test_empty_grant_matches_the_capture_disabled_shape(
-        self, ctx: ToolContext, registry: ToolRegistry, monkeypatch: pytest.MonkeyPatch
+        self,
+        ctx: ToolContext,
+        registry: ToolRegistry,
+        monkeypatch: pytest.MonkeyPatch,
+        real_tracer_except: Callable[..., None],
     ) -> None:
-        monkeypatch.setattr(_loop_trace._telemetry, "capture_classes", lambda: frozenset())
+        real_tracer_except(capture_classes=lambda: frozenset())
         session_key = "agent:demo:no-content"
         backend = ScriptedBackend(
             [_tool_call_response("c1", "echo", '{"text": "hi"}'), _final("ok")]
@@ -2849,8 +2875,9 @@ class TestLlmCallTrace:
         registry: ToolRegistry,
         monkeypatch: pytest.MonkeyPatch,
         granted: frozenset[str],
+        real_tracer_except: Callable[..., None],
     ) -> None:
-        monkeypatch.setattr(_loop_trace._telemetry, "capture_classes", lambda: granted)
+        real_tracer_except(capture_classes=lambda: granted)
         backend = ScriptedBackend(
             [_tool_call_response("c1", "echo", '{"text": "echoed-back"}'), _final("ok")]
         )

@@ -4,10 +4,10 @@ import contextlib
 import difflib
 from dataclasses import dataclass, field
 
-from docket.agent import memory as _mem
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.platform import read_json, write_json
+from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import role_schema as _role_schema
@@ -278,7 +278,7 @@ def provision_member(
 #
 # A pod member's SOUL.md/AGENTS.md/TOOLS.md are generated wholesale from its
 # archetype + stored metadata and may be freely overwritten -- an operator's
-# own notes belong in INSTRUCTIONS.md (agent/identity.py), which nothing here
+# own notes belong in INSTRUCTIONS.md (teams/identity.py), which nothing here
 # ever reads, writes, or diffs.
 
 

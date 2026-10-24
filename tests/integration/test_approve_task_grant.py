@@ -1,6 +1,6 @@
 """``approve_task`` on a parked pod approval: the grant lasts the rest of that task.
 
-Drives the real writers: a parked approval as ``agent/tools/registry.py::_park_call`` creates it, the task
+Drives the real writers: a parked approval as ``governance/gate.py::_park`` creates it, the task
 flipped to ``waiting_approval`` as ``_apply_result`` does, then ``docket task approve --option`` /
 Telegram ``/approve <token> task`` into ``resolve_waiting_approval``, and ``_compose_hop`` into
 the real ``DOCKET_PREGRANTS`` decoder and the real pre-grant consumer.
@@ -15,12 +15,13 @@ from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
-from docket.agent.driver import _parse_pregrants
-from docket.agent.tools.registry import ToolContext, _consume_matching_pregrant
+from docket.agent.tools.registry import ToolContext
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
+from docket.governance.gate import consume_matching_pregrant as _consume_matching_pregrant
 from docket.hops.application import compose as _compose
 from docket.hops.application import record as _record
+from docket.hops.application.driver import _parse_pregrants
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg

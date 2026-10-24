@@ -17,11 +17,11 @@ import pytest
 from tests.support.pods import lead_ws as _lead_ws
 from tests.support.pods import seed_pod as _seed_pod
 
-from docket.agent import memory as _mem
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_budget as _setup_check_budget
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
+from docket.teams import agent_memory as _mem
 
 SUBJECT = "docket.interfaces.cli.app"
 

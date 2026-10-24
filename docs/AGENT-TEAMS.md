@@ -296,7 +296,7 @@ inherit-the-parent-env behavior.
 A pod Lead's `HEARTBEAT.md` carries the same resume/durability contract every agent workspace
 has: in-flight work is written down before it starts, so a context reset can resume it. Dispatch
 maintains that ledger **mechanically**, so it is not only as honest as the agent's own compliance: a delimited, docket-owned region inside `## Active Tasks`
-(`agent/memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
+(`teams/agent_memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
 every claim, every hop completion, and every retry — the entry for a task exists before its first
 hop ever runs, whether or not the agent would have written it down itself. Everything outside that
 region — an agent's own hand-written notes, every other heading in the file — is never touched by

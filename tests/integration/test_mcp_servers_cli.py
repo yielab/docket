@@ -29,7 +29,9 @@ from typer.testing import CliRunner
 from docket.agent.tools import mcp_tools as _mt
 from docket.governance import audit as _audit
 from docket.interfaces.cli.app import app
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home, use_home
+from docket.teams import mcp_servers as _mcp_servers
 
 SUBJECT = "docket.agent"
 
@@ -67,15 +69,17 @@ class TestServersList:
         assert _audit_actions() == []  # read-only: never audited
 
     def test_shows_configured_server_and_command(self) -> None:
-        _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx", args=["-y", "wx"]))
+        _mcp_servers.add_mcp_server(
+            _mcp.McpServerConfig(name="weather", command="npx", args=["-y", "wx"])
+        )
         rc, out, _ = _mcp_run(["list"])
         assert rc == 0
         assert "weather" in out
         assert "npx -y wx" in out
 
     def test_env_values_are_masked_never_printed_in_the_clear(self) -> None:
-        _mt.add_mcp_server(
-            _mt.McpServerConfig(
+        _mcp_servers.add_mcp_server(
+            _mcp.McpServerConfig(
                 name="search", command="search-server", env={"SEARCH_API_KEY": "tok-super-secret"}
             )
         )
@@ -93,7 +97,7 @@ class TestServersList:
             raise AssertionError("docket setup mcp list must never call load_mcp_tools")
 
         monkeypatch.setattr(_mt, "load_mcp_tools", _boom, raising=True)
-        _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="weather", command="npx"))
         assert _mcp_run(["list"])[0] == 0
 
 
@@ -105,7 +109,7 @@ class TestServersAdd:
         rc, out, _ = _mcp_run(["add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"])
         assert rc == 0
         assert "playwright" in out
-        loaded = _mt.load_mcp_servers()
+        loaded = _mcp_servers.load_mcp_servers()
         assert len(loaded) == 1
         assert loaded[0].name == "playwright"
         assert loaded[0].command == "npx"
@@ -126,7 +130,7 @@ class TestServersAdd:
             ]
         )
         assert rc == 0
-        loaded = _mt.load_mcp_servers()[0]
+        loaded = _mcp_servers.load_mcp_servers()[0]
         assert loaded.env == {"SEARCH_API_KEY": "tok-123"}
         assert loaded.timeout == 20.0
         assert loaded.command == "search-server"
@@ -135,49 +139,49 @@ class TestServersAdd:
     def test_env_equals_flag_form(self) -> None:
         rc, _, _ = _mcp_run(["add", "s", "--env=KEY=value", "--", "cmd"])
         assert rc == 0
-        assert _mt.load_mcp_servers()[0].env == {"KEY": "value"}
+        assert _mcp_servers.load_mcp_servers()[0].env == {"KEY": "value"}
 
     def test_a_command_flag_without_the_separator_is_rejected_not_misparsed(self) -> None:
         rc, _, _ = _mcp_run(["add", "playwright", "npx", "-y", "@playwright/mcp@latest"])
         assert rc != 0
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_no_command_after_separator_is_rejected(self) -> None:
         rc, _, _ = _mcp_run(["add", "playwright", "--"])
         assert rc != 0
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_malformed_env_flag_is_rejected(self) -> None:
         rc, _, err = _mcp_run(["add", "s", "--env", "NOT_KEY_VALUE", "--", "cmd"])
         assert rc == 1
         assert "KEY=VALUE" in err
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_malformed_timeout_is_rejected(self) -> None:
         rc, _, _ = _mcp_run(["add", "s", "--timeout", "not-a-number", "--", "cmd"])
         assert rc != 0
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_unknown_flag_before_separator_is_rejected(self) -> None:
         rc, _, _ = _mcp_run(["add", "s", "--bogus", "--", "cmd"])
         assert rc != 0
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_a_bad_kind_is_rejected(self) -> None:
         rc, _, _ = _mcp_run(["add", "s", "--kind", "bogus", "--", "cmd"])
         assert rc == 1
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_no_args_at_all_is_rejected(self) -> None:
         assert _mcp_run(["add"])[0] != 0
 
     def test_duplicate_name_surfaces_as_a_cli_error_not_a_traceback(self) -> None:
-        _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="weather", command="npx"))
         rc, _, err = _mcp_run(["add", "weather", "--", "npx", "-y", "wx2"])
         assert rc == 1
         assert "already configured" in err
         # the original config survives untouched
-        assert _mt.load_mcp_servers()[0].args == []
+        assert _mcp_servers.load_mcp_servers()[0].args == []
 
     def test_invalid_name_surfaces_as_a_cli_error(self) -> None:
         rc, _, err = _mcp_run(["add", "not a valid name!", "--", "npx"])
@@ -209,11 +213,11 @@ class TestServersAdd:
 
 class TestServersRemove:
     def test_removes_a_configured_server(self) -> None:
-        _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="weather", command="npx"))
         rc, out, _ = _mcp_run(["remove", "weather"])
         assert rc == 0
         assert "removed" in out.lower()
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_unknown_server_is_a_non_zero_noop(self) -> None:
         rc, _, _ = _mcp_run(["remove", "ghost"])
@@ -224,7 +228,7 @@ class TestServersRemove:
         assert _mcp_run(["remove"])[0] != 0
 
     def test_remove_writes_an_audit_entry_naming_the_server(self) -> None:
-        _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="weather", command="npx"))
         _mcp_run(["remove", "weather"])
         entries = _audit_details("mcp_servers.remove")
         assert len(entries) == 1

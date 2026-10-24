@@ -29,7 +29,7 @@ from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 
 
 class ConversationStatus(StrEnum):
@@ -224,7 +224,7 @@ def load(path: Path | None = None) -> ConversationRegistry:
     if not p.exists():
         return ConversationRegistry()
     try:
-        return ConversationRegistry.model_validate(_store.read_json(p))
+        return ConversationRegistry.model_validate(read_json(p))
     except Exception:
         return ConversationRegistry()
 
@@ -267,7 +267,7 @@ def mutate(
         return updated.model_dump(by_alias=True)
 
     try:
-        _store.read_modify_write(p, _apply)
+        read_modify_write(p, _apply)
     except json.JSONDecodeError as exc:
         raise ConversationRegistryError(
             f"Cannot mutate malformed conversation registry: {p}"

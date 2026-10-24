@@ -18,10 +18,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.agent.tools import mcp_tools as _mcp_tools
 from docket.governance import policy as _policy
 from docket.governance import review as _reviewed
 from docket.hops.workspace import protected_paths as _protected
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.models import selection as _mp
@@ -33,6 +33,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
@@ -244,25 +245,25 @@ def _plan_mcp_servers(
     global server is refused (never shadowed); a server already stored identically plans
     ``skip``; servers the recipe does not name are kept."""
     items: list[ApplyItem] = []
-    declared: dict[str, _mcp_tools.McpServerConfig] = {}
+    declared: dict[str, _mcp.McpServerConfig] = {}
     for path in _server_files(directory):
         try:
-            config = _mcp_tools.load_mcp_server_document(path)
-        except _mcp_tools.McpServerDocError as exc:
+            config = _mcp_servers.load_mcp_server_document(path)
+        except _mcp_servers.McpServerDocError as exc:
             raise PodApplyError(str(exc)) from exc
         if config.name in declared:
             raise PodApplyError(f"{path}: MCP server {config.name!r} is declared twice")
         declared[config.name] = config
     if not declared:
         return items, None
-    global_names = {s.name for s in _mcp_tools.load_mcp_servers()}
+    global_names = {s.name for s in _mcp_servers.load_mcp_servers()}
     for name in declared:
         if name in global_names:
             raise PodApplyError(
                 f"mcp-servers: {name!r} collides with a global MCP server; "
                 "rename it or remove the global one"
             )
-    current = {s.name: s for s in _mcp_tools.load_pod_mcp_servers(project)}
+    current = {s.name: s for s in _mcp_servers.load_pod_mcp_servers(project)}
     changed = False
     for name, config in declared.items():
         if name in current and current[name] == config:

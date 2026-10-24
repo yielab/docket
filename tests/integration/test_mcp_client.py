@@ -26,13 +26,15 @@ import pytest
 from tests.support import home as _support_home
 from tests.support.trace import audit_actions as _audit_actions
 
-from docket.agent.llm import ToolCall
+from docket.agent.ports import ToolCall
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolContext, ToolRegistry, dispatch_tool
 from docket.governance import approval as _approval
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home, use_home
+from docket.teams import mcp_servers as _mcp_servers
 
 _hermetic = _support_home.hermetic_5
 
@@ -79,9 +81,9 @@ def _write_pre_input_policy(policy_id: str, pattern: str, action: str) -> None:
     )
 
 
-def _config(name: str = "weather", **kw: Any) -> _mt.McpServerConfig:
+def _config(name: str = "weather", **kw: Any) -> _mcp.McpServerConfig:
     kw.setdefault("command", "stub-command")
-    return _mt.McpServerConfig(name=name, **kw)
+    return _mcp.McpServerConfig(name=name, **kw)
 
 
 def _remote(
@@ -99,7 +101,7 @@ def _remote(
 
 
 def _ok_list(tools: tuple[_mt.McpRemoteTool, ...]) -> _mt.ListToolsFn:
-    def _list(_config: _mt.McpServerConfig, _timeout: float) -> _mt.McpListResult:
+    def _list(_config: _mcp.McpServerConfig, _timeout: float) -> _mt.McpListResult:
         return _mt.McpListResult(ok=True, tools=tools)
 
     return _list
@@ -224,7 +226,7 @@ class TestCollisionRule:
 
 class TestFailureIsolation:
     def test_an_unreachable_server_is_reported_not_raised(self) -> None:
-        def _fail(_config: _mt.McpServerConfig, _timeout: float) -> _mt.McpListResult:
+        def _fail(_config: _mcp.McpServerConfig, _timeout: float) -> _mt.McpListResult:
             return _mt.McpListResult(ok=False, error="connection refused")
 
         registry = ToolRegistry()
@@ -237,7 +239,7 @@ class TestFailureIsolation:
         assert "mcp_client.unavailable" in _audit_actions()
 
     def test_a_raising_adapter_is_caught_not_propagated(self) -> None:
-        def _boom(_config: _mt.McpServerConfig, _timeout: float) -> _mt.McpListResult:
+        def _boom(_config: _mcp.McpServerConfig, _timeout: float) -> _mt.McpListResult:
             raise RuntimeError("adapter blew up")
 
         registry = ToolRegistry()
@@ -248,7 +250,7 @@ class TestFailureIsolation:
         assert "adapter blew up" in reports[0].error
 
     def test_one_bad_server_does_not_block_another_servers_tools(self) -> None:
-        def _dispatch(config: _mt.McpServerConfig, _timeout: float) -> _mt.McpListResult:
+        def _dispatch(config: _mcp.McpServerConfig, _timeout: float) -> _mt.McpListResult:
             if config.name == "flaky":
                 return _mt.McpListResult(ok=False, error="timed out")
             return _mt.McpListResult(ok=True, tools=(_remote(),))
@@ -269,7 +271,7 @@ class TestFailureIsolation:
         registry = builtin_registry()
         before = set(registry.names())
 
-        def _fail(_config: _mt.McpServerConfig, _timeout: float) -> _mt.McpListResult:
+        def _fail(_config: _mcp.McpServerConfig, _timeout: float) -> _mt.McpListResult:
             return _mt.McpListResult(ok=False, error="nope")
 
         _mt.load_mcp_tools(
@@ -348,7 +350,7 @@ class TestGatedExactlyLikeABuiltin:
 
     def _registry_with_mcp_tool(self, ran: dict[str, bool]) -> ToolRegistry:
         def _call(
-            _config: _mt.McpServerConfig, _name: str, args: dict[str, Any], _timeout: float
+            _config: _mcp.McpServerConfig, _name: str, args: dict[str, Any], _timeout: float
         ) -> ToolOutcome:
             ran["mcp_handler"] = True
             return ToolOutcome(True, content="should not happen")
@@ -452,36 +454,36 @@ class TestGatedExactlyLikeABuiltin:
 
 class TestServerConfigPersistence:
     def test_round_trip_add_and_load(self) -> None:
-        _mt.add_mcp_server(_config(name="alpha", command="echo", args=["hi"]))
-        loaded = _mt.load_mcp_servers()
+        _mcp_servers.add_mcp_server(_config(name="alpha", command="echo", args=["hi"]))
+        loaded = _mcp_servers.load_mcp_servers()
         assert len(loaded) == 1
         assert loaded[0].name == "alpha"
         assert loaded[0].command == "echo"
         assert loaded[0].args == ["hi"]
 
     def test_duplicate_name_is_rejected(self) -> None:
-        _mt.add_mcp_server(_config(name="alpha"))
+        _mcp_servers.add_mcp_server(_config(name="alpha"))
         with pytest.raises(ValueError, match="already configured"):
-            _mt.add_mcp_server(_config(name="alpha"))
+            _mcp_servers.add_mcp_server(_config(name="alpha"))
 
     def test_invalid_name_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="letters, digits"):
-            _mt.add_mcp_server(_config(name="not a valid name!"))
+            _mcp_servers.add_mcp_server(_config(name="not a valid name!"))
 
     def test_empty_name_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="required"):
-            _mt.add_mcp_server(_config(name=""))
+            _mcp_servers.add_mcp_server(_config(name=""))
 
     def test_remove_known_server_returns_true_and_persists(self) -> None:
-        _mt.add_mcp_server(_config(name="alpha"))
-        assert _mt.remove_mcp_server("alpha") is True
-        assert _mt.load_mcp_servers() == []
+        _mcp_servers.add_mcp_server(_config(name="alpha"))
+        assert _mcp_servers.remove_mcp_server("alpha") is True
+        assert _mcp_servers.load_mcp_servers() == []
 
     def test_remove_unknown_server_returns_false(self) -> None:
-        assert _mt.remove_mcp_server("nope") is False
+        assert _mcp_servers.remove_mcp_server("nope") is False
 
     def test_load_with_no_file_yet_is_an_empty_list(self) -> None:
-        assert _mt.load_mcp_servers() == []
+        assert _mcp_servers.load_mcp_servers() == []
 
 
 class TestTimeoutClamping:
