@@ -104,9 +104,9 @@ src/docket/
 ├── kernel/            home.py (Home + current_home()), clock.py, ids.py, errors.py, text.py,
 │                      operator_contract.py (the shared operator-loop wire model), protected_paths.py,
 │                      tool_outcome.py
-├── tasks/             domain/{task,state,options,refs}.py  application/{queue,lifecycle,actions,
-│                      approvals,answers,interruptions,corrections,escalation,evidence,runs,sweep}.py
-│                      ports.py  adapters/json_store.py
+├── tasks/             domain/{task,parts,state,options,refs}.py  application/{queue,lifecycle,actions,
+│                      approvals,answers,interruptions,corrections,escalation,evidence,runs,sweep,
+│                      repository}.py  adapters/json_store.py   (no ports.py: one implementation)
 ├── pipeline/          domain/{spec,plan,verdict,routing}.py  application/{executor,steps,schedule}.py
 ├── hops/              application/{compose,runner,record}.py  gates/{pre_hop,post_hop}.py
 │                      workspace/{worktree,prepare,repo_view,repo_map}.py
