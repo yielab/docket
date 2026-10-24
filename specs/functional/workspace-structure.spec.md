@@ -1,10 +1,10 @@
 # Workspace Structure Specification
 
-**Version**: 2.1.2
+**Version**: 2.2.0
 **Status**: Complete. `DOCKET_HOME` is the only state root. Agent workspaces live under
 `~/.docket/workspaces/projects/`; a pod's runtime resources, configuration overlay and learned
 memory live under `~/.docket/workspaces/pods/<pod>/`. `docket init` provisions pods.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-24
 
 ## Purpose
 
@@ -51,8 +51,8 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
      ledger"); everything outside that region, including any hand-written entries elsewhere in
      the same file, is never touched by that sync
    - `WORKFLOW_AUTO.md` — the runtime-forced startup file carrying the versioned
-     resume/durability contract (`docket-contract` marker; regenerated, never hand-edited).
-     Anchors either the **codebase** path (`## Your codebase`) or, for a `workdir`-kind pod
+     resume/durability contract (`docket-contract` marker, `v5`; regenerated, never hand-edited).
+     Its read order is `HEARTBEAT.md`, `SOUL.md`, `MEMORY.md`; no seed names a daily log. Anchors either the **codebase** path (`## Your codebase`) or, for a `workdir`-kind pod
      (pod-blueprints.spec.md), the shared **working directory** (`## Your working directory`) —
      never both. It opens with a **"Manual-path contract"** header stating that its own
      `cd`/write-`HEARTBEAT.md` instructions apply only to an agent reading this file directly,

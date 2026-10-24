@@ -77,7 +77,7 @@ noted.
     │   ├── HEARTBEAT.md                task ledger
     │   ├── MEMORY.md                   durable project facts
     │   ├── WORKFLOW_AUTO.md            startup contract (versioned, regenerated)
-    │   ├── memory/YYYY-MM-DD.md        daily logs
+    │   ├── memory/                     empty; docket never reads it
     │   ├── TASK_LIST.json              Lead only, after the first `task add`: the pod's queue
     │   └── tasks/<taskId>/             implementers in a git repo: one git worktree per task
     └── pods/<pod>/.scratch/            first pod   the pod's isolated scratch directory
@@ -142,7 +142,7 @@ context passes the budget.
 | File | What it is actually for |
 |---|---|
 | `WORKFLOW_AUTO.md` | The startup contract for an agent reading its workspace by hand. A live turn replaces it with the runtime contract above. Editing it changes nothing a docket turn sees. |
-| `memory/YYYY-MM-DD.md` | Daily logs an older docket left behind. Not in the prompt, and docket no longer writes, distills or archives them. |
+| `memory/` | An empty directory. Anything placed there is never read, written, distilled or archived. |
 | `memory.json` (in the pod's runtime directory) | What the pod learned: entries a task's reply ended with, accepted only when docket verified them. Accepted entries reach every member's prompt last, behind an untrusted frame. |
 | `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--pipeline` or bound with `docket pod set pipeline` (see §3.5). |
 

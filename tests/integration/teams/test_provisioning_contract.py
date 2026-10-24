@@ -52,9 +52,16 @@ class TestSeedContract:
         text = (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text()
         assert "/src/demo" in text
         assert "wrong directory" in text.lower()
-        # Must NOT hardcode a concrete daily filename (it would go stale next day).
-        assert not re.search(r"memory/\d{4}-\d{2}-\d{2}\.md", text)
-        assert "memory/YYYY-MM-DD.md" in text
+        assert "<!-- docket-contract: v5 -->" in text
+
+    def test_no_seed_names_a_daily_log_docket_never_reads(self, tmp_path: Path) -> None:
+        _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo")
+        seeds = [
+            (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text(),
+            (tmp_path / _mem.MEMORY_FILE).read_text(),
+            _mem.heartbeat_seed("demo-lead"),
+        ]
+        assert not [s for s in seeds if re.search(r"memory/(YYYY-MM-DD|\d{4}-\d{2}-\d{2})", s)]
 
     def test_it_seeds_an_empty_memory_dir_and_no_daily_log(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo")

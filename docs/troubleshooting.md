@@ -441,8 +441,7 @@ There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and there is no sep
 index: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
 its memory files with the same `read`/`grep` tools it uses for anything else. The real per-agent
 memory contract is: `WORKFLOW_AUTO.md` (the startup contract for reading the workspace by hand; a docket
-turn composes its own startup contract instead), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated
-`memory/YYYY-MM-DD.md` logs.
+turn composes its own startup contract instead), `HEARTBEAT.md` (the durable task ledger) and `MEMORY.md`.
 
 ### Agents still using large context?
 

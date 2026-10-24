@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   choice is recorded and Landlock or Seatbelt is detected, init records it on and audits
   `gates.isolate` as `on (detected <backend>)`. Without a backend it records nothing and says so;
   a recorded choice is never changed. `docket setup sandbox on|off` is unchanged.
+- **Workspace contract v5: no seed names a daily log.** `WORKFLOW_AUTO.md`, `MEMORY.md` and
+  `HEARTBEAT.md` told an agent to keep `memory/YYYY-MM-DD.md`, which docket never reads, writes or
+  composes. The instruction is gone and `CONTRACT_VERSION` is 5, so `docket setup --fix`
+  re-seeds a v4 `WORKFLOW_AUTO.md`; `memory/` stays an empty directory.
 - **The tree is organised by context (ADR 0030, D-66).** `src/docket/` is `kernel`, the context
   packages and `interfaces/`; no module is over 700 lines. The oversized modules were split by
   `scripts/maint/refactor/move.py`; the turn loop's state became budget, compaction and tool-step

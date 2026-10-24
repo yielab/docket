@@ -537,8 +537,7 @@ the **workspace startup contract** docket provisions on `docket pod add`/`docket
   delimited region in sync mechanically (see [Dispatch Internals](#dispatch-internals)), so the
   ledger reflects real queue state, not only an agent's compliance.
 
-Plus the dated `memory/YYYY-MM-DD.md` logs, read on demand rather than all at once. A fresh
-`HEARTBEAT.md` seeds like this:
+A fresh `HEARTBEAT.md` seeds like this:
 
 ```markdown
 # HEARTBEAT.md — mywebsite-lead

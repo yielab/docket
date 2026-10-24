@@ -38,7 +38,9 @@ HEARTBEAT_FILE = "HEARTBEAT.md"
 #: are for an agent reading it directly, outside Docket's own turn loop, which
 #: never sends this raw text and applies its own read-only runtime contract
 #: instead (`teams/identity.py`).
-CONTRACT_VERSION = 4
+#: v5 drops the `memory/YYYY-MM-DD.md` daily log from the read order: docket never
+#: reads, writes or composes one.
+CONTRACT_VERSION = 5
 _CONTRACT_MARKER = f"<!-- docket-contract: v{CONTRACT_VERSION} -->"
 
 #: Shared by both `_workflow_auto_text` and `_workflow_auto_text_workdir`: this
@@ -84,9 +86,7 @@ def _workflow_auto_text(
     origin_line = f"- origin: `{origin}`\n" if origin.strip() else ""
     stack_line = f"- stack: {stack}\n" if stack.strip() else ""
     # Self-contained: re-read on every reset, so everything a just-reset agent
-    # needs to reorient lives here, in reading order, codebase first. The daily
-    # log is described as a *pattern*, never a frozen filename (which would go
-    # stale the next day and point a weak model at a file that doesn't exist).
+    # needs to reorient lives here, in reading order, codebase first.
     return (
         f"{_CONTRACT_MARKER}\n"
         f"# WORKFLOW_AUTO.md — {project} startup protocol\n\n"
@@ -117,10 +117,7 @@ def _workflow_auto_text(
         "resume rule above before doing anything else).\n"
         "2. `SOUL.md` — who you are, your scope, and your safety rules.\n"
         "3. `MEMORY.md` — what this project **is** and durable facts about it "
-        "(product summary, architecture, current state).\n"
-        "4. `memory/YYYY-MM-DD.md` — today's log (create it if missing, one file "
-        "per day); read yesterday's only if the task needs prior context. Don't "
-        "slurp the whole `memory/` dir.\n\n"
+        "(product summary, architecture, current state).\n\n"
         '## Answering "what is this project about"\n'
         "Answer from **MEMORY.md → What this project is**: describe what the "
         "product does and who it's for. Do **not** answer with your pod role, "
@@ -175,10 +172,7 @@ def _workflow_auto_text_workdir(*, project: str, work_dir: str, stack: str, orig
         "resume rule above before doing anything else).\n"
         "2. `SOUL.md` — who you are, your scope, and your safety rules.\n"
         "3. `MEMORY.md` — what this project **is** and durable facts about it "
-        "(objective summary, current state).\n"
-        "4. `memory/YYYY-MM-DD.md` — today's log (create it if missing, one file "
-        "per day); read yesterday's only if the task needs prior context. Don't "
-        "slurp the whole `memory/` dir.\n\n"
+        "(objective summary, current state).\n\n"
         '## Answering "what is this project about"\n'
         "Answer from **MEMORY.md → What this project is**: describe what the "
         "objective is and who it's for. Do **not** answer with your pod role, "
@@ -217,7 +211,7 @@ def heartbeat_seed(name: str) -> str:
         "- [ ] first step\n"
         "- [ ] next step\n"
         "Tick each `- [ ]` as you finish it. When the whole task is done, remove it\n"
-        "here and log the outcome to memory/YYYY-MM-DD.md. -->\n\n"
+        "here. -->\n\n"
         "## Pending Decisions\n"
         "_none_\n\n"
         "## Notes\n"
@@ -230,8 +224,7 @@ def _memory_md_seed(*, project: str, stack: str) -> str:
         f"# MEMORY.md — {project}",
         "",
         "_Long-term curated memory. Keep it lean — every byte is re-fed each "
-        "session. Record durable facts, not day-to-day logs (those go in "
-        "`memory/YYYY-MM-DD.md`)._",
+        "session. Record durable facts, not day-to-day logs._",
         "",
         "## What this project is",
         f"_One paragraph: what {project} does and who it's for — the product, "

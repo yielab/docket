@@ -110,7 +110,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 4.0.1 | Implemented |
 | Trace Store | 3.0.3 | Implemented and live |
-| Workspace Structure | 2.1.2 | Complete |
+| Workspace Structure | 2.2.0 | Complete |
 | CLI Interface | 4.2.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |

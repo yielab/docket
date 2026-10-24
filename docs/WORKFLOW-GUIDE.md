@@ -258,9 +258,6 @@ git commit -m "Fix open-redirect on /auth/callback"
 git push
 ```
 
-The Lead records the outcome in the pod's memory log
-(`~/.docket/workspaces/projects/myapp-lead/memory/YYYY-MM-DD.md`).
-
 ---
 
 ## Autonomous dispatch (opt-in)
