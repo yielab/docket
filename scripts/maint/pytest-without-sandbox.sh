@@ -14,5 +14,5 @@ trap 'rm -rf "$home"' EXIT
 
 export DOCKET_SANDBOX_PROBE=none
 env -u DOCKET_SANDBOX_BACKEND DOCKET_HOME="$home" uv run --extra mcp python -c \
-    "from docket.sandbox import launch; b = launch.sandbox_availability().backend; assert b == 'none', b"
+    "from docket import bootstrap; from docket.kernel.ports import jail; bootstrap.bind_adapters(); b = jail.sandbox_availability().backend; assert b == 'none', b"
 env -u DOCKET_SANDBOX_BACKEND uv run --extra mcp pytest -p no:cacheprovider "$@"
