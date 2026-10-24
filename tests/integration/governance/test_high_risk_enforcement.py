@@ -1,0 +1,156 @@
+"""High-risk classes enforced on docket-launched processes.
+``governance/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests, would be
+documentation, not enforcement. ``match_high_risk`` is wired into the two real paths docket
+controls; three sibling helpers that once composed it were deleted since none had a production
+caller. Covers: TestRunVerifyCmdHighRisk (``run_command`` is the one docket-launched
+subprocess built from a free-form, operator-composed shell command, unlike every other call in
+that module's fixed argv lists; a high-risk match fails closed, the shell command never
+starts); and TestPreOutputHighRiskClassification (``pre_output`` classifies a hop's real output
+against the same built-in list, independently of the JSON policy engine's ``pre_tool_call``
+hook, so the trip is recorded even with no policy file installed -- it never downgrades an
+existing stronger verdict, only raises a bare "allow" to "warn" for visibility).
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import pytest
+from tests.support import home as _support_home
+from tests.support.pods import seed_lean_pod as _seed_lean_pod
+from tests.support.pods import write_policy as _write_policy
+from tests.support.trace import trace_events as _trace_events
+
+from docket.agent import ports as _rd
+from docket.kernel.ports import jail as _jail
+from docket.tasks.application import queue as _queue
+from docket.tasks.application import sweep as _sweep
+
+_hermetic = _support_home.hermetic
+
+SUBJECT = "docket.governance.security"
+
+# ── system adapter: run_command's own high-risk guard ─────────────────────
+
+
+class TestRunVerifyCmdHighRisk:
+    def test_money_movement_command_never_runs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _boom(*a: Any, **k: Any) -> Any:
+            raise AssertionError("subprocess.run must not be called for a high-risk command")
+
+        monkeypatch.setattr(subprocess, "run", _boom)
+        code, output = _jail.run_command("stripe charge customer --amount 500", str(tmp_path))
+        assert code is None
+        assert "money-movement" in output
+        assert "docket setup sandbox classes" in output
+
+    def test_prod_deploy_command_never_runs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _boom(*a: Any, **k: Any) -> Any:
+            raise AssertionError("subprocess.run must not be called for a high-risk command")
+
+        monkeypatch.setattr(subprocess, "run", _boom)
+        code, output = _jail.run_command("git push origin production", str(tmp_path))
+        assert code is None
+        assert "prod-deploy" in output
+
+    def test_secret_access_command_never_runs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _boom(*a: Any, **k: Any) -> Any:
+            raise AssertionError("subprocess.run must not be called for a high-risk command")
+
+        monkeypatch.setattr(subprocess, "run", _boom)
+        code, output = _jail.run_command("ssh-keygen -t ed25519 -N ''", str(tmp_path))
+        assert code is None
+        assert "secret-access" in output
+
+    def test_ordinary_verify_pipeline_is_unaffected(self, tmp_path: Path) -> None:
+        """A realistic multi-command verify pipeline is not a false positive."""
+        code, output = _jail.run_command("echo building; echo testing && echo done", str(tmp_path))
+        assert code == 0
+        assert "done" in output
+
+
+# ── dispatch integration: pre_output high-risk classification ────────────────
+
+
+class _RecordingRunner:
+    """Stub matching agent_run's signature; returns a fixed output per role."""
+
+    def __init__(self, outputs: dict[str, str] | None = None, *, ok: bool = True) -> None:
+        self.calls: list[str] = []
+        self.outputs = outputs or {}
+        self.ok = ok
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        role = agent_id.rsplit("-", 1)[-1]
+        self.calls.append(role)
+        output = self.outputs.get(role, f"done by {agent_id}")
+        return _rd.TurnResult(self.ok, output, 0.01, {"output": output})
+
+
+class TestPreOutputHighRiskClassification:
+    def test_secret_access_output_gets_warn_classification(self) -> None:
+        _seed_lean_pod()
+        _queue.enqueue_task_once("myapp", "Rotate the deploy key", channel="cli")
+        runner = _RecordingRunner({"lead": "ran ssh-keygen -t ed25519 to rotate the deploy key"})
+        results = _sweep.dispatch_pod("myapp", runner=runner)
+
+        assert results[0].status == "done"
+        lead_hop = next(h for h in results[0].hops if h.role == "lead")
+        # Visibility only -- HIGH_RISK_PATTERNS is not user-authorable the way
+        # an installed JSON policy is, so it never redacts/blocks by itself.
+        assert lead_hop.output == "ran ssh-keygen -t ed25519 to rotate the deploy key"
+
+        events = _trace_events("myapp")
+        checks = [e for e in events if e["event_type"] == "guardrail_check"]
+        assert any(
+            e["payload"]["policy"] == "high-risk:secret-access" and e["payload"]["action"] == "warn"
+            for e in checks
+        )
+        assert not any(e["event_type"] == "guardrail_block" for e in events)
+
+    def test_money_movement_output_gets_warn_classification(self) -> None:
+        _seed_lean_pod()
+        _queue.enqueue_task_once("myapp", "Process the refund", channel="cli")
+        runner = _RecordingRunner({"lead": "stripe charge customer for the annual invoice"})
+        results = _sweep.dispatch_pod("myapp", runner=runner)
+
+        assert results[0].status == "done"
+        events = _trace_events("myapp")
+        checks = [e for e in events if e["event_type"] == "guardrail_check"]
+        assert any(
+            e["payload"]["policy"] == "high-risk:money-movement"
+            and e["payload"]["action"] == "warn"
+            for e in checks
+        )
+
+    def test_stronger_existing_policy_verdict_is_not_downgraded(self) -> None:
+        """A real installed policy's block must win -- the built-in classifier
+        only ever raises a bare allow to warn, never overrides a stronger hit."""
+        _seed_lean_pod()
+        _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
+        _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
+        runner = _RecordingRunner({"lead": "FORBIDDEN_TOKEN: also ran stripe charge customer here"})
+        results = _sweep.dispatch_pod("myapp", runner=runner)
+
+        assert results[0].status == "failed"
+        events = _trace_events("myapp")
+        block_events = [e for e in events if e["event_type"] == "guardrail_block"]
+        assert len(block_events) == 1
+        # The operator's own policy wins -- not overwritten by the built-in classifier's tag.
+        assert block_events[0]["payload"]["policy"] == "forbidden-marker"
+        assert block_events[0]["payload"]["action"] == "block"

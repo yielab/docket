@@ -68,7 +68,7 @@ def test_the_script_runs_the_commands_the_adr_names() -> None:
         "ruff format --check .",
         "mypy src",
         "pytest-without-sandbox.sh",
-        "tests/integration/test_escape_matrix.py",
+        "tests/integration/sandbox/test_escape_matrix.py",
         "tests/golden/run.sh verify-all",
         "scripts/validate-specs.sh",
         "gen_cli_docs.py --check",

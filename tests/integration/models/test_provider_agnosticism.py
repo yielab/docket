@@ -1,0 +1,290 @@
+"""Provider agnosticism.
+
+Covers: the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from the user's
+docket-models.json, and a non-Anthropic preset leaves no Claude residue in `docket setup model`'s
+display; the "fallback" label was false (nothing degrades to a cheaper model on failure) and is
+now "rank anchors" with an honest caption; a `local` preset prices as "$0 (local)",
+never a fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the
+dead-end guidance strings in cli/_provider.py name commands that actually exist.
+
+Unit tests import `docket.models.selection` directly; CLI-surface tests use CliRunner with
+a `use_home` block on a temp directory."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+import pytest
+from tests.support.home import register_local_provider
+from typer.testing import CliRunner
+
+from docket.interfaces.cli.app import app as _app
+from docket.kernel.home import Home, use_home
+from docket.models import selection as _mp
+
+SUBJECT = "docket.models.selection"
+
+_runner = CliRunner()
+
+# ---------------------------------------------------------------------------
+# Direct unit tests: models/selection.py
+# ---------------------------------------------------------------------------
+
+
+class TestRankAnchorsOverride:
+    def test_registry_overrides_anchors_and_reseeds_roles(self, tmp_path: Path) -> None:
+        registry_path = tmp_path / "docket-models.json"
+        with use_home(Home(tmp_path)):
+            registry_path.write_text(
+                json.dumps(
+                    {
+                        "rankAnchors": {
+                            "economy": "openai/gpt-4.1-nano",
+                            "standard": "openai/gpt-4.1-mini",
+                            "premium": "openai/gpt-4.1",
+                        }
+                    }
+                )
+            )
+            role_models, tiers, _default = _mp.load_registry()
+            assert tiers == {
+                "economy": "openai/gpt-4.1-nano",
+                "standard": "openai/gpt-4.1-mini",
+                "premium": "openai/gpt-4.1",
+            }
+            # Role defaults re-derive from the overridden anchors (cheap -> economy,
+            # strong -> standard) — no Claude id survives anywhere in the result.
+            assert role_models["lead"] == "openai/gpt-4.1-nano"
+            assert role_models["implementer"] == "openai/gpt-4.1-mini"
+            assert not any("claude" in m.lower() for m in role_models.values())
+
+    def test_malformed_anchor_entries_are_ignored(self, tmp_path: Path) -> None:
+        registry_path = tmp_path / "docket-models.json"
+        with use_home(Home(tmp_path)):
+            registry_path.write_text(
+                json.dumps({"rankAnchors": {"economy": "not-well-formed", "made-up": "openai/x"}})
+            )
+            _role_models, tiers, _default = _mp.load_registry()
+            assert tiers == dict(_mp.rank_anchors())  # untouched — built-ins survive
+
+    def test_no_registry_file_uses_builtin_anchors(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path)):
+            _role_models, tiers, _default = _mp.load_registry()
+            assert tiers == dict(_mp.rank_anchors())
+
+    def test_write_registry_persists_rank_keys(self, tmp_path: Path) -> None:
+        registry_path = tmp_path / "docket-models.json"
+        with use_home(Home(tmp_path)):
+            _mp.write_registry(
+                {
+                    "rank.economy": "openai/gpt-4.1-nano",
+                    "rank.standard": "openai/gpt-4.1-mini",
+                    "rank.premium": "openai/gpt-4.1",
+                }
+            )
+            reg = json.loads(registry_path.read_text())
+            assert reg["rankAnchors"] == {
+                "economy": "openai/gpt-4.1-nano",
+                "standard": "openai/gpt-4.1-mini",
+                "premium": "openai/gpt-4.1",
+            }
+
+    def test_write_registry_ignores_unknown_anchor_name(self, tmp_path: Path) -> None:
+        registry_path = tmp_path / "docket-models.json"
+        with use_home(Home(tmp_path)):
+            _mp.write_registry({"rank.bogus": "openai/gpt-4.1-nano"})
+            reg = json.loads(registry_path.read_text())
+            assert "rankAnchors" not in reg
+
+
+class TestPricingHonesty:
+    @pytest.mark.parametrize(
+        "model",
+        ["local/qwen3-30b-a3b", "local/some-custom-finetune", "ollama/llama3", "lmstudio/x"],
+    )
+    def test_local_providers_price_zero(self, model: str) -> None:
+        assert _mp.pricing_label(model) == "$0 (local)"
+
+    def test_local_provider_never_warns_unpriced(self) -> None:
+        _canonical, warnings = _mp.validate_model("local/some-custom-finetune")
+        assert warnings == []
+
+    def test_openrouter_free_uses_the_capability_aware_free_router(self) -> None:
+        preset = _mp.preset_table()["openrouter-free"]
+        assert {preset[rank] for rank in ("economy", "standard", "premium")} == {
+            "openrouter/openrouter/free"
+        }
+        assert _mp.pricing_label("openrouter/openrouter/free") == "$0.00/$0.00"
+        assert "experimental" in preset["note"].lower()
+
+    def test_unpriced_openrouter_model_reports_bring_your_own(self) -> None:
+        label = _mp.pricing_label("openrouter/some-vendor/some-model")
+        assert label.startswith("n/a")
+        assert label != "n/a"  # the marketplace-specific, more informative variant
+        assert "$0.00" not in label
+
+    def test_unpriced_openrouter_model_warns_distinctly(self) -> None:
+        _canonical, warnings = _mp.validate_model("openrouter/some-vendor/some-model")
+        assert len(warnings) == 1
+        assert "marketplace" in warnings[0].lower()
+
+    def test_generic_unpriced_model_is_plain_na(self) -> None:
+        assert _mp.pricing_label("anthropic/claude-made-up-model") == "n/a"
+
+    def test_generic_unpriced_model_warns_generically(self) -> None:
+        _canonical, warnings = _mp.validate_model("anthropic/claude-made-up-model")
+        assert len(warnings) == 1
+        assert "pricing table" in warnings[0]
+
+    def test_never_returns_fake_zero_for_unpriced_remote_model(self) -> None:
+        # A remote (non-local) unpriced model must never render as $0.00 — the
+        # regression this whole card exists to prevent.
+        for model in ("anthropic/claude-made-up-model", "openrouter/some-vendor/some-model"):
+            label = _mp.pricing_label(model)
+            assert "$0.00" not in label
+            assert "$0" not in label or "(local)" in label
+
+
+class TestLocalPreset:
+    def test_local_in_known_presets(self) -> None:
+        assert "local" in _mp.known_presets()
+        assert "local" in _mp.preset_table()
+
+    def test_local_preset_needs_no_key(self) -> None:
+        assert _mp.preset_table()["local"]["key"] == ""
+
+    def test_local_preset_all_ranks_price_zero(self) -> None:
+        t = _mp.preset_table()["local"]
+        for rank in ("economy", "standard", "premium"):
+            assert _mp.pricing_label(t[rank]) == "$0 (local)"
+
+
+class TestHostedGatewayPreset:
+    def test_ai_gateway_preset_uses_nested_creator_model_ids(self) -> None:
+        assert "ai-gateway" in _mp.known_presets()
+        preset = _mp.preset_table()["ai-gateway"]
+        assert preset["key"] == "AI_GATEWAY_API_KEY"
+        assert preset["economy"] == "ai-gateway/anthropic/claude-haiku-4.5"
+        assert preset["standard"] == "ai-gateway/anthropic/claude-sonnet-4.6"
+        assert preset["premium"] == "ai-gateway/anthropic/claude-opus-4.6"
+        for rank in ("economy", "standard", "premium"):
+            assert _mp.pricing_label(preset[rank]).startswith("n/a (bring your own)")
+
+    def test_paid_openrouter_preset_does_not_pin_retired_model_ids(self) -> None:
+        table = _mp.preset_table()
+        models = {table["openrouter"][rank] for rank in ("economy", "standard", "premium")}
+        assert "openrouter/google/gemini-flash-1.5-8b" not in models
+        assert "openrouter/anthropic/claude-3.5-haiku" not in models
+        assert "openrouter/anthropic/claude-3-opus" not in models
+
+
+# ---------------------------------------------------------------------------
+# CLI-surface tests (subprocess), mirroring test_tier_shims_removed.py
+# ---------------------------------------------------------------------------
+
+META: dict[str, Any] = {
+    "schemaVersion": 1,
+    "kind": "project",
+    "name": "My Shop",
+    "type": "repo",
+    "model": "anthropic/claude-sonnet-4-6",
+    "stack": "Node.js",
+    "codebase": "/home/testuser/Sites/myshop",
+    "sessionKey": "agent:myshop:default",
+    "projectKey": "default",
+}
+
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [],
+}
+
+
+def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
+    home = tmp_path / ".docket"
+    home.mkdir()
+    ws = home / "workspaces" / "projects" / agent_id
+    (ws / "memory").mkdir(parents=True)
+    (ws / ".docket-meta.json").write_text(json.dumps(META))
+    (ws / "SOUL.md").write_text("# SOUL\n")
+    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+    return home
+
+
+def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[int, str, str]:
+    with pytest.MonkeyPatch.context() as mp, use_home(Home(home)):
+        if extra_path is not None:
+            mp.setenv("PATH", f"{extra_path}{os.pathsep}{os.environ['PATH']}")
+        result = _runner.invoke(_app, args)
+    return result.exit_code, result.stdout, result.stderr
+
+
+def _register_provider(home: Path, name: str, model_id: str) -> None:
+    register_local_provider(
+        home, name, [{"id": model_id, "contextWindow": 16384, "maxTokens": 8192}]
+    )
+
+
+class TestNonAnthropicPresetShowsNoResidue:
+    def test_openai_preset_then_models_has_no_claude_residue(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        _register_provider(home, "openai", "gpt-4.1-mini")
+        rc, _out, err = _run(["setup", "model", "preset", "openai"], home)
+        assert rc == 0, err
+
+        rc, out, err = _run(["setup", "model"], home)
+        assert rc == 0, err
+        # The policy table + default + rank-anchor lines (the part of the
+        # display that reflects *this fleet's* configuration) must carry no
+        # Claude/Anthropic residue. The static "Preset: ... [anthropic|...]"
+        # menu line further down still legitimately names anthropic as one of
+        # several *available* presets — that's not residue, so this check is
+        # scoped to the lines above it.
+        policy_section = out.split("Change: docket setup model set", 1)[0]
+        assert "claude" not in policy_section.lower()
+        assert "anthropic" not in policy_section.lower()
+        # The rank-anchor line reflects the OpenAI preset, not the old Claude
+        # seed table.
+        assert "rank anchors" in policy_section
+        assert "gpt-4.1" in policy_section
+
+    def test_preset_persists_rank_anchors_to_registry(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        _register_provider(home, "google", "gemini-2.5-flash")
+        rc, _out, err = _run(["setup", "model", "preset", "google"], home)
+        assert rc == 0, err
+        reg = json.loads((home / "docket-models.json").read_text())
+        assert reg["rankAnchors"]["standard"] == "google/gemini-2.5-flash"
+
+
+class TestLocalPresetCli:
+    def test_local_preset_listed(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["setup", "model", "preset"], home)
+        assert rc == 0, err
+        assert "local" in out
+
+    def test_applied_preset_prints_its_note_literally(self, tmp_path: Path) -> None:
+        """The preset note, including any bracketed text, reaches the terminal unchanged."""
+        home = _setup_agent(tmp_path)
+        _register_provider(home, "local", "qwen3-30b-a3b")
+        rc, out, err = _run(["setup", "model", "preset", "local"], home)
+        assert rc == 0, err
+        note = _mp.preset_table()["local"]["note"]
+        assert note in out
+        assert "docket setup provider add" in note
+
+    def test_local_preset_applies_and_prices_zero(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        _register_provider(home, "local", "qwen3-30b-a3b")
+        rc, _out, err = _run(["setup", "model", "preset", "local"], home)
+        assert rc == 0, err
+
+        rc, out, err = _run(["setup", "model"], home)
+        assert rc == 0, err
+        assert "$0 (local)" in out
+        assert "n/a" not in out
+        assert "$0.00" not in out

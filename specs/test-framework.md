@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 3.3.0
+**Version**: 3.4.0
 **Status**: Active
 **Last Updated**: 2026-10-23
 
@@ -68,7 +68,7 @@ tests/
 ├── support/                the one owner of each shared helper and fixture: home, pods, trace, llm, git, http, cli, fakes
 ├── fixtures/               recorded data and adapter-scenario fixtures shared by several lanes
 ├── unit/                   mirrors src/docket/: unit/tasks/application/test_queue.py ↔ src/docket/tasks/application/queue.py
-├── integration/            several modules, or a real process where the process boundary is the subject
+├── integration/<context>/  one folder per context (plus bootstrap and product): several modules, or a real process or socket
 ├── guards/                 AST and layout invariants, with shrink-only committed baselines
 ├── golden/
 │   ├── cases/readonly/     expected CLI output (*.golden)
@@ -82,7 +82,7 @@ tests/
 └── run-all-tests.sh        local aggregate gate (default lanes + golden; not the agent lane)
 ```
 
-The whole-workflow smoke test lives in `tests/integration/` (it spawns a real CLI subprocess).
+The whole-workflow smoke test lives in `tests/integration/product/smoke/` (it spawns a real CLI subprocess).
 
 ## Lanes and placement
 
@@ -102,14 +102,16 @@ Requirements:
    part of the stem before `__` names the module). The guard checks that `SUBJECT` equals the
    path-derived name and that the module exists; four named structural files assert their own
    `SUBJECT` verbatim. Every `src/` module over 150 lines has such a file unless it is listed in a
-   committed baseline that may only shrink. Every `integration/**/test_*.py` also declares
-   `SUBJECT`, naming the most specific importable `docket` module or package the file exercises; a
-   cross-module or process-boundary file may name a package (`docket.tasks`, `docket.interfaces.cli.app`, or the
-   top-level `docket` package for a whole-envelope test). Unlike the unit rule, a mismatch with
-   the file's own name is not an error there: the guard requires only importability, and reports
-   every offender in one assertion. **Convention** (no guard): a file over 800 lines splits as
-   `test_<module>__<aspect>.py`, and file names never encode history (`_v2`, `_migration`,
-   `_removed`, `_legacy`, card ids).
+   committed baseline that may only shrink. Every `integration/<context>/**/test_*.py` also
+   declares `SUBJECT`, naming the entry module it drives, never a package: the context folder is
+   the context of that module, with `kernel`, `interfaces`, `bootstrap` and `product` (a
+   cross-context end-to-end flow) as folders too. Unlike the unit rule, a mismatch with the
+   file's own name is not an error there: the guard requires only that the module exists, and
+   reports every offender in one assertion. A test file is at most 800 lines, checked by
+   `test_suite_shape.py`; a longer one splits by flow, as `test_<module>__<aspect>.py` in the
+   same folder or, when the halves share an autouse fixture, in a folder of its own with that
+   fixture in a `conftest.py`. **Convention** (no guard): file names never encode history (`_v2`,
+   `_migration`, `_removed`, `_legacy`, card ids).
 3. **A test that reads prose or builds an artifact is agent-lane by definition.** Every file under
    `agent/` declares the module constants `LANE`, `REASON` (the recorded defect it prevents) and
    `RETIRE_WHEN` (the condition, not a date, under which it is deleted); the guard checks that the
@@ -117,8 +119,10 @@ Requirements:
    committed baseline that may only fall; the lane shrinks when a file's `RETIRE_WHEN` condition
    fires, and lowering the baseline is a commit that also deletes what it accounts for.
    **Convention:** one test per public claim.
-4. **`subprocess` is forbidden in `unit/`.** The guard fails any `unit/` file that imports
-   `subprocess`. CLI behaviour is tested in-process with `typer.testing.CliRunner`; exact
+4. **`subprocess` is forbidden in `unit/`, and so are sockets and sleeps.** The guard fails any
+   `unit/` file that imports `subprocess` or another socket or process module, starts a server
+   or a process, or calls `time.sleep`; the files that still do are listed in a shrink-only
+   baseline (`suite_shape_baseline.txt`). CLI behaviour is tested in-process with `typer.testing.CliRunner`; exact
    user-visible text belongs to the golden suite. `integration/` spawns a process only when the
    process boundary (signals, sandbox, cancellation, `PATH` stubs) is what the test proves
    (convention).
@@ -153,7 +157,10 @@ Requirements:
       chokepoint (two JSONL-append exemptions); only the tool chokepoint imports the tool-handler
       module.
     - *Suite shape.* No top-level helper or fixture is defined, with an identical body, in two
-      test files; the one definition lives in `tests/support/` (`test_suite_shape.py`).
+      test files; the one definition lives in `tests/support/`. A unit file opens no socket or
+      process and does not sleep; `SUBJECT` names a module; a test file is at most 800 lines;
+      the count of `setenv` calls and of `in result.output` asserts on a `--json` command, per
+      file, may only fall (`test_suite_shape.py`, `suite_shape_baseline.txt`).
     - *Layering.* The domain and edge layers never print, never import the console helper, and the
       domain layer never imports `subprocess`.
     - *CLI surface.* Every leaf's `--help` exits 0 and carries an `Example:` line, and every
@@ -195,7 +202,7 @@ Requirements:
     of a task's `status`, the test-id manifest). `tests/release/` is the agent lane of rule 3 under
     its new name and keeps its `LANE` / `REASON` / `RETIRE_WHEN` headers and its line budget.
     `tests/evals/` is reserved for agent-quality evals and holds a README only. `tests/guards/`,
-    `tests/agent/` and the flat `tests/integration/` of rules 1-3 hold until their files are moved
+    `tests/agent/` and the context folders of `tests/integration/` hold until their files are moved
     into these directories and mirror paths.
 14. **`SUBJECT` ends.** Once rule 11 is checked by path, no test file declares `SUBJECT`, the
     layout guard derives the subject from the path, and no file outside `tests/architecture/`
@@ -413,7 +420,7 @@ CI jobs: `python` (ruff, format, mypy, `uv run pytest`, `metrics.py --check`), `
 `gen_cli_docs.py`, `gen_evidence_schema.py`, `gen_recipe_docs.py` and `gen_operator_schemas.py`, each
 with `--check`, then a strict mkdocs build), `floors`, `golden`, `shell` (ShellCheck and
 `validate-specs.sh`), `macos` (pytest and goldens, advisory: `continue-on-error`), and
-`release-journey` (the release journey plus the escape matrix, `tests/integration/test_escape_matrix.py`,
+`release-journey` (the release journey plus the escape matrix, `tests/integration/sandbox/test_escape_matrix.py`,
 on `ubuntu-latest` and `macos-latest`).
 
 ### Immutable release-artifact oracle
@@ -521,7 +528,7 @@ uv run python scripts/gen_evidence_schema.py --check
 uv run python scripts/gen_recipe_docs.py --check
 uv run python scripts/gen_operator_schemas.py --check
 uv run pytest tests/agent
-uv run pytest tests/integration/test_escape_matrix.py
+uv run pytest tests/integration/sandbox/test_escape_matrix.py
 uv run python scripts/release_journey.py
 bash scripts/maint/pytest-without-sandbox.sh -q
 uv run python scripts/maint/comment_lint.py --check
@@ -564,9 +571,9 @@ Where the names used above live today.
   `test_no_hardcoded_telegram_ids.py`, `test_no_external_daemon_coupling.py`.
 - `tests/unit/test_store_writer.py`: the store single-writer guard;
   `tests/unit/agent/tools/test_registry.py`: the tool-chokepoint import guard.
-- `tests/integration/test_console_script_entry_point.py`: retired names are unknown commands;
-  `tests/integration/test_workflow_smoke.py`: the smoke wrapper;
-  `tests/integration/test_escape_matrix.py`: the escape matrix.
+- `tests/integration/bootstrap/test_console_script_entry_point.py`: retired names are unknown commands;
+  `tests/integration/product/smoke/`: the smoke wrapper;
+  `tests/integration/sandbox/test_escape_matrix.py`: the escape matrix.
 - `tests/agent/release/`: `test_public_release_truth.py`, `test_release_artifacts.py`,
   `test_release_journey.py`, `test_distribution_package.py`, `test_runtime_package_boundary.py`.
 - `tests/golden/`: `run.sh`, `scrub.py`, `fixtures/seed.sh`, `fakes/docker`, `cases/readonly/`.

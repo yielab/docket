@@ -278,4 +278,4 @@ jobs:
       - name: Escape matrix on this OS's sandbox backend
         run: |
           uv sync --locked --all-extras --dev
-          uv run pytest tests/integration/test_escape_matrix.py -q
+          uv run pytest tests/integration/sandbox/test_escape_matrix.py -q

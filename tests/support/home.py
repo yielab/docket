@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from docket.interfaces.cli.commands import contract as _contract
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import Home, current_home, reset_default, use_home
 
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
@@ -269,3 +269,11 @@ def _record_isolation_mode(home: Path, mode: str) -> None:
     data.setdefault("security", {})["isolationMode"] = mode
     path.write_text(json.dumps(data))
     path.chmod(0o600)
+
+
+@pytest.fixture(autouse=True)
+def fresh_default() -> Iterator[None]:
+    """Each test starts and ends with an unset default home."""
+    reset_default()
+    yield
+    reset_default()

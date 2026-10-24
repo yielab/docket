@@ -93,7 +93,7 @@ check_test_ids() {
 check_lanes() {
     uvrun --extra mcp pytest -q &&
         step env -u VIRTUAL_ENV bash scripts/maint/pytest-without-sandbox.sh -q &&
-        uvrun --extra mcp pytest -q tests/integration/test_escape_matrix.py
+        uvrun --extra mcp pytest -q tests/integration/sandbox/test_escape_matrix.py
 }
 
 check_golden() {
