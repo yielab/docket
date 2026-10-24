@@ -103,7 +103,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 2.1.3 | Implemented and live |
 | Pipeline Format | 4.0.0 | Implemented |
 | Pod Blueprints | 2.1.0 | Implemented |
-| Pod Dispatch | 10.1.0 | Implemented |
+| Pod Dispatch | 10.1.1 | Implemented |
 | Role Archetypes | 4.0.0 | Implemented |
 | Security Gates | 1.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
@@ -115,10 +115,10 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 1.9.5 | Implemented |
-| CLI JSON Shapes | 3.1.0 | Complete |
+| CLI JSON Shapes | 4.0.0 | Complete |
 | docket-meta schema | 5.3.0 | Complete |
 | Docket Store | 2.0.0 | Implemented |
-| Operator API | 6.2.1 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 6.2.2 | Implemented (Phase 43, ADR 0027) |
 | Serve Read API | 4.1.3 | Stable |
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |

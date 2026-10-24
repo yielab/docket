@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Answers, consult answers, expired-question sweeps and pre-grants now re-sync the
+  `HEARTBEAT.md` ledger too, and `hops` reads and writes the task as a `TaskRecord`.** The
+  claim's gate override reaches `dispatch_task` as its `gate_override_index` argument instead of a
+  key put back on a copy of the task (pod-dispatch spec 10.1.1).
 - **Every write of a pod's queue re-syncs the `HEARTBEAT.md` dispatch ledger.** `retry_task`,
   `unblock_pod`, the stale sweep and reclaim, enqueue and the stored worktree and prepare records
   now go through `TaskRepository`, which regenerates the ledger after the write; before, only the
@@ -211,6 +215,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The `completed` task count.** `status --json` (`tasks`) and `GET /pods` (`queue`) counted a
+  `completed` key that summed `done` with a status that does not exist. The counts are now one key
+  per task status (`pending`, `running`, `waitingInput`, `waitingApproval`, `blocked`, `failed`,
+  `done`, `cancelled`), so `completed` becomes `done` and `blocked` and `cancelled` appear
+  (cli-json-shapes spec 4.0.0). Breaking.
 - **The `claimId` and `source` keys of a task record, and the `in_progress` task status.** Nothing
   read `claimId` (a stale claim is read from `claimPid` and `claimedAt`) or `source` (`channel`
   says where a task came from), and nothing ever wrote `in_progress`. `GET /tasks/<pod>?status=

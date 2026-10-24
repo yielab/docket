@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.1.0
+**Version**: 10.1.1
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1007,8 +1007,10 @@ wired agent's conversation current with the task it is working.
      `project`), an unknown token, or a task no longer `waiting_approval` on that exact token
      (already resolved by a concurrent caller) **MUST** be a harmless no-op -- it **MUST NOT** raise.
 5. The gate-override handoff **MUST** be single-use and consumed atomically at claim time: the
-   *next* claim of this task captures `gateOverridePipelineIndex` into the claimed copy handed to
-   `dispatch_task`, then clears it from the **stored** record in the same locked operation -- so it
+   *next* claim of this task captures `gateOverridePipelineIndex` into the claim it returns
+   (`Claim.gate_override_index`), which the sweep passes to `dispatch_task` as its
+   `gate_override_index` argument, then clears it from the **stored** record in the same locked
+   operation -- so it
    can never leak into a later, unrelated claim of the same task (e.g. a crash-and-`--resume`, or
    the task revisiting the same pipeline position on a rework cycle). `dispatch_task` consumes the
    override **in memory** the first time it reaches that exact pipeline position in the run; a later

@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.2.1
+**Version**: 6.2.2
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-24
 
@@ -238,8 +238,8 @@ Tester's label or `null`; `gate` is the step's gate label or `null`. `hop_starte
 
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp", "members": 2,
 "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
-"waitingInput": 0, "failed": 0, "completed": 4}}]}`; `queue` carries the counts `status --json` prints
-under `tasks`.
+"waitingInput": 0, "blocked": 0, "failed": 0, "done": 4, "cancelled": 0}}]}`; `queue` carries the
+counts `status --json` prints under `tasks`: one per task status.
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
 `pod`, `members`, `settings`, `approvalMode`, `pipeline`, `network`, `budgetUnpriced`,

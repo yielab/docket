@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 3.1.0
+**Version**: 4.0.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-24
 
 ## Purpose
 
@@ -137,7 +137,8 @@ project agent; and the problem count of each of `modelRegistry`, `schedules`,
   "tasks": {
     "pending": "number", "running": "number", "waitingApproval": "number",
     "waitingInput": "number (parked consult or input-step questions)",
-    "failed": "number", "completed": "number (tasks that are done)", "approvedReady": "number (pending tasks whose approval was granted)"
+    "blocked": "number", "failed": "number", "done": "number", "cancelled": "number (one count per task status, each task counted once)",
+    "approvedReady": "number (pending tasks whose approval was granted)"
   },
   "usage":       "{ input, output (measured tokens), estimateUsd (a labelled estimate) }",
   "outcomes":    "{ success, failure, aborted, meanMs | null, p95Ms | null }",
