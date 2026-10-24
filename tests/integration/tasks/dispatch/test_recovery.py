@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import time
-import time as _time
 from pathlib import Path
 from typing import Any
 
@@ -321,7 +320,6 @@ class TestDeterministicRefusalSettlesTheClaim:
                 monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
                 action = "isolation.refused"
             slept: list[float] = []
-            monkeypatch.setattr(_time, "sleep", slept.append)
             calls: list[str] = []
 
             def _never(model: str) -> Any:
@@ -331,7 +329,7 @@ class TestDeterministicRefusalSettlesTheClaim:
             monkeypatch.setattr(_dr, "default_driver", lambda: DocketDriver(backend_factory=_never))
             _queue.enqueue_task_once("demo", "refused posture", channel="cli")
 
-            results = _sweep.dispatch_pod("demo")
+            results = _sweep.dispatch_pod("demo", sleep=slept.append)
 
             assert [r.status for r in results] == ["failed"]
             task = _queue.read_tasks("demo")[0]
