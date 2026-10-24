@@ -94,7 +94,7 @@ Phase 46 on):
 | `<context>/domain` | `kernel`, its own `domain` |
 | `<context>/application` | `kernel`, its own `domain` and `ports`, other contexts' `__init__` |
 | `<context>/adapters`, `platform`, `sandbox` | `kernel`, `platform`'s `__init__`, the ports and domain types they implement |
-| `agent` | `kernel` only (plus its own packages) |
+| `agent` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), its own modules |
 | `interfaces` | `kernel`, `bootstrap`, contexts' `__init__` |
 | `bootstrap` | everything |
 
