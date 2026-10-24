@@ -410,6 +410,22 @@ measurement (no `src/` change)
   and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
   over half") fired. Next: on a real run, measure which calls repeat before cutting anything.
 
+**Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
+
+- **Two `test_diff_probe.py` tests fail only in the full no-sandbox parallel run**
+  (`TestHopDiffProbeUnit::test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence`,
+  `::test_real_probe_resolves_task_worktree_first`): the probe returned no files although `fake_git`
+  supplies them. Hypothesis: state left by another file in the same worker (the cached default `Home`
+  in `kernel/home.py::_DEFAULT`, or a port binding). Trigger: it fails again, or the `no-sandbox` CI job
+  goes red on it. Then run that worker's file list in its order to find the leaking file.
+- **Timing flakes seen once each:** `test_kernel_adoption.py` over its 2 s guard ceiling,
+  `test_retries_and_timeouts.py::TestRetryDoesNotTripStaleClaimSweep`, and the foreground approval
+  deny test (its fake approval timeout was raised from 5 s to 60 s, `1a704359`). Trigger: a second
+  failure of the same test. Then replace its wall-clock wait with an event.
+- **Docstring budget:** `comment_lint.py` counts 209 long definition docstrings at the close against 205
+  on `develop` (most moved or renamed code). Trigger: the next card that edits one of those modules
+  trims its own.
+
 **Runtime and dispatch (from real runs).**
 
 - **A refused task is resumed on every 30 s sweep tick** (`dispatch_refused` is in

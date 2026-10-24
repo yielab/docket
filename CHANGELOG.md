@@ -14,13 +14,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/maint/refactor/move.py`; the turn loop's state became budget, compaction and tool-step
   collaborators (`agent/loop_*.py`); the HTTP handler became a route table over per-resource
   modules with one bearer check (`interfaces/http/routes/`). `bootstrap.py` builds the store,
-  sandbox, driver, channels, app and server from a `Home`. Function-local `docket.*` imports fell
-  from 209 to 20 (the real cycles). `tests/architecture/` holds the ADR's import contracts with a
-  shrink-only list of today's 748 violations, a 700-line ceiling and a local-imports ratchet.
-  No behaviour changed: every golden is byte-identical.
+  sandbox, driver, channels, app and server from a `Home`. Phase 47 then layered the contexts
+  (`platform < governance < agent < models < observability < pipeline < teams < sandbox <
+  operator < tasks < hops`): each module moved to the context whose data it reads, an upward
+  import is a violation, and other contexts are reached through public names and ports in
+  `kernel/ports.py` instead of private names. Function-local `docket.*` imports fell from 209 to
+  1 (a named cycle), and the import-contract baseline from 748 lines to 1 (the Telegram adapter).
+  The tests mirror the contexts (`tests/integration/<context>/`), each helper has one name, no
+  test file imports another or patches another module's private name, and every test file passes
+  run alone. The refactor tools (`scripts/maint/refactor/`, `refactor_gate.sh`, libcst) are
+  deleted; `tests/architecture/` is the record. Every golden is byte-identical.
+- **An authored configuration file has one form, the `kind:` short form.** A role, pipeline or
+  policy file written in the canonical form (`id:`/`role:` steps, `applies_to`/`match`/`action`
+  policies) is refused with exit 2 and a message naming the short key to write; the canonical
+  form is only what docket persists. The short form gained the spellings only the canonical form
+  had (`parallel:` groups, `archetype` and `when` on a step, `verify: {command, timeout}`,
+  `gate: {external, timeout, exitMap}`). A file without `kind:` still loads where its location
+  or the command names the kind.
+- **`maxReworkCycles` is refused beside a bound pipeline** instead of being accepted and ignored:
+  `pod set maxReworkCycles` on a pod with a pipeline, `pod set pipeline` on a pod that stores one,
+  and a `pod.yaml` that declares both exit 2. `pod show` reports the pipeline's own bounds.
+- **The baseline policies read the parsed command.** A rephrased command no longer slips past
+  them: options before the verb (`kubectl -n prod apply`), quoting (`"rm" -rf`), short and long
+  flags (`git push -f`), wrappers (`env`, `xargs`, `find -delete`) and write targets by any program
+  (`ln -sf`, `install`, `dd`, `tee -a`) are seen. Measured on a 310-row corpus
+  (`tests/fixtures/policy-corpus/corpus.yaml`): 82 tool calls that passed now ask, none is
+  weaker, and the rows still allowed carry one of five named limits in the security spec (opaque
+  code in an allowlisted interpreter with isolation off is the main one).
 
 ### Fixed
 
+- **A verdict a step's `on:` map names is routed, a passing one included**, as pipeline-format
+  says; the mechanical and external gates already did, the verdict gate let a passing value
+  advance first. The `intake` recipe no longer needs a placeholder marker for it.
 - A resuming sweep (`docket start --dispatch`) re-claimed a task it had just refused, in a loop
   with no pause, until the refusal was cleared: one `dispatch_refused` task (isolation off under a
   `lights-out` profile) wrote 2,164 audit and trace entries in 3 seconds and held a core at 85%.
@@ -29,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`when.command` in a policy** matches the parsed command: `program`, `verb` (found past
+  options), `args` (short and long spellings, globs) and `writes` (redirect targets and the
+  operands of the programs that write), on every segment after unwrapping. `matches` stays for
+  text with no structure. The classifier's high-risk classes are also found past options and
+  quoting, and name more deploy and secret tools (`tofu`, `podman`, `flyctl`, `vercel`, `gh
+  release`, `cargo publish`, `twine`, `aws ssm`/`secretsmanager` writes).
+- **Six more secret shapes are redacted** by `secret-pii-redact` and by the trace redactor:
+  GitHub `github_pat_`/`ghu_`/`ghr_` tokens, AWS `AKIA`/`ASIA` key ids, `*_PASSWORD=` assignments,
+  JWTs, private-key blocks and `Authorization` credentials.
 - `scripts/maint/live-dispatch-baseline.sh` records one real dispatch through the HTTP API (task,
   trace, diff, raw trace files) so a phase's real run and a before/after comparison use one
   command.

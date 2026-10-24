@@ -158,9 +158,9 @@ All contributions must include appropriate tests:
   that do not mirror a module — see that section for what holds now and what Phase 46 moves)
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
-For scale, so you know what you're getting into: **6,261 tests** in the default suite
+For scale, so you know what you're getting into: **6,185 tests** in the default suite
 (`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
-runs separately), **~53,686 lines** of Python in the shipped package, **32 specifications**
+runs separately), **~53,690 lines** of Python in the shipped package, **32 specifications**
 validated in CI, and **10 commands** in the [command reference](docs/commands.md).
 `scripts/metrics.py --check` computes these from the tree on every CI run, so this paragraph
 cannot silently go stale.
@@ -182,7 +182,7 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 ./tests/run-all-tests.sh
 
 # pytest suite only (default lanes: unit, integration, guards)
-uv run pytest   # 6,261-test Python suite
+uv run pytest   # 6,185-test Python suite
 
 # agent lane only (prose, release artifacts, agent hook scripts; own CI job)
 uv run pytest tests/agent
@@ -198,6 +198,20 @@ uv run python scripts/gen_recipe_docs.py --check
 # Docs site, strict (a dead link fails the build; mkdocs is not a project dependency)
 uvx --with mkdocs-material --with 'mkdocstrings[python]' mkdocs build --strict
 ```
+
+### How much to run, and when
+
+The same budget as ROADMAP §4 ("Definition of Done"):
+
+- **Each commit:** `ruff check`, `ruff format --check`, `mypy src` and `pytest --co` (about 10 s).
+- **While changing code:** only the tests of what you changed, by path.
+- **Once per change, before merging:** the default suite in parallel (`uv run pytest -n auto --dist
+  loadfile`, about a minute); fix by cause and re-run only what failed.
+- **Once per phase close or release:** everything below, plus
+  `scripts/maint/pytest-without-sandbox.sh` (the suite as a host with no sandbox backend sees it)
+  and a real run.
+
+A check that fails again after one fix is a finding to report, not a loop to keep iterating.
 
 ### CI gates
 
