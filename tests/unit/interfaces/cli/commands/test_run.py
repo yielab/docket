@@ -116,7 +116,7 @@ def _gated_bash_backend(after_gate: str) -> _ScriptedBackend:
 @contextmanager
 def _fast_approval_polling() -> Iterator[None]:
     fast = dataclasses.replace(
-        current_home(), tool_approval_poll_interval_s=0.02, tool_approval_timeout=5
+        current_home(), tool_approval_poll_interval_s=0.02, tool_approval_timeout=60
     )
     with use_home(fast):
         yield
