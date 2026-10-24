@@ -96,6 +96,16 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 
 **Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
 
+- **The serial no-sandbox run fails 7 tests that pass alone** (`scripts/maint/pytest-without-sandbox.sh
+  -q`, found at the Phase 48 close; the same 7 at `d6b16df5` in a clean worktree, so older than
+  Phase 48). They are `test_step__step_env.py::TestShape::test_a_secret_store_name_is_refused`, two
+  in `tests/integration/hops/test_diff_probe.py::TestHopDiffProbeUnit` and four in
+  `tests/integration/sandbox/test_task_credentials.py`; the parallel default suite never orders
+  them that way. Hypothesis: an earlier test in the same process leaves a process-wide binding
+  changed (a bound port, the credential catalog or the secret-store names). Next: bisect the
+  serial order with `-p no:randomly` and the file list before the first failure. Trigger: now,
+  since the `no-sandbox` CI job runs this script serially once the branch is pushed.
+
 - **Timing flakes seen once each:** `test_kernel_adoption.py` over its 2 s guard ceiling,
   `test_retries_and_timeouts.py::TestRetryDoesNotTripStaleClaimSweep`, and the foreground approval
   deny test (its fake approval timeout was raised from 5 s to 60 s, `1a704359`). Trigger: a second
