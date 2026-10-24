@@ -222,7 +222,7 @@ M-1 ─────────────────┘   (M-1 must finish be
 
 ### P47-12 — configuration: one authored form, no setting that silently does nothing, policies on the parsed command
 
-**Status:** TODO after P47-11 and M-1 · **Size:** M · **Model:** Sonnet, one run · **Kind:** B (named
+**Status:** TODO after P47-11 (M-1 done) · **Size:** L · **Model:** Sonnet, one run · **Kind:** B (named
 behaviour changes) + T
 
 - **Trigger:** the maintainer's request (2026-10-24) to fold the configuration findings of the 2026-10-24
@@ -254,22 +254,48 @@ behaviour changes) + T
      `pod.yaml` that declares both `settings.maxReworkCycles` and `pipeline`, are refused (exit 2) with a
      message naming the pipeline's own `on: {<label>: {goto, max}}`; `config explain` shows where the
      bound comes from. Update the spec section that owns pod settings and the CONFIGURATION row.
-  3. **A `command` predicate.** RED first: a table test over M-1's corpus (unit lane,
-     `tests/unit/governance/test_policy__command.py`) asserting that each row's outcome is the same or
-     stricter, and that every bypass M-1 found is asked or denied. Then expose the classifier's segment
-     parser as one public function in `governance/security.py` and add `when.command` with `program`
-     (names), `args` (any of these arguments) and `writes` (path globs of redirect and write targets),
-     evaluated on every segment after unwrapping. `matches` stays for text with no structure (SQL).
-     Rewrite the baseline policies in `src/docket/templates/policies/` with it. Bump the policy spec,
+  3. **A `command` predicate, scoped by M-1's measurement** (corpus merged `7a7b31af`; the integrator's
+     summary of what passed, by class, is quoted here because a worktree has no `internal-docs/`):
+     - **Class A, fix:** text the segment parser already normalizes. Option before the verb (`kubectl
+       -n prod apply`, `terraform -chdir=x apply`, `helm -n prod upgrade`; this also defeats the
+       classifier's `secret-access` class), quoting (`"rm" -rf`, `r''m`, `s""tripe`), long and short
+       flags (`rm --recursive`, `git push -f`, `+ref`, `--all`, `HEAD:refs/heads/x`), wrappers (`env`,
+       `xargs`, `find -delete`), write targets by other programs (`ln -sf`, `install`, `dd`, `rsync`,
+       `perl -pi`, `tee -a /etc/passwd`), and programs the policies do not name (`git clean -fdx`,
+       `git reset --hard`, `tofu`, `podman`, `flyctl`, `vercel`, `gh release`, `cargo publish`,
+       `twine upload`, `aws secretsmanager`/`ssm put-parameter`, `openssl genpkey`, `gpg
+       --full-generate-key`, `passwd`, `pkill`, `truncate`, `mke2fs`).
+     - **Class B, do not chase:** opaque code in an allowlisted interpreter with isolation off
+       (`python3 -c` with string concatenation, `node -e`, `perl -e`, a script written then run,
+       `base64 -d | sh`). No parser fixes it; the jail is its containment and the isolation default is
+       a maintainer decision (ROADMAP §7.1). Record it as a known limit in the security spec and
+       `docs/SECURITY-SIMPLE.md`.
+     - **Class C, partial:** `secret-pii-redact` gains fixed patterns for `ghp_`/`github_pat_` tokens,
+       `AKIA` key ids, `*_PASSWORD=`, JWTs, `-----BEGIN ... PRIVATE KEY-----` blocks and `Bearer`
+       headers. `prompt-injection` stays a phrase tripwire; its description says so, and paraphrases
+       are recorded as a known limit.
+
+     RED first: add an `expected` column to the corpus (`asked`/`denied`/`redacted` for class A and the
+     six patterns; today's outcome plus `limit: <reason>` for B and C rows not fixed) and a table test
+     over it (unit lane, `tests/unit/governance/test_policy__corpus.py`) that drives
+     `governance.gate.evaluate_tool_call` for tool rows and `policy_eval_detail` for screen rows (the
+     invocation is in the corpus header). Then expose the classifier's segment parser as one public
+     function in `governance/security.py`, make the high-risk class detection skip options before the
+     verb, and add `when.command` with `program` (names), `args` (any of these arguments, short and
+     long spellings) and `writes` (path globs of redirect and write targets), evaluated on every
+     segment after unwrapping. `matches` stays for text with no structure (SQL). Rewrite the baseline
+     policies in `src/docket/templates/policies/` with it. Bump the policy and security-gates specs,
      update `policy.schema.json`, regenerate `docs/recipes.md` (`scripts/gen_recipe_docs.py`).
 - **Named behaviour changes:** an authored canonical document is refused; `maxReworkCycles` with a bound
-  pipeline is refused; the baseline policies catch M-1's bypasses. CLI output changes for those cases;
+  pipeline is refused; the baseline policies catch M-1's class A rows; the classifier asks for a high-risk
+verb behind options; the redaction screen covers six more secret shapes. CLI output changes for those cases;
   P47-14 regenerates the affected goldens with the diff explained line by line.
 - **Non-goals:** parallel steps or fan-out (a new feature; its trigger stays in the follow-ups); new
   kinds; channel, exporter, mcp-server and provider documents (check each has one form; list any that
   does not).
 - **Acceptance:** a canonical role, pipeline or policy file exits 2 with the message; the two refusals
-  are tested; the corpus table is green and no row's outcome got weaker; `rg -n "is unambiguously short
+  are tested; the corpus table is green, every class A row is asked or denied, no row's outcome got weaker,
+and every row left allowed carries a `limit:` reason that the security spec names; `rg -n "is unambiguously short
   form" src` finds nothing.
 - **Gate:** the unit tests of `governance`, `teams/roles`, `pipeline/domain` and the config documents;
   `tests/architecture`; `pytest --co`; at the end, one parallel default run, then `--lf` only.
@@ -341,7 +367,7 @@ behaviour changes) + T
 
 ### M-1 — does a rephrased command pass the baseline policies?
 
-**Status:** IN-PROGRESS (@sonnet, branch `m1-policy-corpus` from `e0583955`) · **Size:** S · **Model:** Sonnet · **Kind:**
+**Status:** DONE (2026-10-24: `d27ba3e8`, merge `7a7b31af`; 310 rows; findings by class folded into P47-12 step 3) · **Size:** S · **Model:** Sonnet · **Kind:**
 measurement (no `src/` change)
 
 - **Trigger:** the maintainer's request (2026-10-24) to plan from the comparison in

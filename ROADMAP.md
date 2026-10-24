@@ -351,7 +351,7 @@ address exactly those.
 > remaining work is the close-out section there. These entries need a decision, not a trigger.
 
 - **Integrate `plan/phase-46-structure` (Phases 46-47) into `develop` and push.** Until then the
-  `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at P47-13.
+  `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at P47-14.
 - **The default tool set, only if it has to change.** `agent/tools/builtin_tools.py` registers `skill`
   and `consult`, which import `hops.workspace.skills` and `tasks.application.consult` (the two `agent`
   exceptions). P47-11 moves the module to composition in `hops` and keeps the set identical; a decision
@@ -361,8 +361,15 @@ address exactly those.
   `internal-docs/strategy/competitive-and-yaml-2026-10-24.md`). What docket still claims as distinct:
   one chokepoint across tools, capability denials, a hash-chained audit log, an embeddable runtime,
   team configuration in the repository. No independent benchmark exists on the same task; no public
-  comparison before one does. M-1 on `TODO.md` measures the policy half of the claim, and P47-12 acts on
-  it.
+  comparison before one does. M-1 measured the policy half of the claim (`tests/fixtures/policy-corpus/`,
+  2026-10-24), and P47-12 acts on what text parsing can fix.
+- **The isolation default, with M-1's evidence.** With isolation off (the default since D-56) an
+  allowlisted interpreter runs any code: `python3 -c` with string concatenation removed a tree, wrote
+  `.env` and `.ssh/authorized_keys` and pushed to `main` with every layer allowing it, and a script
+  written then run does the same. No policy or parser can close that; only the jail contains it. Options:
+  keep opt-in and state the limit (P47-12 writes it into the security spec), take interpreters off the
+  allowlist when unjailed (agents lose `python -c` and `pytest` without an ask), or make isolation the
+  default again (reverses D-56). Summary by class in `internal-docs/audits/policy-corpus-2026-10-24.md`.
 - **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters and the adoption
   benchmark are still public claims.
 - **P46-11, the persisted shapes** (a nested task record, `pods/<pod>/settings.json`): a redesign that
