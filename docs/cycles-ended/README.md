@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (73 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (74 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-10-24 | ◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close | `todo-waves.md` | 33,386 |
 | 2026-10-23 | ◇ PHASE 46 — CLOSED 2026-10-23 — organize by context, refactor by tool (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, started 2026-10-22 on `plan/phase-46-structure`) | `todo-waves.md` | 26,902 |
 | 2026-10-23 | ◇ Phase 46 closed 2026-10-23 | `todo-waves.md` | 941 |
 | 2026-10-23 | ☑ PHASE 47 WAVE 1 (2026-10-23) — P47-1..P47-9 executed: the seams, ports, functional core, tests by context, the layers contract | `todo-waves.md` | 31,387 |

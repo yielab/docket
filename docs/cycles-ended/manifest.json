@@ -798,5 +798,13 @@
     "heading": "☑ PHASE 47 WAVE 1 (2026-10-23) — P47-1..P47-9 executed: the seams, ports, functional core, tests by context, the layers contract",
     "bytes": 31387,
     "sha256": "85099086fa7665c2eff882a70b885d4a78ad442801ad16cfb7aac71178865d8a"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close",
+    "bytes": 33386,
+    "sha256": "40581e4cc2e2841eaaeb7b8fe3baedf27d892ca41ba698bcfb521e7b03a6b0cb"
   }
 ]

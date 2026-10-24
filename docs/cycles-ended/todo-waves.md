@@ -15734,3 +15734,379 @@ giant file · **Kind:** M + T
 - **Test speed** (`time.sleep` to deadlines, shared stub servers): the split in P47-7 removes the
   measured cause (the giant files serialize the run); revisit only if the after-time says otherwise.
 
+## ◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close
+
+> **Where it stands (2026-10-24, `plan/phase-46-structure` at `d1fa3d30`).** Wave 1 (P47-1..P47-9,
+> archived) shipped ports for git, processes, the jail, the tracer and the tool gate; `agent` as the
+> turn engine; a task's `status` in one transition table with one writer; the gate decisions as pure
+> functions; one owner per test helper; and the layers contract (import baseline 748 -> 65 lines).
+> P47-7 (tests by context) is done on its branch and not merged. The close-out finishes the
+> structure, folds in the configuration findings of the 2026-10-24 comparison and the rest of the
+> test audit, so the code is moved once and the tests are rewritten once.
+>
+> ADR 0030 §"Phase acceptance", clause by clause, measured at `d1fa3d30`:
+>
+> | Clause | Now | Closed by |
+> | --- | --- | --- |
+> | No upward import between contexts | 62 module pairs, plus 2 named `agent` exceptions | P47-11 |
+> | Function-local `docket` imports: 0 | 19 | P47-11 |
+> | Largest module ≤ 700 lines; `status` writers 1; no `cli/`, `core/`, `edges/`, `serve.py` | met | — |
+> | No patch on another module's private alias | not measured (37 cross-module patch targets) | P47-13 |
+> | Unit tests at their mirror path; integration under `integration/<context>/` | on branch `p47-7-test-layout` | P47-10 |
+> | `docket_runtime` from `agent/` + `kernel/` with no build hook | the hook computes the closure from the import graph (52 files), as the P47-3 run decided | P47-14 amends the clause |
+> | HTTP API 6, goldens, runtime boundary tests unchanged; live traces identical | not run since the last merge | P47-14 |
+
+**Order, by file contention:**
+
+```text
+P47-10 ─► P47-11 ─► P47-12 ─► P47-13 ─► P47-15 ─► P47-14 close (its real run on a fresh home)
+M-1 ─────────────────┘   (M-1 must finish before P47-12; it runs beside P47-10 or P47-11)
+```
+
+- P47-10 goes first: it moves every integration test file the later cards edit.
+- P47-11 moves modules between contexts; `move.py` carries their mirrored tests and the dotted names
+  in specs. P47-12 then changes configuration behaviour in modules that already sit where they stay.
+- P47-13 rewrites the tests last, once every patch target and helper has stopped moving.
+- P47-15 fixes what the close's first real run found on the live home (2026-10-24); the close's real
+  run then starts from a fresh install and an empty `DOCKET_HOME`.
+- P47-14 runs the full gates, the goldens and the real run once, after all code has settled.
+- M-1 only runs commands through the policy path and commits a data file; P47-12 turns it into a test.
+
+### P47-10 — integrate P47-7 and make every document cite the test paths that exist
+
+**Status:** DONE (2026-10-24: merge `f5e86413`, citations `f662d2f1`; 47 stale paths fixed, parallel run: one failure, a guard over its 2 s time ceiling under load, which passes alone) · **Size:** S · **Owner:** integrator (not a docket task) · **Kind:** M
+
+- **Trigger (measured 2026-10-24):** branch `p47-7-test-layout` (last green `261c245c`, 30 commits on
+  `d1fa3d30`) moved the 134 integration files into `tests/integration/<context>/` and split the 11
+  files over 800 lines; it is not merged. Its worker reported about 17 specs, `docs/adr/*.md` and
+  `SSD-WORKFLOW.md` citing the old flat `tests/integration/test_*.py` paths, and stale test counts in
+  `CONTRIBUTING.md`. Before the merge, 8 cited test paths already do not exist.
+- **Steps:**
+  1. `git merge --no-ff p47-7-test-layout`; one parallel default run (budget item 5.5).
+  2. A one-shot script maps each old path to its new one from the move commits (`git log
+     --name-status --diff-filter=R d1fa3d30..p47-7-test-layout`) and rewrites the citations in
+     `specs/`, `docs/` (not `docs/cycles-ended/`, which is byte-preserved history), `CONTRIBUTING.md`
+     and `SSD-WORKFLOW.md`. A citation to a file the card split points at the file that now holds the
+     cited test. Delete the script in the same commit.
+  3. `CONTRIBUTING.md` counts from `uv run python scripts/metrics.py`.
+- **Acceptance:** `rg -o --no-filename "tests/[A-Za-z0-9_/]+\.py" specs docs CONTRIBUTING.md
+  SSD-WORKFLOW.md --glob '!docs/cycles-ended/**' | sort -u` lists only files that exist;
+  `bash scripts/validate-specs.sh` passes; the parallel run is green.
+- **Non-goals:** test content; spec versions (a path-only edit does not bump one).
+
+### P47-11 — the context structure: each module where its data lives, no upward or local import, no shim
+
+**Status:** DONE (2026-10-24: 12 commits, merge `ba0c4f45`; contract violations 65 -> 1 (Telegram), upward 62 -> 0, cross-context private names 58 -> 0, local imports 19 -> 1 (a named cycle), cycle_largest 15 -> 3; LAYERS kept, the DP order only ties it) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M + T
+(judgment on a computed plan)
+
+- **Trigger (measured at `d1fa3d30`):** ADR 0030 §"Phase acceptance" requires no upward import between
+  contexts and no function-local `docket` import. Now: 62 upward module-pair imports, 19 function-local
+  imports, 45 imports of another context's private (`_name`) names over 25 module pairs, and four shims
+  that D-57 forbids.
+- **Why move modules instead of fixing edges one by one (measured 2026-10-24).** The 62 upward imports
+  point at only 21 modules, and the largest groups are modules that use another context's private
+  names: `pipeline/application/executor.py` imports privates of `hops.application.record` (5),
+  `hops.gates.post_hop` (4), `hops.gates.pre_hop` (4) and `hops.application.runner` (2);
+  `pipeline/application/steps.py` those of `compose` (3), `record` (3), `post_hop` (3), `pre_hop` (2)
+  and `runner` (1). A module that needs another context's private names lives in the wrong context. A
+  what-if planner that reassigns whole modules, keeping `LAYERS` fixed, takes the upward count from 62
+  to 7 with 21 moves. So the card computes the plan, reviews each move, executes it with the existing
+  codemod, and spends judgment only on what remains.
+- **Read:** ADR 0030 (the table, §"After Phase 46", §"Phase acceptance"); `scripts/maint/refactor/move.py`
+  (its docstring is the `refactor/target-map.toml` schema: `[[module]]` and `[[definition]]` moves, with
+  imports, `setattr` targets, `SUBJECT`, mirrored unit tests and dotted names in specs and docs
+  rewritten); `scripts/maint/refactor/hoist_imports.py` (docstring); `kernel/ports.py` (the port idiom);
+  `tests/architecture/test_import_contracts.py`.
+- **Steps (one commit per step, or per destination context in step 3; gate after each):**
+  1. **The planner.** Write `scripts/maint/refactor/plan_layers.py` (deleted at the close with the other
+     refactor tools). It builds the module import graph of `src/docket` (top-level and function-local
+     `from docket.X import y`, with `y` resolved to a submodule when it is one), takes `LAYERS` from
+     `tests/architecture/test_import_contracts.py`, counts upward imports, and greedily applies the
+     single whole-module reassignment that removes the most, until none helps. It prints the moves with
+     their gain, the upward imports left with the names that cross, the cross-context private-name
+     imports, and the exact minimal layer order for the moved tree (a DP over the 2^11 subsets of
+     contexts). Same tree, same output. Run it on the merged tree.
+  2. **The review.** Accept a proposed move when the module reads or writes the destination context's
+     data, or uses its private names, and the move does not split a coherent group in the source.
+     Reject it when the module is cross-cutting infrastructure or the optimiser only exploits the order.
+     Write the accepted moves to `refactor/target-map.toml` with a one-line reason each. Preliminary
+     verdicts from the 2026-10-24 run, to confirm or overturn with evidence:
+
+     | Proposed move | Verdict | Why |
+     | --- | --- | --- |
+     | `pipeline.application.executor`, `.steps` -> `hops.application` | accept | they drive hops through its private record, gates and runner |
+     | `tasks.application.sweep`, `.answers`, `.interruptions` -> `hops.application` | likely accept | they drive dispatch; `sweep` imports executor privates |
+     | `governance.profile` -> `hops` | likely accept | it gathers gate facts; the decision already lives in `hops/domain/gate_decisions.py` |
+     | `hops.application.record` -> `tasks.application` | likely accept | it persists a hop's result onto the task (6 importers, 9 private names) |
+     | `agent.tools.builtin_tools` -> `hops.application` | accept if the default tool set stays identical | the default tool set is composition, not the engine; removes the 2 named `agent` exceptions; `teams.report`'s counts and the registry tests are the oracle |
+     | `models.selection` -> `teams` | judge | alternative: receive role data, as P47-5 did for `pipeline/domain/plan.py` |
+     | `teams.report` -> `hops` | judge | |
+     | `observability.trace` -> `governance` | reject | infrastructure; move `redact` (a secrets rule) to `governance.secrets` as a definition move, or use the `Tracer` port |
+     | `hops.workspace.{worktree,prepare,repo_view,skills}` -> `teams` | likely reject | splits `hops.workspace`; fix the importers instead |
+     | `tasks.application.corrections` -> `governance`; `governance.network_posture`, `.review` -> `teams`; `teams.apply.plan`, `.write` -> `hops` | judge | one edge each; prefer a definition move |
+
+  3. **Execute.** `uv run python scripts/maint/refactor/move.py --dry-run`, then the real run, then
+     `--check` (a second run changes nothing). One commit per destination context.
+  4. **What remains**, per edge: (a) a type or constant moves to `kernel` or to the lower context;
+     (b) a function on the lower context's data moves there (`[[definition]]`); (c) behaviour the higher
+     context supplies becomes a parameter, or a port in the lower context bound in `bootstrap.py`. Then
+     rename each private name still imported across contexts to a public one, with a one-shot script
+     (the definition, `from M import _x`, `M._x`, `setattr(M, "_x", ...)`; refuse when the public name
+     exists).
+  5. **Local imports.** `hoist_imports.py --dry-run`, then the real run: it proves each hoist by
+     importing every module in a fresh interpreter, and what it keeps as `cycle` is fixed as in step 4.
+  6. **Shims and duplicates.** Callers use the real names (`task_token_budget` from
+     `hops/domain/gate_decisions.py`, `kernel.brief.TaskBrief`, `enqueue_task_once`); delete the
+     `pre_hop._task_token_budget` alias, the `TaskBrief` re-export at `kernel/operator_contract.py:18`
+     and `enqueue_task` (one test call left). `_credential_sources` (`bootstrap.py:57`,
+     `packages/docket-runtime/src/docket_runtime/_bind.py:22`) gets one home both import.
+     `resolve_endpoint` (models logic at `models/adapters/openai_http.py:339`) moves to
+     `models/application`, which removes the kept-rule edges `models.provider_lifecycle ->
+     models.adapters.openai_http` and `models.adapters.openai_http -> governance.secrets`.
+  7. **Re-plan.** Run the planner again and record its output, before and after, in the last commit's
+     body. If the exact minimal order differs from `LAYERS` with strictly fewer upward imports, stop and
+     report it: changing `LAYERS` is the maintainer's decision.
+- **Rules:** never a function-local, lazy or re-export import to make an edge vanish. No behaviour
+  change. A move that changes an owner a spec names updates that spec's prose in the same commit
+  (`move.py` rewrites dotted names, not sentences). An edge that needs a decision parks with a report,
+  and the run continues with the next. `tests/guards/test_runtime_closure.py` pins the runtime's file
+  list: a moved module the runtime imports updates its expected path, and the count must not grow.
+- **Tests:** no new behavioural test (these are moves); `move.py` carries the mirrored unit tests, and a
+  patch on a moved name follows the binding the module under test reads.
+- **Non-goals:** facades (optional under ADR 0030); any behaviour change; the Telegram edge
+  (`operator.adapters.telegram -> interfaces.telegram.client`, pinned by Telegram spec 2.4.0).
+- **Acceptance:** the import baseline holds only the Telegram line, plus any edge named with its reason;
+  `local_imports_baseline.txt` is 0, or each remaining line is a named real cycle; the planner reports no
+  cross-context private-name import; `rg -n "_task_token_budget|TaskBrief as TaskBrief|def
+  enqueue_task\b" src packages` finds nothing and `rg -n "def _credential_sources" src packages` finds
+  one definition; `cycle_largest` recorded before and after; baseline diffs are deletions only.
+- **Gate:** per step `uv run pytest tests/architecture tests/guards -q`, `pytest --co`, and `uv run python
+  -c "import docket.bootstrap, docket.interfaces.cli.app, docket.interfaces.http.server"`; at the end,
+  one parallel default run, then `--lf` only.
+
+### P47-12 — configuration: one authored form, no setting that silently does nothing, policies on the parsed command
+
+**Status:** DONE (2026-10-24: 5 commits, merge `8e298df6`; integrator follow-ups `058044ab` verdict routes before pass per pipeline-format, `74cc6a5b` pod set pipeline over a stored maxReworkCycles exits 2; corpus: 82 tool rows to asked, 12 to redacted, 0 weaker, 66 rows left allowed under five named limits) · **Size:** L · **Model:** Sonnet, one run · **Kind:** B (named
+behaviour changes) + T
+
+- **Trigger:** the maintainer's request (2026-10-24) to fold the configuration findings of the 2026-10-24
+  comparison into this refactor, on these measured facts:
+  - Three kinds have two authored forms plus a mix: `teams/roles.py` (`normalize_role`, `load_role_file`,
+    which refuses a mix), `pipeline/domain/spec.py` (`normalize_pipeline`), `governance/policy.py`
+    (`normalize_policy`: "short form, canonical, or a mix"). `teams/config_docs.py` guesses which one a
+    person wrote. D-57 keeps nothing for the past.
+  - `maxReworkCycles` is accepted and ignored when a pipeline is bound (`hops/application/steps.py`
+    around line 116, moved there by P47-11; `docs/CONFIGURATION.md`'s row says "Ignored when you bind a
+    pipeline").
+  - A command policy matches a regular expression over the raw text (`when.matches`;
+    `templates/policies/block-destructive.yaml` is one expression), while `governance/security.py`
+    already splits a command into segments, unwraps wrappers and resolves redirect targets for
+    `classify_command`. The other predicates (`tool`, `path`, `branch`, `plugin`, `anyOf`) are already
+    structured. M-1's corpus (`tests/fixtures/policy-corpus/corpus.yaml`) records what passes today.
+- **Steps (one commit each):**
+  1. **One authored form.** An authored file (role, pipeline, policy, and whatever a `pod.yaml` embeds)
+     is read only in its `kind:` short form; the canonical form is the in-memory model and the JSON that
+     `platform/store.py` persists, never read from an authored file. First list every reader that accepts
+     a canonical document from a file and mark it authored or persisted. Delete the canonical and mixed
+     paths for authored files and `config_docs`' form guessing; a canonical document is refused with a
+     message naming the short-form key to use. Convert every authored canonical document under
+     `src/docket/templates/`, `tests/fixtures/` and the tests with a one-shot script built on the existing
+     inverse functions (the `export` direction), then delete the script. Update `pipeline-format.spec.md`
+     ("Short form"), the role and policy specs, `docs/contracts/config-v1/*.schema.json` and
+     `docs/CONFIGURATION.md` §3.4-3.6.
+  2. **No silent setting.** `docket pod set maxReworkCycles` on a pod with a bound pipeline, and a
+     `pod.yaml` that declares both `settings.maxReworkCycles` and `pipeline`, are refused (exit 2) with a
+     message naming the pipeline's own `on: {<label>: {goto, max}}`; `config explain` shows where the
+     bound comes from. Update the spec section that owns pod settings and the CONFIGURATION row.
+  3. **A `command` predicate, scoped by M-1's measurement** (corpus merged `7a7b31af`; the integrator's
+     summary of what passed, by class, is quoted here because a worktree has no `internal-docs/`):
+     - **Class A, fix:** text the segment parser already normalizes. Option before the verb (`kubectl
+       -n prod apply`, `terraform -chdir=x apply`, `helm -n prod upgrade`; this also defeats the
+       classifier's `secret-access` class), quoting (`"rm" -rf`, `r''m`, `s""tripe`), long and short
+       flags (`rm --recursive`, `git push -f`, `+ref`, `--all`, `HEAD:refs/heads/x`), wrappers (`env`,
+       `xargs`, `find -delete`), write targets by other programs (`ln -sf`, `install`, `dd`, `rsync`,
+       `perl -pi`, `tee -a /etc/passwd`), and programs the policies do not name (`git clean -fdx`,
+       `git reset --hard`, `tofu`, `podman`, `flyctl`, `vercel`, `gh release`, `cargo publish`,
+       `twine upload`, `aws secretsmanager`/`ssm put-parameter`, `openssl genpkey`, `gpg
+       --full-generate-key`, `passwd`, `pkill`, `truncate`, `mke2fs`).
+     - **Class B, do not chase:** opaque code in an allowlisted interpreter with isolation off
+       (`python3 -c` with string concatenation, `node -e`, `perl -e`, a script written then run,
+       `base64 -d | sh`). No parser fixes it; the jail is its containment and the isolation default is
+       a maintainer decision (ROADMAP §7.1). Record it as a known limit in the security spec and
+       `docs/SECURITY-SIMPLE.md`.
+     - **Class C, partial:** `secret-pii-redact` gains fixed patterns for `ghp_`/`github_pat_` tokens,
+       `AKIA` key ids, `*_PASSWORD=`, JWTs, `-----BEGIN ... PRIVATE KEY-----` blocks and `Bearer`
+       headers. `prompt-injection` stays a phrase tripwire; its description says so, and paraphrases
+       are recorded as a known limit.
+
+     RED first: add an `expected` column to the corpus (`asked`/`denied`/`redacted` for class A and the
+     six patterns; today's outcome plus `limit: <reason>` for B and C rows not fixed) and a table test
+     over it (unit lane, `tests/unit/governance/test_policy__corpus.py`) that drives
+     `governance.gate.evaluate_tool_call` for tool rows and `policy_eval_detail` for screen rows (the
+     invocation is in the corpus header). Then expose the classifier's segment parser as one public
+     function in `governance/security.py`, make the high-risk class detection skip options before the
+     verb, and add `when.command` with `program` (names), `args` (any of these arguments, short and
+     long spellings) and `writes` (path globs of redirect and write targets), evaluated on every
+     segment after unwrapping. `matches` stays for text with no structure (SQL). Rewrite the baseline
+     policies in `src/docket/templates/policies/` with it. Bump the policy and security-gates specs,
+     update `policy.schema.json`, regenerate `docs/recipes.md` (`scripts/gen_recipe_docs.py`).
+- **Named behaviour changes:** an authored canonical document is refused; `maxReworkCycles` with a bound
+  pipeline is refused; the baseline policies catch M-1's class A rows; the classifier asks for a high-risk
+verb behind options; the redaction screen covers six more secret shapes. CLI output changes for those cases;
+  P47-14 regenerates the affected goldens with the diff explained line by line.
+- **Non-goals:** parallel steps or fan-out (a new feature; its trigger stays in the follow-ups); new
+  kinds; channel, exporter, mcp-server and provider documents (check each has one form; list any that
+  does not).
+- **Acceptance:** a canonical role, pipeline or policy file exits 2 with the message; the two refusals
+  are tested; the corpus table is green, every class A row is asked or denied, no row's outcome got weaker,
+and every row left allowed carries a `limit:` reason that the security spec names; `rg -n "is unambiguously short
+  form" src` finds nothing.
+- **Gate:** the unit tests of `governance`, `teams/roles`, `pipeline/domain` and the config documents;
+  `tests/architecture`; `pytest --co`; at the end, one parallel default run, then `--lf` only.
+
+### P47-13 — the tests: one name per helper, no test imports another, no private-alias patch, no I/O in unit, configuration through `Home`
+
+**Status:** DONE (2026-10-24: 6 commits, merge `92129eb2`, json_output detector fix `bc83c37d`; suffixed helpers 35 -> 0, test-to-test imports 5 -> 0, foreign private patches 31 -> 0 with a planted guard, unit_io 5 -> 0, json_output 18 -> 0, setenv 56 -> 38 files each with a reason; run-alone failures 6 -> 0, 14 zero-test placeholders exit 5) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M
+
+- **Trigger (measured):**
+  - ADR 0030 §"Phase acceptance" requires no patch on another module's private alias;
+    `monkeypatch_cross_module_targets` is 37 at `d1fa3d30` (`analyze.py --metrics`), not yet split into
+    private and public. Among them, P47-5 named the gate fact sources `_pod_settings`, `_trace_locked`,
+    `pod_recorded_cost`, `pod_gating_cost` and `pod_full_roster` (19 patches).
+  - P47-6 kept non-identical helper variants under numeric suffixes: `seed_pod_2..4`, `write_meta_2..4`,
+    `meta_2` (`tests/support/pods.py`), `post_2/3`, `get_2` (`tests/support/http.py`), `hermetic_2..6`.
+  - Test files import helpers from other test files (re-measure with `rg -n "^from
+    tests\.(unit|integration|agent)" tests`).
+  - The ratchets P47-7 recorded in `tests/guards/suite_shape_baseline.txt`: five unit files do real I/O
+    (`test_client` for Telegram, `test_fetch`, `test_progress`, `test_plan`,
+    `test_sweep__scheduled_and_webhook_dispatch`); `setenv` in 55 files; `in result.output` on a command
+    that has `--json` in 18 files. ADR 0030 point 4: a test owns its `Home(tmp_path)`.
+  - Test files that fail when run alone (found 2026-10-24, already failing at `f662d2f1`):
+    `tests/integration/interfaces/test_pipeline_cli.py` and
+    `tests/unit/interfaces/cli/commands/test_pod_config_library.py` invoke `pod_app` directly, and
+    `pod_app` has no `validate`/`plan` until something imports the full CLI app; the suite passes only
+    because another file imported it first. 16 test files use `pod_app`.
+- **Goal:** each helper has one name that says what it does (variants that differ get names that say
+  how; identical ones fold); no test module imports another (the helper moves to `tests/support/`); a
+  patch on another module's `_name` becomes a fake bound through its port (`<port>.use(fake)`) or a patch
+  on the public binding the module under test reads, with a small port in the owning context for the
+  cost and settings reads the gates use; unit files do no real I/O (a fake from `tests/support/fakes.py`,
+  or the file moves to `integration/<context>/`); `setenv` stays only in the tests of environment parsing
+  (an explicit list), the rest configure through `Home`; a command with `--json` is asserted on its
+  parsed JSON; every test file passes when run alone.
+- **Steps (one commit each):** (1) measure and list, including one pass that runs each test file alone
+  (`git ls-files 'tests/unit/*.py' 'tests/integration/*.py' 'tests/guards/*.py' | rg '/test_' | xargs
+  -P 16 -I{} sh -c 'timeout 120 uv run pytest -q -p no:cacheprovider {} >/dev/null 2>&1 || echo {}'`,
+  once; fix each file it names by building the app the way the CLI does, never by import order); (2) rename and fold helpers with a one-shot script,
+  deleted in the last commit; (3) move cross-test helpers to `tests/support/`; (4) the private-alias
+  patches; (5) unit I/O; (6) `setenv` to `Home`; (7) `--json` asserts; (8) a guard in
+  `tests/guards/test_suite_shape.py` refuses a `monkeypatch.setattr` or `mock.patch` on another module's
+  `_name`, seen failing on a plant, and the three ratchets fall to 0 or each remaining entry is named
+  with its reason.
+- **Non-goals:** what a test asserts; test speed (the parallel suite takes about 40 s).
+- **Acceptance:** the run-alone pass names no file; no `_<digit>` helper name in `tests/support/`; no `from tests.(unit|integration|agent)`
+  import; the private-alias guard and the three ratchets at 0 or named; collected test ids unchanged
+  except tests that moved path.
+- **Gate:** `uv run pytest tests/guards -q`, `pytest --co`, and the files each step touched; at the end,
+  one parallel default run, then `--lf` only.
+
+### P47-15 — the live home stays bounded, and no test touches it
+
+**Status:** DONE (2026-10-24, by the integrator: `a2a43acf` idle sweep writes no run, `ff19cc2c` stop outwaits the service, `789968a2` each test's process default home is its own, which also fixed the diff-probe leak; default and no-sandbox parallel runs green, `~/.docket` absent after both) · **Size:** M · **Kind:** B
+(named behaviour changes) + T
+
+- **Trigger (found by the close's first real run on the live `~/.docket`, 2026-10-24):**
+  1. **A sweep with nothing to claim writes a run record.** `docket-runs.json` held 85,591 runs over
+     seven days; 85,540 were `source: sweep` with `taskIds: []`, one per pod per 30 s tick, 47 MB.
+     Every write rewrites the file and its `.bak`, and the restarted service logged `sweep: pod race
+     failed: Could not acquire lock for docket-runs.json within 10s`. `runs.prune_terminal` exists but
+     uses `trace_retention_s`, so nothing was old enough to prune.
+  2. **Tests wrote eight pods into the real home on 2026-10-23** (`race`, `flaky`, `httpproj`,
+     `myops`, `myresearch`, `web-dev`, `demo`, `w120-2`; codebases `/src/<name>`, empty, or an agent
+     worktree), between 03:17 and 11:53, during the Phase 46 `Home` conversion. The names are the
+     fixtures of `tests/integration/interfaces/test_serve_pods_endpoint.py` and
+     `tests/integration/teams/test_pod_blueprint_provisioning.py`; the serve handler threads did not
+     carry the test's `Home` at the time. The service then swept the eight pods on every tick.
+  3. **State leaks between test files in one worker:** two `tests/integration/hops/test_diff_probe.py`
+     tests (`TestHopDiffProbeUnit::test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence`,
+     `::test_real_probe_resolves_task_worktree_first`) fail only in the full
+     `scripts/maint/pytest-without-sandbox.sh -n auto --dist loadfile` run and pass alone: the probe
+     saw no files although `fake_git` supplies them. Candidates: the cached process default `Home`
+     (`kernel/home.py::_DEFAULT`) or a port binding another file left.
+  4. **`docket stop` advises `kill -9`** ("did not exit. Run `kill -9 <pid>`") after its 15 s wait
+     while the service is still exiting; it was gone seconds later.
+- **Steps (one commit each):**
+  1. RED: a test that ten idle sweep ticks over two pods leave `docket-runs.json` byte-identical; then
+     a sweep records a run only when it claims a task (spec: operator-api or pod-dispatch, whichever
+     owns run records; name the change). Nothing migrates existing files (D-57).
+  2. A session guard in `tests/conftest.py`: any resolution of the real `~/.docket` (or the real
+     `$HOME`) during the test session fails the test that did it, seen failing on a planted case.
+     Run the two named files under it; fix what it catches.
+  3. Find the leak behind item 3: run the worker's file order from a `-n auto --dist loadfile` run
+     against `test_diff_probe.py` (bisect the file list once), fix the leaking fixture, and make the
+     autouse fixture reset whatever it was. The no-sandbox run is the check.
+  4. `docket stop` waits for the pid after the second signal (bounded) and advises `kill -9` only
+     when it is still alive; a unit test with a fake process.
+- **Non-goals:** a retention policy for run records beyond step 1; the timing flakes in the
+  follow-ups.
+- **Acceptance:** the idle-tick test passes; the home guard is in the default suite and was seen
+  failing; `scripts/maint/pytest-without-sandbox.sh -q -n auto --dist loadfile` passes once; `docket
+  stop` on a slow exit prints no kill advice.
+- **Gate:** the touched files' tests, `tests/guards`, `pytest --co`; at the end, one parallel default run
+  and one no-sandbox run.
+
+### P47-14 — close Phase 47
+
+**Status:** DONE (2026-10-24: ADR amended `7980642d`; refactor tools and libcst removed `2a5ec68c`; gates once: default parallel suite, no-sandbox suite (runner fixed `a4c6ed67`), escape matrix, goldens 9/9, agent lane (examples and spec index fixed `2179b93a`, `54944994`), specs, metrics, generated docs; real run by the maintainer from a fresh install and home on `fab-dev`: final status, hops (build parked then done, review-code, review-risk), per-role control-flow events and the diff (`hash.test.ts`, `slug.test.ts`) identical to `phase-46/after/dispatch`; the only difference is the first polled status, `running` instead of `pending`, because the claim beat the 15 s poll) · **Size:** M · **Owner:** integrator (not a docket task) · **Kind:** close
+
+- **Steps:**
+  1. Amend ADR 0030 §"Phase acceptance": the `docket_runtime` clause becomes what the P47-3 run decided
+     (the build hook computes the closure from the facade's import graph; the runtime boundary test is
+     the oracle), with the reason (the boundary test requires the runtime to own no `docket/` path and
+     import no `docket` module, so the gate implementations ship rewritten).
+  2. The full gates, once: the parallel default suite, `scripts/maint/pytest-without-sandbox.sh -q`, the
+     escape matrix, `bash tests/golden/run.sh verify-all` (P47-12's named changes regenerated with the
+     diff explained line by line), `uv run pytest tests/agent`, `bash scripts/validate-specs.sh`,
+     `uv run python scripts/metrics.py --check`, `gen_cli_docs.py --check`, `gen_recipe_docs.py --check`,
+     `comment_lint.py --check` on the files Phase 47 touched.
+  3. The real run on `fab-dev` from zero, done by the maintainer: `./install.sh` from this branch, an
+     empty `DOCKET_HOME`, providers, sandbox and the pod recreated from the export in
+     `~/docket-reset-backup-20261024/fab-p47/export/` (the previous home, install and Fabulada's
+     `docket/fab-dev/*` branches are kept there), then `scripts/maint/live-dispatch-baseline.sh` and
+     `fab-p47/compare.py` against `internal-docs/baselines/phase-46/after/dispatch`: same final status,
+     transitions, hops and per-role control-flow events.
+  4. Delete the refactor tools: `scripts/maint/refactor/` (`analyze.py`, `move.py`, `hoist_imports.py`,
+     `plan_layers.py`, `docket-rules.toml`), `refactor/target-map.toml`, `scripts/maint/refactor_gate.sh`,
+     `tests/guards/test_refactor_*.py`, `tests/guards/fixtures/refactor/`, and every reference to them
+     (`rg -n "refactor_gate|maint/refactor|target-map"`). `tests/architecture/` is the durable record.
+  5. Archive this section, add the Phase 47 row to the ROADMAP phase table, update its Status, write the
+     `CHANGELOG.md` entry, and align `CONTRIBUTING.md`'s definition of done with ROADMAP §4.
+  6. Ask the maintainer to integrate `plan/phase-46-structure` into `develop` and push; the `no-sandbox`
+     CI job runs for the first time then (ROADMAP §7.1).
+- **Acceptance:** every clause of ADR 0030 §"Phase acceptance" is true, each named with its evidence in
+  the close commit's body.
+
+### M-1 — does a rephrased command pass the baseline policies?
+
+**Status:** DONE (2026-10-24: `d27ba3e8`, merge `7a7b31af`; 310 rows; findings by class folded into P47-12 step 3) · **Size:** S · **Model:** Sonnet · **Kind:**
+measurement (no `src/` change)
+
+- **Trigger:** the maintainer's request (2026-10-24) to plan from the comparison in
+  `internal-docs/strategy/competitive-and-yaml-2026-10-24.md`. Governance is docket's lead claim, and the
+  baseline policies match regular expressions over the command text
+  (`src/docket/templates/policies/block-destructive.yaml` is one long expression). A bypass has not been
+  demonstrated; an estimate does not schedule a fix, a measurement does.
+- **Goal:** for each policy in `src/docket/templates/policies/`, try at least five commands with the same
+  effect and different text (quoting, variables, `env`/`command` prefixes, `xargs`, `find -delete`,
+  here-docs, `base64 -d | sh`, `python -c`, `perl -e`, a script written then run) through the real path a
+  tool call takes (`dispatch_tool`: role denials, then `classify_command`, then the policies), in a
+  throwaway `DOCKET_HOME`, with isolation off and then on. Record per command the outcome (allowed,
+  asked, denied) and the layer that decided.
+- **Output:** `tests/fixtures/policy-corpus/corpus.yaml`, one row per command (`policy`, `command`,
+  `effect`, `isolation`, `outcome`, `layer`), committed as data; P47-12 turns it into its table test. The
+  worker's report lists every command allowed by all layers with a destructive effect, the policy it
+  should have matched, and why it did not; the integrator files it in `internal-docs/audits/`.
+- **Non-goals:** changing a policy, the classifier or the jail (P47-12 does that).
+- **Acceptance:** every baseline policy has at least five rows, each with its deciding layer; `git diff
+  --stat src/` is empty.
+

@@ -9,29 +9,27 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-24.** Every phase 0–46 is complete. **Phase 46** (organize by context and
-refactor by tool, D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md))
-closed 2026-10-23 on branch `plan/phase-46-structure` (unmerged, unpushed): `src/docket/` is
-`kernel`, twelve context packages, `interfaces/` and `bootstrap.py`; no module is over 700 lines;
-`tests/architecture/` holds the import contracts and the size and local-import ratchets at their
-recorded baselines (748 import exceptions, 20 local imports). The specs truth pass and Wave 120
-fixed 87 code defects first. A real run on `fab-dev` matches the pre-move baseline hop for hop and
-event for event and found one defect, a resuming sweep that re-claimed a refused task without
-pause, fixed at the root. **Phase 47** (the seams ADR 0030
-§"After Phase 46" names) runs on the same branch. Wave 1 (P47-1..P47-9, archived) shipped ports for
-git, processes, the jail, the tracer and the tool gate, `agent` as the turn engine, one writer of a
-task's `status`, pure gate decisions, one owner per test helper, and the layers contract (import
-baseline 748 -> 65 lines). The close-out (`TODO.md`) has merged P47-10..P47-13 and M-1 (2026-10-24):
-every module sits in the context whose data it reads (contract baseline 1 line, local imports 1, no
-cross-context private name), one authored YAML form per kind, no setting that silently does nothing,
-policies on the parsed command measured on a 310-row corpus, and the test refactor; the close's gates
-ran once. P47-15 fixed the four defects the close's first real run found on the live home (a sweep
-with nothing to claim wrote a run record, 85,540 empty records and 47 MB in a week with lock
-timeouts; tests wrote eight pods into the real home through a thread that missed the test's home,
-the same cached default that leaked state between test files; `docket stop` advised `kill -9` too
-early). The live install and home were reset (kept in `~/docket-reset-backup-20261024/`); what is
-left is P47-14's real run from a fresh install, done by the maintainer, and the close commit. Decisions
-waiting for the maintainer are in §7.1.
+**Last updated: 2026-10-24.** Every phase 0–47 is complete; no phase is active. **Phases 46 and 47**
+(organize by context and refactor by tool, D-66,
+[ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md)) closed on branch
+`plan/phase-46-structure`, which is not yet merged into `develop` nor pushed (§7.1). Phase 46
+(2026-10-23) moved `src/docket/` into `kernel`, the context packages, `interfaces/` and
+`bootstrap.py`, with no module over 700 lines. Phase 47 (2026-10-24) finished the structure: the
+contexts are layered (`platform < governance < agent < models < observability < pipeline < teams <
+sandbox < operator < tasks < hops`) and each module sits in the context whose data it reads (import
+contract baseline 748 -> 1 line, function-local imports 209 -> 1 named cycle, no cross-context
+private name); ports for git, processes, the jail, the tracer and the tool gate; one writer of a
+task's `status`; pure gate decisions; tests by context with one name per helper, no test importing
+another, no foreign private patch, no unit I/O, every file passing alone, and no test able to reach
+the developer's `~/.docket`. It also took the configuration findings of the 2026-10-24 comparison:
+one authored YAML form per kind, `maxReworkCycles` refused beside a bound pipeline, and `when.command`
+policies on the parsed command, measured on a 310-row corpus (82 bypasses now ask; what still passes
+carries one of five named limits). The close's first real run on the live home found four defects
+(an idle sweep writing a run record each tick, 85,540 empty records and 47 MB in a week; eight test
+pods in the real home; state leaking between test files; `docket stop` advising `kill -9` early),
+fixed the same day; the maintainer's second real run, from a fresh install and an empty home,
+matches the Phase 46 baseline hop for hop, event for event and diff for diff. Decisions waiting for
+the maintainer are in §7.1.
 Phase 45 (a prepared task worktree, model
 limits from the provider, protected paths, approvals per team; D-65,
 [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md))
@@ -89,6 +87,7 @@ until the project drops its beta warning.
 | 44 | Context in layers and a budget that counts new tokens: replay bench, new-token budget, bounded tool output, condensed history, delivered handoffs, cache-ordered prompt, governed pod memory | D-64 · [0028](docs/adr/0028-context-in-layers-and-a-budget-that-counts-new-tokens.md) | 2026-10-18 |
 | 45 | A prepared checkout, models from the provider, and a check the change cannot define: install from the lockfile with a cache, limits from `/models`, protected paths that park for a person, approvals per (codebase, pod) | D-65 · [0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md) | 2026-10-20 |
 | 46 | Organize by context, refactor by tool: `kernel/` and `Home`, import contracts as tests, one owner of a task's state, the runtime as a package, scripts for every mechanical step | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-23: contexts, splits, route table, `bootstrap.py`, architecture ratchets; real run matches the baseline; ports, state owner and test restructure are Phase 47 |
+| 47 | The seams: layered contexts with each module where its data lives, ports for git, processes, the jail, the tracer and the tool gate, one state owner, tests by context, one authored config form, policies on the parsed command | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-24: import baseline 1 line, local imports 1, corpus-measured policies, live-home defects fixed; fresh-install real run matches the Phase 46 baseline |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -353,27 +352,23 @@ address exactly those.
 
 ## 7.1 Decisions waiting for the maintainer (2026-10-24)
 
-> Engineering follow-ups with triggers live on `TODO.md` §"FOLLOW-UPS WITH TRIGGERS"; Phase 47's
-> remaining work is the close-out section there. These entries need a decision, not a trigger.
+> Engineering follow-ups with triggers live on `TODO.md` §"FOLLOW-UPS WITH TRIGGERS". These entries
+> need a decision, not a trigger.
 
 - **Integrate `plan/phase-46-structure` (Phases 46-47) into `develop` and push.** Until then the
-  `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at P47-14.
-- **The default tool set, only if it has to change.** `agent/tools/builtin_tools.py` registers `skill`
-  and `consult`, which import `hops.workspace.skills` and `tasks.application.consult` (the two `agent`
-  exceptions). P47-11 moves the module to composition in `hops` and keeps the set identical; a decision
-  is needed only if it cannot.
+  `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at the Phase 47 close (2026-10-24).
 - **Positioning against governance the coding agents now ship** (Claude Code hooks and managed settings,
   Codex CLI approval gates and OS sandboxing; secondary sources in
   `internal-docs/strategy/competitive-and-yaml-2026-10-24.md`). What docket still claims as distinct:
   one chokepoint across tools, capability denials, a hash-chained audit log, an embeddable runtime,
   team configuration in the repository. No independent benchmark exists on the same task; no public
   comparison before one does. M-1 measured the policy half of the claim (`tests/fixtures/policy-corpus/`,
-  2026-10-24), and P47-12 acts on what text parsing can fix.
+  2026-10-24), and P47-12 fixed what text parsing can (82 bypasses now ask).
 - **The isolation default, with M-1's evidence.** With isolation off (the default since D-56) an
   allowlisted interpreter runs any code: `python3 -c` with string concatenation removed a tree, wrote
   `.env` and `.ssh/authorized_keys` and pushed to `main` with every layer allowing it, and a script
   written then run does the same. No policy or parser can close that; only the jail contains it. Options:
-  keep opt-in and state the limit (P47-12 writes it into the security spec), take interpreters off the
+  keep opt-in and state the limit (the security spec states it since P47-12), take interpreters off the
   allowlist when unjailed (agents lose `python -c` and `pytest` without an ask), or make isolation the
   default again (reverses D-56). Summary by class in `internal-docs/audits/policy-corpus-2026-10-24.md`.
 - **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters and the adoption
