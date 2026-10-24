@@ -35,9 +35,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from docket.agent.tools.builtins.toolbox import ToolOutcome, text_outcome
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.tool_outcome import ToolOutcome, text_outcome
 
 _USER_AGENT = "docket-fetch/1"
 # A caller's per-call timeout is clamped to this multiple of FETCH_TIMEOUT_S.

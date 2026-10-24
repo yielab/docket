@@ -5,7 +5,6 @@ from collections.abc import Callable
 from typing import Any
 
 from docket.agent.tools.builtins import toolbox
-from docket.agent.tools.builtins.toolbox import ToolOutcome as ToolOutcome
 from docket.agent.tools.registry import (
     Tool,
     ToolContext,
@@ -16,6 +15,8 @@ from docket.agent.tools.screening import screen_tool_result
 from docket.hops.workspace import skills as _skills
 from docket.kernel.gate import CONSULT_TOOL
 from docket.kernel.home import current_home
+from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
+from docket.kernel.tool_outcome import text_outcome
 from docket.platform import fetch_url
 from docket.tasks.application import consult as _consult
 
@@ -61,7 +62,7 @@ def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
             outcome = (
                 ToolOutcome(False, error=f"not a file: {skill_path}")
                 if text is None
-                else toolbox.text_outcome(text)
+                else text_outcome(text)
             )
     else:
         outcome = toolbox.read_file((skill.directory,), skill_path)

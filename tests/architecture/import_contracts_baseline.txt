@@ -295,7 +295,6 @@ application imports kernel, its own context and other contexts' __init__ | docke
 application imports kernel, its own context and other contexts' __init__ | docket.teams.utils -> docket.models.selection
 adapters, platform and sandbox import kernel, own context, ports and domain types | docket.models.adapters.openai_http -> docket.governance.secrets
 adapters, platform and sandbox import kernel, own context, ports and domain types | docket.operator.adapters.telegram -> docket.interfaces.telegram.client
-adapters, platform and sandbox import kernel, own context, ports and domain types | docket.platform.fetch -> docket.agent.tools.builtins.toolbox
 agent imports kernel only | docket.agent.tools.builtin_tools -> docket.hops.workspace.skills
 agent imports kernel only | docket.agent.tools.builtin_tools -> docket.tasks.application.consult
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.governance.policy
