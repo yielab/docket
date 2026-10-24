@@ -15,6 +15,7 @@ from docket.hops.application.report import unpriced_text
 from docket.hops.application.usage import aggregate_cost, cost_history, gating_cost, last_activity
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import contract as _contract
+from docket.interfaces.cli.commands import service as _service
 from docket.interfaces.cli.commands.setup_sandbox import (
     _off_label,
     print_sandbox_block,
@@ -56,7 +57,6 @@ def _last_activity_or_never(agent_id: str) -> str:
 
 def _start_running() -> bool:
     """True when ``docket start`` is running (the service's own pid-file check)."""
-    from docket.interfaces.cli.commands import service as _service
 
     return _service.is_running()
 

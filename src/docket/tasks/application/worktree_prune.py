@@ -9,6 +9,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.platform import read_json, read_modify_write
+from docket.tasks.application.queue import RESUMABLE_FAILURE_KINDS as resumable
 from docket.teams import pod
 from docket.teams.task_worktrees import task_worktrees_dir, worktree_branch
 
@@ -106,7 +107,6 @@ def prune_task_worktrees(
     dirty worktree or unmerged branch is kept and reported; *force* removes the worktree but
     never deletes an unmerged branch. A failed task ``dispatch --resume`` would re-claim keeps its
     worktree."""
-    from docket.tasks.application.queue import RESUMABLE_FAILURE_KINDS as resumable
 
     raw = read_json(_task_list_file(project))
     tasks = raw.get("tasks") if isinstance(raw, dict) else None

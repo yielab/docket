@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import docket.kernel.templates as _templates
+from docket.governance import review as _reviewed
 from docket.governance.review import RunItem
 from docket.kernel.home import current_home
 from docket.pipeline.domain import spec as _pipeline
@@ -184,7 +185,6 @@ def review_decision(
     """Whether *directory*'s run-on-this-machine items are cleared by the shipped-recipe
     exemption, a set *project* remembered for *repo_root*, or the matching *accept* code.
     Read-only."""
-    from docket.governance import review as _reviewed
 
     empty = PlanReview((), ())
     if is_shipped_recipe(directory):
@@ -212,7 +212,6 @@ class RunChange:
 def runs_changed(project: str, repo_dir: Path) -> tuple[RunChange, ...]:
     """The run-on-this-machine items of *repo_dir* that differ from the latest set *project*
     remembered for its repository (every item when none was remembered)."""
-    from docket.governance import review as _reviewed
 
     found = _reviewed.lookup(repo_root(repo_dir), project)
     was = {(i.kind, i.name): i.runs for i in found.items} if found else {}
