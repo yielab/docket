@@ -54,7 +54,6 @@ _NONE = SandboxAvailability(backend="none", docker=False)
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

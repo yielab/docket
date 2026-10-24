@@ -53,7 +53,6 @@ API_META: dict[str, Any] = {
 
 @pytest.fixture(autouse=True)
 def hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
@@ -65,13 +64,11 @@ def hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def trace_on_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
 @pytest.fixture(autouse=True)
 def hermetic_trace_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
@@ -82,7 +79,6 @@ def hermetic_trace_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterat
 
 @pytest.fixture(autouse=True)
 def hermetic_no_tty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setattr(_contract, "is_tty", lambda: False)
     home = tmp_path / "home"
     (home / "workspaces" / "projects").mkdir(parents=True)

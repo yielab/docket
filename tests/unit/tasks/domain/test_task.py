@@ -63,7 +63,6 @@ class TestHopEvents:
         with use_home(Home(home)):
             record_isolation_off(home)
             build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
-            monkeypatch.setenv("DOCKET_NO_TRACE", "0")
             backend = _ScriptedBackend(["lead plan", "implementer done"])
             driver = _drt.DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_drt, "default_driver", lambda: driver)

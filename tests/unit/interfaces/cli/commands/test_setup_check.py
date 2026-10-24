@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.fakes import landlock_host
 from tests.support.home import point_config_at as _point_config_at
 from tests.support.pods import build_pod
 from tests.support.pods import seed_setup_check_home as _seed
@@ -189,8 +190,7 @@ class TestJsonCoversEveryTextCheck:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        with _point_config_at(home):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        with _point_config_at(home), landlock_host():
             _channel.enable_channel("desktop")
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home

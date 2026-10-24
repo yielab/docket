@@ -59,9 +59,11 @@ def test_a_bad_network_word_is_a_usage_error_and_writes_nothing(tmp_path: Path) 
         assert _bytes(current_home().fleet_file) == fleet_before
 
 
-def test_json_status_reports_the_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_json_status_reports_the_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bind_launcher: Callable[..., Launcher]
+) -> None:
     with _fresh_home(tmp_path):
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        bind_launcher(landlock=False, seatbelt=False)
 
         result = _runner.invoke(app, ["setup", "sandbox", "status", "--json"])
 
@@ -70,10 +72,10 @@ def test_json_status_reports_the_backend(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_isolate_on_without_a_backend_fails_and_writes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bind_launcher: Callable[..., Launcher]
 ) -> None:
     with _fresh_home(tmp_path):
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        bind_launcher(landlock=False, seatbelt=False)
         fleet_before = _bytes(current_home().fleet_file)
 
         assert _setup_sandbox.isolate("on") == 1

@@ -93,8 +93,6 @@ class TestDispatchVerifyCwd:
 
     @pytest.fixture(autouse=True)
     def _hermetic(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-        monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-        monkeypatch.setenv("DOCKET_NO_TRACE", "0")
         monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
 
         home = tmp_path / ".docket"
@@ -186,7 +184,6 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     with use_home(Home(home)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         yield home

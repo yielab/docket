@@ -48,7 +48,6 @@ CALL = {"command": "git push origin feature"}
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     build_pod(PROJECT, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{PROJECT}")
 
 

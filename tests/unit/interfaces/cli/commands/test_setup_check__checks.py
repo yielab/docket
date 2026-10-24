@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from docket.interfaces.cli.commands import setup_check_providers as _setup_check
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services
 from docket.kernel.home import current_home, use_home
 from docket.kernel.ports import SandboxAvailability
+from docket.sandbox.launch import Launcher
 
 SUBJECT = "docket.interfaces.cli.commands.setup_check"
 
@@ -320,10 +322,14 @@ class TestChecks:
             assert "Tool-call gate: always active" in out
 
     def test_isolation_is_off_by_default_and_needs_no_backend(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _seed(tmp_path, monkeypatch):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+            bind_launcher(landlock=False, seatbelt=False)
             issues = _setup_check_services._check_security_gates()
             out = capsys.readouterr().out
             assert issues == 0
@@ -333,10 +339,14 @@ class TestChecks:
             assert _setup_check._check_json_security()["isolation"] == "off (default)"
 
     def test_the_default_network_is_reported_as_not_enforced_while_isolation_is_off(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _seed(tmp_path, monkeypatch):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+            bind_launcher(landlock=True)
             _setup_check_services._check_security_gates()
             line = next(ln for ln in capsys.readouterr().out.splitlines() if "Network:" in ln)
             assert "not enforced: isolation off" in line
@@ -346,25 +356,33 @@ class TestChecks:
             assert security["networkEnforced"] is False
 
     def test_pods_and_no_usable_backend_is_an_issue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _seed(tmp_path, monkeypatch):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+            bind_launcher(landlock=False, seatbelt=False)
             base = _setup_check._check_json()["issues"]
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+            bind_launcher(landlock=True)
             usable = _setup_check._check_json()
             assert base == usable["issues"] + 1
             assert usable["checks"]["securityGates"]["sandboxUsable"] is True
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+            bind_launcher(landlock=False, seatbelt=False)
             assert _setup_check_services._check_security_gates(["myshop"]) == 1
             assert "no usable sandbox backend" in capsys.readouterr().out
 
     def test_security_gates_names_the_backend_a_turn_would_use(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+            bind_launcher(landlock=True)
             _setup_check_services._check_security_gates()
             assert "Workspace isolation: on, backend landlock" in capsys.readouterr().out
             assert _setup_check._check_json_security() == {
@@ -378,11 +396,15 @@ class TestChecks:
             }
 
     def test_security_gates_reports_the_refusal_when_no_backend(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _seed(tmp_path, monkeypatch):
             _isolation_on()
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+            bind_launcher(landlock=False, seatbelt=False)
             _setup_check_services._check_security_gates()
             out = capsys.readouterr().out
             assert "turns will be refused" in out

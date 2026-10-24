@@ -61,8 +61,6 @@ def _init_repo(path: Path, lock: str = _LOCK) -> None:
 
 @pytest.fixture(autouse=True)
 def npm_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
     bin_dir = tmp_path / "fakebin"
     bin_dir.mkdir()
     npm = bin_dir / "npm"

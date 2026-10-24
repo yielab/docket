@@ -31,7 +31,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
-from tests.support.fakes import FakeDriver
+from tests.support.fakes import FakeDriver, landlock_host
 from tests.support.home import point_config_at, record_isolation_off
 
 
@@ -525,8 +525,7 @@ def seed_setup_check_home(
         sfile.write_text(json.dumps(secrets))
         sfile.chmod(0o600)
 
-    with point_config_at(home):
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+    with point_config_at(home), landlock_host():
         if notify:
             _channel.enable_channel("desktop")
         yield home

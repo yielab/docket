@@ -1,61 +1,6 @@
 # Offenders of the suite-shape ratchets in test_suite_shape.py. A count may only fall; a line
-# whose file no longer offends is deleted. Format: <kind> <path under tests/> [<count>].
-setenv integration/agent/test_bash_cancellation.py 1
-setenv integration/agent/test_mcp_stdio_jail.py 6
-setenv integration/agent/test_mcp_stdio_root.py 2
-setenv integration/agent/test_sandboxed_exec.py 21
-setenv integration/governance/test_approve_task_grant.py 1
-setenv integration/governance/test_audit_approval_parity.py 1
-setenv integration/governance/test_gates_policies_approve_deny.py 4
-setenv integration/governance/test_lights_out_profile.py 1
-setenv integration/governance/test_trace_audit.py 2
-setenv integration/hops/driver/test_wiring.py 2
-setenv integration/hops/test_otlp_export.py 1
-setenv integration/hops/test_task_prepare.py 4
-setenv integration/hops/test_verify_gate.py 2
-setenv integration/hops/test_verify_gate_cwd_resolution.py 3
-setenv integration/interfaces/test_edit_snapshot.py 1
-setenv integration/interfaces/test_init_status_and_removed_names.py 1
-setenv integration/interfaces/test_install.py 1
-setenv integration/interfaces/test_pod_memory_controls.py 2
-setenv integration/interfaces/test_serve_dispatch_webhook.py 1
-setenv integration/interfaces/test_serve_inbox_options.py 1
-setenv integration/interfaces/test_serve_reattach.py 1
-setenv integration/interfaces/test_serve_stop_signals.py 1
-setenv integration/models/llm_port/test_transport.py 9
-setenv integration/models/test_provider_agnosticism.py 1
-setenv integration/product/smoke/test_delegation_and_classifier.py 1
-setenv integration/sandbox/test_escape_matrix.py 2
-setenv integration/sandbox/test_network_lockdown.py 2
-setenv integration/sandbox/test_task_credentials.py 7
-setenv integration/tasks/dispatch/test_recovery.py 1
-setenv integration/tasks/test_consult_park.py 1
-setenv integration/tasks/test_envelope_commands.py 3
-setenv integration/tasks/test_pod_rules_every_screen.py 1
-setenv integration/teams/test_base_commit_repo_files.py 1
-setenv unit/governance/test_secrets.py 2
-setenv unit/interfaces/cli/commands/test_agents.py 1
-setenv unit/interfaces/cli/commands/test_contract.py 2
-setenv unit/interfaces/cli/commands/test_setup_check.py 1
-setenv unit/interfaces/cli/commands/test_setup_check__checks.py 7
-setenv unit/interfaces/cli/commands/test_setup_model_credentials.py 2
-setenv unit/interfaces/cli/commands/test_setup_notify.py 4
-setenv unit/interfaces/cli/commands/test_setup_sandbox.py 5
-setenv unit/interfaces/cli/commands/test_status.py 3
-setenv unit/interfaces/cli/commands/test_task.py 1
-setenv unit/interfaces/cli/render/test_ui.py 1
-setenv unit/interfaces/http/test_server__auth.py 6
-setenv unit/interfaces/http/test_server__notify_posture.py 1
-setenv unit/interfaces/http/test_server__telegram_and_keys.py 3
-setenv unit/observability/test_trace.py 3
-setenv unit/operator/adapters/test_ntfy__desktop__email.py 6
-setenv unit/platform/test_process.py 11
-setenv unit/sandbox/test_landlock.py 2
-setenv unit/sandbox/test_launch.py 5
-setenv unit/sandbox/test_seatbelt.py 2
-setenv unit/tasks/application/test_queue.py 1
-setenv unit/tasks/domain/test_task.py 1
-setenv unit/test_bootstrap.py 1
+# whose file no longer offends is deleted. Format: <kind> <path under tests/> [<count>] [# why it stays]. A setenv entry stays
+# only where the environment variable is what the file tests or forces; Home does not hold it.
 json_output integration/interfaces/test_delete_bind_unbind.py 2
 json_output integration/interfaces/test_init_leaves_alone.py 1
 json_output integration/interfaces/test_init_refuses_unstorable.py 3
@@ -74,3 +19,41 @@ json_output unit/interfaces/cli/commands/test_setup_sandbox.py 2
 json_output unit/interfaces/cli/commands/test_setup_shell.py 3
 json_output unit/interfaces/cli/commands/test_status.py 5
 json_output unit/interfaces/cli/commands/test_task.py 13
+setenv integration/agent/test_bash_cancellation.py 1  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/agent/test_mcp_stdio_jail.py 6  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/agent/test_mcp_stdio_root.py 2  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees
+setenv integration/agent/test_sandboxed_exec.py 21  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv integration/governance/test_audit_approval_parity.py 1  # kill switch read live from the process environment
+setenv integration/governance/test_trace_audit.py 2  # kill switch read live from the process environment
+setenv integration/hops/driver/test_wiring.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/hops/test_otlp_export.py 1  # kill switch read live from the process environment
+setenv integration/hops/test_task_prepare.py 2  # the PATH or HOME a spawned binary or jail sees
+setenv integration/hops/test_verify_gate.py 2  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_edit_snapshot.py 1  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_init_status_and_removed_names.py 1  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_install.py 1  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_pod_memory_controls.py 1  # CLI environment switch read outside Home
+setenv integration/models/llm_port/test_transport.py 9  # environment credentials and passthrough: the sourcing under test
+setenv integration/models/test_provider_agnosticism.py 1  # the PATH or HOME a spawned binary or jail sees
+setenv integration/sandbox/test_escape_matrix.py 2  # sandbox backend override read from the process environment by the real jail adapter; environment credentials and passthrough: the sourcing under test
+setenv integration/sandbox/test_network_lockdown.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/sandbox/test_task_credentials.py 7  # environment credentials and passthrough: the sourcing under test
+setenv integration/tasks/dispatch/test_recovery.py 1  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/tasks/test_envelope_commands.py 3  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees
+setenv unit/governance/test_secrets.py 2  # environment credentials and passthrough: the sourcing under test
+setenv unit/interfaces/cli/commands/test_contract.py 2  # CLI environment switch read outside Home
+setenv unit/interfaces/cli/commands/test_setup_model_credentials.py 2  # secrets backend read live from the process environment; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/interfaces/cli/commands/test_setup_notify.py 4  # secrets backend read live from the process environment; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/interfaces/cli/commands/test_setup_sandbox.py 3  # the PATH or HOME a spawned binary or jail sees
+setenv unit/interfaces/cli/commands/test_task.py 1  # CLI environment switch read outside Home
+setenv unit/interfaces/cli/render/test_ui.py 1  # CLI environment switch read outside Home
+setenv unit/interfaces/http/test_server__auth.py 6  # pinned serve token read from the process environment by bootstrap
+setenv unit/interfaces/http/test_server__notify_posture.py 1  # pinned serve token read from the process environment by bootstrap
+setenv unit/interfaces/http/test_server__telegram_and_keys.py 3  # pinned serve token read from the process environment by bootstrap
+setenv unit/observability/test_trace.py 3  # kill switch read live from the process environment; environment credentials and passthrough: the sourcing under test
+setenv unit/operator/adapters/test_ntfy__desktop__email.py 6  # the PATH or HOME a spawned binary or jail sees
+setenv unit/platform/test_process.py 11  # kill switch read live from the process environment; secrets backend read live from the process environment; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/sandbox/test_landlock.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv unit/sandbox/test_launch.py 5  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/sandbox/test_seatbelt.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv unit/test_bootstrap.py 1  # pinned serve token read from the process environment by bootstrap

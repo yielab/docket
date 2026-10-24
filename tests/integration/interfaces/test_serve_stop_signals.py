@@ -102,7 +102,6 @@ _TWO = "name: two\nsteps:\n  - kickoff: lead\n  - assemble: implementer\n"
 
 @pytest.fixture()
 def sweep_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

@@ -352,7 +352,6 @@ class TestBaseRefRefusedAtClaim:
     def test_the_refusal_is_traced_as_dispatch_refused_naming_the_ref(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("DOCKET_NO_TRACE", "0")
         _seed_lean_pod("myapp")
         _queue.enqueue_task_once("myapp", "needs a base", channel="cli")
         queue = _queue.read_tasks("myapp")
