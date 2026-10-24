@@ -43,16 +43,16 @@ _HOP_FINISHED_KEYS = _HOP_STARTED_KEYS | {"ok", "verdict", "gate", "usage", "dur
 
 
 class TestHopEvents:
-    def test_hop_record_round_trips_model_and_provider(self) -> None:
+    def test_a_hop_dump_round_trips_model_and_provider(self) -> None:
         """A hop's model and provider survive the persisted record; an old record reads them empty."""
         hop = _task.HopResult(
             role="lead", member_id="m", ok=True, model="local/x", provider="local"
         )
-        rec = _record.hop_record(hop)
+        rec = hop.model_dump(by_alias=True, mode="json")
         assert (rec["model"], rec["provider"]) == ("local/x", "local")
-        back = _record.hop_from_record(rec)
+        back = _task.HopResult.model_validate(rec)
         assert (back.model, back.provider) == ("local/x", "local")
-        old = _record.hop_from_record({"role": "lead"})
+        old = _task.HopResult.model_validate({"role": "lead"})
         assert (old.model, old.provider) == ("", "")
 
     def test_a_two_hop_run_pairs_hop_events_and_sums_task_usage(
@@ -423,7 +423,7 @@ class TestTaskRecord:
         assert "timeoutS" not in dumped["gate"]
         assert "deniedTools" not in dumped["restrictions"]
 
-    def test_a_hop_is_stored_as_the_hop_record(self) -> None:
+    def test_a_hop_is_stored_as_its_alias_dump(self) -> None:
         hop = _task.HopResult(role="lead", member_id="m", ok=True, output="plan")
         dumped = _dump(_task.TaskRecord(description="x", hops=[hop]))
         assert dumped["hops"] == [hop.model_dump(by_alias=True, mode="json")]

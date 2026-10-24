@@ -34,7 +34,6 @@ from docket.kernel.home import Home, use_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _plan
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 
 _hermetic = _support_home.trace_on_env
@@ -146,18 +145,18 @@ class TestHopResultArtifactBackfill:
 
 
 class TestHopRecordRoundTrip:
-    def test_hop_record_persists_and_restores_artifact_exactly(self) -> None:
+    def test_a_hop_dump_persists_and_restores_artifact_exactly(self) -> None:
         art = _handoff.HandoffArtifact(summary="s", verdict="fail", files_changed=["x.py"])
         hop = _task.HopResult(
             role="tester", member_id="demo-tester", ok=True, output="s", artifact=art
         )
-        rec = _record.hop_record(hop)
+        rec = hop.model_dump(by_alias=True, mode="json")
         assert rec["artifact"] == art.model_dump()
         # verification_skipped is a this-run-only signal, not part of the
         # durable record (see HopResult's own docstring) -- not persisted.
         assert "verification_skipped" not in rec
 
-        restored = _record.hop_from_record(rec)
+        restored = _task.HopResult.model_validate(rec)
         assert restored.artifact == art
 
     def test_a_record_with_no_artifact_key_degrades_to_summary(self) -> None:
@@ -172,7 +171,7 @@ class TestHopRecordRoundTrip:
             "attempts": 1,
             "stepId": "implementer",
         }
-        restored = _record.hop_from_record(rec)
+        restored = _task.HopResult.model_validate(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "old raw text"
         assert restored.artifact.verdict is None
@@ -186,7 +185,7 @@ class TestHopRecordRoundTrip:
             "output": "raw",
             "artifact": {"not": "a valid HandoffArtifact shape"},
         }
-        restored = _record.hop_from_record(rec)
+        restored = _task.HopResult.model_validate(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "raw"
 
@@ -198,7 +197,7 @@ class TestHopRecordRoundTrip:
             "output": "raw",
             "artifact": None,
         }
-        restored = _record.hop_from_record(rec)
+        restored = _task.HopResult.model_validate(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "raw"
 
@@ -215,7 +214,7 @@ class TestHopRecordRoundTrip:
             "attempts": 1,
             "stepId": "implementer",
         }
-        restored = _record.hop_from_record(rec)
+        restored = _task.HopResult.model_validate(rec)
         assert restored.verify is None
         assert restored.evidence is None
 
@@ -230,11 +229,11 @@ class TestHopRecordRoundTrip:
             verify=verify,
             evidence=evidence,
         )
-        rec = _record.hop_record(hop)
+        rec = hop.model_dump(by_alias=True, mode="json")
         assert rec["verify"] == verify
         assert rec["evidence"] == evidence
 
-        restored = _record.hop_from_record(rec)
+        restored = _task.HopResult.model_validate(rec)
         assert restored.verify == verify
         assert restored.evidence == evidence
 
@@ -448,8 +447,8 @@ class TestDispatchBuildsTypedArtifacts:
             ]
             # Round-trip through the persisted-record shape, exactly like a real
             # crash-and-`--resume` would load them from TASK_LIST.json.
-            records = [_record.hop_record(h) for h in prior_hops]
-            resumed_hops = [_record.hop_from_record(r) for r in records]
+            records = [h.model_dump(by_alias=True, mode="json") for h in prior_hops]
+            resumed_hops = [_task.HopResult.model_validate(r) for r in records]
 
             real_parse_verdict = _plan.parse_verdict
 

@@ -9,18 +9,15 @@ from typing import Any, Literal
 from docket.agent import ports as _rd
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
-from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.platform import PARK_TOKEN_PREFIX, parked_question, read_modify_write
-from docket.tasks.domain.task import HopResult
-from docket.teams import agent_memory as _mem
+from docket.platform import PARK_TOKEN_PREFIX, parked_question
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
-from docket.teams import pod as _pod
-from docket.teams.settings import pod_task_list_path
 from docket.teams.workspace.worktree import hop_diff_probe
 
 # Injectable runner for tests (matches the RuntimeDriver port's ``run_turn`` signature). The
@@ -59,19 +56,6 @@ def hop_env(member_id: str, role: str) -> dict[str, str] | None:
         "DOCKET_PORT_COUNT": port_count,
         "DOCKET_SCRATCH_DIR": scratch_dir,
     }
-
-
-def hop_record(h: HopResult) -> dict[str, Any]:
-    """Persisted shape of one hop (round-trips via ``hop_from_record``; pod-dispatch.spec.md,
-    "Structured handoff artifacts" and "Hop evidence"): the hop model's own dump."""
-    return h.model_dump(by_alias=True, mode="json")
-
-
-def hop_from_record(rec: dict[str, Any]) -> HopResult:
-    """Reconstruct a HopResult from a persisted hop record (for resume). A missing or invalid
-    ``artifact``, ``verify``, ``evidence``, ``usage``, ``trace`` or ``repoFiles`` degrades each to
-    its own default -- see pod-dispatch.spec.md ("Structured handoff artifacts", "Hop evidence")."""
-    return HopResult.model_validate({**rec, "stepId": rec.get("stepId") or rec.get("role", "")})
 
 
 @dataclass
@@ -567,31 +551,16 @@ def persist_hop_and_trace(
 def persist_hop(project: str, task_id: str, hop: HopResult) -> None:
     """Append one just-completed hop to the task's record, called after every hop (not only
     at task end) so a crash loses at most the in-flight hop. Also refreshes ``claimedAt``,
-    re-syncs the HEARTBEAT.md ledger, and touches the hop agent's tracked conversation, if any
-    -- see pod-dispatch.spec.md ("Conversation registry auto-population"); a no-op if unwired."""
+    re-syncs the HEARTBEAT.md ledger (the repository does), and touches the hop agent's tracked
+    conversation, if any -- see pod-dispatch.spec.md ("Conversation registry auto-population");
+    a no-op if unwired. A task no longer in the queue persists nothing."""
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if t.get("id") == task_id:
-                hops = t.get("hops")
-                if not isinstance(hops, list):
-                    hops = []
-                hops.append(hop_record(hop))
-                t["hops"] = hops
-                t["costUsd"] = round(sum(float(h.get("costUsd", 0.0) or 0.0) for h in hops), 6)
-                t["claimedAt"] = _clock.iso()
-                return {"tasks": tasks}
-        return None  # task no longer in the queue — nothing to persist
+    def _append(record: TaskRecord) -> None:
+        record.hops.append(hop)
+        record.cost_usd = round(sum(h.cost_usd for h in record.hops), 6)
+        record.claimed_at = _clock.iso()
 
-    doc = read_modify_write(pod_task_list_path(project), _fn)
-    tasks_after = doc.get("tasks")
-    lead_id = _pod.member_id(project, "lead")
-    _mem.sync_dispatch_tasks(
-        current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
-    )
-
+    TaskRepository.for_pod(project).update(task_id, _append)
     _conv.touch_for_hop_durable(
         agent_id=hop.member_id, task_ref=task_id, last_message=hop.output, now=_clock.iso()
     )

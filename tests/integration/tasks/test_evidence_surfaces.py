@@ -23,7 +23,6 @@ from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import evidence as _ev
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
@@ -41,14 +40,14 @@ def _seed(tmp_path: Path) -> Iterator[str]:
     with use_home(dataclasses.replace(Home(home), approvals_dir_override=approvals)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         task = _queue.enqueue_task_once("demo", "evidence please", channel="cli")[0]
-        hop = _record.hop_record(
+        hop = (
             _task.HopResult(
                 role="implementer",
                 member_id="demo-implementer",
                 ok=True,
                 verify={"cmd": "true", "exitCode": 0, "durationS": 0.1, "outputTail": ""},
             )
-        )
+        ).model_dump(by_alias=True, mode="json")
         path = _settings.pod_task_list_path("demo")
         raw = json.loads(path.read_text())
         for t in raw["tasks"]:

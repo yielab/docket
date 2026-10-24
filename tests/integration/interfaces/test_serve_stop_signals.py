@@ -24,7 +24,6 @@ from docket.interfaces.http import server as _server
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import record as _record
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
@@ -178,7 +177,7 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
                     "pipeline": "two",
                     "claimPid": 2**22 + 12345,
                     "claimedAt": _clock.iso(),
-                    "hops": [_record.hop_record(hop)],
+                    "hops": [hop.model_dump(by_alias=True, mode="json")],
                 }
             ]
         )

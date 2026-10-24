@@ -4,5 +4,3 @@ hops/application/answers.py
 hops/application/executor.py
 hops/application/interruptions.py
 tasks/application/actions.py
-tasks/application/record.py
-tasks/domain/task.py

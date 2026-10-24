@@ -38,7 +38,6 @@ from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import record as _record
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
@@ -219,7 +218,7 @@ def _locate_parked_step(
     persisted position no longer matches *question*'s own step."""
     hops_raw = t.get("hops")
     prior_hops = [
-        _record.hop_from_record(h)
+        _task.HopResult.model_validate(h)
         for h in (hops_raw if isinstance(hops_raw, list) else [])
         if isinstance(h, dict)
     ]
@@ -260,7 +259,7 @@ def _apply_route_outcome(
     )
     hops_raw = t.get("hops")
     new_hops = list(hops_raw) if isinstance(hops_raw, list) else []
-    new_hops.append(_record.hop_record(hop))
+    new_hops.append(hop.model_dump(by_alias=True, mode="json"))
     t["hops"] = new_hops
 
     if terminal in ("failed", "done"):

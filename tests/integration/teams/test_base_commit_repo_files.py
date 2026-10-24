@@ -206,7 +206,7 @@ def test_a_file_absent_at_the_base_commit_is_absent_whatever_the_worktree_holds(
         assert "MARKER-EVIL-SKILL" not in prompt
 
 
-def test_the_hop_records_each_composed_repository_file_with_its_sha256(
+def test_each_composed_repository_file_is_recorded_on_the_hop_with_its_sha256(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with _setup(tmp_path, monkeypatch):

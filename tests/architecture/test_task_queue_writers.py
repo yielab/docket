@@ -2,9 +2,7 @@
 
 A pod's queue is ``TASK_LIST.json`` in its Lead's workspace. Every module that reaches it with
 ``pod_task_list_path(`` and a store call (``read_modify_write(`` or ``read_json(``) is a second
-door beside ``TaskRepository``, and every module that defines the dict helpers
-(``_normalize_task``, ``hop_record``, ``hop_from_record``) keeps the dict shape alive. Each is
-listed in ``task_queue_writers_baseline.txt``. The list only shrinks: a module not listed fails
+door beside ``TaskRepository``. Each is listed in ``task_queue_writers_baseline.txt``. The list only shrinks: a module not listed fails
 here, and a listed module that no longer matches must be deleted from the file (one path per
 line) in the commit that moves its last caller.
 """
@@ -21,24 +19,19 @@ SRC = REPO / "src" / "docket"
 BASELINE = Path(__file__).with_name("task_queue_writers_baseline.txt")
 QUEUE_PATH = "pod_task_list_path"
 STORE_CALLS = frozenset({"read_modify_write", "read_json"})
-DICT_HELPERS = frozenset({"_normalize_task", "hop_record", "hop_from_record"})
 
 
 def reasons(source: str) -> list[str]:
-    """Why *source* is a task queue writer: the dict helpers it defines, and the queue path it
-    names beside a store call. Empty when it is neither."""
+    """Why *source* is a task queue writer: it names the queue path beside a store call. Empty
+    when it does not."""
     called: set[str] = set()
-    defined: set[str] = set()
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Call):
             func = node.func
             called.add(func.id if isinstance(func, ast.Name) else getattr(func, "attr", ""))
-        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            defined.add(node.name)
-    found = sorted(f"defines {name}" for name in defined & DICT_HELPERS)
     if QUEUE_PATH in called and called & STORE_CALLS:
-        found.append(f"{QUEUE_PATH} with {sorted(called & STORE_CALLS)[0]}")
-    return found
+        return [f"{QUEUE_PATH} with {sorted(called & STORE_CALLS)[0]}"]
+    return []
 
 
 def writers_in_tree() -> set[str]:
@@ -91,7 +84,5 @@ def test_the_scan_sees_a_planted_writer() -> None:
     assert reasons("import m\ndef f(p):\n    m.read_json(m.pod_task_list_path(p))\n") == [
         "pod_task_list_path with read_json"
     ]
-    assert reasons("def _normalize_task(t):\n    return t\n") == ["defines _normalize_task"]
-    assert reasons("def hop_record(h):\n    return {}\n") == ["defines hop_record"]
     assert reasons("def f(p):\n    return pod_task_list_path(p)\n") == []
     assert reasons("def f(p):\n    return read_json(p)\n") == []

@@ -232,7 +232,7 @@ class TestPrivacyAllowlist:
         json.dumps(content)  # still a valid string to re-encode
 
 
-def _hop_records(session_id: str = "s-hops") -> list[dict[str, Any]]:
+def _hop_event_records(session_id: str = "s-hops") -> list[dict[str, Any]]:
     """One pod dispatch in one session: a lead and an implementer hop, each restarting its
     iteration count at 1, the way `core/dispatch.py` runs every hop under one trace key."""
 
@@ -272,7 +272,7 @@ def _hop_records(session_id: str = "s-hops") -> list[dict[str, Any]]:
 
 
 def _hop_markers(session_id: str = "s-hops") -> list[dict[str, Any]]:
-    """`_hop_records` with the callId-less tool records `core/dispatch.py` writes around each
+    """`_hop_event_records` with the callId-less tool records `core/dispatch.py` writes around each
     hop, plus the implementer's verification result."""
 
     def marker(ts: str, role: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -285,7 +285,7 @@ def _hop_markers(session_id: str = "s-hops") -> list[dict[str, Any]]:
             "payload": payload,
         }
 
-    start, lead_call, impl_call = _hop_records(session_id)
+    start, lead_call, impl_call = _hop_event_records(session_id)
     return [
         start,
         marker("2026-09-28T00:00:01Z", "lead", "tool_call", {"hop": "lead", "agent": "p-lead"}),
@@ -321,7 +321,7 @@ def _session_end(session_id: str = "s-hops") -> dict[str, Any]:
 
 class TestOneSessionAcrossHops:
     def test_two_hops_at_the_same_iteration_get_distinct_span_ids(self) -> None:
-        spans = _project_all(_hop_records())
+        spans = _project_all(_hop_event_records())
         chats = [s for s in spans if s.name == "gen_ai.chat"]
         assert len(chats) == 2
         assert len({s.span_id for s in chats}) == 2
@@ -330,7 +330,7 @@ class TestOneSessionAcrossHops:
         policy = observability_spans.ExportPolicy(classes=privacy.LEVELS["conversation"], label="c")
         state = observability_spans.ProjectionState()
         spans: list[observability_spans.Span] = []
-        for record in [*_hop_records(), _session_end()]:
+        for record in [*_hop_event_records(), _session_end()]:
             spans.extend(projection.project(record, state, policy))
         root = next(s for s in spans if s.name == "docket.session")
         assert root.attributes["docket.session.input"] == "TASK-lead"
@@ -351,7 +351,7 @@ class TestOneSessionAcrossHops:
         policy = observability_spans.ExportPolicy(classes=privacy.LEVELS[level], label=level)
         state = observability_spans.ProjectionState()
         spans: list[observability_spans.Span] = []
-        for record in [*_hop_records(), _session_end()]:
+        for record in [*_hop_event_records(), _session_end()]:
             spans.extend(projection.project(record, state, policy))
         root = next(s for s in spans if s.name == "docket.session")
         assert "docket.session.input" not in root.attributes
@@ -377,7 +377,7 @@ class TestTurnEndFlushHoldsTheSessionRoot:
         pipeline = telemetry.Pipeline(
             sink, policy, queue_max=100, batch_wait_s=0.01, clock=time.monotonic
         )
-        lead_start, lead_call, impl_call = _hop_records()
+        lead_start, lead_call, impl_call = _hop_event_records()
         for record in (lead_start, lead_call):
             pipeline.offer(record)
         pipeline.flush(2.0)
@@ -422,7 +422,7 @@ class TestTurnEndFlushHoldsTheSessionRoot:
             batch_wait_s=0.01,
             clock=time.monotonic,
         )
-        for record in _hop_records("s-open"):
+        for record in _hop_event_records("s-open"):
             pipeline.offer(record)
         pipeline.close()
         roots = [s for s in sink.spans if s.name == "docket.session"]

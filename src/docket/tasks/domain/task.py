@@ -287,45 +287,5 @@ class TaskRecord(BaseModel):
         )
 
 
-# Fields a task record may lack because enqueue_task_once does not write them.
-# ``hops`` is handled separately below — a shared mutable default would leak
-# the same list object across every backfilled task.
-_TASK_SCALAR_DEFAULTS: dict[str, Any] = {
-    "priority": "normal",
-    "status": "pending",
-    "startedAt": None,
-    "completedAt": None,
-    "reason": "",
-    "costUsd": 0.0,
-    "claimedAt": None,
-    # Set together when a require_approval gate fires (status ->
-    # "waiting_approval"); cleared on resolution (grant or deny) — see
-    # `_apply_result`/`resolve_waiting_approval`.
-    "approvalToken": None,
-    "pendingApprovalIndex": None,
-    # Single-use gate-override handoff from a grant to the *next* claim
-    # of this task — captured then cleared from storage atomically inside
-    # `_claim_next_task` so it can never leak into an unrelated later claim.
-    "gateOverridePipelineIndex": None,
-}
-
-
-def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
-    """Fill every field ``enqueue_task_once`` does not write onto a task dict, in place (returns it)."""
-    for key, default in _TASK_SCALAR_DEFAULTS.items():
-        task.setdefault(key, default)
-    if not isinstance(task.get("hops"), list):
-        task["hops"] = []
-    # Single-use pre-grants a human has already resolved for this task's exact
-    # parked call(s) (ADR 0016 SS2) -- `resolve_waiting_approval` appends,
-    # `_compose_hop` serialises unconsumed entries into the resumed hop's env.
-    # A fresh list per task for the same reason `hops` gets one above.
-    if not isinstance(task.get("pregrants"), list):
-        task["pregrants"] = []
-    task.setdefault("created", _clock.iso())
-    task.setdefault("id", _ids.new_id("task"))
-    return task
-
-
 class TaskRunRefusal(DispatchError):
     """A claimed task's own ``pipeline`` or ``gate`` cannot be honoured; the task settles failed."""
