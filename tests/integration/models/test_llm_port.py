@@ -38,7 +38,7 @@ from docket.kernel.home import Home, use_home
 from docket.models.adapters import openai_http as adapter
 from docket.models.adapters import openai_wire as _openai_wire
 
-SUBJECT = "docket.models"
+SUBJECT = "docket.models.adapters.openai_http"
 
 ENDPOINT = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="test-model")
 

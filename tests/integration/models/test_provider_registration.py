@@ -27,7 +27,7 @@ from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.adapters.openai_http import ProbeResult
 
-SUBJECT = "docket.models"
+SUBJECT = "docket.models.provider_lifecycle"
 
 _runner = CliRunner()
 

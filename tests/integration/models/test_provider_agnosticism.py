@@ -25,7 +25,7 @@ from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, use_home
 from docket.models import selection as _mp
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.models.selection"
 
 _runner = CliRunner()
 
