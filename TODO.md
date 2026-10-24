@@ -410,6 +410,23 @@ measurement (no `src/` change)
   and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
   over half") fired. Next: on a real run, measure which calls repeat before cutting anything.
 
+**Found by the Phase 47 close's real run (2026-10-24, live `~/.docket`).**
+
+- **Fired: a sweep with nothing to claim writes a run record.** `docket-runs.json` held 85,591 runs
+  over seven days, 85,540 of them sweep runs with no task (one per pod per 30 s tick), 47 MB; every
+  write rewrites it and its `.bak`, and the restarted service logged `Could not acquire lock for
+  docket-runs.json within 10s`. `prune_terminal` exists but shares `trace_retention_s`, so nothing was
+  old enough to prune. Next: record a run only when a sweep claims a task (or prune empty ones on the
+  next tick), with a test that ten idle ticks leave the file unchanged.
+- **Fired: tests wrote eight pods into the real home on 2026-10-23** (`race`, `flaky`, `httpproj`,
+  `w120-2`, `myops`, `myresearch`, `web-dev`, `demo`; codebases `/src/<name>`, empty, or an agent
+  worktree), created between 03:17 and 11:53 during the Phase 46 `Home` conversion; the service then
+  swept them every tick. Next: find the test (the names come from its fixtures) and add a session
+  guard that fails when a test resolves `~/.docket`.
+- **`docket stop` says "did not exit. Run `kill -9`"** after its 15 s wait while the service is
+  still exiting; it was gone seconds later. Next: wait for the pid after the second signal before
+  advising a kill.
+
 **Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
 
 - **Two `test_diff_probe.py` tests fail only in the full no-sandbox parallel run**
