@@ -35,7 +35,7 @@ from docket.kernel.home import current_home
 SUBJECT = "docket.agent.loop"
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 AGENT_LOOP_SRCS = sorted((REPO_ROOT / "src" / "docket" / "agent").glob("loop*.py"))
