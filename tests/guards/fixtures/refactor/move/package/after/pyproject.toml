@@ -1,9 +1,0 @@
-[tool.ruff]
-src = ["src"]
-line-length = 100
-
-[tool.ruff.lint]
-select = ["F", "I"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["docket"]

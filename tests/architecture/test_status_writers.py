@@ -4,7 +4,7 @@
 performs it. A second ``task["status"] = ...`` is a second way to move a task that the transition
 table does not know about. The scan reads
 subscript assignments on the receiver names the task code uses for a record (``task``, ``t``,
-``claimed``), the same shape ``scripts/maint/refactor/analyze.py`` counts as ``status_writers``.
+``claimed``), the shape a status assignment takes.
 """
 
 from __future__ import annotations

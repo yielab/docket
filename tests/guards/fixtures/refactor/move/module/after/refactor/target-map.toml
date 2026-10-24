@@ -1,3 +1,0 @@
-[[module]]
-from = "docket.core.trace"
-to = "docket.observe.trace"
