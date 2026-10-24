@@ -37,8 +37,8 @@ task; load only the referenced section or spec.
    table states them: `kernel` imports nothing in `docket`; `<context>/domain` imports `kernel`
    and its own `domain`; `<context>/application` imports `kernel`, its own `domain` and `ports`,
    and other contexts' `__init__`; `<context>/adapters`, `platform` and `sandbox` import `kernel`,
-   `platform`'s `__init__` and the ports and domain types they implement; `agent` imports `kernel` only (plus its own
-   packages); `interfaces` imports `kernel`, `bootstrap` and contexts' `__init__`; `bootstrap`
+   `platform`'s `__init__` and the ports and domain types they implement; `agent` imports `kernel`, `platform`'s `__init__` and its own
+   packages (the turn engine; the ports it needs are in `agent/ports.py`); `interfaces` imports `kernel`, `bootstrap` and contexts' `__init__`; `bootstrap`
    imports everything. No function-local `docket.*` import; no module over 700 lines. The
    contracts are enforced by `tests/architecture/`; `cli/`, `core/` and `edges/` no longer exist.
    `dispatch_tool` is in `agent/tools/registry.py` and the store in `platform/store.py`.
