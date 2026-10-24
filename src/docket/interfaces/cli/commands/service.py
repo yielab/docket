@@ -14,12 +14,14 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import mcp as _mcp
 from docket.interfaces.cli.render import ui
 from docket.interfaces.http import server as _server
+from docket.interfaces.http.sweeps import SWEEP_ABANDON_WAIT_S
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
 
 _GRACE_S = 15
-_ABANDON_S = 5
+# The service waits SWEEP_ABANDON_WAIT_S for its sweeps after the second signal, then exits.
+_ABANDON_S = SWEEP_ABANDON_WAIT_S + 10
 
 
 def _read_pid(path: Path) -> int | None:

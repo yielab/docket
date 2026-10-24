@@ -82,6 +82,22 @@ def test_stop_sends_a_second_signal_when_sweeps_hang(
     assert not current_home().serve_pid_file.exists()
 
 
+def test_stop_outwaits_the_service_abandoning_its_sweeps(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After the second signal the service waits SWEEP_ABANDON_WAIT_S for its sweeps before it
+    exits, so stop must wait longer than that before it advises a kill."""
+    from docket.interfaces.http.sweeps import SWEEP_ABANDON_WAIT_S
+
+    waits: list[float] = []
+    monkeypatch.setattr(_service, "_wait_gone", lambda _pid, s: waits.append(s) or len(waits) > 1)
+    fake = _FakeProcess(monkeypatch, dies_after=3)
+    current_home().serve_pid_file.write_text(f"{fake.pid}\n")
+
+    assert runner.invoke(app, ["stop", "--wait", "0"]).exit_code == 0
+    assert waits[1] > SWEEP_ABANDON_WAIT_S
+
+
 def test_start_refuses_when_already_running(home: Path) -> None:
     current_home().serve_pid_file.write_text(f"{os.getpid()}\n")
     assert runner.invoke(app, ["start"]).exit_code == 1
