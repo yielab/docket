@@ -12,10 +12,10 @@ from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
+from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
-from docket.kernel import operator_contract as _oc
 from docket.kernel import text as _text
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
@@ -157,10 +157,10 @@ def enqueue_task_once(
     # description under its own heading -- so the pre_input screen below covers it like any
     # other human-sent string, and the Lead's first hop sees it -- and stored on the task's
     # own `brief` field.
-    parsed_brief: _oc.TaskBrief | None = None
+    parsed_brief: _brief.TaskBrief | None = None
     if brief is not None:
         try:
-            parsed_brief = _oc.TaskBrief.model_validate(brief)
+            parsed_brief = _brief.TaskBrief.model_validate(brief)
         except _ValidationError as exc:
             raise DispatchError(f"invalid brief: {exc}") from exc
         description = f"{description}\n\n## Pre-brief\n{_handoff.render_brief(parsed_brief)}"

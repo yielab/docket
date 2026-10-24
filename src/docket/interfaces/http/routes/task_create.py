@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from docket.interfaces.http.exchange import HttpExchange
-from docket.kernel import operator_contract as _oc
+from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
@@ -59,7 +59,7 @@ def post_task(h: HttpExchange, project: str) -> None:
             h._send_json_error("brief must be an object", 400)
             return
         try:
-            _oc.TaskBrief.model_validate(brief_raw)
+            _brief.TaskBrief.model_validate(brief_raw)
         except ValidationError as exc:
             h._send_json_error(f"invalid brief: {exc}", 422)
             return

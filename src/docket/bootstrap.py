@@ -18,7 +18,6 @@ from typing import Any
 
 from docket.agent.ports import bind_role_composer, bind_tool_gate
 from docket.governance import gate as _gate
-from docket.governance import secrets as _secrets
 from docket.governance import security as _security
 from docket.governance.ports import bind_approval_follow_up
 from docket.hops.application import driver as _driver
@@ -59,14 +58,6 @@ def sink_for(spec: _channel.ChannelSpec) -> _channel_adapters.Deliver | None:
     return _channel_adapters.sink_for(spec)
 
 
-def _credential_sources() -> set[str]:
-    """The credential names the secret store and the provider catalog add to the built-in two."""
-    names = set(_secrets.secrets_keys())
-    for spec in _catalog.load_catalog().entries.values():
-        names.update(spec.auth.credentials)
-    return names
-
-
 def bind_adapters() -> None:
     """Bind the real adapters of every port; every entry calls this before it runs."""
     bind_role_composer(TeamsRoleComposer())
@@ -80,7 +71,7 @@ def bind_adapters() -> None:
     bind_jail(
         Launcher(
             recorded_backend=_fleet.get_sandbox_backend,
-            credential_source=_credential_sources,
+            credential_source=_catalog.credential_sources,
             high_risk=_security.match_high_risk,
         )
     )

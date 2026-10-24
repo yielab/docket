@@ -14,12 +14,12 @@ from pydantic import ValidationError
 
 from docket.governance import approval as _approval
 from docket.kernel import clock as _clock
+from docket.kernel.brief import TaskBrief
 from docket.kernel.operator_contract import (
     ApprovalView,
     InboxView,
     Question,
     QuestionV11,
-    TaskBrief,
     TaskView,
     a2a_state,
 )

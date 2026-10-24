@@ -8,9 +8,9 @@ from typing import Any
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
+from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
-from docket.kernel import operator_contract as _oc
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
@@ -474,7 +474,7 @@ def _compose_hop(
     return message, env
 
 
-def _brief_from_step(prior: list[HopResult], step_id: str) -> _oc.TaskBrief | None:
+def _brief_from_step(prior: list[HopResult], step_id: str) -> _brief.TaskBrief | None:
     """The most recent *step_id* hop's parsed brief, or ``None`` -- a plain-text hop, a
     step that never ran, or a Lead reply with no parseable brief all degrade the same way."""
     for h in reversed(prior):

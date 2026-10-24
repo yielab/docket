@@ -37,7 +37,7 @@ from docket.interfaces.cli.commands.task_render import (
     _worktree,
 )
 from docket.interfaces.cli.render import ui
-from docket.kernel import operator_contract as _oc
+from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
 from docket.observability import trace as _trace
 from docket.tasks.application import actions as _actions
@@ -106,7 +106,7 @@ def _load_brief(path: Path | None) -> dict[str, Any] | None:
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-        _oc.TaskBrief.model_validate(raw)
+        _brief.TaskBrief.model_validate(raw)
     except (OSError, json.JSONDecodeError, ValidationError) as exc:
         ui.error(f"Invalid brief file '{path}': {exc}", "Pass a JSON TaskBrief")
         raise typer.Exit(1) from exc

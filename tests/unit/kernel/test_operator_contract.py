@@ -12,6 +12,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
+from docket.kernel.brief import TaskBrief
 from docket.kernel.operator_contract import (
     EVENT_KINDS,
     A2AState,
@@ -24,7 +25,6 @@ from docket.kernel.operator_contract import (
     Question,
     QuestionSchema,
     QuestionV11,
-    TaskBrief,
     TaskView,
     a2a_state,
     canonical_args_digest,

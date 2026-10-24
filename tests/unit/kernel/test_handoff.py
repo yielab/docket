@@ -10,8 +10,8 @@ and `HandoffArtifact.brief` never being shed by a token-budgeted consumer (it is
 from __future__ import annotations
 
 from docket.agent import context as _ctx
+from docket.kernel.brief import TaskBrief
 from docket.kernel.handoff import HandoffArtifact, cap_diff, parse_brief, render_brief
-from docket.kernel.operator_contract import TaskBrief
 
 SUBJECT = "docket.kernel.handoff"
 

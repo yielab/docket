@@ -45,9 +45,10 @@ def render(kind: str, version: str = "1") -> str:
     """Return the generated ``<kind>.schema.json`` content, trailing newline included.
     *version* is ``"1"`` or ``"1.1"``."""
     from docket.kernel import operator_contract as operator_contract
+    from docket.kernel.brief import TaskBrief
 
     names = _NAME_FOR_MODEL_V11 if version == "1.1" else _NAME_FOR_MODEL
-    model = getattr(operator_contract, names[kind])
+    model = TaskBrief if kind == "brief" else getattr(operator_contract, names[kind])
     schema: dict[str, Any] = model.model_json_schema()
     if kind == "question":
         schema["properties"]["requestedSchema"] = (

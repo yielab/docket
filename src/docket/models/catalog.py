@@ -302,6 +302,14 @@ def load_catalog() -> Catalog:
     return _merged_catalog(_load_global_providers())
 
 
+def credential_sources() -> set[str]:
+    """The credential names the secret store and the provider catalog add to the built-in two."""
+    names = set(_secrets.secrets_keys())
+    for spec in load_catalog().entries.values():
+        names.update(spec.auth.credentials)
+    return names
+
+
 def _merged_catalog(global_entries: dict[str, ProviderSpec]) -> Catalog:
     entries: dict[str, ProviderSpec] = {}
     scopes: dict[str, str] = {}

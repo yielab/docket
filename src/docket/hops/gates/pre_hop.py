@@ -13,7 +13,7 @@ from docket.hops.application import usage as _usage
 from docket.hops.application.usage import pod_recorded_cost
 from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates import profile as _profile
-from docket.kernel import operator_contract as _oc
+from docket.kernel import brief as _brief
 from docket.kernel import protected_paths as _protected
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
@@ -74,10 +74,6 @@ def _approval_action_text(role: str, task: dict[str, Any]) -> str:
     desc = str(task.get("description", "")).strip()
     task_id = str(task.get("id", "task"))
     return f"pod dispatch — {role} hop for task {task_id}: {desc}"[:1000]
-
-
-# `interfaces/http/routes/health.py` reads the task token budget through this name.
-task_token_budget = _decide.task_token_budget
 
 
 def _current_task(ctx: UnitContext) -> dict[str, Any]:
@@ -231,7 +227,7 @@ def _consult_budget_env(ctx: UnitContext, env: dict[str, str] | None) -> dict[st
     return {**(env or {}), _rd.DOCKET_MAX_CONSULTATIONS: str(remaining)}
 
 
-def _check_brief_resources(project: str, brief: _oc.TaskBrief) -> list[str]:
+def _check_brief_resources(project: str, brief: _brief.TaskBrief) -> list[str]:
     """The subset of *brief*'s own ``resources`` entries a deterministic check cannot
     confirm (unconfigured secret, missing path, no ``verifyCmd``); ``[]`` means every
     one named is present. Gathers each fact only when an entry needs it."""

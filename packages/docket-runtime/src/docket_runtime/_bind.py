@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from docket_runtime._internal.docket.agent.ports import bind_tool_gate
 from docket_runtime._internal.docket.governance import gate as _gate
-from docket_runtime._internal.docket.governance import secrets as _secrets
 from docket_runtime._internal.docket.governance import security as _security
 from docket_runtime._internal.docket.kernel.ports import (
     bind_git,
@@ -23,13 +22,6 @@ from docket_runtime._internal.docket.platform import git as _git
 from docket_runtime._internal.docket.platform import process as _process
 from docket_runtime._internal.docket.sandbox.launch import Launcher
 from docket_runtime._internal.docket.teams import fleet as _fleet
-
-
-def _credential_sources() -> set[str]:
-    names = set(_secrets.secrets_keys())
-    for spec in _catalog.load_catalog().entries.values():
-        names.update(spec.auth.credentials)
-    return names
 
 
 class _Tracer:
@@ -71,7 +63,7 @@ def bind_adapters() -> None:
     bind_jail(
         Launcher(
             recorded_backend=_fleet.get_sandbox_backend,
-            credential_source=_credential_sources,
+            credential_source=_catalog.credential_sources,
             high_risk=_security.match_high_risk,
         )
     )

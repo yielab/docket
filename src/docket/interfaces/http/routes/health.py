@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from docket.hops.application import usage
-from docket.hops.gates import pre_hop as _pre_hop
+from docket.hops.domain import gate_decisions as _decide
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
@@ -20,7 +20,7 @@ SERVE_API_VERSION = "6"
 def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
     """*task* plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
 
-    left = _pre_hop.task_token_budget(task)
+    left = _decide.task_token_budget(task)
     return {
         **task,
         "tokenBudget": current_home().agent_loop_token_budget if left is None else max(0, left),

@@ -13,13 +13,13 @@ from typing import Any
 
 import pytest
 
+from docket.kernel.brief import TaskBrief
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
     ApprovalView,
     InboxView,
     Question,
     QuestionV11,
-    TaskBrief,
     TaskView,
 )
 from docket.operator import notify as _notify
