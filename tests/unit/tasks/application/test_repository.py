@@ -9,7 +9,6 @@ import pytest
 from tests.support import pods as _support_pods
 
 from docket.kernel.home import current_home
-from docket.tasks.adapters.json_store import JsonTaskStore
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import HopResult, TaskRecord
@@ -24,7 +23,7 @@ pod_home = _support_pods.pod_home_bare
 @pytest.fixture
 def repo(pod_home: Path) -> TaskRepository:
     _support_pods.seed_lean_pod("demo")
-    return TaskRepository.for_pod("demo", JsonTaskStore)
+    return TaskRepository.for_pod("demo")
 
 
 def _ledger_ids(project: str = "demo") -> list[str]:

@@ -1,6 +1,6 @@
 """A pod's task queue as typed records: the one door to read it and to change it.
 
-``TaskRepository`` holds a store (``adapters/json_store.py`` is the one implementation) and the
+``TaskRepository`` holds a ``JsonTaskStore`` (``json_store.py``, the one implementation) and the
 Lead's workspace, where the dispatch ledger of ``HEARTBEAT.md`` lives. Every change runs under the
 store's lock, and after every write the ledger is regenerated from the stored records, so no
 caller has to remember to.
@@ -16,10 +16,10 @@ import os as _os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.tasks.application.json_store import JsonTaskStore
 from docket.tasks.application.transitions import apply_to_task
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import HopResult, TaskRecord
@@ -27,19 +27,11 @@ from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
 from docket.teams.settings import pod_task_list_path
 
-__all__ = ["Claim", "TaskRepository", "TaskStore"]
+__all__ = ["Claim", "TaskRepository"]
 
 Records = list[TaskRecord]
 
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
-
-
-class TaskStore(Protocol):
-    """What the repository needs of a store: every task, and a locked change of them."""
-
-    def load(self) -> list[TaskRecord]: ...
-
-    def modify(self, fn: Callable[[list[TaskRecord]], bool]) -> list[TaskRecord]: ...
 
 
 @dataclass(frozen=True)
@@ -53,16 +45,18 @@ class Claim:
 
 
 class TaskRepository:
-    def __init__(self, store: TaskStore, lead_workspace: Path) -> None:
+    def __init__(self, store: JsonTaskStore, lead_workspace: Path) -> None:
         self._store = store
         self._lead_workspace = lead_workspace
 
     @classmethod
-    def for_pod(cls, project: str, open_store: Callable[[Path], TaskStore]) -> TaskRepository:
-        """The repository of *project*'s queue: the file in its Lead's workspace, opened by
-        *open_store*."""
+    def for_pod(cls, project: str) -> TaskRepository:
+        """The repository of *project*'s queue: its task file, and the ledger in its Lead's
+        workspace."""
         lead_id = _pod.member_id(project, "lead")
-        return cls(open_store(pod_task_list_path(project)), current_home().workspace_dir(lead_id))
+        return cls(
+            JsonTaskStore(pod_task_list_path(project)), current_home().workspace_dir(lead_id)
+        )
 
     def get(self, task_id: str) -> TaskRecord | None:
         return next((r for r in self._store.load() if r.id == task_id), None)

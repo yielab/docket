@@ -17,9 +17,9 @@ from typing import Any
 
 import pytest
 
-from docket.tasks.adapters.json_store import JsonTaskStore
+from docket.tasks.application.json_store import JsonTaskStore
 
-SUBJECT = "docket.tasks.adapters.json_store"
+SUBJECT = "docket.tasks.application.json_store"
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "task-records"
 QUEUE = FIXTURES / "task_list_2026-10-24.json"

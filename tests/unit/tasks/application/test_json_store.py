@@ -10,10 +10,10 @@ import pytest
 from pydantic import ValidationError
 
 from docket.kernel.threads import new_thread
-from docket.tasks.adapters.json_store import JsonTaskStore
+from docket.tasks.application.json_store import JsonTaskStore
 from docket.tasks.domain.task import TaskRecord
 
-SUBJECT = "docket.tasks.adapters.json_store"
+SUBJECT = "docket.tasks.application.json_store"
 
 
 def _seed(path: Path, *tasks: dict[str, object]) -> None:

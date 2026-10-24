@@ -106,7 +106,7 @@ src/docket/
 │                      tool_outcome.py
 ├── tasks/             domain/{task,parts,state,options,refs}.py  application/{queue,lifecycle,actions,
 │                      approvals,answers,interruptions,corrections,escalation,evidence,runs,sweep,
-│                      repository}.py  adapters/json_store.py   (no ports.py: one implementation)
+│                      repository,json_store}.py   (no ports.py, no adapters/: one implementation)
 ├── pipeline/          domain/{spec,plan,verdict,routing}.py  application/{executor,steps,schedule}.py
 ├── hops/              application/{compose,runner,record}.py  gates/{pre_hop,post_hop}.py
 │                      workspace/{worktree,prepare,repo_view,repo_map}.py
