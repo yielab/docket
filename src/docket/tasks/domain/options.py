@@ -74,10 +74,6 @@ class TaskOptions(BaseModel):
     prepare: StrictStr | None = None
     restrictions: TaskRestrictions | None = None
 
-    def as_record(self) -> dict[str, Any]:
-        """The set fields under their camelCase keys, ready to merge onto a task record."""
-        return self.model_dump(by_alias=True, exclude_none=True)
-
 
 def _describe(exc: ValidationError) -> str:
     first = exc.errors()[0]

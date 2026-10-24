@@ -8,16 +8,15 @@ from docket.governance import approval as _ap
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import audit as _audit
 from docket.kernel import clock as _clock
-from docket.kernel.home import current_home
 from docket.observability import trace as _trace
-from docket.platform import read_modify_write
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.record import UnitContext
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
-from docket.teams import agent_memory as _mem
-from docket.teams import pod as _pod
-from docket.teams.settings import load_pod_settings, pod_task_list_path
+from docket.tasks.domain.parts import Grant, TaskGrant
+from docket.tasks.domain.task import TaskRecord
+from docket.teams.settings import load_pod_settings
 
 TASK_GRANT_CAP = 20
 
@@ -88,61 +87,57 @@ def resolve_waiting_approval_detail(
     updated = False
     note = ""
     resolved_task_id = task_id
+    now = _clock.iso()
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+    def _resolve(record: TaskRecord) -> bool:
         nonlocal updated, resolved_task_id, note
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if task_id:
-                if t.get("id") != task_id:
-                    continue
-            elif t.get("approvalToken") != token:
-                continue
-            if t.get("status") != "waiting_approval" or t.get("approvalToken") != token:
-                return None
-            resolved_task_id = str(t.get("id", ""))
-            pending_index = t.get("pendingApprovalIndex")
-            if decision == "granted" and check_changed:
-                _transitions.apply_to_task(
-                    t, _state.Status.done, now=_clock.iso(), reason="check_changed approved"
-                )
-            elif decision == "granted":
-                _transitions.apply_to_task(t, _state.Status.pending)
-                if parked:
-                    pregrants_raw = t.get("pregrants")
-                    pregrants = list(pregrants_raw) if isinstance(pregrants_raw, list) else []
-                    pregrants.append(
-                        {
-                            "token": token,
-                            "tool": str(context.get("tool", "")),
-                            "argsDigest": str(context.get("argsDigest", "")),
-                        }
+        if updated:
+            return False
+        if task_id:
+            if record.id != task_id:
+                return False
+        elif record.approval_token != token:
+            return False
+        if record.status != _state.Status.waiting_approval or record.approval_token != token:
+            return False
+        resolved_task_id = record.id
+        pending_index = record.pending_approval_index
+        if decision == "granted" and check_changed:
+            _transitions.apply_to_task(
+                record, _state.Status.done, now=now, reason="check_changed approved"
+            )
+        elif decision == "granted":
+            _transitions.apply_to_task(record, _state.Status.pending)
+            if parked:
+                record.pregrants.append(
+                    Grant(
+                        token=token,
+                        tool=str(context.get("tool", "")),
+                        args_digest=str(context.get("argsDigest", "")),
                     )
-                    t["pregrants"] = pregrants
-                    if context.get("optionId") == "approve_task":
-                        note = _append_task_grant(
-                            t, token, context, str(rec.get("role", "")), channel, actor
-                        )
-                else:
-                    t["gateOverridePipelineIndex"] = pending_index
-            else:
-                _transitions.apply_to_task(
-                    t,
-                    _state.Status.failed,
-                    now=_clock.iso(),
-                    reason=f"approval denied: {reason}" if reason else "approval denied",
-                    failure_kind=(
-                        _state.FailureKind.check_changed
-                        if check_changed
-                        else _state.FailureKind.approval_denied
-                    ),
                 )
-            updated = True
-            return {"tasks": tasks}
-        return None
+                if context.get("optionId") == "approve_task":
+                    note = _append_task_grant(
+                        record, token, context, str(rec.get("role", "")), channel, actor
+                    )
+            else:
+                record.gate_override_pipeline_index = pending_index
+        else:
+            _transitions.apply_to_task(
+                record,
+                _state.Status.failed,
+                now=now,
+                reason=f"approval denied: {reason}" if reason else "approval denied",
+                failure_kind=(
+                    _state.FailureKind.check_changed
+                    if check_changed
+                    else _state.FailureKind.approval_denied
+                ),
+            )
+        updated = True
+        return True
 
-    doc = read_modify_write(pod_task_list_path(project), _fn)
+    TaskRepository.for_pod(project).update_each(_resolve)
     if updated:
         _trace.trace_event(
             project,
@@ -151,35 +146,25 @@ def resolve_waiting_approval_detail(
             "approval_resumed" if decision == "granted" else "approval_task_denied",
             _json.dumps({"task": resolved_task_id, "token": token}),
         )
-    if updated and check_changed:
-        tasks_after = doc.get("tasks")
-        _mem.sync_dispatch_tasks(
-            current_home().workspace_dir(_pod.member_id(project, "lead")),
-            tasks_after if isinstance(tasks_after, list) else [],
-        )
     return updated, note
 
 
 def _append_task_grant(
-    task: dict[str, Any],
+    record: TaskRecord,
     token: str,
     context: dict[str, Any],
     role: str,
     channel: str,
     actor: str,
 ) -> str:
-    """Record the ``approve_task`` grant for *role* on *task* unless it is already there or the
+    """Record the ``approve_task`` grant for *role* on *record* unless it is already there or the
     task is at ``TASK_GRANT_CAP``; returns a refusal note, ``""`` otherwise."""
     tool = str(context.get("tool", ""))
     digest = str(context.get("argsDigest", ""))
     if not tool or not digest or not role:
         return ""
-    raw = task.get("taskGrants")
-    grants = [g for g in raw if isinstance(g, dict)] if isinstance(raw, list) else []
-    if any(
-        g.get("tool") == tool and g.get("argsDigest") == digest and g.get("role") == role
-        for g in grants
-    ):
+    grants = record.task_grants
+    if any(g.tool == tool and g.args_digest == digest and g.role == role for g in grants):
         return ""
     channel = channel if channel in _ap.APPROVAL_CHANNELS else "unknown"
     if len(grants) >= TASK_GRANT_CAP:
@@ -192,17 +177,16 @@ def _append_task_grant(
             "once only."
         )
     grants.append(
-        {
-            "tool": tool,
-            "argsDigest": digest,
-            "role": role,
-            "token": token,
-            "grantedAt": _clock.iso(),
-            "actor": actor,
-            "channel": channel,
-        }
+        TaskGrant(
+            tool=tool,
+            args_digest=digest,
+            role=role,
+            token=token,
+            granted_at=_clock.iso(),
+            actor=actor,
+            channel=channel,
+        )
     )
-    task["taskGrants"] = grants
     _audit.audit_log(
         "approval.task_grant",
         f"token={token} tool={tool} channel={channel} actor={actor or '?'}",

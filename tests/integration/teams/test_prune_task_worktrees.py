@@ -65,7 +65,9 @@ def _add_task(
         _git(Path(rec["dir"]), "commit", "-m", f"work {task_id}")
     path: Path = env["tasks"]
     doc = json.loads(path.read_text()) if path.exists() else {"tasks": []}
-    doc["tasks"].append({"id": task_id, "status": status, "worktree": rec, **extra})
+    doc["tasks"].append(
+        {"id": task_id, "description": "x", "status": status, "worktree": rec, **extra}
+    )
     path.write_text(json.dumps(doc))
     return rec
 
@@ -150,6 +152,7 @@ def test_dir_outside_member_tasks_dir_is_never_removed(env: dict[str, Any], tmp_
                 "tasks": [
                     {
                         "id": "t-evil",
+                        "description": "x",
                         "status": "done",
                         "worktree": {
                             "dir": str(
@@ -161,7 +164,9 @@ def test_dir_outside_member_tasks_dir_is_never_removed(env: dict[str, Any], tmp_
                                 / ".."
                                 / ".."
                                 / "victim"
-                            )
+                            ),
+                            "branch": "docket/t-evil",
+                            "baseCommit": "abc",
                         },
                     }
                 ]

@@ -2,18 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
-from docket.platform import read_json, read_modify_write
-from docket.tasks.application.queue import RESUMABLE_FAILURE_KINDS as resumable
+from docket.platform import read_json
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain import state as _state
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import pod
 from docket.teams.task_worktrees import task_worktrees_dir, worktree_branch
-
-PRUNABLE_TASK_STATUSES = frozenset({"done", "failed", "cancelled"})
 
 
 @dataclass(frozen=True)
@@ -24,10 +23,6 @@ class WorktreePruneEntry:
     dir: str
     action: str  # "removed" | "would-remove" | "kept"
     reason: str = ""
-
-
-def _task_list_file(project: str) -> Path:
-    return current_home().workspace_dir(pod.member_id(project, "lead")) / "TASK_LIST.json"
 
 
 def _worktree_owner(project: str, wt_dir: str) -> tuple[str, str] | None:
@@ -48,11 +43,9 @@ def _worktree_owner(project: str, wt_dir: str) -> tuple[str, str] | None:
     return None
 
 
-def _prune_one(
-    project: str, task: dict[str, Any], *, force: bool, dry_run: bool
-) -> WorktreePruneEntry:
-    task_id = str(task.get("id", ""))
-    wt_dir = str(task["worktree"]["dir"])
+def _prune_one(project: str, task: TaskRecord, *, force: bool, dry_run: bool) -> WorktreePruneEntry:
+    task_id = task.id
+    wt_dir = task.worktree_dir
 
     def kept(reason: str) -> WorktreePruneEntry:
         return WorktreePruneEntry(task_id, wt_dir, "kept", reason)
@@ -62,7 +55,7 @@ def _prune_one(
         return kept("worktree dir is not inside a pod member's task-worktrees dir")
     codebase = owner[1]
     branch = worktree_branch(project, task_id)
-    recorded = str(task["worktree"].get("branch", ""))
+    recorded = task.worktree.branch if task.worktree is not None else ""
     if recorded and recorded != branch:
         return kept(f"recorded branch {recorded!r} is not {branch!r}")
     exists = Path(wt_dir).is_dir()
@@ -108,22 +101,18 @@ def prune_task_worktrees(
     never deletes an unmerged branch. A failed task ``dispatch --resume`` would re-claim keeps its
     worktree."""
 
-    raw = read_json(_task_list_file(project))
-    tasks = raw.get("tasks") if isinstance(raw, dict) else None
+    repo = TaskRepository.for_pod(project)
     entries: list[WorktreePruneEntry] = []
-    for task in tasks if isinstance(tasks, list) else []:
-        wt = task.get("worktree") if isinstance(task, dict) else None
-        if (
-            not isinstance(wt, dict)
-            or not wt.get("dir")
-            or wt.get("prunedAt")
-            or task.get("status") not in PRUNABLE_TASK_STATUSES
-        ):
+    for task in repo.list():
+        if not task.worktree_dir or not task.is_terminal:
             continue
-        if task.get("status") == "failed" and task.get("failureKind") in resumable:
+        if (
+            task.status == _state.Status.failed
+            and task.failure_kind in _state.RESUMABLE_FAILURE_KINDS
+        ):
             entries.append(
                 WorktreePruneEntry(
-                    str(task.get("id", "")), str(wt["dir"]), "kept", "resumable (dispatch --resume)"
+                    task.id, task.worktree_dir, "kept", "resumable (dispatch --resume)"
                 )
             )
             continue
@@ -132,11 +121,11 @@ def prune_task_worktrees(
     if pruned:
         stamp = _clock.iso()
 
-        def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-            for t in doc.get("tasks") or []:
-                if t.get("id") in pruned and isinstance(t.get("worktree"), dict):
-                    t["worktree"]["prunedAt"] = stamp
-            return doc
+        def _stamp(record: TaskRecord) -> bool:
+            if record.id not in pruned or record.worktree is None:
+                return False
+            record.worktree.pruned_at = stamp
+            return True
 
-        read_modify_write(_task_list_file(project), _fn)
+        repo.update_each(_stamp)
     return entries

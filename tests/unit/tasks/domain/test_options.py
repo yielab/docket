@@ -27,7 +27,7 @@ def _ok(**kw: Any) -> _to.TaskOptions:
 
 
 def test_unset_fields_are_omitted_from_the_record() -> None:
-    assert _ok().as_record() == {}
+    assert _ok().model_dump(by_alias=True, exclude_none=True) == {}
 
 
 def test_every_field_round_trips_verbatim() -> None:
@@ -39,7 +39,7 @@ def test_every_field_round_trips_verbatim() -> None:
         gate={"command": "make test", "timeoutS": 30, "map": {"3": "needs_human"}},
         max_tokens=100,
         restrictions={"deniedTools": ["fetch", "write"], "network": "none", "policies": []},
-    ).as_record()
+    ).model_dump(by_alias=True, exclude_none=True)
     assert record == {
         "externalRef": "A-1",
         "idempotencyKey": "k",
@@ -52,7 +52,9 @@ def test_every_field_round_trips_verbatim() -> None:
 
 
 def test_a_gate_keeps_only_the_keys_it_was_given() -> None:
-    assert _ok(gate={"command": "x"}).as_record() == {"gate": {"command": "x"}}
+    assert _ok(gate={"command": "x"}).model_dump(by_alias=True, exclude_none=True) == {
+        "gate": {"command": "x"}
+    }
 
 
 @pytest.mark.parametrize(
@@ -135,7 +137,7 @@ def test_a_block_policy_is_accepted_in_short_or_canonical_form() -> None:
 
 @pytest.mark.parametrize("value", ["npm ci", "", "none"])
 def test_prepare_is_kept_verbatim_even_when_blank(value: str) -> None:
-    assert _ok(prepare=value).as_record() == {"prepare": value}
+    assert _ok(prepare=value).model_dump(by_alias=True, exclude_none=True) == {"prepare": value}
 
 
 @pytest.mark.parametrize("value", ["a\nb", "a\x00b", "x" * 1001, 3, ["a"]])
