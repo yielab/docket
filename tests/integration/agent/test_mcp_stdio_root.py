@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.unit.agent.tools.test_mcp_tools import _final, _ScriptedBackend, _write_meta
+from tests.support.llm import RecordingScriptedBackend as _ScriptedBackend
+from tests.support.llm import final as _final
+from tests.support.pods import write_meta_overrides as _write_meta
 
 import docket.agent.tools.mcp_tools as _mt
 from docket.agent.tools import mcp_client as _client

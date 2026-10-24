@@ -19,8 +19,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from tests.integration.tasks.test_task_worktrees import _bind_pipeline, _git, _init_repo, _seed_pod
 from tests.support import home as _support_home
+from tests.support.git import git as _git
+from tests.support.git import init_repo as _init_repo
+from tests.support.pods import bind_demo_pipeline as _bind_pipeline
+from tests.support.pods import seed_pod_at_codebase as _seed_pod
 
 import docket.kernel.templates as _templates
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult

@@ -82,3 +82,13 @@ def hide_git(monkeypatch: pytest.MonkeyPatch, empty_dir: Path) -> None:
     """Make ``git`` unresolvable on PATH, as on a host that never installed it."""
     empty_dir.mkdir(exist_ok=True)
     monkeypatch.setenv("PATH", str(empty_dir))
+
+
+def init_repo(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", str(path)], check=True, capture_output=True)
+    git(path, "config", "user.email", "t@t.test")
+    git(path, "config", "user.name", "T")
+    (path / "README.md").write_text("hello\n")
+    git(path, "add", ".")
+    git(path, "commit", "-m", "init")

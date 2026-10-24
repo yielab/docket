@@ -590,3 +590,13 @@ def parked_task_in_pod(
         _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
         _sweep.dispatch_pod("demo", runner=FakeDriver())
         yield _queue.read_tasks("demo")[0]
+
+
+@contextmanager
+def seed_pod_at_codebase(tmp_path: Path, codebase: Path) -> Iterator[None]:
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    with use_home(Home(home)):
+        build_pod("demo", pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        yield

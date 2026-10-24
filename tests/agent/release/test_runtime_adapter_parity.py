@@ -10,8 +10,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import pytest
-from tests.agent.release.test_pydantic_ai_adapter import _scenario_source
-from tests.agent.release.test_runtime_openhands_adapter import _invoke as _invoke_openhands
 from tests.fixtures.runtime_adapters.scenarios import (
     ADVERTISED_TOOLS,
     PLANTED_BYPASSES,
@@ -19,6 +17,7 @@ from tests.fixtures.runtime_adapters.scenarios import (
     SUBPROCESS_TIMEOUT_S,
     GovernanceScenario,
 )
+from tests.support.runtime_adapters import invoke_openhands, pydantic_scenario_source
 
 LANE = "release"
 REASON = "Prevents the OpenHands and PydanticAI adapters from drifting apart on the governed-execution outcomes they claim to share, once each is built and installed as its own wheel and sdist."
@@ -146,7 +145,7 @@ def _invoke_pydantic_ai(
         "W28_WORKSPACE": str(tmp_path / "pydantic-workspace"),
     }
     result = subprocess.run(
-        [str(python), "-c", _scenario_source(scenario, parity=True)],
+        [str(python), "-c", pydantic_scenario_source(scenario, parity=True)],
         cwd=outside,
         env=env,
         text=True,
@@ -167,7 +166,7 @@ def _normalized_pair(
     tmp_path: Path,
 ) -> tuple[dict[str, object], dict[str, object]]:
     pythons = getattr(matrix, artifact_name)
-    openhands = _invoke_openhands(
+    openhands = invoke_openhands(
         pythons["openhands"],
         tmp_path=tmp_path / "openhands",
         mode="adapter",

@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 import yaml
-from tests.unit.hops.application.test_steps import _unit_context
+from tests.support.pods import unit_context as _unit_context
 
 from docket.hops.application import compose as _compose_c
 from docket.hops.application import executor as _executor_c
