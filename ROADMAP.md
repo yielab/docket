@@ -9,8 +9,10 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-24.** Every phase 0–48 is complete; none is active. A new phase starts from
-a measured trigger or a maintainer request, never from this file.
+**Last updated: 2026-10-24.** Every phase 0–48 is complete. **Phase 49 is active** (D-70, planned
+2026-10-24 on a maintainer request; cards P49-1..5 on `TODO.md`): the task becomes one typed record
+behind one store, with the same JSON on disk. A new phase starts from a measured trigger or a
+maintainer request, never from this file.
 
 **The last three phases** closed on branch `plan/phase-46-structure`, not yet merged into `develop`
 nor pushed (§7.1). Phases 46-47 are D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
@@ -71,6 +73,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 46 | Organize by context, refactor by tool: `kernel/` and `Home`, import contracts as tests, one owner of a task's state, the runtime as a package, scripts for every mechanical step | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-23: contexts, splits, route table, `bootstrap.py`, architecture ratchets; real run matches the baseline; ports, state owner and test restructure are Phase 47 |
 | 47 | The seams: layered contexts with each module where its data lives, ports for git, processes, the jail, the tracer and the tool gate, one state owner, tests by context, one authored config form, policies on the parsed command | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-24: import baseline 1 line, local imports 1, corpus-measured policies, live-home defects fixed; fresh-install real run matches the Phase 46 baseline |
 | 48 | Isolation where the machine can jail, a task keeps its pipeline file, contract v5, positioning | D-67, D-68, D-69 | 2026-10-24 |
+| 49 | The task as a typed record behind one store: `TaskRecord` (flat, same JSON), `JsonTaskStore` + `TaskRepository` as the only writers of the queue, `hops` and `interfaces` read attributes, `claimId` and `source` deleted | D-70 | **active** since 2026-10-24: P49-1..5 planned, none started |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -222,7 +225,7 @@ address exactly those.
 
 ## 6. Decisions
 
-Every decision D-1…D-69 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
+Every decision D-1…D-70 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
 in [docs/cycles-ended/roadmap-decisions.md](docs/cycles-ended/roadmap-decisions.md); from D-35 on,
 the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. That file is byte-preserved, so a
 new decision gets its ADR and a row in the table below. The decisions that act as standing rules
@@ -241,6 +244,7 @@ today:
 | D-67 | `docket init` records isolation on where a backend is detected and records nothing, said so, where none is; a recorded choice stands and a recorded `on` fails closed (supersedes D-56 in part) |
 | D-68 | A task run under a caller's pipeline file keeps it (`pipelineSpec`). The nested task record and the pod's queue and settings under `workspaces/pods/<pod>/` are dropped for want of a measured need. No migration is written while no user needs one: a consequence, not a principle |
 | D-69 | Positioning (2026-10-24): docket complements the governance coding agents ship by governing a team, not a session, and leads with its versatility: roles, pipelines and policies are configuration, so any team is a combination of files. No comparison against another product without a benchmark |
+| D-70 | The task is one typed record (2026-10-24): `tasks/domain/task.py::TaskRecord`, flat, camelCase aliases, `extra="forbid"`, the same keys on disk, behind `tasks/adapters/json_store.py` (the only caller of `read_modify_write` on the queue) and `tasks/application/repository.py` (the pod's door, which also syncs the HEARTBEAT ledger). Readers use attributes; `_normalize_task`, `hop_record` and `hop_from_record` are deleted. No nested record (D-68 stands), no port protocol, no unit of work, no hooks: one implementation each. `claimId` and `source` are deleted outright (nothing read them); `Status.in_progress` likewise. The design and the measured counts are the Phase 49 cards; the architecture test `test_task_queue_writers.py` keeps the store the only writer |
 
 ---
 
