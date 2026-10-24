@@ -16,8 +16,12 @@ waits for your approval, and anything a policy forbids is refused. Every decisio
 tamper-evident log you can verify.
 
 The team itself is a few YAML files in your repository, so changing who does what is editing a
-file and committing it. docket works with any OpenAI-compatible model, hosted or running on your
-own machine.
+file and committing it. Roles, pipelines and policies combine freely, with no code: a Lead and an
+Implementer; the same pair behind a read-only security vetter that can send the change back once
+(`secure-build`); a Reviewer and a Critic judging the same change in parallel (`dual-review`); a
+builder on one provider's model checked by a reviewer on another's (`cross-family-review`). A
+pipeline can also route on a step's outcome, skip a step on a condition, run a command, or stop
+and ask you. docket works with any OpenAI-compatible model, hosted or running on your own machine.
 
 [Website](https://yielab.com/docket) · [Documentation](docs/README.md) ·
 [Quick start](docs/QUICK-START-DOCKET.md) · [Recipes](docs/recipes.md) ·
@@ -55,7 +59,9 @@ takes the next task through the pipeline, `status` and `inbox` show where things
 needs you, and `task approve` answers what the gate is holding.
 
 docket is not an agent framework you program and not an interactive pair-programming assistant:
-it runs the team your files describe. It has no web UI of its own; `/status.json` and `/metrics`
+it runs the team your files describe. It works beside the coding assistant you already use: that
+assistant helps you in a session, under its own permission prompts; docket takes queued work
+through a team, under one set of rules for every member and every step. It has no web UI of its own; `/status.json` and `/metrics`
 feed your own board, and docket does not ship one.
 
 ## Install

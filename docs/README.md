@@ -4,6 +4,10 @@
 directory names the roles, the order they work in, the gates between them and the rules they
 cannot cross; `docket init` turns it into a team of agents, each in its own workspace, `docket run`
 runs it one real model turn per hop, and every gate decision lands in a hash-chained audit log.
+Because each of those is a file, the combinations are yours: a plan-build-vet team, parallel
+reviewers, a builder and a reviewer on different providers, a pipeline that routes on outcomes,
+loops back a bounded number of times or stops for a human answer. docket works beside your coding
+assistant: the assistant governs your session, docket governs a team working queued tasks.
 docket is a Python CLI that owns the agent turn loop itself. It has no daemon and talks to any
 OpenAI-compatible chat-completions endpoint, hosted or local.
 
