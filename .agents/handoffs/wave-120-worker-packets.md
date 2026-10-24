@@ -18,7 +18,7 @@ for the sections it cites. Before editing behaviour, read `.agents/skills/docket
 ## Where you work
 
 - Only in the worktree you were given, on its branch. Never `cd` into the main checkout
-  `/home/ox/Sites/rack-cli` or another worktree, never check out another branch.
+  the repository root or another worktree, never check out another branch.
 - Run `env -u VIRTUAL_ENV uv sync` once, then every command as `env -u VIRTUAL_ENV uv run ...`.
   The `docket` on `PATH` runs the main checkout's code, not yours: probe with
   `env -u VIRTUAL_ENV uv run docket ...`.
