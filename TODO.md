@@ -110,7 +110,7 @@ M-1 ─────────────────┘   (M-1 must finish be
 
 ### P47-10 — integrate P47-7 and make every document cite the test paths that exist
 
-**Status:** TODO · **Size:** S · **Owner:** integrator (not a docket task) · **Kind:** M
+**Status:** DONE (2026-10-24: merge `f5e86413`, citations `f662d2f1`; 47 stale paths fixed, parallel run green but one guard over its 2 s ceiling under load) · **Size:** S · **Owner:** integrator (not a docket task) · **Kind:** M
 
 - **Trigger (measured 2026-10-24):** branch `p47-7-test-layout` (last green `261c245c`, 30 commits on
   `d1fa3d30`) moved the 134 integration files into `tests/integration/<context>/` and split the 11
@@ -132,7 +132,7 @@ M-1 ─────────────────┘   (M-1 must finish be
 
 ### P47-11 — the context structure: each module where its data lives, no upward or local import, no shim
 
-**Status:** TODO after P47-10 · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M + T
+**Status:** IN-PROGRESS (@sonnet, branch `p47-11-layers` from `f662d2f1`) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M + T
 (judgment on a computed plan)
 
 - **Trigger (measured at `d1fa3d30`):** ADR 0030 §"Phase acceptance" requires no upward import between
@@ -341,7 +341,7 @@ behaviour changes) + T
 
 ### M-1 — does a rephrased command pass the baseline policies?
 
-**Status:** TODO, before P47-12 (beside P47-10 or P47-11) · **Size:** S · **Model:** Sonnet · **Kind:**
+**Status:** IN-PROGRESS (@sonnet, branch `m1-policy-corpus` from `e0583955`) · **Size:** S · **Model:** Sonnet · **Kind:**
 measurement (no `src/` change)
 
 - **Trigger:** the maintainer's request (2026-10-24) to plan from the comparison in
